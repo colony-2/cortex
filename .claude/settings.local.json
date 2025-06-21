@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(npm install:*)",
+      "Bash(npx create-react-app:*)",
+      "Bash(npm run build:*)",
+      "Bash(chmod:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(true)",
+      "Bash(git commit:*)",
+      "Bash(npm create:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(npm test)",
+      "mcp__playwright__browser_navigate",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}

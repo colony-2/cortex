@@ -1,16 +1,16 @@
-export interface Node {
+export interface DependencyNode {
   id: string;
   name: string;
   path: string;
   dependencies: string[];
 }
 
-export interface Edge {
+export interface DependencyEdge {
   source: string;
   target: string;
 }
 
-export interface Graph {
-  nodes: Node[];
-  edges: Edge[];
+export interface DependencyGraph {
+  nodes: DependencyNode[];
+  edges: DependencyEdge[];
 }
