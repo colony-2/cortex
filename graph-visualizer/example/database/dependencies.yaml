@@ -1,0 +1,4 @@
+dependencies:
+  - logger
+  - config
+  - cache

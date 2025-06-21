@@ -1,0 +1,3 @@
+dependencies:
+  - logger
+  - shared-utils
