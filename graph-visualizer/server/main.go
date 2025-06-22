@@ -88,8 +88,9 @@ func main() {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
 		
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
@@ -239,12 +240,15 @@ func buildGraph(path string) Graph {
 }
 
 func getPositionsHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("GET /api/positions - rootPath: %s", rootPath)
 	positions, err := storage.GetPositions(rootPath)
 	if err != nil {
+		log.Printf("Error getting positions: %v", err)
 		http.Error(w, "Failed to get positions", http.StatusInternalServerError)
 		return
 	}
 	
+	log.Printf("Returning %d positions", len(positions))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(positions)
 }
@@ -252,15 +256,19 @@ func getPositionsHandler(w http.ResponseWriter, r *http.Request) {
 func savePositionsHandler(w http.ResponseWriter, r *http.Request) {
 	var positions []NodePosition
 	if err := json.NewDecoder(r.Body).Decode(&positions); err != nil {
+		log.Printf("Error decoding positions: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 	
+	log.Printf("POST /api/positions - Saving %d positions for rootPath: %s", len(positions), rootPath)
 	if err := storage.SavePositions(rootPath, positions); err != nil {
+		log.Printf("Error saving positions: %v", err)
 		http.Error(w, "Failed to save positions", http.StatusInternalServerError)
 		return
 	}
 	
+	log.Printf("Successfully saved %d positions", len(positions))
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }

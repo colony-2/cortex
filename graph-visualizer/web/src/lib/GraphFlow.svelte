@@ -156,6 +156,7 @@
       // Load saved positions
       try {
         const savedPositions = await fetchPositions();
+        
         // Apply saved positions to nodes
         nodes = nodes.map(node => {
           const savedPos = savedPositions[node.id];
@@ -171,7 +172,7 @@
           return node;
         });
       } catch (err) {
-        console.log('No saved positions or error loading them:', err);
+        console.warn('No saved positions or error loading them:', err);
       }
       
       loading = false;
@@ -204,7 +205,6 @@
       
       try {
         await savePositions(positions);
-        console.log('Positions saved');
       } catch (err) {
         console.error('Failed to save positions:', err);
       }
@@ -220,8 +220,8 @@
       <div class="error">Error: {error}</div>
     {:else}
       <SvelteFlow 
-        {nodes} 
-        {edges} 
+        bind:nodes
+        bind:edges
         {nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
