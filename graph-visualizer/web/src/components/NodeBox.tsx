@@ -7,40 +7,39 @@ interface NodeData extends DependencyNode {
   isViewingFiles?: boolean;
 }
 
-export default function NodeBox({ data, selected }: NodeProps<NodeData>) {
+export default function NodeBox({ data }: NodeProps<NodeData>) {
   const handleFileBrowser = (e: React.MouseEvent) => {
     e.stopPropagation();
     data.onFileBrowser(data.id);
   };
 
   return (
-    <div className={`node-box ${data.type === 'module' ? 'is-module' : ''} ${selected ? 'selected' : ''} ${data.isViewingFiles ? 'viewing-files' : ''}`}>
+    <div style={{ 
+      padding: '10px', 
+      border: '1px solid #ccc', 
+      borderRadius: '5px', 
+      background: 'white',
+      width: '200px',
+      minHeight: '80px'
+    }}>
       <Handle type="target" position={Position.Top} />
       
-      <div className="node-header">
-        <h4>{data.name}</h4>
-        <div className="node-actions">
-          <button 
-            className="action-btn" 
-            onClick={handleFileBrowser}
-            title="Browse files"
-            aria-label="Browse files"
-          >
-            📁
-          </button>
-        </div>
+      <div style={{ marginBottom: '10px' }}>
+        <strong>{data.name}</strong>
+        <button 
+          onClick={handleFileBrowser}
+          title="Browse files"
+          aria-label="Browse files"
+          style={{ marginLeft: '10px' }}
+        >
+          📁
+        </button>
       </div>
       
-      <div className="node-info">
-        <div className="info-item">
-          <span className="label">Type:</span>
-          <span className="value">{data.type}</span>
-        </div>
+      <div>
+        <div>Type: {data.type}</div>
         {data.dependencies.length > 0 && (
-          <div className="info-item">
-            <span className="label">Dependencies:</span>
-            <span className="value">{data.dependencies.length}</span>
-          </div>
+          <div>Dependencies: {data.dependencies.length}</div>
         )}
       </div>
       

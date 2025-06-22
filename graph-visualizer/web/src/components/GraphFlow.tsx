@@ -33,27 +33,27 @@ export default function GraphFlow() {
   const [graph, setGraph] = useState<DependencyGraph | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleFileBrowser = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId);
-    const node = graph?.nodes.find(n => n.id === nodeId) || null;
-    setSelectedNode(node);
-    setShowFileBrowser(true);
-    updateNodeSelection(nodeId);
-    updateNodesFileBrowserState(nodeId, true);
-  }, [graph]);
-
   const updateNodesFileBrowserState = useCallback((nodeId: string | null, show: boolean) => {
-    setNodes(nodes => nodes.map(node => ({
-      ...node,
-      data: {
-        ...node.data,
-        isViewingFiles: show && node.id === nodeId
-      }
-    })));
+    setNodes(nodes => nodes.map(node => {
+      const isViewingFiles = show && node.id === nodeId;
+      const currentClassName = node.className || '';
+      const baseClasses = currentClassName.replace(/\s*viewing-files\s*/, '').trim();
+      const newClassName = isViewingFiles ? `${baseClasses} viewing-files`.trim() : baseClasses;
+      
+      
+      return {
+        ...node,
+        className: newClassName,
+        data: {
+          ...node.data,
+          isViewingFiles
+        }
+      };
+    }));
   }, [setNodes]);
 
   const updateNodeSelection = useCallback((nodeId: string | null) => {
-    if (!graph) return;
+    if (!graph || !graph.nodes || !graph.edges) return;
     
     setNodes(nodes => nodes.map(node => ({
       ...node,
@@ -82,16 +82,21 @@ export default function GraphFlow() {
       );
 
       setEdges(edges => edges.map(edge => {
-        let edgeClass = '';
+        let className = '';
+        let style = {};
+        
         if (parentEdges.has(edge.id)) {
-          edgeClass = 'parent-edge';
+          className = 'parent-edge';
+          style = { stroke: '#e74c3c', strokeWidth: 2 };
         } else if (childEdges.has(edge.id)) {
-          edgeClass = 'child-edge';
+          className = 'child-edge';
+          style = { stroke: '#3498db', strokeWidth: 2 };
         }
         
         return { 
           ...edge, 
-          className: edgeClass,
+          className,
+          style,
           animated: edge.source === nodeId || edge.target === nodeId 
         };
       }));
@@ -100,10 +105,20 @@ export default function GraphFlow() {
       setEdges(edges => edges.map(edge => ({
         ...edge,
         className: '',
+        style: {},
         animated: false
       })));
     }
   }, [graph, setNodes, setEdges]);
+
+  const handleFileBrowser = useCallback((nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    const node = graph?.nodes.find(n => n.id === nodeId) || null;
+    setSelectedNode(node);
+    setShowFileBrowser(true);
+    updateNodeSelection(nodeId);
+    updateNodesFileBrowserState(nodeId, true);
+  }, [graph, updateNodeSelection, updateNodesFileBrowserState]);
 
   const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes }) => {
     if (nodes.length > 0) {
@@ -130,6 +145,13 @@ export default function GraphFlow() {
 
     const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.nodeId, p]) : []);
 
+    // Handle null or undefined nodes
+    if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
     // Create nodes
     const newNodes: Node[] = graphData.nodes.map(node => {
       const savedPosition = positionMap.get(node.id);
@@ -142,7 +164,7 @@ export default function GraphFlow() {
           data: { ...node, onFileBrowser: handleFileBrowser },
         };
       } else {
-        dagreGraph.setNode(node.id, { width: 200, height: 100 });
+        dagreGraph.setNode(node.id, { width: 200, height: 120 });
         return {
           id: node.id,
           type: 'dependency',
@@ -153,9 +175,11 @@ export default function GraphFlow() {
     });
 
     // Add edges to dagre
-    graphData.edges.forEach(edge => {
-      dagreGraph.setEdge(edge.source, edge.target);
-    });
+    if (graphData.edges && Array.isArray(graphData.edges)) {
+      graphData.edges.forEach(edge => {
+        dagreGraph.setEdge(edge.source, edge.target);
+      });
+    }
 
     // Calculate layout only for nodes without saved positions
     if (!savedPositions || savedPositions.length < graphData.nodes.length) {
@@ -173,12 +197,14 @@ export default function GraphFlow() {
     }
 
     // Create edges
-    const newEdges: Edge[] = graphData.edges.map(edge => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'default',
-    }));
+    const newEdges: Edge[] = graphData.edges && Array.isArray(graphData.edges) 
+      ? graphData.edges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: 'default',
+        }))
+      : [];
 
     setNodes(newNodes);
     setEdges(newEdges);

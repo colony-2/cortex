@@ -62,108 +62,23 @@ body {
   color: #e74c3c;
 }
 
-/* Node Styles */
-.node-box {
-  background: white;
-  border: 2px solid #69b3a2;
-  border-radius: 8px;
-  padding: 0;
-  min-width: 200px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
+/* Node Styles - removed to use React Flow defaults */
 
-.node-box.is-module {
-  border-color: #ffa500;
-}
-
-.node-box.selected {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  border-width: 3px;
-}
-
-.node-box.viewing-files .node-header {
-  background-color: #ffa500;
-}
-
-.node-header {
-  background-color: #69b3a2;
-  color: white;
-  padding: 8px 12px;
-  border-radius: 6px 6px 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background-color 0.2s ease;
-}
-
-.node-box.is-module .node-header {
-  background-color: #ffa500;
-}
-
-.node-header h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.node-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.action-btn {
-  background: none;
-  border: none;
-  color: white;
+/* Basic button styles for functionality */
+button {
   cursor: pointer;
-  padding: 4px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  background: white;
   border-radius: 4px;
-  font-size: 16px;
-  transition: background 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.action-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.node-info {
-  padding: 12px;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
   font-size: 14px;
 }
 
-.info-item:last-child {
-  margin-bottom: 0;
+button:hover {
+  background: #f0f0f0;
 }
 
-.info-item .label {
-  color: #666;
-}
-
-.info-item .value {
-  font-weight: 500;
-  color: #333;
-}
-
-/* Edge Styles */
-.parent-edge {
-  stroke: #e74c3c !important;
-  stroke-width: 2 !important;
-}
-
-.child-edge {
-  stroke: #3498db !important;
-  stroke-width: 2 !important;
-}
+/* Edge Styles - removed to use React Flow defaults */
 
 /* File Browser Styles */
 .file-browser {
@@ -282,32 +197,4 @@ body {
   color: #666;
 }
 
-/* React Flow Overrides */
-.react-flow__node {
-  cursor: pointer;
-}
-
-.react-flow__handle {
-  width: 8px;
-  height: 8px;
-  background: #555;
-  border: 2px solid white;
-}
-
-.react-flow__handle-top {
-  top: -4px;
-}
-
-.react-flow__handle-bottom {
-  bottom: -4px;
-}
-
-.react-flow__minimap {
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-}
-
-.react-flow__minimap-node {
-  fill: #69b3a2;
-  stroke: none;
-}
+/* React Flow Overrides - removed to use defaults */
