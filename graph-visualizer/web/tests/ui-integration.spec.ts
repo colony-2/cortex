@@ -28,8 +28,8 @@ test.describe('UI Integration Tests', () => {
     const browserHeader = page.locator('.browser-header h3');
     await expect(browserHeader).toBeVisible();
     
-    // Close file browser
-    const closeBtn = page.locator('.browser-header .action-btn');
+    // Close file browser using the specific close button
+    const closeBtn = page.locator('.browser-header button[title="Close file browser"]');
     await closeBtn.click();
     
     // Verify file browser is closed
