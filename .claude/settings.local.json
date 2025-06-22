@@ -33,7 +33,12 @@
       "Bash(curl:*)",
       "Bash(npm run check:*)",
       "Bash(cp:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot",
+      "Bash(npx playwright screenshot:*)",
+      "Bash(echo)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

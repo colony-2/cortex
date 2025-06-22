@@ -1,150 +1,55 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import ReactFlow, {
-  Controls,
-  Background,
-  MiniMap,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-  type NodeDragHandler,
-  type OnSelectionChangeFunc,
-  type NodeTypes,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
-import dagre from 'dagre';
+import { FlowView } from '@ant-design/pro-flow';
+import { message, Spin } from 'antd';
 import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
-import NodeBox from './NodeBox';
 import FileBrowser from './FileBrowser';
+import ProFlowNode from './ProFlowNode';
 
-const nodeTypes: NodeTypes = {
-  dependency: NodeBox,
-};
+interface FlowNode {
+  id: string;
+  position?: { x: number; y: number };
+  type?: string;
+  data: {
+    title: string;
+    description?: string;
+    logo?: string;
+    [key: string]: any;
+  };
+}
+
+interface FlowEdge {
+  id: string;
+  source: string;
+  target: string;
+  type?: string;
+}
 
 export default function GraphFlow() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [graph, setGraph] = useState<DependencyGraph | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateNodesFileBrowserState = useCallback((nodeId: string | null, show: boolean) => {
-    setNodes(nodes => nodes.map(node => {
-      const isViewingFiles = show && node.id === nodeId;
-      const currentClassName = node.className || '';
-      const baseClasses = currentClassName.replace(/\s*viewing-files\s*/, '').trim();
-      const newClassName = isViewingFiles ? `${baseClasses} viewing-files`.trim() : baseClasses;
-      
-      
-      return {
-        ...node,
-        className: newClassName,
-        data: {
-          ...node.data,
-          isViewingFiles
-        }
-      };
-    }));
-  }, [setNodes]);
-
-  const updateNodeSelection = useCallback((nodeId: string | null) => {
-    if (!graph || !graph.nodes || !graph.edges) return;
-    
-    setNodes(nodes => nodes.map(node => ({
-      ...node,
-      selected: node.id === nodeId,
-      style: {
-        ...node.style,
-        opacity: nodeId ? (node.id === nodeId ? 1 : 0.5) : 1,
-      }
-    })));
-
-    // Update edge highlighting
-    if (nodeId) {
-      const node = graph.nodes.find(n => n.id === nodeId);
-      if (!node) return;
-
-      const parentEdges = new Set(
-        graph.edges
-          .filter(e => e.target === nodeId)
-          .map(e => e.id)
-      );
-      
-      const childEdges = new Set(
-        graph.edges
-          .filter(e => e.source === nodeId)
-          .map(e => e.id)
-      );
-
-      setEdges(edges => edges.map(edge => {
-        let className = '';
-        let style = {};
-        
-        if (parentEdges.has(edge.id)) {
-          className = 'parent-edge';
-          style = { stroke: '#e74c3c', strokeWidth: 2 };
-        } else if (childEdges.has(edge.id)) {
-          className = 'child-edge';
-          style = { stroke: '#3498db', strokeWidth: 2 };
-        }
-        
-        return { 
-          ...edge, 
-          className,
-          style,
-          animated: edge.source === nodeId || edge.target === nodeId 
-        };
-      }));
-    } else {
-      // Reset all edges to default style
-      setEdges(edges => edges.map(edge => ({
-        ...edge,
-        className: '',
-        style: {},
-        animated: false
-      })));
-    }
-  }, [graph, setNodes, setEdges]);
-
-  const handleFileBrowser = useCallback((nodeId: string) => {
-    setSelectedNodeId(nodeId);
+  const handleNodeClick = useCallback((nodeId: string) => {
     const node = graph?.nodes.find(n => n.id === nodeId) || null;
+    setSelectedNodeId(nodeId);
     setSelectedNode(node);
     setShowFileBrowser(true);
-    updateNodeSelection(nodeId);
-    updateNodesFileBrowserState(nodeId, true);
-  }, [graph, updateNodeSelection, updateNodesFileBrowserState]);
-
-  const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes }) => {
-    if (nodes.length > 0) {
-      const nodeId = nodes[0].id;
-      setSelectedNodeId(nodeId);
-      updateNodeSelection(nodeId);
-    } else {
-      setSelectedNodeId(null);
-      updateNodeSelection(null);
-    }
-  }, [updateNodeSelection]);
+  }, [graph]);
 
   const closeFileBrowser = useCallback(() => {
     setShowFileBrowser(false);
     setSelectedNode(null);
-    updateNodeSelection(null);
-    updateNodesFileBrowserState(null, false);
-  }, [updateNodeSelection, updateNodesFileBrowserState]);
+    setSelectedNodeId(null);
+  }, []);
 
   const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[]) => {
-    const dagreGraph = new dagre.graphlib.Graph();
-    dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({ rankdir: 'TB', ranksep: 100, nodesep: 80 });
-
-    const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.nodeId, p]) : []);
-
     // Handle null or undefined nodes
     if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
       setNodes([]);
@@ -152,82 +57,64 @@ export default function GraphFlow() {
       return;
     }
 
-    // Create nodes
-    const newNodes: Node[] = graphData.nodes.map(node => {
+    const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.nodeId, p]) : []);
+
+    // Create Pro Flow nodes
+    const newNodes: FlowNode[] = graphData.nodes.map((node, index) => {
       const savedPosition = positionMap.get(node.id);
       
-      if (savedPosition) {
-        return {
-          id: node.id,
-          type: 'dependency',
-          position: { x: savedPosition.x, y: savedPosition.y },
-          data: { ...node, onFileBrowser: handleFileBrowser },
-        };
-      } else {
-        dagreGraph.setNode(node.id, { width: 200, height: 120 });
-        return {
-          id: node.id,
-          type: 'dependency',
-          position: { x: 0, y: 0 },
-          data: { ...node, onFileBrowser: handleFileBrowser },
-        };
-      }
+      // Calculate position if not saved
+      const x = savedPosition?.x ?? (index % 4) * 250 + 100;
+      const y = savedPosition?.y ?? Math.floor(index / 4) * 150 + 100;
+      
+      return {
+        id: node.id,
+        type: 'custom',
+        position: { x, y },
+        data: {
+          title: node.name,
+          name: node.name,
+          type: node.type,
+          dependencies: node.dependencies,
+          logo: '📦',
+          onFileBrowser: () => handleNodeClick(node.id)
+        },
+      };
     });
 
-    // Add edges to dagre
-    if (graphData.edges && Array.isArray(graphData.edges)) {
-      graphData.edges.forEach(edge => {
-        dagreGraph.setEdge(edge.source, edge.target);
-      });
-    }
-
-    // Calculate layout only for nodes without saved positions
-    if (!savedPositions || savedPositions.length < graphData.nodes.length) {
-      dagre.layout(dagreGraph);
-      
-      newNodes.forEach(node => {
-        if (!positionMap.has(node.id)) {
-          const nodeWithPosition = dagreGraph.node(node.id);
-          node.position = {
-            x: nodeWithPosition.x - 100,
-            y: nodeWithPosition.y - 50,
-          };
-        }
-      });
-    }
-
-    // Create edges
-    const newEdges: Edge[] = graphData.edges && Array.isArray(graphData.edges) 
+    // Create Pro Flow edges
+    const newEdges: FlowEdge[] = graphData.edges && Array.isArray(graphData.edges) 
       ? graphData.edges.map(edge => ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          type: 'default',
+          type: 'radius',
         }))
       : [];
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [handleFileBrowser, setNodes, setEdges]);
+  }, [handleNodeClick]);
 
-  const handleNodeDragStop: NodeDragHandler = useCallback(() => {
-    // Debounce position saves
+  const handleNodeDragStop = useCallback((event: any, node: any) => {
+    // Save position after drag
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     
     saveTimeoutRef.current = setTimeout(async () => {
       // Collect all node positions
-      const positions = nodes.map(node => ({
-        nodeId: node.id,
-        x: node.position.x,
-        y: node.position.y
+      const positions = nodes.map(n => ({
+        nodeId: n.id,
+        x: n.position?.x || 0,
+        y: n.position?.y || 0
       }));
       
       try {
         await savePositions(positions);
       } catch (err) {
         console.error('Failed to save positions:', err);
+        message.error('Failed to save node positions');
       }
     }, 500);
   }, [nodes]);
@@ -246,6 +133,7 @@ export default function GraphFlow() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load graph');
         setLoading(false);
+        message.error('Failed to load graph data');
       }
     }
 
@@ -253,7 +141,11 @@ export default function GraphFlow() {
   }, [layoutNodes]);
 
   if (loading) {
-    return <div className="loading-container">Loading graph...</div>;
+    return (
+      <div className="loading-container">
+        <Spin size="large" tip="Loading graph..." />
+      </div>
+    );
   }
 
   if (error) {
@@ -263,24 +155,17 @@ export default function GraphFlow() {
   return (
     <div className={`app-container ${showFileBrowser ? 'split' : ''}`}>
       <div className="graph-container">
-        <ReactFlow
+        <FlowView
           nodes={nodes}
           edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onSelectionChange={onSelectionChange}
+          nodeTypes={{ custom: ProFlowNode }}
+          onNodeClick={(id: string) => handleNodeClick(id)}
+          onPaneClick={() => setSelectedNodeId(null)}
           onNodeDragStop={handleNodeDragStop}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-        >
-          <Background />
-          <Controls />
-          <MiniMap 
-            style={{ background: '#f5f5f5', border: '1px solid #ddd' }}
-            nodeColor="#69b3a2"
-          />
-        </ReactFlow>
+          miniMap
+          autoLayout
+          background
+        />
       </div>
       
       {showFileBrowser && (

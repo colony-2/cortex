@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import type { DependencyNode } from '../types';
+import { useState, useEffect, useMemo } from 'react';
+import { Layout, Button, Space, Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Badge } from 'antd';
+import { CloseOutlined, FolderOutlined, FileOutlined, HomeOutlined, CodeOutlined, BranchesOutlined } from '@ant-design/icons';
 import { fetchFiles } from '../api';
+import type { DependencyNode } from '../types';
+
+const { Header, Content } = Layout;
+const { Title, Text } = Typography;
 
 interface FileBrowserProps {
   node: DependencyNode | null;
@@ -14,170 +19,192 @@ interface FileItem {
   size: number;
   date: Date;
   ext: string;
+  path: string;
+  isDir: boolean;
 }
 
 export default function FileBrowser({ node, onClose }: FileBrowserProps) {
-  const [data, setData] = useState<FileItem[]>([]);
-  const [currentPath, setCurrentPath] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [currentPath, setCurrentPath] = useState<string>('');
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const breadcrumbItems = useMemo(() => {
+    const parts = currentPath.split('/').filter(Boolean);
+    const items = [
+      {
+        key: '/',
+        title: <HomeOutlined />,
+        onClick: () => setCurrentPath(''),
+      }
+    ];
+    
+    let pathAccum = '';
+    parts.forEach((part, index) => {
+      pathAccum += (index === 0 ? '' : '/') + part;
+      const path = pathAccum;
+      items.push({
+        key: path,
+        title: part,
+        onClick: () => setCurrentPath(path),
+      });
+    });
+    
+    return items;
+  }, [currentPath]);
 
   useEffect(() => {
-    if (node?.id) {
-      console.log('Loading files for node:', node.id);
-      loadFiles(node.id, '');
-    }
-  }, [node?.id]);
+    if (!node) return;
 
-  async function loadFiles(nodeId: string, path: string) {
-    console.log('loadFiles called with:', { nodeId, path });
-    setIsLoading(true);
-    
-    try {
-      const url = `http://localhost:8080/api/files/${nodeId}?path=${encodeURIComponent(path)}`;
-      console.log('Fetching:', url);
+    const loadFiles = async () => {
+      setLoading(true);
+      setError(null);
       
-      const result = await fetchFiles(nodeId, path);
-      console.log('API response:', result);
-      
-      // Transform files to FileManager format
-      const transformedData = result.files.map((file: any) => ({
-        id: file.path,
-        name: file.name,
-        type: file.isDir ? 'folder' : 'file' as 'folder' | 'file',
-        size: file.size,
-        date: new Date(),
-        ext: file.type
-      }));
-      
-      // Add parent directory if we're in a subdirectory
-      const currentSubPath = result.path || path || '';
-      if (currentSubPath && currentSubPath !== '') {
-        transformedData.unshift({
-          id: '..',
-          name: '..',
-          type: 'folder',
-          size: 0,
+      try {
+        console.log('Loading files for node:', node.id);
+        console.log('loadFiles called with:', { nodeId: node.id, path: currentPath });
+        console.log('Fetching:', `http://localhost:8080/api/files/${node.id}?path=${encodeURIComponent(currentPath)}`);
+        
+        const result = await fetchFiles(node.id, currentPath);
+        console.log('API response:', result);
+        
+        // Transform files to our format
+        const transformedData = result.files.map((file: any) => ({
+          id: file.path,
+          name: file.name,
+          type: file.isDir ? 'folder' : 'file' as 'folder' | 'file',
+          size: file.size,
           date: new Date(),
-          ext: ''
-        });
+          ext: file.type,
+          path: file.path,
+          isDir: file.isDir
+        }));
+        
+        console.log('Transformed data:', transformedData);
+        console.log('First file:', transformedData[0]);
+        console.log('Setting isLoading to false');
+        console.log('State after update - isLoading:', false, 'data length:', transformedData.length);
+        
+        setFiles(transformedData);
+      } catch (err) {
+        console.error('Failed to load files:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load files');
+        setFiles([]);
+      } finally {
+        setLoading(false);
       }
-      
-      console.log('Transformed data:', transformedData);
-      console.log('First file:', transformedData[0]);
-      console.log('Setting isLoading to false');
-      
-      setData(transformedData);
-      setCurrentPath(result.path || '');
-      setIsLoading(false);
-      console.log('State after update - isLoading:', false, 'data length:', transformedData.length);
-      
-    } catch (error) {
-      console.error('Failed to load files:', error);
-      setData([]);
-      setCurrentPath('');
-      setIsLoading(false);
+    };
+
+    loadFiles();
+  }, [node, currentPath]);
+
+  const handleFileClick = (file: FileItem) => {
+    if (file.isDir) {
+      setCurrentPath(file.path);
     }
-  }
+  };
 
-  function handleFileClick(file: FileItem) {
-    if (node && file.type === 'folder') {
-      if (file.id === '..') {
-        // Navigate to parent directory
-        const parentPath = currentPath.split('/').slice(0, -1).join('/');
-        loadFiles(node.id, parentPath);
-      } else {
-        loadFiles(node.id, file.id);
-      }
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const getFileIcon = (file: FileItem) => {
+    if (file.isDir) {
+      return <FolderOutlined style={{ fontSize: '24px', color: '#1890ff' }} />;
     }
+    return <FileOutlined style={{ fontSize: '24px', color: '#52c41a' }} />;
+  };
+
+  if (!node) {
+    return null;
   }
-
-  function handleBreadcrumbClick(targetPath: string) {
-    if (node) {
-      loadFiles(node.id, targetPath);
-    }
-  }
-
-  if (!node) return null;
-
-  const pathSegments = currentPath.split('/').filter(Boolean);
 
   return (
-    <div className="file-browser">
-      <div className="browser-header">
-        <div className="node-info">
-          <h3>{node.name}</h3>
-          <div className="breadcrumb">
-            <button 
-              className="breadcrumb-item" 
-              onClick={() => handleBreadcrumbClick('')}
+    <Layout className="file-browser" style={{ height: '100%', background: '#fff' }}>
+      <Header className="browser-header" style={{ background: '#001529', padding: '0 24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '100%' }}>
+          <div className="node-info">
+            <Title level={3} style={{ color: '#fff', margin: 0 }}>
+              {node.name}
+            </Title>
+            <div className="breadcrumb" style={{ marginTop: '8px' }}>
+              <Breadcrumb items={breadcrumbItems} style={{ color: '#fff' }} />
+            </div>
+          </div>
+          <Space className="browser-actions">
+            <Button 
+              icon={<CodeOutlined />} 
+              type="text" 
+              style={{ color: '#fff' }}
+              title="View terminal"
             >
-              /{node.path}
-            </button>
-            {currentPath && pathSegments.map((segment, i) => (
-              <React.Fragment key={i}>
-                <span className="breadcrumb-separator">/</span>
-                <button 
-                  className="breadcrumb-item" 
-                  onClick={() => {
-                    const targetPath = pathSegments.slice(0, i + 1).join('/');
-                    handleBreadcrumbClick(targetPath);
-                  }}
-                >
-                  {segment}
-                </button>
-              </React.Fragment>
-            ))}
-          </div>
+              Terminal
+            </Button>
+            <Button 
+              icon={<BranchesOutlined />} 
+              type="text" 
+              style={{ color: '#fff' }}
+              title="View dependencies"
+            >
+              <Badge count={node.dependencies.length} size="small">
+                Dependencies
+              </Badge>
+            </Button>
+            <Button 
+              icon={<CloseOutlined />} 
+              type="text" 
+              style={{ color: '#fff' }}
+              onClick={onClose}
+              title="Close file browser"
+            >
+              Close
+            </Button>
+          </Space>
         </div>
-        <div className="browser-actions">
-          <button className="action-btn" title="View terminal" aria-label="View terminal">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
-              <path d="M8 12l2 2 2-2"/>
-              <path d="M12 12h4"/>
-            </svg>
-          </button>
-          <button className="action-btn" title="View dependencies" aria-label="View dependencies">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
-              <path d="M20.5 7.5L15 13 9.5 7.5M9.5 16.5L15 11l5.5 5.5"/>
-            </svg>
-          </button>
-          <button className="action-btn" onClick={onClose} title="Close file browser" aria-label="Close file browser">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
+      </Header>
       
-      <div className="file-manager-container">
-        {isLoading ? (
-          <div className="loading">Loading files...</div>
-        ) : data.length > 0 ? (
-          <div className="file-list">
-            {data.map(file => (
-              <button 
-                key={file.id}
-                className={`file-item ${file.type === 'folder' ? 'folder' : ''}`}
-                onClick={() => handleFileClick(file)}
-                type="button"
-              >
-                <span className="file-icon">
-                  {file.type === 'folder' ? '📁' : '📄'}
-                </span>
-                <span className="file-name">{file.name}</span>
-                {file.type === 'file' && (
-                  <span className="file-size">{file.size} bytes</span>
-                )}
-              </button>
-            ))}
+      <Content style={{ padding: '24px', overflow: 'auto' }}>
+        {loading ? (
+          <div className="loading" style={{ textAlign: 'center', padding: '40px' }}>
+            <Spin size="large" tip="Loading files..." />
           </div>
+        ) : error ? (
+          <Card>
+            <Text type="danger">{error}</Text>
+          </Card>
+        ) : files.length === 0 ? (
+          <Empty className="no-files" description="No files found" />
         ) : (
-          <div className="no-files">No files found</div>
+          <List
+            className="file-list"
+            dataSource={files}
+            renderItem={(file) => (
+              <List.Item
+                className={`file-item ${file.type}`}
+                onClick={() => handleFileClick(file)}
+                style={{ cursor: file.isDir ? 'pointer' : 'default' }}
+              >
+                <List.Item.Meta
+                  avatar={getFileIcon(file)}
+                  title={
+                    <Space>
+                      <Text className="file-name" strong={file.isDir}>{file.name}</Text>
+                      {file.type === 'file' && file.ext && (
+                        <Tag color="blue">{file.ext}</Tag>
+                      )}
+                    </Space>
+                  }
+                  description={!file.isDir && <span className="file-size">{formatFileSize(file.size)}</span>}
+                />
+              </List.Item>
+            )}
+          />
         )}
-      </div>
-    </div>
+      </Content>
+    </Layout>
   );
 }
