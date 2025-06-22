@@ -5,7 +5,6 @@ package static
 
 import (
 	"net/http"
-	"os"
 )
 
 // GetFileSystem returns the development filesystem

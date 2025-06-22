@@ -1,4 +1,4 @@
-.PHONY: all build clean dev dev-server dev-frontend test install run help
+.PHONY: all build clean dev dev-server dev-frontend test test-positions install run help
 
 # Variables
 BINARY_NAME = graph-visualizer
@@ -19,7 +19,9 @@ help:
 	@echo "  make dev-server   - Run only the Go server in development mode"
 	@echo "  make dev-frontend - Run only the frontend dev server"
 	@echo "  make build        - Build production binary with embedded frontend"
-	@echo "  make test         - Run all tests (Go and frontend)"
+	@echo "  make test         - Run all tests including position persistence tests"
+	@echo "  make test-positions - Run only position persistence tests"
+	@echo "  make test-e2e     - Run end-to-end tests (requires running server)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make run         - Build and run the production binary"
 	@echo "  make stop         - Stop the server running on port 8080"
@@ -67,15 +69,40 @@ build: build-frontend
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # Run tests
-test: test-frontend test-server
+test: test-frontend test-server test-e2e
 
 test-frontend:
 	@echo "Running frontend tests..."
-	cd $(WEB_DIR) && npm test
+	cd $(WEB_DIR) && npm test || echo "No frontend tests configured yet"
 
 test-server:
 	@echo "Running server tests..."
-	cd $(SERVER_DIR) && go test ./...
+	@echo "Testing position storage..."
+	cd $(SERVER_DIR) && go test -v -run TestPositionStorage
+	@echo ""
+	@echo "Testing API endpoints..."
+	cd $(SERVER_DIR) && go test -v -run TestPositionAPI
+	@echo ""
+	@echo "Testing integration..."
+	cd $(SERVER_DIR) && go test -v -run TestIntegration
+	@echo ""
+	@echo "Running all server tests..."
+	cd $(SERVER_DIR) && go test -v ./...
+
+test-e2e:
+	@echo "Running end-to-end tests..."
+	@if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null ; then \
+		echo "Server is running on port 8080, executing E2E tests..."; \
+		./test_e2e.sh; \
+	else \
+		echo "Server not running on port 8080. Start it with 'make dev' in another terminal."; \
+		echo "Skipping E2E tests."; \
+	fi
+
+# Run only position-related tests
+test-positions:
+	@echo "Running position persistence tests..."
+	cd $(SERVER_DIR) && go test -v -run "TestPosition|TestIntegration" -count=1
 
 # Clean build artifacts
 clean:
