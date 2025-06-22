@@ -1,5 +1,4 @@
 dependencies:
   - database
   - auth
-  - monitoring
   - cache

@@ -3,4 +3,3 @@ dependencies:
   - service-b
   - service-c
   - auth
-  - monitoring
