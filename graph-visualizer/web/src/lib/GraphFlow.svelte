@@ -6,18 +6,91 @@
   import type { DependencyGraph, DependencyNode } from '../types';
   import { fetchGraph } from './api';
   import NodeBox from './NodeBox.svelte';
+  import FileBrowser from './FileBrowser.svelte';
   import dagre from 'dagre';
   
-  let nodes = $state<Node[]>([]);
-  let edges = $state<Edge[]>([]);
+  let nodes = $state.raw<Node[]>([]);
+  let edges = $state.raw<Edge[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let selectedNodeId = $state<string | null>(null);
+  let selectedNode = $state<DependencyNode | null>(null);
+  let showFileBrowser = $state(false);
+  let graph = $state<DependencyGraph | null>(null);
+  let flowKey = $state(0);
   
   const nodeTypes = {
     dependency: NodeBox
   };
   
-  function layoutGraph(graph: DependencyGraph): { nodes: Node[], edges: Edge[] } {
+  function handleFileBrowser(nodeId: string) {
+    selectedNodeId = nodeId;
+    selectedNode = graph?.nodes.find(n => n.id === nodeId) || null;
+    showFileBrowser = true;
+    updateNodeSelection(nodeId);
+  }
+  
+  function handleNodeClick(params: { node: Node; event: MouseEvent }) {
+    const nodeId = params.node.id;
+    selectedNodeId = nodeId;
+    updateNodeSelection(nodeId);
+  }
+  
+  function updateNodeSelection(nodeId: string | null) {
+    if (!graph) return;
+    
+    // Update node data to include selection state
+    nodes = nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        onFileBrowser: handleFileBrowser
+      },
+      selected: node.id === nodeId
+    }));
+    
+    // Update edge styles based on selection
+    if (nodeId) {
+      const parentEdges = new Set<string>();
+      const childEdges = new Set<string>();
+      
+      edges.forEach((edge) => {
+        if (edge.target === nodeId) {
+          parentEdges.add(edge.id);
+        } else if (edge.source === nodeId) {
+          childEdges.add(edge.id);
+        }
+      });
+      
+      // Create new edges array to ensure reactivity
+      const newEdges = edges.map((edge) => {
+        let edgeClass = '';
+        
+        if (parentEdges.has(edge.id)) {
+          edgeClass = 'parent-edge'; // Green for parents
+        } else if (childEdges.has(edge.id)) {
+          edgeClass = 'child-edge'; // Blue for children
+        }
+        
+        return { 
+          ...edge, 
+          class: edgeClass,
+          animated: edge.source === nodeId || edge.target === nodeId 
+        };
+      });
+      
+      edges = [...newEdges];
+    } else {
+      // Reset all edges to default style
+      edges = edges.map(edge => ({
+        ...edge,
+        class: '',
+        animated: false
+      }));
+    }
+  }
+  
+  function layoutGraph(graphData: DependencyGraph): { nodes: Node[], edges: Edge[] } {
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
     dagreGraph.setGraph({ 
@@ -29,12 +102,12 @@
     });
     
     // Add nodes to dagre
-    graph.nodes.forEach((node) => {
+    graphData.nodes.forEach((node) => {
       dagreGraph.setNode(node.id, { width: 200, height: 100 });
     });
     
     // Add edges to dagre
-    graph.edges.forEach((edge) => {
+    graphData.edges.forEach((edge) => {
       dagreGraph.setEdge(edge.source, edge.target);
     });
     
@@ -42,12 +115,15 @@
     dagre.layout(dagreGraph);
     
     // Convert to SvelteFlow nodes
-    const layoutNodes: Node[] = graph.nodes.map((node) => {
+    const layoutNodes: Node[] = graphData.nodes.map((node) => {
       const nodeWithPosition = dagreGraph.node(node.id);
       return {
         id: node.id,
         type: 'dependency',
-        data: { node },
+        data: { 
+          node,
+          onFileBrowser: handleFileBrowser
+        },
         position: {
           x: nodeWithPosition.x - nodeWithPosition.width / 2,
           y: nodeWithPosition.y - nodeWithPosition.height / 2
@@ -56,13 +132,13 @@
     });
     
     // Convert to SvelteFlow edges
-    const layoutEdges: Edge[] = graph.edges.map((edge, index) => ({
+    const layoutEdges: Edge[] = graphData.edges.map((edge, index) => ({
       id: `e${index}`,
       source: edge.source,
       target: edge.target,
       type: 'smoothstep',
       animated: false,
-      style: 'stroke: #999; stroke-width: 2;'
+      class: ''
     }));
     
     return { nodes: layoutNodes, edges: layoutEdges };
@@ -70,8 +146,9 @@
   
   onMount(async () => {
     try {
-      const graph = await fetchGraph();
-      const layout = layoutGraph(graph);
+      const graphData = await fetchGraph();
+      graph = graphData;
+      const layout = layoutGraph(graphData);
       nodes = layout.nodes;
       edges = layout.edges;
       loading = false;
@@ -80,36 +157,82 @@
       loading = false;
     }
   });
+  
+  function closeFileBrowser() {
+    showFileBrowser = false;
+    selectedNodeId = null;
+    selectedNode = null;
+    updateNodeSelection(null);
+  }
 </script>
 
-<div class="graph-container">
-  {#if loading}
-    <div class="loading">Loading graph...</div>
-  {:else if error}
-    <div class="error">Error: {error}</div>
-  {:else}
-    <SvelteFlow 
-      {nodes} 
-      {edges} 
-      {nodeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-    >
-      <Background />
-      <Controls />
-      <MiniMap 
-        style="background: #f5f5f5; border: 1px solid #ddd;"
-        nodeColor="#69b3a2"
-      />
-    </SvelteFlow>
+<div class="app-container" class:split={showFileBrowser}>
+  <div class="graph-container">
+    {#if loading}
+      <div class="loading">Loading graph...</div>
+    {:else if error}
+      <div class="error">Error: {error}</div>
+    {:else}
+      <SvelteFlow 
+        {nodes} 
+        {edges} 
+        {nodeTypes}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        onnodeclick={handleNodeClick}
+      >
+        <Background />
+        <Controls />
+        <MiniMap 
+          style="background: #f5f5f5; border: 1px solid #ddd;"
+          nodeColor="#69b3a2"
+        />
+      </SvelteFlow>
+    {/if}
+  </div>
+  
+  {#if showFileBrowser}
+    <div class="browser-container">
+      <FileBrowser node={selectedNode} onClose={closeFileBrowser} />
+    </div>
   {/if}
 </div>
 
 <style>
-  .graph-container {
+  .app-container {
+    display: flex;
     width: 100vw;
     height: 100vh;
+    overflow: hidden;
+  }
+  
+  .graph-container {
+    flex: 1;
+    height: 100vh;
     background: #f5f5f5;
+    transition: all 0.3s ease;
+  }
+  
+  .app-container.split .graph-container {
+    width: 60%;
+  }
+  
+  .browser-container {
+    width: 40%;
+    height: 100vh;
+    border-left: 1px solid #ddd;
+    background: white;
+    overflow: hidden;
+    animation: slideIn 0.3s ease;
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
   }
   
   .loading, .error {
@@ -122,5 +245,20 @@
   
   .error {
     color: #d32f2f;
+  }
+  
+  :global(.parent-edge .svelte-flow__edge-path) {
+    stroke: #4CAF50 !important;
+    stroke-width: 3 !important;
+  }
+  
+  :global(.child-edge .svelte-flow__edge-path) {
+    stroke: #2196F3 !important;
+    stroke-width: 3 !important;
+  }
+  
+  :global(.svelte-flow__edge-path) {
+    stroke: #999;
+    stroke-width: 2;
   }
 </style>

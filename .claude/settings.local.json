@@ -15,7 +15,14 @@
       "Bash(npx playwright install:*)",
       "Bash(npm test)",
       "mcp__playwright__browser_navigate",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "mcp__playwright__browser_close",
+      "Bash(npx playwright test:*)",
+      "Bash(node:*)",
+      "Bash(npm test:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

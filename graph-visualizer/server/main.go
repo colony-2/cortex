@@ -36,6 +36,19 @@ type Edge struct {
 	Target string `json:"target"`
 }
 
+type FileInfo struct {
+	Name  string    `json:"name"`
+	Path  string    `json:"path"`
+	IsDir bool      `json:"isDir"`
+	Size  int64     `json:"size"`
+	Type  string    `json:"type"`
+}
+
+type FilesResponse struct {
+	Files []FileInfo `json:"files"`
+	Path  string     `json:"path"`
+}
+
 var (
 	rootPath string
 	upgrader = websocket.Upgrader{
@@ -52,6 +65,7 @@ func main() {
 	router := mux.NewRouter()
 	
 	router.HandleFunc("/api/graph", getGraphHandler).Methods("GET")
+	router.HandleFunc("/api/files/{nodeId}", getFilesHandler).Methods("GET")
 	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
 	
 	router.PathPrefix("/").Handler(http.FileServer(http.Dir("../web/dist/")))
@@ -80,6 +94,76 @@ func getGraphHandler(w http.ResponseWriter, r *http.Request) {
 	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(graph)
+}
+
+func getFilesHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	nodeID := vars["nodeId"]
+	subPath := r.URL.Query().Get("path")
+	
+	// Find the node's directory
+	var nodePath string
+	err := filepath.Walk(rootPath, func(dirPath string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return err
+		}
+		
+		if filepath.Base(dirPath) == nodeID {
+			relPath, _ := filepath.Rel(rootPath, dirPath)
+			nodePath = relPath
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	
+	if err != nil || nodePath == "" {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+	
+	// Build the full path
+	fullPath := filepath.Join(rootPath, nodePath)
+	if subPath != "" {
+		fullPath = filepath.Join(fullPath, subPath)
+	}
+	
+	// Read directory contents
+	entries, err := os.ReadDir(fullPath)
+	if err != nil {
+		http.Error(w, "Failed to read directory", http.StatusInternalServerError)
+		return
+	}
+	
+	var files []FileInfo
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		
+		fileType := "file"
+		if entry.IsDir() {
+			fileType = "folder"
+		} else if filepath.Ext(entry.Name()) != "" {
+			fileType = filepath.Ext(entry.Name())[1:] // Remove the dot
+		}
+		
+		files = append(files, FileInfo{
+			Name:  entry.Name(),
+			Path:  filepath.Join(subPath, entry.Name()),
+			IsDir: entry.IsDir(),
+			Size:  info.Size(),
+			Type:  fileType,
+		})
+	}
+	
+	response := FilesResponse{
+		Files: files,
+		Path:  subPath,
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 func buildGraph(path string) Graph {

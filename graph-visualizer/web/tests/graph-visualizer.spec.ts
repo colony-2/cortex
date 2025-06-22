@@ -21,7 +21,7 @@ test.describe('Graph Visualizer', () => {
     await page.waitForSelector('.svelte-flow__node', { timeout: 10000 });
     
     // Check that a node with auth exists
-    const authNode = page.locator('.node-box:has(.node-header:text("auth"))').first();
+    const authNode = page.locator('.node-box:has(.node-title:text("auth"))').first();
     await expect(authNode).toBeVisible();
     
     // Check node path

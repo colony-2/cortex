@@ -24,6 +24,7 @@
   "dependencies": {
     "@types/dagre": "^0.7.52",
     "@xyflow/svelte": "^1.1.0",
-    "dagre": "^0.8.5"
+    "dagre": "^0.8.5",
+    "wx-svelte-filemanager": "^2.1.0"
   }
 }
