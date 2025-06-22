@@ -28,7 +28,7 @@ test.describe('File Browser', () => {
     // Check header shows correct node info
     const header = page.locator('.browser-header');
     await expect(header.locator('h3')).toContainText('api');
-    await expect(header.locator('.path')).toBeVisible();
+    await expect(header.locator('.breadcrumb')).toBeVisible();
   });
 
   test('should close file browser when clicking close button', async ({ page }) => {
@@ -145,6 +145,28 @@ test.describe('File Browser', () => {
     
     // Check that dependencies.yaml is visible in the file list
     await expect(page.locator('text=dependencies.yaml')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should navigate using breadcrumb', async ({ page }) => {
+    // Find the frontend node which has subdirectories
+    const frontendNode = page.locator('.svelte-flow__node').filter({ hasText: 'frontend' }).first();
+    await frontendNode.hover();
+    await frontendNode.locator('button[title="Browse files"]').click();
+
+    // Wait for file browser to be visible
+    await expect(page.locator('.file-browser')).toBeVisible();
+    
+    // Click on a folder (foo)
+    await page.locator('button.file-item').filter({ hasText: 'foo' }).click();
+    
+    // Check breadcrumb shows the path
+    await expect(page.locator('.breadcrumb')).toContainText('foo');
+    
+    // Click the root breadcrumb to go back
+    await page.locator('.breadcrumb-item').first().click();
+    
+    // Check we're back at root (foo folder should be visible again)
+    await expect(page.locator('button.file-item').filter({ hasText: 'foo' })).toBeVisible();
   });
 
   test('should split screen when file browser is open', async ({ page }) => {

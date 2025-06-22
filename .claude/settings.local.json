@@ -30,7 +30,8 @@
       "Bash(go run:*)",
       "Bash(npm run dev:*)",
       "Bash(go test:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run check:*)"
     ],
     "deny": []
   }

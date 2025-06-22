@@ -50,7 +50,8 @@
       }));
       
       // Add parent directory if we're in a subdirectory
-      if (path && path !== '') {
+      const currentSubPath = result.path || path || '';
+      if (currentSubPath && currentSubPath !== '') {
         transformedData.unshift({
           id: '..',
           name: '..',
@@ -102,7 +103,26 @@
     <div class="browser-header">
       <div class="node-info">
         <h3>{node.name}</h3>
-        <div class="path">/{node.path}/{currentPath}</div>
+        <div class="breadcrumb">
+          <button class="breadcrumb-item" onclick={() => loadFiles(node.id, '')}>
+            /{node.path}
+          </button>
+          {#if currentPath}
+            {#each currentPath.split('/').filter(Boolean) as segment, i}
+              <span class="breadcrumb-separator">/</span>
+              <button 
+                class="breadcrumb-item" 
+                onclick={() => {
+                  const pathSegments = currentPath.split('/').filter(Boolean);
+                  const targetPath = pathSegments.slice(0, i + 1).join('/');
+                  loadFiles(node.id, targetPath);
+                }}
+              >
+                {segment}
+              </button>
+            {/each}
+          {/if}
+        </div>
       </div>
       <div class="browser-actions">
         <button class="action-btn" title="View terminal" aria-label="View terminal">
@@ -185,9 +205,32 @@
     font-size: 18px;
   }
   
-  .path {
+  .breadcrumb {
     font-size: 14px;
     opacity: 0.9;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .breadcrumb-item {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.2s;
+    font-size: inherit;
+    font-family: inherit;
+  }
+
+  .breadcrumb-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .breadcrumb-separator {
+    opacity: 0.5;
   }
   
   .browser-actions {

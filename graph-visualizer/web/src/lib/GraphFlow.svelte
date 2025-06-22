@@ -18,7 +18,7 @@
   let showFileBrowser = $state(false);
   let graph = $state<DependencyGraph | null>(null);
   let flowKey = $state(0);
-  let saveTimeout: NodeJS.Timeout | null = null;
+  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   
   const nodeTypes = {
     dependency: NodeBox
@@ -43,7 +43,7 @@
     }));
   }
   
-  function handleNodeClick(params: { node: Node; event: MouseEvent }) {
+  function handleNodeClick(params: { node: Node; event: MouseEvent | TouchEvent }) {
     const nodeId = params.node.id;
     selectedNodeId = nodeId;
     updateNodeSelection(nodeId);
@@ -204,15 +204,15 @@
     updateNodesFileBrowserState();
   }
   
-  function handleNodeDragStop(params: { node: Node; event: MouseEvent }) {
+  function handleNodeDragStop(params: { targetNode: Node | null; nodes: Node[]; event: MouseEvent | TouchEvent }) {
     // Debounce position saves
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
     
     saveTimeout = setTimeout(async () => {
-      // Collect all node positions
-      const positions = nodes.map(node => ({
+      // Collect all node positions from params.nodes
+      const positions = params.nodes.map(node => ({
         nodeId: node.id,
         x: node.position.x,
         y: node.position.y
