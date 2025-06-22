@@ -68,7 +68,7 @@ func main() {
 	router.HandleFunc("/api/files/{nodeId}", getFilesHandler).Methods("GET")
 	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
 	
-	router.PathPrefix("/").Handler(http.FileServer(http.Dir("../web/dist/")))
+	router.PathPrefix("/").Handler(getFrontendHandler())
 
 	fmt.Printf("Server starting on :8080, scanning path: %s\n", rootPath)
 	log.Fatal(http.ListenAndServe(":8080", corsMiddleware(router)))

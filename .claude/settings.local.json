@@ -22,7 +22,10 @@
       "Bash(npm test:*)",
       "Bash(cat:*)",
       "Bash(grep:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(go mod init:*)",
+      "Bash(go get:*)",
+      "Bash(make:*)"
     ],
     "deny": []
   }

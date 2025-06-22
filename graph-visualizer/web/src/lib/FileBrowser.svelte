@@ -59,7 +59,7 @@
         <div class="path">/{node.path}/{currentPath}</div>
       </div>
       <div class="browser-actions">
-        <button class="action-btn" onclick={onClose} title="Close file browser">
+        <button class="action-btn" onclick={onClose} title="Close file browser" aria-label="Close file browser">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>

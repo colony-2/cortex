@@ -4,7 +4,10 @@ server/vendor/
 
 # Build outputs
 web/build/
+web/dist/
 web/.cache/
+build/
+server/static/dist/
 *.exe
 *.dll
 *.so

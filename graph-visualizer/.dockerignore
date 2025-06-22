@@ -1,0 +1,13 @@
+node_modules/
+web/node_modules/
+web/dist/
+build/
+*.log
+.git/
+.gitignore
+Makefile
+README.md
+test-results/
+playwright-report/
+*.png
+.DS_Store
