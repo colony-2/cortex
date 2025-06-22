@@ -11,9 +11,11 @@
   
   let data = $state([]);
   let currentPath = $state('');
+  let isLoading = $state(true);
   
   $effect(() => {
     if (node) {
+      console.log('Loading files for node:', node.id);
       loadFiles(node.id, '');
     }
   });
@@ -27,26 +29,55 @@
       currentPath = result.path || '';
       
       // Transform files to FileManager format
-      data = result.files.map((file: any) => ({
+      const transformedData = result.files.map((file: any) => ({
         id: file.path,
         name: file.name,
         type: file.isDir ? 'folder' : 'file',
         size: file.size,
-        date: Date.now(),
+        date: new Date(),  // Use Date object instead of timestamp
         ext: file.type
       }));
+      
+      // Add parent directory if we're in a subdirectory
+      if (path && path !== '') {
+        transformedData.unshift({
+          id: '..',
+          name: '..',
+          type: 'folder',
+          size: 0,
+          date: new Date(),
+          ext: ''
+        });
+      }
+      
+      console.log('Loaded files:', transformedData);
+      console.log('Current path:', currentPath);
+      data = transformedData;
+      isLoading = false;
     } catch (error) {
       console.error('Failed to load files:', error);
       data = [];
+      isLoading = false;
     }
   }
   
   function handleAction(ev: CustomEvent) {
     const { action, data: actionData } = ev.detail;
     
-    if (action === 'select-folder' && node) {
-      const folder = actionData;
-      loadFiles(node.id, folder.id);
+    console.log('FileManager action:', action, actionData);
+    
+    // Handle various folder navigation actions
+    if (node && actionData && actionData.type === 'folder') {
+      if (action === 'select' || action === 'open' || action === 'open-folder' || action === 'select-folder') {
+        const folder = actionData;
+        if (folder.id === '..') {
+          // Navigate to parent directory
+          const parentPath = currentPath.split('/').slice(0, -1).join('/');
+          loadFiles(node.id, parentPath);
+        } else {
+          loadFiles(node.id, folder.id);
+        }
+      }
     }
   }
 </script>
@@ -82,20 +113,16 @@
     </div>
     
     <div class="file-manager-container">
-      <Filemanager 
-        {data}
-        on:action={handleAction}
-        features={{
-          preview: true,
-          download: false,
-          upload: false,
-          delete: false,
-          rename: false,
-          copy: false,
-          move: false,
-          create: false
-        }}
-      />
+      {#if isLoading}
+        <div class="loading">Loading files...</div>
+      {:else if data.length > 0}
+        <Filemanager 
+          data={data}
+          on:action={handleAction}
+        />
+      {:else}
+        <div class="no-files">No files found in {node.name}</div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -157,6 +184,15 @@
   
   :global(.wx-filemanager) {
     height: 100%;
+  }
+  
+  .loading, .no-files {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 16px;
+    color: #666;
   }
   
   /* Fix file manager dialog styling */
