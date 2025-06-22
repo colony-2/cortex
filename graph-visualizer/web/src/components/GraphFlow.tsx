@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FlowView } from '@ant-design/pro-flow';
+import { applyNodeChanges } from '@xyflow/react';
 import { message, Spin } from 'antd';
 import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
@@ -35,13 +36,14 @@ export default function GraphFlow() {
   const [showFileBrowser, setShowFileBrowser] = useState(false);
   const [graph, setGraph] = useState<DependencyGraph | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const graphRef = useRef<DependencyGraph | null>(null);
 
   const handleNodeClick = useCallback((nodeId: string) => {
-    const node = graph?.nodes.find(n => n.id === nodeId) || null;
+    const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
     setSelectedNodeId(nodeId);
     setSelectedNode(node);
     setShowFileBrowser(true);
-  }, [graph]);
+  }, []);
 
   const closeFileBrowser = useCallback(() => {
     setShowFileBrowser(false);
@@ -49,7 +51,7 @@ export default function GraphFlow() {
     setSelectedNodeId(null);
   }, []);
 
-  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[]) => {
+  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[], nodeClickHandler: (id: string) => void) => {
     // Handle null or undefined nodes
     if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
       setNodes([]);
@@ -77,7 +79,7 @@ export default function GraphFlow() {
           type: node.type,
           dependencies: node.dependencies,
           logo: '📦',
-          onFileBrowser: () => handleNodeClick(node.id)
+          onFileBrowser: () => nodeClickHandler(node.id)
         },
       };
     });
@@ -94,30 +96,39 @@ export default function GraphFlow() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [handleNodeClick]);
+  }, []);
 
-  const handleNodeDragStop = useCallback((event: any, node: any) => {
-    // Save position after drag
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = setTimeout(async () => {
-      // Collect all node positions
-      const positions = nodes.map(n => ({
-        nodeId: n.id,
-        x: n.position?.x || 0,
-        y: n.position?.y || 0
-      }));
+  const onNodesChange = useCallback((changes: any) => {
+    setNodes((nds) => {
+      const updatedNodes = applyNodeChanges(changes, nds);
       
-      try {
-        await savePositions(positions);
-      } catch (err) {
-        console.error('Failed to save positions:', err);
-        message.error('Failed to save node positions');
+      // Check if this was a position change (drag)
+      const positionChange = changes.find((c: any) => c.type === 'position' && c.dragging === false);
+      if (positionChange) {
+        // Save positions after drag ends
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        
+        saveTimeoutRef.current = setTimeout(async () => {
+          const positions = updatedNodes.map(n => ({
+            nodeId: n.id,
+            x: n.position?.x || 0,
+            y: n.position?.y || 0
+          }));
+          
+          try {
+            await savePositions(positions);
+          } catch (err) {
+            console.error('Failed to save positions:', err);
+            message.error('Failed to save node positions');
+          }
+        }, 500);
       }
-    }, 500);
-  }, [nodes]);
+      
+      return updatedNodes;
+    });
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -128,7 +139,8 @@ export default function GraphFlow() {
         ]);
         
         setGraph(graphData);
-        layoutNodes(graphData, positions);
+        graphRef.current = graphData;
+        layoutNodes(graphData, positions, handleNodeClick);
         setLoading(false);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load graph');
@@ -138,7 +150,8 @@ export default function GraphFlow() {
     }
 
     loadData();
-  }, [layoutNodes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   if (loading) {
     return (
@@ -159,11 +172,12 @@ export default function GraphFlow() {
           nodes={nodes}
           edges={edges}
           nodeTypes={{ custom: ProFlowNode }}
+          onNodesChange={onNodesChange}
           onNodeClick={(id: string) => handleNodeClick(id)}
           onPaneClick={() => setSelectedNodeId(null)}
-          onNodeDragStop={handleNodeDragStop}
+          nodesDraggable={true}
           miniMap
-          autoLayout
+          autoLayout={false}
           background
         />
       </div>
