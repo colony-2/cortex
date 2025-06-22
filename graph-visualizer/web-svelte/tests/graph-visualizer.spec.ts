@@ -4,37 +4,37 @@ test.describe('Graph Visualizer', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     // Wait for the loading to finish
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('.graph-container:not(:has(.loading))', { timeout: 10000 });
   });
 
   test('should load and display the graph', async ({ page }) => {
     // Wait for the Svelte Flow container to be visible
-    await expect(page.locator('.react-flow')).toBeVisible();
+    await expect(page.locator('.svelte-flow')).toBeVisible();
     
     // Check that nodes are rendered (should be 13 based on the error message)
-    const nodes = page.locator('.react-flow__node');
+    const nodes = page.locator('.svelte-flow__node');
     await expect(nodes).toHaveCount(13, { timeout: 10000 });
   });
 
   test('should display node information correctly', async ({ page }) => {
     // Wait for nodes to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.svelte-flow__node', { timeout: 10000 });
     
     // Check that a node with auth exists
-    const authNode = page.locator('.node-box:has(h4:text("auth"))').first();
+    const authNode = page.locator('.node-box:has(.node-title:text("auth"))').first();
     await expect(authNode).toBeVisible();
     
-    // Check node info
-    const nodeInfo = authNode.locator('.node-info');
-    await expect(nodeInfo).toBeVisible();
+    // Check node path
+    const nodePath = authNode.locator('.node-path');
+    await expect(nodePath).toContainText('auth');
   });
 
   test('should have working zoom controls', async ({ page }) => {
     // Wait for the graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('.svelte-flow', { timeout: 10000 });
     
     // Find zoom controls - Svelte Flow uses different button structure
-    const controls = page.locator('.react-flow__controls');
+    const controls = page.locator('.svelte-flow__controls');
     await expect(controls).toBeVisible();
     
     // Find zoom buttons by their position/icon
@@ -62,19 +62,19 @@ test.describe('Graph Visualizer', () => {
 
   test('should display edges between nodes', async ({ page }) => {
     // Wait for edges to be rendered
-    await page.waitForSelector('.react-flow__edge', { timeout: 10000 });
+    await page.waitForSelector('.svelte-flow__edge', { timeout: 10000 });
     
     // Check that edges exist
-    const edges = page.locator('.react-flow__edges .react-flow__edge');
+    const edges = page.locator('.svelte-flow__edge');
     const edgeCount = await edges.count();
     expect(edgeCount).toBeGreaterThan(0);
   });
 
   test('should allow panning the graph', async ({ page }) => {
     // Wait for the graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('.svelte-flow', { timeout: 10000 });
     
-    const graphContainer = page.locator('.react-flow__viewport');
+    const graphContainer = page.locator('.svelte-flow__viewport');
     
     // Wait a bit for the graph to be interactive
     await page.waitForTimeout(500);
@@ -86,7 +86,7 @@ test.describe('Graph Visualizer', () => {
     });
     
     // Perform drag to pan on the background (not on a node)
-    const svgFlow = page.locator('.react-flow__background');
+    const svgFlow = page.locator('.svelte-flow__background');
     const box = await svgFlow.boundingBox();
     if (box) {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -108,7 +108,7 @@ test.describe('Graph Visualizer', () => {
     // In that case, just check that we can interact with the graph
     if (newTransform === initialTransform) {
       // At least verify the graph is interactive
-      const nodes = await page.locator('.react-flow__node').count();
+      const nodes = await page.locator('.svelte-flow__node').count();
       expect(nodes).toBeGreaterThan(0);
     } else {
       expect(newTransform).not.toBe(initialTransform);

@@ -3,25 +3,15 @@ import { test, expect } from '@playwright/test';
 test.describe('File Browser', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:5173');
-    await page.waitForSelector('.react-flow__node');
+    await page.waitForSelector('.svelte-flow__node');
   });
 
   test('should open file browser when clicking folder icon', async ({ page }) => {
-    // Capture console logs
-    page.on('console', msg => {
-      console.log('Browser console:', msg.type(), msg.text());
-    });
-    
-    // Wait a bit for nodes to be fully interactive
-    await page.waitForTimeout(1000);
-    
     // Click the file browser button on the first node
-    const nodeBox = page.locator('.node-box').first();
-    await nodeBox.hover();
+    const firstNode = page.locator('.svelte-flow__node').first();
+    await firstNode.hover();
     
-    // Wait for button to be visible after hover
-    const fileBrowserBtn = nodeBox.locator('button[title="Browse files"]');
-    await expect(fileBrowserBtn).toBeVisible();
+    const fileBrowserBtn = firstNode.locator('button[title="Browse files"]');
     await fileBrowserBtn.click();
 
     // Check that file browser opened
@@ -31,7 +21,7 @@ test.describe('File Browser', () => {
 
   test('should display node information in file browser header', async ({ page }) => {
     // Open file browser for a specific node
-    const apiNode = page.locator('.node-box').filter({ hasText: 'api' }).first();
+    const apiNode = page.locator('.svelte-flow__node').filter({ hasText: 'api' }).first();
     await apiNode.hover();
     await apiNode.locator('button[title="Browse files"]').click();
 
@@ -43,7 +33,7 @@ test.describe('File Browser', () => {
 
   test('should close file browser when clicking close button', async ({ page }) => {
     // Open file browser
-    const firstNode = page.locator('.node-box').first();
+    const firstNode = page.locator('.svelte-flow__node').first();
     await firstNode.hover();
     await firstNode.locator('button[title="Browse files"]').click();
 
@@ -59,17 +49,14 @@ test.describe('File Browser', () => {
 
   test('should highlight node when file browser is open', async ({ page }) => {
     // Get a specific node
-    const apiNode = page.locator('.node-box').filter({ hasText: 'api' }).first();
+    const apiNode = page.locator('.svelte-flow__node').filter({ hasText: 'api' }).first();
     
     // Open file browser
     await apiNode.hover();
     await apiNode.locator('button[title="Browse files"]').click();
-    
-    // Wait for file browser to be visible first
-    await expect(page.locator('.file-browser')).toBeVisible();
 
     // Check that the node has the viewing-files class
-    await expect(apiNode).toHaveClass(/viewing-files/);
+    await expect(apiNode.locator('.node-box.viewing-files')).toBeVisible();
     
     // The header should have orange color
     const nodeHeader = apiNode.locator('.node-header');
@@ -78,7 +65,7 @@ test.describe('File Browser', () => {
 
   test('should maintain file browser header action buttons', async ({ page }) => {
     // Open file browser
-    const firstNode = page.locator('.node-box').first();
+    const firstNode = page.locator('.svelte-flow__node').first();
     await firstNode.hover();
     await firstNode.locator('button[title="Browse files"]').click();
 
@@ -91,7 +78,7 @@ test.describe('File Browser', () => {
 
   test('should show file list component', async ({ page }) => {
     // Open file browser
-    const firstNode = page.locator('.node-box').first();
+    const firstNode = page.locator('.svelte-flow__node').first();
     await firstNode.hover();
     await firstNode.locator('button[title="Browse files"]').click();
 
@@ -106,7 +93,7 @@ test.describe('File Browser', () => {
     });
     
     // Find and click on the api node specifically
-    const apiNode = page.locator('.node-box').filter({ hasText: 'api' }).first();
+    const apiNode = page.locator('.svelte-flow__node').filter({ hasText: 'api' }).first();
     await apiNode.hover();
     await apiNode.locator('button[title="Browse files"]').click();
 
@@ -162,7 +149,7 @@ test.describe('File Browser', () => {
 
   test('should navigate using breadcrumb', async ({ page }) => {
     // Find the frontend node which has subdirectories
-    const frontendNode = page.locator('.node-box').filter({ hasText: 'frontend' }).first();
+    const frontendNode = page.locator('.svelte-flow__node').filter({ hasText: 'frontend' }).first();
     await frontendNode.hover();
     await frontendNode.locator('button[title="Browse files"]').click();
 
@@ -188,7 +175,7 @@ test.describe('File Browser', () => {
     const initialWidth = await graphContainer.boundingBox();
     
     // Open file browser
-    const firstNode = page.locator('.node-box').first();
+    const firstNode = page.locator('.svelte-flow__node').first();
     await firstNode.hover();
     await firstNode.locator('button[title="Browse files"]').click();
 
