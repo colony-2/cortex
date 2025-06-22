@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Filemanager } from 'wx-svelte-filemanager';
   import type { DependencyNode } from '../types';
   
   interface Props {
@@ -9,24 +8,36 @@
   
   const { node, onClose }: Props = $props();
   
-  let data = $state([]);
+  let data = $state<any[]>([]);
   let currentPath = $state('');
-  let isLoading = $state(true);
+  let isLoading = $state(false);
+  let updateKey = $state(0);
   
+  // Load files immediately when component mounts with a node
   $effect(() => {
-    if (node) {
+    if (node && node.id) {
       console.log('Loading files for node:', node.id);
       loadFiles(node.id, '');
     }
   });
   
   async function loadFiles(nodeId: string, path: string) {
+    console.log('loadFiles called with:', { nodeId, path });
+    
+    // Set loading state at the beginning
+    isLoading = true;
+    
     try {
-      const response = await fetch(`http://localhost:8080/api/files/${nodeId}?path=${encodeURIComponent(path)}`);
-      if (!response.ok) throw new Error('Failed to load files');
+      const url = `http://localhost:8080/api/files/${nodeId}?path=${encodeURIComponent(path)}`;
+      console.log('Fetching:', url);
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to load files: ${response.status} ${response.statusText}`);
+      }
       
       const result = await response.json();
-      currentPath = result.path || '';
+      console.log('API response:', result);
       
       // Transform files to FileManager format
       const transformedData = result.files.map((file: any) => ({
@@ -50,33 +61,37 @@
         });
       }
       
-      console.log('Loaded files:', transformedData);
-      console.log('Current path:', currentPath);
-      data = transformedData;
+      console.log('Transformed data:', transformedData);
+      console.log('First file:', transformedData[0]);
+      console.log('Setting isLoading to false');
+      
+      // Update state - force reactivity by creating new array
+      data = [...transformedData];
+      currentPath = result.path || '';
+      
+      // Force component update
       isLoading = false;
+      updateKey = updateKey + 1;
+      console.log('State after update - isLoading:', isLoading, 'data length:', data.length);
+      
     } catch (error) {
       console.error('Failed to load files:', error);
       data = [];
+      currentPath = '';
+      
       isLoading = false;
+      updateKey = updateKey + 1;
     }
   }
   
-  function handleAction(ev: CustomEvent) {
-    const { action, data: actionData } = ev.detail;
-    
-    console.log('FileManager action:', action, actionData);
-    
-    // Handle various folder navigation actions
-    if (node && actionData && actionData.type === 'folder') {
-      if (action === 'select' || action === 'open' || action === 'open-folder' || action === 'select-folder') {
-        const folder = actionData;
-        if (folder.id === '..') {
-          // Navigate to parent directory
-          const parentPath = currentPath.split('/').slice(0, -1).join('/');
-          loadFiles(node.id, parentPath);
-        } else {
-          loadFiles(node.id, folder.id);
-        }
+  function handleFileClick(file: any) {
+    if (node && file.type === 'folder') {
+      if (file.id === '..') {
+        // Navigate to parent directory
+        const parentPath = currentPath.split('/').slice(0, -1).join('/');
+        loadFiles(node.id, parentPath);
+      } else {
+        loadFiles(node.id, file.id);
       }
     }
   }
@@ -113,16 +128,36 @@
     </div>
     
     <div class="file-manager-container">
-      {#if isLoading}
-        <div class="loading">Loading files...</div>
-      {:else if data.length > 0}
-        <Filemanager 
-          data={data}
-          on:action={handleAction}
-        />
-      {:else}
-        <div class="no-files">No files found in {node.name}</div>
-      {/if}
+      {#key updateKey}
+        {#if isLoading}
+          <div class="loading">Loading files...</div>
+        {:else if data.length > 0}
+          <div class="file-list">
+            {#each data as file}
+              <button 
+                class="file-item" 
+                class:folder={file.type === 'folder'} 
+                onclick={() => handleFileClick(file)}
+                type="button"
+              >
+                <span class="file-icon">
+                  {#if file.type === 'folder'}
+                    📁
+                  {:else}
+                    📄
+                  {/if}
+                </span>
+                <span class="file-name">{file.name}</span>
+                {#if file.type === 'file'}
+                  <span class="file-size">{file.size} bytes</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <div class="no-files">No files found</div>
+        {/if}
+      {/key}
     </div>
   </div>
 {/if}
@@ -180,10 +215,53 @@
   .file-manager-container {
     flex: 1;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   
-  :global(.wx-filemanager) {
-    height: 100%;
+  .file-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    background: white;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+  }
+
+  .file-item:hover {
+    background: #f0f0f0;
+  }
+
+  .file-item.folder {
+    font-weight: 500;
+  }
+
+  .file-icon {
+    margin-right: 8px;
+    font-size: 18px;
+  }
+
+  .file-name {
+    flex: 1;
+    font-size: 14px;
+  }
+
+  .file-size {
+    font-size: 12px;
+    color: #666;
+    margin-left: 8px;
   }
   
   .loading, .no-files {
@@ -194,6 +272,7 @@
     font-size: 16px;
     color: #666;
   }
+  
   
   /* Fix file manager dialog styling */
   :global(.wx-portal) {
