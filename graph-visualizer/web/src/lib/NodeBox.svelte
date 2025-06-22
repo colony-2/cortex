@@ -6,6 +6,7 @@
     data: {
       node: DependencyNode;
       onFileBrowser?: (nodeId: string) => void;
+      isViewingFiles?: boolean;
     };
     selected?: boolean;
   }
@@ -17,7 +18,7 @@
   }
 </script>
 
-<div class="node-box" class:selected>
+<div class="node-box" class:selected class:viewing-files={data.isViewingFiles}>
   <Handle type="target" position={Position.Top} />
   
   <div class="node-header">
@@ -73,6 +74,15 @@
   
   .node-box.selected .node-header {
     background: #ff6b6b;
+  }
+  
+  .node-box.viewing-files {
+    border-color: #ffa500;
+    box-shadow: 0 4px 16px rgba(255, 165, 0, 0.4);
+  }
+  
+  .node-box.viewing-files .node-header {
+    background: #ffa500;
   }
   
   .node-title {

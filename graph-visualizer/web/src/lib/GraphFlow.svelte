@@ -29,6 +29,18 @@
     selectedNode = graph?.nodes.find(n => n.id === nodeId) || null;
     showFileBrowser = true;
     updateNodeSelection(nodeId);
+    // Update nodes to show file browser state
+    updateNodesFileBrowserState();
+  }
+  
+  function updateNodesFileBrowserState() {
+    nodes = nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        isViewingFiles: showFileBrowser && node.id === selectedNodeId
+      }
+    }));
   }
   
   function handleNodeClick(params: { node: Node; event: MouseEvent }) {
@@ -45,7 +57,8 @@
       ...node,
       data: {
         ...node.data,
-        onFileBrowser: handleFileBrowser
+        onFileBrowser: handleFileBrowser,
+        isViewingFiles: showFileBrowser && node.id === selectedNodeId
       },
       selected: node.id === nodeId
     }));
@@ -123,7 +136,8 @@
         type: 'dependency',
         data: { 
           node,
-          onFileBrowser: handleFileBrowser
+          onFileBrowser: handleFileBrowser,
+          isViewingFiles: showFileBrowser && node.id === selectedNodeId
         },
         position: {
           x: nodeWithPosition.x - nodeWithPosition.width / 2,
@@ -187,6 +201,7 @@
     selectedNodeId = null;
     selectedNode = null;
     updateNodeSelection(null);
+    updateNodesFileBrowserState();
   }
   
   function handleNodeDragStop(params: { node: Node; event: MouseEvent }) {

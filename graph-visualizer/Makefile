@@ -83,6 +83,9 @@ test-server:
 	@echo "Testing API endpoints..."
 	cd $(SERVER_DIR) && go test -v -run TestPositionAPI
 	@echo ""
+	@echo "Testing file browser API..."
+	cd $(SERVER_DIR) && go test -v -run "TestGetFiles|TestFileInfo"
+	@echo ""
 	@echo "Testing integration..."
 	cd $(SERVER_DIR) && go test -v -run TestIntegration
 	@echo ""

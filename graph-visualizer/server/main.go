@@ -113,6 +113,8 @@ func getFilesHandler(w http.ResponseWriter, r *http.Request) {
 	nodeID := vars["nodeId"]
 	subPath := r.URL.Query().Get("path")
 	
+	log.Printf("GET /api/files/%s - subPath: %s", nodeID, subPath)
+	
 	// Find the node's directory
 	var nodePath string
 	err := filepath.Walk(rootPath, func(dirPath string, info os.FileInfo, err error) error {
@@ -123,12 +125,14 @@ func getFilesHandler(w http.ResponseWriter, r *http.Request) {
 		if filepath.Base(dirPath) == nodeID {
 			relPath, _ := filepath.Rel(rootPath, dirPath)
 			nodePath = relPath
+			log.Printf("Found node %s at path: %s", nodeID, relPath)
 			return filepath.SkipAll
 		}
 		return nil
 	})
 	
 	if err != nil || nodePath == "" {
+		log.Printf("Node %s not found in %s", nodeID, rootPath)
 		http.Error(w, "Node not found", http.StatusNotFound)
 		return
 	}
@@ -139,9 +143,12 @@ func getFilesHandler(w http.ResponseWriter, r *http.Request) {
 		fullPath = filepath.Join(fullPath, subPath)
 	}
 	
+	log.Printf("Reading directory: %s", fullPath)
+	
 	// Read directory contents
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
+		log.Printf("Failed to read directory %s: %v", fullPath, err)
 		http.Error(w, "Failed to read directory", http.StatusInternalServerError)
 		return
 	}

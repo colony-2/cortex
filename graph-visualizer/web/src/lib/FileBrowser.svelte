@@ -59,6 +59,20 @@
         <div class="path">/{node.path}/{currentPath}</div>
       </div>
       <div class="browser-actions">
+        <button class="action-btn" title="View terminal" aria-label="View terminal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+            <path d="M8 12l2 2 2-2"/>
+            <path d="M12 12h4"/>
+          </svg>
+        </button>
+        <button class="action-btn" title="View dependencies" aria-label="View dependencies">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+            <path d="M20.5 7.5L15 13 9.5 7.5M9.5 16.5L15 11l5.5 5.5"/>
+          </svg>
+        </button>
         <button class="action-btn" onclick={onClose} title="Close file browser" aria-label="Close file browser">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -143,5 +157,35 @@
   
   :global(.wx-filemanager) {
     height: 100%;
+  }
+  
+  /* Fix file manager dialog styling */
+  :global(.wx-portal) {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+  }
+  
+  :global(.wx-modal) {
+    background: rgba(0, 0, 0, 0.5);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  :global(.wx-window) {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    max-width: 90%;
+    max-height: 90%;
   }
 </style>
