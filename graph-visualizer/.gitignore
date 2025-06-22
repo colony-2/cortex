@@ -36,3 +36,7 @@ Thumbs.db
 # Environment files
 .env
 .env.local
+
+# BBolt database files
+*.db
+graph_positions.db

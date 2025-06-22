@@ -51,6 +51,7 @@ type FilesResponse struct {
 
 var (
 	rootPath string
+	storage  *PositionStorage
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
@@ -62,10 +63,20 @@ func main() {
 	flag.StringVar(&rootPath, "path", ".", "Root path to scan for directories")
 	flag.Parse()
 
+	// Initialize storage
+	var err error
+	storage, err = NewPositionStorage(".")
+	if err != nil {
+		log.Fatalf("Failed to initialize storage: %v", err)
+	}
+	defer storage.Close()
+
 	router := mux.NewRouter()
 	
 	router.HandleFunc("/api/graph", getGraphHandler).Methods("GET")
 	router.HandleFunc("/api/files/{nodeId}", getFilesHandler).Methods("GET")
+	router.HandleFunc("/api/positions", getPositionsHandler).Methods("GET")
+	router.HandleFunc("/api/positions", savePositionsHandler).Methods("POST")
 	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
 	
 	router.PathPrefix("/").Handler(getFrontendHandler())
@@ -225,6 +236,33 @@ func buildGraph(path string) Graph {
 		Nodes: nodes,
 		Edges: edges,
 	}
+}
+
+func getPositionsHandler(w http.ResponseWriter, r *http.Request) {
+	positions, err := storage.GetPositions(rootPath)
+	if err != nil {
+		http.Error(w, "Failed to get positions", http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(positions)
+}
+
+func savePositionsHandler(w http.ResponseWriter, r *http.Request) {
+	var positions []NodePosition
+	if err := json.NewDecoder(r.Body).Decode(&positions); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	if err := storage.SavePositions(rootPath, positions); err != nil {
+		http.Error(w, "Failed to save positions", http.StatusInternalServerError)
+		return
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
 func terminalWebSocketHandler(w http.ResponseWriter, r *http.Request) {

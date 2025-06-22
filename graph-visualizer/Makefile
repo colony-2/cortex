@@ -44,7 +44,7 @@ dev:
 # Run Go server in development mode
 dev-server:
 	@echo "Starting Go server on :8080..."
-	cd $(SERVER_DIR) && go run main.go -path="../example"
+	cd $(SERVER_DIR) && go run . -path="../example"
 
 # Run frontend dev server
 dev-frontend:

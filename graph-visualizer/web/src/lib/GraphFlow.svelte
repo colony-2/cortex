@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import type { Node, Edge } from '@xyflow/svelte';
   import type { DependencyGraph, DependencyNode } from '../types';
-  import { fetchGraph } from './api';
+  import { fetchGraph, fetchPositions, savePositions } from './api';
   import NodeBox from './NodeBox.svelte';
   import FileBrowser from './FileBrowser.svelte';
   import dagre from 'dagre';
@@ -18,6 +18,7 @@
   let showFileBrowser = $state(false);
   let graph = $state<DependencyGraph | null>(null);
   let flowKey = $state(0);
+  let saveTimeout: NodeJS.Timeout | null = null;
   
   const nodeTypes = {
     dependency: NodeBox
@@ -151,6 +152,28 @@
       const layout = layoutGraph(graphData);
       nodes = layout.nodes;
       edges = layout.edges;
+      
+      // Load saved positions
+      try {
+        const savedPositions = await fetchPositions();
+        // Apply saved positions to nodes
+        nodes = nodes.map(node => {
+          const savedPos = savedPositions[node.id];
+          if (savedPos) {
+            return {
+              ...node,
+              position: {
+                x: savedPos.x,
+                y: savedPos.y
+              }
+            };
+          }
+          return node;
+        });
+      } catch (err) {
+        console.log('No saved positions or error loading them:', err);
+      }
+      
       loading = false;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Unknown error';
@@ -163,6 +186,29 @@
     selectedNodeId = null;
     selectedNode = null;
     updateNodeSelection(null);
+  }
+  
+  function handleNodeDragStop(params: { node: Node; event: MouseEvent }) {
+    // Debounce position saves
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    
+    saveTimeout = setTimeout(async () => {
+      // Collect all node positions
+      const positions = nodes.map(node => ({
+        nodeId: node.id,
+        x: node.position.x,
+        y: node.position.y
+      }));
+      
+      try {
+        await savePositions(positions);
+        console.log('Positions saved');
+      } catch (err) {
+        console.error('Failed to save positions:', err);
+      }
+    }, 500); // Save after 500ms of no dragging
   }
 </script>
 
@@ -180,6 +226,7 @@
         fitView
         fitViewOptions={{ padding: 0.2 }}
         onnodeclick={handleNodeClick}
+        onnodedragstop={handleNodeDragStop}
       >
         <Background />
         <Controls />
