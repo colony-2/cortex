@@ -63,9 +63,9 @@ func main() {
 	flag.StringVar(&rootPath, "path", ".", "Root path to scan for directories")
 	flag.Parse()
 
-	// Initialize storage
+	// Initialize storage in the directory being served
 	var err error
-	storage, err = NewPositionStorage(".")
+	storage, err = NewPositionStorage(rootPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}

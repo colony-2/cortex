@@ -21,7 +21,7 @@ type PositionStorage struct {
 
 const (
 	bucketName = "node_positions"
-	dbFileName = "graph_positions.db"
+	dbFileName = ".vibestate.db"
 )
 
 // NewPositionStorage creates a new position storage instance

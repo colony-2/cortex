@@ -38,7 +38,8 @@
       "mcp__playwright__browser_snapshot",
       "Bash(npx playwright screenshot:*)",
       "Bash(echo)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(pkill:*)"
     ],
     "deny": []
   }
