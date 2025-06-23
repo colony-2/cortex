@@ -138,10 +138,20 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func getGraphHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("GET /api/graph - rootPath: %s", rootPath)
 	graph := buildGraph(rootPath)
 	
+	log.Printf("Built graph with %d nodes and %d edges", len(graph.Nodes), len(graph.Edges))
+	if len(graph.Nodes) == 0 {
+		log.Printf("Warning: No nodes found. Check if dependencies.yaml files exist in %s", rootPath)
+	}
+	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(graph)
+	if err := json.NewEncoder(w).Encode(graph); err != nil {
+		log.Printf("Error encoding graph response: %v", err)
+		http.Error(w, "Failed to encode graph", http.StatusInternalServerError)
+		return
+	}
 }
 
 func getFilesHandler(w http.ResponseWriter, r *http.Request) {

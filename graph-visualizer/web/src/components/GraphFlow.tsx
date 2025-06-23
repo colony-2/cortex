@@ -138,9 +138,11 @@ export default function GraphFlow() {
         layoutNodes(graphData, positions, handleNodeClick);
         setLoading(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load graph');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load graph';
+        console.error('Graph loading error:', err);
+        setError(errorMessage);
         setLoading(false);
-        message.error('Failed to load graph data');
+        message.error(errorMessage);
       }
     }
 
@@ -157,7 +159,43 @@ export default function GraphFlow() {
   }
 
   if (error) {
-    return <div className="error-container">Error: {error}</div>;
+    return (
+      <div className="error-container" style={{ 
+        padding: '2rem', 
+        textAlign: 'center', 
+        color: '#ff4d4f',
+        backgroundColor: '#fff2f0',
+        border: '1px solid #ffccc7',
+        borderRadius: '6px',
+        margin: '2rem'
+      }}>
+        <h2>Failed to Load Graph</h2>
+        <p><strong>Error:</strong> {error}</p>
+        <details style={{ marginTop: '1rem', textAlign: 'left' }}>
+          <summary style={{ cursor: 'pointer', marginBottom: '0.5rem' }}>Troubleshooting Tips</summary>
+          <ul style={{ paddingLeft: '1rem' }}>
+            <li>Check if the server is running on the correct port</li>
+            <li>Verify the directory contains dependencies.yaml files</li>
+            <li>Ensure the .vibestate.db file exists or use the -n flag</li>
+            <li>Check the browser console for more details</li>
+          </ul>
+        </details>
+        <button 
+          onClick={() => window.location.reload()} 
+          style={{ 
+            marginTop: '1rem', 
+            padding: '0.5rem 1rem', 
+            backgroundColor: '#1890ff', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (

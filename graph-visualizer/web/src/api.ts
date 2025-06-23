@@ -1,43 +1,64 @@
 import type { DependencyGraph, NodePosition } from './types';
 
-const API_BASE = 'http://localhost:8080/api';
+// Use relative URLs in production, localhost in development
+const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
+
+async function handleResponse(response: Response, operation: string) {
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error');
+    throw new Error(`${operation} failed: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ''}`);
+  }
+  return response;
+}
 
 export async function fetchGraph(): Promise<DependencyGraph> {
-  const response = await fetch(`${API_BASE}/graph`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch graph');
+  try {
+    const response = await fetch(`${API_BASE}/graph`);
+    await handleResponse(response, 'Fetch graph');
+    return response.json();
+  } catch (error) {
+    console.error('Graph fetch error:', error);
+    throw new Error(`Failed to load graph data: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  return response.json();
 }
 
 export async function fetchPositions(): Promise<NodePosition[]> {
-  const response = await fetch(`${API_BASE}/positions`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch positions');
+  try {
+    const response = await fetch(`${API_BASE}/positions`);
+    await handleResponse(response, 'Fetch positions');
+    const data = await response.json();
+    // Ensure we always return an array
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Positions fetch error:', error);
+    throw new Error(`Failed to load positions: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  const data = await response.json();
-  // Ensure we always return an array
-  return Array.isArray(data) ? data : [];
 }
 
 export async function savePositions(positions: NodePosition[]): Promise<void> {
-  const response = await fetch(`${API_BASE}/positions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(positions),
-  });
-  if (!response.ok) {
-    throw new Error('Failed to save positions');
+  try {
+    const response = await fetch(`${API_BASE}/positions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(positions),
+    });
+    await handleResponse(response, 'Save positions');
+  } catch (error) {
+    console.error('Positions save error:', error);
+    throw new Error(`Failed to save positions: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 export async function fetchFiles(nodeId: string, path: string = ''): Promise<{ files: any[], path: string }> {
-  const url = `${API_BASE}/files/${nodeId}?path=${encodeURIComponent(path)}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to load files: ${response.status} ${response.statusText}`);
+  try {
+    const url = `${API_BASE}/files/${nodeId}?path=${encodeURIComponent(path)}`;
+    const response = await fetch(url);
+    await handleResponse(response, 'Fetch files');
+    return response.json();
+  } catch (error) {
+    console.error('Files fetch error:', error);
+    throw new Error(`Failed to load files: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  return response.json();
 }
