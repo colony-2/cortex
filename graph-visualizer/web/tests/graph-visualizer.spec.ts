@@ -11,13 +11,8 @@ test.describe('Graph Visualizer', () => {
     // Wait for the React Flow container to be visible (Pro Flow uses React Flow internally)
     await expect(page.locator('.react-flow')).toBeVisible();
     
-    // Wait for graph data to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/graph') && response.status() === 200
-    );
-    
-    // Wait a bit for React Flow to render
-    await page.waitForTimeout(1000);
+    // Wait for nodes to be rendered instead of waiting for API response
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
     // Check that nodes are rendered (should be 13 based on the error message)
     const nodes = page.locator('.react-flow__node');
@@ -25,11 +20,6 @@ test.describe('Graph Visualizer', () => {
   });
 
   test('should display node information correctly', async ({ page }) => {
-    // Wait for graph data to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/graph') && response.status() === 200
-    );
-    
     // Wait for nodes to be rendered
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     

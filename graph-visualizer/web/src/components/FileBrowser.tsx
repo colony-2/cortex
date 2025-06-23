@@ -45,7 +45,7 @@ export default function FileBrowser({ node, onClose }: FileBrowserProps) {
       const path = pathAccum;
       items.push({
         key: path,
-        title: part,
+        title: <span>{part}</span>,
         onClick: () => setCurrentPath(path),
       });
     });

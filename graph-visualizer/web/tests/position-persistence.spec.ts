@@ -119,19 +119,32 @@ test.describe('Node Position Persistence', () => {
       Math.pow(secondInitial!.y - firstInitial!.y, 2)
     );
     
-    // Drag both nodes
-    await firstNode.dragTo(firstNode, {
-      targetPosition: { x: 50, y: 50 }
-    });
+    // Drag first node using mouse operations - move it significantly
+    const firstBox = await firstNode.boundingBox();
+    const firstCenterX = firstBox!.x + firstBox!.width / 2;
+    const firstCenterY = firstBox!.y + firstBox!.height / 2;
+    await page.mouse.move(firstCenterX, firstCenterY);
+    await page.mouse.down();
+    await page.mouse.move(firstCenterX + 200, firstCenterY + 200);
+    await page.mouse.up();
     
     await page.waitForTimeout(600); // Wait for save timeout
     
-    await secondNode.dragTo(secondNode, {
-      targetPosition: { x: 50, y: 50 }
-    });
+    // Drag second node - move it significantly in a different direction
+    const secondBox = await secondNode.boundingBox();
+    const secondCenterX = secondBox!.x + secondBox!.width / 2;
+    const secondCenterY = secondBox!.y + secondBox!.height / 2;
+    await page.mouse.move(secondCenterX, secondCenterY);
+    await page.mouse.down();
+    await page.mouse.move(secondCenterX - 150, secondCenterY + 150);
+    await page.mouse.up();
     
     // Wait for position saves
     await page.waitForTimeout(600);
+    
+    // Get positions after drag but before reload
+    const firstDraggedBox = await firstNode.boundingBox();
+    const secondDraggedBox = await secondNode.boundingBox();
     
     // Reload
     await page.reload();
@@ -148,10 +161,16 @@ test.describe('Node Position Persistence', () => {
     const firstNewBox = await firstReloaded.boundingBox();
     const secondNewBox = await secondReloaded.boundingBox();
     
-    // Both nodes should have moved from their initial positions
-    expect(firstNewBox!.x).not.toBe(firstInitial!.x);
-    expect(firstNewBox!.y).not.toBe(firstInitial!.y);
-    expect(secondNewBox!.x).not.toBe(secondInitial!.x);
-    expect(secondNewBox!.y).not.toBe(secondInitial!.y);
+    // Both nodes should have moved significantly from their initial positions (at least 50 pixels)
+    expect(Math.abs(firstNewBox!.x - firstInitial!.x)).toBeGreaterThan(50);
+    expect(Math.abs(firstNewBox!.y - firstInitial!.y)).toBeGreaterThan(50);
+    expect(Math.abs(secondNewBox!.x - secondInitial!.x)).toBeGreaterThan(50);
+    expect(Math.abs(secondNewBox!.y - secondInitial!.y)).toBeGreaterThan(50);
+    
+    // Positions should be close to where we dragged them (within tolerance)
+    expect(Math.abs(firstNewBox!.x - firstDraggedBox!.x)).toBeLessThan(30);
+    expect(Math.abs(firstNewBox!.y - firstDraggedBox!.y)).toBeLessThan(30);
+    expect(Math.abs(secondNewBox!.x - secondDraggedBox!.x)).toBeLessThan(30);
+    expect(Math.abs(secondNewBox!.y - secondDraggedBox!.y)).toBeLessThan(30);
   });
 });

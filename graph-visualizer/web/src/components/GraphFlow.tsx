@@ -31,16 +31,13 @@ export default function GraphFlow() {
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
   const [showFileBrowser, setShowFileBrowser] = useState(false);
-  const [graph, setGraph] = useState<DependencyGraph | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<DependencyGraph | null>(null);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
-    setSelectedNodeId(nodeId);
     setSelectedNode(node);
     setShowFileBrowser(true);
   }, []);
@@ -48,7 +45,6 @@ export default function GraphFlow() {
   const closeFileBrowser = useCallback(() => {
     setShowFileBrowser(false);
     setSelectedNode(null);
-    setSelectedNodeId(null);
   }, []);
 
   const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[], nodeClickHandler: (id: string) => void) => {
@@ -100,7 +96,7 @@ export default function GraphFlow() {
 
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
-      const updatedNodes = applyNodeChanges(changes, nds);
+      const updatedNodes = applyNodeChanges(changes, nds as any) as FlowNode[];
       
       // Check if this was a position change (drag)
       const positionChange = changes.find((c: any) => c.type === 'position' && c.dragging === false);
@@ -138,7 +134,6 @@ export default function GraphFlow() {
           fetchPositions()
         ]);
         
-        setGraph(graphData);
         graphRef.current = graphData;
         layoutNodes(graphData, positions, handleNodeClick);
         setLoading(false);
@@ -173,9 +168,7 @@ export default function GraphFlow() {
           edges={edges}
           nodeTypes={{ custom: ProFlowNode }}
           onNodesChange={onNodesChange}
-          onNodeClick={(id: string) => handleNodeClick(id)}
-          onPaneClick={() => setSelectedNodeId(null)}
-          nodesDraggable={true}
+          onNodeClick={(_event: any, node: any) => handleNodeClick(node.id)}
           miniMap
           autoLayout={false}
           background

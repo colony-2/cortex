@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import type { FC } from 'react';
 import { Handle, Position } from '@ant-design/pro-flow';
 import { Card, Tag, Space, Button } from 'antd';
 import { FolderOpenOutlined } from '@ant-design/icons';

@@ -189,17 +189,30 @@ test.describe('File Browser', () => {
     // Wait for file browser to be visible
     await expect(page.locator('.file-browser')).toBeVisible();
     
-    // Click on a folder (foo)
-    await page.locator('button.file-item').filter({ hasText: 'foo' }).click();
+    // Wait for the file list to load
+    await page.waitForSelector('.ant-list-item', { timeout: 10000 });
+    
+    // Find and click on the foo folder using Ant Design list item
+    const fooFolder = page.locator('.ant-list-item').filter({ hasText: 'foo' });
+    await expect(fooFolder).toBeVisible();
+    await fooFolder.click();
+    
+    // Wait for navigation to complete
+    await page.waitForTimeout(500);
     
     // Check breadcrumb shows the path
     await expect(page.locator('.breadcrumb')).toContainText('foo');
     
-    // Click the root breadcrumb to go back
-    await page.locator('.breadcrumb-item').first().click();
+    // Click the home icon in breadcrumb to go back to root
+    const homeBreadcrumb = page.locator('.breadcrumb .anticon-home');
+    await expect(homeBreadcrumb).toBeVisible();
+    await homeBreadcrumb.click();
+    
+    // Wait for navigation back
+    await page.waitForTimeout(500);
     
     // Check we're back at root (foo folder should be visible again)
-    await expect(page.locator('button.file-item').filter({ hasText: 'foo' })).toBeVisible();
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible();
   });
 
   test('should split screen when file browser is open', async ({ page }) => {

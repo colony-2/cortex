@@ -1,4 +1,4 @@
-.PHONY: all build clean dev dev-server dev-frontend test test-positions install run help
+.PHONY: all build clean dev dev-server dev-frontend test test-positions setupenv install run help
 
 # Variables
 BINARY_NAME = graph-visualizer
@@ -14,7 +14,8 @@ all: build
 # Display help
 help:
 	@echo "Graph Visualizer Makefile Commands:"
-	@echo "  make install      - Install all dependencies (Go and npm)"
+	@echo "  make setupenv     - Install all dependencies (Go and npm)"
+	@echo "  make install      - Install the graph-visualizer binary to GOPATH/bin"
 	@echo "  make dev          - Run both server and frontend in development mode"
 	@echo "  make dev-server   - Run only the Go server in development mode"
 	@echo "  make dev-frontend - Run only the frontend dev server"
@@ -25,10 +26,10 @@ help:
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make run         - Build and run the production binary"
 	@echo "  make stop         - Stop the server running on port 8080"
-	@echo "  make prod         - Full production build (clean, install, test, build)"
+	@echo "  make prod         - Full production build (clean, setupenv, test, build)"
 
-# Install dependencies
-install:
+# Setup development environment
+setupenv:
 	@echo "Installing frontend dependencies..."
 	cd $(WEB_DIR) && npm install
 	@echo "Installing Go dependencies..."
@@ -37,6 +38,12 @@ install:
 	cd $(SERVER_DIR) && go get github.com/gorilla/websocket
 	cd $(SERVER_DIR) && go get gopkg.in/yaml.v3
 	cd $(SERVER_DIR) && go mod tidy
+
+# Install the graph-visualizer binary
+install: build
+	@echo "Installing graph-visualizer binary to GOPATH/bin..."
+	@go install -tags prod ./$(SERVER_DIR)
+	@echo "Installation complete. You can now run 'graph-visualizer' from anywhere."
 
 # Development mode - run both server and frontend
 dev:
@@ -153,7 +160,7 @@ docker-build:
 	docker build -t $(BINARY_NAME):latest .
 
 # Production build with all optimizations
-prod: clean install test build
+prod: clean setupenv test build
 	@echo "Production build complete!"
 
 # Stop running server
