@@ -6,7 +6,7 @@ package main
 import (
 	"log"
 	"net/http"
-	"graph-visualizer/static"
+	"vibethis/static"
 )
 
 func getFrontendHandler() http.Handler {

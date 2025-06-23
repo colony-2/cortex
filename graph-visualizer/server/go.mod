@@ -1,4 +1,4 @@
-module graph-visualizer
+module vibethis
 
 go 1.23
 

@@ -46,7 +46,8 @@
       "Bash(timeout:*)",
       "Bash(mv:*)",
       "Bash(./vibethis --help)",
-      "Bash(./vibethis:*)"
+      "Bash(./vibethis:*)",
+      "Bash(./build/vibethis:*)"
     ],
     "deny": []
   }

@@ -33,7 +33,7 @@ setupenv:
 	@echo "Installing frontend dependencies..."
 	cd $(WEB_DIR) && npm install
 	@echo "Installing Go dependencies..."
-	cd $(SERVER_DIR) && go mod init graph-visualizer 2>/dev/null || true
+	cd $(SERVER_DIR) && go mod init vibethis 2>/dev/null || true
 	cd $(SERVER_DIR) && go get github.com/gorilla/mux
 	cd $(SERVER_DIR) && go get github.com/gorilla/websocket
 	cd $(SERVER_DIR) && go get gopkg.in/yaml.v3
