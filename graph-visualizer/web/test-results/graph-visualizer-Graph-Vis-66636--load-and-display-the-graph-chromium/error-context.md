@@ -1,0 +1,107 @@
+# Page snapshot
+
+```yaml
+- img:
+  - button "Edge from api to service-a"
+  - button "Edge from api to service-b"
+  - button "Edge from api to service-c"
+  - button "Edge from api to auth"
+  - button "Edge from auth to database"
+  - button "Edge from auth to cache"
+  - button "Edge from auth to logger"
+  - button "Edge from cache to shared-utils"
+  - button "Edge from config to logger"
+  - button "Edge from config to shared-utils"
+  - button "Edge from database to logger"
+  - button "Edge from database to config"
+  - button "Edge from frontend to api"
+  - button "Edge from frontend to auth"
+  - button "Edge from frontend to config"
+  - button "Edge from gateway to frontend"
+  - button "Edge from gateway to api"
+  - button "Edge from gateway to monitoring"
+  - button "Edge from logger to shared-utils"
+  - button "Edge from monitoring to logger"
+  - button "Edge from monitoring to config"
+  - button "Edge from service-a to database"
+  - button "Edge from service-a to auth"
+  - button "Edge from service-a to cache"
+  - button "Edge from service-b to database"
+  - button "Edge from service-b to cache"
+  - button "Edge from service-c to auth"
+  - button "Edge from service-c to logger"
+- button "📦 api folder-open module 4 dependencies":
+  - text: 📦 api
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 4 dependencies
+- button "📦 auth folder-open module 3 dependencies":
+  - text: 📦 auth
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 3 dependencies
+- button "📦 cache folder-open module 1 dependencies":
+  - text: 📦 cache
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 1 dependencies
+- button "📦 config folder-open module 2 dependencies":
+  - text: 📦 config
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 2 dependencies
+- button "📦 database folder-open module 2 dependencies":
+  - text: 📦 database
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 2 dependencies
+- button "📦 frontend folder-open module 3 dependencies":
+  - text: 📦 frontend
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 3 dependencies
+- button "📦 gateway folder-open module 3 dependencies":
+  - text: 📦 gateway
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 3 dependencies
+- button "📦 logger folder-open module 1 dependencies":
+  - text: 📦 logger
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 1 dependencies
+- button "📦 monitoring folder-open module 2 dependencies":
+  - text: 📦 monitoring
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 2 dependencies
+- button "📦 service-a folder-open module 3 dependencies":
+  - text: 📦 service-a
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 3 dependencies
+- button "📦 service-b folder-open module 2 dependencies":
+  - text: 📦 service-b
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 2 dependencies
+- button "📦 service-c folder-open module 2 dependencies":
+  - text: 📦 service-c
+  - button "folder-open":
+    - img "folder-open"
+  - text: module 2 dependencies
+- button "📦 shared-utils folder-open module":
+  - text: 📦 shared-utils
+  - button "folder-open":
+    - img "folder-open"
+  - text: module
+- button "minus":
+  - img "minus"
+- button "119%"
+- button "plus":
+  - img "plus"
+- button "expand":
+  - img "expand"
+- img "React Flow mini map"
+- img
+```

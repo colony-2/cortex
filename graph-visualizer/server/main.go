@@ -248,11 +248,17 @@ func buildGraph(path string) Graph {
 
 func getPositionsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET /api/positions - rootPath: %s", rootPath)
-	positions, err := storage.GetPositions(rootPath)
+	positionsMap, err := storage.GetPositions(rootPath)
 	if err != nil {
 		log.Printf("Error getting positions: %v", err)
 		http.Error(w, "Failed to get positions", http.StatusInternalServerError)
 		return
+	}
+	
+	// Convert map to array
+	var positions []NodePosition
+	for _, pos := range positionsMap {
+		positions = append(positions, pos)
 	}
 	
 	log.Printf("Returning %d positions", len(positions))
