@@ -88,7 +88,7 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
 
-	var savedPositions map[string]NodePosition
+	var savedPositions []NodePosition
 	err = json.NewDecoder(w.Body).Decode(&savedPositions)
 	if err != nil {
 		t.Fatalf("Failed to decode saved positions: %v", err)
@@ -98,9 +98,15 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 		t.Errorf("Expected %d saved positions, got %d", len(testPositions), len(savedPositions))
 	}
 
+	// Convert to map for easier verification
+	positionMap := make(map[string]NodePosition)
+	for _, pos := range savedPositions {
+		positionMap[pos.NodeID] = pos
+	}
+
 	// Verify each position
 	for _, expectedPos := range testPositions {
-		savedPos, exists := savedPositions[expectedPos.NodeID]
+		savedPos, exists := positionMap[expectedPos.NodeID]
 		if !exists {
 			t.Errorf("Position for node %s not found", expectedPos.NodeID)
 			continue
@@ -133,10 +139,16 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	var finalPositions map[string]NodePosition
-	err = json.NewDecoder(w.Body).Decode(&finalPositions)
+	var finalPositionsArray []NodePosition
+	err = json.NewDecoder(w.Body).Decode(&finalPositionsArray)
 	if err != nil {
 		t.Fatalf("Failed to decode final positions: %v", err)
+	}
+
+	// Convert to map for easier verification
+	finalPositions := make(map[string]NodePosition)
+	for _, pos := range finalPositionsArray {
+		finalPositions[pos.NodeID] = pos
 	}
 
 	// Check updated positions

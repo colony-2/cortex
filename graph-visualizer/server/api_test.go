@@ -36,7 +36,7 @@ func TestPositionAPI(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	var positions map[string]NodePosition
+	var positions []NodePosition
 	err = json.NewDecoder(w.Body).Decode(&positions)
 	if err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
@@ -81,8 +81,13 @@ func TestPositionAPI(t *testing.T) {
 	}
 
 	// Verify the positions
+	positionMap := make(map[string]NodePosition)
+	for _, pos := range positions {
+		positionMap[pos.NodeID] = pos
+	}
+	
 	for _, testPos := range testPositions {
-		savedPos, exists := positions[testPos.NodeID]
+		savedPos, exists := positionMap[testPos.NodeID]
 		if !exists {
 			t.Errorf("Position for %s not found", testPos.NodeID)
 			continue

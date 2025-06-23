@@ -1,7 +1,7 @@
 .PHONY: all build clean dev dev-server dev-frontend test test-positions setupenv install run help
 
 # Variables
-BINARY_NAME = graph-visualizer
+BINARY_NAME = vibethis
 GO_FILES = $(shell find server -name '*.go')
 WEB_DIST = web/dist
 SERVER_DIR = server
@@ -15,7 +15,7 @@ all: build
 help:
 	@echo "Graph Visualizer Makefile Commands:"
 	@echo "  make setupenv     - Install all dependencies (Go and npm)"
-	@echo "  make install      - Install the graph-visualizer binary to GOPATH/bin"
+	@echo "  make install      - Install the vibethis binary to GOPATH/bin"
 	@echo "  make dev          - Run both server and frontend in development mode"
 	@echo "  make dev-server   - Run only the Go server in development mode"
 	@echo "  make dev-frontend - Run only the frontend dev server"
@@ -39,11 +39,13 @@ setupenv:
 	cd $(SERVER_DIR) && go get gopkg.in/yaml.v3
 	cd $(SERVER_DIR) && go mod tidy
 
-# Install the graph-visualizer binary
+# Install the vibethis binary
 install: build
-	@echo "Installing graph-visualizer binary to GOPATH/bin..."
-	@go install -tags prod ./$(SERVER_DIR)
-	@echo "Installation complete. You can now run 'graph-visualizer' from anywhere."
+	@echo "Installing vibethis binary to GOPATH/bin..."
+	@echo "Setting default port to 8081 for installed binary..."
+	cd $(SERVER_DIR) && go install -tags prod -ldflags "-X main.defaultPort=8081" .
+	@echo "Installation complete. You can now run 'vibethis' from anywhere."
+	@echo "Default port: 8081 (override with -p or --port flag)"
 
 # Development mode - run both server and frontend
 dev:
@@ -53,7 +55,7 @@ dev:
 # Run Go server in development mode
 dev-server:
 	@echo "Starting Go server on :8080..."
-	cd $(SERVER_DIR) && go run . -path="../example"
+	cd $(SERVER_DIR) && go run . -n ../example
 
 # Run frontend dev server
 dev-frontend:
@@ -127,8 +129,8 @@ clean:
 
 # Build and run the production binary
 run: build
-	@echo "Running graph visualizer..."
-	./$(BUILD_DIR)/$(BINARY_NAME) -path="./example"
+	@echo "Running vibethis..."
+	./$(BUILD_DIR)/$(BINARY_NAME) -n ./example
 
 # Watch mode for development (requires entr)
 watch-server:

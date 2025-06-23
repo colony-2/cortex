@@ -39,7 +39,14 @@
       "Bash(npx playwright screenshot:*)",
       "Bash(echo)",
       "WebFetch(domain:github.com)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(go:*)",
+      "Bash(./test-binary:*)",
+      "Bash(./build/graph-visualizer:*)",
+      "Bash(timeout:*)",
+      "Bash(mv:*)",
+      "Bash(./vibethis --help)",
+      "Bash(./vibethis:*)"
     ],
     "deny": []
   }

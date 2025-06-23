@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
@@ -49,8 +49,14 @@ type FilesResponse struct {
 	Path  string     `json:"path"`
 }
 
+// Default port can be overridden during build with:
+// -ldflags "-X main.defaultPort=8081"
+var defaultPort = "8080"
+
 var (
 	rootPath string
+	port     string
+	newDB    bool
 	storage  *PositionStorage
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
@@ -59,15 +65,39 @@ var (
 	}
 )
 
-func main() {
-	flag.StringVar(&rootPath, "path", ".", "Root path to scan for directories")
-	flag.Parse()
+var rootCmd = &cobra.Command{
+	Use:   "vibethis [path]",
+	Short: "A graph visualizer for directory dependencies",
+	Long: `vibethis is a tool that visualizes directory dependencies in your project.
+It scans for dependencies.yaml files and creates an interactive graph visualization.`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runServer,
+}
+
+func init() {
+	rootCmd.Flags().StringVarP(&port, "port", "p", defaultPort, "Port to listen on")
+	rootCmd.Flags().BoolVarP(&newDB, "new", "n", false, "Create a new database if it doesn't exist")
+}
+
+func runServer(cmd *cobra.Command, args []string) error {
+	// Set root path from argument or default to current directory
+	if len(args) > 0 {
+		rootPath = args[0]
+	} else {
+		rootPath = "."
+	}
+
+	// Check if database exists
+	dbPath := filepath.Join(rootPath, ".vibestate.db")
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) && !newDB {
+		return fmt.Errorf("no .vibestate.db found in %s. Use -n/--new flag to create a new database", rootPath)
+	}
 
 	// Initialize storage in the directory being served
 	var err error
 	storage, err = NewPositionStorage(rootPath)
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		return fmt.Errorf("failed to initialize storage: %v", err)
 	}
 	defer storage.Close()
 
@@ -81,8 +111,14 @@ func main() {
 	
 	router.PathPrefix("/").Handler(getFrontendHandler())
 
-	fmt.Printf("Server starting on :8080, scanning path: %s\n", rootPath)
-	log.Fatal(http.ListenAndServe(":8080", corsMiddleware(router)))
+	fmt.Printf("Server starting on :%s, scanning path: %s\n", port, rootPath)
+	return http.ListenAndServe(":"+port, corsMiddleware(router))
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

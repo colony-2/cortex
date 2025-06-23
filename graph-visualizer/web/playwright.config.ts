@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd ../server && go run . -path ../example',
+      command: 'cd ../server && go run . -n ../example',
       port: 8080,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
