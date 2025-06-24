@@ -1,7 +1,6 @@
 import type { FC } from 'react';
 import { Handle, Position } from '@ant-design/pro-flow';
-import { Card, Tag, Space, Button } from 'antd';
-import { FolderOpenOutlined } from '@ant-design/icons';
+import { Card, Tag, Space } from 'antd';
 
 interface ProFlowNodeProps {
   data: {
@@ -11,7 +10,6 @@ interface ProFlowNodeProps {
     name: string;
     type: string;
     dependencies: string[];
-    onFileBrowser?: () => void;
   };
 }
 
@@ -31,18 +29,6 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data }) => {
           <span>{data.logo || '📦'}</span>
           <span>{data.title}</span>
         </Space>
-      }
-      extra={
-        <Button
-          type="text"
-          size="small"
-          icon={<FolderOpenOutlined />}
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onFileBrowser?.();
-          }}
-          title="Browse files"
-        />
       }
       style={{ width: 200 }}
       bodyStyle={{ padding: '8px 12px' }}

@@ -17,39 +17,26 @@ body {
   overflow: hidden;
 }
 
-/* App Container */
-.app-container {
-  display: flex;
-  height: 100vh;
-  width: 100vw;
+/* Layout improvements */
+.ant-layout {
   background: #f0f2f5;
 }
 
-.app-container.split .graph-container {
-  width: 50%;
+.ant-layout-sider {
+  background: #fff !important;
 }
 
-.app-container.split .browser-container {
-  display: block;
-}
-
-/* Graph Container */
-.graph-container {
-  flex: 1;
+/* Tabs customization */
+.ant-tabs {
   height: 100%;
-  position: relative;
-  background: white;
-  transition: width 0.3s ease;
-  border-radius: 8px;
-  margin: 8px;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
 }
 
-.browser-container {
-  width: 50%;
+.ant-tabs-content {
+  height: calc(100% - 46px);
+}
+
+.ant-tabs-tabpane {
   height: 100%;
-  display: none;
-  padding: 8px 8px 8px 0;
 }
 
 /* Loading and Error States */
@@ -70,25 +57,12 @@ body {
 /* Node Styles - removed to use React Flow defaults */
 
 /* File Browser Styles */
-.file-browser {
-  height: 100%;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+.ant-list-item:hover {
+  background-color: #fafafa;
 }
 
-.file-browser .ant-layout-header {
-  height: auto;
-  line-height: normal;
-  padding: 16px 24px;
-}
-
-.file-browser .ant-breadcrumb {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.file-browser .ant-breadcrumb-separator {
-  color: rgba(255, 255, 255, 0.45);
+.ant-breadcrumb {
+  font-size: 14px;
 }
 
 /* Pro Flow Customization */
@@ -99,4 +73,38 @@ body {
 .pro-flow-minimap {
   background: #f0f2f5;
   border: 1px solid #d9d9d9;
+}
+
+/* React Flow Minimap styles */
+.react-flow__minimap {
+  background-color: #f0f2f5 !important;
+  border: 1px solid #d9d9d9 !important;
+}
+
+.react-flow__minimap-mask {
+  fill: #d9d9d9 !important;
+  fill-opacity: 0.5 !important;
+}
+
+.react-flow__minimap-node {
+  fill: #666 !important;
+  stroke: none !important;
+}
+
+/* Splitter styles */
+.ant-splitter {
+  height: 100%;
+}
+
+.ant-splitter-panel {
+  overflow: hidden;
+}
+
+/* Tab styles for vertical layout */
+.ant-tabs-left > .ant-tabs-nav .ant-tabs-tab {
+  padding: 8px 16px;
+}
+
+.ant-tabs-left > .ant-tabs-content-holder {
+  overflow: auto;
 }

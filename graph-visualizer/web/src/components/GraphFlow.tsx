@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { FlowView } from '@ant-design/pro-flow';
 import { applyNodeChanges } from '@xyflow/react';
-import { message, Spin } from 'antd';
+import { message, Spin, Card, Button, Alert, Collapse, Splitter } from 'antd';
 import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
-import FileBrowser from './FileBrowser';
 import ProFlowNode from './ProFlowNode';
+import SidePanel from './SidePanel';
 
 interface FlowNode {
   id: string;
@@ -32,22 +32,15 @@ export default function GraphFlow() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
-  const [showFileBrowser, setShowFileBrowser] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<DependencyGraph | null>(null);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
     setSelectedNode(node);
-    setShowFileBrowser(true);
   }, []);
 
-  const closeFileBrowser = useCallback(() => {
-    setShowFileBrowser(false);
-    setSelectedNode(null);
-  }, []);
-
-  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[], nodeClickHandler: (id: string) => void) => {
+  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[]) => {
     // Handle null or undefined nodes
     if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
       setNodes([]);
@@ -74,8 +67,7 @@ export default function GraphFlow() {
           name: node.name,
           type: node.type,
           dependencies: node.dependencies,
-          logo: '📦',
-          onFileBrowser: () => nodeClickHandler(node.id)
+          logo: '📦'
         },
       };
     });
@@ -135,7 +127,7 @@ export default function GraphFlow() {
         ]);
         
         graphRef.current = graphData;
-        layoutNodes(graphData, positions, handleNodeClick);
+        layoutNodes(graphData, positions);
         setLoading(false);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load graph';
@@ -160,47 +152,41 @@ export default function GraphFlow() {
 
   if (error) {
     return (
-      <div className="error-container" style={{ 
-        padding: '2rem', 
-        textAlign: 'center', 
-        color: '#ff4d4f',
-        backgroundColor: '#fff2f0',
-        border: '1px solid #ffccc7',
-        borderRadius: '6px',
-        margin: '2rem'
-      }}>
-        <h2>Failed to Load Graph</h2>
-        <p><strong>Error:</strong> {error}</p>
-        <details style={{ marginTop: '1rem', textAlign: 'left' }}>
-          <summary style={{ cursor: 'pointer', marginBottom: '0.5rem' }}>Troubleshooting Tips</summary>
-          <ul style={{ paddingLeft: '1rem' }}>
-            <li>Check if the server is running on the correct port</li>
-            <li>Verify the directory contains dependencies.yaml files</li>
-            <li>Ensure the .vibestate.db file exists or use the -n flag</li>
-            <li>Check the browser console for more details</li>
-          </ul>
-        </details>
-        <button 
-          onClick={() => window.location.reload()} 
-          style={{ 
-            marginTop: '1rem', 
-            padding: '0.5rem 1rem', 
-            backgroundColor: '#1890ff', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
+      <div className="error-container">
+        <Card 
+          style={{ maxWidth: 600, margin: '0 auto' }}
+          title="Failed to Load Graph"
+          extra={
+            <Button type="primary" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
+          }
         >
-          Retry
-        </button>
+          <Alert
+            message="Error"
+            description={error}
+            type="error"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <Collapse ghost>
+            <Collapse.Panel header="Troubleshooting Tips" key="1">
+              <ul style={{ paddingLeft: '1rem' }}>
+                <li>Check if the server is running on the correct port</li>
+                <li>Verify the directory contains dependencies.yaml files</li>
+                <li>Ensure the .vibestate.db file exists or use the -n flag</li>
+                <li>Check the browser console for more details</li>
+              </ul>
+            </Collapse.Panel>
+          </Collapse>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className={`app-container ${showFileBrowser ? 'split' : ''}`}>
-      <div className="graph-container">
+    <Splitter style={{ height: '100vh' }}>
+      <Splitter.Panel defaultSize="50%" min="20%" max="80%">
         <FlowView
           nodes={nodes}
           edges={edges}
@@ -210,14 +196,12 @@ export default function GraphFlow() {
           miniMap
           autoLayout={false}
           background
+          style={{ width: '100%', height: '100%' }}
         />
-      </div>
-      
-      {showFileBrowser && (
-        <div className="browser-container">
-          <FileBrowser node={selectedNode} onClose={closeFileBrowser} />
-        </div>
-      )}
-    </div>
+      </Splitter.Panel>
+      <Splitter.Panel defaultSize="50%" min="20%" max="80%">
+        <SidePanel selectedNode={selectedNode} />
+      </Splitter.Panel>
+    </Splitter>
   );
 }

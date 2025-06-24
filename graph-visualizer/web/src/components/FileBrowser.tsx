@@ -1,15 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Layout, Button, Space, Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Badge } from 'antd';
-import { CloseOutlined, FolderOutlined, FileOutlined, HomeOutlined, CodeOutlined, BranchesOutlined } from '@ant-design/icons';
+import { Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Space } from 'antd';
+import { FolderOutlined, FileOutlined, HomeOutlined } from '@ant-design/icons';
 import { fetchFiles } from '../api';
 import type { DependencyNode } from '../types';
 
-const { Header, Content } = Layout;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface FileBrowserProps {
   node: DependencyNode | null;
-  onClose: () => void;
 }
 
 interface FileItem {
@@ -23,7 +21,7 @@ interface FileItem {
   isDir: boolean;
 }
 
-export default function FileBrowser({ node, onClose }: FileBrowserProps) {
+export default function FileBrowser({ node }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,12 +59,7 @@ export default function FileBrowser({ node, onClose }: FileBrowserProps) {
       setError(null);
       
       try {
-        console.log('Loading files for node:', node.id);
-        console.log('loadFiles called with:', { nodeId: node.id, path: currentPath });
-        console.log('Fetching:', `http://localhost:8080/api/files/${node.id}?path=${encodeURIComponent(currentPath)}`);
-        
         const result = await fetchFiles(node.id, currentPath);
-        console.log('API response:', result);
         
         // Transform files to our format
         const transformedData = result.files.map((file: any) => ({
@@ -79,11 +72,6 @@ export default function FileBrowser({ node, onClose }: FileBrowserProps) {
           path: file.path,
           isDir: file.isDir
         }));
-        
-        console.log('Transformed data:', transformedData);
-        console.log('First file:', transformedData[0]);
-        console.log('Setting isLoading to false');
-        console.log('State after update - isLoading:', false, 'data length:', transformedData.length);
         
         setFiles(transformedData);
       } catch (err) {
@@ -124,52 +112,17 @@ export default function FileBrowser({ node, onClose }: FileBrowserProps) {
   }
 
   return (
-    <Layout className="file-browser" style={{ height: '100%', background: '#fff' }}>
-      <Header className="browser-header" style={{ background: '#001529', padding: '0 24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '100%' }}>
-          <div className="node-info">
-            <Title level={3} style={{ color: '#fff', margin: 0 }}>
-              {node.name}
-            </Title>
-            <div className="breadcrumb" style={{ marginTop: '8px' }}>
-              <Breadcrumb items={breadcrumbItems} style={{ color: '#fff' }} />
-            </div>
-          </div>
-          <Space className="browser-actions">
-            <Button 
-              icon={<CodeOutlined />} 
-              type="text" 
-              style={{ color: '#fff' }}
-              title="View terminal"
-            >
-              Terminal
-            </Button>
-            <Button 
-              icon={<BranchesOutlined />} 
-              type="text" 
-              style={{ color: '#fff' }}
-              title="View dependencies"
-            >
-              <Badge count={node.dependencies.length} size="small">
-                Dependencies
-              </Badge>
-            </Button>
-            <Button 
-              icon={<CloseOutlined />} 
-              type="text" 
-              style={{ color: '#fff' }}
-              onClick={onClose}
-              title="Close file browser"
-            >
-              Close
-            </Button>
-          </Space>
-        </div>
-      </Header>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '16px 16px 0', borderBottom: '1px solid #f0f0f0' }}>
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Text strong style={{ fontSize: '16px' }}>{node.name}</Text>
+          <Breadcrumb items={breadcrumbItems} />
+        </Space>
+      </div>
       
-      <Content style={{ padding: '24px', overflow: 'auto' }}>
+      <div style={{ flex: 1, padding: '16px', overflow: 'auto' }}>
         {loading ? (
-          <div className="loading" style={{ textAlign: 'center', padding: '40px' }}>
+          <div style={{ textAlign: 'center', padding: '40px' }}>
             <Spin size="large" tip="Loading files..." />
           </div>
         ) : error ? (
@@ -177,34 +130,45 @@ export default function FileBrowser({ node, onClose }: FileBrowserProps) {
             <Text type="danger">{error}</Text>
           </Card>
         ) : files.length === 0 ? (
-          <Empty className="no-files" description="No files found" />
+          <Empty description="No files found" />
         ) : (
           <List
-            className="file-list"
             dataSource={files}
             renderItem={(file) => (
               <List.Item
-                className={`file-item ${file.type}`}
                 onClick={() => handleFileClick(file)}
-                style={{ cursor: file.isDir ? 'pointer' : 'default' }}
+                style={{ 
+                  cursor: file.isDir ? 'pointer' : 'default',
+                  padding: '12px',
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (file.isDir) {
+                    e.currentTarget.style.backgroundColor = '#f5f5f5';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
                 <List.Item.Meta
                   avatar={getFileIcon(file)}
                   title={
                     <Space>
-                      <Text className="file-name" strong={file.isDir}>{file.name}</Text>
+                      <Text strong={file.isDir}>{file.name}</Text>
                       {file.type === 'file' && file.ext && (
                         <Tag color="blue">{file.ext}</Tag>
                       )}
                     </Space>
                   }
-                  description={!file.isDir && <span className="file-size">{formatFileSize(file.size)}</span>}
+                  description={!file.isDir && <span>{formatFileSize(file.size)}</span>}
                 />
               </List.Item>
             )}
           />
         )}
-      </Content>
-    </Layout>
+      </div>
+    </div>
   );
 }

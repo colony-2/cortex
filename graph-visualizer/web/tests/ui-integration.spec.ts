@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('UI Integration Tests', () => {
-  test('should open file browser when clicking action button', async ({ page }) => {
+  test('should show file browser in side panel when clicking node', async ({ page }) => {
     await page.goto('/');
     
     // Wait for graph data to load
@@ -15,32 +15,27 @@ test.describe('UI Integration Tests', () => {
     // Wait for nodes to be rendered
     await page.waitForTimeout(1000);
     
-    // Click file browser button directly - use force because React Flow transforms can interfere
-    const fileBrowserBtn = page.locator('button[title="Browse files"]').first();
-    await fileBrowserBtn.click({ force: true });
+    // Click on a node
+    await page.locator('.react-flow__node').filter({ hasText: 'api' }).click({ force: true });
     
-    // Wait a bit for the click to process
-    await page.waitForTimeout(500);
+    // Check that side panel shows files tab
+    await expect(page.locator('.ant-tabs-tab-active')).toContainText('Files');
     
-    // Verify file browser opens
-    await expect(page.locator('.file-browser')).toBeVisible({ timeout: 10000 });
+    // Wait for files to be loaded
+    await page.waitForResponse(response => 
+      response.url().includes('/api/files/') && response.status() === 200
+    );
     
-    // Verify split screen is active
-    await expect(page.locator('.app-container.split')).toHaveCount(1);
+    // Check that file list is visible
+    await expect(page.locator('.ant-list')).toBeVisible();
     
-    // Verify browser header shows node name
-    const browserHeader = page.locator('.browser-header h3');
-    await expect(browserHeader).toBeVisible();
-    
-    // Close file browser using the specific close button
-    const closeBtn = page.locator('.browser-header button[title="Close file browser"]');
-    await closeBtn.click();
-    
-    // Verify file browser is closed
-    await expect(page.locator('.file-browser')).not.toBeVisible();
+    // Verify file items are loaded
+    const fileItems = page.locator('.ant-list-item');
+    const itemCount = await fileItems.count();
+    expect(itemCount).toBeGreaterThan(0);
   });
   
-  test('should highlight parent and child edges on node selection', async ({ page }) => {
+  test('should switch between nodes and update file browser', async ({ page }) => {
     await page.goto('/');
     
     // Wait for graph data to load
@@ -51,26 +46,62 @@ test.describe('UI Integration Tests', () => {
     // Wait for graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
     
-    // Find a node with dependencies (e.g., 'api' node)
-    const apiNode = page.locator('.react-flow__node').filter({ hasText: 'api' }).first();
-    await apiNode.click({ force: true });
+    // Click on api node
+    await page.locator('.react-flow__node').filter({ hasText: 'api' }).click({ force: true });
     
-    // Wait for selection to be processed
-    await page.waitForTimeout(1000);
+    // Wait for api files to load
+    await page.waitForResponse(response => 
+      response.url().includes('/api/files/api') && response.status() === 200
+    );
     
-    // Since edge highlighting via classes isn't working in tests,
-    // let's verify the core selection functionality works
+    // Check that api files are shown
+    await expect(page.locator('.ant-tabs-content')).toContainText('api');
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
     
-    // Click the file browser button directly for the api node
-    const actionButton = page.locator('.react-flow__node').filter({ hasText: 'api' }).locator('button[title="Browse files"]').first();
-    await actionButton.click({ force: true });
+    // Click on frontend node
+    await page.locator('.react-flow__node').filter({ hasText: 'frontend' }).click({ force: true });
     
-    // Wait for file browser to open
-    await page.waitForSelector('.file-browser', { timeout: 10000 });
-    await expect(page.locator('.file-browser')).toBeVisible();
+    // Wait for frontend files to load
+    await page.waitForResponse(response => 
+      response.url().includes('/api/files/frontend') && response.status() === 200
+    );
     
-    // Close file browser
-    await page.locator('button[title="Close file browser"]').click();
-    await expect(page.locator('.file-browser')).not.toBeVisible();
+    // Check that frontend files are shown
+    await expect(page.locator('.ant-tabs-content')).toContainText('frontend');
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'src' })).toBeVisible();
+  });
+  
+  test('should maintain side panel state when switching tabs', async ({ page }) => {
+    await page.goto('/');
+    
+    // Wait for graph to load
+    await page.waitForResponse(response => 
+      response.url().includes('/api/graph') && response.status() === 200
+    );
+    
+    // Click on a node
+    await page.locator('.react-flow__node').filter({ hasText: 'frontend' }).click({ force: true });
+    
+    // Wait for files to load
+    await page.waitForResponse(response => 
+      response.url().includes('/api/files/frontend') && response.status() === 200
+    );
+    
+    // Navigate to src folder
+    await page.locator('.ant-list-item').filter({ hasText: 'src' }).click();
+    
+    // Wait for subdirectory to load
+    await page.waitForResponse(response => 
+      response.url().includes('/api/files/frontend?path=src') && response.status() === 200
+    );
+    
+    // Switch to Claude Code tab
+    await page.locator('.ant-tabs-tab:has-text("Claude Code")').click();
+    
+    // Switch back to Files tab
+    await page.locator('.ant-tabs-tab:has-text("Files")').click();
+    
+    // Check that we're still in the src directory
+    await expect(page.locator('.ant-breadcrumb')).toContainText('src');
   });
 });
