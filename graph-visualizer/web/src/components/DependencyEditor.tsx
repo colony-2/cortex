@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
-import { List, Tag, Button, Select, Typography, Space, message, Spin, Alert } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { List, Button, Typography, Space, message, Spin, Tag, Tooltip } from 'antd';
+import { 
+  DeleteOutlined, 
+  PlusOutlined, 
+  LinkOutlined,
+  ArrowRightOutlined,
+  BranchesOutlined,
+  StopOutlined,
+  ForkOutlined
+} from '@ant-design/icons';
 import type { DependencyNode } from '../types';
 
 const { Title, Text } = Typography;
@@ -9,19 +17,22 @@ interface DependencyEditorProps {
   node: DependencyNode;
 }
 
+type NodeRelationship = {
+  node: DependencyNode;
+  type: 'dependency' | 'available' | 'parent' | 'ancestor';
+  reason?: string;
+};
+
 export default function DependencyEditor({ node }: DependencyEditorProps) {
-  const [dependencies, setDependencies] = useState<string[]>([]);
-  const [availableNodes, setAvailableNodes] = useState<DependencyNode[]>([]);
+  const [relationships, setRelationships] = useState<NodeRelationship[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<string | undefined>(undefined);
 
-  // Fetch current dependencies and available nodes
   useEffect(() => {
-    fetchData();
+    fetchRelationships();
   }, [node.id, node.dependencies]); // Re-fetch when node or its dependencies change
 
-  const fetchData = async () => {
+  const fetchRelationships = async () => {
     try {
       setLoading(true);
       
@@ -29,21 +40,12 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       const response = await fetch('/api/graph');
       const data = await response.json();
       
-      // Find the current node in the fresh data to get updated dependencies
-      const currentNode = data.nodes.find((n: DependencyNode) => n.id === node.id);
-      if (currentNode) {
-        // Set current dependencies from the fresh data
-        setDependencies(currentNode.dependencies || []);
-        
-        // Filter out nodes that would create circular dependencies
-        const validNodes = await getValidDependencyTargets(data.nodes, currentNode);
-        setAvailableNodes(validNodes);
-      } else {
-        // Fallback to original node data
-        setDependencies(node.dependencies || []);
-        const validNodes = await getValidDependencyTargets(data.nodes, node);
-        setAvailableNodes(validNodes);
-      }
+      // Find the current node in the fresh data
+      const currentNode = data.nodes.find((n: DependencyNode) => n.id === node.id) || node;
+      
+      // Categorize all nodes based on their relationship to the current node
+      const categorized = await categorizeNodes(data.nodes, currentNode);
+      setRelationships(categorized);
     } catch (error) {
       message.error('Failed to load dependency data');
       console.error('Error fetching data:', error);
@@ -52,25 +54,39 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
     }
   };
 
-  // Get nodes that can be added as dependencies without creating cycles
-  const getValidDependencyTargets = async (allNodes: DependencyNode[], currentNode: DependencyNode): Promise<DependencyNode[]> => {
-    // Filter out:
-    // 1. The current node itself
-    // 2. Nodes that are already dependencies
-    // 3. Nodes that would create circular dependencies (ancestors of current node)
-    
-    const ancestors = await findAncestors(allNodes, currentNode.id);
-    const ancestorIds = new Set(ancestors.map(n => n.id));
+  const categorizeNodes = async (allNodes: DependencyNode[], currentNode: DependencyNode): Promise<NodeRelationship[]> => {
+    const result: NodeRelationship[] = [];
     const currentDeps = new Set(currentNode.dependencies || []);
     
-    return allNodes.filter(n => 
-      n.id !== currentNode.id && 
-      !currentDeps.has(n.id) &&
-      !ancestorIds.has(n.id)
-    );
+    // Find all ancestors (nodes that depend on current node)
+    const ancestors = await findAncestors(allNodes, currentNode.id);
+    const ancestorIds = new Set(ancestors.map(n => n.id));
+    
+    for (const node of allNodes) {
+      if (node.id === currentNode.id) continue; // Skip self
+      
+      if (currentDeps.has(node.id)) {
+        // Current dependency
+        result.push({ node, type: 'dependency' });
+      } else if (node.dependencies?.includes(currentNode.id)) {
+        // Direct parent
+        result.push({ node, type: 'parent', reason: 'Depends on this node' });
+      } else if (ancestorIds.has(node.id)) {
+        // Ancestor (indirect parent)
+        result.push({ node, type: 'ancestor', reason: 'Would create circular dependency' });
+      } else {
+        // Available to add
+        result.push({ node, type: 'available' });
+      }
+    }
+    
+    // Sort: dependencies first, then available, then parents, then ancestors
+    return result.sort((a, b) => {
+      const order = { dependency: 0, available: 1, parent: 2, ancestor: 3 };
+      return order[a.type] - order[b.type];
+    });
   };
 
-  // Find all ancestors (nodes that depend on the given node, directly or indirectly)
   const findAncestors = async (allNodes: DependencyNode[], nodeId: string): Promise<DependencyNode[]> => {
     const ancestors: DependencyNode[] = [];
     const visited = new Set<string>();
@@ -79,7 +95,6 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       if (visited.has(targetId)) return;
       visited.add(targetId);
       
-      // Find nodes that have targetId as a dependency
       const parents = allNodes.filter(n => 
         n.dependencies && n.dependencies.includes(targetId)
       );
@@ -96,16 +111,15 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
     return ancestors;
   };
 
-  const handleAddDependency = async () => {
-    if (!selectedNode) return;
-    
-    const newDependencies = [...dependencies, selectedNode];
+  const handleAddDependency = async (nodeId: string) => {
+    const currentDeps = node.dependencies || [];
+    const newDependencies = [...currentDeps, nodeId];
     await saveDependencies(newDependencies);
-    setSelectedNode(undefined);
   };
 
-  const handleRemoveDependency = async (depId: string) => {
-    const newDependencies = dependencies.filter(d => d !== depId);
+  const handleRemoveDependency = async (nodeId: string) => {
+    const currentDeps = node.dependencies || [];
+    const newDependencies = currentDeps.filter(d => d !== nodeId);
     await saveDependencies(newDependencies);
   };
 
@@ -132,14 +146,105 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       // Dispatch event to update the graph
       window.dispatchEvent(new CustomEvent('dependenciesUpdated'));
       
-      // Refresh component data with updated dependencies from server
-      await fetchData();
+      // Refresh relationships
+      await fetchRelationships();
     } catch (error) {
       message.error('Failed to save dependencies');
       console.error('Error saving dependencies:', error);
     } finally {
       setSaving(false);
     }
+  };
+
+  const getIcon = (type: NodeRelationship['type']) => {
+    switch (type) {
+      case 'dependency':
+        return <LinkOutlined style={{ color: '#1890ff' }} />;
+      case 'available':
+        return <ArrowRightOutlined style={{ color: '#52c41a' }} />;
+      case 'parent':
+        return <BranchesOutlined style={{ color: '#fa8c16' }} />;
+      case 'ancestor':
+        return <ForkOutlined style={{ color: '#ff4d4f' }} />;
+    }
+  };
+
+  const getTypeTag = (type: NodeRelationship['type']) => {
+    switch (type) {
+      case 'dependency':
+        return <Tag color="blue">Dependency</Tag>;
+      case 'available':
+        return <Tag color="green">Available</Tag>;
+      case 'parent':
+        return <Tag color="orange">Direct Parent</Tag>;
+      case 'ancestor':
+        return <Tag color="red">Indirect Parent</Tag>;
+    }
+  };
+
+  const renderItem = (item: NodeRelationship) => {
+    const actions = [];
+    
+    if (item.type === 'dependency') {
+      actions.push(
+        <Button
+          type="text"
+          danger
+          icon={<DeleteOutlined />}
+          onClick={() => handleRemoveDependency(item.node.id)}
+          disabled={saving}
+          size="small"
+        >
+          Remove
+        </Button>
+      );
+    } else if (item.type === 'available') {
+      actions.push(
+        <Button
+          type="text"
+          icon={<PlusOutlined />}
+          onClick={() => handleAddDependency(item.node.id)}
+          disabled={saving}
+          size="small"
+          style={{ color: '#52c41a' }}
+        >
+          Add
+        </Button>
+      );
+    } else {
+      actions.push(
+        <Tooltip title={item.reason}>
+          <Button
+            type="text"
+            icon={<StopOutlined />}
+            disabled
+            size="small"
+          >
+            Cannot Add
+          </Button>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <List.Item actions={actions}>
+        <List.Item.Meta
+          avatar={getIcon(item.type)}
+          title={
+            <Space>
+              <Text strong>{item.node.name}</Text>
+              <Text type="secondary" style={{ fontSize: '12px' }}>({item.node.id})</Text>
+            </Space>
+          }
+          description={
+            <Space direction="vertical" size={0}>
+              {getTypeTag(item.type)}
+              {item.reason && <Text type="secondary" style={{ fontSize: '12px' }}>{item.reason}</Text>}
+            </Space>
+          }
+        />
+      </List.Item>
+    );
   };
 
   if (loading) {
@@ -150,84 +255,45 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
     );
   }
 
+  // Group relationships by type
+  const dependencies = relationships.filter(r => r.type === 'dependency');
+  const available = relationships.filter(r => r.type === 'available');
+  const cannotAdd = relationships.filter(r => r.type === 'parent' || r.type === 'ancestor');
+
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
       <Title level={4}>Dependencies for {node.name}</Title>
       
-      <Alert
-        message="Dependency Management"
-        description="Add or remove dependencies for this node. Circular dependencies are automatically prevented."
-        type="info"
-        showIcon
-        style={{ marginBottom: '16px' }}
-      />
-      
       <div style={{ marginBottom: '24px' }}>
-        <Text strong>Current Dependencies ({dependencies.length})</Text>
-        <List
-          style={{ marginTop: '12px' }}
-          bordered
-          dataSource={dependencies}
-          locale={{ emptyText: 'No dependencies' }}
-          renderItem={(depId) => (
-            <List.Item
-              actions={[
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => handleRemoveDependency(depId)}
-                  disabled={saving}
-                >
-                  Remove
-                </Button>
-              ]}
-            >
-              <Tag color="blue">{depId}</Tag>
-            </List.Item>
-          )}
-        />
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text type="secondary">
+            Manage dependencies between nodes. Circular dependencies are automatically prevented.
+          </Text>
+          
+          <Space>
+            <Space><LinkOutlined style={{ color: '#1890ff' }} /> Current dependency</Space>
+            <Space><ArrowRightOutlined style={{ color: '#52c41a' }} /> Can be added</Space>
+            <Space><BranchesOutlined style={{ color: '#fa8c16' }} /> Direct parent</Space>
+            <Space><ForkOutlined style={{ color: '#ff4d4f' }} /> Indirect parent</Space>
+          </Space>
+        </Space>
       </div>
       
-      <div>
-        <Text strong>Add New Dependency</Text>
-        <Space style={{ marginTop: '12px', width: '100%' }} direction="vertical">
-          <Select
-            style={{ width: '100%' }}
-            placeholder="Select a node to add as dependency"
-            value={selectedNode}
-            onChange={setSelectedNode}
-            disabled={saving || availableNodes.length === 0}
-            showSearch
-            filterOption={(input, option) => {
-              const label = option?.label as string;
-              return label?.toLowerCase().includes(input.toLowerCase());
-            }}
-            options={availableNodes.map(n => ({
-              value: n.id,
-              label: `${n.name} (${n.id})`
-            }))}
-          />
-          
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleAddDependency}
-            disabled={!selectedNode || saving}
-            loading={saving}
-          >
-            Add Dependency
-          </Button>
+      <List
+        dataSource={relationships}
+        renderItem={renderItem}
+        loading={loading}
+        locale={{ emptyText: 'No other nodes in the system' }}
+        style={{ marginTop: '16px' }}
+      />
+      
+      <div style={{ marginTop: '24px' }}>
+        <Space direction="vertical" size="small">
+          <Text strong>Summary:</Text>
+          <Text>{dependencies.length} current dependencies</Text>
+          <Text>{available.length} nodes available to add</Text>
+          <Text>{cannotAdd.length} nodes cannot be added (would create cycles)</Text>
         </Space>
-        
-        {availableNodes.length === 0 && (
-          <Alert
-            message="No available nodes"
-            description="All other nodes either already depend on this node or are already listed as dependencies."
-            type="warning"
-            style={{ marginTop: '16px' }}
-          />
-        )}
       </div>
     </div>
   );
