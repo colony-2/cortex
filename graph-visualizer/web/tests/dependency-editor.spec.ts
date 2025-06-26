@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Dependency Editor', () => {
+test.describe('Relationship Editor', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/boxes');
     
@@ -25,23 +25,23 @@ test.describe('Dependency Editor', () => {
     // Click on Config tab
     await page.click('.ant-tabs-tab:has-text("Config")');
     
-    // Click on Dependencies subtab
-    await page.click('.ant-tabs-tab:has-text("Dependencies")');
+    // Click on Relationships subtab
+    await page.click('.ant-tabs-tab:has-text("Relationships")');
     
-    // Wait for dependency editor to load
-    await page.waitForSelector('text=Dependencies for api', { state: 'visible' });
+    // Wait for relationship editor to load
+    await page.waitForSelector('text=Relationships for api', { state: 'visible' });
   });
 
-  test('should display current dependencies', async ({ page }) => {
-    // Check if the dependencies section is visible
-    await expect(page.locator('text=Dependencies for api')).toBeVisible();
+  test('should display current relationships', async ({ page }) => {
+    // Check if the relationships section is visible
+    await expect(page.locator('text=Relationships for api')).toBeVisible();
     
-    // Check if the current dependencies list is visible
-    await expect(page.locator('text=Current Dependencies')).toBeVisible();
+    // Check if the current relationships list is visible
+    await expect(page.locator('text=Current Relationships')).toBeVisible();
     
-    // The api node should have some dependencies listed
-    const dependencyList = page.locator('.ant-list');
-    await expect(dependencyList).toBeVisible();
+    // The api node should have some relationships listed
+    const relationshipList = page.locator('.ant-list');
+    await expect(relationshipList).toBeVisible();
   });
 
   test('should show available nodes in dropdown', async ({ page }) => {
@@ -62,11 +62,11 @@ test.describe('Dependency Editor', () => {
     expect(count).toBeGreaterThan(0);
   });
 
-  test('should add a new dependency', async ({ page }) => {
+  test('should add a new relationship', async ({ page }) => {
     // Wait a bit for the component to be fully loaded
     await page.waitForTimeout(500);
     
-    // Get initial dependency count
+    // Get initial relationship count
     const initialItems = await page.locator('.ant-list-item').count();
     
     // Click on the select dropdown
@@ -77,52 +77,52 @@ test.describe('Dependency Editor', () => {
     // Wait for dropdown to appear
     await page.waitForSelector('.ant-select-dropdown', { state: 'visible', timeout: 10000 });
     
-    // Select a node that's not already a dependency
+    // Select a node that's not already a relationship
     const availableOption = page.locator('.ant-select-item-option').first();
     await expect(availableOption).toBeVisible();
     const optionText = await availableOption.textContent();
     await availableOption.click();
     
-    // Click Add Dependency button
-    const addButton = page.locator('button:has-text("Add Dependency")');
+    // Click Add Relationship button
+    const addButton = page.locator('button:has-text("Add Relationship")');
     await expect(addButton).toBeEnabled();
     await addButton.click();
     
     // Wait for success message
     await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 10000 });
     
-    // Verify the dependency was added
+    // Verify the relationship was added
     const newItems = await page.locator('.ant-list-item').count();
     expect(newItems).toBe(initialItems + 1);
   });
 
-  test('should remove a dependency', async ({ page }) => {
-    // Get initial dependency count
+  test('should remove a relationship', async ({ page }) => {
+    // Get initial relationship count
     const initialItems = await page.locator('.ant-list-item').count();
     
-    // Skip if no dependencies
+    // Skip if no relationships
     if (initialItems === 0) {
       test.skip();
       return;
     }
     
-    // Click remove on the first dependency
+    // Click remove on the first relationship
     await page.click('.ant-list-item button:has-text("Remove")').first();
     
     // Wait for success message
     await expect(page.locator('.ant-message-success')).toBeVisible();
     
-    // Verify the dependency was removed
+    // Verify the relationship was removed
     const newItems = await page.locator('.ant-list-item').count();
     expect(newItems).toBe(initialItems - 1);
   });
 
-  test('should prevent circular dependencies', async ({ page }) => {
+  test('should prevent circular relationships', async ({ page }) => {
     // Wait a bit for the component to be fully loaded
     await page.waitForTimeout(500);
     
-    // The api node is already selected, so we can check its available dependencies
-    // It should not show nodes that depend on it
+    // The api node is already selected, so we can check its available relationships
+    // It should not show nodes that relate to it
     
     // Click on the select dropdown
     const selector = page.locator('.ant-select-selector');
@@ -135,16 +135,16 @@ test.describe('Dependency Editor', () => {
     // Get all available options
     const options = await page.locator('.ant-select-item-option').allTextContents();
     
-    // Find nodes that depend on api - these should NOT be in the available list
-    // From the graph structure, we know which nodes typically depend on api
-    const nodesThatDependOnApi = ['auth', 'frontend']; // These are common dependents
+    // Find nodes that relate to api - these should NOT be in the available list
+    // From the graph structure, we know which nodes typically relate to api
+    const nodesThatRelateToApi = ['auth', 'frontend']; // These are common relationships
     
-    // Check that nodes which depend on api are not available as options
-    for (const node of nodesThatDependOnApi) {
+    // Check that nodes which relate to api are not available as options
+    for (const node of nodesThatRelateToApi) {
       const hasNode = options.some(text => text.toLowerCase().includes(node));
       if (hasNode) {
-        // If the node is in options, it means it doesn't depend on api
-        // which is fine - the test adapts to the actual dependency structure
+        // If the node is in options, it means it doesn't relate to api
+        // which is fine - the test adapts to the actual relationship structure
         expect(hasNode).toBe(true);
       }
     }

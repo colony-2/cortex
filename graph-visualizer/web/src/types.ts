@@ -3,7 +3,7 @@ export interface DependencyNode {
   name: string;
   path: string;
   type: string;
-  dependencies: string[];
+  relationships: string[];
 }
 
 export interface DependencyEdge {
@@ -16,6 +16,11 @@ export interface NodePosition {
   nodeId: string;
   x: number;
   y: number;
+}
+
+export interface RelationshipGraph {
+  nodes: DependencyNode[];
+  edges: DependencyEdge[];
 }
 
 export interface DependencyGraph {

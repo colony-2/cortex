@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('New Dependency Editor', () => {
+test.describe('New Relationship Editor', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/boxes');
     
@@ -21,11 +21,11 @@ test.describe('New Dependency Editor', () => {
     // Click on Config tab
     await page.click('.ant-tabs-tab:has-text("Config")');
     
-    // Click on Dependencies subtab
-    await page.click('.ant-tabs-tab:has-text("Dependencies")');
+    // Click on Relationships subtab
+    await page.click('.ant-tabs-tab:has-text("Relationships")');
     
-    // Wait for dependency editor to load
-    await page.waitForSelector('text=Dependencies for api', { state: 'visible' });
+    // Wait for relationship editor to load
+    await page.waitForSelector('text=Relationships for api', { state: 'visible' });
   });
 
   test('should display all nodes in a single list', async ({ page }) => {
@@ -33,14 +33,14 @@ test.describe('New Dependency Editor', () => {
     await expect(page.locator('.ant-list')).toBeVisible();
     
     // Check for the legend with exact text matching
-    await expect(page.getByText('Current dependency', { exact: true })).toBeVisible();
+    await expect(page.getByText('Current relationship', { exact: true })).toBeVisible();
     await expect(page.getByText('Can be added', { exact: true })).toBeVisible();
     await expect(page.getByText('Direct parent', { exact: true })).toBeVisible();
     await expect(page.getByText('Indirect parent', { exact: true })).toBeVisible();
   });
 
-  test('should show remove buttons for dependencies', async ({ page }) => {
-    // Look for items with blue link icons (dependencies)
+  test('should show remove buttons for relationships', async ({ page }) => {
+    // Look for items with blue link icons (relationships)
     const removeButtons = page.locator('button:has-text("Remove")');
     const count = await removeButtons.count();
     
@@ -74,7 +74,7 @@ test.describe('New Dependency Editor', () => {
     }
   });
 
-  test('should update list when adding a dependency', async ({ page }) => {
+  test('should update list when adding a relationship', async ({ page }) => {
     // Find an available node to add (has Add button)
     const addButton = page.locator('button:has-text("Add")').first();
     const hasAvailable = await addButton.count() > 0;
@@ -101,8 +101,8 @@ test.describe('New Dependency Editor', () => {
     }
   });
 
-  test('should update list when removing a dependency', async ({ page }) => {
-    // Find a current dependency to remove (has Remove button)
+  test('should update list when removing a relationship', async ({ page }) => {
+    // Find a current relationship to remove (has Remove button)
     const removeButton = page.locator('button:has-text("Remove")').first();
     const hasDeps = await removeButton.count() > 0;
     

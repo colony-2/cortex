@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Dependency Editor - Edge Updates', () => {
+test.describe('Relationship Editor - Edge Updates', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/boxes');
     // Wait for the loading to finish
     await page.waitForSelector('.react-flow', { timeout: 10000 });
   });
 
-  test('should refresh graph when dependencies are updated', async ({ page }) => {
+  test('should refresh graph when relationships are updated', async ({ page }) => {
     // Wait for nodes to be rendered
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
@@ -21,17 +21,17 @@ test.describe('Dependency Editor - Edge Updates', () => {
     // Click on Config tab
     await page.click('[role="tab"]:has-text("Config")');
     
-    // Click on Dependencies subtab
-    await page.click('[role="tab"]:has-text("Dependencies")');
+    // Click on Relationships subtab
+    await page.click('[role="tab"]:has-text("Relationships")');
     
-    // Wait for dependency editor to load
-    await page.waitForSelector('text=Dependencies for auth');
+    // Wait for relationship editor to load
+    await page.waitForSelector('text=Relationships for auth');
     
     // Check if there's a dropdown selector
     const selector = await page.locator('.ant-select-selector').isVisible();
     
     if (selector) {
-      // Try to add a dependency
+      // Try to add a relationship
       await page.click('.ant-select-selector');
       
       // Wait for dropdown options
@@ -44,14 +44,14 @@ test.describe('Dependency Editor - Edge Updates', () => {
       if (hasOptions) {
         await firstOption.click();
         
-        // Click Add Dependency button
-        await page.click('button:has-text("Add Dependency")');
+        // Click Add Relationship button
+        await page.click('button:has-text("Add Relationship")');
         
         // Wait for success message
-        await expect(page.getByText('Dependencies updated successfully')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText('Relationships updated successfully')).toBeVisible({ timeout: 10000 });
         
         // Wait for graph update message
-        await expect(page.getByText('Graph updated with new dependencies')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByText('Graph updated with new relationships')).toBeVisible({ timeout: 10000 });
       }
     }
   });

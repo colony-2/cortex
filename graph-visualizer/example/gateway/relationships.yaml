@@ -1,4 +1,4 @@
-dependencies:
+relationships:
   - frontend
   - api
   - monitoring

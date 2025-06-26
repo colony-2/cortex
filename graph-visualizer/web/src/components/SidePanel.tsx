@@ -4,7 +4,7 @@ import { Tabs, Empty, Typography, Input, List } from 'antd';
 import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
 import EnvEditor from './EnvEditor';
-import DependencyEditor from './DependencyEditor';
+import RelationshipEditor from './DependencyEditor';
 import GitChanges from './GitChanges';
 import type { DependencyNode } from '../types';
 import { navigateToPath } from '../utils/urlState';
@@ -120,20 +120,13 @@ const ConfigurationTabs = () => {
 };
 
 // Config tabs for selected node
-const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
-  const { subtab } = useParams<{ subtab?: string }>();
+const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
+  const { boxId, subtab } = useParams<{ boxId?: string; subtab?: string }>();
   const navigate = useNavigate();
+  
+  // Use either the node ID or the boxId from URL
+  const nodeId = node?.id || boxId;
   const items = [
-    {
-      key: 'claude-code',
-      label: (
-        <span>
-          <CodeOutlined />
-          Claude Code
-        </span>
-      ),
-      children: <ClaudeCodeContent />,
-    },
     {
       key: 'env',
       label: (
@@ -142,26 +135,38 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
           Env
         </span>
       ),
-      children: <EnvEditor node={node} />,
+      children: node ? <EnvEditor node={node} /> : <div style={{ padding: '16px' }}>Loading...</div>,
     },
     {
-      key: 'dependencies',
+      key: 'relationships',
       label: (
         <span>
           <BranchesOutlined />
-          Dependencies
+          Relationships
         </span>
       ),
-      children: <DependencyEditor node={node} />,
+      children: node ? <RelationshipEditor node={node} /> : <div style={{ padding: '16px' }}>Loading...</div>,
+    },
+    {
+      key: 'claude',
+      label: (
+        <span>
+          <CodeOutlined />
+          Claude
+        </span>
+      ),
+      children: <ClaudeCodeContent />,
     },
   ];
 
   return (
     <Tabs
-      activeKey={subtab || 'claude-code'}
+      activeKey={subtab || 'env'}
       onChange={(key) => {
-        const path = navigateToPath({ boxId: node.id, tab: 'config', subtab: key });
-        navigate(path);
+        if (nodeId) {
+          const path = navigateToPath({ boxId: nodeId, tab: 'config', subtab: key });
+          navigate(path);
+        }
       }}
       items={items}
       tabPosition="left"
@@ -171,31 +176,37 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
 };
 
 export default function SidePanel({ selectedNode }: SidePanelProps) {
-  const { tab } = useParams<{ tab?: string }>();
+  const { boxId, tab } = useParams<{ boxId?: string; tab?: string }>();
   const navigate = useNavigate();
-  // Initialize activeTab from URL or default based on whether a node is selected
-  const defaultTab = selectedNode ? 'files' : 'config';
+  
+  // If we have a boxId in the URL, we should show node-specific tabs
+  const showNodeTabs = !!boxId;
+  
+  // Initialize activeTab from URL or default based on whether we're showing node tabs
+  const defaultTab = showNodeTabs ? 'files' : 'config';
   const [activeTab, setActiveTab] = useState<string>(tab || defaultTab);
 
-  // Update active tab when URL changes or selectedNode changes
+  // Update active tab when URL changes
   useEffect(() => {
     if (tab) {
       setActiveTab(tab);
-    } else if (selectedNode) {
+    } else if (showNodeTabs) {
       setActiveTab('files');
     } else {
       setActiveTab('config');
     }
-  }, [tab, selectedNode]);
+  }, [tab, showNodeTabs]);
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    if (selectedNode) {
-      const path = navigateToPath({ boxId: selectedNode.id, tab: key });
+    if (boxId) {
+      const path = navigateToPath({ boxId, tab: key });
       navigate(path);
     }
   };
-  const items = selectedNode ? [
+  
+  // Show node-specific tabs if we have a boxId OR selectedNode
+  const items = (showNodeTabs || selectedNode) ? [
     {
       key: 'files',
       label: (

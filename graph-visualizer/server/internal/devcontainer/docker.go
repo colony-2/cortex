@@ -283,6 +283,102 @@ func (c *DockerRunConfig) ToDockerRunArgs() []string {
 	return args
 }
 
+// ToDockerCreateArgs converts DockerRunConfig to docker create command arguments
+func (c *DockerRunConfig) ToDockerCreateArgs() []string {
+	args := []string{"create"}
+
+	// Add workspace mount
+	if c.WorkspaceMount != "" {
+		args = append(args, "--mount", c.WorkspaceMount)
+	}
+
+	// Add working directory
+	if c.WorkspaceFolder != "" {
+		args = append(args, "-w", c.WorkspaceFolder)
+	}
+
+	// Add additional mounts
+	for _, mount := range c.Mounts {
+		args = append(args, "--mount", mount)
+	}
+
+	// Add environment variables
+	for k, v := range c.Environment {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Add ports
+	for _, port := range c.Ports {
+		args = append(args, "-p", port)
+	}
+
+	// Add privileged flag
+	if c.Privileged {
+		args = append(args, "--privileged")
+	}
+
+	// Add init flag
+	if c.Init {
+		args = append(args, "--init")
+	}
+
+	// Add user
+	if c.User != "" {
+		args = append(args, "--user", c.User)
+	}
+
+	// Add capabilities
+	for _, cap := range c.Capabilities {
+		args = append(args, "--cap-add", cap)
+	}
+
+	// Add security options
+	for _, opt := range c.SecurityOpts {
+		args = append(args, "--security-opt", opt)
+	}
+
+	// Add hostname
+	if c.Hostname != "" {
+		args = append(args, "--hostname", c.Hostname)
+	}
+
+	// Add network
+	if c.Network != "" {
+		args = append(args, "--network", c.Network)
+	}
+
+	// Add DNS servers
+	for _, dns := range c.DNS {
+		args = append(args, "--dns", dns)
+	}
+
+	// Add extra hosts
+	for _, host := range c.ExtraHosts {
+		args = append(args, "--add-host", host)
+	}
+
+	// Add legacy volumes
+	for _, vol := range c.Volumes {
+		args = append(args, "-v", vol)
+	}
+
+	// Add custom run args (but filter out interactive flags)
+	for _, arg := range c.RunArgs {
+		// Skip interactive flags that don't work with create
+		if arg != "-i" && arg != "-t" && arg != "-it" && arg != "--interactive" && arg != "--tty" {
+			args = append(args, arg)
+		}
+	}
+
+	// Add image
+	args = append(args, c.Image)
+
+	// Add a command to keep container running
+	args = append(args, "sleep", "infinity")
+
+	return args
+}
+
 func buildMountString(mount DevContainerCommonMountsElem) string {
 	parts := []string{
 		fmt.Sprintf("type=%s", mount.Type),
@@ -347,11 +443,35 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// checkDockerDaemon verifies that Docker daemon is running and available
+func checkDockerDaemon() error {
+	cmd := exec.Command("docker", "info")
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			switch exitErr.ExitCode() {
+			case 1:
+				return fmt.Errorf("Docker daemon is not running. Please start Docker Desktop or the Docker service")
+			case 125:
+				return fmt.Errorf("Docker command error. Please check your Docker installation")
+			default:
+				return fmt.Errorf("Docker is not available (exit code %d). Please ensure Docker is installed and running", exitErr.ExitCode())
+			}
+		}
+		return fmt.Errorf("Docker is not available: %w", err)
+	}
+	return nil
+}
+
 // DockerManager manages Docker operations for devcontainers
 type DockerManager struct{}
 
 // CreateContainer creates a new Docker container from a DevContainer configuration
 func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, workspaceRoot string) (string, error) {
+	// Check if Docker daemon is available
+	if err := checkDockerDaemon(); err != nil {
+		return "", err
+	}
+	
 	// Validate workspace root exists
 	if _, err := os.Stat(workspaceRoot); os.IsNotExist(err) {
 		return "", fmt.Errorf("workspace root does not exist: %s", workspaceRoot)
@@ -368,18 +488,8 @@ func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, w
 		return "", fmt.Errorf("invalid docker configuration: %w", err)
 	}
 	
-	// Build the docker command arguments
-	args := config.ToDockerRunArgs()
-	
-	// Modify for create command: replace "run" with "create" and remove interactive flags
-	createArgs := []string{"create", "-d"}
-	// Skip "run", "--rm", "-it" from the beginning
-	for i := 3; i < len(args); i++ {
-		createArgs = append(createArgs, args[i])
-	}
-	
-	// Add a command to keep container running
-	createArgs = append(createArgs, "sleep", "infinity")
+	// Build the docker create command arguments
+	createArgs := config.ToDockerCreateArgs()
 	
 	// Log the command for debugging
 	fmt.Printf("DEBUG: Docker create command: docker %v\n", createArgs)
@@ -388,8 +498,23 @@ func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, w
 	cmd := exec.CommandContext(ctx, "docker", createArgs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		// Provide specific error messages based on exit code
+		var errorMsg string
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			switch exitErr.ExitCode() {
+			case 1:
+				errorMsg = "Docker daemon connection failed"
+			case 125:
+				errorMsg = "Invalid Docker command or configuration"
+			default:
+				errorMsg = fmt.Sprintf("Docker command failed with exit code %d", exitErr.ExitCode())
+			}
+		} else {
+			errorMsg = "Docker command execution failed"
+		}
+		
 		// Include the docker output in the error for better debugging
-		return "", fmt.Errorf("failed to create container: %w\nDocker command: docker %v\nDocker output: %s", err, createArgs, string(output))
+		return "", fmt.Errorf("%s: %w\nDocker command: docker %v\nDocker output: %s", errorMsg, err, createArgs, string(output))
 	}
 
 	// Extract container ID from output

@@ -4,7 +4,7 @@ import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyf
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse, Splitter } from 'antd';
 import { fetchGraph, fetchPositions, savePositions } from '../api';
-import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
+import type { RelationshipGraph, DependencyNode, NodePosition } from '../types';
 import ProFlowNode from './ProFlowNode';
 import SidePanel from './SidePanel';
 import { navigateToPath } from '../utils/urlState';
@@ -38,7 +38,7 @@ export default function GraphFlow() {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const graphRef = useRef<DependencyGraph | null>(null);
+  const graphRef = useRef<RelationshipGraph | null>(null);
   const isInitialLoad = useRef(true);
 
   const handleNodeClick = useCallback((nodeId: string) => {
@@ -49,7 +49,7 @@ export default function GraphFlow() {
     navigate(path);
   }, [navigate, tab]);
 
-  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[], selectedNodeId?: string) => {
+  const layoutNodes = useCallback((graphData: RelationshipGraph, savedPositions: NodePosition[], selectedNodeId?: string) => {
     // Handle null or undefined nodes
     if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
       setNodes([]);
@@ -76,7 +76,7 @@ export default function GraphFlow() {
           title: node.name,
           name: node.name,
           type: node.type,
-          dependencies: node.dependencies,
+          relationships: node.relationships,
           logo: '📦',
           selected: selectedNodeId === node.id
         },
@@ -154,19 +154,19 @@ export default function GraphFlow() {
           }
         }
         
-        message.success('Graph updated with new dependencies');
+        message.success('Graph updated with new relationships');
       } catch (err) {
-        console.error('Failed to refresh graph after dependency update:', err);
+        console.error('Failed to refresh graph after relationship update:', err);
         message.error('Failed to refresh graph');
       }
     };
     
     window.addEventListener('nodeSelected', handleNodeSelection as EventListener);
-    window.addEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
+    window.addEventListener('relationshipsUpdated', handleDependencyUpdate as EventListener);
     
     return () => {
       window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
-      window.removeEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
+      window.removeEventListener('relationshipsUpdated', handleDependencyUpdate as EventListener);
     };
   }, [handleNodeClick, layoutNodes, selectedNode?.id]);
 
@@ -256,7 +256,7 @@ export default function GraphFlow() {
             <Collapse.Panel header="Troubleshooting Tips" key="1">
               <ul style={{ paddingLeft: '1rem' }}>
                 <li>Check if the server is running on the correct port</li>
-                <li>Verify the directory contains dependencies.yaml files</li>
+                <li>Verify the directory contains relationships.yaml files</li>
                 <li>Ensure the .vibestate.db file exists or use the -n flag</li>
                 <li>Check the browser console for more details</li>
               </ul>

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Edge Display Verification', () => {
-  test('should display all edges based on dependencies', async ({ page }) => {
+  test('should display all edges based on relationships', async ({ page }) => {
     await page.goto('/boxes');
     
     // Wait for graph to be fully loaded
@@ -35,7 +35,7 @@ test.describe('Edge Display Verification', () => {
     }
   });
 
-  test('should update edges when dependencies change', async ({ page }) => {
+  test('should update edges when relationships change', async ({ page }) => {
     await page.goto('/boxes');
     
     // Wait for graph to load
@@ -55,14 +55,14 @@ test.describe('Edge Display Verification', () => {
     // Navigate to dependencies tab
     await page.waitForSelector('.ant-tabs-content', { state: 'visible' });
     await page.click('.ant-tabs-tab:has-text("Config")');
-    await page.click('.ant-tabs-tab:has-text("Dependencies")');
-    await page.waitForSelector('text=Dependencies for api', { state: 'visible' });
+    await page.click('.ant-tabs-tab:has-text("Relationships")');
+    await page.waitForSelector('text=Relationships for api', { state: 'visible' });
     
-    // Get current dependencies count
+    // Get current relationships count
     const currentDeps = await page.locator('.ant-list-item').count();
     
     if (currentDeps > 0) {
-      // Remove a dependency
+      // Remove a relationship
       const removeButton = page.locator('.ant-list-item button:has-text("Remove")').first();
       await removeButton.click();
       await page.waitForSelector('.ant-message-success', { state: 'visible' });
@@ -75,7 +75,7 @@ test.describe('Edge Display Verification', () => {
       console.log(`Edge count after removal: ${newEdgeCount}`);
       expect(newEdgeCount).toBe(initialEdgeCount - 1);
     } else {
-      // Add a dependency if none exist
+      // Add a relationship if none exist
       const selector = page.locator('.ant-select-selector');
       await selector.click();
       
@@ -86,7 +86,7 @@ test.describe('Edge Display Verification', () => {
         const hasOptions = await page.locator('.ant-select-item-option').count() > 0;
         if (hasOptions) {
           await page.locator('.ant-select-item-option').first().click();
-          await page.click('button:has-text("Add Dependency")');
+          await page.click('button:has-text("Add Relationship")');
           await page.waitForSelector('.ant-message-success', { state: 'visible' });
           
           // Wait for graph to update
@@ -98,7 +98,7 @@ test.describe('Edge Display Verification', () => {
           expect(newEdgeCount).toBe(initialEdgeCount + 1);
         }
       } catch (e) {
-        console.log('No options available to add dependencies');
+        console.log('No options available to add relationships');
       }
     }
   });

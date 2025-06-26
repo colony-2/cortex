@@ -28,7 +28,13 @@
       "Bash(grep:*)",
       "Bash(git add:*)",
       "Bash(git restore:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(docker:*)",
+      "Bash(pgrep:*)",
+      "Bash(go run:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 10s go run . -n ../example)"
     ],
     "deny": []
   }

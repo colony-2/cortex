@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import { Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Space } from 'antd';
 import { FolderOutlined, FileOutlined, HomeOutlined } from '@ant-design/icons';
 import { fetchFiles } from '../api';
@@ -22,10 +23,15 @@ interface FileItem {
 }
 
 export default function FileBrowser({ node }: FileBrowserProps) {
+  const { boxId } = useParams<{ boxId?: string }>();
   const [currentPath, setCurrentPath] = useState<string>('');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Get the node ID from either the node prop or URL params
+  const nodeId = node?.id || boxId;
+  const nodeName = node?.name || boxId || 'Loading...';
 
   const breadcrumbItems = useMemo(() => {
     const parts = currentPath.split('/').filter(Boolean);
@@ -52,14 +58,14 @@ export default function FileBrowser({ node }: FileBrowserProps) {
   }, [currentPath]);
 
   useEffect(() => {
-    if (!node) return;
+    if (!nodeId) return;
 
     const loadFiles = async () => {
       setLoading(true);
       setError(null);
       
       try {
-        const result = await fetchFiles(node.id, currentPath);
+        const result = await fetchFiles(nodeId, currentPath);
         
         // Transform files to our format
         const transformedData = result.files.map((file: any) => ({
@@ -84,7 +90,7 @@ export default function FileBrowser({ node }: FileBrowserProps) {
     };
 
     loadFiles();
-  }, [node, currentPath]);
+  }, [nodeId, currentPath]);
 
   const handleFileClick = (file: FileItem) => {
     if (file.isDir) {
@@ -107,15 +113,19 @@ export default function FileBrowser({ node }: FileBrowserProps) {
     return <FileOutlined style={{ fontSize: '24px', color: '#52c41a' }} />;
   };
 
-  if (!node) {
-    return null;
+  if (!nodeId) {
+    return (
+      <div style={{ padding: '16px' }}>
+        <Spin size="large" tip="Loading..." style={{ display: 'block', margin: '40px auto' }} />
+      </div>
+    );
   }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '16px 16px 0', borderBottom: '1px solid #f0f0f0' }}>
         <Space direction="vertical" style={{ width: '100%' }} size={8}>
-          <Text strong style={{ fontSize: '16px' }}>{node.name}</Text>
+          <Text strong style={{ fontSize: '16px' }}>{nodeName}</Text>
           <Breadcrumb items={breadcrumbItems} />
         </Space>
       </div>

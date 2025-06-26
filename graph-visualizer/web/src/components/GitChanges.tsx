@@ -8,7 +8,7 @@ import { navigateToPath } from '../utils/urlState';
 const { Title, Text } = Typography;
 
 interface GitChangesProps {
-  node: DependencyNode;
+  node: DependencyNode | null;
 }
 
 interface GitStatus {
@@ -40,7 +40,7 @@ interface GitDiff {
 }
 
 export default function GitChanges({ node }: GitChangesProps) {
-  const { subtab = 'summary' } = useParams<{ subtab?: string }>();
+  const { boxId, subtab = 'summary' } = useParams<{ boxId?: string; subtab?: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(subtab);
   const [status, setStatus] = useState<GitStatus | null>(null);
@@ -49,6 +49,9 @@ export default function GitChanges({ node }: GitChangesProps) {
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
 
+  // Get the node ID from either the node prop or URL params
+  const nodeId = node?.id || boxId;
+
   // Update active tab when URL changes
   useEffect(() => {
     setActiveTab(subtab);
@@ -56,14 +59,17 @@ export default function GitChanges({ node }: GitChangesProps) {
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    const path = navigateToPath({ boxId: node.id, tab: 'changes', subtab: key });
-    navigate(path);
+    if (nodeId) {
+      const path = navigateToPath({ boxId: nodeId, tab: 'changes', subtab: key });
+      navigate(path);
+    }
   };
 
   // Fetch git status
   const fetchStatus = async () => {
+    if (!nodeId) return;
     try {
-      const response = await fetch(`/api/nodes/${node.id}/git/status`);
+      const response = await fetch(`/api/nodes/${nodeId}/git/status`);
       if (response.ok) {
         const data = await response.json();
         setStatus(data);
@@ -78,8 +84,9 @@ export default function GitChanges({ node }: GitChangesProps) {
 
   // Fetch git diff
   const fetchDiff = async () => {
+    if (!nodeId) return;
     try {
-      const response = await fetch(`/api/nodes/${node.id}/git/diff`);
+      const response = await fetch(`/api/nodes/${nodeId}/git/diff`);
       if (response.ok) {
         const data = await response.json();
         setDiff(data);
@@ -94,8 +101,9 @@ export default function GitChanges({ node }: GitChangesProps) {
 
   // Fetch git history
   const fetchHistory = async () => {
+    if (!nodeId) return;
     try {
-      const response = await fetch(`/api/nodes/${node.id}/git/history`);
+      const response = await fetch(`/api/nodes/${nodeId}/git/history`);
       if (response.ok) {
         const data = await response.json();
         setHistory(data);
@@ -124,13 +132,13 @@ export default function GitChanges({ node }: GitChangesProps) {
     };
 
     loadData();
-  }, [node.id, activeTab]);
+  }, [nodeId, activeTab]);
 
   // Handle commit
   const handleCommit = async () => {
     setCommitting(true);
     try {
-      const response = await fetch(`/api/nodes/${node.id}/git/commit`, {
+      const response = await fetch(`/api/nodes/${nodeId}/git/commit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

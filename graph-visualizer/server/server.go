@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// Server holds the application state and dependencies
+// Server holds the application state and relationships
 type Server struct {
 	storage  *PositionStorage
 	rootPath string

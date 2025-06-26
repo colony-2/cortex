@@ -15,15 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Dependency struct {
-	Dependencies []string `yaml:"dependencies"`
+type Relationship struct {
+	Relationships []string `yaml:"relationships"`
 }
 
 type Node struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Path         string   `json:"path"`
-	Dependencies []string `json:"dependencies"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Path          string   `json:"path"`
+	Relationships []string `json:"relationships"`
 }
 
 type Graph struct {
@@ -67,9 +67,9 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "vibethis [path]",
-	Short: "A graph visualizer for directory dependencies",
-	Long: `vibethis is a tool that visualizes directory dependencies in your project.
-It scans for dependencies.yaml files and creates an interactive graph visualization.`,
+	Short: "A graph visualizer for directory relationships",
+	Long: `vibethis is a tool that visualizes directory relationships in your project.
+It scans for relationships.yaml files and creates an interactive graph visualization.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runServer,
 }
@@ -124,8 +124,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	apiRouter.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", getNodeFileHandler).Methods("GET")
 	apiRouter.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", putNodeFileHandler).Methods("PUT")
 	
-	// Dependencies management endpoint
-	apiRouter.HandleFunc("/nodes/{nodeId}/dependencies", updateDependenciesHandler).Methods("PUT")
+	// Relationships management endpoint
+	apiRouter.HandleFunc("/nodes/{nodeId}/relationships", updateRelationshipsHandler).Methods("PUT")
 	
 	// Git management endpoints
 	apiRouter.HandleFunc("/nodes/{nodeId}/git/status", server.handleGitStatus).Methods("GET")
@@ -171,7 +171,7 @@ func getGraphHandler(w http.ResponseWriter, r *http.Request) {
 	
 	log.Printf("Built graph with %d nodes and %d edges", len(graph.Nodes), len(graph.Edges))
 	if len(graph.Nodes) == 0 {
-		log.Printf("Warning: No nodes found. Check if dependencies.yaml files exist in %s", rootPath)
+		log.Printf("Warning: No nodes found. Check if relationships.yaml files exist in %s", rootPath)
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -272,8 +272,8 @@ func buildGraph(path string) Graph {
 			return nil
 		}
 		
-		depFile := filepath.Join(dirPath, "dependencies.yaml")
-		if _, err := os.Stat(depFile); os.IsNotExist(err) {
+		relFile := filepath.Join(dirPath, "relationships.yaml")
+		if _, err := os.Stat(relFile); os.IsNotExist(err) {
 			return nil
 		}
 		
@@ -286,11 +286,11 @@ func buildGraph(path string) Graph {
 			Path: relPath,
 		}
 		
-		data, err := os.ReadFile(depFile)
+		data, err := os.ReadFile(relFile)
 		if err == nil {
-			var dep Dependency
-			if err := yaml.Unmarshal(data, &dep); err == nil {
-				node.Dependencies = dep.Dependencies
+			var rel Relationship
+			if err := yaml.Unmarshal(data, &rel); err == nil {
+				node.Relationships = rel.Relationships
 			}
 		}
 		
@@ -306,10 +306,10 @@ func buildGraph(path string) Graph {
 	
 	var edges []Edge
 	for _, node := range nodes {
-		for _, dep := range node.Dependencies {
+		for _, rel := range node.Relationships {
 			edges = append(edges, Edge{
 				Source: node.ID,
-				Target: dep,
+				Target: rel,
 			})
 		}
 	}
@@ -360,16 +360,16 @@ func savePositionsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-func updateDependenciesHandler(w http.ResponseWriter, r *http.Request) {
+func updateRelationshipsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 	
 	var request struct {
-		Dependencies []string `json:"dependencies"`
+		Relationships []string `json:"relationships"`
 	}
 	
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		log.Printf("Error decoding dependencies request: %v", err)
+		log.Printf("Error decoding relationships request: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -399,28 +399,28 @@ func updateDependenciesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Create the dependency structure
-	dep := Dependency{
-		Dependencies: request.Dependencies,
+	// Create the relationship structure
+	rel := Relationship{
+		Relationships: request.Relationships,
 	}
 	
 	// Marshal to YAML
-	data, err := yaml.Marshal(&dep)
+	data, err := yaml.Marshal(&rel)
 	if err != nil {
-		log.Printf("Error marshaling dependencies: %v", err)
-		http.Error(w, "Failed to encode dependencies", http.StatusInternalServerError)
+		log.Printf("Error marshaling relationships: %v", err)
+		http.Error(w, "Failed to encode relationships", http.StatusInternalServerError)
 		return
 	}
 	
-	// Write to dependencies.yaml file
-	depFile := filepath.Join(nodePath, "dependencies.yaml")
-	if err := os.WriteFile(depFile, data, 0644); err != nil {
-		log.Printf("Error writing dependencies file: %v", err)
-		http.Error(w, "Failed to save dependencies", http.StatusInternalServerError)
+	// Write to relationships.yaml file
+	relFile := filepath.Join(nodePath, "relationships.yaml")
+	if err := os.WriteFile(relFile, data, 0644); err != nil {
+		log.Printf("Error writing relationships file: %v", err)
+		http.Error(w, "Failed to save relationships", http.StatusInternalServerError)
 		return
 	}
 	
-	log.Printf("Updated dependencies for node %s: %v", nodeID, request.Dependencies)
+	log.Printf("Updated relationships for node %s: %v", nodeID, request.Relationships)
 	
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})

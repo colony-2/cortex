@@ -1,4 +1,4 @@
-import type { DependencyGraph, NodePosition } from './types';
+import type { RelationshipGraph, NodePosition } from './types';
 
 // Use relative URLs in production, localhost in development
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
@@ -11,7 +11,7 @@ async function handleResponse(response: Response, operation: string) {
   return response;
 }
 
-export async function fetchGraph(): Promise<DependencyGraph> {
+export async function fetchGraph(): Promise<RelationshipGraph> {
   try {
     const response = await fetch(`${API_BASE}/graph`);
     await handleResponse(response, 'Fetch graph');

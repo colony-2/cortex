@@ -1,36 +1,35 @@
 import { useState, useEffect } from 'react';
-import { List, Button, Typography, Space, message, Spin, Tooltip } from 'antd';
+import { List, Button, Typography, Space, message, Spin, Modal } from 'antd';
 import { 
   DeleteOutlined, 
   PlusOutlined, 
   LinkOutlined,
   ArrowRightOutlined,
   BranchesOutlined,
-  StopOutlined,
   ForkOutlined
 } from '@ant-design/icons';
 import type { DependencyNode } from '../types';
 
 const { Title, Text } = Typography;
 
-interface DependencyEditorProps {
+interface RelationshipEditorProps {
   node: DependencyNode;
 }
 
 type NodeRelationship = {
   node: DependencyNode;
-  type: 'dependency' | 'available' | 'parent' | 'ancestor';
+  type: 'relationship' | 'available' | 'parent' | 'ancestor';
   reason?: string;
 };
 
-export default function DependencyEditor({ node }: DependencyEditorProps) {
+export default function RelationshipEditor({ node }: RelationshipEditorProps) {
   const [relationships, setRelationships] = useState<NodeRelationship[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchRelationships();
-  }, [node.id, node.dependencies]); // Re-fetch when node or its dependencies change
+  }, [node.id, node.relationships]); // Re-fetch when node or its relationships change
 
   const fetchRelationships = async () => {
     try {
@@ -47,7 +46,7 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       const categorized = await categorizeNodes(data.nodes, currentNode);
       setRelationships(categorized);
     } catch (error) {
-      message.error('Failed to load dependency data');
+      message.error('Failed to load relationship data');
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
@@ -56,7 +55,7 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
 
   const categorizeNodes = async (allNodes: DependencyNode[], currentNode: DependencyNode): Promise<NodeRelationship[]> => {
     const result: NodeRelationship[] = [];
-    const currentDeps = new Set(currentNode.dependencies || []);
+    const currentDeps = new Set(currentNode.relationships || []);
     
     // Find all ancestors (nodes that depend on current node)
     const ancestors = await findAncestors(allNodes, currentNode.id);
@@ -66,9 +65,9 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       if (node.id === currentNode.id) continue; // Skip self
       
       if (currentDeps.has(node.id)) {
-        // Current dependency
-        result.push({ node, type: 'dependency' });
-      } else if (node.dependencies?.includes(currentNode.id)) {
+        // Current relationship
+        result.push({ node, type: 'relationship' });
+      } else if (node.relationships?.includes(currentNode.id)) {
         // Direct parent
         result.push({ node, type: 'parent', reason: 'Depends on this node' });
       } else if (ancestorIds.has(node.id)) {
@@ -80,9 +79,9 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       }
     }
     
-    // Sort: dependencies first, then available, then parents, then ancestors
+    // Sort: relationships first, then available, then parents, then ancestors
     return result.sort((a, b) => {
-      const order = { dependency: 0, available: 1, parent: 2, ancestor: 3 };
+      const order = { relationship: 0, available: 1, parent: 2, ancestor: 3 };
       return order[a.type] - order[b.type];
     });
   };
@@ -96,7 +95,7 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       visited.add(targetId);
       
       const parents = allNodes.filter(n => 
-        n.dependencies && n.dependencies.includes(targetId)
+        n.relationships && n.relationships.includes(targetId)
       );
       
       parents.forEach(parent => {
@@ -111,46 +110,58 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
     return ancestors;
   };
 
-  const handleAddDependency = async (nodeId: string) => {
-    const currentDeps = node.dependencies || [];
-    const newDependencies = [...currentDeps, nodeId];
-    await saveDependencies(newDependencies);
+  const handleAddRelationship = async (nodeId: string) => {
+    const currentRels = node.relationships || [];
+    const newRelationships = [...currentRels, nodeId];
+    await saveRelationships(newRelationships);
   };
 
-  const handleRemoveDependency = async (nodeId: string) => {
-    const currentDeps = node.dependencies || [];
-    const newDependencies = currentDeps.filter(d => d !== nodeId);
-    await saveDependencies(newDependencies);
+  const handleRemoveRelationship = async (nodeId: string) => {
+    const targetNode = relationships.find(r => r.node.id === nodeId)?.node;
+    const nodeName = targetNode?.name || nodeId;
+    
+    Modal.confirm({
+      title: 'Remove Relationship',
+      content: `Are you sure you want to remove the relationship to "${nodeName}"?`,
+      okText: 'Remove',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        const currentRels = node.relationships || [];
+        const newRelationships = currentRels.filter(d => d !== nodeId);
+        await saveRelationships(newRelationships);
+      },
+    });
   };
 
-  const saveDependencies = async (newDependencies: string[]) => {
+  const saveRelationships = async (newRelationships: string[]) => {
     try {
       setSaving(true);
       
-      const response = await fetch(`/api/nodes/${node.id}/dependencies`, {
+      const response = await fetch(`/api/nodes/${node.id}/relationships`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          dependencies: newDependencies,
+          relationships: newRelationships,
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to save dependencies');
+        throw new Error('Failed to save relationships');
       }
       
-      message.success('Dependencies updated successfully');
+      message.success('Relationships updated successfully');
       
       // Dispatch event to update the graph
-      window.dispatchEvent(new CustomEvent('dependenciesUpdated'));
+      window.dispatchEvent(new CustomEvent('relationshipsUpdated'));
       
       // Refresh relationships
       await fetchRelationships();
     } catch (error) {
-      message.error('Failed to save dependencies');
-      console.error('Error saving dependencies:', error);
+      message.error('Failed to save relationships');
+      console.error('Error saving relationships:', error);
     } finally {
       setSaving(false);
     }
@@ -158,7 +169,7 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
 
   const getIcon = (type: NodeRelationship['type']) => {
     switch (type) {
-      case 'dependency':
+      case 'relationship':
         return <LinkOutlined style={{ color: '#1890ff' }} />;
       case 'available':
         return <ArrowRightOutlined style={{ color: '#52c41a' }} />;
@@ -173,13 +184,13 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
   const renderItem = (item: NodeRelationship) => {
     const actions = [];
     
-    if (item.type === 'dependency') {
+    if (item.type === 'relationship') {
       actions.push(
         <Button
           type="text"
           danger
           icon={<DeleteOutlined />}
-          onClick={() => handleRemoveDependency(item.node.id)}
+          onClick={() => handleRemoveRelationship(item.node.id)}
           disabled={saving}
           size="small"
         >
@@ -191,26 +202,13 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
         <Button
           type="text"
           icon={<PlusOutlined />}
-          onClick={() => handleAddDependency(item.node.id)}
+          onClick={() => handleAddRelationship(item.node.id)}
           disabled={saving}
           size="small"
           style={{ color: '#52c41a' }}
         >
           Add
         </Button>
-      );
-    } else {
-      actions.push(
-        <Tooltip title={item.reason}>
-          <Button
-            type="text"
-            icon={<StopOutlined />}
-            disabled
-            size="small"
-          >
-            Cannot Add
-          </Button>
-        </Tooltip>
       );
     }
 
@@ -220,7 +218,11 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
           avatar={getIcon(item.type)}
           title={<Text strong>{item.node.name}</Text>}
           description={
-            item.reason && <Text type="secondary" style={{ fontSize: '12px' }}>{item.reason}</Text>
+            item.reason ? (
+              <Text type="secondary" style={{ fontSize: '12px' }}>{item.reason}</Text>
+            ) : item.type === 'available' ? (
+              <Text type="secondary" style={{ fontSize: '12px' }}>Available to add as relationship</Text>
+            ) : null
           }
         />
       </List.Item>
@@ -230,23 +232,23 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
   if (loading) {
     return (
       <div style={{ padding: '24px', textAlign: 'center' }}>
-        <Spin tip="Loading dependencies..." />
+        <Spin tip="Loading relationships..." />
       </div>
     );
   }
 
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
-      <Title level={4}>Dependencies for {node.name}</Title>
+      <Title level={4}>Relationships for {node.name}</Title>
       
       <div style={{ marginBottom: '24px' }}>
         <Space direction="vertical" style={{ width: '100%' }}>
           <Text type="secondary">
-            Manage dependencies between nodes. Circular dependencies are automatically prevented.
+            Manage relationships between nodes. Circular relationships are automatically prevented.
           </Text>
           
           <Space>
-            <Space><LinkOutlined style={{ color: '#1890ff' }} /> Current dependency</Space>
+            <Space><LinkOutlined style={{ color: '#1890ff' }} /> Current relationship</Space>
             <Space><ArrowRightOutlined style={{ color: '#52c41a' }} /> Can be added</Space>
             <Space><BranchesOutlined style={{ color: '#fa8c16' }} /> Direct parent</Space>
             <Space><ForkOutlined style={{ color: '#ff4d4f' }} /> Indirect parent</Space>
