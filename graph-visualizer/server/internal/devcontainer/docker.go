@@ -450,14 +450,14 @@ func checkDockerDaemon() error {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			switch exitErr.ExitCode() {
 			case 1:
-				return fmt.Errorf("Docker daemon is not running. Please start Docker Desktop or the Docker service")
+				return fmt.Errorf("Docker daemon is not running. Please start Docker Desktop and wait for it to fully start up, then try again")
 			case 125:
-				return fmt.Errorf("Docker command error. Please check your Docker installation")
+				return fmt.Errorf("Docker command error. Please check your Docker installation and ensure it's properly configured")
 			default:
-				return fmt.Errorf("Docker is not available (exit code %d). Please ensure Docker is installed and running", exitErr.ExitCode())
+				return fmt.Errorf("Docker is not available (exit code %d). Please ensure Docker is installed, running, and accessible from the command line", exitErr.ExitCode())
 			}
 		}
-		return fmt.Errorf("Docker is not available: %w", err)
+		return fmt.Errorf("Docker is not available or not responding. Please ensure Docker Desktop is installed and running: %w", err)
 	}
 	return nil
 }

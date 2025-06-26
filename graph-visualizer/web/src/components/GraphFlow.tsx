@@ -76,7 +76,7 @@ export default function GraphFlow() {
           title: node.name,
           name: node.name,
           type: node.type,
-          relationships: node.relationships,
+          dependencies: node.dependencies,
           logo: '📦',
           selected: selectedNodeId === node.id
         },
@@ -256,7 +256,7 @@ export default function GraphFlow() {
             <Collapse.Panel header="Troubleshooting Tips" key="1">
               <ul style={{ paddingLeft: '1rem' }}>
                 <li>Check if the server is running on the correct port</li>
-                <li>Verify the directory contains relationships.yaml files</li>
+                <li>Verify the directory contains dependencies.yaml files</li>
                 <li>Ensure the .vibestate.db file exists or use the -n flag</li>
                 <li>Check the browser console for more details</li>
               </ul>

@@ -29,7 +29,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
 
   useEffect(() => {
     fetchRelationships();
-  }, [node.id, node.relationships]); // Re-fetch when node or its relationships change
+  }, [node.id, node.dependencies]); // Re-fetch when node or its dependencies change
 
   const fetchRelationships = async () => {
     try {
@@ -55,7 +55,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
 
   const categorizeNodes = async (allNodes: DependencyNode[], currentNode: DependencyNode): Promise<NodeRelationship[]> => {
     const result: NodeRelationship[] = [];
-    const currentDeps = new Set(currentNode.relationships || []);
+    const currentDeps = new Set(currentNode.dependencies || []);
     
     // Find all ancestors (nodes that depend on current node)
     const ancestors = await findAncestors(allNodes, currentNode.id);
@@ -67,7 +67,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
       if (currentDeps.has(node.id)) {
         // Current relationship
         result.push({ node, type: 'relationship' });
-      } else if (node.relationships?.includes(currentNode.id)) {
+      } else if (node.dependencies?.includes(currentNode.id)) {
         // Direct parent
         result.push({ node, type: 'parent', reason: 'Depends on this node' });
       } else if (ancestorIds.has(node.id)) {
@@ -95,7 +95,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
       visited.add(targetId);
       
       const parents = allNodes.filter(n => 
-        n.relationships && n.relationships.includes(targetId)
+        n.dependencies && n.dependencies.includes(targetId)
       );
       
       parents.forEach(parent => {
@@ -111,7 +111,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
   };
 
   const handleAddRelationship = async (nodeId: string) => {
-    const currentRels = node.relationships || [];
+    const currentRels = node.dependencies || [];
     const newRelationships = [...currentRels, nodeId];
     await saveRelationships(newRelationships);
   };
@@ -127,7 +127,7 @@ export default function RelationshipEditor({ node }: RelationshipEditorProps) {
       okType: 'danger',
       cancelText: 'Cancel',
       onOk: async () => {
-        const currentRels = node.relationships || [];
+        const currentRels = node.dependencies || [];
         const newRelationships = currentRels.filter(d => d !== nodeId);
         await saveRelationships(newRelationships);
       },

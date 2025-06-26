@@ -34,7 +34,10 @@
       "Bash(go run:*)",
       "Bash(npm run type-check:*)",
       "Bash(npx tsc:*)",
-      "Bash(timeout 10s go run . -n ../example)"
+      "Bash(timeout 10s go run . -n ../example)",
+      "Bash(curl:*)",
+      "Bash(curl:*)",
+      "Bash(timeout 5s go run . -n ../example)"
     ],
     "deny": []
   }

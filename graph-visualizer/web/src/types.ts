@@ -3,7 +3,7 @@ export interface DependencyNode {
   name: string;
   path: string;
   type: string;
-  relationships: string[];
+  dependencies: string[];
 }
 
 export interface DependencyEdge {

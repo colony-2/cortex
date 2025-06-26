@@ -15,15 +15,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Relationship struct {
-	Relationships []string `yaml:"relationships"`
+type Dependency struct {
+	Dependencies []string `yaml:"dependencies"`
 }
 
 type Node struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Path          string   `json:"path"`
-	Relationships []string `json:"relationships"`
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Path         string   `json:"path"`
+	Dependencies []string `json:"dependencies"`
 }
 
 type Graph struct {
@@ -171,7 +171,7 @@ func getGraphHandler(w http.ResponseWriter, r *http.Request) {
 	
 	log.Printf("Built graph with %d nodes and %d edges", len(graph.Nodes), len(graph.Edges))
 	if len(graph.Nodes) == 0 {
-		log.Printf("Warning: No nodes found. Check if relationships.yaml files exist in %s", rootPath)
+		log.Printf("Warning: No nodes found. Check if dependencies.yaml files exist in %s", rootPath)
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -272,8 +272,8 @@ func buildGraph(path string) Graph {
 			return nil
 		}
 		
-		relFile := filepath.Join(dirPath, "relationships.yaml")
-		if _, err := os.Stat(relFile); os.IsNotExist(err) {
+		depFile := filepath.Join(dirPath, "dependencies.yaml")
+		if _, err := os.Stat(depFile); os.IsNotExist(err) {
 			return nil
 		}
 		
@@ -286,11 +286,11 @@ func buildGraph(path string) Graph {
 			Path: relPath,
 		}
 		
-		data, err := os.ReadFile(relFile)
+		data, err := os.ReadFile(depFile)
 		if err == nil {
-			var rel Relationship
-			if err := yaml.Unmarshal(data, &rel); err == nil {
-				node.Relationships = rel.Relationships
+			var dep Dependency
+			if err := yaml.Unmarshal(data, &dep); err == nil {
+				node.Dependencies = dep.Dependencies
 			}
 		}
 		
@@ -306,10 +306,10 @@ func buildGraph(path string) Graph {
 	
 	var edges []Edge
 	for _, node := range nodes {
-		for _, rel := range node.Relationships {
+		for _, dep := range node.Dependencies {
 			edges = append(edges, Edge{
 				Source: node.ID,
-				Target: rel,
+				Target: dep,
 			})
 		}
 	}
@@ -399,22 +399,22 @@ func updateRelationshipsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Create the relationship structure
-	rel := Relationship{
-		Relationships: request.Relationships,
+	// Create the dependency structure
+	dep := Dependency{
+		Dependencies: request.Relationships,
 	}
 	
 	// Marshal to YAML
-	data, err := yaml.Marshal(&rel)
+	data, err := yaml.Marshal(&dep)
 	if err != nil {
 		log.Printf("Error marshaling relationships: %v", err)
 		http.Error(w, "Failed to encode relationships", http.StatusInternalServerError)
 		return
 	}
 	
-	// Write to relationships.yaml file
-	relFile := filepath.Join(nodePath, "relationships.yaml")
-	if err := os.WriteFile(relFile, data, 0644); err != nil {
+	// Write to dependencies.yaml file
+	depFile := filepath.Join(nodePath, "dependencies.yaml")
+	if err := os.WriteFile(depFile, data, 0644); err != nil {
 		log.Printf("Error writing relationships file: %v", err)
 		http.Error(w, "Failed to save relationships", http.StatusInternalServerError)
 		return

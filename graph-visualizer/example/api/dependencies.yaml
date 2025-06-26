@@ -1,4 +1,4 @@
-relationships:
+dependencies:
   - service-a
   - service-b
   - service-c

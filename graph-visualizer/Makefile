@@ -96,6 +96,12 @@ test-server:
 	@echo "Testing file browser API..."
 	cd "$(SERVER_DIR)" && go test -v -run "TestGetFiles|TestFileInfo"
 	@echo ""
+	@echo "Testing graph functionality..."
+	cd "$(SERVER_DIR)" && go test -v -run "TestBuildGraph|TestGraphAPI|TestRelationshipsAPI"
+	@echo ""
+	@echo "Testing relationships API..."
+	cd "$(SERVER_DIR)" && go test -v -run "TestUpdateRelationships|TestCircularRelationship"
+	@echo ""
 	@echo "Testing integration..."
 	cd "$(SERVER_DIR)" && go test -v -run TestIntegration
 	@echo ""

@@ -9,7 +9,7 @@ interface ProFlowNodeProps {
     logo?: string;
     name: string;
     type: string;
-    dependencies: string[];
+    relationships: string[];
     onClick?: () => void;
     selected?: boolean;
   };
@@ -56,10 +56,10 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
           <div>
             <Tag color="purple">{data.type || 'module'}</Tag>
           </div>
-          {data.dependencies.length > 0 && (
+          {data.relationships && data.relationships.length > 0 && (
             <div>
-              <Tag color={getDependencyColor(data.dependencies.length)}>
-                {data.dependencies.length} dependencies
+              <Tag color={getDependencyColor(data.relationships.length)}>
+                {data.relationships.length} relationships
               </Tag>
             </div>
           )}

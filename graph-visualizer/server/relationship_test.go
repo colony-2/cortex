@@ -26,18 +26,18 @@ func TestUpdateRelationshipsHandler(t *testing.T) {
 	os.MkdirAll(nodeBDir, 0755)
 	os.MkdirAll(nodeCDir, 0755)
 	
-	// Create initial relationships.yaml files
-	relA := Relationship{Relationships: []string{"nodeB"}}
-	dataA, _ := yaml.Marshal(&relA)
-	os.WriteFile(filepath.Join(nodeADir, "relationships.yaml"), dataA, 0644)
+	// Create initial dependencies.yaml files
+	depA := Dependency{Dependencies: []string{"nodeB"}}
+	dataA, _ := yaml.Marshal(&depA)
+	os.WriteFile(filepath.Join(nodeADir, "dependencies.yaml"), dataA, 0644)
 	
-	relB := Relationship{Relationships: []string{}}
-	dataB, _ := yaml.Marshal(&relB)
-	os.WriteFile(filepath.Join(nodeBDir, "relationships.yaml"), dataB, 0644)
+	depB := Dependency{Dependencies: []string{}}
+	dataB, _ := yaml.Marshal(&depB)
+	os.WriteFile(filepath.Join(nodeBDir, "dependencies.yaml"), dataB, 0644)
 	
-	relC := Relationship{Relationships: []string{"nodeA"}}
-	dataC, _ := yaml.Marshal(&relC)
-	os.WriteFile(filepath.Join(nodeCDir, "relationships.yaml"), dataC, 0644)
+	depC := Dependency{Dependencies: []string{"nodeA"}}
+	dataC, _ := yaml.Marshal(&depC)
+	os.WriteFile(filepath.Join(nodeCDir, "dependencies.yaml"), dataC, 0644)
 	
 	// Set the rootPath to our temp directory
 	oldRootPath := rootPath
@@ -97,24 +97,24 @@ func TestUpdateRelationshipsHandler(t *testing.T) {
 			
 			// If successful, verify the file was updated
 			if tt.wantStatus == http.StatusOK {
-				relFile := filepath.Join(tempDir, tt.nodeID, "relationships.yaml")
-				data, err := os.ReadFile(relFile)
+				depFile := filepath.Join(tempDir, tt.nodeID, "dependencies.yaml")
+				data, err := os.ReadFile(depFile)
 				if err != nil {
-					t.Fatalf("Failed to read relationships file: %v", err)
+					t.Fatalf("Failed to read dependencies file: %v", err)
 				}
 				
-				var rel Relationship
-				if err := yaml.Unmarshal(data, &rel); err != nil {
-					t.Fatalf("Failed to unmarshal relationships: %v", err)
+				var dep Dependency
+				if err := yaml.Unmarshal(data, &dep); err != nil {
+					t.Fatalf("Failed to unmarshal dependencies: %v", err)
 				}
 				
 				// Check if relationships match
-				if len(rel.Relationships) != len(tt.relationships) {
+				if len(dep.Dependencies) != len(tt.relationships) {
 					t.Errorf("Relationships count mismatch: got %d want %d",
-						len(rel.Relationships), len(tt.relationships))
+						len(dep.Dependencies), len(tt.relationships))
 				}
 				
-				for i, r := range rel.Relationships {
+				for i, r := range dep.Dependencies {
 					if i < len(tt.relationships) && r != tt.relationships[i] {
 						t.Errorf("Relationship mismatch at index %d: got %s want %s",
 							i, r, tt.relationships[i])
@@ -143,20 +143,20 @@ func TestCircularRelationshipPrevention(t *testing.T) {
 	os.MkdirAll(nodeBDir, 0755)
 	os.MkdirAll(nodeCDir, 0755)
 	
-	// A relates to B
-	relA := Relationship{Relationships: []string{"nodeB"}}
-	dataA, _ := yaml.Marshal(&relA)
-	os.WriteFile(filepath.Join(nodeADir, "relationships.yaml"), dataA, 0644)
+	// A depends on B
+	depA := Dependency{Dependencies: []string{"nodeB"}}
+	dataA, _ := yaml.Marshal(&depA)
+	os.WriteFile(filepath.Join(nodeADir, "dependencies.yaml"), dataA, 0644)
 	
-	// B relates to C
-	relB := Relationship{Relationships: []string{"nodeC"}}
-	dataB, _ := yaml.Marshal(&relB)
-	os.WriteFile(filepath.Join(nodeBDir, "relationships.yaml"), dataB, 0644)
+	// B depends on C
+	depB := Dependency{Dependencies: []string{"nodeC"}}
+	dataB, _ := yaml.Marshal(&depB)
+	os.WriteFile(filepath.Join(nodeBDir, "dependencies.yaml"), dataB, 0644)
 	
-	// C has no relationships initially
-	relC := Relationship{Relationships: []string{}}
-	dataC, _ := yaml.Marshal(&relC)
-	os.WriteFile(filepath.Join(nodeCDir, "relationships.yaml"), dataC, 0644)
+	// C has no dependencies initially
+	depC := Dependency{Dependencies: []string{}}
+	dataC, _ := yaml.Marshal(&depC)
+	os.WriteFile(filepath.Join(nodeCDir, "dependencies.yaml"), dataC, 0644)
 	
 	// Build the graph to verify structure
 	graph := buildGraph(tempDir)
