@@ -24,7 +24,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(cat:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

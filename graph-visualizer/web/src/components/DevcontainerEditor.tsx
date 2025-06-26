@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Space, message, Spin, Alert, Card, Empty } from 'antd';
+import { Button, Space, message, Spin, Alert, Card, Empty, Modal } from 'antd';
 import { PlayCircleOutlined, ReloadOutlined, StopOutlined, DeleteOutlined, EditOutlined, SaveOutlined, CloseOutlined, FileAddOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import type { DependencyNode } from '../types';
@@ -17,6 +17,55 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
   const [containerStatus, setContainerStatus] = useState<'stopped' | 'running' | 'none'>('none');
   const [containerId, setContainerId] = useState<string | null>(null);
   const [fileExists, setFileExists] = useState(false);
+
+  // Helper function to show detailed error messages
+  const showError = (title: string, error: any) => {
+    let errorMessage = error.message || 'An unknown error occurred';
+    let errorDetails = '';
+    
+    // Extract the actual error message from the format "Failed to create container: error message"
+    const match = errorMessage.match(/Failed to \w+ container: (.+)/);
+    if (match) {
+      errorMessage = match[1];
+    }
+    
+    // Get error details for expandable section
+    if (error.stack) {
+      errorDetails = error.stack;
+    } else if (error.toString() !== errorMessage) {
+      errorDetails = error.toString();
+    }
+    
+    Modal.error({
+      title: title,
+      content: (
+        <div>
+          <p>{errorMessage}</p>
+          {errorDetails && (
+            <details style={{ marginTop: '10px' }}>
+              <summary style={{ cursor: 'pointer', color: '#1890ff', userSelect: 'none' }}>
+                Show technical details
+              </summary>
+              <pre style={{ 
+                marginTop: '10px', 
+                padding: '10px', 
+                backgroundColor: '#f5f5f5',
+                borderRadius: '4px',
+                fontSize: '12px',
+                overflow: 'auto',
+                maxHeight: '300px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}>
+                {errorDetails}
+              </pre>
+            </details>
+          )}
+        </div>
+      ),
+      width: 600,
+    });
+  };
 
   // Load devcontainer.json file
   useEffect(() => {
@@ -38,10 +87,13 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setFileExists(false);
         setContent('');
         setOriginalContent('');
+      } else {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading devcontainer.json:', error);
-      message.error('Failed to load devcontainer configuration');
+      showError('Failed to load devcontainer configuration', error);
     } finally {
       setLoading(false);
     }
@@ -96,11 +148,12 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setFileExists(true);
         message.success('Devcontainer configuration saved');
       } else {
-        throw new Error('Failed to save');
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving devcontainer.json:', error);
-      message.error('Failed to save devcontainer configuration');
+      showError('Failed to save devcontainer configuration', error);
     } finally {
       setLoading(false);
     }
@@ -129,11 +182,12 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setContainerStatus('stopped');
         message.success('Container created successfully');
       } else {
-        throw new Error('Failed to create container');
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating container:', error);
-      message.error('Failed to create container');
+      showError('Failed to create container', error);
     } finally {
       setLoading(false);
     }
@@ -152,11 +206,12 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setContainerStatus('running');
         message.success('Container started successfully');
       } else {
-        throw new Error('Failed to start container');
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting container:', error);
-      message.error('Failed to start container');
+      showError('Failed to start container', error);
     } finally {
       setLoading(false);
     }
@@ -175,11 +230,12 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setContainerStatus('running');
         message.success('Container restarted successfully');
       } else {
-        throw new Error('Failed to restart container');
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error restarting container:', error);
-      message.error('Failed to restart container');
+      showError('Failed to restart container', error);
     } finally {
       setLoading(false);
     }
@@ -199,11 +255,12 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setContainerId(null);
         message.success('Container reset successfully');
       } else {
-        throw new Error('Failed to reset container');
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error resetting container:', error);
-      message.error('Failed to reset container');
+      showError('Failed to reset container', error);
     } finally {
       setLoading(false);
     }
@@ -220,67 +277,69 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <h3>Devcontainer Service Controls</h3>
-        <Space wrap>
-          {containerStatus === 'none' && (
-            <Button
-              icon={<PlayCircleOutlined />}
-              onClick={createContainer}
-              loading={loading}
-              type="primary"
-            >
-              Create Container
-            </Button>
-          )}
-          {containerStatus === 'stopped' && (
-            <Button
-              icon={<PlayCircleOutlined />}
-              onClick={startContainer}
-              loading={loading}
-              type="primary"
-            >
-              Start Container
-            </Button>
-          )}
-          {containerStatus === 'running' && (
-            <>
+      {fileExists && (
+        <div style={{ marginBottom: '16px' }}>
+          <h3>Devcontainer Service Controls</h3>
+          <Space wrap>
+            {containerStatus === 'none' && (
               <Button
-                icon={<ReloadOutlined />}
-                onClick={restartContainer}
+                icon={<PlayCircleOutlined />}
+                onClick={createContainer}
                 loading={loading}
+                type="primary"
               >
-                Restart Container
+                Create Container
               </Button>
+            )}
+            {containerStatus === 'stopped' && (
               <Button
-                icon={<StopOutlined />}
+                icon={<PlayCircleOutlined />}
+                onClick={startContainer}
+                loading={loading}
+                type="primary"
+              >
+                Start Container
+              </Button>
+            )}
+            {containerStatus === 'running' && (
+              <>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={restartContainer}
+                  loading={loading}
+                >
+                  Restart Container
+                </Button>
+                <Button
+                  icon={<StopOutlined />}
+                  onClick={resetContainer}
+                  loading={loading}
+                  danger
+                >
+                  Stop Container
+                </Button>
+              </>
+            )}
+            {containerId && (
+              <Button
+                icon={<DeleteOutlined />}
                 onClick={resetContainer}
                 loading={loading}
                 danger
               >
-                Stop Container
+                Reset Container
               </Button>
-            </>
+            )}
+          </Space>
+          {containerStatus !== 'none' && (
+            <Alert
+              message={`Container Status: ${containerStatus}`}
+              type={containerStatus === 'running' ? 'success' : 'info'}
+              style={{ marginTop: '8px' }}
+            />
           )}
-          {containerId && (
-            <Button
-              icon={<DeleteOutlined />}
-              onClick={resetContainer}
-              loading={loading}
-              danger
-            >
-              Reset Container
-            </Button>
-          )}
-        </Space>
-        {containerStatus !== 'none' && (
-          <Alert
-            message={`Container Status: ${containerStatus}`}
-            type={containerStatus === 'running' ? 'success' : 'info'}
-            style={{ marginTop: '8px' }}
-          />
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3>devcontainer.json Configuration</h3>

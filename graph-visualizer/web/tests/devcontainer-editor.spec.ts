@@ -33,6 +33,10 @@ test.describe('DevcontainerEditor', () => {
     // Check for the empty state and create button
     await expect(page.locator('.ant-empty-description').filter({ hasText: 'No devcontainer.json file exists' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create devcontainer.json' })).toBeVisible();
+    
+    // Verify that container controls are NOT shown when no devcontainer.json exists
+    await expect(page.getByText('Devcontainer Service Controls')).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Container' })).not.toBeVisible();
   });
 
   test('should show read-only view when file exists and not in edit mode', async ({ page }) => {
