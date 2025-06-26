@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Tabs, Button, Badge, Space, Typography, Empty, Spin, List, Tag, message } from 'antd';
 import { SyncOutlined, FileAddOutlined, EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { DependencyNode } from '../types';
+import { getURLState, updateURLState } from '../utils/urlState';
 
 const { Title, Text } = Typography;
 
@@ -44,6 +45,19 @@ export default function GitChanges({ node }: GitChangesProps) {
   const [history, setHistory] = useState<GitCommit[]>([]);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
+
+  // Initialize subtab from URL on mount
+  useEffect(() => {
+    const urlState = getURLState();
+    if (urlState.subtab) {
+      setActiveTab(urlState.subtab);
+    }
+  }, []);
+
+  const handleTabChange = (key: string) => {
+    setActiveTab(key);
+    updateURLState({ subtab: key });
+  };
 
   // Fetch git status
   const fetchStatus = async () => {
@@ -335,7 +349,7 @@ export default function GitChanges({ node }: GitChangesProps) {
     <div style={{ padding: '16px' }}>
       <Tabs
         activeKey={activeTab}
-        onChange={setActiveTab}
+        onChange={handleTabChange}
         items={items}
       />
     </div>

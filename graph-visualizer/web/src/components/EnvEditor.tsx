@@ -1,15 +1,168 @@
 import { useState, useEffect } from 'react';
-import { Button, Space, message, Spin, Alert, Card, Empty, Modal } from 'antd';
-import { PlayCircleOutlined, ReloadOutlined, StopOutlined, DeleteOutlined, EditOutlined, SaveOutlined, CloseOutlined, FileAddOutlined } from '@ant-design/icons';
+import { Button, Space, message, Spin, Alert, Card, Empty, Modal, Radio, Tooltip } from 'antd';
+import { 
+  PlayCircleOutlined, 
+  ReloadOutlined, 
+  StopOutlined, 
+  DeleteOutlined, 
+  EditOutlined, 
+  SaveOutlined, 
+  CloseOutlined, 
+  FileAddOutlined,
+  AppstoreOutlined,
+  CodeOutlined
+} from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
+import Form from '@rjsf/core';
+import validator from '@rjsf/validator-ajv8';
+import type { RJSFSchema } from '@rjsf/utils';
 import type { DependencyNode } from '../types';
+import { ConfigProvider, theme } from 'antd';
+import { 
+  Input, 
+  Select, 
+  Switch, 
+  InputNumber, 
+  Form as AntForm
+} from 'antd';
 
+// Custom Ant Design widgets for RJSF
+const AntDTextWidget = (props: any) => {
+  return (
+    <Input 
+      value={props.value || ''} 
+      onChange={(e) => props.onChange(e.target.value)}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+    />
+  );
+};
 
-interface DevcontainerEditorProps {
+const AntDSelectWidget = (props: any) => {
+  const { enumOptions } = props.options;
+  return (
+    <Select
+      value={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled}
+      style={{ width: '100%' }}
+    >
+      {enumOptions?.map((option: any) => (
+        <Select.Option key={option.value} value={option.value}>
+          {option.label}
+        </Select.Option>
+      ))}
+    </Select>
+  );
+};
+
+const AntDBooleanWidget = (props: any) => {
+  return (
+    <Switch
+      checked={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled}
+    />
+  );
+};
+
+const AntDNumberWidget = (props: any) => {
+  return (
+    <InputNumber
+      value={props.value}
+      onChange={props.onChange}
+      disabled={props.disabled}
+      style={{ width: '100%' }}
+    />
+  );
+};
+
+// Custom field template for Ant Design styling
+const CustomFieldTemplate = (props: any) => {
+  const { label, help, required, description, errors, children } = props;
+  return (
+    <AntForm.Item
+      label={label}
+      required={required}
+      help={help || description}
+      validateStatus={errors && errors.length > 0 ? 'error' : ''}
+      extra={errors}
+    >
+      {children}
+    </AntForm.Item>
+  );
+};
+
+const widgets = {
+  TextWidget: AntDTextWidget,
+  SelectWidget: AntDSelectWidget,
+  CheckboxWidget: AntDBooleanWidget,
+  NumberWidget: AntDNumberWidget,
+};
+
+// JSON Schema for devcontainer configuration
+const devcontainerSchema: RJSFSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      title: 'Container Name',
+      description: 'A human-readable name for the dev container',
+    },
+    image: {
+      type: 'string',
+      title: 'Base Image',
+      description: 'Docker image to use as the base',
+      default: 'mcr.microsoft.com/devcontainers/base:ubuntu',
+    },
+    features: {
+      type: 'object',
+      title: 'Features',
+      description: 'Dev container features to install',
+      additionalProperties: true,
+    },
+    forwardPorts: {
+      type: 'array',
+      title: 'Forward Ports',
+      items: {
+        type: 'number',
+      },
+      description: 'Ports to forward from the container to the host',
+    },
+    postCreateCommand: {
+      type: 'string',
+      title: 'Post Create Command',
+      description: 'Command to run after creating the container',
+    },
+    customizations: {
+      type: 'object',
+      title: 'Customizations',
+      properties: {
+        vscode: {
+          type: 'object',
+          title: 'VS Code',
+          properties: {
+            extensions: {
+              type: 'array',
+              title: 'Extensions',
+              items: {
+                type: 'string',
+              },
+              description: 'VS Code extensions to install',
+            },
+          },
+        },
+      },
+    },
+  },
+  required: ['name', 'image'],
+};
+
+interface EnvEditorProps {
   node: DependencyNode;
 }
 
-export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
+export default function EnvEditor({ node }: EnvEditorProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -17,6 +170,8 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
   const [containerStatus, setContainerStatus] = useState<'stopped' | 'running' | 'none'>('none');
   const [containerId, setContainerId] = useState<string | null>(null);
   const [fileExists, setFileExists] = useState(false);
+  const [viewMode, setViewMode] = useState<'gui' | 'ide'>('gui');
+  const [formData, setFormData] = useState<any>({});
 
   // Helper function to show detailed error messages
   const showError = (title: string, error: any) => {
@@ -67,6 +222,22 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
     });
   };
 
+  // Parse JSON content to form data
+  const parseJsonToFormData = (json: string) => {
+    try {
+      const parsed = JSON.parse(json);
+      setFormData(parsed);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Convert form data to JSON string
+  const formDataToJson = (data: any) => {
+    return JSON.stringify(data, null, 2);
+  };
+
   // Load devcontainer.json file
   useEffect(() => {
     loadDevcontainerFile();
@@ -82,11 +253,13 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         setContent(data);
         setOriginalContent(data);
         setFileExists(true);
+        parseJsonToFormData(data);
       } else if (response.status === 404) {
         // File doesn't exist
         setFileExists(false);
         setContent('');
         setOriginalContent('');
+        setFormData({});
       } else {
         const errorText = await response.text();
         throw new Error(`HTTP ${response.status}: ${errorText}`);
@@ -127,11 +300,17 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
     };
     const defaultContent = JSON.stringify(defaultConfig, null, 2);
     setContent(defaultContent);
+    setFormData(defaultConfig);
     setOriginalContent('');
     setEditMode(true);
   };
 
   const saveDevcontainerFile = async () => {
+    // If in GUI mode, convert form data to JSON
+    if (viewMode === 'gui') {
+      setContent(formDataToJson(formData));
+    }
+    
     setLoading(true);
     try {
       const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/files/.devcontainer/devcontainer.json`, {
@@ -139,11 +318,13 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: viewMode === 'gui' ? formDataToJson(formData) : content }),
       });
 
       if (response.ok) {
-        setOriginalContent(content);
+        const savedContent = viewMode === 'gui' ? formDataToJson(formData) : content;
+        setOriginalContent(savedContent);
+        setContent(savedContent);
         setEditMode(false);
         setFileExists(true);
         message.success('Devcontainer configuration saved');
@@ -163,8 +344,10 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
     if (!fileExists && originalContent === '') {
       // If we were creating a new file, clear the content
       setContent('');
+      setFormData({});
     } else {
       setContent(originalContent);
+      parseJsonToFormData(originalContent);
     }
     setEditMode(false);
   };
@@ -266,8 +449,25 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
     }
   };
 
+  const handleViewModeChange = (newMode: 'gui' | 'ide') => {
+    // If switching from IDE to GUI, validate JSON first
+    if (viewMode === 'ide' && newMode === 'gui') {
+      if (!parseJsonToFormData(content)) {
+        message.error('Cannot switch to GUI mode: Invalid JSON format');
+        return;
+      }
+    }
+    
+    // If switching from GUI to IDE, update content
+    if (viewMode === 'gui' && newMode === 'ide') {
+      setContent(formDataToJson(formData));
+    }
+    
+    setViewMode(newMode);
+  };
+
   const editorOptions = {
-    readOnly: !editMode,
+    readOnly: false,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     wordWrap: 'on' as const,
@@ -343,37 +543,53 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
 
       <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3>devcontainer.json Configuration</h3>
-        {fileExists && (
-          <Space>
-            {!editMode ? (
-              <Button
-                icon={<EditOutlined />}
-                onClick={() => setEditMode(true)}
-                disabled={loading}
-              >
-                Edit
-              </Button>
-            ) : (
-              <>
+        <Space>
+          {fileExists && editMode && (
+            <Radio.Group value={viewMode} onChange={(e) => handleViewModeChange(e.target.value)}>
+              <Tooltip title="Graphical User Interface">
+                <Radio.Button value="gui">
+                  <AppstoreOutlined /> GUI
+                </Radio.Button>
+              </Tooltip>
+              <Tooltip title="Integrated Development Environment">
+                <Radio.Button value="ide">
+                  <CodeOutlined /> IDE
+                </Radio.Button>
+              </Tooltip>
+            </Radio.Group>
+          )}
+          {fileExists && (
+            <Space>
+              {!editMode ? (
                 <Button
-                  icon={<SaveOutlined />}
-                  onClick={saveDevcontainerFile}
-                  loading={loading}
-                  type="primary"
-                >
-                  Save
-                </Button>
-                <Button
-                  icon={<CloseOutlined />}
-                  onClick={cancelEdit}
+                  icon={<EditOutlined />}
+                  onClick={() => setEditMode(true)}
                   disabled={loading}
                 >
-                  Cancel
+                  Edit
                 </Button>
-              </>
-            )}
-          </Space>
-        )}
+              ) : (
+                <>
+                  <Button
+                    icon={<SaveOutlined />}
+                    onClick={saveDevcontainerFile}
+                    loading={loading}
+                    type="primary"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    icon={<CloseOutlined />}
+                    onClick={cancelEdit}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </Space>
+          )}
+        </Space>
       </div>
 
       <div style={{ flex: 1, border: '1px solid #d9d9d9', borderRadius: '4px', overflow: 'hidden' }}>
@@ -398,24 +614,48 @@ export default function DevcontainerEditor({ node }: DevcontainerEditorProps) {
             </Empty>
           </div>
         ) : editMode ? (
-          <Editor
-            height="100%"
-            language="json"
-            value={content}
-            onChange={(value) => setContent(value || '')}
-            options={editorOptions}
-            theme="vs-light"
-            beforeMount={(monaco) => {
-              // Configure JSON schema validation for devcontainer.json
-              monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-                validate: true,
-                schemas: [{
-                  uri: 'https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json',
-                  fileMatch: ['**/devcontainer.json', '**/.devcontainer/devcontainer.json'],
-                }],
-              });
-            }}
-          />
+          viewMode === 'gui' ? (
+            <div style={{ padding: '20px', overflow: 'auto', height: '100%' }}>
+              <ConfigProvider
+                theme={{
+                  algorithm: theme.defaultAlgorithm,
+                }}
+              >
+                <Form
+                  schema={devcontainerSchema}
+                  validator={validator}
+                  formData={formData}
+                  onChange={(e) => setFormData(e.formData)}
+                  widgets={widgets}
+                  templates={{ FieldTemplate: CustomFieldTemplate }}
+                  uiSchema={{
+                    'ui:submitButtonOptions': {
+                      norender: true,
+                    },
+                  }}
+                />
+              </ConfigProvider>
+            </div>
+          ) : (
+            <Editor
+              height="100%"
+              language="json"
+              value={content}
+              onChange={(value) => setContent(value || '')}
+              options={editorOptions}
+              theme="vs-light"
+              beforeMount={(monaco) => {
+                // Configure JSON schema validation for devcontainer.json
+                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                  validate: true,
+                  schemas: [{
+                    uri: 'https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json',
+                    fileMatch: ['**/devcontainer.json', '**/.devcontainer/devcontainer.json'],
+                  }],
+                });
+              }}
+            />
+          )
         ) : (
           <Card style={{ height: '100%', overflow: 'auto' }}>
             <pre style={{ 

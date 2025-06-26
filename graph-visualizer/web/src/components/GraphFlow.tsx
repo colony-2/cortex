@@ -6,6 +6,7 @@ import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
 import ProFlowNode from './ProFlowNode';
 import SidePanel from './SidePanel';
+import { getURLState, updateURLState } from '../utils/urlState';
 
 interface FlowNode {
   id: string;
@@ -39,6 +40,8 @@ export default function GraphFlow() {
   const handleNodeClick = useCallback((nodeId: string) => {
     const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
     setSelectedNode(node);
+    // Update URL with selected node
+    updateURLState({ node: nodeId });
   }, []);
 
   const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[]) => {
@@ -69,7 +72,8 @@ export default function GraphFlow() {
           name: node.name,
           type: node.type,
           dependencies: node.dependencies,
-          logo: '📦'
+          logo: '📦',
+          selected: selectedNode?.id === node.id
         },
       };
     });
@@ -86,7 +90,7 @@ export default function GraphFlow() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [handleNodeClick]);
+  }, [selectedNode]);
 
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
@@ -172,6 +176,15 @@ export default function GraphFlow() {
         graphRef.current = graphData;
         layoutNodes(graphData, positions);
         setLoading(false);
+        
+        // Restore node selection from URL
+        const urlState = getURLState();
+        if (urlState.node && graphData.nodes) {
+          const node = graphData.nodes.find(n => n.id === urlState.node);
+          if (node) {
+            setSelectedNode(node);
+          }
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load graph';
         console.error('Graph loading error:', err);
@@ -233,7 +246,7 @@ export default function GraphFlow() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            nodeTypes={{ custom: ProFlowNode }}
+            nodeTypes={{ custom: ProFlowNode as any }}
             onNodesChange={onNodesChange}
             nodesDraggable={true}
             nodesConnectable={false}

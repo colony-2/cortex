@@ -11,6 +11,7 @@ interface ProFlowNodeProps {
     type: string;
     dependencies: string[];
     onClick?: () => void;
+    selected?: boolean;
   };
   id: string;
 }
@@ -31,9 +32,10 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
         width: 200,
         cursor: 'pointer',
         background: '#fff',
-        border: '1px solid #d9d9d9',
+        border: data.selected ? '2px solid #1890ff' : '1px solid #d9d9d9',
         borderRadius: '6px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        boxShadow: data.selected ? '0 4px 12px rgba(24,144,255,0.15)' : '0 2px 8px rgba(0,0,0,0.06)',
+        transition: 'all 0.2s ease',
       }}
       onClick={() => {
         // Dispatch global event for node selection

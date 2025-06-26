@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('DevcontainerEditor', () => {
+test.describe('EnvEditor', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
@@ -24,8 +24,8 @@ test.describe('DevcontainerEditor', () => {
     // Click on a node
     await page.click('.react-flow__node');
     
-    // Navigate to the Devcontainer tab
-    await page.getByRole('tab', { name: 'Devcontainer' }).click();
+    // Navigate to the Env tab
+    await page.getByRole('tab', { name: 'Env' }).click();
     
     // Wait for the component to load
     await page.waitForTimeout(500);
@@ -74,8 +74,8 @@ test.describe('DevcontainerEditor', () => {
     // Click on a node
     await page.click('.react-flow__node');
     
-    // Navigate to the Devcontainer tab
-    await page.getByRole('tab', { name: 'Devcontainer' }).click();
+    // Navigate to the Env tab
+    await page.getByRole('tab', { name: 'Env' }).click();
     
     // Wait for the component to load
     await page.waitForTimeout(500);

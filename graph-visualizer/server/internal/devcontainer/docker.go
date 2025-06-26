@@ -343,9 +343,10 @@ func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, w
 	
 	// Execute docker create command
 	cmd := exec.CommandContext(ctx, "docker", createArgs...)
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to create container: %w", err)
+		// Include the docker output in the error for better debugging
+		return "", fmt.Errorf("failed to create container: %w\nDocker output: %s", err, string(output))
 	}
 
 	// Extract container ID from output

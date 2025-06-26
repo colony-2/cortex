@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Tabs, Empty, Typography, Input, List } from 'antd';
 import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
@@ -5,6 +6,7 @@ import EnvEditor from './EnvEditor';
 import DependencyEditor from './DependencyEditor';
 import GitChanges from './GitChanges';
 import type { DependencyNode } from '../types';
+import { getURLState, updateURLState } from '../utils/urlState';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -156,6 +158,24 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
 };
 
 export default function SidePanel({ selectedNode }: SidePanelProps) {
+  const [activeTab, setActiveTab] = useState<string>('config');
+
+  // Initialize tab from URL on mount and when selectedNode changes
+  useEffect(() => {
+    const urlState = getURLState();
+    if (urlState.tab) {
+      setActiveTab(urlState.tab);
+    } else if (selectedNode) {
+      // Default to config tab when a node is selected
+      setActiveTab('config');
+      updateURLState({ tab: 'config' });
+    }
+  }, [selectedNode]);
+
+  const handleTabChange = (key: string) => {
+    setActiveTab(key);
+    updateURLState({ tab: key });
+  };
   const items = selectedNode ? [
     {
       key: 'files',
@@ -203,7 +223,8 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
   return (
     <div style={{ height: '100%', background: '#fff', display: 'flex', flexDirection: 'column' }}>
       <Tabs
-        defaultActiveKey="config"
+        activeKey={activeTab}
+        onChange={handleTabChange}
         items={items}
         style={{ flex: 1 }}
         tabBarStyle={{ marginBottom: 0, paddingLeft: '16px', paddingRight: '16px' }}
