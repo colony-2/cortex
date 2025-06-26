@@ -1,0 +1,107 @@
+# Page snapshot
+
+```yaml
+- application:
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - group: 📦 api module 4 dependencies
+  - group: 📦 auth module 3 dependencies
+  - group: 📦 cache module 1 dependencies
+  - group: 📦 config module 2 dependencies
+  - group: 📦 database module 2 dependencies
+  - group: 📦 frontend module 3 dependencies
+  - group: 📦 gateway module 3 dependencies
+  - group: 📦 logger module 1 dependencies
+  - group: 📦 monitoring module 2 dependencies
+  - group: 📦 service-a module 3 dependencies
+  - group: 📦 service-b module 2 dependencies
+  - group: 📦 service-c module 2 dependencies
+  - group: 📦 shared-utils module
+  - img
+  - button "Zoom In":
+    - img
+  - button "Zoom Out" [disabled]:
+    - img
+  - button "Fit View":
+    - img
+  - button "Toggle Interactivity":
+    - img
+  - img "Mini Map"
+  - link "React Flow attribution":
+    - /url: https://reactflow.dev
+    - text: React Flow
+- separator
+- tablist:
+  - tab "setting Configuration" [selected]:
+    - img "setting"
+    - text: Configuration
+- tabpanel "setting Configuration":
+  - tablist:
+    - tab "container Container" [selected]:
+      - img "container"
+      - text: Container
+    - tab "edit Notes":
+      - img "edit"
+      - text: Notes
+    - tab "check-square Todo List":
+      - img "check-square"
+      - text: Todo List
+  - tabpanel "container Container":
+    - heading "Container Configuration" [level=5]
+    - img "No data"
+    - text: Container settings coming soon
+```
