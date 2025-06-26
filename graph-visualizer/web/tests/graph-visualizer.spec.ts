@@ -72,12 +72,12 @@ test.describe('Graph Visualizer', () => {
   });
 
   test('should display edges between nodes', async ({ page }) => {
-    // Wait for edges container to be rendered
-    await page.waitForSelector('.react-flow__edges', { timeout: 10000 });
+    // Wait for React Flow to be rendered
+    await page.waitForSelector('.react-flow', { timeout: 10000 });
     
-    // Check that edge groups exist (React Flow renders edges in groups)
-    const edgeGroups = await page.locator('.react-flow__edges > g').count();
-    expect(edgeGroups).toBeGreaterThan(0);
+    // Check that edges exist (React Flow renders edges with this class)
+    const edgeCount = await page.locator('.react-flow__edge').count();
+    expect(edgeCount).toBeGreaterThan(0);
   });
 
   test('should allow panning the graph', async ({ page }) => {

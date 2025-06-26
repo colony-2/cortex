@@ -1,6 +1,7 @@
 import { Tabs, Empty, Typography, Input, List } from 'antd';
-import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ToolOutlined, FileTextOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined } from '@ant-design/icons';
+import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
+import DevcontainerEditor from './DevcontainerEditor';
 import type { DependencyNode } from '../types';
 
 const { Title } = Typography;
@@ -10,67 +11,29 @@ interface SidePanelProps {
   selectedNode: DependencyNode | null;
 }
 
-// Claude Code subtabs
-const ClaudeCodeTabs = () => {
-  const items = [
-    {
-      key: 'settings',
-      label: (
-        <span>
-          <SettingOutlined />
-          Settings
-        </span>
-      ),
-      children: (
-        <div style={{ padding: '16px' }}>
-          <Title level={5}>Claude Code Settings</Title>
-          <Empty description="Settings configuration coming soon" />
-        </div>
-      ),
-    },
-    {
-      key: 'tools',
-      label: (
-        <span>
-          <ToolOutlined />
-          Tools
-        </span>
-      ),
-      children: (
-        <div style={{ padding: '16px' }}>
-          <Title level={5}>Available Tools</Title>
-          <Empty description="Tools configuration coming soon" />
-        </div>
-      ),
-    },
-    {
-      key: 'instructions',
-      label: (
-        <span>
-          <FileTextOutlined />
-          Instructions
-        </span>
-      ),
-      children: (
-        <div style={{ padding: '16px' }}>
-          <Title level={5}>Custom Instructions</Title>
-          <TextArea 
-            placeholder="Enter custom instructions for Claude Code..."
-            rows={10}
-            style={{ marginTop: '16px' }}
-          />
-        </div>
-      ),
-    },
-  ];
-
+// Claude Code subtab content with section headers
+const ClaudeCodeContent = () => {
   return (
-    <Tabs
-      defaultActiveKey="settings"
-      items={items}
-      tabPosition="left"
-      style={{ height: '100%' }}
-    />
+    <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
+      <div style={{ marginBottom: '32px' }}>
+        <Title level={4}>Claude Code Settings</Title>
+        <Empty description="Settings configuration coming soon" />
+      </div>
+      
+      <div style={{ marginBottom: '32px' }}>
+        <Title level={4}>Available Tools</Title>
+        <Empty description="Tools configuration coming soon" />
+      </div>
+      
+      <div style={{ marginBottom: '32px' }}>
+        <Title level={4}>Custom Instructions</Title>
+        <TextArea 
+          placeholder="Enter custom instructions for Claude Code..."
+          rows={10}
+          style={{ marginTop: '16px' }}
+        />
+      </div>
+    </div>
   );
 };
 
@@ -145,6 +108,41 @@ const ConfigurationTabs = () => {
   );
 };
 
+// Config tabs for selected node
+const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
+  const items = [
+    {
+      key: 'claude-code',
+      label: (
+        <span>
+          <CodeOutlined />
+          Claude Code
+        </span>
+      ),
+      children: <ClaudeCodeContent />,
+    },
+    {
+      key: 'devcontainer',
+      label: (
+        <span>
+          <ContainerOutlined />
+          Devcontainer
+        </span>
+      ),
+      children: <DevcontainerEditor node={node} />,
+    },
+  ];
+
+  return (
+    <Tabs
+      defaultActiveKey="claude-code"
+      items={items}
+      tabPosition="left"
+      style={{ height: '100%' }}
+    />
+  );
+};
+
 export default function SidePanel({ selectedNode }: SidePanelProps) {
   const items = selectedNode ? [
     {
@@ -158,14 +156,14 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
       children: <FileBrowser node={selectedNode} />,
     },
     {
-      key: 'claude-code',
+      key: 'config',
       label: (
         <span>
-          <CodeOutlined />
-          Claude Code
+          <AppstoreOutlined />
+          Config
         </span>
       ),
-      children: <ClaudeCodeTabs />,
+      children: <NodeConfigTabs node={selectedNode} />,
     },
     {
       key: 'changes',
@@ -198,7 +196,7 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
   return (
     <div style={{ height: '100%', background: '#fff', display: 'flex', flexDirection: 'column' }}>
       <Tabs
-        defaultActiveKey={selectedNode ? 'files' : 'config'}
+        defaultActiveKey="config"
         items={items}
         style={{ flex: 1 }}
         tabBarStyle={{ marginBottom: 0, paddingLeft: '16px', paddingRight: '16px' }}

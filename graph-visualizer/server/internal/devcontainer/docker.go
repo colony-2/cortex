@@ -1,7 +1,9 @@
 package devcontainer
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -36,7 +38,7 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceRoot string) (*DockerRunCo
 	}
 
 	// Handle image-based container
-	if dc.ImageContainer != nil {
+	if dc.ImageContainer != nil && dc.ImageContainer.Image != "" {
 		config.Image = dc.ImageContainer.Image
 	} else if dc.DockerfileContainer != nil {
 		// For Dockerfile-based containers, we'd need to build first
@@ -313,4 +315,40 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// DockerManager manages Docker operations for devcontainers
+type DockerManager struct{}
+
+// CreateContainer creates a new Docker container from a DevContainer configuration
+func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, workspaceRoot string) (string, error) {
+	// Build docker run configuration
+	config, err := BuildDockerRunCommand(dc, workspaceRoot)
+	if err != nil {
+		return "", fmt.Errorf("failed to build docker run config: %w", err)
+	}
+
+	// Build the docker command arguments
+	args := config.ToDockerRunArgs()
+	
+	// Modify for create command: replace "run" with "create" and remove interactive flags
+	createArgs := []string{"create", "-d"}
+	// Skip "run", "--rm", "-it" from the beginning
+	for i := 3; i < len(args); i++ {
+		createArgs = append(createArgs, args[i])
+	}
+	
+	// Add a command to keep container running
+	createArgs = append(createArgs, "sleep", "infinity")
+	
+	// Execute docker create command
+	cmd := exec.CommandContext(ctx, "docker", createArgs...)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to create container: %w", err)
+	}
+
+	// Extract container ID from output
+	containerID := strings.TrimSpace(string(output))
+	return containerID, nil
 }

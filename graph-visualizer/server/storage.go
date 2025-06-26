@@ -20,8 +20,9 @@ type PositionStorage struct {
 }
 
 const (
-	bucketName = "node_positions"
-	dbFileName = ".vibestate.db"
+	bucketName          = "node_positions"
+	containerBucketName = "container_ids"
+	dbFileName          = ".vibestate.db"
 )
 
 // NewPositionStorage creates a new position storage instance
@@ -32,14 +33,19 @@ func NewPositionStorage(dataDir string) (*PositionStorage, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Create bucket if it doesn't exist
+	// Create buckets if they don't exist
 	err = db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
-		return err
+		if _, err := tx.CreateBucketIfNotExists([]byte(bucketName)); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists([]byte(containerBucketName)); err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to create bucket: %w", err)
+		return nil, fmt.Errorf("failed to create buckets: %w", err)
 	}
 
 	return &PositionStorage{db: db}, nil
@@ -120,4 +126,37 @@ func (ps *PositionStorage) GetPositions(graphPath string) (map[string]NodePositi
 // Close closes the database
 func (ps *PositionStorage) Close() error {
 	return ps.db.Close()
+}
+
+// SaveContainerID saves a container ID for a node
+func (ps *PositionStorage) SaveContainerID(nodeID, containerID string) error {
+	return ps.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(containerBucketName))
+		return b.Put([]byte(nodeID), []byte(containerID))
+	})
+}
+
+// GetContainerID retrieves the container ID for a node
+func (ps *PositionStorage) GetContainerID(nodeID string) (string, error) {
+	var containerID string
+	err := ps.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(containerBucketName))
+		if b == nil {
+			return nil
+		}
+		v := b.Get([]byte(nodeID))
+		if v != nil {
+			containerID = string(v)
+		}
+		return nil
+	})
+	return containerID, err
+}
+
+// DeleteContainerID removes the container ID for a node
+func (ps *PositionStorage) DeleteContainerID(nodeID string) error {
+	return ps.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(containerBucketName))
+		return b.Delete([]byte(nodeID))
+	})
 }

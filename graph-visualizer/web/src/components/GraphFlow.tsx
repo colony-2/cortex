@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FlowView } from '@ant-design/pro-flow';
-import { applyNodeChanges } from '@xyflow/react';
+import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse, Splitter } from 'antd';
 import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
@@ -9,8 +9,9 @@ import SidePanel from './SidePanel';
 
 interface FlowNode {
   id: string;
-  position?: { x: number; y: number };
+  position: { x: number; y: number };
   type?: string;
+  selectable?: boolean;
   data: {
     title: string;
     description?: string;
@@ -62,6 +63,7 @@ export default function GraphFlow() {
         id: node.id,
         type: 'custom',
         position: { x, y },
+        selectable: true,
         data: {
           title: node.name,
           name: node.name,
@@ -78,13 +80,13 @@ export default function GraphFlow() {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          type: 'radius',
+          type: 'smoothstep',
         }))
       : [];
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, []);
+  }, [handleNodeClick]);
 
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
@@ -101,8 +103,8 @@ export default function GraphFlow() {
         saveTimeoutRef.current = setTimeout(async () => {
           const positions = updatedNodes.map(n => ({
             nodeId: n.id,
-            x: n.position?.x || 0,
-            y: n.position?.y || 0
+            x: n.position.x,
+            y: n.position.y
           }));
           
           try {
@@ -117,6 +119,19 @@ export default function GraphFlow() {
       return updatedNodes;
     });
   }, []);
+
+  useEffect(() => {
+    // Listen for node selection events (for tests and manual triggering)
+    const handleNodeSelection = (event: CustomEvent) => {
+      handleNodeClick(event.detail.nodeId);
+    };
+    
+    window.addEventListener('nodeSelected', handleNodeSelection as EventListener);
+    
+    return () => {
+      window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
+    };
+  }, [handleNodeClick]);
 
   useEffect(() => {
     async function loadData() {
@@ -139,8 +154,7 @@ export default function GraphFlow() {
     }
 
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run once on mount
+  }, [layoutNodes]); // Re-run when layoutNodes changes
 
   if (loading) {
     return (
@@ -187,17 +201,20 @@ export default function GraphFlow() {
   return (
     <Splitter style={{ height: '100vh' }}>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
-        <FlowView
+        <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={{ custom: ProFlowNode }}
           onNodesChange={onNodesChange}
-          onNodeClick={(_event: any, node: any) => handleNodeClick(node.id)}
-          miniMap
-          autoLayout={false}
-          background
-          style={{ width: '100%', height: '100%' }}
-        />
+          nodesDraggable={true}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          fitView
+        >
+          <Background />
+          <Controls />
+          <MiniMap />
+        </ReactFlow>
       </Splitter.Panel>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
         <SidePanel selectedNode={selectedNode} />

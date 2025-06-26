@@ -109,6 +109,17 @@ func runServer(cmd *cobra.Command, args []string) error {
 	router.HandleFunc("/api/positions", savePositionsHandler).Methods("POST")
 	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
 	
+	// Container management endpoints
+	router.HandleFunc("/api/nodes/{nodeId}/container/status", getContainerStatusHandler).Methods("GET")
+	router.HandleFunc("/api/nodes/{nodeId}/container/create", createContainerHandler).Methods("POST")
+	router.HandleFunc("/api/nodes/{nodeId}/container/start", startContainerHandler).Methods("POST")
+	router.HandleFunc("/api/nodes/{nodeId}/container/restart", restartContainerHandler).Methods("POST")
+	router.HandleFunc("/api/nodes/{nodeId}/container/reset", resetContainerHandler).Methods("POST")
+	
+	// File management endpoints for devcontainer.json
+	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", getNodeFileHandler).Methods("GET")
+	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", putNodeFileHandler).Methods("PUT")
+	
 	router.PathPrefix("/").Handler(getFrontendHandler())
 
 	fmt.Printf("Server starting on :%s, scanning path: %s\n", port, rootPath)
