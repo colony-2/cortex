@@ -79,6 +79,7 @@ func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for file, fileStatus := range status {
+		// Check staging status
 		switch fileStatus.Staging {
 		case git.Added:
 			gitStatus.Added = append(gitStatus.Added, file)
@@ -88,17 +89,15 @@ func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 			gitStatus.Deleted = append(gitStatus.Deleted, file)
 		}
 
-		switch fileStatus.Worktree {
-		case git.Added:
-			if fileStatus.Staging == git.Untracked {
-				gitStatus.Untracked = append(gitStatus.Untracked, file)
-			}
-		case git.Modified:
-			if fileStatus.Staging != git.Modified {
+		// Check worktree status
+		if fileStatus.Worktree == git.Untracked {
+			gitStatus.Untracked = append(gitStatus.Untracked, file)
+		} else if fileStatus.Staging == git.Unmodified {
+			// File is in worktree but not staged
+			switch fileStatus.Worktree {
+			case git.Modified:
 				gitStatus.Modified = append(gitStatus.Modified, file)
-			}
-		case git.Deleted:
-			if fileStatus.Staging != git.Deleted {
+			case git.Deleted:
 				gitStatus.Deleted = append(gitStatus.Deleted, file)
 			}
 		}

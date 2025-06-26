@@ -1,0 +1,123 @@
+# Page snapshot
+
+```yaml
+- application:
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-c to logger"
+  - group: 📦 api module 4 dependencies
+  - group: 📦 auth module 3 dependencies
+  - group: 📦 cache module 1 dependencies
+  - group: 📦 config module 2 dependencies
+  - group: 📦 database module 2 dependencies
+  - group: 📦 frontend module 3 dependencies
+  - group: 📦 gateway module 3 dependencies
+  - group: 📦 logger module 1 dependencies
+  - group: 📦 monitoring module 2 dependencies
+  - group: 📦 service-a module 3 dependencies
+  - group: 📦 service-b module 2 dependencies
+  - group: 📦 service-c module 2 dependencies
+  - group: 📦 shared-utils module
+  - img
+  - button "Zoom In":
+    - img
+  - button "Zoom Out" [disabled]:
+    - img
+  - button "Fit View":
+    - img
+  - button "Toggle Interactivity":
+    - img
+  - img "Mini Map"
+  - link "React Flow attribution":
+    - /url: https://reactflow.dev
+    - text: React Flow
+- separator
+- tablist:
+  - tab "file Files":
+    - img "file"
+    - text: Files
+  - tab "appstore Config" [selected]:
+    - img "appstore"
+    - text: Config
+  - tab "history Changes":
+    - img "history"
+    - text: Changes
+- tabpanel "appstore Config":
+  - tablist:
+    - tab "code Claude Code":
+      - img "code"
+      - text: Claude Code
+    - tab "container Devcontainer":
+      - img "container"
+      - text: Devcontainer
+    - tab "branches Dependencies" [selected]:
+      - img "branches"
+      - text: Dependencies
+  - tabpanel "branches Dependencies":
+    - heading "Dependencies for api" [level=4]
+    - alert:
+      - img "info-circle"
+      - text: Dependency Management Add or remove dependencies for this node. Circular dependencies are automatically prevented.
+    - strong: Current Dependencies (0)
+    - text: No dependencies
+    - strong: Add New Dependency
+    - combobox [disabled]
+    - text: Select a node to add as dependency
+    - button "plus Add Dependency" [disabled]:
+      - img "plus"
+      - text: Add Dependency
+    - alert: No available nodes All other nodes either already depend on this node or are already listed as dependencies.
+```
