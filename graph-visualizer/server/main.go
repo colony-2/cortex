@@ -106,32 +106,37 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	router := mux.NewRouter()
 	
-	router.HandleFunc("/api/graph", getGraphHandler).Methods("GET")
-	router.HandleFunc("/api/files/{nodeId}", getFilesHandler).Methods("GET")
-	router.HandleFunc("/api/positions", getPositionsHandler).Methods("GET")
-	router.HandleFunc("/api/positions", savePositionsHandler).Methods("POST")
-	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
+	// API routes - these should be handled before the SPA catch-all
+	apiRouter := router.PathPrefix("/api").Subrouter()
+	apiRouter.HandleFunc("/graph", getGraphHandler).Methods("GET")
+	apiRouter.HandleFunc("/files/{nodeId}", getFilesHandler).Methods("GET")
+	apiRouter.HandleFunc("/positions", getPositionsHandler).Methods("GET")
+	apiRouter.HandleFunc("/positions", savePositionsHandler).Methods("POST")
 	
 	// Container management endpoints
-	router.HandleFunc("/api/nodes/{nodeId}/container/status", getContainerStatusHandler).Methods("GET")
-	router.HandleFunc("/api/nodes/{nodeId}/container/create", createContainerHandler).Methods("POST")
-	router.HandleFunc("/api/nodes/{nodeId}/container/start", startContainerHandler).Methods("POST")
-	router.HandleFunc("/api/nodes/{nodeId}/container/restart", restartContainerHandler).Methods("POST")
-	router.HandleFunc("/api/nodes/{nodeId}/container/reset", resetContainerHandler).Methods("POST")
+	apiRouter.HandleFunc("/nodes/{nodeId}/container/status", getContainerStatusHandler).Methods("GET")
+	apiRouter.HandleFunc("/nodes/{nodeId}/container/create", createContainerHandler).Methods("POST")
+	apiRouter.HandleFunc("/nodes/{nodeId}/container/start", startContainerHandler).Methods("POST")
+	apiRouter.HandleFunc("/nodes/{nodeId}/container/restart", restartContainerHandler).Methods("POST")
+	apiRouter.HandleFunc("/nodes/{nodeId}/container/reset", resetContainerHandler).Methods("POST")
 	
 	// File management endpoints for devcontainer.json
-	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", getNodeFileHandler).Methods("GET")
-	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", putNodeFileHandler).Methods("PUT")
+	apiRouter.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", getNodeFileHandler).Methods("GET")
+	apiRouter.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", putNodeFileHandler).Methods("PUT")
 	
 	// Dependencies management endpoint
-	router.HandleFunc("/api/nodes/{nodeId}/dependencies", updateDependenciesHandler).Methods("PUT")
+	apiRouter.HandleFunc("/nodes/{nodeId}/dependencies", updateDependenciesHandler).Methods("PUT")
 	
 	// Git management endpoints
-	router.HandleFunc("/api/nodes/{nodeId}/git/status", server.handleGitStatus).Methods("GET")
-	router.HandleFunc("/api/nodes/{nodeId}/git/diff", server.handleGitDiff).Methods("GET")
-	router.HandleFunc("/api/nodes/{nodeId}/git/commit", server.handleGitCommit).Methods("POST")
-	router.HandleFunc("/api/nodes/{nodeId}/git/history", server.handleGitHistory).Methods("GET")
+	apiRouter.HandleFunc("/nodes/{nodeId}/git/status", server.handleGitStatus).Methods("GET")
+	apiRouter.HandleFunc("/nodes/{nodeId}/git/diff", server.handleGitDiff).Methods("GET")
+	apiRouter.HandleFunc("/nodes/{nodeId}/git/commit", server.handleGitCommit).Methods("POST")
+	apiRouter.HandleFunc("/nodes/{nodeId}/git/history", server.handleGitHistory).Methods("GET")
 	
+	// WebSocket routes
+	router.HandleFunc("/ws/terminal/{nodeId}", terminalWebSocketHandler)
+	
+	// All other routes should serve the SPA
 	router.PathPrefix("/").Handler(getFrontendHandler())
 
 	fmt.Printf("Server starting on :%s, scanning path: %s\n", port, rootPath)

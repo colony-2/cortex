@@ -8,5 +8,5 @@ import (
 )
 
 func getFrontendHandler() http.Handler {
-	return http.FileServer(http.Dir("../web/dist/"))
+	return newSPAHandler("../web/dist/")
 }
