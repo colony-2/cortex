@@ -121,6 +121,9 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       setDependencies(newDependencies);
       message.success('Dependencies updated successfully');
       
+      // Dispatch event to update the graph
+      window.dispatchEvent(new CustomEvent('dependenciesUpdated'));
+      
       // Refresh available nodes
       await fetchData();
     } catch (error) {

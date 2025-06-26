@@ -89,22 +89,35 @@
   - tab "file Files":
     - img "file"
     - text: Files
-  - tab "appstore Config":
+  - tab "appstore Config" [selected]:
     - img "appstore"
     - text: Config
-  - tab "history Changes" [selected]:
+  - tab "history Changes":
     - img "history"
     - text: Changes
-- tabpanel "history Changes":
+- tabpanel "appstore Config":
   - tablist:
-    - tab "Summary"
-    - tab "Details" [selected]
-    - tab "History"
-  - tabpanel "Details":
-    - heading "Detailed Changes" [level=5]
-    - list:
-      - listitem:
-        - img "edit"
-        - code: test.js
-        - text: +5 -2 --- a/test.js +++ b/test.js @@ -1,3 +1,6 @@ -old line +new line +added line
+    - tab "code Claude Code":
+      - img "code"
+      - text: Claude Code
+    - tab "container Devcontainer":
+      - img "container"
+      - text: Devcontainer
+    - tab "branches Dependencies" [selected]:
+      - img "branches"
+      - text: Dependencies
+  - tabpanel "branches Dependencies":
+    - heading "Dependencies for auth" [level=4]
+    - alert:
+      - img "info-circle"
+      - text: Dependency Management Add or remove dependencies for this node. Circular dependencies are automatically prevented.
+    - strong: Current Dependencies (0)
+    - text: No dependencies
+    - strong: Add New Dependency
+    - combobox [disabled]
+    - text: Select a node to add as dependency
+    - button "plus Add Dependency" [disabled]:
+      - img "plus"
+      - text: Add Dependency
+    - alert: No available nodes All other nodes either already depend on this node or are already listed as dependencies.
 ```

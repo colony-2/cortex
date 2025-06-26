@@ -126,12 +126,31 @@ export default function GraphFlow() {
       handleNodeClick(event.detail.nodeId);
     };
     
+    // Listen for dependency update events
+    const handleDependencyUpdate = async () => {
+      try {
+        const [graphData, positions] = await Promise.all([
+          fetchGraph(),
+          fetchPositions()
+        ]);
+        
+        graphRef.current = graphData;
+        layoutNodes(graphData, positions);
+        message.success('Graph updated with new dependencies');
+      } catch (err) {
+        console.error('Failed to refresh graph after dependency update:', err);
+        message.error('Failed to refresh graph');
+      }
+    };
+    
     window.addEventListener('nodeSelected', handleNodeSelection as EventListener);
+    window.addEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
     
     return () => {
       window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
+      window.removeEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
     };
-  }, [handleNodeClick]);
+  }, [handleNodeClick, layoutNodes]);
 
   useEffect(() => {
     async function loadData() {

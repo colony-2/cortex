@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,6 +21,13 @@ type GitStatus struct {
 	Deleted    []string `json:"deleted"`
 	Untracked  []string `json:"untracked"`
 	TotalCount int      `json:"totalCount"`
+}
+
+// gitRepoInfo holds information about the git repository and the relative path to the box
+type gitRepoInfo struct {
+	repo       *git.Repository
+	repoPath   string
+	boxRelPath string // relative path from repo root to box directory
 }
 
 type GitCommit struct {
@@ -42,6 +50,54 @@ type GitFileDiff struct {
 	Patch     string `json:"patch"`
 }
 
+// findGitRepo finds the git repository starting from the given path and walking up
+func (s *Server) findGitRepo(startPath string) (*gitRepoInfo, error) {
+	currentPath := startPath
+	for {
+		// Try to open git repo at current path
+		repo, err := git.PlainOpen(currentPath)
+		if err == nil {
+			// Found a git repo, calculate relative path
+			relPath, err := filepath.Rel(currentPath, startPath)
+			if err != nil {
+				return nil, err
+			}
+			return &gitRepoInfo{
+				repo:       repo,
+				repoPath:   currentPath,
+				boxRelPath: relPath,
+			}, nil
+		}
+
+		// Move to parent directory
+		parent := filepath.Dir(currentPath)
+		if parent == currentPath || parent == "." || parent == "/" {
+			// Reached root without finding a git repo
+			return nil, fmt.Errorf("not a git repository")
+		}
+		currentPath = parent
+	}
+}
+
+// isPathInBox checks if a file path is within the box directory
+func isPathInBox(filePath, boxRelPath string) bool {
+	if boxRelPath == "." {
+		return true
+	}
+	// Check if the file path starts with the box relative path
+	return strings.HasPrefix(filePath, boxRelPath+string(os.PathSeparator)) ||
+		filePath == boxRelPath
+}
+
+// stripBoxPrefix removes the box directory prefix from a file path
+func stripBoxPrefix(filePath, boxRelPath string) string {
+	if boxRelPath == "." {
+		return filePath
+	}
+	prefix := boxRelPath + string(os.PathSeparator)
+	return strings.TrimPrefix(filePath, prefix)
+}
+
 func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
@@ -53,13 +109,14 @@ func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := git.PlainOpen(nodePath)
+	// Find git repository
+	gitInfo, err := s.findGitRepo(nodePath)
 	if err != nil {
 		http.Error(w, "Not a git repository", http.StatusBadRequest)
 		return
 	}
 
-	worktree, err := repo.Worktree()
+	worktree, err := gitInfo.repo.Worktree()
 	if err != nil {
 		http.Error(w, "Failed to get worktree", http.StatusInternalServerError)
 		return
@@ -79,26 +136,34 @@ func (s *Server) handleGitStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for file, fileStatus := range status {
+		// Only include files within the box directory
+		if !isPathInBox(file, gitInfo.boxRelPath) {
+			continue
+		}
+
+		// Strip the box prefix for display
+		displayPath := stripBoxPrefix(file, gitInfo.boxRelPath)
+
 		// Check staging status
 		switch fileStatus.Staging {
 		case git.Added:
-			gitStatus.Added = append(gitStatus.Added, file)
+			gitStatus.Added = append(gitStatus.Added, displayPath)
 		case git.Modified:
-			gitStatus.Modified = append(gitStatus.Modified, file)
+			gitStatus.Modified = append(gitStatus.Modified, displayPath)
 		case git.Deleted:
-			gitStatus.Deleted = append(gitStatus.Deleted, file)
+			gitStatus.Deleted = append(gitStatus.Deleted, displayPath)
 		}
 
 		// Check worktree status
 		if fileStatus.Worktree == git.Untracked {
-			gitStatus.Untracked = append(gitStatus.Untracked, file)
+			gitStatus.Untracked = append(gitStatus.Untracked, displayPath)
 		} else if fileStatus.Staging == git.Unmodified {
 			// File is in worktree but not staged
 			switch fileStatus.Worktree {
 			case git.Modified:
-				gitStatus.Modified = append(gitStatus.Modified, file)
+				gitStatus.Modified = append(gitStatus.Modified, displayPath)
 			case git.Deleted:
-				gitStatus.Deleted = append(gitStatus.Deleted, file)
+				gitStatus.Deleted = append(gitStatus.Deleted, displayPath)
 			}
 		}
 	}
@@ -121,19 +186,20 @@ func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := git.PlainOpen(nodePath)
+	// Find git repository
+	gitInfo, err := s.findGitRepo(nodePath)
 	if err != nil {
 		http.Error(w, "Not a git repository", http.StatusBadRequest)
 		return
 	}
 
-	ref, err := repo.Head()
+	ref, err := gitInfo.repo.Head()
 	if err != nil {
 		http.Error(w, "Failed to get HEAD", http.StatusInternalServerError)
 		return
 	}
 
-	commit, err := repo.CommitObject(ref.Hash())
+	commit, err := gitInfo.repo.CommitObject(ref.Hash())
 	if err != nil {
 		http.Error(w, "Failed to get commit", http.StatusInternalServerError)
 		return
@@ -171,6 +237,18 @@ func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, change := range changes {
+		// Check if this change affects files in the box
+		filePath := ""
+		if change.To.Name != "" {
+			filePath = change.To.Name
+		} else if change.From.Name != "" {
+			filePath = change.From.Name
+		}
+
+		if !isPathInBox(filePath, gitInfo.boxRelPath) {
+			continue
+		}
+
 		patch, err := change.Patch()
 		if err != nil {
 			continue
@@ -182,14 +260,14 @@ func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fileDiff := GitFileDiff{
-			Path:   change.To.Name,
+			Path:   stripBoxPrefix(filePath, gitInfo.boxRelPath),
 			Status: action.String(),
 			Patch:  patch.String(),
 		}
 
 		stats := patch.Stats()
 		for _, stat := range stats {
-			if stat.Name == change.To.Name {
+			if stat.Name == filePath {
 				fileDiff.Additions = stat.Addition
 				fileDiff.Deletions = stat.Deletion
 				break
@@ -214,23 +292,40 @@ func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := git.PlainOpen(nodePath)
+	// Find git repository
+	gitInfo, err := s.findGitRepo(nodePath)
 	if err != nil {
 		http.Error(w, "Not a git repository", http.StatusBadRequest)
 		return
 	}
 
-	worktree, err := repo.Worktree()
+	worktree, err := gitInfo.repo.Worktree()
 	if err != nil {
 		http.Error(w, "Failed to get worktree", http.StatusInternalServerError)
 		return
 	}
 
-	// Add all changes
-	err = worktree.AddWithOptions(&git.AddOptions{All: true})
+	// Get current status to find files to add
+	status, err := worktree.Status()
 	if err != nil {
-		http.Error(w, "Failed to add changes", http.StatusInternalServerError)
+		http.Error(w, "Failed to get status", http.StatusInternalServerError)
 		return
+	}
+
+	// Add only files within the box directory
+	for file, fileStatus := range status {
+		if !isPathInBox(file, gitInfo.boxRelPath) {
+			continue
+		}
+
+		// Add file if it has changes
+		if fileStatus.Worktree != git.Unmodified {
+			_, err = worktree.Add(file)
+			if err != nil {
+				// Log error but continue with other files
+				continue
+			}
+		}
 	}
 
 	// Generate commit message with box name prefix and UUID
@@ -269,19 +364,20 @@ func (s *Server) handleGitHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo, err := git.PlainOpen(nodePath)
+	// Find git repository
+	gitInfo, err := s.findGitRepo(nodePath)
 	if err != nil {
 		http.Error(w, "Not a git repository", http.StatusBadRequest)
 		return
 	}
 
-	ref, err := repo.Head()
+	ref, err := gitInfo.repo.Head()
 	if err != nil {
 		http.Error(w, "Failed to get HEAD", http.StatusInternalServerError)
 		return
 	}
 
-	commitIter, err := repo.Log(&git.LogOptions{From: ref.Hash()})
+	commitIter, err := gitInfo.repo.Log(&git.LogOptions{From: ref.Hash()})
 	if err != nil {
 		http.Error(w, "Failed to get commit log", http.StatusInternalServerError)
 		return
@@ -291,6 +387,35 @@ func (s *Server) handleGitHistory(w http.ResponseWriter, r *http.Request) {
 	boxName := filepath.Base(nodePath)
 	
 	err = commitIter.ForEach(func(c *object.Commit) error {
+		// Check if commit affects files in the box directory
+		if gitInfo.boxRelPath != "." {
+			// Get the changes from this commit
+			parent, err := c.Parent(0)
+			if err == nil {
+				parentTree, _ := parent.Tree()
+				currentTree, _ := c.Tree()
+				changes, _ := currentTree.Diff(parentTree)
+				
+				hasBoxChanges := false
+				for _, change := range changes {
+					filePath := ""
+					if change.To.Name != "" {
+						filePath = change.To.Name
+					} else if change.From.Name != "" {
+						filePath = change.From.Name
+					}
+					if isPathInBox(filePath, gitInfo.boxRelPath) {
+						hasBoxChanges = true
+						break
+					}
+				}
+				
+				if !hasBoxChanges {
+					return nil
+				}
+			}
+		}
+
 		// Only include commits that start with [boxName]
 		if strings.HasPrefix(c.Message, fmt.Sprintf("[%s]", boxName)) {
 			commits = append(commits, GitCommit{
