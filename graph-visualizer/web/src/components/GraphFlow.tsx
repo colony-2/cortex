@@ -136,6 +136,15 @@ export default function GraphFlow() {
         
         graphRef.current = graphData;
         layoutNodes(graphData, positions);
+        
+        // Update selectedNode with fresh data if one is selected
+        if (selectedNode) {
+          const updatedNode = graphData.nodes.find(n => n.id === selectedNode.id);
+          if (updatedNode) {
+            setSelectedNode(updatedNode);
+          }
+        }
+        
         message.success('Graph updated with new dependencies');
       } catch (err) {
         console.error('Failed to refresh graph after dependency update:', err);
@@ -150,7 +159,7 @@ export default function GraphFlow() {
       window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
       window.removeEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
     };
-  }, [handleNodeClick, layoutNodes]);
+  }, [handleNodeClick, layoutNodes, selectedNode]);
 
   useEffect(() => {
     async function loadData() {

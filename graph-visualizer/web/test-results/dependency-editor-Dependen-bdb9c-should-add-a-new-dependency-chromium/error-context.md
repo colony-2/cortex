@@ -86,22 +86,38 @@
     - text: React Flow
 - separator
 - tablist:
-  - tab "setting Configuration" [selected]:
-    - img "setting"
-    - text: Configuration
-- tabpanel "setting Configuration":
+  - tab "file Files":
+    - img "file"
+    - text: Files
+  - tab "appstore Config" [selected]:
+    - img "appstore"
+    - text: Config
+  - tab "history Changes":
+    - img "history"
+    - text: Changes
+- tabpanel "appstore Config":
   - tablist:
-    - tab "container Container" [selected]:
+    - tab "code Claude Code":
+      - img "code"
+      - text: Claude Code
+    - tab "container Env":
       - img "container"
-      - text: Container
-    - tab "edit Notes":
-      - img "edit"
-      - text: Notes
-    - tab "check-square Todo List":
-      - img "check-square"
-      - text: Todo List
-  - tabpanel "container Container":
-    - heading "Container Configuration" [level=5]
-    - img "No data"
-    - text: Container settings coming soon
+      - text: Env
+    - tab "branches Dependencies" [selected]:
+      - img "branches"
+      - text: Dependencies
+  - tabpanel "branches Dependencies":
+    - heading "Dependencies for api" [level=4]
+    - alert:
+      - img "info-circle"
+      - text: Dependency Management Add or remove dependencies for this node. Circular dependencies are automatically prevented.
+    - strong: Current Dependencies (0)
+    - text: No dependencies
+    - strong: Add New Dependency
+    - combobox [disabled]
+    - text: Select a node to add as dependency
+    - button "plus Add Dependency" [disabled]:
+      - img "plus"
+      - text: Add Dependency
+    - alert: No available nodes All other nodes either already depend on this node or are already listed as dependencies.
 ```

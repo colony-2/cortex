@@ -19,7 +19,7 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
   // Fetch current dependencies and available nodes
   useEffect(() => {
     fetchData();
-  }, [node.id]);
+  }, [node.id, node.dependencies]); // Re-fetch when node or its dependencies change
 
   const fetchData = async () => {
     try {
@@ -29,12 +29,21 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       const response = await fetch('/api/graph');
       const data = await response.json();
       
-      // Set current dependencies
-      setDependencies(node.dependencies || []);
-      
-      // Filter out nodes that would create circular dependencies
-      const validNodes = await getValidDependencyTargets(data.nodes, node);
-      setAvailableNodes(validNodes);
+      // Find the current node in the fresh data to get updated dependencies
+      const currentNode = data.nodes.find((n: DependencyNode) => n.id === node.id);
+      if (currentNode) {
+        // Set current dependencies from the fresh data
+        setDependencies(currentNode.dependencies || []);
+        
+        // Filter out nodes that would create circular dependencies
+        const validNodes = await getValidDependencyTargets(data.nodes, currentNode);
+        setAvailableNodes(validNodes);
+      } else {
+        // Fallback to original node data
+        setDependencies(node.dependencies || []);
+        const validNodes = await getValidDependencyTargets(data.nodes, node);
+        setAvailableNodes(validNodes);
+      }
     } catch (error) {
       message.error('Failed to load dependency data');
       console.error('Error fetching data:', error);
@@ -118,13 +127,12 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
         throw new Error('Failed to save dependencies');
       }
       
-      setDependencies(newDependencies);
       message.success('Dependencies updated successfully');
       
       // Dispatch event to update the graph
       window.dispatchEvent(new CustomEvent('dependenciesUpdated'));
       
-      // Refresh available nodes
+      // Refresh component data with updated dependencies from server
       await fetchData();
     } catch (error) {
       message.error('Failed to save dependencies');

@@ -1,7 +1,7 @@
 import { Tabs, Empty, Typography, Input, List } from 'antd';
 import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
-import DevcontainerEditor from './DevcontainerEditor';
+import EnvEditor from './EnvEditor';
 import DependencyEditor from './DependencyEditor';
 import GitChanges from './GitChanges';
 import type { DependencyNode } from '../types';
@@ -131,7 +131,7 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
           Env
         </span>
       ),
-      children: <DevcontainerEditor node={node} />,
+      children: <EnvEditor node={node} />,
     },
     {
       key: 'dependencies',
