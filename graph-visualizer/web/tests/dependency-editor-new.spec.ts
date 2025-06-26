@@ -39,60 +39,53 @@ test.describe('New Dependency Editor', () => {
     await expect(page.getByText('Indirect parent', { exact: true })).toBeVisible();
   });
 
-  test('should show current dependencies with remove buttons', async ({ page }) => {
-    // Look for items with blue dependency tags
-    const dependencies = page.locator('.ant-tag-blue');
-    const count = await dependencies.count();
+  test('should show remove buttons for dependencies', async ({ page }) => {
+    // Look for items with blue link icons (dependencies)
+    const removeButtons = page.locator('button:has-text("Remove")');
+    const count = await removeButtons.count();
     
     if (count > 0) {
-      // Check that each dependency has a remove button
-      const firstDep = page.locator('.ant-list-item').filter({ has: page.locator('.ant-tag-blue') }).first();
-      await expect(firstDep.locator('button:has-text("Remove")')).toBeVisible();
+      // Check that remove buttons are visible
+      await expect(removeButtons.first()).toBeVisible();
     }
   });
 
-  test('should show available nodes with add buttons', async ({ page }) => {
-    // Look for items with green available tags
-    const available = page.locator('.ant-tag-green');
-    const count = await available.count();
+  test('should show add buttons for available nodes', async ({ page }) => {
+    // Look for items with green arrow icons (available)
+    const addButtons = page.locator('button:has-text("Add")');
+    const count = await addButtons.count();
     
     if (count > 0) {
-      // Check that each available node has an add button
-      const firstAvailable = page.locator('.ant-list-item').filter({ has: page.locator('.ant-tag-green') }).first();
-      await expect(firstAvailable.locator('button:has-text("Add")')).toBeVisible();
+      // Check that add buttons are visible
+      await expect(addButtons.first()).toBeVisible();
     }
   });
 
-  test('should show parent nodes with cannot add buttons', async ({ page }) => {
-    // Look for items with orange or red tags (parents)
-    const parents = page.locator('.ant-tag-orange, .ant-tag-red');
-    const count = await parents.count();
+  test('should show cannot add buttons for parent nodes', async ({ page }) => {
+    // Look for disabled cannot add buttons
+    const cannotAddButtons = page.locator('button:has-text("Cannot Add")');
+    const count = await cannotAddButtons.count();
     
     if (count > 0) {
-      // Check that parent nodes have disabled "Cannot Add" buttons
-      const firstParent = page.locator('.ant-list-item').filter({ 
-        has: page.locator('.ant-tag-orange, .ant-tag-red') 
-      }).first();
-      const cannotAddButton = firstParent.locator('button:has-text("Cannot Add")');
-      await expect(cannotAddButton).toBeVisible();
-      await expect(cannotAddButton).toBeDisabled();
+      // Check that cannot add buttons are visible and disabled
+      const firstButton = cannotAddButtons.first();
+      await expect(firstButton).toBeVisible();
+      await expect(firstButton).toBeDisabled();
     }
   });
 
   test('should update list when adding a dependency', async ({ page }) => {
-    // Find an available node to add
-    const availableItem = page.locator('.ant-list-item').filter({ 
-      has: page.locator('.ant-tag-green') 
-    }).first();
-    
-    const hasAvailable = await availableItem.count() > 0;
+    // Find an available node to add (has Add button)
+    const addButton = page.locator('button:has-text("Add")').first();
+    const hasAvailable = await addButton.count() > 0;
     
     if (hasAvailable) {
-      // Get the node name before clicking
-      const nodeName = await availableItem.locator('.ant-list-item-meta-title').textContent();
+      // Get the parent list item to find the node name
+      const listItem = addButton.locator('..').locator('..');
+      const nodeName = await listItem.locator('.ant-list-item-meta-title').textContent();
       
       // Click the Add button
-      await availableItem.locator('button:has-text("Add")').click();
+      await addButton.click();
       
       // Wait for success message
       await expect(page.locator('.ant-message-success')).toBeVisible();
@@ -100,28 +93,26 @@ test.describe('New Dependency Editor', () => {
       // Wait for list to refresh
       await page.waitForTimeout(1000);
       
-      // Check that the node now has a blue dependency tag
+      // Check that the node now has a Remove button instead
       const updatedItem = page.locator('.ant-list-item').filter({ 
         hasText: nodeName || '' 
       });
-      await expect(updatedItem.locator('.ant-tag-blue')).toBeVisible();
+      await expect(updatedItem.locator('button:has-text("Remove")')).toBeVisible();
     }
   });
 
   test('should update list when removing a dependency', async ({ page }) => {
-    // Find a current dependency to remove
-    const depItem = page.locator('.ant-list-item').filter({ 
-      has: page.locator('.ant-tag-blue') 
-    }).first();
-    
-    const hasDeps = await depItem.count() > 0;
+    // Find a current dependency to remove (has Remove button)
+    const removeButton = page.locator('button:has-text("Remove")').first();
+    const hasDeps = await removeButton.count() > 0;
     
     if (hasDeps) {
-      // Get the node name before clicking
-      const nodeName = await depItem.locator('.ant-list-item-meta-title').textContent();
+      // Get the parent list item to find the node name
+      const listItem = removeButton.locator('..').locator('..');
+      const nodeName = await listItem.locator('.ant-list-item-meta-title').textContent();
       
       // Click the Remove button
-      await depItem.locator('button:has-text("Remove")').click();
+      await removeButton.click();
       
       // Wait for success message
       await expect(page.locator('.ant-message-success')).toBeVisible();
@@ -129,21 +120,11 @@ test.describe('New Dependency Editor', () => {
       // Wait for list to refresh
       await page.waitForTimeout(1000);
       
-      // Check that the node now has a green available tag
+      // Check that the node now has an Add button instead
       const updatedItem = page.locator('.ant-list-item').filter({ 
         hasText: nodeName || '' 
       });
-      await expect(updatedItem.locator('.ant-tag-green')).toBeVisible();
+      await expect(updatedItem.locator('button:has-text("Add")')).toBeVisible();
     }
-  });
-
-  test('should show summary counts', async ({ page }) => {
-    // Check that summary section exists
-    await expect(page.locator('text=Summary:')).toBeVisible();
-    
-    // Check for count displays
-    await expect(page.locator('text=/current dependencies/')).toBeVisible();
-    await expect(page.locator('text=/nodes available to add/')).toBeVisible();
-    await expect(page.locator('text=/nodes cannot be added/')).toBeVisible();
   });
 });

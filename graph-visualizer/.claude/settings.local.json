@@ -25,7 +25,10 @@
       "Bash(git commit:*)",
       "Bash(cat:*)",
       "Bash(make:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

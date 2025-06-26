@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { List, Button, Typography, Space, message, Spin, Tag, Tooltip } from 'antd';
+import { List, Button, Typography, Space, message, Spin, Tooltip } from 'antd';
 import { 
   DeleteOutlined, 
   PlusOutlined, 
@@ -169,18 +169,6 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
     }
   };
 
-  const getTypeTag = (type: NodeRelationship['type']) => {
-    switch (type) {
-      case 'dependency':
-        return <Tag color="blue">Dependency</Tag>;
-      case 'available':
-        return <Tag color="green">Available</Tag>;
-      case 'parent':
-        return <Tag color="orange">Direct Parent</Tag>;
-      case 'ancestor':
-        return <Tag color="red">Indirect Parent</Tag>;
-    }
-  };
 
   const renderItem = (item: NodeRelationship) => {
     const actions = [];
@@ -230,17 +218,9 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       <List.Item actions={actions}>
         <List.Item.Meta
           avatar={getIcon(item.type)}
-          title={
-            <Space>
-              <Text strong>{item.node.name}</Text>
-              <Text type="secondary" style={{ fontSize: '12px' }}>({item.node.id})</Text>
-            </Space>
-          }
+          title={<Text strong>{item.node.name}</Text>}
           description={
-            <Space direction="vertical" size={0}>
-              {getTypeTag(item.type)}
-              {item.reason && <Text type="secondary" style={{ fontSize: '12px' }}>{item.reason}</Text>}
-            </Space>
+            item.reason && <Text type="secondary" style={{ fontSize: '12px' }}>{item.reason}</Text>
           }
         />
       </List.Item>
@@ -254,11 +234,6 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
       </div>
     );
   }
-
-  // Group relationships by type
-  const dependencies = relationships.filter(r => r.type === 'dependency');
-  const available = relationships.filter(r => r.type === 'available');
-  const cannotAdd = relationships.filter(r => r.type === 'parent' || r.type === 'ancestor');
 
   return (
     <div style={{ padding: '16px', height: '100%', overflowY: 'auto' }}>
@@ -286,15 +261,6 @@ export default function DependencyEditor({ node }: DependencyEditorProps) {
         locale={{ emptyText: 'No other nodes in the system' }}
         style={{ marginTop: '16px' }}
       />
-      
-      <div style={{ marginTop: '24px' }}>
-        <Space direction="vertical" size="small">
-          <Text strong>Summary:</Text>
-          <Text>{dependencies.length} current dependencies</Text>
-          <Text>{available.length} nodes available to add</Text>
-          <Text>{cannotAdd.length} nodes cannot be added (would create cycles)</Text>
-        </Space>
-      </div>
     </div>
   );
 }
