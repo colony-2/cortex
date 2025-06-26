@@ -88,5 +88,9 @@ test.describe('DevcontainerEditor', () => {
     
     // Check that the editor is not visible
     await expect(page.locator('.monaco-editor')).not.toBeVisible();
+    
+    // Verify that container controls ARE shown when devcontainer.json exists
+    await expect(page.getByText('Devcontainer Service Controls')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Container' })).toBeVisible();
   });
 });
