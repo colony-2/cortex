@@ -1,7 +1,9 @@
 import { Tabs, Empty, Typography, Input, List } from 'antd';
-import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
 import DevcontainerEditor from './DevcontainerEditor';
+import DependencyEditor from './DependencyEditor';
+import GitChanges from './GitChanges';
 import type { DependencyNode } from '../types';
 
 const { Title } = Typography;
@@ -131,6 +133,16 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
       ),
       children: <DevcontainerEditor node={node} />,
     },
+    {
+      key: 'dependencies',
+      label: (
+        <span>
+          <BranchesOutlined />
+          Dependencies
+        </span>
+      ),
+      children: <DependencyEditor node={node} />,
+    },
   ];
 
   return (
@@ -173,12 +185,7 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
           Changes
         </span>
       ),
-      children: (
-        <div style={{ padding: '24px' }}>
-          <Title level={4}>Recent Changes</Title>
-          <Empty description="No changes tracked yet" />
-        </div>
-      ),
+      children: <GitChanges node={selectedNode} />,
     },
   ] : [
     {

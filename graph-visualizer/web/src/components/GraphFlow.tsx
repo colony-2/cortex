@@ -201,20 +201,22 @@ export default function GraphFlow() {
   return (
     <Splitter style={{ height: '100vh' }}>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={{ custom: ProFlowNode }}
-          onNodesChange={onNodesChange}
-          nodesDraggable={true}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          fitView
-        >
-          <Background />
-          <Controls />
-          <MiniMap />
-        </ReactFlow>
+        <div data-testid="react-flow-wrapper" style={{ height: '100%' }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={{ custom: ProFlowNode }}
+            onNodesChange={onNodesChange}
+            nodesDraggable={true}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            fitView
+          >
+            <Background />
+            <Controls />
+            <MiniMap />
+          </ReactFlow>
+        </div>
       </Splitter.Panel>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
         <SidePanel selectedNode={selectedNode} />

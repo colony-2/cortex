@@ -101,6 +101,9 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 	defer storage.Close()
 
+	// Create server instance
+	server := NewServer(rootPath, storage)
+
 	router := mux.NewRouter()
 	
 	router.HandleFunc("/api/graph", getGraphHandler).Methods("GET")
@@ -119,6 +122,15 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// File management endpoints for devcontainer.json
 	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", getNodeFileHandler).Methods("GET")
 	router.HandleFunc("/api/nodes/{nodeId}/files/{filePath:.*}", putNodeFileHandler).Methods("PUT")
+	
+	// Dependencies management endpoint
+	router.HandleFunc("/api/nodes/{nodeId}/dependencies", updateDependenciesHandler).Methods("PUT")
+	
+	// Git management endpoints
+	router.HandleFunc("/api/nodes/{nodeId}/git/status", server.handleGitStatus).Methods("GET")
+	router.HandleFunc("/api/nodes/{nodeId}/git/diff", server.handleGitDiff).Methods("GET")
+	router.HandleFunc("/api/nodes/{nodeId}/git/commit", server.handleGitCommit).Methods("POST")
+	router.HandleFunc("/api/nodes/{nodeId}/git/history", server.handleGitHistory).Methods("GET")
 	
 	router.PathPrefix("/").Handler(getFrontendHandler())
 
@@ -339,6 +351,72 @@ func savePositionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	log.Printf("Successfully saved %d positions", len(positions))
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
+
+func updateDependenciesHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	nodeID := vars["nodeId"]
+	
+	var request struct {
+		Dependencies []string `json:"dependencies"`
+	}
+	
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Printf("Error decoding dependencies request: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	
+	// Find the node's directory
+	var nodePath string
+	err := filepath.Walk(rootPath, func(dirPath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		
+		if !info.IsDir() {
+			return nil
+		}
+		
+		if filepath.Base(dirPath) == nodeID {
+			nodePath = dirPath
+			return filepath.SkipDir
+		}
+		
+		return nil
+	})
+	
+	if err != nil || nodePath == "" {
+		log.Printf("Node %s not found", nodeID)
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+	
+	// Create the dependency structure
+	dep := Dependency{
+		Dependencies: request.Dependencies,
+	}
+	
+	// Marshal to YAML
+	data, err := yaml.Marshal(&dep)
+	if err != nil {
+		log.Printf("Error marshaling dependencies: %v", err)
+		http.Error(w, "Failed to encode dependencies", http.StatusInternalServerError)
+		return
+	}
+	
+	// Write to dependencies.yaml file
+	depFile := filepath.Join(nodePath, "dependencies.yaml")
+	if err := os.WriteFile(depFile, data, 0644); err != nil {
+		log.Printf("Error writing dependencies file: %v", err)
+		http.Error(w, "Failed to save dependencies", http.StatusInternalServerError)
+		return
+	}
+	
+	log.Printf("Updated dependencies for node %s: %v", nodeID, request.Dependencies)
+	
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
