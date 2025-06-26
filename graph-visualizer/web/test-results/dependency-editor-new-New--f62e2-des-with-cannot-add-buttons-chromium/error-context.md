@@ -119,8 +119,4 @@
     - text: Indirect parent No other nodes in the system
     - strong: "Summary:"
     - text: 0 current dependencies 0 nodes available to add 0 nodes cannot be added (would create cycles)
-- img "close-circle"
-- text: Failed to load dependency data
-- img "close-circle"
-- text: Failed to load dependency data
 ```

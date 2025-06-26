@@ -1,0 +1,12 @@
+{
+  "name": "API Service",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  },
+  "forwardPorts": [],
+  "postCreateCommand": ""
+}

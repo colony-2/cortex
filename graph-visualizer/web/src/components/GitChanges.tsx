@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Tabs, Button, Badge, Space, Typography, Empty, Spin, List, Tag, message } from 'antd';
 import { SyncOutlined, FileAddOutlined, EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { DependencyNode } from '../types';
-import { getURLState, updateURLState } from '../utils/urlState';
+import { navigateToPath } from '../utils/urlState';
 
 const { Title, Text } = Typography;
 
@@ -39,24 +40,24 @@ interface GitDiff {
 }
 
 export default function GitChanges({ node }: GitChangesProps) {
-  const [activeTab, setActiveTab] = useState('summary');
+  const { subtab = 'summary' } = useParams<{ subtab?: string }>();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState(subtab);
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [diff, setDiff] = useState<GitDiff | null>(null);
   const [history, setHistory] = useState<GitCommit[]>([]);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
 
-  // Initialize subtab from URL on mount
+  // Update active tab when URL changes
   useEffect(() => {
-    const urlState = getURLState();
-    if (urlState.subtab) {
-      setActiveTab(urlState.subtab);
-    }
-  }, []);
+    setActiveTab(subtab);
+  }, [subtab]);
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    updateURLState({ subtab: key });
+    const path = navigateToPath({ boxId: node.id, tab: 'changes', subtab: key });
+    navigate(path);
   };
 
   // Fetch git status

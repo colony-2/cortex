@@ -3,6 +3,7 @@ package devcontainer
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -143,6 +144,22 @@ func (c *DockerRunConfig) Validate() error {
 		return fmt.Errorf("image is required")
 	}
 
+	// Validate workspace mount
+	if c.WorkspaceMount != "" {
+		if strings.Contains(c.WorkspaceMount, "type=bind") {
+			// Extract source path from mount string
+			parts := strings.Split(c.WorkspaceMount, ",")
+			for _, part := range parts {
+				if strings.HasPrefix(part, "source=") {
+					sourcePath := strings.TrimPrefix(part, "source=")
+					if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+						return fmt.Errorf("workspace mount source path does not exist: %s", sourcePath)
+					}
+				}
+			}
+		}
+	}
+
 	// Validate mount syntax
 	for _, mount := range c.Mounts {
 		if !strings.Contains(mount, "type=") {
@@ -150,6 +167,19 @@ func (c *DockerRunConfig) Validate() error {
 		}
 		if !strings.Contains(mount, "target=") {
 			return fmt.Errorf("invalid mount format: %s (missing target=)", mount)
+		}
+		
+		// Check bind mount sources exist
+		if strings.Contains(mount, "type=bind") {
+			parts := strings.Split(mount, ",")
+			for _, part := range parts {
+				if strings.HasPrefix(part, "source=") {
+					sourcePath := strings.TrimPrefix(part, "source=")
+					if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+						return fmt.Errorf("mount source path does not exist: %s", sourcePath)
+					}
+				}
+			}
 		}
 	}
 
@@ -322,12 +352,22 @@ type DockerManager struct{}
 
 // CreateContainer creates a new Docker container from a DevContainer configuration
 func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, workspaceRoot string) (string, error) {
+	// Validate workspace root exists
+	if _, err := os.Stat(workspaceRoot); os.IsNotExist(err) {
+		return "", fmt.Errorf("workspace root does not exist: %s", workspaceRoot)
+	}
+	
 	// Build docker run configuration
 	config, err := BuildDockerRunCommand(dc, workspaceRoot)
 	if err != nil {
 		return "", fmt.Errorf("failed to build docker run config: %w", err)
 	}
 
+	// Validate the configuration
+	if err := config.Validate(); err != nil {
+		return "", fmt.Errorf("invalid docker configuration: %w", err)
+	}
+	
 	// Build the docker command arguments
 	args := config.ToDockerRunArgs()
 	
@@ -341,12 +381,15 @@ func (d *DockerManager) CreateContainer(ctx context.Context, dc *DevContainer, w
 	// Add a command to keep container running
 	createArgs = append(createArgs, "sleep", "infinity")
 	
+	// Log the command for debugging
+	fmt.Printf("DEBUG: Docker create command: docker %v\n", createArgs)
+	
 	// Execute docker create command
 	cmd := exec.CommandContext(ctx, "docker", createArgs...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Include the docker output in the error for better debugging
-		return "", fmt.Errorf("failed to create container: %w\nDocker output: %s", err, string(output))
+		return "", fmt.Errorf("failed to create container: %w\nDocker command: docker %v\nDocker output: %s", err, createArgs, string(output))
 	}
 
 	// Extract container ID from output

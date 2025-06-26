@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse, Splitter } from 'antd';
@@ -6,7 +7,7 @@ import { fetchGraph, fetchPositions, savePositions } from '../api';
 import type { DependencyGraph, DependencyNode, NodePosition } from '../types';
 import ProFlowNode from './ProFlowNode';
 import SidePanel from './SidePanel';
-import { getURLState, updateURLState } from '../utils/urlState';
+import { navigateToPath } from '../utils/urlState';
 
 interface FlowNode {
   id: string;
@@ -29,6 +30,8 @@ interface FlowEdge {
 }
 
 export default function GraphFlow() {
+  const { boxId, tab } = useParams<{ boxId?: string; tab?: string; subtab?: string }>();
+  const navigate = useNavigate();
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,15 +39,17 @@ export default function GraphFlow() {
   const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<DependencyGraph | null>(null);
+  const isInitialLoad = useRef(true);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
     setSelectedNode(node);
-    // Update URL with selected node
-    updateURLState({ node: nodeId });
-  }, []);
+    // Navigate to the box detail page
+    const path = navigateToPath({ boxId: nodeId, tab: tab || 'files' });
+    navigate(path);
+  }, [navigate, tab]);
 
-  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[]) => {
+  const layoutNodes = useCallback((graphData: DependencyGraph, savedPositions: NodePosition[], selectedNodeId?: string) => {
     // Handle null or undefined nodes
     if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
       setNodes([]);
@@ -73,7 +78,7 @@ export default function GraphFlow() {
           type: node.type,
           dependencies: node.dependencies,
           logo: '📦',
-          selected: selectedNode?.id === node.id
+          selected: selectedNodeId === node.id
         },
       };
     });
@@ -90,7 +95,7 @@ export default function GraphFlow() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [selectedNode]);
+  }, []); // No dependencies - pure function
 
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
@@ -139,12 +144,12 @@ export default function GraphFlow() {
         ]);
         
         graphRef.current = graphData;
-        layoutNodes(graphData, positions);
+        layoutNodes(graphData, positions, selectedNode?.id);
         
         // Update selectedNode with fresh data if one is selected
         if (selectedNode) {
           const updatedNode = graphData.nodes.find(n => n.id === selectedNode.id);
-          if (updatedNode) {
+          if (updatedNode && JSON.stringify(updatedNode) !== JSON.stringify(selectedNode)) {
             setSelectedNode(updatedNode);
           }
         }
@@ -163,9 +168,12 @@ export default function GraphFlow() {
       window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
       window.removeEventListener('dependenciesUpdated', handleDependencyUpdate as EventListener);
     };
-  }, [handleNodeClick, layoutNodes, selectedNode]);
+  }, [handleNodeClick, layoutNodes, selectedNode?.id]);
 
+  // Load data only on initial mount
   useEffect(() => {
+    if (!isInitialLoad.current) return;
+    
     async function loadData() {
       try {
         const [graphData, positions] = await Promise.all([
@@ -174,17 +182,9 @@ export default function GraphFlow() {
         ]);
         
         graphRef.current = graphData;
-        layoutNodes(graphData, positions);
+        layoutNodes(graphData, positions, boxId);
         setLoading(false);
-        
-        // Restore node selection from URL
-        const urlState = getURLState();
-        if (urlState.node && graphData.nodes) {
-          const node = graphData.nodes.find(n => n.id === urlState.node);
-          if (node) {
-            setSelectedNode(node);
-          }
-        }
+        isInitialLoad.current = false;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load graph';
         console.error('Graph loading error:', err);
@@ -195,7 +195,35 @@ export default function GraphFlow() {
     }
 
     loadData();
-  }, [layoutNodes]); // Re-run when layoutNodes changes
+  }, []); // Empty dependency array - only load on mount
+  
+  // Handle URL-based node selection separately
+  useEffect(() => {
+    if (boxId && graphRef.current?.nodes) {
+      const node = graphRef.current.nodes.find(n => n.id === boxId);
+      if (node && node.id !== selectedNode?.id) {
+        setSelectedNode(node);
+        // Update node visual selection state
+        setNodes(prevNodes => prevNodes.map(n => ({
+          ...n,
+          data: {
+            ...n.data,
+            selected: n.id === boxId
+          }
+        })));
+      }
+    } else if (!boxId && selectedNode) {
+      setSelectedNode(null);
+      // Clear visual selection state
+      setNodes(prevNodes => prevNodes.map(n => ({
+        ...n,
+        data: {
+          ...n.data,
+          selected: false
+        }
+      })));
+    }
+  }, [boxId, selectedNode?.id]); // Include selectedNode?.id to track changes
 
   if (loading) {
     return (

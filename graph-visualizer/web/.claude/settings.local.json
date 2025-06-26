@@ -8,7 +8,11 @@
       "Bash(git commit:*)",
       "Bash(npm install:*)",
       "Bash(mv:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(find:*)",
+      "Bash(mkdir:*)",
+      "Bash(go test:*)",
+      "Bash(make:*)"
     ],
     "deny": []
   }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Tabs, Empty, Typography, Input, List } from 'antd';
 import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
 import FileBrowser from './FileBrowser';
@@ -6,7 +7,7 @@ import EnvEditor from './EnvEditor';
 import DependencyEditor from './DependencyEditor';
 import GitChanges from './GitChanges';
 import type { DependencyNode } from '../types';
-import { getURLState, updateURLState } from '../utils/urlState';
+import { navigateToPath } from '../utils/urlState';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -43,6 +44,8 @@ const ClaudeCodeContent = () => {
 
 // Configuration subtabs
 const ConfigurationTabs = () => {
+  const { subtab } = useParams<{ subtab?: string }>();
+  const navigate = useNavigate();
   const items = [
     {
       key: 'container',
@@ -104,7 +107,11 @@ const ConfigurationTabs = () => {
 
   return (
     <Tabs
-      defaultActiveKey="container"
+      activeKey={subtab || 'container'}
+      onChange={(key) => {
+        const path = navigateToPath({ tab: 'config', subtab: key });
+        navigate(path);
+      }}
       items={items}
       tabPosition="left"
       style={{ height: '100%' }}
@@ -114,6 +121,8 @@ const ConfigurationTabs = () => {
 
 // Config tabs for selected node
 const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
+  const { subtab } = useParams<{ subtab?: string }>();
+  const navigate = useNavigate();
   const items = [
     {
       key: 'claude-code',
@@ -149,7 +158,11 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
 
   return (
     <Tabs
-      defaultActiveKey="claude-code"
+      activeKey={subtab || 'claude-code'}
+      onChange={(key) => {
+        const path = navigateToPath({ boxId: node.id, tab: 'config', subtab: key });
+        navigate(path);
+      }}
       items={items}
       tabPosition="left"
       style={{ height: '100%' }}
@@ -158,23 +171,21 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
 };
 
 export default function SidePanel({ selectedNode }: SidePanelProps) {
-  const [activeTab, setActiveTab] = useState<string>('config');
+  const { tab = 'config' } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<string>(tab);
 
-  // Initialize tab from URL on mount and when selectedNode changes
+  // Update active tab when URL changes
   useEffect(() => {
-    const urlState = getURLState();
-    if (urlState.tab) {
-      setActiveTab(urlState.tab);
-    } else if (selectedNode) {
-      // Default to config tab when a node is selected
-      setActiveTab('config');
-      updateURLState({ tab: 'config' });
-    }
-  }, [selectedNode]);
+    setActiveTab(tab);
+  }, [tab]);
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    updateURLState({ tab: key });
+    if (selectedNode) {
+      const path = navigateToPath({ boxId: selectedNode.id, tab: key });
+      navigate(path);
+    }
   };
   const items = selectedNode ? [
     {

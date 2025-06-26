@@ -89,38 +89,22 @@
   - tab "file Files":
     - img "file"
     - text: Files
-  - tab "appstore Config" [selected]:
+  - tab "appstore Config":
     - img "appstore"
     - text: Config
-  - tab "history Changes":
+  - tab "history Changes" [selected]:
     - img "history"
     - text: Changes
-- tabpanel "appstore Config":
+- tabpanel "history Changes":
   - tablist:
-    - tab "code Claude Code":
-      - img "code"
-      - text: Claude Code
-    - tab "container Env":
-      - img "container"
-      - text: Env
-    - tab "branches Dependencies" [selected]:
-      - img "branches"
-      - text: Dependencies
-  - tabpanel "branches Dependencies":
-    - heading "Dependencies for api" [level=4]
-    - text: Manage dependencies between nodes. Circular dependencies are automatically prevented.
-    - img "link"
-    - text: Current dependency
-    - img "arrow-right"
-    - text: Can be added
-    - img "branches"
-    - text: Direct parent
-    - img "fork"
-    - text: Indirect parent No other nodes in the system
-    - strong: "Summary:"
-    - text: 0 current dependencies 0 nodes available to add 0 nodes cannot be added (would create cycles)
-- img "close-circle"
-- text: Failed to load dependency data
-- img "close-circle"
-- text: Failed to load dependency data
+    - tab "Summary"
+    - tab "Details" [selected]
+    - tab "History"
+  - tabpanel "Details":
+    - heading "Detailed Changes" [level=5]
+    - list:
+      - listitem:
+        - img "edit"
+        - code: test.js
+        - text: +5 -2 --- a/test.js +++ b/test.js @@ -1,3 +1,6 @@ -old line +new line +added line
 ```

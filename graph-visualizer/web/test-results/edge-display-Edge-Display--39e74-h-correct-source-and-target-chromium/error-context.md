@@ -86,41 +86,22 @@
     - text: React Flow
 - separator
 - tablist:
-  - tab "file Files":
-    - img "file"
-    - text: Files
-  - tab "appstore Config" [selected]:
-    - img "appstore"
-    - text: Config
-  - tab "history Changes":
-    - img "history"
-    - text: Changes
-- tabpanel "appstore Config":
+  - tab "setting Configuration" [selected]:
+    - img "setting"
+    - text: Configuration
+- tabpanel "setting Configuration":
   - tablist:
-    - tab "code Claude Code":
-      - img "code"
-      - text: Claude Code
-    - tab "container Env":
+    - tab "container Container" [selected]:
       - img "container"
-      - text: Env
-    - tab "branches Dependencies" [selected]:
-      - img "branches"
-      - text: Dependencies
-  - tabpanel "branches Dependencies":
-    - heading "Dependencies for api" [level=4]
-    - text: Manage dependencies between nodes. Circular dependencies are automatically prevented.
-    - img "link"
-    - text: Current dependency
-    - img "arrow-right"
-    - text: Can be added
-    - img "branches"
-    - text: Direct parent
-    - img "fork"
-    - text: Indirect parent No other nodes in the system
-    - strong: "Summary:"
-    - text: 0 current dependencies 0 nodes available to add 0 nodes cannot be added (would create cycles)
-- img "close-circle"
-- text: Failed to load dependency data
-- img "close-circle"
-- text: Failed to load dependency data
+      - text: Container
+    - tab "edit Notes":
+      - img "edit"
+      - text: Notes
+    - tab "check-square Todo List":
+      - img "check-square"
+      - text: Todo List
+  - tabpanel "container Container":
+    - heading "Container Configuration" [level=5]
+    - img "No data"
+    - text: Container settings coming soon
 ```
