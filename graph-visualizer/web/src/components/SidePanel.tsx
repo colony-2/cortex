@@ -171,14 +171,22 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
 };
 
 export default function SidePanel({ selectedNode }: SidePanelProps) {
-  const { tab = 'config' } = useParams<{ tab?: string }>();
+  const { tab } = useParams<{ tab?: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<string>(tab);
+  // Initialize activeTab from URL or default based on whether a node is selected
+  const defaultTab = selectedNode ? 'files' : 'config';
+  const [activeTab, setActiveTab] = useState<string>(tab || defaultTab);
 
-  // Update active tab when URL changes
+  // Update active tab when URL changes or selectedNode changes
   useEffect(() => {
-    setActiveTab(tab);
-  }, [tab]);
+    if (tab) {
+      setActiveTab(tab);
+    } else if (selectedNode) {
+      setActiveTab('files');
+    } else {
+      setActiveTab('config');
+    }
+  }, [tab, selectedNode]);
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);

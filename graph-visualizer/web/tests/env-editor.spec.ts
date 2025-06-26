@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('EnvEditor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
   });
 

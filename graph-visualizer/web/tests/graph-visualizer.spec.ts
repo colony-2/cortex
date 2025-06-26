@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Graph Visualizer', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     // Wait for the loading to finish
     await page.waitForSelector('.react-flow', { timeout: 10000 });
   });

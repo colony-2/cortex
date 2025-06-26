@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('UI Integration Tests', () => {
   test('should show file browser in side panel when clicking node', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph data to load
     await page.waitForResponse(response => 
@@ -45,7 +45,7 @@ test.describe('UI Integration Tests', () => {
   });
   
   test('should switch between nodes and update file browser', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph data to load
     await page.waitForResponse(response => 
@@ -95,7 +95,7 @@ test.describe('UI Integration Tests', () => {
   });
   
   test('should maintain side panel state when switching tabs', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph to load
     await page.waitForResponse(response => 

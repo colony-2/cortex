@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe.skip('Node Position Persistence', () => {
   test('should save node positions when dragged', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
@@ -40,7 +40,7 @@ test.describe.skip('Node Position Persistence', () => {
   });
 
   test('should restore saved node positions on reload', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
@@ -94,7 +94,7 @@ test.describe.skip('Node Position Persistence', () => {
   });
 
   test('should maintain relative positions when multiple nodes are moved', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });

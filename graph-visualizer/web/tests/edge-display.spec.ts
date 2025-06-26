@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Edge Display Verification', () => {
   test('should display all edges based on dependencies', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph to be fully loaded
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { state: 'visible' });
@@ -36,7 +36,7 @@ test.describe('Edge Display Verification', () => {
   });
 
   test('should update edges when dependencies change', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { state: 'visible' });
@@ -104,7 +104,7 @@ test.describe('Edge Display Verification', () => {
   });
 
   test('should render edges with correct source and target', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { state: 'visible' });

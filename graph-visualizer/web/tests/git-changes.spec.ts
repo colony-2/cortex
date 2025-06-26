@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Git Changes Tab', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the application
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for the graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
@@ -19,15 +19,22 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should display changes tab with subtabs', async ({ page }) => {
-    // Check that the subtabs are visible
-    await expect(page.getByRole('tab', { name: 'Summary' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Details' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'History' })).toBeVisible();
+    // Wait for subtabs to be visible
+    await page.waitForSelector('.ant-tabs-tab', { timeout: 5000 });
+    
+    // Check that the subtabs are visible (use locator for nested tabs)
+    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Summary' }).last()).toBeVisible();
+    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Details' }).last()).toBeVisible();
+    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'History' }).last()).toBeVisible();
   });
 
   test('should show summary tab by default', async ({ page }) => {
-    // Check that summary tab is active
-    await expect(page.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    // Wait for subtabs
+    await page.waitForSelector('.ant-tabs-tab', { timeout: 5000 });
+    
+    // Check that summary tab is active (last one because of nested tabs)
+    const summaryTab = page.locator('.ant-tabs-tab').filter({ hasText: 'Summary' }).last();
+    await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
   });
 
   test('should handle non-git repository gracefully', async ({ page }) => {

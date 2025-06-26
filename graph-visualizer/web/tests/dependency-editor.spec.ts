@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Dependency Editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/boxes');
     
     // Wait for graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { state: 'visible' });
