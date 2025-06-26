@@ -38,8 +38,8 @@ export default function NodeBox({ data }: NodeProps<NodeData>) {
       
       <div>
         <div>Type: {data.type}</div>
-        {data.relationships.length > 0 && (
-          <div>Dependencies: {data.relationships.length}</div>
+        {data.dependencies.length > 0 && (
+          <div>Dependencies: {data.dependencies.length}</div>
         )}
       </div>
       
