@@ -124,11 +124,11 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode }) => {
       children: <ClaudeCodeContent />,
     },
     {
-      key: 'devcontainer',
+      key: 'env',
       label: (
         <span>
           <ContainerOutlined />
-          Devcontainer
+          Env
         </span>
       ),
       children: <DevcontainerEditor node={node} />,

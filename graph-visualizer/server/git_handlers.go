@@ -195,6 +195,13 @@ func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
 
 	ref, err := gitInfo.repo.Head()
 	if err != nil {
+		// Handle empty repository (no commits yet)
+		if err.Error() == "reference not found" {
+			diff := GitDiff{Files: []GitFileDiff{}}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(diff)
+			return
+		}
 		http.Error(w, "Failed to get HEAD", http.StatusInternalServerError)
 		return
 	}
@@ -373,6 +380,13 @@ func (s *Server) handleGitHistory(w http.ResponseWriter, r *http.Request) {
 
 	ref, err := gitInfo.repo.Head()
 	if err != nil {
+		// Handle empty repository (no commits yet)
+		if err.Error() == "reference not found" {
+			var commits []GitCommit
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(commits)
+			return
+		}
 		http.Error(w, "Failed to get HEAD", http.StatusInternalServerError)
 		return
 	}
