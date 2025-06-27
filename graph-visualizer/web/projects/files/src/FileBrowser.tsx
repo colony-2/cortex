@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Space } from 'antd';
 import { FolderOutlined, FileOutlined, HomeOutlined } from '@ant-design/icons';
-import { fetchFiles, type DependencyNode } from '@graph-visualizer/shared';
+import { fetchFiles, type DependencyNode } from '@vibethis/shared';
 
 const { Text } = Typography;
 

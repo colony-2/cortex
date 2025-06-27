@@ -8,7 +8,7 @@ import {
   BranchesOutlined,
   ForkOutlined
 } from '@ant-design/icons';
-import type { DependencyNode } from '@graph-visualizer/shared';
+import type { DependencyNode } from '@vibethis/shared';
 
 const { Title, Text } = Typography;
 

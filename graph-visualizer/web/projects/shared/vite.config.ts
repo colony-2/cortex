@@ -7,12 +7,12 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: '@vibethis/changes',
+      name: '@vibethis/shared',
       fileName: 'index',
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons', '@vibethis/shared'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons'],
       output: {
         globals: {
           react: 'React',

@@ -1,0 +1,28 @@
+{
+  "name": "@vibethis/config",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "web/projects/config",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "@nx/vite:build",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/web/projects/config",
+        "configFile": "web/projects/config/vite.config.ts"
+      }
+    },
+    "test": {
+      "executor": "@nx/vite:test",
+      "outputs": ["{workspaceRoot}/coverage/web/projects/config"],
+      "options": {
+        "passWithNoTests": true,
+        "reportsDirectory": "{workspaceRoot}/coverage/web/projects/config"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  },
+  "tags": ["frontend", "library"]
+}

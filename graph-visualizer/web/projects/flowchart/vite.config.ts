@@ -1,27 +1,22 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'GraphVisualizerFlowchart',
+      name: '@vibethis/flowchart',
       fileName: 'index',
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'antd', '@ant-design/icons', '@graph-visualizer/shared', '@xyflow/react', 'dagre'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons', '@vibethis/shared', '@xyflow/react', 'dagre'],
       output: {
         globals: {
           react: 'React',
-          'react-dom': 'ReactDOM',
-          antd: 'antd',
-          '@ant-design/icons': 'AntdIcons',
-          '@graph-visualizer/shared': 'GraphVisualizerShared',
-          '@xyflow/react': 'ReactFlow',
-          dagre: 'dagre'
+          'react-dom': 'ReactDOM'
         }
       }
     }

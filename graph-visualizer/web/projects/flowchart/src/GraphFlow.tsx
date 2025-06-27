@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
-import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyNode, type NodePosition } from '@graph-visualizer/shared';
+import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyNode, type NodePosition } from '@vibethis/shared';
 import ProFlowNode from './ProFlowNode';
 
 interface FlowNode {

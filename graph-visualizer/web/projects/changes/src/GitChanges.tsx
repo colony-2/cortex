@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Tabs, Button, Badge, Space, Typography, Empty, Spin, List, Tag, message } from 'antd';
 import { SyncOutlined, FileAddOutlined, EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
-import type { DependencyNode } from '@graph-visualizer/shared';
+import type { DependencyNode } from '@vibethis/shared';
 
 const { Title, Text } = Typography;
 

@@ -16,7 +16,7 @@ import Editor from '@monaco-editor/react';
 import Form from '@rjsf/core';
 import validator from '@rjsf/validator-ajv8';
 import type { RJSFSchema } from '@rjsf/utils';
-import type { DependencyNode } from '@graph-visualizer/shared';
+import type { DependencyNode } from '@vibethis/shared';
 import { ConfigProvider, theme } from 'antd';
 import { 
   Input, 

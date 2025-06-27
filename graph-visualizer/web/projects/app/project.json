@@ -1,0 +1,69 @@
+{
+  "name": "@vibethis/app",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "web/projects/app",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/vite:build",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "web/dist"
+      },
+      "configurations": {
+        "development": {
+          "mode": "development"
+        },
+        "production": {
+          "mode": "production"
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nx/vite:dev-server",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "@vibethis/app:build",
+        "port": 5173
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "@vibethis/app:build:development",
+          "hmr": true
+        },
+        "production": {
+          "buildTarget": "@vibethis/app:build:production",
+          "hmr": false
+        }
+      }
+    },
+    "preview": {
+      "executor": "@nx/vite:preview-server",
+      "defaultConfiguration": "development",
+      "options": {
+        "buildTarget": "@vibethis/app:build"
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "@vibethis/app:build:development"
+        },
+        "production": {
+          "buildTarget": "@vibethis/app:build:production"
+        }
+      }
+    },
+    "test": {
+      "executor": "@nx/vite:test",
+      "outputs": ["{workspaceRoot}/coverage/web/projects/app"],
+      "options": {
+        "passWithNoTests": true,
+        "reportsDirectory": "{workspaceRoot}/coverage/web/projects/app"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  },
+  "tags": ["frontend", "app"]
+}
