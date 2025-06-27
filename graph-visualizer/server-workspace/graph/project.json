@@ -1,0 +1,30 @@
+{
+  "name": "graph",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "server-workspace/graph",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "server-workspace/graph",
+        "command": "go build ./..."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "server-workspace/graph",
+        "command": "go test -v ./..."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "server-workspace/graph",
+        "command": "go vet ./..."
+      }
+    }
+  },
+  "tags": ["go", "backend", "library"]
+}
