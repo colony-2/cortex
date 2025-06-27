@@ -1,16 +1,22 @@
 {
-  "name": "web",
+  "name": "graph-visualizer-workspace",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "projects/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui"
+    "dev": "npm run dev --workspace=@graph-visualizer/app",
+    "build": "npm run build:shared && npm run build:projects && npm run build --workspace=@graph-visualizer/app",
+    "build:shared": "npm run build --workspace=@graph-visualizer/shared",
+    "build:projects": "npm run build --workspace=@graph-visualizer/files && npm run build --workspace=@graph-visualizer/config && npm run build --workspace=@graph-visualizer/changes && npm run build --workspace=@graph-visualizer/flowchart",
+    "preview": "npm run preview --workspace=@graph-visualizer/app",
+    "test": "npm run test --workspace=@graph-visualizer/app",
+    "build:all": "npm run build --workspaces",
+    "test:all": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "clean": "rm -rf projects/*/dist && rm -rf projects/*/node_modules/.vite"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

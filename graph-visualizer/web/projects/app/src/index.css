@@ -1,0 +1,110 @@
+/* Import Ant Design styles in main.tsx instead */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f0f2f5;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Layout improvements */
+.ant-layout {
+  background: #f0f2f5;
+}
+
+.ant-layout-sider {
+  background: #fff !important;
+}
+
+/* Tabs customization */
+.ant-tabs {
+  height: 100%;
+}
+
+.ant-tabs-content {
+  height: calc(100% - 46px);
+}
+
+.ant-tabs-tabpane {
+  height: 100%;
+}
+
+/* Loading and Error States */
+.loading-container,
+.error-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 18px;
+  color: #666;
+}
+
+.error-container {
+  color: #e74c3c;
+}
+
+/* Node Styles - removed to use React Flow defaults */
+
+/* File Browser Styles */
+.ant-list-item:hover {
+  background-color: #fafafa;
+}
+
+.ant-breadcrumb {
+  font-size: 14px;
+}
+
+/* Pro Flow Customization */
+.pro-flow-node {
+  cursor: pointer;
+}
+
+.pro-flow-minimap {
+  background: #f0f2f5;
+  border: 1px solid #d9d9d9;
+}
+
+/* React Flow Minimap styles */
+.react-flow__minimap {
+  background-color: #f0f2f5 !important;
+  border: 1px solid #d9d9d9 !important;
+}
+
+.react-flow__minimap-mask {
+  fill: #d9d9d9 !important;
+  fill-opacity: 0.5 !important;
+}
+
+.react-flow__minimap-node {
+  fill: #666 !important;
+  stroke: none !important;
+}
+
+/* Splitter styles */
+.ant-splitter {
+  height: 100%;
+}
+
+.ant-splitter-panel {
+  overflow: hidden;
+}
+
+/* Tab styles for vertical layout */
+.ant-tabs-left > .ant-tabs-nav .ant-tabs-tab {
+  padding: 8px 16px;
+}
+
+.ant-tabs-left > .ant-tabs-content-holder {
+  overflow: auto;
+}

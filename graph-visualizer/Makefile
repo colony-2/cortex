@@ -3,11 +3,11 @@
 # Variables
 BINARY_NAME = vibethis
 MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-GO_FILES = $(shell find $(MAKEFILE_DIR)server -name '*.go')
+WORKSPACE_DIR = $(MAKEFILE_DIR)server-workspace
 WEB_DIST = $(MAKEFILE_DIR)web/dist
-SERVER_DIR = $(MAKEFILE_DIR)server
 WEB_DIR = $(MAKEFILE_DIR)web
 BUILD_DIR = $(MAKEFILE_DIR)build
+CMD_DIR = $(WORKSPACE_DIR)/cmd/vibethis
 
 # Default target
 all: build
@@ -21,30 +21,43 @@ help:
 	@echo "  make dev-server   - Run only the Go server in development mode"
 	@echo "  make dev-frontend - Run only the frontend dev server"
 	@echo "  make build        - Build production binary with embedded frontend"
-	@echo "  make test         - Run all tests including position persistence tests"
-	@echo "  make test-positions - Run only position persistence tests"
+	@echo "  make test         - Run all tests"
+	@echo "  make test-server  - Run only server tests"
+	@echo "  make test-frontend - Run only frontend tests"
 	@echo "  make test-e2e     - Run end-to-end tests (requires running server)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo "  make run         - Build and run the production binary"
 	@echo "  make stop         - Stop the server running on port 8080"
 	@echo "  make prod         - Full production build (clean, setupenv, test, build)"
+	@echo "  make workspace-init - Initialize Go workspace"
+
+# Initialize Go workspace
+workspace-init:
+	@echo "Initializing Go workspace..."
+	cd "$(WORKSPACE_DIR)" && go work init || true
+	cd "$(WORKSPACE_DIR)" && go work use ./core ./storage ./graph ./files ./git ./container ./web ./cmd/vibethis
+	@echo "Installing Go module dependencies..."
+	cd "$(WORKSPACE_DIR)" && go work sync
 
 # Setup development environment
-setupenv:
+setupenv: workspace-init
 	@echo "Installing frontend dependencies..."
 	cd "$(WEB_DIR)" && npm install
-	@echo "Installing Go dependencies..."
-	cd "$(SERVER_DIR)" && go mod init vibethis 2>/dev/null || true
-	cd "$(SERVER_DIR)" && go get github.com/gorilla/mux
-	cd "$(SERVER_DIR)" && go get github.com/gorilla/websocket
-	cd "$(SERVER_DIR)" && go get gopkg.in/yaml.v3
-	cd "$(SERVER_DIR)" && go mod tidy
+	@echo "Installing Go workspace dependencies..."
+	cd "$(WORKSPACE_DIR)/core" && go mod tidy
+	cd "$(WORKSPACE_DIR)/storage" && go mod tidy
+	cd "$(WORKSPACE_DIR)/graph" && go mod tidy
+	cd "$(WORKSPACE_DIR)/files" && go mod tidy
+	cd "$(WORKSPACE_DIR)/git" && go mod tidy
+	cd "$(WORKSPACE_DIR)/container" && go mod tidy
+	cd "$(WORKSPACE_DIR)/web" && go mod tidy
+	cd "$(CMD_DIR)" && go mod tidy
 
 # Install the vibethis binary
 install: build
 	@echo "Installing vibethis binary to GOPATH/bin..."
 	@echo "Setting default port to 8081 for installed binary..."
-	cd "$(SERVER_DIR)" && go install -tags prod -ldflags "-X main.defaultPort=8081" .
+	cd "$(CMD_DIR)" && go install -tags prod -ldflags "-X main.defaultPort=8081" .
 	@echo "Installation complete. You can now run 'vibethis' from anywhere."
 	@echo "Default port: 8081 (override with -p or --port flag)"
 
@@ -56,7 +69,7 @@ dev:
 # Run Go server in development mode
 dev-server:
 	@echo "Starting Go server on :8080..."
-	cd "$(SERVER_DIR)" && go run . -n ../example
+	cd "$(CMD_DIR)" && go run . -n ../../../example
 
 # Run frontend dev server
 dev-frontend:
@@ -73,13 +86,14 @@ build: build-frontend
 	@echo "Building production binary..."
 	@mkdir -p "$(BUILD_DIR)"
 	@echo "Copying frontend assets..."
-	@rm -rf "$(SERVER_DIR)/static/dist"
-	@cp -r "$(WEB_DIST)" "$(SERVER_DIR)/static/"
-	cd "$(SERVER_DIR)" && go build -tags prod -o "../$(BUILD_DIR)/$(BINARY_NAME)" .
+	@rm -rf "$(CMD_DIR)/static/dist"
+	@mkdir -p "$(CMD_DIR)/static"
+	@cp -r "$(WEB_DIST)" "$(CMD_DIR)/static/"
+	cd "$(CMD_DIR)" && go build -tags prod -o "$(BUILD_DIR)/$(BINARY_NAME)" .
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
 # Run tests
-test: test-frontend test-server test-e2e
+test: test-server test-frontend test-e2e
 
 test-frontend:
 	@echo "Running frontend tests..."
@@ -87,41 +101,39 @@ test-frontend:
 
 test-server:
 	@echo "Running server tests..."
-	@echo "Testing position storage..."
-	cd "$(SERVER_DIR)" && go test -v -run TestPositionStorage
+	@echo "Testing core module..."
+	cd "$(WORKSPACE_DIR)/core" && go test -v ./...
 	@echo ""
-	@echo "Testing API endpoints..."
-	cd "$(SERVER_DIR)" && go test -v -run TestPositionAPI
+	@echo "Testing storage module..."
+	cd "$(WORKSPACE_DIR)/storage" && go test -v ./...
 	@echo ""
-	@echo "Testing file browser API..."
-	cd "$(SERVER_DIR)" && go test -v -run "TestGetFiles|TestFileInfo"
+	@echo "Testing graph module..."
+	cd "$(WORKSPACE_DIR)/graph" && go test -v ./...
 	@echo ""
-	@echo "Testing graph functionality..."
-	cd "$(SERVER_DIR)" && go test -v -run "TestBuildGraph|TestGraphAPI|TestRelationshipsAPI"
+	@echo "Testing files module..."
+	cd "$(WORKSPACE_DIR)/files" && go test -v ./...
 	@echo ""
-	@echo "Testing relationships API..."
-	cd "$(SERVER_DIR)" && go test -v -run "TestUpdateRelationships|TestCircularRelationship"
+	@echo "Testing git module..."
+	cd "$(WORKSPACE_DIR)/git" && go test -v ./...
 	@echo ""
-	@echo "Testing integration..."
-	cd "$(SERVER_DIR)" && go test -v -run TestIntegration
+	@echo "Testing container module..."
+	cd "$(WORKSPACE_DIR)/container" && go test -v ./...
 	@echo ""
-	@echo "Running all server tests..."
-	cd "$(SERVER_DIR)" && go test -v ./...
+	@echo "Testing web module..."
+	cd "$(WORKSPACE_DIR)/web" && go test -v ./...
+	@echo ""
+	@echo "Testing cmd module..."
+	cd "$(CMD_DIR)" && go test -v ./...
 
 test-e2e:
 	@echo "Running end-to-end tests..."
 	@if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null ; then \
 		echo "Server is running on port 8080, executing E2E tests..."; \
-		./test_e2e.sh; \
+		cd "$(WEB_DIR)" && npm run test:e2e; \
 	else \
 		echo "Server not running on port 8080. Start it with 'make dev' in another terminal."; \
 		echo "Skipping E2E tests."; \
 	fi
-
-# Run only position-related tests
-test-positions:
-	@echo "Running position persistence tests..."
-	cd "$(SERVER_DIR)" && go test -v -run "TestPosition|TestIntegration" -count=1
 
 # Clean build artifacts
 clean:
@@ -143,12 +155,12 @@ run: build
 watch-server:
 	@command -v entr >/dev/null 2>&1 || { echo "entr is required but not installed. Install with: brew install entr"; exit 1; }
 	@echo "Watching server files for changes..."
-	find "$(SERVER_DIR)" -name '*.go' | entr -r make dev-server
+	find "$(WORKSPACE_DIR)" -name '*.go' | entr -r make dev-server
 
 # Format code
 fmt:
 	@echo "Formatting Go code..."
-	cd "$(SERVER_DIR)" && go fmt ./...
+	cd "$(WORKSPACE_DIR)" && go fmt ./...
 	@echo "Formatting complete"
 
 # Lint code
@@ -157,7 +169,7 @@ lint: lint-go lint-frontend
 lint-go:
 	@echo "Linting Go code..."
 	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint not installed. See: https://golangci-lint.run/usage/install/"; exit 1; }
-	cd "$(SERVER_DIR)" && golangci-lint run
+	cd "$(WORKSPACE_DIR)" && golangci-lint run ./...
 
 lint-frontend:
 	@echo "Linting frontend code..."

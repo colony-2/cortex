@@ -1,0 +1,39 @@
+{
+  "name": "@graph-visualizer/app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@graph-visualizer/shared": "workspace:*",
+    "@graph-visualizer/files": "workspace:*",
+    "@graph-visualizer/config": "workspace:*",
+    "@graph-visualizer/changes": "workspace:*",
+    "@graph-visualizer/flowchart": "workspace:*",
+    "antd": "^5.26.1",
+    "@ant-design/icons": "^6.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.32.1",
+    "@xyflow/react": "^12.3.5",
+    "@monaco-editor/react": "^4.6.0",
+    "@rjsf/core": "^5.17.1",
+    "@rjsf/validator-ajv8": "^5.17.1",
+    "@rjsf/utils": "^5.17.1",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.1",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@types/js-yaml": "^4.0.9",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}

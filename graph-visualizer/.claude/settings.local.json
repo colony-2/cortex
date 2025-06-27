@@ -37,7 +37,19 @@
       "Bash(timeout 10s go run . -n ../example)",
       "Bash(curl:*)",
       "Bash(curl:*)",
-      "Bash(timeout 5s go run . -n ../example)"
+      "Bash(timeout 5s go run . -n ../example)",
+      "Bash(mkdir:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(for f in internal/devcontainer/*_test.go)",
+      "Bash(do if grep -q \"ImageContainer\\|DevContainerCommon\\|FindDevContainerFile\\|checkDockerAvailable\" \"$f\")",
+      "Bash(then mv \"$f\" \"$f.skip\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(for f in internal/devcontainer/*.go.skip)",
+      "Bash(do mv \"$f\" \"$f%.skip\")"
     ],
     "deny": []
   }
