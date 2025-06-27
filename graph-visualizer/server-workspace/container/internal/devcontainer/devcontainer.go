@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -51,11 +52,12 @@ type DevContainerCommon struct {
 	AppPort         interface{}       `json:"appPort,omitempty"`
 	
 	// Commands
-	OnCreateCommand    interface{}    `json:"onCreateCommand,omitempty"`
-	PostCreateCommand  interface{}    `json:"postCreateCommand,omitempty"`
-	PostStartCommand   interface{}    `json:"postStartCommand,omitempty"`
-	PostAttachCommand  interface{}    `json:"postAttachCommand,omitempty"`
-	InitializeCommand  interface{}    `json:"initializeCommand,omitempty"`
+	OnCreateCommand      interface{}    `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand interface{}    `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    interface{}    `json:"postCreateCommand,omitempty"`
+	PostStartCommand     interface{}    `json:"postStartCommand,omitempty"`
+	PostAttachCommand    interface{}    `json:"postAttachCommand,omitempty"`
+	InitializeCommand    interface{}    `json:"initializeCommand,omitempty"`
 	
 	// Mounts and volumes
 	Mounts          interface{}       `json:"mounts,omitempty"`
@@ -67,7 +69,7 @@ type DevContainerCommon struct {
 	Privileged      *bool             `json:"privileged,omitempty"`
 	
 	// Features
-	Features        map[string]interface{} `json:"features,omitempty"`
+	Features        *DevContainerCommonFeatures `json:"features,omitempty"`
 	
 	// Extensions
 	Customizations  map[string]interface{} `json:"customizations,omitempty"`
@@ -83,6 +85,54 @@ type DevContainerCommon struct {
 // ImageContainer represents an image-based container
 type ImageContainer struct {
 	Image string `json:"image"`
+}
+
+// DevContainerCommonFeatures represents devcontainer features
+type DevContainerCommonFeatures struct {
+	Fish                 string                 `json:"fish,omitempty"`
+	Gradle               string                 `json:"gradle,omitempty"`
+	Maven                string                 `json:"maven,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// DevContainerCommonHostRequirements represents host requirements
+type DevContainerCommonHostRequirements struct {
+	CPUs     string `json:"cpus,omitempty"`
+	Memory   string `json:"memory,omitempty"`
+	Storage  string `json:"storage,omitempty"`
+	Gpu      string `json:"gpu,omitempty"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for DevContainerCommonFeatures
+func (f *DevContainerCommonFeatures) UnmarshalJSON(data []byte) error {
+	// First unmarshal known fields
+	type Alias DevContainerCommonFeatures
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(f),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	// Then unmarshal everything to get additional properties
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	
+	// Remove known fields
+	delete(raw, "fish")
+	delete(raw, "gradle")
+	delete(raw, "maven")
+	
+	// Store the rest as additional properties
+	if len(raw) > 0 {
+		f.AdditionalProperties = raw
+	}
+	
+	return nil
 }
 
 // ComposeContainer represents Docker Compose configuration
@@ -177,7 +227,7 @@ type DockerRunConfig struct {
 	WorkspaceFolder string
 	Environment     map[string]string
 	Ports           []string
-	Mounts          []Mount
+	Mounts          []string // Changed to []string to match tests
 	CapAdd          []string
 	Capabilities    []string // Alias for CapAdd
 	SecurityOpt     []string
@@ -204,7 +254,7 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 		WorkspaceFolder: dc.WorkspaceFolder,
 		Environment:     make(map[string]string),
 		Ports:           []string{},
-		Mounts:          []Mount{},
+		Mounts:          []string{},
 		CapAdd:          dc.CapAdd,
 		Capabilities:    dc.CapAdd, // Set both for compatibility
 		SecurityOpt:     dc.SecurityOpt,
@@ -251,15 +301,16 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 	// Handle app ports
 	if dc.AppPort != nil {
 		ports := parseAppPorts(dc.AppPort)
-		for _, port := range ports {
-			config.Ports = append(config.Ports, formatForwardPort(port))
-		}
+		config.Ports = append(config.Ports, ports...)
 	}
 	
 	// Handle mounts
 	if dc.Mounts != nil {
 		mounts := parseMounts(dc.Mounts)
-		config.Mounts = append(config.Mounts, mounts...)
+		for _, mount := range mounts {
+			mountStr := buildMountStringFromMount(mount)
+			config.Mounts = append(config.Mounts, mountStr)
+		}
 	}
 	
 	// Handle init
@@ -325,15 +376,7 @@ func (c *DockerRunConfig) ToDockerRunArgs() []string {
 	}
 	
 	// Add mounts
-	for _, mount := range c.Mounts {
-		mountStr := fmt.Sprintf("type=%s", mount.Type)
-		if mount.Source != "" {
-			mountStr += fmt.Sprintf(",source=%s", mount.Source)
-		}
-		mountStr += fmt.Sprintf(",target=%s", mount.Target)
-		if mount.ReadOnly {
-			mountStr += ",readonly"
-		}
+	for _, mountStr := range c.Mounts {
 		args = append(args, "--mount", mountStr)
 	}
 	
@@ -399,16 +442,21 @@ func parseForwardPorts(ports interface{}) []string {
 	return result
 }
 
-func parseAppPorts(ports interface{}) []int {
-	var result []int
+func parseAppPorts(ports interface{}) []string {
+	var result []string
 	
 	switch v := ports.(type) {
 	case float64:
-		result = append(result, int(v))
+		result = append(result, fmt.Sprintf("%d:%d", int(v), int(v)))
+	case string:
+		result = append(result, v)
 	case []interface{}:
 		for _, port := range v {
-			if p, ok := port.(float64); ok {
-				result = append(result, int(p))
+			switch p := port.(type) {
+			case float64:
+				result = append(result, fmt.Sprintf("%d:%d", int(p), int(p)))
+			case string:
+				result = append(result, p)
 			}
 		}
 	}
@@ -416,8 +464,17 @@ func parseAppPorts(ports interface{}) []int {
 	return result
 }
 
-func formatForwardPort(port int) string {
-	return fmt.Sprintf("%d:%d", port, port)
+func formatForwardPort(port interface{}) string {
+	switch p := port.(type) {
+	case float64:
+		return fmt.Sprintf("%d:%d", int(p), int(p))
+	case int:
+		return fmt.Sprintf("%d:%d", p, p)
+	case string:
+		return p
+	default:
+		return ""
+	}
 }
 
 func parseMounts(mounts interface{}) []Mount {
@@ -495,6 +552,89 @@ func buildMountString(dcMount DevContainerCommonMountsElem) string {
 	return result
 }
 
+// buildMountStringFromMount builds a mount string from a Mount struct
+func buildMountStringFromMount(mount Mount) string {
+	result := fmt.Sprintf("type=%s", mount.Type)
+	if mount.Source != "" {
+		result += fmt.Sprintf(",source=%s", mount.Source)
+	}
+	result += fmt.Sprintf(",target=%s", mount.Target)
+	if mount.ReadOnly {
+		result += ",readonly"
+	}
+	return result
+}
+
+// LifecycleCommand represents a lifecycle command that can be a string, array, or object
+type LifecycleCommand struct {
+	Type     string                            // "string", "array", or "object"
+	Command  string                            // For string commands
+	Args     []string                          // For array commands
+	Commands map[string]*LifecycleCommand      // For object commands (nested commands)
+	Object   map[string]interface{}            // Raw object data
+}
+
+// ParseLifecycleCommand parses an interface{} into a LifecycleCommand
+func ParseLifecycleCommand(cmd interface{}) (*LifecycleCommand, error) {
+	if cmd == nil {
+		return nil, nil
+	}
+	
+	result := &LifecycleCommand{}
+	
+	switch v := cmd.(type) {
+	case string:
+		result.Type = "string"
+		result.Command = v
+	case []interface{}:
+		result.Type = "array"
+		result.Args = make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				result.Args = append(result.Args, s)
+			}
+		}
+	case map[string]interface{}:
+		result.Type = "object"
+		result.Object = v
+		result.Commands = make(map[string]*LifecycleCommand)
+		// Parse nested commands
+		for name, cmdValue := range v {
+			if nestedCmd, _ := ParseLifecycleCommand(cmdValue); nestedCmd != nil {
+				result.Commands[name] = nestedCmd
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported command type: %T", cmd)
+	}
+	
+	return result, nil
+}
+
+// ToShellCommand converts a LifecycleCommand to a shell command string
+func (lc *LifecycleCommand) ToShellCommand() string {
+	if lc == nil {
+		return ""
+	}
+	
+	switch lc.Type {
+	case "string":
+		return lc.Command
+	case "array":
+		if len(lc.Args) == 0 {
+			return ""
+		}
+		// TODO: Proper shell escaping
+		return strings.Join(lc.Args, " ")
+	case "object":
+		// For object commands, we can't convert to a single shell command
+		// This would need to be handled differently (e.g., parallel execution)
+		return ""
+	default:
+		return ""
+	}
+}
+
 // strPtr returns a pointer to a string
 func strPtr(s string) *string {
 	return &s
@@ -525,4 +665,200 @@ func FindDevContainerFile(dir string) (string, error) {
 	}
 	
 	return "", fmt.Errorf("no devcontainer.json found in %s", dir)
+}
+
+// ProcessLifecycleCommands processes lifecycle commands from a DevContainer
+func ProcessLifecycleCommands(dc *DevContainer) (map[string]*LifecycleCommand, error) {
+	commands := make(map[string]*LifecycleCommand)
+	
+	// Process each lifecycle command
+	if dc.InitializeCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.InitializeCommand); err == nil && cmd != nil {
+			commands["initializeCommand"] = cmd
+		}
+	}
+	
+	if dc.OnCreateCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.OnCreateCommand); err == nil && cmd != nil {
+			commands["onCreateCommand"] = cmd
+		}
+	}
+	
+	if dc.UpdateContentCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.UpdateContentCommand); err == nil && cmd != nil {
+			commands["updateContentCommand"] = cmd
+		}
+	}
+	
+	if dc.PostCreateCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.PostCreateCommand); err == nil && cmd != nil {
+			commands["postCreateCommand"] = cmd
+		}
+	}
+	
+	if dc.PostStartCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.PostStartCommand); err == nil && cmd != nil {
+			commands["postStartCommand"] = cmd
+		}
+	}
+	
+	if dc.PostAttachCommand != nil {
+		if cmd, err := ParseLifecycleCommand(dc.PostAttachCommand); err == nil && cmd != nil {
+			commands["postAttachCommand"] = cmd
+		}
+	}
+	
+	return commands, nil
+}
+
+// GetLifecycleScript generates a shell script for lifecycle commands
+func GetLifecycleScript(dc *DevContainer, phase string) (string, error) {
+	commands, err := ProcessLifecycleCommands(dc)
+	if err != nil {
+		return "", err
+	}
+	
+	var script strings.Builder
+	script.WriteString("#!/bin/bash\nset -e\n\n")
+	
+	// If phase is specified, only include that command
+	if phase != "" {
+		if cmd, exists := commands[phase]; exists && cmd != nil {
+			script.WriteString(fmt.Sprintf("# %s\n", phase))
+			if shellCmd := cmd.ToShellCommand(); shellCmd != "" {
+				script.WriteString(shellCmd + "\n")
+			}
+		}
+	} else {
+		// Include all commands in order
+		order := []string{"initializeCommand", "onCreateCommand", "updateContentCommand", "postCreateCommand", "postStartCommand", "postAttachCommand"}
+		
+		for _, name := range order {
+			if cmd, exists := commands[name]; exists && cmd != nil {
+				script.WriteString(fmt.Sprintf("# %s\n", name))
+				if shellCmd := cmd.ToShellCommand(); shellCmd != "" {
+					script.WriteString(shellCmd + "\n\n")
+				}
+			}
+		}
+	}
+	
+	return script.String(), nil
+}
+
+// ExpandVariables expands variables in a DevContainer's command strings
+func ExpandVariables(dc *DevContainer, vars map[string]string) {
+	// Helper function to expand variables in interface{}
+	var expandInterface func(cmd interface{}) interface{}
+	expandInterface = func(cmd interface{}) interface{} {
+		switch v := cmd.(type) {
+		case string:
+			return expandVariableString(v, vars)
+		case []interface{}:
+			result := make([]interface{}, len(v))
+			for i, item := range v {
+				if s, ok := item.(string); ok {
+					result[i] = expandVariableString(s, vars)
+				} else {
+					result[i] = item
+				}
+			}
+			return result
+		case map[string]interface{}:
+			result := make(map[string]interface{})
+			for k, val := range v {
+				result[k] = expandInterface(val)
+			}
+			return result
+		default:
+			return cmd
+		}
+	}
+	
+	// Expand variables in all commands
+	if dc.InitializeCommand != nil {
+		dc.InitializeCommand = expandInterface(dc.InitializeCommand)
+	}
+	if dc.OnCreateCommand != nil {
+		dc.OnCreateCommand = expandInterface(dc.OnCreateCommand)
+	}
+	if dc.UpdateContentCommand != nil {
+		dc.UpdateContentCommand = expandInterface(dc.UpdateContentCommand)
+	}
+	if dc.PostCreateCommand != nil {
+		dc.PostCreateCommand = expandInterface(dc.PostCreateCommand)
+	}
+	if dc.PostStartCommand != nil {
+		dc.PostStartCommand = expandInterface(dc.PostStartCommand)
+	}
+	if dc.PostAttachCommand != nil {
+		dc.PostAttachCommand = expandInterface(dc.PostAttachCommand)
+	}
+}
+
+// expandVariableString expands variables in a string
+func expandVariableString(s string, vars map[string]string) string {
+	result := s
+	for key, value := range vars {
+		result = strings.ReplaceAll(result, "${"+key+"}", value)
+		result = strings.ReplaceAll(result, "$"+key, value)
+	}
+	return result
+}
+
+// HostRequirementsCheck checks if host requirements are valid
+func HostRequirementsCheck(req *DevContainerCommonHostRequirements) error {
+	if req == nil {
+		return nil
+	}
+	
+	// Check CPU count
+	if req.CPUs != "" {
+		if cpus, err := strconv.Atoi(req.CPUs); err != nil || cpus <= 0 {
+			return fmt.Errorf("invalid CPU count: %s", req.CPUs)
+		}
+	}
+	
+	// TODO: Add more validation for memory, storage, GPU
+	
+	return nil
+}
+
+// MergeDevContainers merges multiple DevContainers
+func MergeDevContainers(base, override *DevContainer) *DevContainer {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	
+	// Simple merge - override takes precedence
+	result := *base
+	
+	if override.Image != "" {
+		result.Image = override.Image
+	}
+	if override.ImageContainer != nil {
+		result.ImageContainer = override.ImageContainer
+	}
+	// TODO: Implement full merge logic
+	
+	return &result
+}
+
+// LoadDevContainerWithExtends loads a devcontainer.json with extends support
+func LoadDevContainerWithExtends(path string) (*DevContainer, error) {
+	// For now, just load normally
+	// TODO: Implement extends support
+	return LoadDevContainer(path)
+}
+
+// GetStandardVariables returns standard devcontainer variables
+func GetStandardVariables(workspaceFolder string) map[string]string {
+	return map[string]string{
+		"localWorkspaceFolder":     workspaceFolder,
+		"containerWorkspaceFolder": "/workspace",
+		"localWorkspaceFolderBasename": filepath.Base(workspaceFolder),
+	}
 }

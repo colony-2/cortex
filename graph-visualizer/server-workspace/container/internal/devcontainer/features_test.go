@@ -39,9 +39,9 @@ func TestFeatureHandling(t *testing.T) {
 					t.Error("gradle feature not preserved")
 				}
 				
-				props, ok := dc.Features.AdditionalProperties.(map[string]interface{})
-				if !ok {
-					t.Fatal("additional properties should be a map")
+				props := dc.Features.AdditionalProperties
+				if props == nil {
+					t.Fatal("additional properties should not be nil")
 				}
 				
 				if _, exists := props["ghcr.io/devcontainers/features/go:1"]; !exists {

@@ -141,9 +141,9 @@ func TestLifecycleCommandToShellCommand(t *testing.T) {
 			name: "object command",
 			cmd: &LifecycleCommand{
 				Type: "object",
-				Commands: map[string]LifecycleCommand{
-					"build": {Type: "string", Command: "npm build"},
-					"test":  {Type: "string", Command: "npm test"},
+				Commands: map[string]*LifecycleCommand{
+					"build": &LifecycleCommand{Type: "string", Command: "npm build"},
+					"test":  &LifecycleCommand{Type: "string", Command: "npm test"},
 				},
 			},
 			expected: "# Multiple commands:",
@@ -184,7 +184,7 @@ func TestProcessLifecycleCommands(t *testing.T) {
 		},
 	}
 
-	commands := ProcessLifecycleCommands(dc)
+	commands, _ := ProcessLifecycleCommands(dc)
 
 	// Check all commands were parsed
 	expectedCommands := []string{
@@ -321,7 +321,7 @@ func TestLifecycleCommandsWithVariableExpansion(t *testing.T) {
 	ExpandVariables(dc, variables)
 
 	// Parse the expanded commands
-	commands := ProcessLifecycleCommands(dc)
+	commands, _ := ProcessLifecycleCommands(dc)
 
 	// Check onCreateCommand expansion
 	if cmd := commands["onCreateCommand"]; cmd != nil {
@@ -364,16 +364,16 @@ func TestHostRequirementsCheck(t *testing.T) {
 		{
 			name: "valid requirements",
 			req: &DevContainerCommonHostRequirements{
-				Cpus:    intPtr(4),
-				Memory:  strPtr("8gb"),
-				Storage: strPtr("50gb"),
+				CPUs:    "4",
+				Memory:  "8gb",
+				Storage: "50gb",
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid CPU count",
 			req: &DevContainerCommonHostRequirements{
-				Cpus: intPtr(0),
+				CPUs: "0",
 			},
 			wantErr: true,
 		},
