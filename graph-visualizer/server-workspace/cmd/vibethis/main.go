@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -20,6 +21,9 @@ var (
 	
 	// BuildTime is set at build time
 	BuildTime = "unknown"
+	
+	// defaultPort is set at build time via ldflags
+	defaultPort = "8080"
 )
 
 func main() {
@@ -46,7 +50,8 @@ managing dependencies, and working with development containers.`,
 	}
 	
 	// Define flags
-	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", 8080, "Port to listen on")
+	defaultPortInt, _ := strconv.Atoi(defaultPort)
+	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
 	rootCmd.Flags().StringVarP(&cfg.RootPath, "nodes", "n", ".", "Path to nodes directory")
 	rootCmd.Flags().StringVar(&cfg.DatabasePath, "db", "", "Path to database file (default: .vibethis.db in nodes directory)")
 	rootCmd.Flags().StringSliceVar(&cfg.CORSOrigins, "cors", []string{"http://localhost:3000", "http://localhost:5173"}, "Allowed CORS origins")

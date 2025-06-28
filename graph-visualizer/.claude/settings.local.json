@@ -49,7 +49,20 @@
       "Bash(fi)",
       "Bash(done)",
       "Bash(for f in internal/devcontainer/*.go.skip)",
-      "Bash(do mv \"$f\" \"$f%.skip\")"
+      "Bash(do mv \"$f\" \"$f%.skip\")",
+      "Bash(npm run:*)",
+      "Bash(npx:*)",
+      "Bash(git reset:*)",
+      "Bash(timeout 5 npm run dev:frontend)",
+      "Bash(timeout 5 npm run dev)",
+      "Bash(jq:*)",
+      "Bash(export:*)",
+      "Bash(moon:*)",
+      "Bash(go work:*)",
+      "Bash(chmod:*)",
+      "Bash(pkill:*)",
+      "Bash(go install:*)",
+      "Bash(vibethis:*)"
     ],
     "deny": []
   }

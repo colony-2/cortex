@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -16,11 +20,32 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "paths": {
-      "@vibethis/shared": ["../shared/src"]
+      "@vibethis/shared": [
+        "../shared/src"
+      ],
+      "@graph-visualizer/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@graph-visualizer/shared/*": [
+        "../shared/src/*"
+      ]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "tests"
+  ],
+  "references": [
+    {
+      "path": "../shared"
+    }
+  ]
 }

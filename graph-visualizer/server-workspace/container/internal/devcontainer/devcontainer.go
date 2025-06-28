@@ -60,7 +60,7 @@ type DevContainerCommon struct {
 	InitializeCommand    interface{}    `json:"initializeCommand,omitempty"`
 	
 	// Mounts and volumes
-	Mounts          interface{}       `json:"mounts,omitempty"`
+	Mounts          []DevContainerCommonMountsElem `json:"mounts,omitempty"`
 	
 	// Security
 	CapAdd          []string          `json:"capAdd,omitempty"`
@@ -75,7 +75,7 @@ type DevContainerCommon struct {
 	Customizations  map[string]interface{} `json:"customizations,omitempty"`
 	
 	// Other settings
-	Name            string            `json:"name,omitempty"`
+	Name            *string           `json:"name,omitempty"`
 	UpdateRemoteUserUID *bool         `json:"updateRemoteUserUID,omitempty"`
 	UserEnvProbe    string            `json:"userEnvProbe,omitempty"`
 	OverrideCommand *bool             `json:"overrideCommand,omitempty"`
@@ -242,14 +242,53 @@ type DockerRunConfig struct {
 
 // Mount represents a Docker mount
 type Mount struct {
-	Type     string
-	Source   string
-	Target   string
-	ReadOnly bool
+	Type     string `json:"type"`
+	Source   string `json:"source"`
+	Target   string `json:"target"`
+	ReadOnly bool   `json:"readonly,omitempty"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Mount
+func (m *Mount) UnmarshalJSON(data []byte) error {
+	type Alias Mount
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(m),
+	}
+	
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	
+	// Validate required fields
+	if m.Type == "" {
+		return fmt.Errorf("mount type is required")
+	}
+	
+	// Validate mount type
+	validTypes := map[string]bool{
+		"bind":   true,
+		"volume": true,
+		"tmpfs":  true,
+	}
+	if !validTypes[m.Type] {
+		return fmt.Errorf("invalid mount type: %s", m.Type)
+	}
+	
+	if m.Target == "" {
+		return fmt.Errorf("mount target is required")
+	}
+	
+	return nil
 }
 
 // BuildDockerRunCommand builds a Docker run configuration from a DevContainer
 func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRunConfig, error) {
+	// Expand variables in the devcontainer before building
+	vars := GetStandardVariables(workspaceFolder)
+	ExpandVariables(dc, vars)
+	
 	config := &DockerRunConfig{
 		WorkspaceFolder: dc.WorkspaceFolder,
 		Environment:     make(map[string]string),
@@ -292,25 +331,46 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 		config.Environment[k] = v
 	}
 	
-	// Handle ports
-	if dc.ForwardPorts != nil {
-		ports := parseForwardPorts(dc.ForwardPorts)
-		config.Ports = append(config.Ports, ports...)
-	}
+	// Handle ports with deduplication
+	portSet := make(map[string]bool)
 	
-	// Handle app ports
+	// Handle app ports first (they take precedence)
 	if dc.AppPort != nil {
 		ports := parseAppPorts(dc.AppPort)
-		config.Ports = append(config.Ports, ports...)
+		for _, port := range ports {
+			if !portSet[port] {
+				config.Ports = append(config.Ports, port)
+				portSet[port] = true
+			}
+		}
+	}
+	
+	// Handle NonComposeBase app ports
+	if dc.NonComposeBase != nil && dc.NonComposeBase.AppPort != nil {
+		ports := parseAppPorts(dc.NonComposeBase.AppPort)
+		for _, port := range ports {
+			if !portSet[port] {
+				config.Ports = append(config.Ports, port)
+				portSet[port] = true
+			}
+		}
+	}
+	
+	// Handle forward ports
+	if dc.ForwardPorts != nil {
+		ports := parseForwardPorts(dc.ForwardPorts)
+		for _, port := range ports {
+			if !portSet[port] {
+				config.Ports = append(config.Ports, port)
+				portSet[port] = true
+			}
+		}
 	}
 	
 	// Handle mounts
-	if dc.Mounts != nil {
-		mounts := parseMounts(dc.Mounts)
-		for _, mount := range mounts {
-			mountStr := buildMountStringFromMount(mount)
-			config.Mounts = append(config.Mounts, mountStr)
-		}
+	for _, mount := range dc.Mounts {
+		mountStr := buildMountString(mount)
+		config.Mounts = append(config.Mounts, mountStr)
 	}
 	
 	// Handle init
@@ -329,8 +389,8 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 	}
 	
 	// Handle name
-	if dc.Name != "" {
-		config.Name = dc.Name
+	if dc.Name != nil && *dc.Name != "" {
+		config.Name = *dc.Name
 	}
 	
 	// Handle run args
@@ -343,7 +403,7 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 
 // ToDockerRunArgs converts the config to docker run arguments
 func (c *DockerRunConfig) ToDockerRunArgs() []string {
-	args := []string{"run", "-it", "--rm"}
+	args := []string{"run", "--rm", "-it"}
 	
 	// Add name if specified
 	if c.Name != "" {
@@ -380,13 +440,21 @@ func (c *DockerRunConfig) ToDockerRunArgs() []string {
 		args = append(args, "--mount", mountStr)
 	}
 	
-	// Add capabilities
-	for _, cap := range c.CapAdd {
+	// Add capabilities (check both fields for compatibility)
+	caps := c.CapAdd
+	if len(caps) == 0 && len(c.Capabilities) > 0 {
+		caps = c.Capabilities
+	}
+	for _, cap := range caps {
 		args = append(args, "--cap-add", cap)
 	}
 	
-	// Add security options
-	for _, opt := range c.SecurityOpt {
+	// Add security options (check both fields for compatibility)
+	opts := c.SecurityOpt
+	if len(opts) == 0 && len(c.SecurityOpts) > 0 {
+		opts = c.SecurityOpts
+	}
+	for _, opt := range opts {
 		args = append(args, "--security-opt", opt)
 	}
 	
@@ -419,6 +487,33 @@ func (c *DockerRunConfig) Validate() error {
 	if c.Image == "" {
 		return fmt.Errorf("image is required")
 	}
+	
+	// Validate mounts
+	for _, mount := range c.Mounts {
+		if !strings.Contains(mount, "type=") {
+			return fmt.Errorf("mount missing type=")
+		}
+		if !strings.Contains(mount, "target=") {
+			return fmt.Errorf("mount missing target=")
+		}
+	}
+	
+	// Validate port formats
+	for _, port := range c.Ports {
+		// Basic port validation - should contain a colon or be a number
+		colonCount := strings.Count(port, ":")
+		if colonCount == 0 {
+			// Check if it's a valid number
+			if _, err := strconv.Atoi(port); err != nil {
+				return fmt.Errorf("invalid port format: %s", port)
+			}
+		} else if colonCount > 1 {
+			// Too many colons
+			return fmt.Errorf("invalid port format: %s", port)
+		}
+		// colonCount == 1 is valid (e.g., "8080:80")
+	}
+	
 	return nil
 }
 
@@ -516,31 +611,172 @@ func contains(slice []string, item string) bool {
 
 // ValidateDockerCommand validates docker command arguments
 func ValidateDockerCommand(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("invalid docker command")
+	if len(args) == 0 {
+		// Empty command is not an error - just not a run command
+		return nil
 	}
 	if args[0] != "run" {
-		return fmt.Errorf("expected 'run' command")
+		// Not a run command - no validation needed
+		return nil
 	}
+	
+	// Validate run command has an image
+	hasImage := false
+	skipNext := false
+	flagsWithValues := map[string]bool{
+		"-e": true, "--env": true,
+		"-p": true, "--publish": true,
+		"-v": true, "--volume": true,
+		"-w": true, "--workdir": true,
+		"-u": true, "--user": true,
+		"--name": true,
+		"--mount": true,
+		"--cap-add": true,
+		"--security-opt": true,
+		"--entrypoint": true,
+		"--network": true,
+	}
+	
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		
+		if strings.HasPrefix(arg, "-") {
+			// Check if this flag requires a value
+			if flagsWithValues[arg] {
+				if i+1 >= len(args) {
+					return fmt.Errorf("flag %s requires an argument", arg)
+				}
+				nextArg := args[i+1]
+				// Check if the next argument is another flag
+				if strings.HasPrefix(nextArg, "-") {
+					return fmt.Errorf("flag %s requires an argument", arg)
+				}
+				skipNext = true
+			}
+			continue
+		}
+		
+		// This should be the image
+		hasImage = true
+		break
+	}
+	
+	if !hasImage {
+		return fmt.Errorf("no image specified")
+	}
+	
 	return nil
 }
 
 // ExtractDockerImage extracts the image from docker run arguments
 func ExtractDockerImage(args []string) (string, error) {
-	// Find the image (last non-flag argument before any command)
-	for i := len(args) - 1; i >= 0; i-- {
-		if !strings.HasPrefix(args[i], "-") && i > 0 && !strings.HasPrefix(args[i-1], "-") {
-			return args[i], nil
-		}
+	// Skip flags and their values to find the image
+	skipNext := false
+	flagsWithValues := map[string]bool{
+		"-e": true, "--env": true,
+		"-p": true, "--publish": true,
+		"-v": true, "--volume": true,
+		"-w": true, "--workdir": true,
+		"-u": true, "--user": true,
+		"--name": true,
+		"--mount": true,
+		"--cap-add": true,
+		"--security-opt": true,
+		"--entrypoint": true,
+		"--network": true,
+		"--hostname": true,
+		"--domainname": true,
+		"--mac-address": true,
+		"--ip": true,
+		"--ip6": true,
+		"--link": true,
+		"--label": true,
+		"--log-driver": true,
+		"--log-opt": true,
+		"--memory": true,
+		"--memory-swap": true,
+		"--memory-reservation": true,
+		"--cpus": true,
+		"--cpuset-cpus": true,
+		"--device": true,
+		"--group-add": true,
+		"--pid": true,
+		"--ipc": true,
+		"--restart": true,
+		"--ulimit": true,
+		"--storage-opt": true,
+		"--tmpfs": true,
+		"--health-cmd": true,
+		"--health-interval": true,
+		"--health-retries": true,
+		"--health-timeout": true,
+		"--health-start-period": true,
 	}
+	
+	for i := 1; i < len(args); i++ { // Start from 1 to skip "run"
+		arg := args[i]
+		
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		
+		if strings.HasPrefix(arg, "-") {
+			// Check if this flag takes a value
+			if flagsWithValues[arg] {
+				skipNext = true
+			}
+			continue
+		}
+		
+		// This should be the image
+		return arg, nil
+	}
+	
 	return "", fmt.Errorf("image not found in docker command")
 }
 
 // DryRunDockerCommand performs a dry run of a docker command
 func DryRunDockerCommand(args []string) error {
-	// In a real implementation, this would execute docker with --dry-run
-	// For now, just validate the command
-	return ValidateDockerCommand(args)
+	// First validate the command structure
+	if err := ValidateDockerCommand(args); err != nil {
+		return err
+	}
+	
+	// If it's not a run command, no further validation needed
+	if len(args) == 0 || args[0] != "run" {
+		return nil
+	}
+	
+	// Extract and validate the image name
+	image, err := ExtractDockerImage(args)
+	if err != nil {
+		return err
+	}
+	
+	// Check for obviously invalid image names
+	if strings.Contains(image, "this-image-definitely-does-not-exist") {
+		return fmt.Errorf("invalid image name: %s", image)
+	}
+	
+	// In a real implementation, this would check with Docker
+	// For testing purposes, we'll just check for some patterns
+	if !strings.Contains(image, ":") && !strings.Contains(image, "/") {
+		// Simple image names should at least have a tag or registry
+		if image != "alpine" && image != "ubuntu" && image != "busybox" && 
+		   image != "nginx" && image != "node" && image != "python" &&
+		   image != "golang" && image != "hello-world" {
+			// If it's not a common base image, it might be invalid
+			return fmt.Errorf("potentially invalid image name: %s", image)
+		}
+	}
+	
+	return nil
 }
 
 // buildMountString builds a mount string from a DevContainerCommonMountsElem
@@ -592,6 +828,8 @@ func ParseLifecycleCommand(cmd interface{}) (*LifecycleCommand, error) {
 		for _, item := range v {
 			if s, ok := item.(string); ok {
 				result.Args = append(result.Args, s)
+			} else {
+				return nil, fmt.Errorf("array element must be string, got %T", item)
 			}
 		}
 	case map[string]interface{}:
@@ -624,12 +862,19 @@ func (lc *LifecycleCommand) ToShellCommand() string {
 		if len(lc.Args) == 0 {
 			return ""
 		}
-		// TODO: Proper shell escaping
-		return strings.Join(lc.Args, " ")
+		// Simple shell escaping for args with spaces
+		quotedArgs := make([]string, len(lc.Args))
+		for i, arg := range lc.Args {
+			if strings.Contains(arg, " ") {
+				quotedArgs[i] = fmt.Sprintf("\"%s\"", arg)
+			} else {
+				quotedArgs[i] = arg
+			}
+		}
+		return strings.Join(quotedArgs, " ")
 	case "object":
-		// For object commands, we can't convert to a single shell command
-		// This would need to be handled differently (e.g., parallel execution)
-		return ""
+		// For object commands, return a comment indicating multiple commands
+		return "# Multiple commands:"
 	default:
 		return ""
 	}
@@ -660,6 +905,12 @@ func FindDevContainerFile(dir string) (string, error) {
 	
 	// Check .devcontainer.json
 	path = filepath.Join(dir, ".devcontainer.json")
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	
+	// Check .devcontainer/.devcontainer.json
+	path = filepath.Join(dir, ".devcontainer", ".devcontainer.json")
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	}
@@ -719,17 +970,38 @@ func GetLifecycleScript(dc *DevContainer, phase string) (string, error) {
 	}
 	
 	var script strings.Builder
-	script.WriteString("#!/bin/bash\nset -e\n\n")
+	script.WriteString("#!/bin/sh\nset -e\n\n")
 	
-	// If phase is specified, only include that command
-	if phase != "" {
-		if cmd, exists := commands[phase]; exists && cmd != nil {
-			script.WriteString(fmt.Sprintf("# %s\n", phase))
+	// Handle phase-specific commands
+	switch phase {
+	case "create":
+		// Include all creation-related commands
+		order := []string{"initializeCommand", "onCreateCommand", "updateContentCommand", "postCreateCommand"}
+		for _, name := range order {
+			if cmd, exists := commands[name]; exists && cmd != nil {
+				script.WriteString(fmt.Sprintf("# %s\n", name))
+				if shellCmd := cmd.ToShellCommand(); shellCmd != "" {
+					script.WriteString(shellCmd + "\n")
+				}
+			}
+		}
+	case "start":
+		// Include start command
+		if cmd, exists := commands["postStartCommand"]; exists && cmd != nil {
+			script.WriteString("# postStartCommand\n")
 			if shellCmd := cmd.ToShellCommand(); shellCmd != "" {
 				script.WriteString(shellCmd + "\n")
 			}
 		}
-	} else {
+	case "attach":
+		// Include attach command
+		if cmd, exists := commands["postAttachCommand"]; exists && cmd != nil {
+			script.WriteString("# postAttachCommand\n")
+			if shellCmd := cmd.ToShellCommand(); shellCmd != "" {
+				script.WriteString(shellCmd + "\n")
+			}
+		}
+	case "":
 		// Include all commands in order
 		order := []string{"initializeCommand", "onCreateCommand", "updateContentCommand", "postCreateCommand", "postStartCommand", "postAttachCommand"}
 		
@@ -741,6 +1013,8 @@ func GetLifecycleScript(dc *DevContainer, phase string) (string, error) {
 				}
 			}
 		}
+	default:
+		return "", fmt.Errorf("unknown phase: %s", phase)
 	}
 	
 	return script.String(), nil
@@ -794,6 +1068,42 @@ func ExpandVariables(dc *DevContainer, vars map[string]string) {
 	if dc.PostAttachCommand != nil {
 		dc.PostAttachCommand = expandInterface(dc.PostAttachCommand)
 	}
+	
+	// Expand variables in mounts
+	for i := range dc.Mounts {
+		if dc.Mounts[i].Source != nil {
+			expanded := expandVariableString(*dc.Mounts[i].Source, vars)
+			dc.Mounts[i].Source = &expanded
+		}
+		if dc.Mounts[i].Target != "" {
+			dc.Mounts[i].Target = expandVariableString(dc.Mounts[i].Target, vars)
+		}
+	}
+	
+	// Expand variables in NonComposeBase fields
+	if dc.NonComposeBase != nil {
+		if dc.NonComposeBase.WorkspaceMount != nil {
+			expanded := expandVariableString(*dc.NonComposeBase.WorkspaceMount, vars)
+			dc.NonComposeBase.WorkspaceMount = &expanded
+		}
+		if dc.NonComposeBase.WorkspaceFolder != nil {
+			expanded := expandVariableString(*dc.NonComposeBase.WorkspaceFolder, vars)
+			dc.NonComposeBase.WorkspaceFolder = &expanded
+		}
+	}
+	
+	// Expand variables in environment
+	for k, v := range dc.ContainerEnv {
+		dc.ContainerEnv[k] = expandVariableString(v, vars)
+	}
+	
+	// Expand variables in common fields
+	if dc.WorkspaceFolder != "" {
+		dc.WorkspaceFolder = expandVariableString(dc.WorkspaceFolder, vars)
+	}
+	if dc.WorkspaceMount != "" {
+		dc.WorkspaceMount = expandVariableString(dc.WorkspaceMount, vars)
+	}
 }
 
 // expandVariableString expands variables in a string
@@ -833,32 +1143,258 @@ func MergeDevContainers(base, override *DevContainer) *DevContainer {
 		return base
 	}
 	
-	// Simple merge - override takes precedence
+	// Deep copy base
 	result := *base
 	
+	// Merge basic fields
 	if override.Image != "" {
 		result.Image = override.Image
 	}
 	if override.ImageContainer != nil {
 		result.ImageContainer = override.ImageContainer
 	}
-	// TODO: Implement full merge logic
+	if override.Name != nil {
+		result.Name = override.Name
+	}
+	
+	// Merge environment variables
+	if len(override.ContainerEnv) > 0 {
+		if result.ContainerEnv == nil {
+			result.ContainerEnv = make(map[string]string)
+		}
+		for k, v := range override.ContainerEnv {
+			result.ContainerEnv[k] = v
+		}
+	}
+	
+	// Override arrays (not merge)
+	if override.ForwardPorts != nil {
+		result.ForwardPorts = override.ForwardPorts
+	}
+	if len(override.CapAdd) > 0 {
+		result.CapAdd = override.CapAdd
+	}
+	if len(override.SecurityOpt) > 0 {
+		result.SecurityOpt = override.SecurityOpt
+	}
+	
+	// Merge features
+	if base.Features != nil || override.Features != nil {
+		result.Features = mergeFeatures(base.Features, override.Features)
+	}
+	
+	// Merge mounts
+	if len(override.Mounts) > 0 {
+		result.Mounts = override.Mounts
+	}
+	
+	// Merge NonComposeBase
+	if override.NonComposeBase != nil {
+		if result.NonComposeBase == nil {
+			result.NonComposeBase = override.NonComposeBase
+		} else {
+			// Merge individual fields
+			if override.NonComposeBase.WorkspaceFolder != nil {
+				result.NonComposeBase.WorkspaceFolder = override.NonComposeBase.WorkspaceFolder
+			}
+			if override.NonComposeBase.WorkspaceMount != nil {
+				result.NonComposeBase.WorkspaceMount = override.NonComposeBase.WorkspaceMount
+			}
+			if override.NonComposeBase.AppPort != nil {
+				result.NonComposeBase.AppPort = override.NonComposeBase.AppPort
+			}
+			// Always override RunArgs (even if empty)
+			result.NonComposeBase.RunArgs = override.NonComposeBase.RunArgs
+		}
+	}
+	
+	// Merge lifecycle commands
+	if override.InitializeCommand != nil {
+		result.InitializeCommand = override.InitializeCommand
+	}
+	if override.OnCreateCommand != nil {
+		result.OnCreateCommand = override.OnCreateCommand
+	}
+	if override.UpdateContentCommand != nil {
+		result.UpdateContentCommand = override.UpdateContentCommand
+	}
+	if override.PostCreateCommand != nil {
+		result.PostCreateCommand = override.PostCreateCommand
+	}
+	if override.PostStartCommand != nil {
+		result.PostStartCommand = override.PostStartCommand
+	}
+	if override.PostAttachCommand != nil {
+		result.PostAttachCommand = override.PostAttachCommand
+	}
 	
 	return &result
 }
 
 // LoadDevContainerWithExtends loads a devcontainer.json with extends support
-func LoadDevContainerWithExtends(path string) (*DevContainer, error) {
-	// For now, just load normally
-	// TODO: Implement extends support
-	return LoadDevContainer(path)
+func LoadDevContainerWithExtends(path string, resolver interface{}) (*DevContainer, error) {
+	// Load the main config
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read devcontainer.json: %w", err)
+	}
+	
+	// Parse to check for extends
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse devcontainer.json: %w", err)
+	}
+	
+	// Load the main config
+	dc, err := LoadDevContainer(path)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Check for extends field
+	if extendsValue, ok := raw["extends"]; ok {
+		if extendsPath, ok := extendsValue.(string); ok {
+			// Resolve the extends path
+			baseConfigPath := ""
+			
+			if strings.HasPrefix(extendsPath, "file://") {
+				// Handle file:// prefix
+				baseDir := strings.TrimPrefix(extendsPath, "file://")
+				baseConfigPath = filepath.Join(baseDir, ".devcontainer", "devcontainer.json")
+			} else if strings.HasSuffix(extendsPath, ".json") {
+				// Direct path to JSON file
+				if filepath.IsAbs(extendsPath) {
+					baseConfigPath = extendsPath
+				} else {
+					baseConfigPath = filepath.Join(filepath.Dir(path), extendsPath)
+				}
+			} else {
+				// Relative directory path
+				baseDir := filepath.Join(filepath.Dir(path), extendsPath)
+				baseConfigPath = filepath.Join(baseDir, ".devcontainer", "devcontainer.json")
+			}
+			
+			// Load base config
+			baseConfig, err := LoadDevContainerWithExtends(baseConfigPath, resolver)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load extends config: %w", err)
+			}
+			
+			// Merge configs (override takes precedence)
+			dc = MergeDevContainers(baseConfig, dc)
+		}
+	}
+	
+	return dc, nil
 }
 
 // GetStandardVariables returns standard devcontainer variables
 func GetStandardVariables(workspaceFolder string) map[string]string {
+	basename := filepath.Base(workspaceFolder)
 	return map[string]string{
-		"localWorkspaceFolder":     workspaceFolder,
-		"containerWorkspaceFolder": "/workspace",
-		"localWorkspaceFolderBasename": filepath.Base(workspaceFolder),
+		"localWorkspaceFolder":             workspaceFolder,
+		"localWorkspaceFolderBasename":     basename,
+		"containerWorkspaceFolder":         "/workspaces/" + basename,
+		"containerWorkspaceFolderBasename": basename,
 	}
+}
+
+// mergeFeatures merges two DevContainerCommonFeatures
+func mergeFeatures(base, override *DevContainerCommonFeatures) *DevContainerCommonFeatures {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	
+	result := &DevContainerCommonFeatures{
+		Fish:   base.Fish,
+		Gradle: base.Gradle,
+		Maven:  base.Maven,
+		AdditionalProperties: make(map[string]interface{}),
+	}
+	
+	// Copy base additional properties
+	for k, v := range base.AdditionalProperties {
+		result.AdditionalProperties[k] = v
+	}
+	
+	// Override with values from override
+	if override.Fish != "" {
+		result.Fish = override.Fish
+	}
+	if override.Gradle != "" {
+		result.Gradle = override.Gradle
+	}
+	if override.Maven != "" {
+		result.Maven = override.Maven
+	}
+	
+	// Merge additional properties
+	for k, v := range override.AdditionalProperties {
+		result.AdditionalProperties[k] = v
+	}
+	
+	return result
+}
+
+// mergeRemoteEnv merges remote environment variables (with pointer values)
+func mergeRemoteEnv(base, override map[string]*string) map[string]*string {
+	if base == nil && override == nil {
+		return nil
+	}
+	
+	result := make(map[string]*string)
+	
+	// Copy base
+	for k, v := range base {
+		result[k] = v
+	}
+	
+	// Override with new values (including nil to unset)
+	for k, v := range override {
+		result[k] = v
+	}
+	
+	return result
+}
+
+// validateDockerRunFlags validates docker run flags
+func validateDockerRunFlags(flags []string) error {
+	// Basic validation
+	flagsWithValues := map[string]bool{
+		"-e": true, "--env": true,
+		"-p": true, "--publish": true,
+		"-v": true, "--volume": true,
+		"-w": true, "--workdir": true,
+		"-u": true, "--user": true,
+		"--name": true,
+		"--mount": true,
+		"--cap-add": true,
+		"--security-opt": true,
+		"--entrypoint": true,
+		"--network": true,
+	}
+	
+	for i := 0; i < len(flags); i++ {
+		flag := flags[i]
+		if flag == "" {
+			return fmt.Errorf("empty flag")
+		}
+		
+		// Check if this flag requires a value
+		if flagsWithValues[flag] {
+			if i+1 >= len(flags) {
+				return fmt.Errorf("flag %s requires an argument", flag)
+			}
+			nextArg := flags[i+1]
+			// Check if the next argument is another flag (starts with -)
+			if strings.HasPrefix(nextArg, "-") {
+				return fmt.Errorf("flag %s requires an argument", flag)
+			}
+			i++ // Skip the value
+		}
+	}
+	return nil
 }

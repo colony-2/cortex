@@ -1,0 +1,31 @@
+# https://moonrepo.dev/docs/config/workspace
+$schema: './cache/schemas/workspace.json'
+
+# Project discovery
+projects:
+  # Map format for custom project IDs
+  go-core: 'server-workspace/core'
+  go-storage: 'server-workspace/storage'
+  go-graph: 'server-workspace/graph'
+  go-files: 'server-workspace/files'
+  go-git: 'server-workspace/git'
+  go-container: 'server-workspace/container'
+  go-web: 'server-workspace/web'
+  vibethis: 'server-workspace/cmd/vibethis'
+  web-app: 'web/projects/app'
+  web-shared: 'web/projects/shared'
+  web-changes: 'web/projects/changes'
+  web-config: 'web/projects/config'
+  web-files: 'web/projects/files'
+  web-flowchart: 'web/projects/flowchart'
+
+# Runner configuration
+runner:
+  archivableTargets:
+    - ':build'
+  cacheLifetime: '7 days'
+
+# VCS configuration
+vcs:
+  provider: 'github'
+  defaultBranch: 'main'

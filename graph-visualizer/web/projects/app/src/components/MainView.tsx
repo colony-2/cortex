@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Splitter } from 'antd';
-import { GraphFlow } from '@graph-visualizer/flowchart';
+import { GraphFlow } from '@vibethis/flowchart';
 import SidePanel from './SidePanel';
-import type { DependencyNode } from '@graph-visualizer/shared';
-import { navigateToPath } from '@graph-visualizer/shared';
+import type { DependencyNode } from '@vibethis/shared';
+import { navigateToPath } from '@vibethis/shared';
 
 export default function MainView() {
   const { boxId, tab } = useParams<{ boxId?: string; tab?: string; subtab?: string }>();

@@ -53,7 +53,7 @@ export async function savePositions(positions: NodePosition[]): Promise<void> {
 
 export async function fetchFiles(nodeId: string, path: string = ''): Promise<{ files: any[], path: string }> {
   try {
-    const url = `${API_BASE}/files/${nodeId}?path=${encodeURIComponent(path)}`;
+    const url = `${API_BASE}/nodes/${nodeId}/files?path=${encodeURIComponent(path)}`;
     const response = await fetch(url);
     await handleResponse(response, 'Fetch files');
     return response.json();

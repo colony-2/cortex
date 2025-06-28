@@ -10,7 +10,8 @@ test.describe('UI Integration Tests', () => {
     );
     
     // Wait for graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
     // Wait for nodes to be rendered
     await page.waitForTimeout(1000);
@@ -23,16 +24,7 @@ test.describe('UI Integration Tests', () => {
     // Wait for state to update
     await page.waitForTimeout(100);
     
-    // Check that Config tab is active by default
-    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
-    
-    // Files tab should be visible
-    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
-    
-    // Click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
-    
-    // Now Files tab should be active
+    // Check that Files tab is active by default when a node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
     // Check that file list is visible
@@ -53,44 +45,33 @@ test.describe('UI Integration Tests', () => {
     );
     
     // Wait for graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
-    // Trigger api node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
-    });
+    // Click on api node
+    const apiNode = await page.locator('.react-flow__node').filter({ hasText: 'api' }).first();
+    await apiNode.click();
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for files to load
+    await page.waitForTimeout(1000);
     
-    // Config tab is active by default, wait for Files tab to be visible
-    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
+    // Files tab should be active by default when a node is selected
+    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
-    // Click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
-    
-    // Wait for api files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/files/api') && response.status() === 200
-    );
-    
-    // Check that api files are shown (use first() to avoid multiple elements)
-    await expect(page.locator('.ant-tabs-content').first()).toContainText('api');
+    // Check that api files are shown
     await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
     
-    // Trigger frontend node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
+    // Click on frontend node
+    const frontendNode = await page.locator('.react-flow__node').filter({ hasText: 'frontend' }).first();
+    await frontendNode.click();
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for files to update
+    await page.waitForTimeout(1000);
     
     // Files tab should remain active when switching nodes
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
     // Check that frontend files are shown
-    await expect(page.locator('.ant-tabs-content').first()).toContainText('frontend');
     await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible();
   });
   
@@ -102,32 +83,25 @@ test.describe('UI Integration Tests', () => {
       response.url().includes('/api/graph') && response.status() === 200
     );
     
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
+    // Wait for graph elements
+    await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
-    
-    // Config tab is active by default, wait for Files tab to be visible
-    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
-    
-    // Click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
+    // Click on frontend node
+    const frontendNode = await page.locator('.react-flow__node').filter({ hasText: 'frontend' }).first();
+    await frontendNode.click();
     
     // Wait for files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/files/frontend') && response.status() === 200
-    );
+    await page.waitForTimeout(1000);
+    
+    // Files tab should be active by default when a node is selected
+    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
     // Navigate to foo folder
     await page.locator('.ant-list-item').filter({ hasText: 'foo' }).click();
     
     // Wait for subdirectory to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/files/frontend?path=foo') && response.status() === 200
-    );
+    await page.waitForTimeout(1000);
     
     // Switch to Config tab
     await page.locator('.ant-tabs-tab').filter({ hasText: 'Config' }).click();

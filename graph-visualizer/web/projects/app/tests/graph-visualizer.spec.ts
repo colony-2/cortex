@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 test.describe('Graph Visualizer', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/boxes');
-    // Wait for the loading to finish
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    // Wait for the React Flow to finish rendering
+    await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__viewport', { timeout: 10000 });
   });
 
   test('should load and display the graph', async ({ page }) => {
@@ -27,13 +28,13 @@ test.describe('Graph Visualizer', () => {
     const authNode = page.locator('.react-flow__node').filter({ hasText: 'auth' }).first();
     await expect(authNode).toBeVisible();
     
-    // Check node contains type info (Pro Flow shows it in tags)
-    await expect(authNode).toContainText('module');
+    // Check node contains type info
+    await expect(authNode).toContainText('box');
   });
 
   test('should have working zoom controls', async ({ page }) => {
     // Wait for the graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__viewport', { timeout: 10000 });
     
     // Pro Flow may not have visible controls by default
     // Try to find zoom controls, but skip test if they're not available
@@ -72,17 +73,21 @@ test.describe('Graph Visualizer', () => {
   });
 
   test('should display edges between nodes', async ({ page }) => {
-    // Wait for React Flow to be rendered
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    // Wait for nodes to be rendered first
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    
+    // Wait a bit for edges to render
+    await page.waitForTimeout(500);
     
     // Check that edges exist (React Flow renders edges with this class)
-    const edgeCount = await page.locator('.react-flow__edge').count();
+    const edges = page.locator('.react-flow__edge');
+    const edgeCount = await edges.count();
     expect(edgeCount).toBeGreaterThan(0);
   });
 
   test('should allow panning the graph', async ({ page }) => {
     // Wait for the graph to load
-    await page.waitForSelector('.react-flow', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__viewport', { timeout: 10000 });
     
     const graphContainer = page.locator('.react-flow__viewport');
     

@@ -1,0 +1,35 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../../.moon/cache/schemas/project.json'
+
+project:
+  name: 'web-config'
+  description: 'Configuration editor components for environment and relationships'
+  channel: '#frontend'
+  
+language: 'typescript'
+type: 'library'
+
+tags:
+  - 'frontend'
+  - 'library'
+
+tasks:
+  build:
+    command: 'vite build'
+    outputs:
+      - 'dist/**'
+    options:
+      runInCI: true
+
+  test:
+    command: 'echo "No tests configured"'
+    platform: 'node'
+
+  lint:
+    command: 'eslint'
+    args:
+      - 'src'
+    platform: 'node'
+
+dependsOn:
+  - 'web-shared'

@@ -1,0 +1,33 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../../.moon/cache/schemas/project.json'
+
+project:
+  name: 'web-shared'
+  description: 'Shared utilities and types'
+  channel: '#frontend'
+  
+language: 'typescript'
+type: 'library'
+
+tags:
+  - 'frontend'
+  - 'library'
+  - 'shared'
+
+tasks:
+  build:
+    command: 'vite build'
+    outputs:
+      - 'dist/**'
+    options:
+      runInCI: true
+
+  test:
+    command: 'echo "No tests configured"'
+    platform: 'node'
+
+  lint:
+    command: 'eslint'
+    args:
+      - 'src'
+    platform: 'node'

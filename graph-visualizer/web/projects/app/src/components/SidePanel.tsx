@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Tabs, Empty, Typography, Input, List } from 'antd';
 import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
-import { FileBrowser } from '@graph-visualizer/files';
-import { EnvEditor, RelationshipEditor } from '@graph-visualizer/config';
-import { GitChanges } from '@graph-visualizer/changes';
-import type { DependencyNode } from '@graph-visualizer/shared';
-import { navigateToPath } from '@graph-visualizer/shared';
+import { FileBrowser } from '@vibethis/files';
+import { EnvEditor, RelationshipEditor } from '@vibethis/config';
+import { GitChanges } from '@vibethis/changes';
+import type { DependencyNode } from '@vibethis/shared';
+import { navigateToPath } from '@vibethis/shared';
 
 const { Title } = Typography;
 const { TextArea } = Input;

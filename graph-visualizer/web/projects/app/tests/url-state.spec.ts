@@ -7,11 +7,15 @@ test.describe('URL State Management', () => {
     // Wait for graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     
-    // Click on a node
+    // Wait for nodes to be rendered
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    
+    // Click on the first node
     const node = await page.locator('.react-flow__node').first();
-    const graphNode = node.locator('.graph-node');
-    const nodeId = await graphNode.getAttribute('data-node-id');
     await node.click();
+    
+    // Get node ID from the node's data-id attribute
+    const nodeId = await node.getAttribute('data-id');
     
     // Check URL contains node in path
     await expect(page).toHaveURL(new RegExp(`/box/${nodeId}/files`));
@@ -22,10 +26,12 @@ test.describe('URL State Management', () => {
     
     // Wait for graph to load and select a node
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    // Wait for nodes to be rendered
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    
     const node = await page.locator('.react-flow__node').first();
-    const graphNode = node.locator('.graph-node');
-    const nodeId = await graphNode.getAttribute('data-node-id');
     await node.click();
+    const nodeId = await node.getAttribute('data-id');
     
     // Wait for side panel
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
@@ -42,10 +48,12 @@ test.describe('URL State Management', () => {
     
     // Wait for graph to load and select a node
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    // Wait for nodes to be rendered
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    
     const node = await page.locator('.react-flow__node').first();
-    const graphNode = node.locator('.graph-node');
-    const nodeId = await graphNode.getAttribute('data-node-id');
     await node.click();
+    const nodeId = await node.getAttribute('data-id');
     
     // Navigate to Changes tab
     await page.getByText('Changes').click();
@@ -80,8 +88,7 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     
     const node = await page.locator('.react-flow__node').first();
-    const graphNode = node.locator('.graph-node');
-    const nodeId = await graphNode.getAttribute('data-node-id');
+    const nodeId = await node.getAttribute('data-id');
     
     // Navigate directly with path
     await page.goto(`/box/${nodeId}/changes/history`);
@@ -89,8 +96,8 @@ test.describe('URL State Management', () => {
     // Wait for the page to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     
-    // Check that the node is selected (has blue border) - find node by its inner data-node-id
-    const selectedNode = await page.locator(`.graph-node[data-node-id="${nodeId}"]`);
+    // Check that the node is selected
+    const selectedNode = await page.locator(`.react-flow__node[data-id="${nodeId}"]`).locator('.graph-node');
     const borderStyle = await selectedNode.evaluate((el) => {
       return window.getComputedStyle(el).border;
     });
@@ -125,10 +132,12 @@ test.describe('URL State Management', () => {
     
     // Wait for graph to load and select a node
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
+    // Wait for nodes to be rendered
+    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    
     const node = await page.locator('.react-flow__node').first();
-    const graphNode = node.locator('.graph-node');
-    const nodeId = await graphNode.getAttribute('data-node-id');
     await node.click();
+    const nodeId = await node.getAttribute('data-id');
     
     // Navigate to Changes tab
     await page.getByText('Changes').click();

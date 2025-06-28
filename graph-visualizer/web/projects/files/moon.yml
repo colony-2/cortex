@@ -1,0 +1,40 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../../.moon/cache/schemas/project.json'
+
+project:
+  name: 'web-files'
+  description: 'File browser component for navigating and viewing project files'
+  channel: '#frontend'
+  
+language: 'typescript'
+type: 'library'
+
+tags:
+  - 'frontend'
+  - 'library'
+
+tasks:
+  build:
+    command: 'vite build'
+    outputs:
+      - 'dist/**'
+    options:
+      runInCI: true
+
+  test:
+    command: 'echo "No tests configured"'
+    platform: 'node'
+
+  lint:
+    command: 'eslint'
+    args:
+      - 'src'
+    platform: 'node'
+
+  e2e:
+    command: 'playwright test'
+    options:
+      runInCI: true
+
+dependsOn:
+  - 'web-shared'

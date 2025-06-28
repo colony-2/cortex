@@ -1,0 +1,54 @@
+# Global Node tasks
+$schema: '../cache/schemas/global-tasks.json'
+
+tasks:
+  build:
+    command: 'vite build'
+    inputs:
+      - 'src/**/*'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'package.json'
+    outputs:
+      - 'dist/**'
+    platform: 'node'
+    options:
+      runInCI: true
+
+  test:
+    command: 'vitest'
+    args:
+      - 'run'
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+    platform: 'node'
+    options:
+      runInCI: true
+
+  lint:
+    command: 'eslint'
+    args:
+      - 'src'
+    inputs:
+      - 'src/**/*'
+      - '.eslintrc*'
+    platform: 'node'
+    options:
+      runInCI: true
+
+  serve:
+    command: 'vite dev'
+    local: true
+    platform: 'node'
+
+  e2e:
+    command: 'playwright test'
+    inputs:
+      - 'tests/**/*'
+      - 'playwright.config.ts'
+    platform: 'node'
+    options:
+      runInCI: true

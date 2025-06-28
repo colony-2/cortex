@@ -1,0 +1,12 @@
+# https://moonrepo.dev/docs/config/toolchain
+$schema: './cache/schemas/toolchain.json'
+
+# Define tools and their versions
+node:
+  version: '20.11.0'
+  packageManager: 'npm'
+
+# TypeScript configuration
+typescript:
+  syncProjectReferences: true
+  syncProjectReferencesToPaths: true

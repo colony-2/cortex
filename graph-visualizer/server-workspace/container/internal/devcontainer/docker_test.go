@@ -206,7 +206,7 @@ func TestDockerRunConfig_ToDockerRunArgs(t *testing.T) {
 		"-p", "3000:3000",
 		"--privileged",
 		"--init",
-		"--user", "1000:1000",
+		"-u", "1000:1000",
 		"--cap-add", "SYS_PTRACE",
 		"--security-opt", "label=disable",
 		"--network", "bridge",

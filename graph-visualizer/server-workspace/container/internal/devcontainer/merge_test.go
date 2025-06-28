@@ -524,9 +524,9 @@ func TestMergeFeatures(t *testing.T) {
 	}
 	
 	// Check additional properties merge
-	props, ok := result.AdditionalProperties.(map[string]interface{})
-	if !ok {
-		t.Fatal("expected additional properties to be a map")
+	props := result.AdditionalProperties
+	if props == nil {
+		t.Fatal("expected additional properties to not be nil")
 	}
 	
 	goFeature, ok := props["ghcr.io/devcontainers/features/go:1"].(map[string]interface{})

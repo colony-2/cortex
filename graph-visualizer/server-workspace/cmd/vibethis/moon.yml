@@ -51,6 +51,16 @@ tasks:
     command: 'go vet ./...'
     platform: 'system'
 
+  install:
+    command: '$MOON_WORKSPACE_ROOT/scripts/go-install.sh'
+    platform: 'system'
+
+  install-with-frontend:
+    command: 'go install -tags=prod -ldflags="-X main.defaultPort=8081" .'
+    deps:
+      - '~:build-frontend-copy'
+    platform: 'system'
+
 dependsOn:
   - 'go-core'
   - 'go-storage'

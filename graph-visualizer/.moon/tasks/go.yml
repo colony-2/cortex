@@ -1,0 +1,38 @@
+# Global Go tasks
+$schema: '../cache/schemas/global-tasks.json'
+
+tasks:
+  build:
+    command: 'go build ./...'
+    inputs:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    outputs:
+      - 'build/**'
+    platform: 'system'
+    options:
+      runInCI: true
+
+  test:
+    command: 'go test -v ./...'
+    inputs:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    platform: 'system'
+    options:
+      runInCI: true
+
+  lint:
+    command: 'go vet ./...'
+    inputs:
+      - '**/*.go'
+    platform: 'system'
+    options:
+      runInCI: true
+
+  serve:
+    command: 'go run .'
+    local: true
+    platform: 'system'

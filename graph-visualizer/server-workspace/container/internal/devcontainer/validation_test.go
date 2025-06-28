@@ -218,9 +218,9 @@ func TestValidationWithRealDevContainer(t *testing.T) {
 	args := config.ToDockerRunArgs()
 
 	// Validate the generated command
+	t.Logf("Generated command: docker %s", strings.Join(args, " "))
 	if err := ValidateDockerCommand(args); err != nil {
 		t.Errorf("Generated docker command failed validation: %v", err)
-		t.Logf("Command: docker %s", strings.Join(args, " "))
 	}
 
 	// Extract and verify the image

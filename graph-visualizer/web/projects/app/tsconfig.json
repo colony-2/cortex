@@ -1,8 +1,98 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist"
+    "target": "ES2020",
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "types": [
+      "vite/client"
+    ],
+    "paths": {
+      "@vibethis/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@vibethis/changes": [
+        "../changes/src/index.tsx"
+      ],
+      "@vibethis/config": [
+        "../config/src/index.tsx"
+      ],
+      "@vibethis/files": [
+        "../files/src/index.tsx"
+      ],
+      "@vibethis/flowchart": [
+        "../flowchart/src/index.tsx"
+      ],
+      "@graph-visualizer/changes": [
+        "../changes/src/index.ts"
+      ],
+      "@graph-visualizer/changes/*": [
+        "../changes/src/*"
+      ],
+      "@graph-visualizer/config": [
+        "../config/src/index.ts"
+      ],
+      "@graph-visualizer/config/*": [
+        "../config/src/*"
+      ],
+      "@graph-visualizer/files": [
+        "../files/src/index.ts"
+      ],
+      "@graph-visualizer/files/*": [
+        "../files/src/*"
+      ],
+      "@graph-visualizer/flowchart": [
+        "../flowchart/src/index.ts"
+      ],
+      "@graph-visualizer/flowchart/*": [
+        "../flowchart/src/*"
+      ],
+      "@graph-visualizer/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@graph-visualizer/shared/*": [
+        "../shared/src/*"
+      ]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "tests"
+  ],
+  "references": [
+    {
+      "path": "../changes"
+    },
+    {
+      "path": "../config"
+    },
+    {
+      "path": "../files"
+    },
+    {
+      "path": "../flowchart"
+    },
+    {
+      "path": "../shared"
+    }
+  ]
 }

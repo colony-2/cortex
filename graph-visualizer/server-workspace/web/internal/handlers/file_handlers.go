@@ -19,8 +19,17 @@ func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Return in the format expected by the frontend
+	response := struct {
+		Files interface{} `json:"files"`
+		Path  string      `json:"path"`
+	}{
+		Files: files,
+		Path:  r.URL.Query().Get("path"),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(files)
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetFile handles GET /api/nodes/{nodeId}/files/{filePath}
