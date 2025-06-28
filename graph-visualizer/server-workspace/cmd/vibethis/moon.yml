@@ -1,0 +1,61 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../../.moon/cache/schemas/project.json'
+
+project:
+  name: 'vibethis'
+  description: 'Main vibethis server application'
+  channel: '#backend'
+  
+language: 'go'
+type: 'application'
+
+tags:
+  - 'go'
+  - 'backend'
+  - 'app'
+
+tasks:
+  build:
+    command: 'go build -ldflags="-s -w" -tags=prod -o build/vibethis .'
+    outputs:
+      - 'build/vibethis'
+    deps:
+      - '~:build-frontend-copy'
+    options:
+      runInCI: true
+
+  build-frontend-copy:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'mkdir -p static && cp -r $MOON_WORKSPACE_ROOT/web/dist static/'
+    deps:
+      - 'web-app:build'
+    platform: 'system'
+
+  build-prod:
+    deps:
+      - 'build'
+
+  serve:
+    command: 'go run main.go -n ../../../example'
+    env:
+      PORT: '8080'
+    local: true
+
+  test:
+    command: '$MOON_WORKSPACE_ROOT/scripts/go-test.sh'
+    platform: 'system'
+
+  lint:
+    command: 'go vet ./...'
+    platform: 'system'
+
+dependsOn:
+  - 'go-core'
+  - 'go-storage'
+  - 'go-graph'
+  - 'go-files'
+  - 'go-git'
+  - 'go-container'
+  - 'go-web'

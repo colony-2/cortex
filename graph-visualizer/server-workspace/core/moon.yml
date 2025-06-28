@@ -1,0 +1,28 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../.moon/cache/schemas/project.json'
+
+project:
+  name: 'core'
+  description: 'Core functionality library'
+  channel: '#backend'
+  
+language: 'go'
+type: 'library'
+
+tags:
+  - 'go'
+  - 'backend'
+  - 'library'
+
+tasks:
+  build:
+    command: 'go build ./...'
+    platform: 'system'
+
+  test:
+    command: '$MOON_WORKSPACE_ROOT/scripts/go-test.sh'
+    platform: 'system'
+
+  lint:
+    command: 'go vet ./...'
+    platform: 'system'
