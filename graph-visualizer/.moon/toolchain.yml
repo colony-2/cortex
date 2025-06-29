@@ -5,6 +5,8 @@ $schema: './cache/schemas/toolchain.json'
 node:
   version: '20.11.0'
   packageManager: 'npm'
+  rootPackageOnly: true
+  syncProjectWorkspaceDependencies: false
 
 # TypeScript configuration  
 typescript:

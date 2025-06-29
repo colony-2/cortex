@@ -1,4 +1,6 @@
 id: 'be-container'
+language: 'go'
+type: 'library'
 
 project:
   description: Manages devcontainer lifecycle and Docker container operations for development environments.

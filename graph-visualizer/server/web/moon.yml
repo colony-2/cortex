@@ -2,6 +2,8 @@
 $schema: '../../.moon/cache/schemas/project.json'
 
 id: 'be-web'
+language: 'go'
+type: 'library'
 
 project:
   description: 'Web server handlers and middleware'

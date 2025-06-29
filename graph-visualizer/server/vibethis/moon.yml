@@ -6,7 +6,7 @@ id: 'be-vibethis'
 project:
   description: 'Main vibethis server application'
   channel: '#backend'
-  
+
 language: 'go'
 type: 'application'
 
@@ -16,35 +16,51 @@ tags:
   - 'app'
 
 tasks:
+  # ─────────────────────────────────────────────────────────────
+  # Build the Go binary *after* the front-end assets are copied.
+  # ─────────────────────────────────────────────────────────────
   build:
-    command: 'go build -ldflags="-s -w" -tags=prod -o build/vibethis .'
-    outputs:
-      - 'build/vibethis'
+    script: |
+      mkdir -p build
+      go build -o build/vibethis .
     deps:
       - '~:build-frontend-copy'
-    options:
-      runInCI: true
+    outputs:
+      - build/          # cache the compiled binary
 
+  # ─────────────────────────────────────────────────────────────
+  # Copy front-end bundle produced by ui-app:build
+  # ─────────────────────────────────────────────────────────────
   build-frontend-copy:
-    command: 'bash'
-    args:
-      - '-c'
-      - 'mkdir -p static && cp -r $MOON_WORKSPACE_ROOT/web/app/dist static/'
+    script: |
+      # rsync preserves timestamps and only moves changed files
+      rsync -a --delete "$MOON_WORKSPACE_ROOT/web/app/dist/" static/
+    inputs:
+      - $MOON_WORKSPACE_ROOT/web/app/dist/**/*   # hash depends on UI bundle
+    outputs:
+      - static/
     deps:
       - 'ui-app:build'
-    platform: 'system'
+    platform: system
 
-
+  # ─────────────────────────────────────────────────────────────
+  # Local dev server
+  # ─────────────────────────────────────────────────────────────
   serve:
-    command: 'go run main.go -n ../../../example'
-    deps:
-      - '~:build-frontend-copy'    
-    env:
-      PORT: '8080'
-    local: true
-
-  install-with-frontend:
-    command: 'go install -tags=prod -ldflags="-X main.defaultPort=8081" .'
+    script: go run main.go -n ../../../example
     deps:
       - '~:build-frontend-copy'
-    platform: 'system'
+    env:
+      PORT: '8080'
+    local: true         # never runs in CI
+    platform: system
+
+  # ─────────────────────────────────────────────────────────────
+  # Production install (includes front-end)
+  # ─────────────────────────────────────────────────────────────
+  install-with-frontend:
+    script: |
+      go install -tags=prod -ldflags="-X main.defaultPort=8081" .
+    deps:
+      - '~:build-frontend-copy'
+    platform: system

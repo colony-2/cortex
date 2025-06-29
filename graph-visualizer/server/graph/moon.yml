@@ -1,4 +1,6 @@
 id: 'be-graph'
+language: 'go'
+type: 'library'
 
 project:
   description: Builds and validates dependency graphs for visualization purposes.

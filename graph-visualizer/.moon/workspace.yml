@@ -1,10 +1,16 @@
 $schema: 'https://moonrepo.dev/schemas/workspace.json'
 
-#extends: 'https://github.com/moonrepo/moon-configs/workspace.yml'
 
 # Project discovery
 projects:
-  - "server/*/"
+  - server/core
+  - server/container
+  - server/files
+  - server/git
+  - server/graph
+  - server/storage
+  - server/vibethis
+  - server/web
   - "web/*/"
       
 # Runner configuration
