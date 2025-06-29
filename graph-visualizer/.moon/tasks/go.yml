@@ -8,8 +8,6 @@ tasks:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
-    outputs:
-      - 'build/**'
     platform: 'system'
     options:
       runInCI: true

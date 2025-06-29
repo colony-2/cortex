@@ -1,0 +1,4 @@
+id: 'be-container'
+
+project:
+  description: Manages devcontainer lifecycle and Docker container operations for development environments.

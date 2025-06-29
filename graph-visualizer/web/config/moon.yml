@@ -1,0 +1,3 @@
+id: ui-config
+project:
+  description: Configuration components for managing environment variables and graph relationships.

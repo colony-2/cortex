@@ -62,7 +62,8 @@
       "Bash(chmod:*)",
       "Bash(pkill:*)",
       "Bash(go install:*)",
-      "Bash(vibethis:*)"
+      "Bash(vibethis:*)",
+      "Bash(timeout 5 moon run:*)"
     ],
     "deny": []
   }

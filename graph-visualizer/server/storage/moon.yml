@@ -1,0 +1,4 @@
+id: 'be-storage'
+
+project:
+  description: Provides persistent storage implementations using BoltDB and in-memory storage.

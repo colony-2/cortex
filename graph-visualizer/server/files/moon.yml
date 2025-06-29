@@ -1,0 +1,4 @@
+id: 'be-files'
+
+project:
+  description: Handles file browsing operations and security validation for file system access.

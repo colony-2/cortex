@@ -1,0 +1,3 @@
+id: ui-files
+project:
+  description: File browser component for navigating and selecting files in the repository.

@@ -1,0 +1,3 @@
+id: ui-app
+project:
+  description: Main React application that orchestrates the graph visualization interface.

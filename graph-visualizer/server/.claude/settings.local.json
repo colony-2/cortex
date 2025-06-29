@@ -1,18 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:containers.dev)",
-      "Bash(mkdir:*)",
-      "Bash(curl:*)",
-      "Bash(ls:*)",
-      "Bash(go install:*)",
-      "Bash(go generate:*)",
-      "Bash(go test:*)",
-      "Bash(grep:*)",
-      "Bash(find:*)",
-      "Bash(go tool cover:*)",
-      "Bash(rm:*)",
-      "Bash(docker:*)"
+      "Bash(go build:*)"
     ],
     "deny": []
   }

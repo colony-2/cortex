@@ -1,0 +1,4 @@
+id: 'be-git'
+
+project:
+  description: Provides Git repository operations and command execution functionality.

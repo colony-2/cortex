@@ -1,0 +1,9 @@
+# https://moonrepo.dev/docs/config/project
+$schema: '../../.moon/cache/schemas/project.json'
+
+id: 'be-web'
+
+project:
+  description: 'Web server handlers and middleware'
+  channel: '#backend'
+  

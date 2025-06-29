@@ -1,0 +1,3 @@
+id: ui-changes
+project:
+  description: Component for displaying and managing Git changes in the repository.
