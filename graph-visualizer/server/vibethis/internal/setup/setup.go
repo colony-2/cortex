@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"vibethis/api/pkg/web"
 	"vibethis/container/pkg/container"
 	"vibethis/files/pkg/files"
 	"vibethis/git/pkg/git"
 	"vibethis/graph/pkg/graph"
 	"vibethis/storage/pkg/storage"
 	"vibethis/vibethis/internal/config"
-	"vibethis/web/pkg/web"
 )
 
 // InitializeDependencies initializes all application dependencies

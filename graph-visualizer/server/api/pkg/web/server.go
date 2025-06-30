@@ -5,30 +5,30 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"vibethis/core/pkg/core"
+	"vibethis/api/internal/handlers"
+	"vibethis/api/internal/middleware"
 	"vibethis/container/pkg/container"
+	"vibethis/core/pkg/core"
 	"vibethis/files/pkg/files"
 	"vibethis/git/pkg/git"
-	"vibethis/web/internal/handlers"
-	"vibethis/web/internal/middleware"
 )
 
 // Config defines configuration for the web server.
 type Config struct {
 	// Port is the port to listen on.
 	Port int
-	
+
 	// CORSOrigins is a list of allowed CORS origins.
 	// If empty, CORS is disabled.
 	CORSOrigins []string
-	
+
 	// StaticPath is the path to static assets.
 	// If empty, no static assets are served.
 	StaticPath string
-	
+
 	// EnableWebSocket enables WebSocket support for terminal connections.
 	EnableWebSocket bool
-	
+
 	// MaxUploadSize is the maximum file upload size in bytes.
 	MaxUploadSize int64
 }
@@ -53,19 +53,19 @@ type Server struct {
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
 	h := handlers.New(deps.Storage, deps.Graph, deps.Files, deps.Git, deps.Container)
-	
+
 	router := h.SetupRoutes()
-	
+
 	// Apply middleware
 	var handler http.Handler = router
-	
+
 	if len(config.CORSOrigins) > 0 {
 		handler = middleware.CORS(config.CORSOrigins, handler)
 	}
-	
+
 	handler = middleware.Logging(handler)
 	handler = middleware.Recovery(handler)
-	
+
 	return &Server{
 		config:   config,
 		deps:     deps,

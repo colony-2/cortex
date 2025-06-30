@@ -1,4 +1,4 @@
-module vibethis/web
+module vibethis/api
 
 go 1.21
 

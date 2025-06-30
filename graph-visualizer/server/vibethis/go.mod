@@ -11,7 +11,7 @@ require (
 	vibethis/git v0.0.0
 	vibethis/graph v0.0.0
 	vibethis/storage v0.0.0
-	vibethis/web v0.0.0
+	vibethis/api v0.0.0
 )
 
 require (
@@ -31,5 +31,5 @@ replace (
 	vibethis/git => ../git
 	vibethis/graph => ../graph
 	vibethis/storage => ../storage
-	vibethis/web => ../web
+	vibethis/api => ../api
 )
