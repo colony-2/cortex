@@ -1,0 +1,7 @@
+id: example-monitoring
+language: unknown
+project:
+  description: Monitoring service for example application
+dependsOn:
+  - example-logger
+  - example-config

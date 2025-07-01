@@ -3,15 +3,9 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 
 # Project discovery
 projects:
-  - server/core
-  - server/container
-  - server/files
-  - server/git
-  - server/graph
-  - server/storage
-  - server/vibethis
-  - server/web
+  - server/*/
   - "web/*/"
+  - ".example/*/"
       
 # Runner configuration
 runner:

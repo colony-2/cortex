@@ -1,9 +1,0 @@
-{
-  "private": true,
-  "workspaces": [
-    "web/*/"
-  ],
-  "engines": {
-    "node": "20.11.0"
-  }
-}

@@ -123,6 +123,14 @@ func (m *Manager) AttachWebSocket(ctx context.Context, containerID string) (cont
 	return nil, fmt.Errorf("websocket attachment not implemented")
 }
 
+// Close closes the Docker client connection
+func (m *Manager) Close() error {
+	if m.docker != nil {
+		return m.docker.Close()
+	}
+	return nil
+}
+
 // mapDockerStatus maps Docker status to container.Status
 func mapDockerStatus(dockerStatus string) container.Status {
 	switch strings.ToLower(dockerStatus) {

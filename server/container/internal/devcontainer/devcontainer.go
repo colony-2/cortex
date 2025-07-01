@@ -891,7 +891,7 @@ func checkDockerAvailable() error {
 	if err != nil {
 		return err
 	}
-	_ = client
+	defer client.Close()
 	return nil
 }
 

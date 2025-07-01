@@ -63,7 +63,8 @@
       "Bash(pkill:*)",
       "Bash(go install:*)",
       "Bash(vibethis:*)",
-      "Bash(timeout 5 moon run:*)"
+      "Bash(timeout 5 moon run:*)",
+      "Bash(go tool cover:*)"
     ],
     "deny": []
   }

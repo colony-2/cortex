@@ -284,34 +284,7 @@ func (r *Repository) UnstageFiles(ctx context.Context, nodePath string, files []
 	return nil
 }
 
-// InitRepository initializes a new Git repository in the node directory
-func (r *Repository) InitRepository(ctx context.Context, nodePath string) error {
-	if isGitRepo(nodePath) {
-		return fmt.Errorf("already a git repository")
-	}
-
-	cmd := exec.CommandContext(ctx, "git", "init")
-	cmd.Dir = nodePath
-	
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to initialize repository: %w\nOutput: %s", err, output)
-	}
-
-	// Configure user if defaults are provided
-	if r.defaultAuthor != "" && r.defaultEmail != "" {
-		// Set user name
-		cmd = exec.CommandContext(ctx, "git", "config", "user.name", r.defaultAuthor)
-		cmd.Dir = nodePath
-		cmd.Run()
-
-		// Set user email
-		cmd = exec.CommandContext(ctx, "git", "config", "user.email", r.defaultEmail)
-		cmd.Dir = nodePath
-		cmd.Run()
-	}
-
-	return nil
-}
+// InitRepository removed - this module only works with existing repositories
 
 // isGitRepo checks if a directory is a git repository
 func isGitRepo(dirPath string) bool {

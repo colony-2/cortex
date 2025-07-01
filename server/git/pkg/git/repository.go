@@ -51,9 +51,6 @@ type Repository interface {
 	
 	// UnstageFiles unstages the specified files.
 	UnstageFiles(ctx context.Context, nodePath string, files []string) error
-	
-	// InitRepository initializes a new Git repository in the node directory.
-	InitRepository(ctx context.Context, nodePath string) error
 }
 
 // Config defines configuration for Git operations.
@@ -137,8 +134,4 @@ func (a *repoAdapter) StageFiles(ctx context.Context, nodePath string, files []s
 
 func (a *repoAdapter) UnstageFiles(ctx context.Context, nodePath string, files []string) error {
 	return a.repo.UnstageFiles(ctx, nodePath, files)
-}
-
-func (a *repoAdapter) InitRepository(ctx context.Context, nodePath string) error {
-	return a.repo.InitRepository(ctx, nodePath)
 }

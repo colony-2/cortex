@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(go test:*)",
+      "WebFetch(domain:docs.docker.com)",
+      "Bash(curl:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}

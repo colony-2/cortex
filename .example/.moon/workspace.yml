@@ -1,0 +1,6 @@
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+
+# Project discovery
+projects:
+  - "*/"

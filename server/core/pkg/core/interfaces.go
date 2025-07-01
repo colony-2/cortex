@@ -18,16 +18,10 @@ type Storage interface {
 	Close() error
 }
 
-// GraphBuilder defines the interface for building and managing the dependency graph.
+// GraphBuilder defines the interface for building the dependency graph.
 type GraphBuilder interface {
 	// BuildGraph constructs the dependency graph from the file system.
 	BuildGraph(ctx context.Context) (*Graph, error)
-	
-	// UpdateNodeDependencies updates the dependencies for a specific node.
-	UpdateNodeDependencies(ctx context.Context, nodeID string, dependencies []string) error
-	
-	// ValidateDependencies checks if the proposed dependencies would create cycles.
-	ValidateDependencies(ctx context.Context, nodeID string, dependencies []string) error
 	
 	// GetNode retrieves a single node by ID.
 	GetNode(ctx context.Context, nodeID string) (*Node, error)

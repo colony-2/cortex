@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
-import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyNode, type NodePosition } from '@vibethis/shared';
+import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyNode, type NodePosition, type DependencyEdge } from '@vibethis/shared';
 import ProFlowNode from './ProFlowNode';
 
 interface FlowNode {
@@ -41,7 +41,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
   const isInitialLoad = useRef(true);
 
   const handleNodeClick = useCallback((nodeId: string) => {
-    const node = graphRef.current?.nodes.find(n => n.id === nodeId) || null;
+    const node = graphRef.current?.nodes.find((n: DependencyNode) => n.id === nodeId) || null;
     setSelectedNode(node);
     onNodeSelect?.(node);
   }, [onNodeSelect]);
@@ -57,7 +57,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
     const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.nodeId, p]) : []);
 
     // Create Pro Flow nodes
-    const newNodes: FlowNode[] = graphData.nodes.map((node, index) => {
+    const newNodes: FlowNode[] = graphData.nodes.map((node: DependencyNode, index: number) => {
       const savedPosition = positionMap.get(node.id);
       
       // Calculate position if not saved
@@ -82,7 +82,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
 
     // Create Pro Flow edges
     const newEdges: FlowEdge[] = graphData.edges && Array.isArray(graphData.edges) 
-      ? graphData.edges.map(edge => ({
+      ? graphData.edges.map((edge: DependencyEdge) => ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
@@ -145,7 +145,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
         
         // Update selectedNode with fresh data if one is selected
         if (selectedNode) {
-          const updatedNode = graphData.nodes.find(n => n.id === selectedNode.id);
+          const updatedNode = graphData.nodes.find((n: DependencyNode) => n.id === selectedNode.id);
           if (updatedNode && JSON.stringify(updatedNode) !== JSON.stringify(selectedNode)) {
             setSelectedNode(updatedNode);
             onNodeSelect?.(updatedNode);
@@ -198,7 +198,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
   // Handle external node selection
   useEffect(() => {
     if (selectedNodeId && graphRef.current?.nodes) {
-      const node = graphRef.current.nodes.find(n => n.id === selectedNodeId);
+      const node = graphRef.current.nodes.find((n: DependencyNode) => n.id === selectedNodeId);
       if (node && node.id !== selectedNode?.id) {
         setSelectedNode(node);
         // Update node visual selection state

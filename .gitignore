@@ -42,11 +42,9 @@ Thumbs.db
 graph_positions.db
 
 
-.nx/cache
-.nx/workspace-data
-.cursor/rules/nx-rules.mdc
-.github/instructions/nx.instructions.md
-
 # moon
 .moon/cache
 .moon/docker
+.example/.moon/cache
+server/vibethis/static/assets
+server/vibethis/vibethis

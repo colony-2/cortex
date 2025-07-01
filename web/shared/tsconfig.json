@@ -9,6 +9,8 @@
     "moduleDetection": "force",
     "noEmit": false,
     "declaration": true,
+    "declarationDir": "dist",
+    "emitDeclarationOnly": true,
     "outDir": "dist",
     "jsx": "react-jsx",
     "strict": true,

@@ -1,0 +1,8 @@
+id: example-service-a
+language: unknown
+project:
+  description: Service A for example application
+dependsOn:
+  - example-database
+  - example-auth
+  - example-cache

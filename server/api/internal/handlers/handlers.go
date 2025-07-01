@@ -49,7 +49,6 @@ func (h *Handlers) SetupRoutes() *mux.Router {
 	api.HandleFunc("/positions", h.SavePositions).Methods("POST")
 	
 	// Node endpoints
-	api.HandleFunc("/nodes/{nodeId}/dependencies", h.UpdateDependencies).Methods("PUT")
 	api.HandleFunc("/nodes/{nodeId}/files", h.GetFiles).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.GetFile).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.PutFile).Methods("PUT")

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Tabs, Empty, Typography, Input, List } from 'antd';
-import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, BranchesOutlined } from '@ant-design/icons';
+import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { FileBrowser } from '@vibethis/files';
-import { EnvEditor, RelationshipEditor } from '@vibethis/config';
+import { EnvEditor } from '@vibethis/config';
 import { GitChanges } from '@vibethis/changes';
 import type { DependencyNode } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
@@ -135,16 +135,6 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
         </span>
       ),
       children: node ? <EnvEditor node={node} /> : <div style={{ padding: '16px' }}>Loading...</div>,
-    },
-    {
-      key: 'relationships',
-      label: (
-        <span>
-          <BranchesOutlined />
-          Relationships
-        </span>
-      ),
-      children: node ? <RelationshipEditor node={node} /> : <div style={{ padding: '16px' }}>Loading...</div>,
     },
     {
       key: 'claude',

@@ -2,19 +2,42 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
 	"vibethis/core/pkg/core"
-	"vibethis/graph/internal/validator"
 )
 
-// Dependency represents the structure of dependencies.yaml file
-type Dependency struct {
-	Dependencies []string `yaml:"dependencies"`
+// MoonGraph represents the moon project-graph JSON output
+type MoonGraph struct {
+	Graph struct {
+		Nodes []MoonNode `json:"nodes"`
+	} `json:"graph"`
+}
+
+// MoonDependency can be either a string or an object
+type MoonDependency struct {
+	ID     string  `json:"id"`
+	Scope  string  `json:"scope"`
+	Source string  `json:"source"`
+	Via    *string `json:"via"`
+}
+
+// MoonNode represents a node in the moon project graph
+type MoonNode struct {
+	Alias  string `json:"alias"`
+	Config struct {
+		ID       string          `json:"id"`
+		Language string          `json:"language"`
+		Project  struct {
+			Description string `json:"description"`
+		} `json:"project"`
+		DependsOn json.RawMessage `json:"dependsOn"`
+	} `json:"config"`
+	ID string `json:"id"`
 }
 
 // Builder handles graph construction from the filesystem
@@ -29,52 +52,101 @@ func New(rootPath string) *Builder {
 	}
 }
 
-// Build constructs the dependency graph from the filesystem
+// Build constructs the dependency graph from moon's project-graph output
 func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
-	nodes := []core.Node{}
-	edges := []core.Edge{}
-
-	// Read all directories in rootPath
-	entries, err := os.ReadDir(b.rootPath)
+	// Execute moon project-graph command
+	cmd := exec.CommandContext(ctx, "moon", "project-graph", "--json")
+	cmd.Dir = b.rootPath
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read root directory: %w", err)
+		return nil, fmt.Errorf("failed to execute moon project-graph: %w", err)
 	}
 
-	// Build nodes
-	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+	// Parse the JSON output
+	var moonGraph MoonGraph
+	if err := json.Unmarshal(output, &moonGraph); err != nil {
+		return nil, fmt.Errorf("failed to parse moon graph output: %w", err)
+	}
+
+	nodes := []core.Node{}
+	edges := []core.Edge{}
+	nodeMap := make(map[string]bool)
+
+	// Build nodes from moon graph
+	// We only want nodes that are in our rootPath directory
+	rootName := filepath.Base(b.rootPath)
+	
+	// Handle special case where directory starts with dot (e.g., .example)
+	// but moon IDs don't include the dot (e.g., example-api instead of .example-api)
+	idPrefix := rootName
+	if strings.HasPrefix(rootName, ".") {
+		idPrefix = strings.TrimPrefix(rootName, ".")
+	}
+	
+	for _, moonNode := range moonGraph.Graph.Nodes {
+		// Only include nodes that belong to our root directory
+		// For example, if rootPath is "/path/to/.example", we want nodes starting with "example-"
+		if !strings.HasPrefix(moonNode.Config.ID, idPrefix+"-") {
 			continue
 		}
-
-		node := core.Node{
-			ID:           entry.Name(),
-			Name:         entry.Name(),
-			Path:         filepath.Join(b.rootPath, entry.Name()),
-			Type:         "box",
-			Dependencies: []string{},
-		}
-
-		// Check for dependencies.yaml
-		depFile := filepath.Join(node.Path, "dependencies.yaml")
-		if data, err := os.ReadFile(depFile); err == nil {
-			var dep Dependency
-			if err := yaml.Unmarshal(data, &dep); err == nil && dep.Dependencies != nil {
-				node.Dependencies = dep.Dependencies
+		
+		// Extract the box name from the ID by removing the prefix
+		boxName := strings.TrimPrefix(moonNode.Config.ID, idPrefix+"-")
+		
+		// Build dependencies list
+		dependencies := []string{}
+		
+		// Parse dependsOn which can be either []string or []MoonDependency
+		if len(moonNode.Config.DependsOn) > 0 {
+			// Try to parse as array of strings first
+			var stringDeps []string
+			if err := json.Unmarshal(moonNode.Config.DependsOn, &stringDeps); err == nil {
+				for _, dep := range stringDeps {
+					// Only include dependencies from our root directory
+					if strings.HasPrefix(dep, idPrefix+"-") {
+						depName := strings.TrimPrefix(dep, idPrefix+"-")
+						dependencies = append(dependencies, depName)
+					}
+				}
+			} else {
+				// Try to parse as array of objects
+				var objDeps []MoonDependency
+				if err := json.Unmarshal(moonNode.Config.DependsOn, &objDeps); err == nil {
+					for _, dep := range objDeps {
+						// Only include dependencies from our root directory
+						if strings.HasPrefix(dep.ID, idPrefix+"-") {
+							depName := strings.TrimPrefix(dep.ID, idPrefix+"-")
+							dependencies = append(dependencies, depName)
+						}
+					}
+				}
 			}
 		}
 
+		node := core.Node{
+			ID:           boxName,
+			Name:         boxName,
+			Path:         filepath.Join(b.rootPath, boxName),
+			Type:         "box",
+			Dependencies: dependencies,
+		}
+
 		nodes = append(nodes, node)
+		nodeMap[boxName] = true
 	}
 
 	// Build edges from dependencies
 	for _, node := range nodes {
 		for _, dep := range node.Dependencies {
-			edge := core.Edge{
-				ID:     fmt.Sprintf("%s-%s", node.ID, dep),
-				Source: node.ID,
-				Target: dep,
+			// Only create edge if target exists in our node set
+			if nodeMap[dep] {
+				edge := core.Edge{
+					ID:     fmt.Sprintf("%s-%s", node.ID, dep),
+					Source: node.ID,
+					Target: dep,
+				}
+				edges = append(edges, edge)
 			}
-			edges = append(edges, edge)
 		}
 	}
 
@@ -82,54 +154,4 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		Nodes: nodes,
 		Edges: edges,
 	}, nil
-}
-
-// UpdateDependencies updates the dependencies for a specific node
-func (b *Builder) UpdateDependencies(ctx context.Context, nodeID string, dependencies []string) error {
-	nodePath := filepath.Join(b.rootPath, nodeID)
-	
-	// Check if node exists
-	if _, err := os.Stat(nodePath); os.IsNotExist(err) {
-		return fmt.Errorf("node %s does not exist", nodeID)
-	}
-
-	// Validate dependencies exist
-	for _, dep := range dependencies {
-		depPath := filepath.Join(b.rootPath, dep)
-		if _, err := os.Stat(depPath); os.IsNotExist(err) {
-			return fmt.Errorf("dependency %s does not exist", dep)
-		}
-	}
-
-	// Check for self-dependency
-	for _, dep := range dependencies {
-		if dep == nodeID {
-			return fmt.Errorf("node cannot depend on itself")
-		}
-	}
-
-	// Check for circular dependencies
-	graph, err := b.Build(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to build graph for validation: %w", err)
-	}
-	
-	v := validator.New()
-	if err := v.ValidateDependencies(graph, nodeID, dependencies); err != nil {
-		return err
-	}
-
-	// Update the dependencies.yaml file
-	dep := Dependency{Dependencies: dependencies}
-	data, err := yaml.Marshal(&dep)
-	if err != nil {
-		return fmt.Errorf("failed to marshal dependencies: %w", err)
-	}
-
-	depFile := filepath.Join(nodePath, "dependencies.yaml")
-	if err := os.WriteFile(depFile, data, 0644); err != nil {
-		return fmt.Errorf("failed to write dependencies file: %w", err)
-	}
-
-	return nil
 }
