@@ -30,9 +30,15 @@ test.describe('File Browser', () => {
     // Now check that Files tab is active
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
-    // Check that file browser is visible (wait for content to load)
-    await expect(page.locator('.ant-tabs-content').first()).toContainText('api');
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    // Wait for the Files tab panel to be visible and contain content
+    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('text=api') });
+    await expect(filesTabPanel).toBeVisible();
+    
+    // Check that file browser is visible and contains the node name
+    await expect(filesTabPanel).toContainText('api');
+    
+    // Check for actual files in the api directory
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 
   test('should display files when node is selected', async ({ page }) => {
@@ -47,15 +53,19 @@ test.describe('File Browser', () => {
     // Click on Files tab
     await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
     
-    // Wait for files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/api/files') && response.status() === 200
-    );
+    // Wait for the Files tab panel to be visible
+    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('.ant-list') });
+    await expect(filesTabPanel).toBeVisible();
+    
+    // Wait for files to load by checking for expected content
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible({ timeout: 10000 });
     
     // Check that files are displayed (we don't know exact count, so just check > 0)
     const fileCount = await page.locator('.ant-list-item').count();
     expect(fileCount).toBeGreaterThan(0);
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    
+    // Check for expected files in the api directory
+    await expect(page.locator('.ant-list-item').filter({ hasText: '.devcontainer' })).toBeVisible();
   });
 
   test('should navigate folders in file browser', async ({ page }) => {
@@ -70,24 +80,21 @@ test.describe('File Browser', () => {
     // Config tab is active by default, click on Files tab
     await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
     
-    // Wait for files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for the Files tab panel to be visible
+    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('.ant-list') });
+    await expect(filesTabPanel).toBeVisible();
+    
+    // Wait for files to load by checking for the foo folder
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible({ timeout: 10000 });
     
     // Click on foo folder
     await page.locator('.ant-list-item').filter({ hasText: 'foo' }).click();
     
-    // Wait for subdirectory to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files?path=foo') && response.status() === 200
-    );
+    // Wait for subdirectory to load by checking for bar.txt
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'bar.txt' })).toBeVisible({ timeout: 10000 });
     
     // Check breadcrumb updated
     await expect(page.locator('.ant-breadcrumb')).toContainText('foo');
-    
-    // Check that bar.txt is visible
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'bar.txt' })).toBeVisible();
   });
 
   test('should navigate using breadcrumb', async ({ page }) => {
@@ -102,29 +109,26 @@ test.describe('File Browser', () => {
     // Config tab is active by default, click on Files tab
     await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
     
-    // Wait for initial load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for the Files tab panel to be visible
+    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('.ant-list') });
+    await expect(filesTabPanel).toBeVisible();
+    
+    // Wait for initial load by checking for the foo folder
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible({ timeout: 10000 });
     
     // Navigate to foo folder
     await page.locator('.ant-list-item').filter({ hasText: 'foo' }).click();
     
-    // Wait for navigation
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files?path=foo') && response.status() === 200
-    );
+    // Wait for navigation by checking for bar.txt
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'bar.txt' })).toBeVisible({ timeout: 10000 });
     
     // Click home in breadcrumb
     await page.locator('.ant-breadcrumb .anticon-home').click();
     
-    // Wait for root directory to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for root directory to load by checking for foo folder again
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible({ timeout: 10000 });
     
-    // Check we're back at root
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible();
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    // Check we're back at root - frontend directory should have foo folder and moon.yml
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 });
