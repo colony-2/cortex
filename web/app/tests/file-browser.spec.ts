@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Side Panel', () => {
+test.describe('File Browser', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/boxes');
     
@@ -12,17 +12,6 @@ test.describe('Side Panel', () => {
     await page.waitForSelector('.react-flow__node');
   });
 
-  test('should show configuration tab when no node is selected', async ({ page }) => {
-    // Check that the side panel is visible (using splitter panel)
-    await expect(page.locator('.ant-splitter-panel').nth(1)).toBeVisible();
-    
-    // Check that the configuration tab is active
-    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Configuration');
-    
-    // Check that container subtab is active by default
-    await expect(page.locator('.ant-tabs-tab-active').nth(1)).toContainText('Container');
-  });
-
   test('should show files tab when a node is selected', async ({ page }) => {
     // Trigger node selection manually using the global event
     await page.evaluate(() => {
@@ -31,9 +20,6 @@ test.describe('Side Panel', () => {
     
     // Wait for state to update
     await page.waitForTimeout(100);
-    
-    // Config tab should be active by default
-    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
     
     // Files tab should be visible
     await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
@@ -47,28 +33,6 @@ test.describe('Side Panel', () => {
     // Check that file browser is visible (wait for content to load)
     await expect(page.locator('.ant-tabs-content').first()).toContainText('api');
     await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
-  });
-
-  test('should show Config tab with Claude Code subtab when a node is selected', async ({ page }) => {
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
-    
-    // Wait for state to update
-    await page.waitForTimeout(100);
-    
-    // Config tab should be active by default
-    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
-    
-    // Claude Code subtab should be visible and active by default
-    await expect(page.locator('.ant-tabs-tab-active').nth(1)).toContainText('Claude Code');
-    
-    // Check that Claude Code content is visible with section headers (look in the nested tab content)
-    const configTabContent = page.locator('.ant-tabs-tabpane-active').last();
-    await expect(configTabContent).toContainText('Claude Code Settings');
-    await expect(configTabContent).toContainText('Available Tools');
-    await expect(configTabContent).toContainText('Custom Instructions');
   });
 
   test('should display files when node is selected', async ({ page }) => {
@@ -162,15 +126,5 @@ test.describe('Side Panel', () => {
     // Check we're back at root
     await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible();
     await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
-  });
-
-  test('should maintain side panel width', async ({ page }) => {
-    // Get the splitter panel element (since we're using Splitter now, not Layout.Sider)
-    const panel = page.locator('.ant-splitter-panel').nth(1);
-    
-    // Check that it exists and has some width
-    await expect(panel).toBeVisible();
-    const box = await panel.boundingBox();
-    expect(box?.width).toBeGreaterThan(100);
   });
 });

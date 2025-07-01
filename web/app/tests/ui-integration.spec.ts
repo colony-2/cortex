@@ -23,17 +23,17 @@ test.describe('UI Integration Tests', () => {
     // Wait for state to update
     await page.waitForTimeout(100);
     
-    // Check that Config tab is active by default
-    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
-    
-    // Files tab should be visible
-    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
-    
-    // Click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
-    
-    // Now Files tab should be active
+    // Check that Files tab is active by default when a node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
+    
+    // Config tab should be visible
+    await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Config' })).toBeVisible();
+    
+    // Click on Config tab
+    await page.locator('.ant-tabs-tab').filter({ hasText: 'Config' }).click();
+    
+    // Now Config tab should be active
+    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
     
     // Check that file list is visible
     await expect(page.locator('.ant-list')).toBeVisible();
@@ -71,7 +71,7 @@ test.describe('UI Integration Tests', () => {
     
     // Wait for api files to load
     await page.waitForResponse(response => 
-      response.url().includes('/api/files/api') && response.status() === 200
+      response.url().includes('/api/nodes/api/files') && response.status() === 200
     );
     
     // Check that api files are shown (use first() to avoid multiple elements)
@@ -118,7 +118,7 @@ test.describe('UI Integration Tests', () => {
     
     // Wait for files to load
     await page.waitForResponse(response => 
-      response.url().includes('/api/files/frontend') && response.status() === 200
+      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
     );
     
     // Navigate to foo folder
@@ -126,7 +126,7 @@ test.describe('UI Integration Tests', () => {
     
     // Wait for subdirectory to load
     await page.waitForResponse(response => 
-      response.url().includes('/api/files/frontend?path=foo') && response.status() === 200
+      response.url().includes('/api/nodes/frontend/files?path=foo') && response.status() === 200
     );
     
     // Switch to Config tab
