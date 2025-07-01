@@ -172,15 +172,13 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
   const showNodeTabs = !!boxId;
   
   // Initialize activeTab from URL or default based on whether we're showing node tabs
-  const defaultTab = showNodeTabs ? 'files' : 'config';
+  const defaultTab = showNodeTabs ? 'config' : 'config';
   const [activeTab, setActiveTab] = useState<string>(tab || defaultTab);
 
   // Update active tab when URL changes
   useEffect(() => {
     if (tab) {
       setActiveTab(tab);
-    } else if (showNodeTabs) {
-      setActiveTab('files');
     } else {
       setActiveTab('config');
     }

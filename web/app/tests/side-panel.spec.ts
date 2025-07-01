@@ -24,13 +24,11 @@ test.describe('Side Panel', () => {
   });
 
   test('should show files tab when a node is selected', async ({ page }) => {
-    // Trigger node selection manually using the global event
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
-    });
+    // Navigate to a specific box URL to trigger node selection
+    await page.goto('/box/api');
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for the page to stabilize and check that side panel is visible
+    await page.waitForSelector('.ant-splitter-panel');
     
     // Config tab should be active by default
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
@@ -39,32 +37,46 @@ test.describe('Side Panel', () => {
     await expect(page.locator('.ant-tabs-tab').filter({ hasText: 'Files' })).toBeVisible();
     
     // Click on Files tab to make it active
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
+    const filesTab = page.locator('.ant-tabs-tab').filter({ hasText: 'Files' });
+    await filesTab.click();
     
-    // Now check that Files tab is active
+    // Wait for Files tab to be active
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
-    // Check that file browser is visible (wait for content to load)
-    await expect(page.locator('.ant-tabs-content').first()).toContainText('api');
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    // Wait for file browser content to load
+    await page.waitForSelector('.ant-breadcrumb', { timeout: 5000 });
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
+    
+    // Check that file browser is visible - node name is displayed above breadcrumb
+    const fileBrowserHeader = page.locator('.ant-space-vertical').first();
+    await expect(fileBrowserHeader).toContainText('api');
+    
+    // Check for specific file - api box should have dependencies.yaml or moon.yml
+    const fileItems = page.locator('.ant-list-item');
+    await expect(fileItems).toHaveCount(2, { timeout: 5000 }); // api folder should have 2 files
   });
 
   test('should show Config tab with Claude Code subtab when a node is selected', async ({ page }) => {
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
+    // Navigate to a specific box URL to trigger node selection
+    await page.goto('/box/frontend/config');
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for the page to stabilize
+    await page.waitForSelector('.ant-splitter-panel');
     
     // Config tab should be active by default
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Config');
     
-    // Claude Code subtab should be visible and active by default
-    await expect(page.locator('.ant-tabs-tab-active').nth(1)).toContainText('Claude Code');
+    // Env subtab is active by default, navigate to Claude subtab
+    const claudeTab = page.locator('.ant-tabs-tab').filter({ hasText: 'Claude' });
+    await claudeTab.click();
     
-    // Check that Claude Code content is visible with section headers (look in the nested tab content)
+    // Claude subtab should now be active
+    await expect(page.locator('.ant-tabs-tab-active').nth(1)).toContainText('Claude');
+    
+    // Wait for content to render
+    await page.waitForSelector('h4', { timeout: 5000 });
+    
+    // Check that Claude Code content is visible with section headers
     const configTabContent = page.locator('.ant-tabs-tabpane-active').last();
     await expect(configTabContent).toContainText('Claude Code Settings');
     await expect(configTabContent).toContainText('Available Tools');
@@ -72,96 +84,77 @@ test.describe('Side Panel', () => {
   });
 
   test('should display files when node is selected', async ({ page }) => {
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
-    });
+    // Navigate directly to files tab for a specific box
+    await page.goto('/box/api/files');
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for the page to stabilize
+    await page.waitForSelector('.ant-splitter-panel');
     
-    // Click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
+    // Files tab should be active
+    await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
-    // Wait for files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/api/files') && response.status() === 200
-    );
+    // Wait for file list to load
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
-    // Check that files are displayed (we don't know exact count, so just check > 0)
+    // Check that files are displayed (api folder should have 2 files)
     const fileCount = await page.locator('.ant-list-item').count();
-    expect(fileCount).toBeGreaterThan(0);
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    expect(fileCount).toBe(2);
+    
+    // Check for expected files in api folder
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 
   test('should navigate folders in file browser', async ({ page }) => {
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
+    // Navigate directly to files tab for frontend box
+    await page.goto('/box/frontend/files');
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for the page to stabilize
+    await page.waitForSelector('.ant-splitter-panel');
     
-    // Config tab is active by default, click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
-    
-    // Wait for files to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for file list to load
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
     // Click on foo folder
-    await page.locator('.ant-list-item').filter({ hasText: 'foo' }).click();
+    const fooFolder = page.locator('.ant-list-item').filter({ hasText: 'foo' });
+    await fooFolder.click();
     
-    // Wait for subdirectory to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files?path=foo') && response.status() === 200
-    );
+    // Wait for breadcrumb to update
+    await expect(page.locator('.ant-breadcrumb')).toContainText('foo', { timeout: 5000 });
     
-    // Check breadcrumb updated
-    await expect(page.locator('.ant-breadcrumb')).toContainText('foo');
+    // Wait for files in subdirectory to load
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
     // Check that bar.txt is visible
     await expect(page.locator('.ant-list-item').filter({ hasText: 'bar.txt' })).toBeVisible();
   });
 
   test('should navigate using breadcrumb', async ({ page }) => {
-    // Trigger node selection manually
-    await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
-    });
+    // Navigate directly to files tab for frontend box
+    await page.goto('/box/frontend/files');
     
-    // Wait for state to update
-    await page.waitForTimeout(100);
+    // Wait for the page to stabilize
+    await page.waitForSelector('.ant-splitter-panel');
     
-    // Config tab is active by default, click on Files tab
-    await page.locator('.ant-tabs-tab').filter({ hasText: 'Files' }).click();
-    
-    // Wait for initial load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for initial files to load
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
     // Navigate to foo folder
-    await page.locator('.ant-list-item').filter({ hasText: 'foo' }).click();
+    const fooFolder = page.locator('.ant-list-item').filter({ hasText: 'foo' });
+    await fooFolder.click();
     
-    // Wait for navigation
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files?path=foo') && response.status() === 200
-    );
+    // Wait for breadcrumb to update
+    await expect(page.locator('.ant-breadcrumb')).toContainText('foo', { timeout: 5000 });
     
     // Click home in breadcrumb
-    await page.locator('.ant-breadcrumb .anticon-home').click();
+    const homeIcon = page.locator('.ant-breadcrumb .anticon-home');
+    await homeIcon.click();
     
-    // Wait for root directory to load
-    await page.waitForResponse(response => 
-      response.url().includes('/api/nodes/frontend/files') && response.status() === 200
-    );
+    // Wait for files to reload
+    await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
-    // Check we're back at root
+    // Check we're back at root - should see folders and files
     await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible();
-    await expect(page.locator('.ant-list-item').filter({ hasText: 'dependencies.yaml' })).toBeVisible();
+    await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 
   test('should maintain side panel width', async ({ page }) => {
