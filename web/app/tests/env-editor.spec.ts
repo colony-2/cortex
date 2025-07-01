@@ -24,8 +24,14 @@ test.describe('EnvEditor', () => {
     // Click on a node
     await page.click('.react-flow__node');
     
-    // Navigate to the Env tab
-    await page.getByRole('tab', { name: 'Env' }).click();
+    // Navigate to the Config tab first
+    await page.getByRole('tab', { name: 'Config' }).click();
+    
+    // Wait for the Config tab content to load
+    await page.waitForTimeout(500);
+    
+    // Now click on the Env subtab (within Config)
+    await page.locator('.ant-tabs-tab').filter({ hasText: 'Env' }).click();
     
     // Wait for the component to load
     await page.waitForTimeout(500);
@@ -74,8 +80,14 @@ test.describe('EnvEditor', () => {
     // Click on a node
     await page.click('.react-flow__node');
     
-    // Navigate to the Env tab
-    await page.getByRole('tab', { name: 'Env' }).click();
+    // Navigate to the Config tab first
+    await page.getByRole('tab', { name: 'Config' }).click();
+    
+    // Wait for the Config tab content to load
+    await page.waitForTimeout(500);
+    
+    // Now click on the Env subtab (within Config)
+    await page.locator('.ant-tabs-tab').filter({ hasText: 'Env' }).click();
     
     // Wait for the component to load
     await page.waitForTimeout(500);

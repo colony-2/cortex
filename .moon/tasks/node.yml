@@ -56,16 +56,3 @@ tasks:
     args: [dev]
     local: true
     platform: node
-
-  e2e:
-    command: npx
-    args: [playwright, test]
-    inputs:
-      - tests/**/*
-      - playwright.config.ts
-      - '@group(lockfile)'
-    platform: node
-    options:
-      runInCI: true
-    deps:
-      - 'be-web:build-test-server'

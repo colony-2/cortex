@@ -1,3 +1,17 @@
 id: ui-app
 project:
   description: Main React application that orchestrates the graph visualization interface.
+
+tasks:
+  e2e:
+    command: npx
+    args: [playwright, test, --reporter=list]
+    inputs:
+      - tests/**/*
+      - playwright.config.ts
+      - '@group(lockfile)'
+    platform: node
+    options:
+      runInCI: true
+    deps:
+      - 'be-web:build-test-server'

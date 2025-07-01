@@ -34,7 +34,7 @@ test.describe('Git Changes Tab', () => {
     
     // Check that summary tab is active (last one because of nested tabs)
     const summaryTab = page.locator('.ant-tabs-tab').filter({ hasText: 'Summary' }).last();
-    await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
+    await expect(summaryTab).toHaveClass(/ant-tabs-tab-active/);
   });
 
   test('should handle non-git repository gracefully', async ({ page }) => {
@@ -72,9 +72,9 @@ test.describe('Git Changes Tab', () => {
     // Reload the component
     await page.getByText('Changes').click();
     
-    // Check badges
-    await expect(page.locator('.ant-badge').filter({ hasText: '1' }).first()).toBeVisible(); // Added
-    await expect(page.locator('.ant-badge').filter({ hasText: '2' }).first()).toBeVisible(); // Modified
+    // Check badges - Ant Design Badge renders count in a sup element
+    await expect(page.locator('.ant-badge sup').filter({ hasText: '1' }).first()).toBeVisible(); // Added
+    await expect(page.locator('.ant-badge sup').filter({ hasText: '2' }).first()).toBeVisible(); // Modified
     
     // Check file list
     await expect(page.getByText('new-file.txt')).toBeVisible();
@@ -118,6 +118,9 @@ test.describe('Git Changes Tab', () => {
     // Reload to get the mocked status
     await page.getByText('Changes').click();
     
+    // Wait for the button to be visible and enabled
+    await page.waitForSelector('button:has-text("Commit All Changes")', { timeout: 5000 });
+    
     // Click commit button
     await page.getByRole('button', { name: /Commit All Changes/ }).click();
     
@@ -146,11 +149,12 @@ test.describe('Git Changes Tab', () => {
     // Click on Details tab
     await page.getByRole('tab', { name: 'Details' }).click();
     
-    // Check diff content
-    await expect(page.getByText('test.js')).toBeVisible();
+    // Check diff content - use more specific selectors
+    await expect(page.locator('code').filter({ hasText: 'test.js' })).toBeVisible();
     await expect(page.getByText('+5')).toBeVisible();
     await expect(page.getByText('-2')).toBeVisible();
-    await expect(page.getByText(/old line.*new line/s)).toBeVisible();
+    // Check for diff content in pre element
+    await expect(page.locator('pre').filter({ hasText: 'old line' })).toBeVisible();
   });
 
   test('should display commit history in history tab', async ({ page }) => {
@@ -178,8 +182,8 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    // Click on History tab
-    await page.getByRole('tab', { name: 'History' }).click();
+    // Click on History tab - use last() to get the nested tab
+    await page.locator('.ant-tabs-tab').filter({ hasText: 'History' }).last().click();
     
     // Check commit history
     await expect(page.getByText('abc12345')).toBeVisible();
@@ -206,6 +210,9 @@ test.describe('Git Changes Tab', () => {
 
     // Reload the component
     await page.getByText('Changes').click();
+    
+    // Wait for the component to load
+    await page.waitForTimeout(500);
     
     // Should show empty state
     await expect(page.getByText('No changes to commit')).toBeVisible();

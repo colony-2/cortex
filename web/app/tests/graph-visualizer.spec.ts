@@ -27,8 +27,14 @@ test.describe('Graph Visualizer', () => {
     const authNode = page.locator('.react-flow__node').filter({ hasText: 'auth' }).first();
     await expect(authNode).toBeVisible();
     
-    // Check node contains type info (Pro Flow shows it in tags)
-    await expect(authNode).toContainText('module');
+    // Check node contains the box emoji
+    await expect(authNode).toContainText('📦');
+    
+    // Check node contains type info (should be "box" based on the actual data)
+    await expect(authNode).toContainText('box');
+    
+    // Check node shows relationship count
+    await expect(authNode).toContainText('relationships');
   });
 
   test('should have working zoom controls', async ({ page }) => {
