@@ -20,5 +20,8 @@ export default defineConfig({
       '@vibethis/files': resolve(__dirname, '../files/src/index.ts'),
       '@vibethis/flowchart': resolve(__dirname, '../flowchart/src/index.ts')
     }
+  },
+  test: {
+    exclude: ['tests/**', 'node_modules/**', 'dist/**', '.moon/**']
   }
 });
