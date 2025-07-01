@@ -37,15 +37,27 @@ func main() {
 // Execute runs the CLI application.
 func Execute() error {
 	var cfg config.Config
+	var createNew bool
 
 	rootCmd := &cobra.Command{
-		Use:   "vibethis",
+		Use:   "vibethis [path]",
 		Short: "A visual graph-based project manager",
 		Long: `vibethis is a tool for visualizing and managing project dependencies
 as an interactive graph. It provides a web interface for browsing files,
 managing dependencies, and working with development containers.`,
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Set path from positional argument
+			if len(args) > 0 {
+				cfg.RootPath = args[0]
+			} else {
+				cfg.RootPath = "."
+			}
+			
+			// Handle --new flag
+			cfg.CreateNew = createNew
+			
 			return run(cfg)
 		},
 	}
@@ -53,11 +65,7 @@ managing dependencies, and working with development containers.`,
 	// Define flags
 	defaultPortInt, _ := strconv.Atoi(defaultPort)
 	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
-	rootCmd.Flags().StringVarP(&cfg.RootPath, "nodes", "n", ".", "Path to nodes directory")
-	rootCmd.Flags().StringVar(&cfg.DatabasePath, "db", "", "Path to database file (default: .vibethis.db in nodes directory)")
-	rootCmd.Flags().StringSliceVar(&cfg.CORSOrigins, "cors", []string{"http://localhost:3000", "http://localhost:5173"}, "Allowed CORS origins")
-	rootCmd.Flags().BoolVar(&cfg.Production, "prod", false, "Run in production mode")
-	rootCmd.Flags().StringVar(&cfg.StaticPath, "static", "", "Path to static assets (production mode)")
+	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
 	return rootCmd.Execute()
 }
@@ -93,11 +101,6 @@ func run(cfg config.Config) error {
 	go func() {
 		fmt.Printf("Server starting on :%d\n", cfg.Port)
 		fmt.Printf("Scanning path: %s\n", cfg.RootPath)
-		if cfg.Production {
-			fmt.Println("Running in production mode")
-		} else {
-			fmt.Println("Running in development mode")
-		}
 		errChan <- server.Start()
 	}()
 

@@ -17,9 +17,10 @@ import (
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
 	var cleanup []func()
 
-	// Initialize storage
+	// Initialize storage with default database path
+	databasePath := cfg.RootPath + "/.vibethis"
 	storageImpl, err := storage.NewBoltStorage(storage.Config{
-		DatabasePath: cfg.DatabasePath,
+		DatabasePath: databasePath,
 		ReadOnly:     false,
 	})
 	if err != nil {
@@ -63,10 +64,11 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 // CreateServer creates the HTTP server
 func CreateServer(cfg config.Config, deps web.Dependencies) (*web.Server, error) {
+	// Use default values for removed configuration
 	webConfig := web.Config{
 		Port:        cfg.Port,
-		CORSOrigins: cfg.CORSOrigins,
-		StaticPath:  cfg.StaticPath,
+		CORSOrigins: []string{"http://localhost:3000", "http://localhost:5173"},
+		StaticPath:  "embedded", // Default to embedded static files
 	}
 
 	server := web.NewServer(webConfig, deps)
