@@ -4,6 +4,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"vibethis/api/internal/handlers"
 	"vibethis/api/internal/middleware"
@@ -40,6 +41,7 @@ type Dependencies struct {
 	Files     files.Browser
 	Git       git.Repository
 	Container container.Manager
+	StaticFS  http.FileSystem // Optional: filesystem for static files
 }
 
 // Server represents the HTTP server.
@@ -54,7 +56,19 @@ type Server struct {
 func NewServer(config Config, deps Dependencies) *Server {
 	h := handlers.New(deps.Storage, deps.Graph, deps.Files, deps.Git, deps.Container)
 
-	router := h.SetupRoutes()
+	// Setup static handler if filesystem is provided
+	var staticHandler http.Handler
+	if deps.StaticFS != nil {
+		// Convert http.FileSystem to fs.FS for the embedded handler
+		// The embedded SPA handler needs fs.FS for proper SPA routing
+		fsys := &httpFSAdapter{deps.StaticFS}
+		staticHandler = handlers.NewEmbeddedSPAHandler(fsys)
+	} else if config.StaticPath != "" && config.StaticPath != "embedded" {
+		// Fallback to directory-based static handler for development
+		staticHandler = handlers.NewSPAHandler(config.StaticPath)
+	}
+
+	router := h.SetupRoutes(staticHandler)
 
 	// Apply middleware
 	var handler http.Handler = router
@@ -90,4 +104,17 @@ func (s *Server) Stop(ctx context.Context) error {
 // ServeHTTP implements http.Handler for testing purposes.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.server.Handler.ServeHTTP(w, r)
+}
+
+// httpFSAdapter adapts http.FileSystem to fs.FS
+type httpFSAdapter struct {
+	http.FileSystem
+}
+
+func (a *httpFSAdapter) Open(name string) (fs.File, error) {
+	// Add leading slash for http.FileSystem
+	if name != "" && name[0] != '/' {
+		name = "/" + name
+	}
+	return a.FileSystem.Open(name)
 }

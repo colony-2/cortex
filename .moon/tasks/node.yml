@@ -50,9 +50,3 @@ tasks:
     platform: node
     options:
       runInCI: true
-
-  serve:
-    command: vite
-    args: [dev]
-    local: true
-    platform: node

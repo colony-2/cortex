@@ -35,7 +35,7 @@ func New(storage core.Storage, graph core.GraphBuilder, files files.Browser, git
 }
 
 // SetupRoutes configures all HTTP routes
-func (h *Handlers) SetupRoutes() *mux.Router {
+func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 	r := mux.NewRouter()
 
 	// API routes
@@ -66,6 +66,11 @@ func (h *Handlers) SetupRoutes() *mux.Router {
 	api.HandleFunc("/nodes/{nodeId}/container/stop", h.StopContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/restart", h.RestartContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/reset", h.ResetContainer).Methods("POST")
+	
+	// Static files and SPA routes (everything not under /api)
+	if staticHandler != nil {
+		r.PathPrefix("/").Handler(staticHandler)
+	}
 	
 	return r
 }

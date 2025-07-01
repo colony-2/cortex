@@ -34,11 +34,12 @@ tasks:
   build-frontend-copy:
     script: |
       # rsync preserves timestamps and only moves changed files
-      rsync -a --delete "$MOON_WORKSPACE_ROOT/web/app/dist/" static/
+      mkdir -p internal/static/assets
+      rsync -a --delete "$MOON_WORKSPACE_ROOT/web/app/dist/" internal/static/assets/
     inputs:
       - $MOON_WORKSPACE_ROOT/web/app/dist/**/*   # hash depends on UI bundle
     outputs:
-      - static/
+      - internal/static/assets/
     deps:
       - 'ui-app:build'
     platform: system
@@ -47,7 +48,7 @@ tasks:
   # Local dev server
   # ─────────────────────────────────────────────────────────────
   serve:
-    script: go run main.go -n ../../../example
+    script: go run main.go -n ../../
     deps:
       - '~:build-frontend-copy'
     env:

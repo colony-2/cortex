@@ -15,3 +15,8 @@ tasks:
       runInCI: true
     deps:
       - 'be-web:build-test-server'
+  serve:
+    command: vite
+    args: [dev]
+    local: true
+    platform: node      

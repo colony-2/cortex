@@ -29,8 +29,3 @@ tasks:
     platform: 'system'
     options:
       runInCI: true
-
-  serve:
-    command: 'go run .'
-    local: true
-    platform: 'system'

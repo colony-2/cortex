@@ -12,6 +12,7 @@ import (
 	"vibethis/graph/pkg/graph"
 	"vibethis/storage/pkg/storage"
 	"vibethis/vibethis/internal/config"
+	"vibethis/vibethis/internal/static"
 )
 
 // InitializeDependencies initializes all application dependencies
@@ -20,14 +21,14 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	// Initialize storage with default database path
 	databasePath := cfg.RootPath + "/.vibethis"
-	
+
 	// Ensure database directory exists if CreateNew flag is set
 	if cfg.CreateNew {
 		if err := os.MkdirAll(databasePath, 0755); err != nil {
 			return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
 		}
 	}
-	
+
 	storageImpl, err := storage.NewBoltStorage(storage.Config{
 		DatabasePath: databasePath,
 		ReadOnly:     false,
@@ -54,12 +55,20 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	// Initialize container manager
 	containerMgr := container.NewManager(container.Config{})
 
+	// Get static filesystem (will be embedded in production builds)
+	staticFS, err := static.GetFileSystem()
+	if err != nil {
+		// Log warning but continue - server can still work without static files
+		fmt.Fprintf(os.Stderr, "Warning: Could not load static files: %v\n", err)
+	}
+
 	deps := web.Dependencies{
 		Storage:   storageImpl,
 		Graph:     graphBuilder,
 		Files:     fileBrowser,
 		Git:       gitRepo,
 		Container: containerMgr,
+		StaticFS:  staticFS,
 	}
 
 	cleanupFunc := func() {
