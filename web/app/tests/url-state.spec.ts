@@ -9,9 +9,18 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.graph-node', { timeout: 5000 });
     
-    // Click on the first available graph-node to avoid overlapping issues
-    const graphNode = await page.locator('.graph-node').first();
-    const nodeId = await graphNode.getAttribute('data-node-id');
+    // Select a specific node by data-node-id to ensure consistency
+    // Use 'api' node which is consistently available in test data
+    let graphNode = await page.locator('.graph-node[data-node-id="api"]').first();
+    let nodeId = 'api';
+    
+    // If api node doesn't exist for some reason, use the first available node
+    const count = await graphNode.count();
+    if (count === 0) {
+      graphNode = await page.locator('.graph-node').first();
+      nodeId = await graphNode.getAttribute('data-node-id');
+    }
+    
     await graphNode.click({ force: true });
     
     // Wait for side panel to appear
@@ -31,9 +40,18 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.graph-node', { timeout: 5000 });
     
-    // Click on the inner graph-node element
-    const graphNode = await page.locator('.graph-node').first();
-    const nodeId = await graphNode.getAttribute('data-node-id');
+    // Select a specific node by data-node-id to ensure consistency
+    // Use 'api' node which is consistently available in test data
+    let graphNode = await page.locator('.graph-node[data-node-id="api"]').first();
+    let nodeId = 'api';
+    
+    // If api node doesn't exist for some reason, use the first available node
+    const count = await graphNode.count();
+    if (count === 0) {
+      graphNode = await page.locator('.graph-node').first();
+      nodeId = await graphNode.getAttribute('data-node-id');
+    }
+    
     await graphNode.click({ force: true });
     
     // Wait for side panel
@@ -56,9 +74,18 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.graph-node', { timeout: 5000 });
     
-    // Click on the inner graph-node element
-    const graphNode = await page.locator('.graph-node').first();
-    const nodeId = await graphNode.getAttribute('data-node-id');
+    // Select a specific node by data-node-id to ensure consistency
+    // Use 'api' node which is consistently available in test data
+    let graphNode = await page.locator('.graph-node[data-node-id="api"]').first();
+    let nodeId = 'api';
+    
+    // If api node doesn't exist for some reason, use the first available node
+    const count = await graphNode.count();
+    if (count === 0) {
+      graphNode = await page.locator('.graph-node').first();
+      nodeId = await graphNode.getAttribute('data-node-id');
+    }
+    
     await graphNode.click({ force: true });
     
     // Wait for side panel
@@ -144,9 +171,18 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.graph-node', { timeout: 5000 });
     
-    // Click on the inner graph-node element
-    const graphNode = await page.locator('.graph-node').first();
-    const nodeId = await graphNode.getAttribute('data-node-id');
+    // Select a specific node by data-node-id to ensure consistency
+    // Use 'api' node which is consistently available in test data
+    let graphNode = await page.locator('.graph-node[data-node-id="api"]').first();
+    let nodeId = 'api';
+    
+    // If api node doesn't exist for some reason, use the first available node
+    const count = await graphNode.count();
+    if (count === 0) {
+      graphNode = await page.locator('.graph-node').first();
+      nodeId = await graphNode.getAttribute('data-node-id');
+    }
+    
     await graphNode.click({ force: true });
     
     // Wait for side panel
