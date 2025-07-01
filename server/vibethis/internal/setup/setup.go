@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"vibethis/api/pkg/web"
 	"vibethis/container/pkg/container"
@@ -19,6 +20,14 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	// Initialize storage with default database path
 	databasePath := cfg.RootPath + "/.vibethis"
+	
+	// Ensure database directory exists if CreateNew flag is set
+	if cfg.CreateNew {
+		if err := os.MkdirAll(databasePath, 0755); err != nil {
+			return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+	}
+	
 	storageImpl, err := storage.NewBoltStorage(storage.Config{
 		DatabasePath: databasePath,
 		ReadOnly:     false,
