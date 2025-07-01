@@ -1,0 +1,116 @@
+# Page snapshot
+
+```yaml
+- application:
+  - img:
+    - group "Edge from service-a to database"
+  - img:
+    - group "Edge from service-a to auth"
+  - img:
+    - group "Edge from service-a to cache"
+  - img:
+    - group "Edge from database to logger"
+  - img:
+    - group "Edge from database to config"
+  - img:
+    - group "Edge from config to logger"
+  - img:
+    - group "Edge from config to shared-utils"
+  - img:
+    - group "Edge from logger to shared-utils"
+  - img:
+    - group "Edge from cache to shared-utils"
+  - img:
+    - group "Edge from auth to database"
+  - img:
+    - group "Edge from auth to cache"
+  - img:
+    - group "Edge from auth to logger"
+  - img:
+    - group "Edge from gateway to frontend"
+  - img:
+    - group "Edge from gateway to api"
+  - img:
+    - group "Edge from gateway to monitoring"
+  - img:
+    - group "Edge from frontend to api"
+  - img:
+    - group "Edge from frontend to auth"
+  - img:
+    - group "Edge from frontend to config"
+  - img:
+    - group "Edge from api to service-a"
+  - img:
+    - group "Edge from api to service-b"
+  - img:
+    - group "Edge from api to service-c"
+  - img:
+    - group "Edge from api to auth"
+  - img:
+    - group "Edge from service-c to auth"
+  - img:
+    - group "Edge from service-c to logger"
+  - img:
+    - group "Edge from service-b to database"
+  - img:
+    - group "Edge from service-b to cache"
+  - img:
+    - group "Edge from monitoring to logger"
+  - img:
+    - group "Edge from monitoring to config"
+  - group: 📦 service-a box 3 relationships
+  - group: 📦 database box 2 relationships
+  - group: 📦 config box 2 relationships
+  - group: 📦 shared-utils box
+  - group: 📦 logger box 1 relationships
+  - group: 📦 cache box 1 relationships
+  - group: 📦 auth box 3 relationships
+  - group: 📦 gateway box 3 relationships
+  - group: 📦 frontend box 3 relationships
+  - group: 📦 api box 4 relationships
+  - group: 📦 service-c box 2 relationships
+  - group: 📦 service-b box 2 relationships
+  - group: 📦 monitoring box 2 relationships
+  - img
+  - button "Zoom In":
+    - img
+  - button "Zoom Out":
+    - img
+  - button "Fit View":
+    - img
+  - button "Toggle Interactivity":
+    - img
+  - img "Mini Map"
+  - link "React Flow attribution":
+    - /url: https://reactflow.dev
+    - text: React Flow
+- separator
+- tablist:
+  - tab "file Files":
+    - img "file"
+    - text: Files
+  - tab "appstore Config" [selected]:
+    - img "appstore"
+    - text: Config
+  - tab "history Changes":
+    - img "history"
+    - text: Changes
+- tabpanel "appstore Config":
+  - tablist:
+    - tab "container Env" [selected]:
+      - img "container"
+      - text: Env
+    - tab "code Claude":
+      - img "code"
+      - text: Claude
+  - tabpanel "container Env":
+    - heading "Devcontainer Service Controls" [level=3]
+    - button "play-circle Create Container":
+      - img "play-circle"
+      - text: Create Container
+    - heading "devcontainer.json Configuration" [level=3]
+    - button "edit Edit":
+      - img "edit"
+      - text: Edit
+    - text: "<!doctype html> <html lang=\"en\"> <head> <script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\"; injectIntoGlobalHook(window); window.$RefreshReg$ = () => {}; window.$RefreshSig$ = () => (type) => type;</script> <script type=\"module\" src=\"/@vite/client\"></script> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>Graph Visualizer</title> </head> <body> <div id=\"root\"></div> <script type=\"module\" src=\"/src/main.tsx\"></script> </body> </html>"
+```

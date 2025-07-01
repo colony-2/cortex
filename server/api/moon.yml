@@ -8,4 +8,18 @@ type: 'library'
 project:
   description: 'Web server handlers and middleware'
   channel: '#backend'
-  
+
+tasks:
+  # Build test server binary for e2e testing
+  build-test-server:
+    command: 'go'
+    args: 
+      - 'build'
+      - '-o'
+      - 'build/testserver'
+      - './cmd/testserver'
+    platform: 'system'
+    outputs:
+      - 'build/testserver'
+    options:
+      runInCI: true

@@ -67,3 +67,5 @@ tasks:
     platform: node
     options:
       runInCI: true
+    deps:
+      - 'be-web:build-test-server'
