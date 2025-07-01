@@ -4,15 +4,11 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc && vite build",
-    "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit"
-  },
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "playwright": "^1.53.2",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
-    "@vitejs/plugin-react": "^4.4.1",
     "vitest": "^3.2.4"
   }
 }
