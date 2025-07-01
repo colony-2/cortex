@@ -28,8 +28,11 @@ type MoonDependency struct {
 
 // MoonNode represents a node in the moon project graph
 type MoonNode struct {
-	Alias  string `json:"alias"`
-	Config struct {
+	ID           string           `json:"id"`
+	Source       string           `json:"source"`
+	Root         string           `json:"root"`
+	Language     string           `json:"language"`
+	Config       struct {
 		ID       string          `json:"id"`
 		Language string          `json:"language"`
 		Project  struct {
@@ -37,7 +40,7 @@ type MoonNode struct {
 		} `json:"project"`
 		DependsOn json.RawMessage `json:"dependsOn"`
 	} `json:"config"`
-	ID string `json:"id"`
+	Dependencies []MoonDependency `json:"dependencies"`
 }
 
 // Builder handles graph construction from the filesystem
@@ -59,6 +62,10 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	cmd.Dir = b.rootPath
 	output, err := cmd.Output()
 	if err != nil {
+		// If error, capture combined output for debugging
+		if execErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("failed to execute moon project-graph: %w\nStderr: %s", err, string(execErr.Stderr))
+		}
 		return nil, fmt.Errorf("failed to execute moon project-graph: %w", err)
 	}
 
@@ -73,66 +80,43 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	nodeMap := make(map[string]bool)
 
 	// Build nodes from moon graph
-	// We only want nodes that are in our rootPath directory
-	rootName := filepath.Base(b.rootPath)
-	
-	// Handle special case where directory starts with dot (e.g., .example)
-	// but moon IDs don't include the dot (e.g., example-api instead of .example-api)
-	idPrefix := rootName
-	if strings.HasPrefix(rootName, ".") {
-		idPrefix = strings.TrimPrefix(rootName, ".")
+	// Get the absolute path of the root directory to handle symlinks
+	absRootPath, err := filepath.EvalSymlinks(b.rootPath)
+	if err != nil {
+		absRootPath = b.rootPath
 	}
+	absRootPath, _ = filepath.Abs(absRootPath)
 	
 	for _, moonNode := range moonGraph.Graph.Nodes {
-		// Only include nodes that belong to our root directory
-		// For example, if rootPath is "/path/to/.example", we want nodes starting with "example-"
-		if !strings.HasPrefix(moonNode.Config.ID, idPrefix+"-") {
+		// Check if this node's root path is within our rootPath
+		// Handle symlinks by evaluating them
+		nodeRoot := moonNode.Root
+		if evalPath, err := filepath.EvalSymlinks(nodeRoot); err == nil {
+			nodeRoot = evalPath
+		}
+		absNodePath, _ := filepath.Abs(nodeRoot)
+		
+		// Skip nodes that are not within our rootPath
+		if !strings.HasPrefix(absNodePath, absRootPath) {
 			continue
 		}
 		
-		// Extract the box name from the ID by removing the prefix
-		boxName := strings.TrimPrefix(moonNode.Config.ID, idPrefix+"-")
-		
 		// Build dependencies list
 		dependencies := []string{}
-		
-		// Parse dependsOn which can be either []string or []MoonDependency
-		if len(moonNode.Config.DependsOn) > 0 {
-			// Try to parse as array of strings first
-			var stringDeps []string
-			if err := json.Unmarshal(moonNode.Config.DependsOn, &stringDeps); err == nil {
-				for _, dep := range stringDeps {
-					// Only include dependencies from our root directory
-					if strings.HasPrefix(dep, idPrefix+"-") {
-						depName := strings.TrimPrefix(dep, idPrefix+"-")
-						dependencies = append(dependencies, depName)
-					}
-				}
-			} else {
-				// Try to parse as array of objects
-				var objDeps []MoonDependency
-				if err := json.Unmarshal(moonNode.Config.DependsOn, &objDeps); err == nil {
-					for _, dep := range objDeps {
-						// Only include dependencies from our root directory
-						if strings.HasPrefix(dep.ID, idPrefix+"-") {
-							depName := strings.TrimPrefix(dep.ID, idPrefix+"-")
-							dependencies = append(dependencies, depName)
-						}
-					}
-				}
-			}
+		for _, dep := range moonNode.Dependencies {
+			dependencies = append(dependencies, dep.ID)
 		}
 
 		node := core.Node{
-			ID:           boxName,
-			Name:         boxName,
-			Path:         filepath.Join(b.rootPath, boxName),
+			ID:           moonNode.ID,
+			Name:         moonNode.ID,
+			Path:         moonNode.Root,
 			Type:         "box",
 			Dependencies: dependencies,
 		}
 
 		nodes = append(nodes, node)
-		nodeMap[boxName] = true
+		nodeMap[moonNode.ID] = true
 	}
 
 	// Build edges from dependencies

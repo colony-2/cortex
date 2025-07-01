@@ -95,26 +95,55 @@ func TestBuildGraphWithMoon(t *testing.T) {
 	workspaceContent := `$schema: 'https://moonrepo.dev/schemas/workspace.json'
 projects:
   - "*/"
+vcs:
+  manager: 'git'
+  defaultBranch: 'main'
 `
 	workspaceFile := filepath.Join(moonDir, "workspace.yml")
 	if err := os.WriteFile(workspaceFile, []byte(workspaceContent), 0644); err != nil {
 		t.Fatalf("Failed to write workspace.yml: %v", err)
+	}
+	
+	// Initialize a git repository to prevent moon from searching parent directories
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tempDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("Failed to initialize git repository: %v", err)
+	}
+	
+	// Set git config for the test
+	gitConfig := exec.Command("git", "config", "user.email", "test@example.com")
+	gitConfig.Dir = tempDir
+	gitConfig.Run()
+	
+	gitConfig2 := exec.Command("git", "config", "user.name", "Test User")
+	gitConfig2.Dir = tempDir
+	gitConfig2.Run()
+	
+	// Add all files and create initial commit
+	gitAdd := exec.Command("git", "add", ".")
+	gitAdd.Dir = tempDir
+	if err := gitAdd.Run(); err != nil {
+		t.Fatalf("Failed to add files to git: %v", err)
+	}
+	
+	gitCommit := exec.Command("git", "commit", "-m", "Initial commit")
+	gitCommit.Dir = tempDir
+	if err := gitCommit.Run(); err != nil {
+		t.Fatalf("Failed to create initial commit: %v", err)
 	}
 
 	// Build the graph
 	builder := New(tempDir)
 	graph, err := builder.Build(context.Background())
 	if err != nil {
-		// Try to run moon command manually to see output
-		cmd := exec.Command("moon", "project-graph", "--json")
-		cmd.Dir = tempDir
-		output, cmdErr := cmd.Output()
-		if cmdErr != nil {
-			t.Logf("Moon command error: %v", cmdErr)
-		} else {
-			t.Logf("Moon output: %s", string(output))
-		}
 		t.Fatalf("Failed to build graph: %v", err)
+	}
+	
+	// Debug: Log the tempDir path
+	t.Logf("TempDir: %s", tempDir)
+	if evalPath, err := filepath.EvalSymlinks(tempDir); err == nil {
+		t.Logf("TempDir after EvalSymlinks: %s", evalPath)
 	}
 
 	// Verify nodes
@@ -128,10 +157,12 @@ projects:
 		nodeMap[node.ID] = node
 	}
 
-	// Verify each node exists
+	// Verify each node exists (with prefix)
+	baseName := filepath.Base(tempDir)
 	for nodeName := range nodes {
-		if _, exists := nodeMap[nodeName]; !exists {
-			t.Errorf("Expected node %s not found in graph", nodeName)
+		fullNodeID := fmt.Sprintf("%s-%s", baseName, nodeName)
+		if _, exists := nodeMap[fullNodeID]; !exists {
+			t.Errorf("Expected node %s not found in graph", fullNodeID)
 		}
 	}
 
@@ -140,10 +171,10 @@ projects:
 		nodeID   string
 		expected []string
 	}{
-		{"api", []string{"database", "cache"}},
-		{"frontend", []string{"api"}},
-		{"database", []string{}},
-		{"cache", []string{}},
+		{fmt.Sprintf("%s-api", baseName), []string{fmt.Sprintf("%s-database", baseName), fmt.Sprintf("%s-cache", baseName)}},
+		{fmt.Sprintf("%s-frontend", baseName), []string{fmt.Sprintf("%s-api", baseName)}},
+		{fmt.Sprintf("%s-database", baseName), []string{}},
+		{fmt.Sprintf("%s-cache", baseName), []string{}},
 	}
 
 	for _, tc := range testCases {
@@ -191,9 +222,9 @@ projects:
 		source string
 		target string
 	}{
-		{"api", "database"},
-		{"api", "cache"},
-		{"frontend", "api"},
+		{fmt.Sprintf("%s-api", baseName), fmt.Sprintf("%s-database", baseName)},
+		{fmt.Sprintf("%s-api", baseName), fmt.Sprintf("%s-cache", baseName)},
+		{fmt.Sprintf("%s-frontend", baseName), fmt.Sprintf("%s-api", baseName)},
 	}
 
 	for _, ee := range expectedEdgeList {
@@ -230,9 +261,9 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 
 	// Verify we got all 13 nodes from the example directory
 	expectedNodes := []string{
-		"api", "auth", "cache", "config", "database", "frontend",
-		"gateway", "logger", "monitoring", "service-a", "service-b", 
-		"service-c", "shared-utils",
+		"example-api", "example-auth", "example-cache", "example-config", "example-database", "example-frontend",
+		"example-gateway", "example-logger", "example-monitoring", "example-service-a", "example-service-b", 
+		"example-service-c", "example-shared-utils",
 	}
 
 	if len(graph.Nodes) != len(expectedNodes) {
@@ -260,9 +291,9 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 	}
 
 	// Verify specific dependencies from our moon.yml files
-	apiNode, exists := nodeMap["api"]
+	apiNode, exists := nodeMap["example-api"]
 	if exists {
-		expectedDeps := []string{"service-a", "service-b", "service-c", "auth"}
+		expectedDeps := []string{"example-service-a", "example-service-b", "example-service-c", "example-auth"}
 		if len(apiNode.Dependencies) != len(expectedDeps) {
 			t.Errorf("API node: expected %d dependencies, got %d", len(expectedDeps), len(apiNode.Dependencies))
 		}
