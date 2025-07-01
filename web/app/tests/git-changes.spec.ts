@@ -1,10 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Git Changes Tab', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate to the application
-    await page.goto('/boxes');
-    
+  // Helper function to navigate to the Changes tab
+  async function navigateToChangesTab(page: any) {
     // Wait for the graph to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     
@@ -16,9 +14,12 @@ test.describe('Git Changes Tab', () => {
     
     // Click on the Changes tab
     await page.getByText('Changes').click();
-  });
+  }
 
   test('should display changes tab with subtabs', async ({ page }) => {
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
+    
     // Wait for subtabs to be visible
     await page.waitForSelector('.ant-tabs-tab', { timeout: 5000 });
     
@@ -29,6 +30,9 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should show summary tab by default', async ({ page }) => {
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
+    
     // Wait for subtabs
     await page.waitForSelector('.ant-tabs-tab', { timeout: 5000 });
     
@@ -38,7 +42,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should handle non-git repository gracefully', async ({ page }) => {
-    // Mock the API response for non-git repo
+    // Mock the API response for non-git repo BEFORE navigation
     await page.route('**/api/nodes/*/git/status', async route => {
       await route.fulfill({
         status: 400,
@@ -46,15 +50,15 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    // Reload the component
-    await page.getByText('Changes').click();
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
     
     // Should show empty state
     await expect(page.getByText('Not a git repository')).toBeVisible();
   });
 
   test('should display git status in summary tab', async ({ page }) => {
-    // Mock the API response
+    // Mock the API response BEFORE navigation
     await page.route('**/api/nodes/*/git/status', async route => {
       await route.fulfill({
         status: 200,
@@ -69,8 +73,11 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    // Reload the component
-    await page.getByText('Changes').click();
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
+    
+    // Wait for the content to load
+    await page.waitForTimeout(500);
     
     // Check badges - Ant Design Badge renders count in a sup element
     await expect(page.locator('.ant-badge sup').filter({ hasText: '1' }).first()).toBeVisible(); // Added
@@ -88,7 +95,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should handle commit action', async ({ page }) => {
-    // Mock the git status API
+    // Mock the git status API BEFORE navigation
     await page.route('**/api/nodes/*/git/status', async route => {
       await route.fulfill({
         status: 200,
@@ -115,8 +122,8 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    // Reload to get the mocked status
-    await page.getByText('Changes').click();
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
     
     // Wait for the button to be visible and enabled
     await page.waitForSelector('button:has-text("Commit All Changes")', { timeout: 5000 });
@@ -129,7 +136,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should display diff in details tab', async ({ page }) => {
-    // Mock the diff API
+    // Mock the diff API BEFORE navigation
     await page.route('**/api/nodes/*/git/diff', async route => {
       await route.fulfill({
         status: 200,
@@ -146,8 +153,14 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
+    
     // Click on Details tab
     await page.getByRole('tab', { name: 'Details' }).click();
+    
+    // Wait for content to load
+    await page.waitForTimeout(500);
     
     // Check diff content - use more specific selectors
     await expect(page.locator('code').filter({ hasText: 'test.js' })).toBeVisible();
@@ -158,7 +171,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should display commit history in history tab', async ({ page }) => {
-    // Mock the history API
+    // Mock the history API BEFORE navigation
     await page.route('**/api/nodes/*/git/history', async route => {
       await route.fulfill({
         status: 200,
@@ -182,8 +195,14 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
+    
     // Click on History tab - use last() to get the nested tab
     await page.locator('.ant-tabs-tab').filter({ hasText: 'History' }).last().click();
+    
+    // Wait for content to load
+    await page.waitForTimeout(500);
     
     // Check commit history
     await expect(page.getByText('abc12345')).toBeVisible();
@@ -193,7 +212,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should show empty state when no changes', async ({ page }) => {
-    // Mock empty status
+    // Mock empty status BEFORE navigation
     await page.route('**/api/nodes/*/git/status', async route => {
       await route.fulfill({
         status: 200,
@@ -208,8 +227,8 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    // Reload the component
-    await page.getByText('Changes').click();
+    await page.goto('/boxes');
+    await navigateToChangesTab(page);
     
     // Wait for the component to load
     await page.waitForTimeout(500);
