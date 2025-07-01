@@ -58,7 +58,7 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   # Production install (includes front-end)
   # ─────────────────────────────────────────────────────────────
-  install-with-frontend:
+  install:
     script: |
       go install -tags=prod -ldflags="-X main.defaultPort=8081" .
     deps:

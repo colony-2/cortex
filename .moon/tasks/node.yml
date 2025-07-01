@@ -58,8 +58,8 @@ tasks:
     platform: node
 
   e2e:
-    command: playwright
-    args: [test]
+    command: npx
+    args: [playwright, test]
     inputs:
       - tests/**/*
       - playwright.config.ts
