@@ -69,7 +69,8 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 	
 	// Static files and SPA routes (everything not under /api)
 	if staticHandler != nil {
-		r.PathPrefix("/").Handler(staticHandler)
+		// Use a custom handler that excludes /api paths
+		r.PathPrefix("/").Handler(&nonAPIHandler{staticHandler: staticHandler})
 	}
 	
 	return r
@@ -152,4 +153,20 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Serve the actual file
 	http.ServeFile(w, r, absPath)
+}
+
+// nonAPIHandler wraps a static handler to exclude /api paths
+type nonAPIHandler struct {
+	staticHandler http.Handler
+}
+
+func (h *nonAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Skip static handling for /api paths
+	if strings.HasPrefix(r.URL.Path, "/api") {
+		http.NotFound(w, r)
+		return
+	}
+	
+	// Serve static files for all other paths
+	h.staticHandler.ServeHTTP(w, r)
 }

@@ -5,7 +5,6 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 projects:
   - server/*/
   - "web/*/"
-  - ".example/*/"
       
 # Runner configuration
 runner:
