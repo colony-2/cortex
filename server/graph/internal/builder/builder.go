@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -57,9 +58,16 @@ func New(rootPath string) *Builder {
 
 // Build constructs the dependency graph from moon's project-graph output
 func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
+	// Ensure rootPath is absolute before using it
+	absRootPath, err := filepath.Abs(b.rootPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path: %w", err)
+	}
+	
 	// Execute moon project-graph command
 	cmd := exec.CommandContext(ctx, "moon", "project-graph", "--json")
-	cmd.Dir = b.rootPath
+	cmd.Dir = absRootPath
+	cmd.Env = append(os.Environ(), fmt.Sprintf("MOON_WORKSPACE_ROOT=%s", absRootPath))
 	output, err := cmd.Output()
 	if err != nil {
 		// If error, capture combined output for debugging
@@ -80,12 +88,16 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	nodeMap := make(map[string]bool)
 
 	// Build nodes from moon graph
-	// Get the absolute path of the root directory to handle symlinks
-	absRootPath, err := filepath.EvalSymlinks(b.rootPath)
-	if err != nil {
-		absRootPath = b.rootPath
+	// Handle symlinks in the root path
+	rootPathWithSymlinks := absRootPath
+	if evalPath, err := filepath.EvalSymlinks(absRootPath); err == nil {
+		rootPathWithSymlinks = evalPath
 	}
-	absRootPath, _ = filepath.Abs(absRootPath)
+	
+	// Ensure paths end with separator for proper prefix matching
+	if !strings.HasSuffix(rootPathWithSymlinks, string(filepath.Separator)) {
+		rootPathWithSymlinks += string(filepath.Separator)
+	}
 	
 	for _, moonNode := range moonGraph.Graph.Nodes {
 		// Check if this node's root path is within our rootPath
@@ -97,7 +109,7 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		absNodePath, _ := filepath.Abs(nodeRoot)
 		
 		// Skip nodes that are not within our rootPath
-		if !strings.HasPrefix(absNodePath, absRootPath) {
+		if !strings.HasPrefix(absNodePath+string(filepath.Separator), rootPathWithSymlinks) {
 			continue
 		}
 		
@@ -110,7 +122,7 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		node := core.Node{
 			ID:           moonNode.ID,
 			Name:         moonNode.ID,
-			Path:         moonNode.Root,
+			Path:         filepath.Join(absRootPath, moonNode.Source),
 			Type:         "box",
 			Dependencies: dependencies,
 		}

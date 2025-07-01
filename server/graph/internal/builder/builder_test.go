@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"vibethis/core/pkg/core"
@@ -104,6 +105,11 @@ vcs:
 		t.Fatalf("Failed to write workspace.yml: %v", err)
 	}
 	
+	// Verify the file was created
+	if _, err := os.Stat(workspaceFile); err != nil {
+		t.Fatalf("workspace.yml was not created: %v", err)
+	}
+	
 	// Initialize a git repository to prevent moon from searching parent directories
 	gitCmd := exec.Command("git", "init")
 	gitCmd.Dir = tempDir
@@ -132,18 +138,13 @@ vcs:
 	if err := gitCommit.Run(); err != nil {
 		t.Fatalf("Failed to create initial commit: %v", err)
 	}
+	
 
 	// Build the graph
 	builder := New(tempDir)
 	graph, err := builder.Build(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to build graph: %v", err)
-	}
-	
-	// Debug: Log the tempDir path
-	t.Logf("TempDir: %s", tempDir)
-	if evalPath, err := filepath.EvalSymlinks(tempDir); err == nil {
-		t.Logf("TempDir after EvalSymlinks: %s", evalPath)
 	}
 
 	// Verify nodes
@@ -240,8 +241,15 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 		t.Skip("moon command not found, skipping test")
 	}
 
-	// Use the actual example directory
-	exampleDir := filepath.Join("..", "..", "..", "..", ".example")
+	// Get the directory of the current test file
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("Failed to get current file path")
+	}
+	testDir := filepath.Dir(filename)
+	
+	// Use the actual example directory relative to the test file
+	exampleDir := filepath.Join(testDir, "..", "..", "..", "..", ".example")
 	absExampleDir, err := filepath.Abs(exampleDir)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path: %v", err)
