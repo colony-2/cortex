@@ -20,11 +20,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev',
+      command: 'moon run ui-app:serve',
       port: 5173,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
-      cwd: '.',
+      cwd: '../..',
     },
     {
       command: 'server/api/build/testserver -n .example -p 8080',
