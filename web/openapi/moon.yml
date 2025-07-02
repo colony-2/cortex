@@ -1,0 +1,23 @@
+id: 'fe-openapi'
+type: 'library'
+language: 'typescript'
+
+project:
+  name: 'web-openapi'
+  description: 'Generated TypeScript client from OpenAPI specification'
+
+tasks:
+  build:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'rm -rf src/generated dist && npx openapi-typescript-codegen --input ../../api/openapi/vibethis-api.yaml --output ./src/generated --client axios && npx tsup src/index.ts --format cjs,esm --dts --clean'
+    inputs:
+      - 'src/**/*.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+    outputs:
+      - 'src/generated/**/*'
+      - 'dist/**/*'
+    deps:
+      - 'api-openapi:build'

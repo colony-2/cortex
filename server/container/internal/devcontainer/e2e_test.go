@@ -405,8 +405,8 @@ func TestE2EPortForwarding(t *testing.T) {
 	if !strings.Contains(inspectStr, "80/tcp") {
 		t.Error("Port 80 mapping not found")
 	}
-	if !strings.Contains(inspectStr, "8080/tcp") {
-		t.Error("Port 8080 mapping not found")
+	if !strings.Contains(inspectStr, "18080/tcp") {
+		t.Error("Port 18080 mapping not found")
 	}
 
 	t.Logf("Port forwarding test successful. Port mappings: %s", inspectStr)

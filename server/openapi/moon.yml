@@ -1,0 +1,20 @@
+id: 'be-openapi'
+type: 'library'
+language: 'go'
+
+project:
+  name: 'server-openapi'
+  description: 'Generated Go types and client from OpenAPI specification'
+
+tasks:
+  build:
+    command: 'bash'
+    args:
+      - '-c'
+      - 'rm -f pkg/openapi/generated.go && go run github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0 -config codegen.yml -o pkg/openapi/generated.go ../../api/openapi/vibethis-api.yaml'
+    inputs:
+      - 'codegen.yml'
+    outputs:
+      - 'pkg/openapi/generated.go'
+    deps:
+      - 'api-openapi:build'

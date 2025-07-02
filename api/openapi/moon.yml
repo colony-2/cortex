@@ -1,3 +1,4 @@
+id: 'api-openapi'
 type: 'unknown'
 
 project:
@@ -10,3 +11,10 @@ fileGroups:
     - '**/*.yml'
   docs:
     - '**/*.md'
+
+tasks:
+  build:
+    command: 'echo'
+    args: ['OpenAPI spec is ready']
+    outputs:
+      - 'vibethis-api.yaml'
