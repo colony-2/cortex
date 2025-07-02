@@ -13,7 +13,14 @@ func (h *Handlers) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 
-	status, err := h.git.GetStatus(r.Context(), nodeID)
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	status, err := h.git.GetStatus(r.Context(), node.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -28,8 +35,15 @@ func (h *Handlers) GetGitDiff(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
 	staged := r.URL.Query().Get("staged") == "true"
-	diff, err := h.git.GetDiff(r.Context(), nodeID, staged)
+	diff, err := h.git.GetDiff(r.Context(), node.Path, staged)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -44,6 +58,13 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
 	limit := 50
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
@@ -51,7 +72,7 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	history, err := h.git.GetHistory(r.Context(), nodeID, limit)
+	history, err := h.git.GetHistory(r.Context(), node.Path, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -65,6 +86,13 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
+
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
 
 	var body struct {
 		Message string   `json:"message"`
@@ -83,14 +111,14 @@ func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 
 	// Stage files if specified
 	if len(body.Files) > 0 {
-		if err := h.git.StageFiles(r.Context(), nodeID, body.Files); err != nil {
+		if err := h.git.StageFiles(r.Context(), node.Path, body.Files); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	// Create commit
-	if err := h.git.CreateCommit(r.Context(), nodeID, body.Message); err != nil {
+	if err := h.git.CreateCommit(r.Context(), node.Path, body.Message); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

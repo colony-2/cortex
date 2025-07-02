@@ -60,7 +60,36 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
       const response = await fetch(`/api/nodes/${nodeId}/git/status`);
       if (response.ok) {
         const data = await response.json();
-        setStatus(data);
+        // Transform the backend response to match the expected format
+        const transformedStatus: GitStatus = {
+          added: [],
+          modified: [],
+          deleted: [],
+          untracked: [],
+          totalCount: 0
+        };
+        
+        if (data.files && Array.isArray(data.files)) {
+          data.files.forEach((file: { path: string; status: string }) => {
+            switch (file.status) {
+              case 'A':
+                transformedStatus.added.push(file.path);
+                break;
+              case 'M':
+                transformedStatus.modified.push(file.path);
+                break;
+              case 'D':
+                transformedStatus.deleted.push(file.path);
+                break;
+              case '?':
+                transformedStatus.untracked.push(file.path);
+                break;
+            }
+            transformedStatus.totalCount++;
+          });
+        }
+        
+        setStatus(transformedStatus);
       } else {
         setStatus(null);
       }
@@ -76,8 +105,10 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
     try {
       const response = await fetch(`/api/nodes/${nodeId}/git/diff`);
       if (response.ok) {
-        const data = await response.json();
-        setDiff(data);
+        const diffText = await response.text();
+        // Parse the plain text diff into a structured format
+        const parsedDiff = parseDiff(diffText);
+        setDiff(parsedDiff);
       } else {
         setDiff(null);
       }
@@ -85,6 +116,60 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
       console.error('Failed to fetch git diff:', error);
       setDiff(null);
     }
+  };
+
+  // Parse git diff text into structured format
+  const parseDiff = (diffText: string): GitDiff => {
+    const files: GitFileDiff[] = [];
+    
+    if (!diffText || diffText.trim() === '') {
+      return { files };
+    }
+
+    // Split by file markers
+    const fileChunks = diffText.split(/^diff --git/m).filter(chunk => chunk.trim());
+    
+    for (const chunk of fileChunks) {
+      const lines = chunk.split('\n');
+      const fileMatch = lines[0]?.match(/a\/(.+) b\/(.+)/);
+      
+      if (fileMatch) {
+        const path = fileMatch[2];
+        let status = 'M'; // Default to modified
+        let additions = 0;
+        let deletions = 0;
+        
+        // Check for new file
+        if (chunk.includes('new file mode')) {
+          status = 'A';
+        } else if (chunk.includes('deleted file mode')) {
+          status = 'D';
+        }
+        
+        // Count additions and deletions
+        lines.forEach(line => {
+          if (line.startsWith('+') && !line.startsWith('+++')) {
+            additions++;
+          } else if (line.startsWith('-') && !line.startsWith('---')) {
+            deletions++;
+          }
+        });
+        
+        // Extract the patch content
+        const patchStart = lines.findIndex(line => line.startsWith('@@'));
+        const patch = patchStart >= 0 ? lines.slice(patchStart).join('\n') : chunk;
+        
+        files.push({
+          path,
+          status,
+          additions,
+          deletions,
+          patch
+        });
+      }
+    }
+    
+    return { files };
   };
 
   // Fetch git history
@@ -131,18 +216,22 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          message: 'Update changes', // TODO: Add UI for custom commit message
+          files: [] // Empty array means stage all changes
+        }),
       });
 
       if (response.ok) {
-        const result = await response.json();
-        message.success(`Commit created: ${result.commitMessage}`);
+        message.success('Commit created successfully');
         // Refresh status after commit
         await fetchStatus();
         if (activeTab === 'history') {
           await fetchHistory();
         }
       } else {
-        message.error('Failed to create commit');
+        const errorText = await response.text();
+        message.error(`Failed to create commit: ${errorText}`);
       }
     } catch (error) {
       console.error('Failed to commit:', error);

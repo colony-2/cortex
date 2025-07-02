@@ -21,16 +21,14 @@ type FileInfo struct {
 
 // Browser implements the file browser functionality
 type Browser struct {
-	rootPath          string
 	validator         security.Validator
 	allowedExtensions []string
 	maxFileSize       int64
 }
 
 // New creates a new file browser
-func New(rootPath string, validator security.Validator, allowedExtensions []string, maxFileSize int64) *Browser {
+func New(validator security.Validator, allowedExtensions []string, maxFileSize int64) *Browser {
 	return &Browser{
-		rootPath:          rootPath,
 		validator:         validator,
 		allowedExtensions: allowedExtensions,
 		maxFileSize:       maxFileSize,
@@ -39,7 +37,8 @@ func New(rootPath string, validator security.Validator, allowedExtensions []stri
 
 // ListFiles returns a list of files in the specified node directory
 func (b *Browser) ListFiles(ctx context.Context, nodePath string) ([]FileInfo, error) {
-	fullPath := filepath.Join(b.rootPath, nodePath)
+	// nodePath is already an absolute path
+	fullPath := nodePath
 	
 	// Validate path
 	if b.validator != nil {
@@ -62,7 +61,7 @@ func (b *Browser) ListFiles(ctx context.Context, nodePath string) ([]FileInfo, e
 
 		fileInfo := FileInfo{
 			Name:  entry.Name(),
-			Path:  filepath.Join(nodePath, entry.Name()),
+			Path:  entry.Name(), // Path relative to the node directory
 			IsDir: entry.IsDir(),
 			Size:  info.Size(),
 			Type:  getFileType(entry.Name(), entry.IsDir()),
@@ -90,7 +89,8 @@ func (b *Browser) ListFiles(ctx context.Context, nodePath string) ([]FileInfo, e
 
 // ReadFile reads the contents of a file within a node directory
 func (b *Browser) ReadFile(ctx context.Context, nodePath, filePath string) ([]byte, error) {
-	fullPath := filepath.Join(b.rootPath, nodePath, filePath)
+	// nodePath is already an absolute path
+	fullPath := filepath.Join(nodePath, filePath)
 	
 	// Validate path
 	if b.validator != nil {
@@ -120,7 +120,8 @@ func (b *Browser) ReadFile(ctx context.Context, nodePath, filePath string) ([]by
 
 // WriteFile writes content to a file within a node directory
 func (b *Browser) WriteFile(ctx context.Context, nodePath, filePath string, content []byte) error {
-	fullPath := filepath.Join(b.rootPath, nodePath, filePath)
+	// nodePath is already an absolute path
+	fullPath := filepath.Join(nodePath, filePath)
 	
 	// Validate path
 	if b.validator != nil {
@@ -149,7 +150,8 @@ func (b *Browser) WriteFile(ctx context.Context, nodePath, filePath string, cont
 
 // CreateDirectory creates a new directory within a node directory
 func (b *Browser) CreateDirectory(ctx context.Context, nodePath, dirPath string) error {
-	fullPath := filepath.Join(b.rootPath, nodePath, dirPath)
+	// nodePath is already an absolute path
+	fullPath := filepath.Join(nodePath, dirPath)
 	
 	// Validate path
 	if b.validator != nil {
@@ -167,7 +169,8 @@ func (b *Browser) CreateDirectory(ctx context.Context, nodePath, dirPath string)
 
 // Delete removes a file or directory within a node directory
 func (b *Browser) Delete(ctx context.Context, nodePath, path string) error {
-	fullPath := filepath.Join(b.rootPath, nodePath, path)
+	// nodePath is already an absolute path
+	fullPath := filepath.Join(nodePath, path)
 	
 	// Validate path
 	if b.validator != nil {

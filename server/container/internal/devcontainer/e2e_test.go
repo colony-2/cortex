@@ -344,7 +344,7 @@ func TestE2EPortForwarding(t *testing.T) {
 			Image: "nginx:alpine",
 		},
 		DevContainerCommon: DevContainerCommon{
-			ForwardPorts: []interface{}{float64(8080)},
+			ForwardPorts: []interface{}{float64(18080)},
 		},
 		NonComposeBase: &NonComposeBase{
 			AppPort: []interface{}{float64(80)},
@@ -493,8 +493,12 @@ func TestE2EMergeLogicRealFiles(t *testing.T) {
 	}
 
 	// Check ports (should be overridden)
-	if len(dc.ForwardPorts) != 2 {
-		t.Errorf("Expected 2 forward ports, got %d", len(dc.ForwardPorts))
+	if ports, ok := dc.ForwardPorts.([]interface{}); ok {
+		if len(ports) != 2 {
+			t.Errorf("Expected 2 forward ports, got %d", len(ports))
+		}
+	} else {
+		t.Errorf("ForwardPorts is not a slice, got %T", dc.ForwardPorts)
 	}
 
 	// Check mounts (should be overridden)

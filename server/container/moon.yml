@@ -4,3 +4,15 @@ type: 'library'
 
 project:
   description: Manages devcontainer lifecycle and Docker container operations for development environments.
+
+tasks:
+  e2e:
+    command: 'go test -tags=e2e -v ./...'
+    inputs:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    platform: 'system'
+    options:
+      runInCI: false
+    description: 'Run end-to-end tests that create real Docker containers'

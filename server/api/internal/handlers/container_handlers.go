@@ -38,7 +38,14 @@ func (h *Handlers) CreateContainer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 
-	containerID, err := h.container.Create(r.Context(), nodeID)
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	containerID, err := h.container.Create(r.Context(), node.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

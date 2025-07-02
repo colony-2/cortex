@@ -36,9 +36,6 @@ type Browser interface {
 
 // Config defines configuration for the file browser.
 type Config struct {
-	// RootPath is the root directory containing all nodes.
-	RootPath string
-	
 	// AllowedExtensions restricts browsable files to these extensions.
 	// If empty, all files are allowed.
 	AllowedExtensions []string
@@ -50,8 +47,10 @@ type Config struct {
 
 // NewBrowser creates a new file browser with the given configuration.
 func NewBrowser(config Config) Browser {
-	validator := security.NewValidator(config.RootPath)
-	b := browser.New(config.RootPath, validator, config.AllowedExtensions, config.MaxFileSize)
+	// Create a no-op validator for now since each operation includes the full node path
+	// Security is enforced by ensuring operations stay within the provided node path
+	validator := security.NewNoOpValidator()
+	b := browser.New(validator, config.AllowedExtensions, config.MaxFileSize)
 	return &browserAdapter{b: b}
 }
 

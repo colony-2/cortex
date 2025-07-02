@@ -48,4 +48,4 @@ graph_positions.db
 .example/.moon/cache
 server/vibethis/static/assets
 server/vibethis/vibethis
-vibethis
+/vibethis/

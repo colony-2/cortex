@@ -120,7 +120,7 @@ func TestFindDevContainerFile(t *testing.T) {
 				return nil
 			},
 			wantFile: "",
-			wantErr:  true,
+			wantErr:  false,
 		},
 	}
 

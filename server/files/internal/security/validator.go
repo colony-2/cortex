@@ -46,3 +46,20 @@ func (v *PathValidator) ValidatePath(path string) error {
 
 	return nil
 }
+
+// NoOpValidator is a validator that performs no validation
+type NoOpValidator struct{}
+
+// NewNoOpValidator creates a validator that performs no validation
+func NewNoOpValidator() Validator {
+	return &NoOpValidator{}
+}
+
+// ValidatePath always returns nil (no validation)
+func (v *NoOpValidator) ValidatePath(path string) error {
+	// Still check for obvious security issues
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("path contains directory traversal pattern")
+	}
+	return nil
+}

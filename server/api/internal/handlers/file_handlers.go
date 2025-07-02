@@ -13,7 +13,14 @@ func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 
-	files, err := h.files.ListFiles(r.Context(), nodeID)
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	files, err := h.files.ListFiles(r.Context(), node.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -38,7 +45,14 @@ func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 	nodeID := vars["nodeId"]
 	filePath := vars["filePath"]
 
-	content, err := h.files.ReadFile(r.Context(), nodeID, filePath)
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+
+	content, err := h.files.ReadFile(r.Context(), node.Path, filePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -53,6 +67,13 @@ func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeID := vars["nodeId"]
 	filePath := vars["filePath"]
+
+	// Get the node to find its path
+	node, err := h.graph.GetNode(r.Context(), nodeID)
+	if err != nil {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -70,7 +91,7 @@ func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.files.WriteFile(r.Context(), nodeID, filePath, []byte(fileContent.Content)); err != nil {
+	if err := h.files.WriteFile(r.Context(), node.Path, filePath, []byte(fileContent.Content)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -1,0 +1,12 @@
+type: 'unknown'
+
+project:
+  name: 'api-openapi'
+  description: 'OpenAPI specifications for the vibethis API'
+
+fileGroups:
+  specs:
+    - '**/*.yaml'
+    - '**/*.yml'
+  docs:
+    - '**/*.md'

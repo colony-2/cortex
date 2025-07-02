@@ -42,9 +42,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	graphBuilder := graph.NewBuilder(cfg.RootPath)
 
 	// Initialize file browser
-	fileBrowser := files.NewBrowser(files.Config{
-		RootPath: cfg.RootPath,
-	})
+	fileBrowser := files.NewBrowser(files.Config{})
 
 	// Initialize git repository
 	gitRepo := git.NewRepository(git.Config{

@@ -915,7 +915,8 @@ func FindDevContainerFile(dir string) (string, error) {
 		return path, nil
 	}
 	
-	return "", fmt.Errorf("no devcontainer.json found in %s", dir)
+	// Return empty string without error - it's OK if devcontainer.json doesn't exist
+	return "", nil
 }
 
 // ProcessLifecycleCommands processes lifecycle commands from a DevContainer
