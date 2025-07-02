@@ -29,13 +29,13 @@ type MoonDependency struct {
 
 // MoonNode represents a node in the moon project graph
 type MoonNode struct {
-	ID           string           `json:"id"`
-	Source       string           `json:"source"`
-	Root         string           `json:"root"`
-	Language     string           `json:"language"`
-	Config       struct {
-		ID       string          `json:"id"`
-		Language string          `json:"language"`
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	Root     string `json:"root"`
+	Language string `json:"language"`
+	Config   struct {
+		ID       string `json:"id"`
+		Language string `json:"language"`
 		Project  struct {
 			Description string `json:"description"`
 		} `json:"project"`
@@ -63,12 +63,19 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path: %w", err)
 	}
-	
+
+	// Debug: Log the rootPath being used
+	fmt.Printf("[DEBUG] Graph builder using rootPath: %s\n", absRootPath)
+
 	// Execute moon project-graph command
 	cmd := exec.CommandContext(ctx, "moon", "project-graph", "--json")
 	cmd.Dir = absRootPath
 	cmd.Env = append(os.Environ(), fmt.Sprintf("MOON_WORKSPACE_ROOT=%s", absRootPath))
 	output, err := cmd.Output()
+
+	// Debug: Log the command output
+	fmt.Printf("[DEBUG] Root path:\n%s\n", string(absRootPath))
+
 	if err != nil {
 		// If error, capture combined output for debugging
 		if execErr, ok := err.(*exec.ExitError); ok {
@@ -83,6 +90,9 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		return nil, fmt.Errorf("failed to parse moon graph output: %w", err)
 	}
 
+	// Debug: Log the number of nodes from moon
+	fmt.Printf("[DEBUG] Moon returned %d nodes\n", len(moonGraph.Graph.Nodes))
+
 	nodes := []core.Node{}
 	edges := []core.Edge{}
 	nodeMap := make(map[string]bool)
@@ -93,12 +103,15 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	if evalPath, err := filepath.EvalSymlinks(absRootPath); err == nil {
 		rootPathWithSymlinks = evalPath
 	}
-	
+
 	// Ensure paths end with separator for proper prefix matching
 	if !strings.HasSuffix(rootPathWithSymlinks, string(filepath.Separator)) {
 		rootPathWithSymlinks += string(filepath.Separator)
 	}
-	
+
+	// Debug: Log the rootPath being used for filtering
+	fmt.Printf("[DEBUG] Filtering nodes with rootPath: %s\n", rootPathWithSymlinks)
+
 	for _, moonNode := range moonGraph.Graph.Nodes {
 		// Check if this node's root path is within our rootPath
 		// Handle symlinks by evaluating them
@@ -107,12 +120,10 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 			nodeRoot = evalPath
 		}
 		absNodePath, _ := filepath.Abs(nodeRoot)
-		
-		// Skip nodes that are not within our rootPath
-		if !strings.HasPrefix(absNodePath+string(filepath.Separator), rootPathWithSymlinks) {
-			continue
-		}
-		
+
+		// Debug: Log each node being processed
+		fmt.Printf("[DEBUG] Processing node %s with path %s\n", moonNode.ID, absNodePath)
+
 		// Build dependencies list
 		dependencies := []string{}
 		for _, dep := range moonNode.Dependencies {
@@ -145,6 +156,9 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 			}
 		}
 	}
+
+	// Debug: Log final result
+	fmt.Printf("[DEBUG] Final graph has %d nodes and %d edges\n", len(nodes), len(edges))
 
 	return &core.Graph{
 		Nodes: nodes,

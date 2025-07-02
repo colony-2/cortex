@@ -63,5 +63,6 @@ tasks:
     script: |
       go install -tags=prod -ldflags="-X main.defaultPort=8081" .
     deps:
+      - '~:build'
       - '~:build-frontend-copy'
     platform: system
