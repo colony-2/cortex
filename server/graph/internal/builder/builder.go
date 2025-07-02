@@ -133,7 +133,7 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		node := core.Node{
 			ID:           moonNode.ID,
 			Name:         moonNode.ID,
-			Path:         filepath.Join(absRootPath, moonNode.Source),
+			Path:         absNodePath,
 			Type:         "box",
 			Dependencies: dependencies,
 		}
