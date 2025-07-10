@@ -2,9 +2,9 @@ package main
 
 import (
 	"os"
+	ono2 "vibethis/ono/pkg/cli"
 
 	"github.com/spf13/cobra"
-	"vibethis/ono/cmd/ono"
 )
 
 var rootCmd = &cobra.Command{
@@ -13,8 +13,8 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(ono.StartCmd)
-	rootCmd.AddCommand(ono.WorkflowCmd)
+	rootCmd.AddCommand(ono2.StartCmd)
+	rootCmd.AddCommand(ono2.WorkflowCmd)
 }
 
 func main() {

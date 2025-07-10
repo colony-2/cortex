@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"bytes"
@@ -129,14 +129,14 @@ func TestWorkflowListCommand(t *testing.T) {
 func TestWorkflowListFlags(t *testing.T) {
 	// Ensure all required flags are registered
 	cmd := workflowListCmd
-	
+
 	require.NotNil(t, cmd.Flag("status"))
 	require.NotNil(t, cmd.Flag("type"))
 	require.NotNil(t, cmd.Flag("archived"))
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check default values
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "127.0.0.1", cmd.Flag("host").DefValue)

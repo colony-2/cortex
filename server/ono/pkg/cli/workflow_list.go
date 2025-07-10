@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	listNamespace      string
-	listWorkflowType   string
-	listStatus         string
-	listLimit          int
-	listArchived       bool
+	listNamespace    string
+	listWorkflowType string
+	listStatus       string
+	listLimit        int
+	listArchived     bool
 )
 
 var workflowListCmd = &cobra.Command{
@@ -62,25 +62,25 @@ func runWorkflowList(cmd *cobra.Command, args []string) error {
 	defer c.Close()
 
 	query := buildListQuery()
-	
+
 	var request interface{}
 	if listArchived {
 		request = &workflowservice.ListArchivedWorkflowExecutionsRequest{
-			Namespace:     listNamespace,
-			PageSize:      int32(listLimit),
-			Query:         query,
+			Namespace: listNamespace,
+			PageSize:  int32(listLimit),
+			Query:     query,
 		}
 	} else {
 		request = &workflowservice.ListWorkflowExecutionsRequest{
-			Namespace:     listNamespace,
-			PageSize:      int32(listLimit),
-			Query:         query,
+			Namespace: listNamespace,
+			PageSize:  int32(listLimit),
+			Query:     query,
 		}
 	}
 
 	ctx := context.Background()
 	var executions []*workflowpb.WorkflowExecutionInfo
-	
+
 	if listArchived {
 		resp, err := c.WorkflowService().ListArchivedWorkflowExecutions(ctx, request.(*workflowservice.ListArchivedWorkflowExecutionsRequest))
 		if err != nil {
@@ -106,22 +106,22 @@ func runWorkflowList(cmd *cobra.Command, args []string) error {
 
 func buildListQuery() string {
 	var conditions []string
-	
+
 	if listWorkflowType != "" {
 		conditions = append(conditions, fmt.Sprintf("WorkflowType = '%s'", listWorkflowType))
 	}
-	
+
 	if listStatus != "" {
 		statusValue := getExecutionStatus(listStatus)
 		if statusValue != enums.WORKFLOW_EXECUTION_STATUS_UNSPECIFIED {
 			conditions = append(conditions, fmt.Sprintf("ExecutionStatus = %d", statusValue))
 		}
 	}
-	
+
 	if len(conditions) == 0 {
 		return ""
 	}
-	
+
 	return strings.Join(conditions, " AND ")
 }
 
@@ -160,7 +160,7 @@ func printWorkflowList(executions []*workflowpb.WorkflowExecutionInfo) {
 		workflowType := exec.Type.Name
 		status := getStatusString(exec.Status)
 		startTime := exec.StartTime.AsTime().Format("2006-01-02 15:04:05")
-		
+
 		var executionTime string
 		if exec.CloseTime != nil {
 			duration := exec.CloseTime.AsTime().Sub(exec.StartTime.AsTime())

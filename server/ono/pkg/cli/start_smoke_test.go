@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 func TestStartCommandSmoke(t *testing.T) {
 	// This test checks if the start command can at least initialize
 	// without actually starting the server
-	
+
 	opts := DevServerOptions{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  27233, // Use very high port to avoid conflicts
 		UIPort:        28233,
 		Namespaces:    []string{"test"},
-		InMemory:      true,
+		DatabaseFile:  t.TempDir() + "/test.db",
 		LogLevel:      "error",
 		SQLitePragmas: map[string]string{},
 		EnableUI:      false,

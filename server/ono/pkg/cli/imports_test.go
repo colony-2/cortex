@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"testing"

@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"os"
@@ -11,10 +11,10 @@ import (
 
 func TestWorkflowRunCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		args           []string
-		expectedError  bool
-		errorContains  string
+		name          string
+		args          []string
+		expectedError bool
+		errorContains string
 	}{
 		{
 			name:          "missing file flag",
@@ -48,8 +48,8 @@ func TestWorkflowRunCommand(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:          "with all options",
-			args:          []string{
+			name: "with all options",
+			args: []string{
 				"run",
 				"--file", "workflow.yaml",
 				"--id", "my-workflow-123",
@@ -72,7 +72,7 @@ func TestWorkflowRunCommand(t *testing.T) {
 
 func TestWorkflowRunFlags(t *testing.T) {
 	cmd := workflowRunCmd
-	
+
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("file"))
 	require.NotNil(t, cmd.Flag("id"))
@@ -81,11 +81,11 @@ func TestWorkflowRunFlags(t *testing.T) {
 	require.NotNil(t, cmd.Flag("task-queue"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check required flags
 	fileFlag := cmd.Flag("file")
 	assert.NotNil(t, fileFlag)
-	
+
 	// Check defaults
 	assert.Equal(t, "", cmd.Flag("file").DefValue)
 	assert.Equal(t, "", cmd.Flag("id").DefValue)
@@ -96,7 +96,7 @@ func TestWorkflowRunFlags(t *testing.T) {
 func TestWorkflowFileValidation(t *testing.T) {
 	// Create temporary test files
 	tempDir := t.TempDir()
-	
+
 	validYAML := `
 name: test-workflow
 version: "1.0"
@@ -112,18 +112,18 @@ workflow:
       inputs:
         topic: "{{ .inputs.topic }}"
 `
-	
+
 	invalidYAML := `
 invalid: yaml: content
 `
-	
+
 	noWorkflowYAML := `
 name: test-project
 version: "1.0"
 activities:
   - name: activity1
 `
-	
+
 	tests := []struct {
 		name          string
 		content       string
@@ -154,7 +154,7 @@ activities:
 			errorContains: "failed to parse",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var filename string
@@ -166,7 +166,7 @@ activities:
 			} else {
 				filename = filepath.Join(tempDir, "nonexistent.yaml")
 			}
-			
+
 			// Test would call executeWorkflow with the test file
 			// and verify error behavior
 		})
@@ -193,7 +193,7 @@ func TestWorkflowIDGeneration(t *testing.T) {
 			expectCustom: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test ID generation logic
@@ -243,7 +243,7 @@ func TestInputParsing(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := make(map[string]interface{})

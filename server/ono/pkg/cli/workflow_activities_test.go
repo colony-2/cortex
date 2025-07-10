@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"testing"
@@ -9,10 +9,10 @@ import (
 
 func TestWorkflowActivitiesCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		args           []string
-		expectedError  bool
-		errorContains  string
+		name          string
+		args          []string
+		expectedError bool
+		errorContains string
 	}{
 		{
 			name:          "valid workflow ID",
@@ -58,14 +58,14 @@ func TestWorkflowActivitiesCommand(t *testing.T) {
 
 func TestWorkflowActivitiesFlags(t *testing.T) {
 	cmd := workflowActivitiesCmd
-	
+
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("run-id"))
 	require.NotNil(t, cmd.Flag("all"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check flag types and defaults
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "", cmd.Flag("run-id").DefValue)
@@ -77,7 +77,7 @@ func TestWorkflowActivitiesFlags(t *testing.T) {
 func TestActivityEventProcessing(t *testing.T) {
 	// Test that we correctly identify and process activity events
 	// In a real test, this would use mock history events
-	
+
 	testCases := []struct {
 		name         string
 		eventType    string
@@ -115,7 +115,7 @@ func TestActivityEventProcessing(t *testing.T) {
 			extractsInfo: false,
 		},
 	}
-	
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Test event type identification logic
@@ -126,10 +126,10 @@ func TestActivityEventProcessing(t *testing.T) {
 func TestActivityFiltering(t *testing.T) {
 	// Test the filtering logic for all activities vs completed only
 	activities := []struct {
-		id        string
-		status    string
-		showAll   bool
-		shouldShow    bool
+		id         string
+		status     string
+		showAll    bool
+		shouldShow bool
 	}{
 		{
 			id:         "activity1",
@@ -156,7 +156,7 @@ func TestActivityFiltering(t *testing.T) {
 			shouldShow: true, // Completed shows with or without --all
 		},
 	}
-	
+
 	for _, a := range activities {
 		t.Run(a.id, func(t *testing.T) {
 			// Test filtering logic

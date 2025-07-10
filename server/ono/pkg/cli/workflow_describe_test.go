@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"bytes"
@@ -103,17 +103,17 @@ func TestWorkflowDescribeCommand(t *testing.T) {
 
 func TestWorkflowDescribeFlags(t *testing.T) {
 	cmd := workflowDescribeCmd
-	
+
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("run-id"))
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check flag types and defaults
 	assert.Equal(t, "string", cmd.Flag("run-id").Value.Type())
 	assert.Equal(t, "", cmd.Flag("run-id").DefValue)
-	
+
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "127.0.0.1", cmd.Flag("host").DefValue)
 	assert.Equal(t, "7233", cmd.Flag("port").DefValue)
@@ -121,14 +121,14 @@ func TestWorkflowDescribeFlags(t *testing.T) {
 
 func TestWorkflowDescribeArgs(t *testing.T) {
 	cmd := workflowDescribeCmd
-	
+
 	// Test argument validation
 	err := cmd.Args(cmd, []string{})
 	assert.Error(t, err, "should require at least one argument")
-	
+
 	err = cmd.Args(cmd, []string{"workflow-id"})
 	assert.NoError(t, err, "should accept one argument")
-	
+
 	err = cmd.Args(cmd, []string{"workflow-id", "extra"})
 	assert.Error(t, err, "should reject extra arguments")
 }

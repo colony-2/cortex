@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -98,16 +98,16 @@ func runWorkflowActivities(cmd *cobra.Command, args []string) error {
 
 func extractActivities(ctx context.Context, c client.Client, workflowID, runID string) ([]ActivityInfo, error) {
 	iter := c.GetWorkflowHistory(ctx, workflowID, runID, false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
-	
+
 	activityMap := make(map[int64]*ActivityInfo)
 	var activities []ActivityInfo
-	
+
 	for iter.HasNext() {
 		event, err := iter.Next()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		switch event.EventType {
 		case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
 			attrs := event.GetActivityTaskScheduledEventAttributes()
@@ -120,7 +120,7 @@ func extractActivities(ctx context.Context, c client.Client, workflowID, runID s
 				Attempts:      0,
 			}
 			activityMap[event.EventId] = info
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:
 			attrs := event.GetActivityTaskStartedEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
@@ -129,21 +129,21 @@ func extractActivities(ctx context.Context, c client.Client, workflowID, runID s
 				info.Status = "Running"
 				info.Attempts = attrs.Attempt
 			}
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
 			attrs := event.GetActivityTaskCompletedEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
 				completedTime := event.EventTime.AsTime()
 				info.CompletedTime = &completedTime
 				info.Status = "Completed"
-				
+
 				if info.StartedTime != nil {
 					info.Duration = completedTime.Sub(*info.StartedTime)
 				} else {
 					info.Duration = completedTime.Sub(info.ScheduledTime)
 				}
 			}
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_FAILED:
 			attrs := event.GetActivityTaskFailedEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
@@ -155,21 +155,21 @@ func extractActivities(ctx context.Context, c client.Client, workflowID, runID s
 					}
 					failedTime := event.EventTime.AsTime()
 					failedInfo.CompletedTime = &failedTime
-					
+
 					if info.StartedTime != nil {
 						failedInfo.Duration = failedTime.Sub(*info.StartedTime)
 					}
-					
+
 					if attrs.RetryState == enums.RETRY_STATE_IN_PROGRESS {
 						failedInfo.RetryState = "Retrying"
 					} else if attrs.RetryState == enums.RETRY_STATE_NON_RETRYABLE_FAILURE {
 						failedInfo.RetryState = "Non-retryable"
 					}
-					
+
 					activities = append(activities, failedInfo)
 				}
 			}
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT:
 			attrs := event.GetActivityTaskTimedOutEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
@@ -177,18 +177,18 @@ func extractActivities(ctx context.Context, c client.Client, workflowID, runID s
 				info.FailureReason = "Activity timed out"
 				timeoutTime := event.EventTime.AsTime()
 				info.CompletedTime = &timeoutTime
-				
+
 				if info.StartedTime != nil {
 					info.Duration = timeoutTime.Sub(*info.StartedTime)
 				}
 			}
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_CANCEL_REQUESTED:
 			attrs := event.GetActivityTaskCancelRequestedEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
 				info.Status = "Cancel Requested"
 			}
-			
+
 		case enums.EVENT_TYPE_ACTIVITY_TASK_CANCELED:
 			attrs := event.GetActivityTaskCanceledEventAttributes()
 			if info, ok := activityMap[attrs.ScheduledEventId]; ok {
@@ -198,16 +198,16 @@ func extractActivities(ctx context.Context, c client.Client, workflowID, runID s
 			}
 		}
 	}
-	
+
 	// Add completed activities to the list
 	for _, info := range activityMap {
-		if info.Status == "Completed" || info.Status == "Running" || 
-		   info.Status == "Timed Out" || info.Status == "Canceled" ||
-		   (info.Status == "Failed" && !activitiesShowAll) {
+		if info.Status == "Completed" || info.Status == "Running" ||
+			info.Status == "Timed Out" || info.Status == "Canceled" ||
+			(info.Status == "Failed" && !activitiesShowAll) {
 			activities = append(activities, *info)
 		}
 	}
-	
+
 	return activities, nil
 }
 
@@ -217,32 +217,32 @@ func printActivities(activities []ActivityInfo) {
 
 	fmt.Println("=== Workflow Activities ===")
 	fmt.Printf("Total Activities: %d\n\n", len(activities))
-	
+
 	// Print header
 	fmt.Fprintln(w, "ACTIVITY\tID\tSTATUS\tATTEMPTS\tDURATION\tTIME")
 	fmt.Fprintln(w, strings.Repeat("-", 100))
-	
+
 	for _, activity := range activities {
 		// Format time
 		timeStr := activity.ScheduledTime.Format("15:04:05")
 		if activity.CompletedTime != nil {
-			timeStr = fmt.Sprintf("%s - %s", 
+			timeStr = fmt.Sprintf("%s - %s",
 				activity.ScheduledTime.Format("15:04:05"),
 				activity.CompletedTime.Format("15:04:05"))
 		}
-		
+
 		// Format duration
 		durationStr := "-"
 		if activity.Duration > 0 {
 			durationStr = formatDuration(activity.Duration)
 		}
-		
+
 		// Format status with color codes (would need color library for actual colors)
 		statusStr := activity.Status
 		if activity.Status == "Failed" && activity.RetryState != "" {
 			statusStr = fmt.Sprintf("%s (%s)", activity.Status, activity.RetryState)
 		}
-		
+
 		fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n",
 			activity.Name,
 			activity.ActivityID,
@@ -251,20 +251,20 @@ func printActivities(activities []ActivityInfo) {
 			durationStr,
 			timeStr,
 		)
-		
+
 		// Show failure reason if any
 		if activity.FailureReason != "" {
 			fmt.Fprintf(w, "  └─ Error: %s\n", activity.FailureReason)
 		}
 	}
-	
+
 	// Summary
 	fmt.Println("\n=== Summary ===")
 	completed := 0
 	failed := 0
 	running := 0
 	other := 0
-	
+
 	for _, activity := range activities {
 		switch activity.Status {
 		case "Completed":
@@ -277,7 +277,7 @@ func printActivities(activities []ActivityInfo) {
 			other++
 		}
 	}
-	
+
 	fmt.Printf("Completed: %d, Failed: %d, Running: %d", completed, failed, running)
 	if other > 0 {
 		fmt.Printf(", Other: %d", other)

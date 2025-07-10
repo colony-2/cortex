@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	describeRunID   string
-	describeFormat  string
+	describeRunID  string
+	describeFormat string
 )
 
 var workflowDescribeCmd = &cobra.Command{
@@ -84,14 +84,14 @@ func runWorkflowDescribe(cmd *cobra.Command, args []string) error {
 
 func printDescribeText(resp *workflowservice.DescribeWorkflowExecutionResponse) error {
 	exec := resp.WorkflowExecutionInfo
-	
+
 	fmt.Println("=== Workflow Execution ===")
 	fmt.Printf("Workflow ID: %s\n", exec.Execution.WorkflowId)
 	fmt.Printf("Run ID: %s\n", exec.Execution.RunId)
 	fmt.Printf("Type: %s\n", exec.Type.Name)
 	fmt.Printf("Task Queue: %s\n", exec.TaskQueue)
 	fmt.Printf("Status: %s\n", getStatusString(exec.Status))
-	
+
 	fmt.Println("\n=== Timing ===")
 	fmt.Printf("Start Time: %s\n", exec.StartTime.AsTime().Format(time.RFC3339))
 	if exec.CloseTime != nil {
@@ -102,7 +102,7 @@ func printDescribeText(resp *workflowservice.DescribeWorkflowExecutionResponse) 
 		duration := time.Since(exec.StartTime.AsTime())
 		fmt.Printf("Duration: %s (running)\n", duration.String())
 	}
-	
+
 	if exec.ExecutionTime != nil {
 		fmt.Printf("Execution Time: %s\n", exec.ExecutionTime.AsTime().Format(time.RFC3339))
 	}
@@ -110,7 +110,7 @@ func printDescribeText(resp *workflowservice.DescribeWorkflowExecutionResponse) 
 	fmt.Println("\n=== Execution Details ===")
 	fmt.Printf("History Length: %d\n", exec.HistoryLength)
 	fmt.Printf("State Transition Count: %d\n", exec.StateTransitionCount)
-	
+
 	if exec.Memo != nil && len(exec.Memo.Fields) > 0 {
 		fmt.Println("\n=== Memo ===")
 		for key, value := range exec.Memo.Fields {

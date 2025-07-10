@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package ono
+package cli
 
 import (
 	"context"
@@ -25,7 +25,6 @@ func TestDevServerStartStop(t *testing.T) {
 		UIPort:        18233,
 		Namespaces:    []string{"default"},
 		DatabaseFile:  dbPath,
-		InMemory:      false,
 		LogLevel:      "warn",
 		SQLitePragmas: map[string]string{},
 		EnableUI:      false,
@@ -64,13 +63,17 @@ func TestDevServerStartStop(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestDevServerInMemory(t *testing.T) {
+func TestDevServerWithCustomNamespace(t *testing.T) {
+	// Create a temporary database file
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test-custom.db")
+
 	opts := DevServerOptions{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17234, // Different port
 		UIPort:        18234,
 		Namespaces:    []string{"test-namespace"},
-		InMemory:      true,
+		DatabaseFile:  dbPath,
 		LogLevel:      "error",
 		SQLitePragmas: map[string]string{},
 		EnableUI:      false,
@@ -92,13 +95,17 @@ func TestDevServerInMemory(t *testing.T) {
 	select {
 	case err := <-startErr:
 		if err != nil {
-			t.Fatalf("Failed to start in-memory server: %v", err)
+			t.Fatalf("Failed to start server with custom namespace: %v", err)
 		}
 	case <-ctx.Done():
 		t.Fatal("Timeout waiting for server to start")
 	case <-time.After(3 * time.Second):
 		// Likely started successfully
 	}
+
+	// Check that database file was created
+	_, err = os.Stat(dbPath)
+	assert.NoError(t, err, "Database file should exist")
 
 	// Stop the server
 	err = devServer.Stop()
@@ -139,11 +146,11 @@ func TestDevServerConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid config in-memory",
+			name: "valid config with required database file",
 			opts: DevServerOptions{
 				FrontendIP:   "127.0.0.1",
 				FrontendPort: 7233,
-				InMemory:     true,
+				DatabaseFile: "./required.db",
 			},
 			wantErr: false,
 		},
@@ -153,7 +160,7 @@ func TestDevServerConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			devServer := &DevServer{options: tt.opts}
 			cfg, err := devServer.buildConfig()
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

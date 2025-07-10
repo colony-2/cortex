@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"testing"
@@ -11,10 +11,10 @@ import (
 
 func TestWorkflowHistoryCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		args           []string
-		expectedError  bool
-		errorContains  string
+		name          string
+		args          []string
+		expectedError bool
+		errorContains string
 	}{
 		{
 			name:          "valid workflow ID",
@@ -165,7 +165,7 @@ func TestGetEventTypeName(t *testing.T) {
 
 func TestWorkflowHistoryFlags(t *testing.T) {
 	cmd := workflowHistoryCmd
-	
+
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("run-id"))
@@ -175,7 +175,7 @@ func TestWorkflowHistoryFlags(t *testing.T) {
 	require.NotNil(t, cmd.Flag("limit"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check defaults
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "", cmd.Flag("run-id").DefValue)

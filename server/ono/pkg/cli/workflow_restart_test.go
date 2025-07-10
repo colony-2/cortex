@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"testing"
@@ -11,10 +11,10 @@ import (
 
 func TestWorkflowRestartCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		args           []string
-		expectedError  bool
-		errorContains  string
+		name          string
+		args          []string
+		expectedError bool
+		errorContains string
 	}{
 		{
 			name:          "valid workflow ID",
@@ -42,8 +42,8 @@ func TestWorkflowRestartCommand(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:          "with all options",
-			args:          []string{
+			name: "with all options",
+			args: []string{
 				"restart", "my-workflow-123",
 				"--run-id", "run-123",
 				"--from-step", "process-data",
@@ -70,7 +70,7 @@ func TestWorkflowRestartCommand(t *testing.T) {
 
 func TestWorkflowRestartFlags(t *testing.T) {
 	cmd := workflowRestartCmd
-	
+
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("run-id"))
@@ -79,7 +79,7 @@ func TestWorkflowRestartFlags(t *testing.T) {
 	require.NotNil(t, cmd.Flag("input"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
-	
+
 	// Check defaults
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "", cmd.Flag("run-id").DefValue)
@@ -206,10 +206,10 @@ func TestWorkflowStateExtraction(t *testing.T) {
 
 func TestMergeInputs(t *testing.T) {
 	tests := []struct {
-		name           string
-		original       map[string]interface{}
-		additional     map[string]string
-		expected       map[string]interface{}
+		name       string
+		original   map[string]interface{}
+		additional map[string]string
+		expected   map[string]interface{}
 	}{
 		{
 			name: "merge with no conflicts",

@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"github.com/spf13/cobra"
@@ -28,6 +28,7 @@ func addServerFlags(cmd *cobra.Command) {
 
 func init() {
 	// Add workflow execution commands
+	WorkflowCmd.AddCommand(workflowCreateCmd)
 	WorkflowCmd.AddCommand(workflowRunCmd)
 	WorkflowCmd.AddCommand(workflowTestConnectionCmd)
 	WorkflowCmd.AddCommand(workflowListCmd)
@@ -35,20 +36,26 @@ func init() {
 	WorkflowCmd.AddCommand(workflowHistoryCmd)
 	WorkflowCmd.AddCommand(workflowRestartCmd)
 	WorkflowCmd.AddCommand(workflowActivitiesCmd)
-	
+
+	// Set flags for the create command
+	workflowCreateCmd.Flags().StringVar(&createProjectPath, "project", "", "Path to project directory")
+	workflowCreateCmd.Flags().StringVar(&createFilePath, "file", "", "Path to single workflow file")
+	workflowCreateCmd.MarkFlagsMutuallyExclusive("project", "file")
+
 	// Set flags for the run command
-	workflowRunCmd.Flags().StringVarP(&workflowFile, "file", "f", "", "Path to workflow YAML file (required)")
+	workflowRunCmd.Flags().StringVarP(&workflowFile, "file", "f", "", "Path to workflow YAML file")
+	workflowRunCmd.Flags().StringVar(&projectPath, "project", "", "Path to project directory")
 	workflowRunCmd.Flags().StringVarP(&workflowID, "id", "i", "", "Workflow ID (optional, auto-generated if not provided)")
 	workflowRunCmd.Flags().StringVarP(&runNamespace, "namespace", "n", "default", "Temporal namespace")
 	workflowRunCmd.Flags().StringToStringVarP(&workflowInputs, "input", "", map[string]string{}, "Workflow inputs as key=value pairs")
 	workflowRunCmd.Flags().StringVar(&taskQueue, "task-queue", "ono-task-queue", "Task queue name")
 	addServerFlags(workflowRunCmd)
-	workflowRunCmd.MarkFlagRequired("file")
-	
+	workflowRunCmd.MarkFlagsMutuallyExclusive("file", "project")
+
 	// Set flags for test-connection command
 	workflowTestConnectionCmd.Flags().StringVarP(&testConnectionNamespace, "namespace", "n", "", "Temporal namespace (optional)")
 	addServerFlags(workflowTestConnectionCmd)
-	
+
 	// Set flags for list command
 	addServerFlags(workflowListCmd)
 }

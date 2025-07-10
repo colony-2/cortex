@@ -14,7 +14,11 @@
       "Bash(mkdir:*)",
       "Bash(./ono workflow validate --project ./example/research_project/)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(./bin/ono workflow create:*)",
+      "Bash(go build:*)",
+      "Bash(go run:*)",
+      "Bash(./build/ono:*)"
     ],
     "deny": [
       "Write(Makefile)",

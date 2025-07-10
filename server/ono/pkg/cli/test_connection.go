@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -22,10 +22,10 @@ func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
 	// Build connection string
 	connectionString := fmt.Sprintf("%s:%d", serverHost, serverPort)
 	fmt.Printf("Testing connection to Temporal server at %s...\n", connectionString)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Try different connection options
 	configs := []struct {
 		name    string
@@ -45,7 +45,7 @@ func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
 			},
 		},
 	}
-	
+
 	for _, cfg := range configs {
 		fmt.Printf("\nTrying %s configuration...\n", cfg.name)
 		c, err := client.DialContext(ctx, cfg.options)
@@ -53,7 +53,7 @@ func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  ❌ Failed: %v\n", err)
 			continue
 		}
-		
+
 		// Try to check system info
 		_, err = c.WorkflowService().GetSystemInfo(ctx, &workflowservice.GetSystemInfoRequest{})
 		if err != nil {
@@ -61,11 +61,11 @@ func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
 			c.Close()
 			continue
 		}
-		
+
 		fmt.Printf("  ✅ Success! Connected with %s configuration\n", cfg.name)
 		c.Close()
 		return nil
 	}
-	
+
 	return fmt.Errorf("failed to connect with any configuration")
 }

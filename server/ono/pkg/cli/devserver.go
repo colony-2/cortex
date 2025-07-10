@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/client"
 	"go.temporal.io/server/common/cluster"
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/log"
@@ -16,19 +18,19 @@ import (
 	"go.temporal.io/server/common/metrics"
 	"go.temporal.io/server/schema/sqlite"
 	"go.temporal.io/server/temporal"
-	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 type DevServerOptions struct {
-	FrontendIP             string
-	FrontendPort           int
-	UIPort                 int
-	Namespaces             []string
-	DatabaseFile           string
-	LogLevel               string
-	SQLitePragmas          map[string]string
-	EnableUI               bool
+	FrontendIP    string
+	FrontendPort  int
+	UIPort        int
+	Namespaces    []string
+	DatabaseFile  string
+	LogLevel      string
+	SQLitePragmas map[string]string
+	EnableUI      bool
 }
 
 type DevServer struct {
@@ -49,7 +51,7 @@ func (ds *DevServer) Start() error {
 	// Create logger based on log level
 	var zapLogger *zap.Logger
 	var err error
-	
+
 	switch ds.options.LogLevel {
 	case "debug":
 		zapLogger, err = zap.NewDevelopment()
@@ -62,7 +64,7 @@ func (ds *DevServer) Start() error {
 		config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 		zapLogger, err = config.Build()
 	}
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to create logger: %w", err)
 	}
@@ -103,12 +105,17 @@ func (ds *DevServer) Start() error {
 	// Wait for server to be ready by checking if we can connect
 	// This ensures all services are registered and ready
 	ds.logger.Info("Waiting for server to be ready...")
-	
+
 	if err := ds.waitForServerReady(); err != nil {
 		return fmt.Errorf("server failed to become ready: %w", err)
 	}
-	
-	ds.logger.Info("Server initialization complete", 
+
+	// Create default namespaces after server is ready
+	if err := ds.createDefaultNamespaces(); err != nil {
+		return fmt.Errorf("failed to create default namespaces: %w", err)
+	}
+
+	ds.logger.Info("Server initialization complete",
 		tag.NewStringTag("rpc", fmt.Sprintf("%s:%d", ds.options.FrontendIP, ds.options.FrontendPort)))
 
 	return nil
@@ -132,7 +139,7 @@ func (ds *DevServer) waitForServerReady() error {
 	backoff := 100 * time.Millisecond
 	maxBackoff := 2 * time.Second
 	timeout := time.After(60 * time.Second)
-	
+
 	for {
 		select {
 		case <-timeout:
@@ -142,7 +149,7 @@ func (ds *DevServer) waitForServerReady() error {
 			if err := ds.checkServerHealth(); err == nil {
 				return nil
 			}
-			
+
 			// Exponential backoff
 			time.Sleep(backoff)
 			if backoff < maxBackoff {
@@ -165,12 +172,12 @@ func (ds *DevServer) checkServerHealth() error {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer c.Close()
-	
+
 	// Try to list namespaces as a health check
 	// This verifies that all services are up and communicating
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Use the WorkflowService to check system namespace
 	resp, err := c.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
 		Namespace: "temporal-system",
@@ -178,11 +185,11 @@ func (ds *DevServer) checkServerHealth() error {
 	if err != nil {
 		return fmt.Errorf("failed to describe system namespace: %w", err)
 	}
-	
+
 	if resp.NamespaceInfo == nil {
 		return fmt.Errorf("system namespace not found")
 	}
-	
+
 	return nil
 }
 
@@ -192,7 +199,7 @@ func (ds *DevServer) initializeDatabase() error {
 	if dbPath == "" {
 		return fmt.Errorf("database file path is required")
 	}
-	
+
 	if !filepath.IsAbs(dbPath) {
 		absPath, err := filepath.Abs(dbPath)
 		if err != nil {
@@ -212,7 +219,7 @@ func (ds *DevServer) initializeDatabase() error {
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		// Database doesn't exist, need to initialize schema
 		ds.logger.Info("Database file doesn't exist, initializing schema", tag.NewStringTag("path", dbPath))
-		
+
 		// Create SQL config for schema initialization
 		sqlConfig := &config.SQL{
 			PluginName:        "sqlite",
@@ -246,7 +253,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 	if dbPath == "" {
 		return nil, fmt.Errorf("database file path is required")
 	}
-	
+
 	if !filepath.IsAbs(dbPath) {
 		absPath, err := filepath.Abs(dbPath)
 		if err != nil {
@@ -273,7 +280,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 	// Create separate configs for each store (they need to be separate instances)
 	defaultSQLConfig := sqliteConfig
 	visibilitySQLConfig := sqliteConfig
-	
+
 	cfg.Persistence = config.Persistence{
 		DefaultStore:     "default",
 		VisibilityStore:  "visibility",
@@ -310,7 +317,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 			},
 		},
 	}
-	
+
 	// Set up services configuration
 	cfg.Services = map[string]config.Service{
 		"frontend": {
@@ -369,7 +376,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 			State: "disabled",
 		},
 	}
-	
+
 	// Create default namespace after server starts
 	cfg.ClusterMetadata.EnableGlobalNamespace = false
 
@@ -378,21 +385,21 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 
 func (ds *DevServer) buildSQLiteAttributes() map[string]string {
 	attrs := make(map[string]string)
-	
+
 	// Set mode for SQLite
 	attrs["mode"] = "rwc"
-	
+
 	// Default pragmas for performance - using the format Temporal expects
 	attrs["_journal_mode"] = "WAL"
-	attrs["_synchronous"] = "NORMAL" 
+	attrs["_synchronous"] = "NORMAL"
 	attrs["_busy_timeout"] = "10000"
 	attrs["_foreign_keys"] = "ON"
-	
+
 	// Add custom pragmas
 	for key, value := range ds.options.SQLitePragmas {
 		attrs[fmt.Sprintf("_%s", key)] = value
 	}
-	
+
 	return attrs
 }
 
@@ -414,4 +421,49 @@ func findFreePort() int {
 	}
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
+}
+
+func (ds *DevServer) createDefaultNamespaces() error {
+	// Create a namespace client
+	c, err := client.NewNamespaceClient(client.Options{
+		HostPort: fmt.Sprintf("%s:%d", ds.options.FrontendIP, ds.options.FrontendPort),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create namespace client: %w", err)
+	}
+	defer c.Close()
+
+	// Create each namespace specified in options
+	for _, namespace := range ds.options.Namespaces {
+		if namespace == "" {
+			continue
+		}
+
+		ds.logger.Info("Creating namespace", tag.NewStringTag("namespace", namespace))
+
+		// Set retention period to 1 day for dev server
+		retention := durationpb.New(24 * time.Hour)
+
+		err := c.Register(context.Background(), &workflowservice.RegisterNamespaceRequest{
+			Namespace:                        namespace,
+			WorkflowExecutionRetentionPeriod: retention,
+			Description:                      "Created by ono dev server",
+		})
+		
+		if err != nil {
+			// Check if namespace already exists - that's OK
+			if _, ok := err.(*serviceerror.NamespaceAlreadyExists); ok {
+				ds.logger.Info("Namespace already exists", tag.NewStringTag("namespace", namespace))
+				continue
+			}
+			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
+		}
+
+		ds.logger.Info("Successfully created namespace", tag.NewStringTag("namespace", namespace))
+	}
+
+	// Wait a bit for namespace registration to propagate
+	time.Sleep(2 * time.Second)
+
+	return nil
 }

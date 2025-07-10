@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 )
 
 var (
-	restartNamespace    string
-	restartRunID        string
-	restartFromStep     string
-	restartFromEventID  int64
-	restartInputs       map[string]string
+	restartNamespace     string
+	restartRunID         string
+	restartFromStep      string
+	restartFromEventID   int64
+	restartInputs        map[string]string
 	restartPreserveState bool
-	restartNewID        string
+	restartNewID         string
 )
 
 var workflowRestartCmd = &cobra.Command{
@@ -59,12 +59,12 @@ func init() {
 }
 
 type WorkflowState struct {
-	OriginalInputs   map[string]interface{}
-	CompletedSteps   map[string]StepResult
-	RestartPoint     string
-	RestartEventID   int64
-	WorkflowType     string
-	TaskQueue        string
+	OriginalInputs map[string]interface{}
+	CompletedSteps map[string]StepResult
+	RestartPoint   string
+	RestartEventID int64
+	WorkflowType   string
+	TaskQueue      string
 }
 
 type StepResult struct {
@@ -102,24 +102,24 @@ func runWorkflowRestart(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Workflow Type: %s\n", state.WorkflowType)
 	fmt.Printf("Restart Point: %s (Event ID: %d)\n", state.RestartPoint, state.RestartEventID)
 	fmt.Printf("\nCompleted Steps (%d):\n", len(state.CompletedSteps))
-	
+
 	for stepName, result := range state.CompletedSteps {
 		fmt.Printf("  ✓ %s (Event %d)\n", stepName, result.EventID)
 	}
 
 	// Prepare inputs for restart
 	restartInputMap := make(map[string]interface{})
-	
+
 	// Start with original inputs
 	for k, v := range state.OriginalInputs {
 		restartInputMap[k] = v
 	}
-	
+
 	// Add preserved state from completed steps
 	if restartPreserveState {
 		restartInputMap["__preserved_state__"] = state.CompletedSteps
 	}
-	
+
 	// Override with any new inputs
 	for k, v := range restartInputs {
 		restartInputMap[k] = v
@@ -163,30 +163,30 @@ func runWorkflowRestart(cmd *cobra.Command, args []string) error {
 	// The restart workflow needs special handling to skip completed steps
 	// Pass the preserved state as part of the inputs
 	restartInputMap["__restart_state"] = state
-	
+
 	fmt.Printf("\n=== Restart Workflow ===\n")
 	fmt.Printf("Starting new workflow: %s\n", newWorkflowID)
 	fmt.Printf("Type: %s\n", state.WorkflowType)
 	fmt.Printf("Task Queue: %s\n", state.TaskQueue)
 	fmt.Printf("Restart Point: %s\n", state.RestartPoint)
-	
+
 	// Execute the restarted workflow
 	we, err := c.ExecuteWorkflow(ctx, workflowOptions, state.WorkflowType, restartInputMap)
 	if err != nil {
 		return fmt.Errorf("failed to start restart workflow: %w", err)
 	}
-	
+
 	fmt.Printf("\nRestart workflow started successfully!\n")
 	fmt.Printf("New Workflow ID: %s\n", we.GetID())
 	fmt.Printf("New Run ID: %s\n", we.GetRunID())
-	
+
 	fmt.Printf("\nRestart workflow would be started with the following configuration:\n")
 	fmt.Printf("- Skip activities before event %d\n", state.RestartEventID)
 	fmt.Printf("- Use preserved outputs for completed steps\n")
 	fmt.Printf("- Apply new inputs at restart point\n")
-	
+
 	fmt.Println("\nNote: Full restart functionality requires workflow implementation that supports restart semantics.")
-	
+
 	return nil
 }
 
@@ -198,52 +198,52 @@ func analyzeWorkflowHistory(ctx context.Context, c client.Client, workflowID, ru
 
 	// Get workflow history
 	iter := c.GetWorkflowHistory(ctx, workflowID, runID, false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
-	
+
 	var foundRestartPoint bool
-	
+
 	for iter.HasNext() {
 		event, err := iter.Next()
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Extract workflow start info
 		if event.EventType == enums.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED {
 			attrs := event.GetWorkflowExecutionStartedEventAttributes()
 			state.WorkflowType = attrs.WorkflowType.Name
 			state.TaskQueue = attrs.TaskQueue.Name
-			
+
 			// Extract original inputs (would need proper payload decoding)
 			if attrs.Input != nil {
 				// In real implementation, decode payloads
 				state.OriginalInputs["__original__"] = "encoded_inputs"
 			}
 		}
-		
+
 		// Track completed activities
 		if event.EventType == enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED {
 			attrs := event.GetActivityTaskCompletedEventAttributes()
-			
+
 			// Get activity name from scheduled event
 			scheduledEvent := findEventByID(iter, attrs.ScheduledEventId)
 			if scheduledEvent != nil {
 				scheduledAttrs := scheduledEvent.GetActivityTaskScheduledEventAttributes()
 				activityName := scheduledAttrs.ActivityType.Name
-				
+
 				result := StepResult{
 					ActivityName: activityName,
 					EventID:      event.EventId,
 				}
-				
+
 				// In real implementation, decode result payloads
 				if attrs.Result != nil {
 					result.Output = map[string]interface{}{
 						"__result__": "encoded_output",
 					}
 				}
-				
+
 				state.CompletedSteps[activityName] = result
-				
+
 				// Check if this is our restart point
 				if fromStep != "" && activityName == fromStep {
 					state.RestartPoint = activityName
@@ -253,7 +253,7 @@ func analyzeWorkflowHistory(ctx context.Context, c client.Client, workflowID, ru
 				}
 			}
 		}
-		
+
 		// Check event ID restart point
 		if fromEventID > 0 && event.EventId >= fromEventID {
 			state.RestartEventID = event.EventId
@@ -262,14 +262,14 @@ func analyzeWorkflowHistory(ctx context.Context, c client.Client, workflowID, ru
 			break
 		}
 	}
-	
+
 	if !foundRestartPoint {
 		if fromStep != "" {
 			return nil, fmt.Errorf("activity '%s' not found in workflow history", fromStep)
 		}
 		return nil, fmt.Errorf("event ID %d not found in workflow history", fromEventID)
 	}
-	
+
 	return state, nil
 }
 

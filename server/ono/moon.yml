@@ -1,12 +1,27 @@
 $schema: "https://moonrepo.dev/schemas/project.json"
 
+workspace:
+  inheritedTasks:
+    exclude:
+      - build
+
 tasks:
+  build:
+    command: go build -o build/ono ./cmd/ono
+    inputs:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    platform: 'system'
+    outputs:
+      - build/ono
+
   start:
-    command: go run . start
+    command: go run cmd/ono start
     description: Start the Ono server with default persistence (./ono.db)
 
   install:
-    command: go install ./...
+    command: go install cmd/ono
     description: Install Ono server and CLI tools
 
   integration:

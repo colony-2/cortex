@@ -1,4 +1,4 @@
-package ono
+package cli
 
 import (
 	"database/sql"
@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
 
 func TestSQLiteConnectionString(t *testing.T) {
@@ -44,7 +44,7 @@ func TestSQLiteConnectionString(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test building connection string
 			connStr := buildSQLiteConnectionString(tt.dbPath, tt.attrs)
-			
+
 			if tt.dbPath == ":memory:" {
 				assert.Equal(t, tt.expected, connStr)
 			} else {
@@ -65,15 +65,15 @@ func TestSQLiteConnection(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	attrs := map[string]string{
-		"mode":           "rwc",
-		"_journal_mode":  "WAL",
-		"_synchronous":   "NORMAL",
-		"_busy_timeout":  "10000",
-		"_foreign_keys":  "ON",
+		"mode":          "rwc",
+		"_journal_mode": "WAL",
+		"_synchronous":  "NORMAL",
+		"_busy_timeout": "10000",
+		"_foreign_keys": "ON",
 	}
 
 	connStr := buildSQLiteConnectionString(dbPath, attrs)
-	
+
 	// Try to open the database
 	db, err := sql.Open("sqlite", connStr)
 	require.NoError(t, err)
@@ -93,22 +93,22 @@ func TestBuildSQLiteAttributesFormat(t *testing.T) {
 		options: DevServerOptions{
 			SQLitePragmas: map[string]string{
 				"cache_size": "-2000",
-				"page_size": "4096",
+				"page_size":  "4096",
 			},
 		},
 	}
 
 	attrs := devServer.buildSQLiteAttributes()
-	
+
 	// Check mode
 	assert.Equal(t, "rwc", attrs["mode"])
-	
+
 	// Check default pragmas
 	assert.Equal(t, "WAL", attrs["_journal_mode"])
 	assert.Equal(t, "NORMAL", attrs["_synchronous"])
 	assert.Equal(t, "10000", attrs["_busy_timeout"])
 	assert.Equal(t, "ON", attrs["_foreign_keys"])
-	
+
 	// Check custom pragmas
 	assert.Equal(t, "-2000", attrs["_cache_size"])
 	assert.Equal(t, "4096", attrs["_page_size"])
@@ -121,7 +121,6 @@ func TestDevServerSQLiteInitialization(t *testing.T) {
 
 		opts := DevServerOptions{
 			DatabaseFile: dbPath,
-			InMemory:     false,
 		}
 
 		devServer := &DevServer{options: opts}
@@ -147,28 +146,6 @@ func TestDevServerSQLiteInitialization(t *testing.T) {
 		assert.Equal(t, "sqlite", visStore.SQL.PluginName)
 	})
 
-	t.Run("in-memory database initialization", func(t *testing.T) {
-		opts := DevServerOptions{
-			InMemory: true,
-		}
-
-		devServer := &DevServer{options: opts}
-		cfg, err := devServer.buildConfig()
-		require.NoError(t, err)
-
-		// Check both stores use a random numeric database name for in-memory mode
-		defaultStore := cfg.Persistence.DataStores["default"]
-		assert.NotEmpty(t, defaultStore.SQL.DatabaseName)
-		assert.Regexp(t, `^\d+$`, defaultStore.SQL.DatabaseName)
-		assert.Equal(t, "memory", defaultStore.SQL.ConnectAttributes["mode"])
-		assert.Equal(t, "shared", defaultStore.SQL.ConnectAttributes["cache"])
-
-		visStore := cfg.Persistence.DataStores["visibility"]
-		assert.NotEmpty(t, visStore.SQL.DatabaseName)
-		assert.Equal(t, defaultStore.SQL.DatabaseName, visStore.SQL.DatabaseName)
-		assert.Equal(t, "memory", visStore.SQL.ConnectAttributes["mode"])
-		assert.Equal(t, "shared", visStore.SQL.ConnectAttributes["cache"])
-	})
 }
 
 func TestDevServerDirectoryCreation(t *testing.T) {
@@ -177,7 +154,6 @@ func TestDevServerDirectoryCreation(t *testing.T) {
 
 	opts := DevServerOptions{
 		DatabaseFile: nestedPath,
-		InMemory:     false,
 	}
 
 	devServer := &DevServer{options: opts}
