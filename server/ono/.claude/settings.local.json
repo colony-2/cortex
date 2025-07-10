@@ -12,7 +12,8 @@
       "WebFetch(domain:pkg.go.dev)",
       "Bash(mkdir:*)",
       "Bash(./ono workflow validate --project ./example/research_project/)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(rm:*)"
     ],
     "deny": [
       "Bash(go:*)",

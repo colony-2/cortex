@@ -6,23 +6,22 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.temporal.io/api/workflowservice/v1"
+	workflowservice "go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )
 
-var testConnectionCmd = &cobra.Command{
+var namespace string
+
+var workflowTestConnectionCmd = &cobra.Command{
 	Use:   "test-connection",
 	Short: "Test connection to Temporal server",
-	RunE:  runTestConnection,
+	RunE:  runWorkflowTestConnection,
 }
 
-func init() {
-	WorkflowCmd.AddCommand(testConnectionCmd)
-}
-
-func runTestConnection(cmd *cobra.Command, args []string) error {
-	// Try to connect to Temporal
-	fmt.Println("Testing connection to Temporal server at 127.0.0.1:7233...")
+func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
+	// Build connection string
+	connectionString := fmt.Sprintf("%s:%d", serverHost, serverPort)
+	fmt.Printf("Testing connection to Temporal server at %s...\n", connectionString)
 	
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -35,20 +34,14 @@ func runTestConnection(cmd *cobra.Command, args []string) error {
 		{
 			name: "Default",
 			options: client.Options{
-				HostPort: "127.0.0.1:7233",
+				HostPort: connectionString,
 			},
 		},
 		{
 			name: "With namespace",
 			options: client.Options{
-				HostPort:  "127.0.0.1:7233",
-				Namespace: "default",
-			},
-		},
-		{
-			name: "Localhost",
-			options: client.Options{
-				HostPort: "localhost:7233",
+				HostPort:  connectionString,
+				Namespace: namespace,
 			},
 		},
 	}
