@@ -12,6 +12,7 @@ import (
 	"vibethis/core/pkg/core"
 	"vibethis/files/pkg/files"
 	"vibethis/git/pkg/git"
+	"vibethis/openapi/pkg/openapi"
 )
 
 // Handlers contains all HTTP handlers
@@ -84,26 +85,42 @@ func (h *Handlers) GetPositions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert core.Position to openapi.Position
+	apiPositions := make([]openapi.Position, len(positions))
+	for i, pos := range positions {
+		apiPositions[i] = openapi.Position{
+			NodeId: pos.NodeID,
+			X:      pos.X,
+			Y:      pos.Y,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(positions)
+	json.NewEncoder(w).Encode(apiPositions)
 }
 
 // SavePositions handles POST /api/positions
 func (h *Handlers) SavePositions(w http.ResponseWriter, r *http.Request) {
-	var positions []core.Position
+	var apiPositions []openapi.Position
 	
 	if r.Body == nil {
 		http.Error(w, "Request body is required", http.StatusBadRequest)
 		return
 	}
 	
-	if err := json.NewDecoder(r.Body).Decode(&positions); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&apiPositions); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	for _, pos := range positions {
-		if err := h.storage.SavePosition(r.Context(), pos); err != nil {
+	// Convert openapi.Position to core.Position
+	for _, apiPos := range apiPositions {
+		corePos := core.Position{
+			NodeID: apiPos.NodeId,
+			X:      apiPos.X,
+			Y:      apiPos.Y,
+		}
+		if err := h.storage.SavePosition(r.Context(), corePos); err != nil {
 			http.Error(w, "Failed to save positions", http.StatusInternalServerError)
 			return
 		}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	
+	"vibethis/openapi/pkg/openapi"
 )
 
 // GetGraph handles GET /api/graph
@@ -15,6 +17,32 @@ func (h *Handlers) GetGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert core.Graph to openapi.Graph
+	apiNodes := make([]openapi.Node, len(graph.Nodes))
+	for i, node := range graph.Nodes {
+		apiNodes[i] = openapi.Node{
+			Id:           node.ID,
+			Name:         node.Name,
+			Path:         node.Path,
+			Type:         node.Type,
+			Dependencies: node.Dependencies,
+		}
+	}
+
+	apiEdges := make([]openapi.Edge, len(graph.Edges))
+	for i, edge := range graph.Edges {
+		apiEdges[i] = openapi.Edge{
+			Id:     edge.ID,
+			Source: edge.Source,
+			Target: edge.Target,
+		}
+	}
+
+	apiGraph := openapi.Graph{
+		Nodes: apiNodes,
+		Edges: apiEdges,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(graph)
+	json.NewEncoder(w).Encode(apiGraph)
 }

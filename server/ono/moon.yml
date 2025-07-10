@@ -1,0 +1,15 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+tasks:
+  start:
+    command: go run . start
+    description: Start the Ono server with default persistence (./ono.db)
+
+  start-memory:
+    command: go run . start --in-memory
+    description: Start Ono with in-memory database (no persistence)
+    
+  start-custom:
+    command: go run . start --db-filename custom.db
+    description: Start Ono with custom database file
+    

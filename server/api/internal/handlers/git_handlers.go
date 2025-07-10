@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"vibethis/openapi/pkg/openapi"
 )
 
 // GetGitStatus handles GET /api/nodes/{nodeId}/git/status
@@ -26,8 +27,26 @@ func (h *Handlers) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert git.Status to openapi.GitStatus
+	apiFiles := make([]openapi.GitStatusFile, len(status.Files))
+	for i, file := range status.Files {
+		apiFiles[i] = openapi.GitStatusFile{
+			Path:   file.Path,
+			Status: openapi.GitStatusFileStatus(file.Status),
+		}
+	}
+
+	apiStatus := openapi.GitStatus{
+		Branch:    status.Branch,
+		Clean:     status.Clean,
+		Files:     apiFiles,
+		Ahead:     status.Ahead,
+		Behind:    status.Behind,
+		HasRemote: status.HasRemote,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	json.NewEncoder(w).Encode(apiStatus)
 }
 
 // GetGitDiff handles GET /api/nodes/{nodeId}/git/diff
@@ -78,8 +97,20 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert git.Commit to openapi.GitCommit
+	apiCommits := make([]openapi.GitCommit, len(history))
+	for i, commit := range history {
+		apiCommits[i] = openapi.GitCommit{
+			Hash:      commit.Hash,
+			Author:    commit.Author,
+			Date:      commit.Date,
+			Message:   commit.Message,
+			ShortHash: commit.ShortHash,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(history)
+	json.NewEncoder(w).Encode(apiCommits)
 }
 
 // CreateGitCommit handles POST /api/nodes/{nodeId}/git/commit
@@ -94,10 +125,7 @@ func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body struct {
-		Message string   `json:"message"`
-		Files   []string `json:"files,omitempty"`
-	}
+	var body openapi.CreateGitCommitJSONBody
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -110,8 +138,8 @@ func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stage files if specified
-	if len(body.Files) > 0 {
-		if err := h.git.StageFiles(r.Context(), node.Path, body.Files); err != nil {
+	if body.Files != nil && len(*body.Files) > 0 {
+		if err := h.git.StageFiles(r.Context(), node.Path, *body.Files); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"vibethis/openapi/pkg/openapi"
 )
 
 // GetFiles handles GET /api/nodes/{nodeId}/files
@@ -26,12 +27,24 @@ func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert files.FileInfo to openapi.FileInfo
+	apiFiles := make([]openapi.FileInfo, len(files))
+	for i, file := range files {
+		apiFiles[i] = openapi.FileInfo{
+			Name:  file.Name,
+			Path:  file.Path,
+			IsDir: file.IsDir,
+			Size:  file.Size,
+			Type:  file.Type,
+		}
+	}
+
 	// Return in the format expected by the frontend
 	response := struct {
-		Files interface{} `json:"files"`
-		Path  string      `json:"path"`
+		Files []openapi.FileInfo `json:"files"`
+		Path  string             `json:"path"`
 	}{
-		Files: files,
+		Files: apiFiles,
 		Path:  r.URL.Query().Get("path"),
 	}
 
@@ -83,9 +96,7 @@ func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// Parse JSON body
-	var fileContent struct {
-		Content string `json:"content"`
-	}
+	var fileContent openapi.WriteNodeFileJSONBody
 	if err := json.Unmarshal(body, &fileContent); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Read(../../.moon/**)",
+      "Edit(**)",
+      "Bash(moon:*)",
+      "Bash(mv:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(go:list:*)",
+      "WebFetch(domain:pkg.go.dev)"
+    ],
+    "deny": [
+      "Bash(go:*)",
+      "Bash(make:*)"
+    ]
+  }
+}

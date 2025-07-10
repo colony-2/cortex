@@ -8,10 +8,10 @@ project:
 
 tasks:
   build:
-    command: 'bash'
-    args:
-      - '-c'
-      - 'rm -rf src/generated dist && npx openapi-typescript-codegen --input ../../api/openapi/vibethis-api.yaml --output ./src/generated --client axios && npx tsup src/index.ts --format cjs,esm --dts --clean'
+    script: |
+      rm -rf src/generated dist
+      npx openapi-typescript-codegen --input ../../api/openapi/vibethis-api.yaml --output ./src/generated --client axios
+      npx tsup src/index.ts --format cjs,esm --dts --clean
     inputs:
       - 'src/**/*.ts'
       - 'tsconfig.json'
