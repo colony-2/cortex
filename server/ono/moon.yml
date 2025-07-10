@@ -12,11 +12,3 @@ tasks:
   integration:
     command: go test -v -tags=integration ./pkg/activities/llm ./pkg/integration
     description: Run all integration tests including Gemini and workflow tests (requires API key in ~/gemini.key)
-
-  test:
-    command: go test ./... -v
-    description: Run all tests
-
-  test-workflow:
-    command: go test ./cmd/ono -v -run "TestWorkflow"
-    description: Run workflow command tests

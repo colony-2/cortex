@@ -25,13 +25,8 @@ func TestWorkflowActivitiesCommand(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:          "show only completed activities",
-			args:          []string{"activities", "my-workflow-123", "--completed"},
-			expectedError: false,
-		},
-		{
-			name:          "show only failed activities",
-			args:          []string{"activities", "my-workflow-123", "--failed"},
+			name:          "show all activities including failures",
+			args:          []string{"activities", "my-workflow-123", "--all"},
 			expectedError: false,
 		},
 		{
@@ -67,16 +62,14 @@ func TestWorkflowActivitiesFlags(t *testing.T) {
 	// Ensure all required flags are registered
 	require.NotNil(t, cmd.Flag("namespace"))
 	require.NotNil(t, cmd.Flag("run-id"))
-	require.NotNil(t, cmd.Flag("completed"))
-	require.NotNil(t, cmd.Flag("failed"))
+	require.NotNil(t, cmd.Flag("all"))
 	require.NotNil(t, cmd.Flag("host"))
 	require.NotNil(t, cmd.Flag("port"))
 	
 	// Check flag types and defaults
 	assert.Equal(t, "default", cmd.Flag("namespace").DefValue)
 	assert.Equal(t, "", cmd.Flag("run-id").DefValue)
-	assert.Equal(t, "false", cmd.Flag("completed").DefValue)
-	assert.Equal(t, "false", cmd.Flag("failed").DefValue)
+	assert.Equal(t, "false", cmd.Flag("all").DefValue)
 	assert.Equal(t, "127.0.0.1", cmd.Flag("host").DefValue)
 	assert.Equal(t, "7233", cmd.Flag("port").DefValue)
 }
@@ -131,41 +124,36 @@ func TestActivityEventProcessing(t *testing.T) {
 }
 
 func TestActivityFiltering(t *testing.T) {
-	// Test the filtering logic for completed/failed activities
+	// Test the filtering logic for all activities vs completed only
 	activities := []struct {
 		id        string
 		status    string
-		showCompleted bool
-		showFailed    bool
+		showAll   bool
 		shouldShow    bool
 	}{
 		{
-			id:            "activity1",
-			status:        "completed",
-			showCompleted: true,
-			showFailed:    false,
-			shouldShow:    true,
+			id:         "activity1",
+			status:     "completed",
+			showAll:    false,
+			shouldShow: true, // Completed activities always show
 		},
 		{
-			id:            "activity2",
-			status:        "failed",
-			showCompleted: false,
-			showFailed:    true,
-			shouldShow:    true,
+			id:         "activity2",
+			status:     "failed",
+			showAll:    true,
+			shouldShow: true, // Failed shows when --all is used
 		},
 		{
-			id:            "activity3",
-			status:        "completed",
-			showCompleted: false,
-			showFailed:    false,
-			shouldShow:    true, // No filter means show all
+			id:         "activity3",
+			status:     "failed",
+			showAll:    false,
+			shouldShow: false, // Failed activities don't show without --all
 		},
 		{
-			id:            "activity4",
-			status:        "failed",
-			showCompleted: true,
-			showFailed:    false,
-			shouldShow:    false,
+			id:         "activity4",
+			status:     "completed",
+			showAll:    true,
+			shouldShow: true, // Completed shows with or without --all
 		},
 	}
 	

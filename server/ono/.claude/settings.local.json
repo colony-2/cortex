@@ -3,7 +3,8 @@
     "allow": [
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Read(../../.moon/**)",
+      "Read(../../.moon/workspace.yml)",
+      "Read(../../.moon/tasks/go.yml)",
       "Edit(**)",
       "Bash(moon:*)",
       "Bash(mv:*)",
@@ -16,7 +17,7 @@
       "Bash(rm:*)"
     ],
     "deny": [
-      "Bash(go:*)",
+      "Write(Makefile)",
       "Bash(make:*)"
     ]
   }

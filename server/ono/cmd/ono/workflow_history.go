@@ -104,22 +104,49 @@ func runWorkflowHistory(cmd *cobra.Command, args []string) error {
 }
 
 func matchesFilter(event *history.HistoryEvent, filter string) bool {
-	eventType := event.EventType.String()
 	filter = strings.ToLower(filter)
 	
 	switch filter {
 	case "activity":
-		return strings.Contains(eventType, "ACTIVITY")
+		switch event.EventType {
+		case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED,
+			enums.EVENT_TYPE_ACTIVITY_TASK_STARTED,
+			enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED,
+			enums.EVENT_TYPE_ACTIVITY_TASK_FAILED,
+			enums.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT,
+			enums.EVENT_TYPE_ACTIVITY_TASK_CANCELED,
+			enums.EVENT_TYPE_ACTIVITY_TASK_CANCEL_REQUESTED:
+			return true
+		}
+		return false
 	case "timer":
-		return strings.Contains(eventType, "TIMER")
+		switch event.EventType {
+		case enums.EVENT_TYPE_TIMER_STARTED,
+			enums.EVENT_TYPE_TIMER_FIRED,
+			enums.EVENT_TYPE_TIMER_CANCELED:
+			return true
+		}
+		return false
 	case "signal":
-		return strings.Contains(eventType, "SIGNAL")
+		switch event.EventType {
+		case enums.EVENT_TYPE_WORKFLOW_EXECUTION_SIGNALED,
+			enums.EVENT_TYPE_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_INITIATED,
+			enums.EVENT_TYPE_EXTERNAL_WORKFLOW_EXECUTION_SIGNALED:
+			return true
+		}
+		return false
 	case "workflow":
-		return strings.Contains(eventType, "WORKFLOW_EXECUTION_STARTED") ||
-			   strings.Contains(eventType, "WORKFLOW_EXECUTION_COMPLETED") ||
-			   strings.Contains(eventType, "WORKFLOW_EXECUTION_FAILED") ||
-			   strings.Contains(eventType, "WORKFLOW_EXECUTION_CANCELED") ||
-			   strings.Contains(eventType, "WORKFLOW_EXECUTION_TERMINATED")
+		switch event.EventType {
+		case enums.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_FAILED,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_TIMED_OUT,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_TERMINATED,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_CANCELED,
+			enums.EVENT_TYPE_WORKFLOW_EXECUTION_CONTINUED_AS_NEW:
+			return true
+		}
+		return false
 	default:
 		return true
 	}
@@ -207,17 +234,66 @@ func printEvent(event *history.HistoryEvent) {
 }
 
 func getEventTypeName(eventType enums.EventType) string {
+	// Use a map for known event types to ensure correct formatting
+	eventNames := map[enums.EventType]string{
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED:                  "Workflow Execution Started",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED:                "Workflow Execution Completed",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_FAILED:                   "Workflow Execution Failed",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_TIMED_OUT:                "Workflow Execution Timed Out",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_CANCELED:                 "Workflow Execution Canceled",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_TERMINATED:               "Workflow Execution Terminated",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_CONTINUED_AS_NEW:         "Workflow Execution Continued As New",
+		enums.EVENT_TYPE_WORKFLOW_EXECUTION_SIGNALED:                 "Workflow Execution Signaled",
+		enums.EVENT_TYPE_WORKFLOW_TASK_SCHEDULED:                     "Workflow Task Scheduled",
+		enums.EVENT_TYPE_WORKFLOW_TASK_STARTED:                       "Workflow Task Started",
+		enums.EVENT_TYPE_WORKFLOW_TASK_COMPLETED:                     "Workflow Task Completed",
+		enums.EVENT_TYPE_WORKFLOW_TASK_TIMED_OUT:                     "Workflow Task Timed Out",
+		enums.EVENT_TYPE_WORKFLOW_TASK_FAILED:                        "Workflow Task Failed",
+		enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:                     "Activity Task Scheduled",
+		enums.EVENT_TYPE_ACTIVITY_TASK_STARTED:                       "Activity Task Started",
+		enums.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:                     "Activity Task Completed",
+		enums.EVENT_TYPE_ACTIVITY_TASK_FAILED:                        "Activity Task Failed",
+		enums.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT:                     "Activity Task Timed Out",
+		enums.EVENT_TYPE_ACTIVITY_TASK_CANCELED:                      "Activity Task Canceled",
+		enums.EVENT_TYPE_ACTIVITY_TASK_CANCEL_REQUESTED:              "Activity Task Cancel Requested",
+		enums.EVENT_TYPE_TIMER_STARTED:                               "Timer Started",
+		enums.EVENT_TYPE_TIMER_FIRED:                                 "Timer Fired",
+		enums.EVENT_TYPE_TIMER_CANCELED:                              "Timer Canceled",
+		enums.EVENT_TYPE_SIGNAL_EXTERNAL_WORKFLOW_EXECUTION_INITIATED: "Signal External Workflow Execution Initiated",
+		enums.EVENT_TYPE_EXTERNAL_WORKFLOW_EXECUTION_SIGNALED:        "External Workflow Execution Signaled",
+		enums.EVENT_TYPE_MARKER_RECORDED:                             "Marker Recorded",
+		enums.EVENT_TYPE_START_CHILD_WORKFLOW_EXECUTION_INITIATED:     "Start Child Workflow Execution Initiated",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_STARTED:            "Child Workflow Execution Started",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_COMPLETED:          "Child Workflow Execution Completed",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_FAILED:             "Child Workflow Execution Failed",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_CANCELED:           "Child Workflow Execution Canceled",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_TIMED_OUT:          "Child Workflow Execution Timed Out",
+		enums.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_TERMINATED:         "Child Workflow Execution Terminated",
+	}
+	
+	if name, ok := eventNames[eventType]; ok {
+		return name
+	}
+	
+	// Fallback: format the string representation
 	name := eventType.String()
-	// Remove EVENT_TYPE_ prefix for readability
-	if strings.HasPrefix(name, "EVENT_TYPE_") {
-		name = name[11:]
+	// Split on capital letters to handle CamelCase
+	var result []string
+	var current []rune
+	
+	for i, r := range name {
+		if i > 0 && r >= 'A' && r <= 'Z' && len(current) > 0 {
+			result = append(result, string(current))
+			current = []rune{r}
+		} else {
+			current = append(current, r)
+		}
 	}
-	// Convert to title case
-	words := strings.Split(name, "_")
-	for i, word := range words {
-		words[i] = strings.Title(strings.ToLower(word))
+	if len(current) > 0 {
+		result = append(result, string(current))
 	}
-	return strings.Join(words, " ")
+	
+	return strings.Join(result, " ")
 }
 
 func printHistoryJSON(events []*history.HistoryEvent) error {

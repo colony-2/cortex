@@ -62,7 +62,8 @@ func TestWorkflowListCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{
-				Use: "list",
+				Use:   "list",
+				Short: "List workflow executions",
 				RunE: func(cmd *cobra.Command, args []string) error {
 					// Mock implementation for testing
 					if cmd.Flag("help").Changed {

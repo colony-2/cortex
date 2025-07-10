@@ -13,7 +13,7 @@ tasks:
       runInCI: true
 
   test:
-    command: 'go test -v ./...'
+    command: 'go test ./...'
     inputs:
       - '**/*.go'
       - 'go.mod'

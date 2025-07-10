@@ -156,12 +156,18 @@ func TestDevServerSQLiteInitialization(t *testing.T) {
 		cfg, err := devServer.buildConfig()
 		require.NoError(t, err)
 
-		// Check both stores use :memory:
+		// Check both stores use a random numeric database name for in-memory mode
 		defaultStore := cfg.Persistence.DataStores["default"]
-		assert.Equal(t, ":memory:", defaultStore.SQL.DatabaseName)
+		assert.NotEmpty(t, defaultStore.SQL.DatabaseName)
+		assert.Regexp(t, `^\d+$`, defaultStore.SQL.DatabaseName)
+		assert.Equal(t, "memory", defaultStore.SQL.ConnectAttributes["mode"])
+		assert.Equal(t, "shared", defaultStore.SQL.ConnectAttributes["cache"])
 
 		visStore := cfg.Persistence.DataStores["visibility"]
-		assert.Equal(t, ":memory:", visStore.SQL.DatabaseName)
+		assert.NotEmpty(t, visStore.SQL.DatabaseName)
+		assert.Equal(t, defaultStore.SQL.DatabaseName, visStore.SQL.DatabaseName)
+		assert.Equal(t, "memory", visStore.SQL.ConnectAttributes["mode"])
+		assert.Equal(t, "shared", visStore.SQL.ConnectAttributes["cache"])
 	})
 }
 

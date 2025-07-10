@@ -32,7 +32,7 @@ func TestWorkflowDescribeCommand(t *testing.T) {
 			name:          "missing workflow ID",
 			args:          []string{},
 			expectedError: true,
-			errorContains: "requires at least 1 arg",
+			errorContains: "accepts 1 arg",
 		},
 		{
 			name:          "valid workflow ID",
@@ -60,8 +60,9 @@ func TestWorkflowDescribeCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{
-				Use:  "describe [workflow-id]",
-				Args: cobra.ExactArgs(1),
+				Use:   "describe [workflow-id]",
+				Short: "Show detailed information about a workflow execution",
+				Args:  cobra.ExactArgs(1),
 				RunE: func(cmd *cobra.Command, args []string) error {
 					if cmd.Flag("help").Changed {
 						return cmd.Help()

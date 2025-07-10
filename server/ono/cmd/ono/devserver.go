@@ -1,13 +1,14 @@
 package ono
 
 import (
+	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
 	"time"
 
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/server/common/cluster"
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/log"
@@ -15,6 +16,7 @@ import (
 	"go.temporal.io/server/common/metrics"
 	"go.temporal.io/server/schema/sqlite"
 	"go.temporal.io/server/temporal"
+	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 )
 
@@ -24,7 +26,6 @@ type DevServerOptions struct {
 	UIPort                 int
 	Namespaces             []string
 	DatabaseFile           string
-	InMemory               bool
 	LogLevel               string
 	SQLitePragmas          map[string]string
 	EnableUI               bool
@@ -99,11 +100,14 @@ func (ds *DevServer) Start() error {
 	ds.logger.Info("Temporal development server started",
 		tag.Address(fmt.Sprintf("%s:%d", ds.options.FrontendIP, ds.options.FrontendPort)))
 
-	// Give the server a moment to fully initialize
-	// This is needed because Start() returns before all services are ready
-	time.Sleep(2 * time.Second)
+	// Wait for server to be ready by checking if we can connect
+	// This ensures all services are registered and ready
+	ds.logger.Info("Waiting for server to be ready...")
 	
-	// The default namespace should be created automatically by Temporal server
+	if err := ds.waitForServerReady(); err != nil {
+		return fmt.Errorf("server failed to become ready: %w", err)
+	}
+	
 	ds.logger.Info("Server initialization complete", 
 		tag.NewStringTag("rpc", fmt.Sprintf("%s:%d", ds.options.FrontendIP, ds.options.FrontendPort)))
 
@@ -123,22 +127,79 @@ func (ds *DevServer) Wait() error {
 	return nil
 }
 
-func (ds *DevServer) initializeDatabase() error {
-	if ds.options.InMemory {
-		// For in-memory databases, we need to initialize schema after the server starts
-		// The schema will be automatically created when the SQLite plugin connects
-		ds.logger.Info("Using in-memory database, schema will be auto-created")
-		return nil
+func (ds *DevServer) waitForServerReady() error {
+	// Poll with exponential backoff
+	backoff := 100 * time.Millisecond
+	maxBackoff := 2 * time.Second
+	timeout := time.After(60 * time.Second)
+	
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for server to be ready")
+		default:
+			// Try to connect and perform a health check
+			if err := ds.checkServerHealth(); err == nil {
+				return nil
+			}
+			
+			// Exponential backoff
+			time.Sleep(backoff)
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+		}
 	}
+}
 
-	// For file-based databases, check if we need to create schema
+func (ds *DevServer) checkServerHealth() error {
+	// Try to connect to the server
+	c, err := client.Dial(client.Options{
+		HostPort:  fmt.Sprintf("%s:%d", ds.options.FrontendIP, ds.options.FrontendPort),
+		Namespace: client.DefaultNamespace,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer c.Close()
+	
+	// Try to list namespaces as a health check
+	// This verifies that all services are up and communicating
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Use the WorkflowService to check system namespace
+	resp, err := c.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
+		Namespace: "temporal-system",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to describe system namespace: %w", err)
+	}
+	
+	if resp.NamespaceInfo == nil {
+		return fmt.Errorf("system namespace not found")
+	}
+	
+	return nil
+}
+
+func (ds *DevServer) initializeDatabase() error {
+	// Always use file-based database
 	dbPath := ds.options.DatabaseFile
+	if dbPath == "" {
+		return fmt.Errorf("database file path is required")
+	}
+	
 	if !filepath.IsAbs(dbPath) {
 		absPath, err := filepath.Abs(dbPath)
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path: %w", err)
 		}
 		dbPath = absPath
+		ds.options.DatabaseFile = dbPath
 	}
 
 	// Create directory if it doesn't exist
@@ -180,47 +241,48 @@ func (ds *DevServer) initializeDatabase() error {
 func (ds *DevServer) buildConfig() (*config.Config, error) {
 	cfg := &config.Config{}
 
-	// Set up SQLite config - based on temporaltest approach
+	// Always use file-based database
+	dbPath := ds.options.DatabaseFile
+	if dbPath == "" {
+		return nil, fmt.Errorf("database file path is required")
+	}
+	
+	if !filepath.IsAbs(dbPath) {
+		absPath, err := filepath.Abs(dbPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get absolute path: %w", err)
+		}
+		dbPath = absPath
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create database directory: %w", err)
+	}
+
+	// Set up SQLite config
 	sqliteConfig := config.SQL{
 		PluginName:        "sqlite",
+		DatabaseName:      dbPath,
 		ConnectAttributes: ds.buildSQLiteAttributes(),
 	}
-
-	if ds.options.InMemory {
-		// Use shared cache for ephemeral in-memory database - match temporaltest approach
-		sqliteConfig.ConnectAttributes["mode"] = "memory"
-		sqliteConfig.ConnectAttributes["cache"] = "shared"
-		// Use random database name like temporaltest to avoid conflicts
-		sqliteConfig.DatabaseName = fmt.Sprintf("%d", rand.Intn(9999999))
-	} else {
-		// File-based database
-		dbPath := ds.options.DatabaseFile
-		if !filepath.IsAbs(dbPath) {
-			absPath, err := filepath.Abs(dbPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get absolute path: %w", err)
-			}
-			dbPath = absPath
-		}
-
-		// Ensure directory exists
-		dir := filepath.Dir(dbPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create database directory: %w", err)
-		}
-
-		sqliteConfig.DatabaseName = dbPath
-		sqliteConfig.ConnectAttributes["mode"] = "rwc"
-	}
+	sqliteConfig.ConnectAttributes["mode"] = "rwc"
 
 	// Set up persistence configuration
+	// Create separate configs for each store (they need to be separate instances)
+	defaultSQLConfig := sqliteConfig
+	visibilitySQLConfig := sqliteConfig
+	
 	cfg.Persistence = config.Persistence{
-		DefaultStore:     "sqlite",
-		VisibilityStore:  "sqlite",
+		DefaultStore:     "default",
+		VisibilityStore:  "visibility",
 		NumHistoryShards: 1,
 		DataStores: map[string]config.DataStore{
-			"sqlite": {SQL: &sqliteConfig},
+			"default":    {SQL: &defaultSQLConfig},
+			"visibility": {SQL: &visibilitySQLConfig},
 		},
+		TransactionSizeLimit: func() int { return 1048576 }, // 1MB limit
 	}
 
 	// Set up global configuration
@@ -307,12 +369,18 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 			State: "disabled",
 		},
 	}
+	
+	// Create default namespace after server starts
+	cfg.ClusterMetadata.EnableGlobalNamespace = false
 
 	return cfg, nil
 }
 
 func (ds *DevServer) buildSQLiteAttributes() map[string]string {
 	attrs := make(map[string]string)
+	
+	// Set mode for SQLite
+	attrs["mode"] = "rwc"
 	
 	// Default pragmas for performance - using the format Temporal expects
 	attrs["_journal_mode"] = "WAL"
