@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.temporal.io/api/enums/v1"
+	workflowpb "go.temporal.io/api/workflow/v1"
 	workflowservice "go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )
@@ -78,7 +79,7 @@ func runWorkflowList(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := context.Background()
-	var executions []*workflowservice.WorkflowExecutionInfo
+	var executions []*workflowpb.WorkflowExecutionInfo
 	
 	if listArchived {
 		resp, err := c.WorkflowService().ListArchivedWorkflowExecutions(ctx, request.(*workflowservice.ListArchivedWorkflowExecutionsRequest))
@@ -145,7 +146,7 @@ func getExecutionStatus(status string) enums.WorkflowExecutionStatus {
 	}
 }
 
-func printWorkflowList(executions []*workflowservice.WorkflowExecutionInfo) {
+func printWorkflowList(executions []*workflowpb.WorkflowExecutionInfo) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	defer w.Flush()
 

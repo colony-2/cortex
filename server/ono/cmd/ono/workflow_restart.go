@@ -2,7 +2,6 @@ package ono
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -161,22 +160,25 @@ func runWorkflowRestart(cmd *cobra.Command, args []string) error {
 		},
 	}
 
-	// The actual restart implementation would need a special workflow that can:
-	// 1. Skip already completed activities
-	// 2. Use preserved outputs as inputs
-	// 3. Start execution from the restart point
+	// The restart workflow needs special handling to skip completed steps
+	// Pass the preserved state as part of the inputs
+	restartInputMap["__restart_state"] = state
 	
-	// For now, we'll show what would happen
 	fmt.Printf("\n=== Restart Workflow ===\n")
 	fmt.Printf("Starting new workflow: %s\n", newWorkflowID)
-	fmt.Printf("Type: %s (with restart handler)\n", state.WorkflowType)
+	fmt.Printf("Type: %s\n", state.WorkflowType)
 	fmt.Printf("Task Queue: %s\n", state.TaskQueue)
+	fmt.Printf("Restart Point: %s\n", state.RestartPoint)
 	
-	// In a real implementation, you would start a special "restart workflow" that knows how to handle the preserved state
-	// we, err := c.ExecuteWorkflow(ctx, workflowOptions, state.WorkflowType+"_restart", restartInputMap)
-	// if err != nil {
-	//     return fmt.Errorf("failed to start restart workflow: %w", err)
-	// }
+	// Execute the restarted workflow
+	we, err := c.ExecuteWorkflow(ctx, workflowOptions, state.WorkflowType, restartInputMap)
+	if err != nil {
+		return fmt.Errorf("failed to start restart workflow: %w", err)
+	}
+	
+	fmt.Printf("\nRestart workflow started successfully!\n")
+	fmt.Printf("New Workflow ID: %s\n", we.GetID())
+	fmt.Printf("New Run ID: %s\n", we.GetRunID())
 	
 	fmt.Printf("\nRestart workflow would be started with the following configuration:\n")
 	fmt.Printf("- Skip activities before event %d\n", state.RestartEventID)

@@ -46,7 +46,7 @@ func init() {
 	workflowRunCmd.MarkFlagRequired("file")
 	
 	// Set flags for test-connection command
-	workflowTestConnectionCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Temporal namespace (optional)")
+	workflowTestConnectionCmd.Flags().StringVarP(&testConnectionNamespace, "namespace", "n", "", "Temporal namespace (optional)")
 	addServerFlags(workflowTestConnectionCmd)
 	
 	// Set flags for list command

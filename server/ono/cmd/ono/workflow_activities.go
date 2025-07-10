@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.temporal.io/api/enums/v1"
-	"go.temporal.io/api/history/v1"
 	"go.temporal.io/sdk/client"
 )
 

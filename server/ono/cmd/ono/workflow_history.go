@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/history/v1"
-	workflowservice "go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )
 

@@ -124,7 +124,7 @@ func TestAnalyzeWorkflowHistory(t *testing.T) {
 			},
 			expectedSteps: map[string]StepResult{
 				"step1": {
-					Outputs: map[string]interface{}{},
+					Output: map[string]interface{}{},
 				},
 			},
 			restartPoint:  "step2",
@@ -179,12 +179,12 @@ func TestWorkflowStateExtraction(t *testing.T) {
 		},
 		CompletedSteps: map[string]StepResult{
 			"step1": {
-				Outputs: map[string]interface{}{
+				Output: map[string]interface{}{
 					"result": "processed",
 				},
 			},
 			"step2": {
-				Outputs: map[string]interface{}{
+				Output: map[string]interface{}{
 					"count": 100,
 				},
 			},

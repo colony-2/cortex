@@ -3,10 +3,6 @@ package ono
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -78,11 +74,13 @@ func executeWorkflow(cmd *cobra.Command, args []string) error {
 	// Create compiler with the registry
 	comp := compiler.NewCompiler(registry)
 
-	// Compile workflow
-	workflowFunc, err := comp.CompileWorkflow(project.Workflow)
+	// Compile workflow (for validation)
+	_, err = comp.CompileWorkflow(project.Workflow)
 	if err != nil {
 		return fmt.Errorf("failed to compile workflow: %w", err)
 	}
+	
+	ctx := context.Background()
 
 	// Note: In production, you would have a worker running separately
 	// For demonstration, we'll just show the workflow would be submitted
@@ -104,16 +102,27 @@ func executeWorkflow(cmd *cobra.Command, args []string) error {
 		TaskQueue: taskQueue,
 	}
 
-	// For this demonstration, we'll show what would happen
-	// In production, the workflow would be submitted to Temporal
-	fmt.Printf("\nNote: This is a demonstration. To actually run workflows:\n")
-	fmt.Printf("1. Ensure a worker is running with the compiled workflow registered\n")
-	fmt.Printf("2. The worker should connect to task queue: %s\n\n", taskQueue)
+	// Execute the workflow
+	we, err := c.ExecuteWorkflow(ctx, workflowOptions, project.Workflow.Name, inputs)
+	if err != nil {
+		return fmt.Errorf("failed to start workflow: %w", err)
+	}
+
+	fmt.Printf("\nWorkflow started successfully!\n")
+	fmt.Printf("Workflow ID: %s\n", we.GetID())
+	fmt.Printf("Run ID: %s\n", we.GetRunID())
 	
-	fmt.Printf("The workflow '%s' would be submitted with:\n", project.Workflow.Name)
-	fmt.Printf("- Workflow ID: %s\n", workflowID)
-	fmt.Printf("- Inputs: %v\n", inputs)
-	fmt.Printf("- Compiled workflow function: %T\n", workflowFunc)
+	// Optionally wait for the workflow to complete
+	fmt.Printf("\nWaiting for workflow to complete...\n")
+	
+	var result interface{}
+	err = we.Get(ctx, &result)
+	if err != nil {
+		return fmt.Errorf("workflow execution failed: %w", err)
+	}
+	
+	fmt.Printf("\nWorkflow completed successfully!\n")
+	fmt.Printf("Result: %v\n", result)
 	
 	// Show workflow steps
 	if project.Workflow.Workflow.Steps != nil {

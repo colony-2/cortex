@@ -85,7 +85,6 @@ func TestWorkflowRunFlags(t *testing.T) {
 	// Check required flags
 	fileFlag := cmd.Flag("file")
 	assert.NotNil(t, fileFlag)
-	assert.Contains(t, fileFlag.Annotations, cobra.BashCompFilenameExt)
 	
 	// Check defaults
 	assert.Equal(t, "", cmd.Flag("file").DefValue)

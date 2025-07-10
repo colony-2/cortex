@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-var namespace string
+var testConnectionNamespace string
 
 var workflowTestConnectionCmd = &cobra.Command{
 	Use:   "test-connection",
@@ -41,7 +41,7 @@ func runWorkflowTestConnection(cmd *cobra.Command, args []string) error {
 			name: "With namespace",
 			options: client.Options{
 				HostPort:  connectionString,
-				Namespace: namespace,
+				Namespace: testConnectionNamespace,
 			},
 		},
 	}
