@@ -398,23 +398,13 @@ agents:
 ono workflow create --project ./research_project/
 ono workflow create --file ./simple_workflow.yaml
 
-# Or with explicit project file
-ono workflow create --project-file ./research_project/project.yaml
-
 # Running workflows
 ono workflow run research_report --input topic="AI Agents"
 ono workflow list
 ono workflow describe research_report
 
-# Validate configurations
+# Validate configurations (does not create)
 ono workflow validate --project ./research_project/
-
-# Start server with default persistence (./ono.db)
-ono start
-# Or specify custom database location
-ono start --db-filename /path/to/custom.db
-# Use in-memory only (not recommended for workflows)
-ono start --in-memory
 ```
 
 ### 2. Core Components

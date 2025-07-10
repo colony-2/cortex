@@ -5,11 +5,12 @@ tasks:
     command: go run . start
     description: Start the Ono server with default persistence (./ono.db)
 
-  start-memory:
-    command: go run . start --in-memory
-    description: Start Ono with in-memory database (no persistence)
-    
-  start-custom:
-    command: go run . start --db-filename custom.db
-    description: Start Ono with custom database file
+  install:
+    command: go install ./...
+    description: Install Ono server and CLI tools
+
+  integration:
+    command: go test -v -tags=integration ./pkg/activities/llm ./pkg/integration
+    description: Run all integration tests including Gemini and workflow tests (requires API key in ~/gemini.key)
+
     

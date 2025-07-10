@@ -1,0 +1,66 @@
+# Simple single-file workflow example
+workflow:
+  name: simple_research
+  description: A simple research workflow in a single file
+  version: "1.0"
+  
+  inputs:
+    - name: query
+      type: string
+      required: true
+      description: What to research
+  
+  outputs:
+    - name: result
+      type: string
+      description: Research result
+  
+  workflow:
+    type: sequential
+    steps:
+      - id: search
+        activity: quick_search
+        inputs:
+          query: "{{ .Inputs.query }}"
+        outputs:
+          data: search_results
+      
+      - id: summarize
+        activity: summarize_results
+        inputs:
+          data: "{{ .Steps.search.outputs.data }}"
+        outputs:
+          summary: final_summary
+    
+    outputs:
+      result: "{{ .Steps.summarize.outputs.summary }}"
+
+activities:
+  - name: quick_search
+    description: Perform a quick search
+    timeout: 1m
+    inputs:
+      - name: query
+        type: string
+        required: true
+    outputs:
+      - name: search_results
+        type: object
+    implementation:
+      type: function
+      config:
+        handler: search.QuickSearch
+  
+  - name: summarize_results
+    description: Summarize search results
+    timeout: 30s
+    inputs:
+      - name: data
+        type: object
+    outputs:
+      - name: final_summary
+        type: string
+    implementation:
+      type: function
+      config:
+        handler: summary.GenerateSummary

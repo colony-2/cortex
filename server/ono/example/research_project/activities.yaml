@@ -1,0 +1,83 @@
+activities:
+  - name: research_activity
+    description: Research information about a given topic
+    timeout: 5m
+    retry:
+      maximum_attempts: 3
+      non_retryable_errors:
+        - "RATE_LIMIT_ERROR"
+    inputs:
+      - name: topic
+        type: string
+        required: true
+      - name: max_sources
+        type: int
+        default: 10
+    outputs:
+      - name: research_results
+        type: object
+        schema:
+          sources: array
+          summary: string
+          key_points: array
+    implementation:
+      type: http
+      config:
+        method: POST
+        url: "${RESEARCH_API_URL}/search"
+        headers:
+          Authorization: "Bearer ${RESEARCH_API_KEY}"
+        body:
+          query: "{{ .topic }}"
+          limit: "{{ .max_sources }}"
+          
+  - name: analyze_activity
+    description: Analyze research data and extract insights
+    timeout: 3m
+    inputs:
+      - name: data
+        type: object
+      - name: topic
+        type: string
+    outputs:
+      - name: analysis_results
+        type: object
+    implementation:
+      type: function
+      config:
+        handler: analyzers.ProcessResearch
+        runtime: go
+        
+  - name: write_report_activity
+    description: Generate a comprehensive report
+    timeout: 10m
+    inputs:
+      - name: research
+        type: object
+      - name: analysis
+        type: object
+      - name: topic
+        type: string
+    outputs:
+      - name: final_report
+        type: string
+    implementation:
+      type: ai_prompt
+      config:
+        model: gpt-4
+        temperature: 0.7
+        prompt: |
+          Generate a comprehensive report on "{{ .topic }}" based on the following:
+          
+          Research Data:
+          {{ .research | json }}
+          
+          Analysis:
+          {{ .analysis | json }}
+          
+          Format the report with:
+          1. Executive Summary
+          2. Key Findings
+          3. Detailed Analysis
+          4. Conclusions
+          5. References

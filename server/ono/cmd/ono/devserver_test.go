@@ -30,20 +30,21 @@ func TestBuildSQLiteAttributes(t *testing.T) {
 		options: DevServerOptions{
 			SQLitePragmas: map[string]string{
 				"cache_size": "2000",
-				"foreign_keys": "ON",
+				"temp_store": "MEMORY",
 			},
 		},
 	}
 
 	attrs := server.buildSQLiteAttributes()
 	
-	// Check default pragmas
-	assert.Equal(t, "1", attrs["_pragma=journal_mode(WAL)"])
-	assert.Equal(t, "1", attrs["_pragma=synchronous(NORMAL)"])
-	assert.Equal(t, "1", attrs["_pragma=busy_timeout(10000)"])
-	assert.Equal(t, "1", attrs["_pragma=temp_store(MEMORY)"])
+	// Check default attributes
+	assert.Equal(t, "rwc", attrs["mode"])
+	assert.Equal(t, "WAL", attrs["_journal_mode"])
+	assert.Equal(t, "NORMAL", attrs["_synchronous"])
+	assert.Equal(t, "10000", attrs["_busy_timeout"])
+	assert.Equal(t, "ON", attrs["_foreign_keys"])
 	
 	// Check custom pragmas
-	assert.Equal(t, "1", attrs["_pragma=cache_size(2000)"])
-	assert.Equal(t, "1", attrs["_pragma=foreign_keys(ON)"])
+	assert.Equal(t, "2000", attrs["_cache_size"])
+	assert.Equal(t, "MEMORY", attrs["_temp_store"])
 }

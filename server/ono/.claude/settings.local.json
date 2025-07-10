@@ -9,7 +9,10 @@
       "Bash(mv:*)",
       "WebFetch(domain:github.com)",
       "Bash(go:list:*)",
-      "WebFetch(domain:pkg.go.dev)"
+      "WebFetch(domain:pkg.go.dev)",
+      "Bash(mkdir:*)",
+      "Bash(./ono workflow validate --project ./example/research_project/)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [
       "Bash(go:*)",
