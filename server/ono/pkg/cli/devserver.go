@@ -15,7 +15,9 @@ import (
 	"go.temporal.io/server/common/config"
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/log/tag"
+	"go.temporal.io/server/common/membership/static"
 	"go.temporal.io/server/common/metrics"
+	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/schema/sqlite"
 	"go.temporal.io/server/temporal"
 	"go.uber.org/zap"
@@ -81,10 +83,23 @@ func (ds *DevServer) Start() error {
 		return fmt.Errorf("failed to build config: %w", err)
 	}
 
-	// Create server options - use default services like temporaltest
+	// Create static hosts configuration for service discovery
+	staticHosts := map[primitives.ServiceName]static.Hosts{
+		primitives.FrontendService: static.SingleLocalHost(
+			fmt.Sprintf("127.0.0.1:%d", cfg.Services["frontend"].RPC.GRPCPort)),
+		primitives.HistoryService: static.SingleLocalHost(
+			fmt.Sprintf("127.0.0.1:%d", cfg.Services["history"].RPC.GRPCPort)),
+		primitives.MatchingService: static.SingleLocalHost(
+			fmt.Sprintf("127.0.0.1:%d", cfg.Services["matching"].RPC.GRPCPort)),
+		primitives.WorkerService: static.SingleLocalHost(
+			fmt.Sprintf("127.0.0.1:%d", cfg.Services["worker"].RPC.GRPCPort)),
+	}
+
+	// Create server options - use default services with static hosts
 	serverOpts := []temporal.ServerOption{
 		temporal.WithConfig(cfg),
 		temporal.ForServices(temporal.DefaultServices),
+		temporal.WithStaticHosts(staticHosts),
 	}
 
 	// Create and start the server
@@ -319,38 +334,30 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 	}
 
 	// Set up services configuration
-	// Use fixed membership ports to ensure consistent cluster formation across restarts
+	// Frontend gets fixed port, others get dynamic ports
 	cfg.Services = map[string]config.Service{
 		"frontend": {
 			RPC: config.RPC{
-				GRPCPort:        ds.options.FrontendPort,
-				MembershipPort:  ds.options.FrontendPort + 100, // 7333
-				BindOnLocalHost: true,
-				BindOnIP:        "",
+				GRPCPort: ds.options.FrontendPort,
+				BindOnIP: "127.0.0.1",
 			},
 		},
 		"history": {
 			RPC: config.RPC{
-				GRPCPort:        ds.options.FrontendPort + 1,
-				MembershipPort:  ds.options.FrontendPort + 101, // 7334
-				BindOnLocalHost: true,
-				BindOnIP:        "",
+				GRPCPort: findFreePort(),
+				BindOnIP: "127.0.0.1",
 			},
 		},
 		"matching": {
 			RPC: config.RPC{
-				GRPCPort:        ds.options.FrontendPort + 2,
-				MembershipPort:  ds.options.FrontendPort + 102, // 7335
-				BindOnLocalHost: true,
-				BindOnIP:        "",
+				GRPCPort: findFreePort(),
+				BindOnIP: "127.0.0.1",
 			},
 		},
 		"worker": {
 			RPC: config.RPC{
-				GRPCPort:        ds.options.FrontendPort + 3,
-				MembershipPort:  ds.options.FrontendPort + 103, // 7336
-				BindOnLocalHost: true,
-				BindOnIP:        "",
+				GRPCPort: findFreePort(),
+				BindOnIP: "127.0.0.1",
 			},
 		},
 	}
