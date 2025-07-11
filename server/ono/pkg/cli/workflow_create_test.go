@@ -66,8 +66,11 @@ func TestWorkflowCreateCommand(t *testing.T) {
 				"Workflow structure:",
 				"Required inputs:",
 				"query",
-				"✓ Workflow 'simple_research' is valid and ready to run!",
+				"✓ Workflow 'simple_research' is valid!",
 			},
+			// Will fail to connect to Temporal server in tests
+			expectedError: true,
+			errorContains: "failed to connect to Temporal server",
 		},
 		{
 			name: "valid project",
@@ -83,8 +86,11 @@ func TestWorkflowCreateCommand(t *testing.T) {
 				"research_activity",
 				"analyze_activity",
 				"write_report_activity",
-				"✓ Workflow 'research_report_workflow' is valid and ready to run!",
+				"✓ Workflow 'research_report_workflow' is valid!",
 			},
+			// Will fail to connect to Temporal server in tests
+			expectedError: true,
+			errorContains: "failed to connect to Temporal server",
 		},
 		{
 			name: "project with specific workflow not found",
@@ -377,15 +383,21 @@ func TestWorkflowCreateIntegration(t *testing.T) {
 				t.Logf("Error output: %s", output)
 			}
 
-			require.NoError(t, err, "Command should execute without error")
+			// We expect connection error since no server is running
+			require.Error(t, err, "Command should fail to connect to server")
 
 			for _, check := range ex.checks {
 				assert.Contains(t, output, check, "Output should contain: %s", check)
 			}
 
-			// All examples should end with success message
+			// All examples should validate successfully
 			assert.Contains(t, output, "✓ Workflow")
-			assert.Contains(t, output, "is valid and ready to run!")
+			assert.Contains(t, output, "is valid!")
+			
+			// But should fail to connect to server
+			if err != nil {
+				assert.Contains(t, err.Error(), "failed to connect to Temporal server")
+			}
 		})
 	}
 }

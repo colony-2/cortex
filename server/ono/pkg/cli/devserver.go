@@ -319,11 +319,12 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 	}
 
 	// Set up services configuration
+	// Use fixed membership ports to ensure consistent cluster formation across restarts
 	cfg.Services = map[string]config.Service{
 		"frontend": {
 			RPC: config.RPC{
 				GRPCPort:        ds.options.FrontendPort,
-				MembershipPort:  findFreePort(),
+				MembershipPort:  ds.options.FrontendPort + 100, // 7333
 				BindOnLocalHost: true,
 				BindOnIP:        "",
 			},
@@ -331,7 +332,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 		"history": {
 			RPC: config.RPC{
 				GRPCPort:        ds.options.FrontendPort + 1,
-				MembershipPort:  findFreePort(),
+				MembershipPort:  ds.options.FrontendPort + 101, // 7334
 				BindOnLocalHost: true,
 				BindOnIP:        "",
 			},
@@ -339,7 +340,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 		"matching": {
 			RPC: config.RPC{
 				GRPCPort:        ds.options.FrontendPort + 2,
-				MembershipPort:  findFreePort(),
+				MembershipPort:  ds.options.FrontendPort + 102, // 7335
 				BindOnLocalHost: true,
 				BindOnIP:        "",
 			},
@@ -347,7 +348,7 @@ func (ds *DevServer) buildConfig() (*config.Config, error) {
 		"worker": {
 			RPC: config.RPC{
 				GRPCPort:        ds.options.FrontendPort + 3,
-				MembershipPort:  findFreePort(),
+				MembershipPort:  ds.options.FrontendPort + 103, // 7336
 				BindOnLocalHost: true,
 				BindOnIP:        "",
 			},
@@ -394,6 +395,8 @@ func (ds *DevServer) buildSQLiteAttributes() map[string]string {
 	attrs["_synchronous"] = "NORMAL"
 	attrs["_busy_timeout"] = "10000"
 	attrs["_foreign_keys"] = "ON"
+	attrs["_locking_mode"] = "NORMAL"  // Ensure locks are released properly
+	attrs["_wal_autocheckpoint"] = "1000" // Checkpoint every 1000 pages
 
 	// Add custom pragmas
 	for key, value := range ds.options.SQLitePragmas {
@@ -461,9 +464,6 @@ func (ds *DevServer) createDefaultNamespaces() error {
 
 		ds.logger.Info("Successfully created namespace", tag.NewStringTag("namespace", namespace))
 	}
-
-	// Wait a bit for namespace registration to propagate
-	time.Sleep(2 * time.Second)
 
 	return nil
 }

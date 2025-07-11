@@ -6,7 +6,11 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 	"vibethis/ono/pkg/compiler"
+	"vibethis/ono/pkg/workflows"
 	"vibethis/ono/pkg/yaml"
 )
 
@@ -17,11 +21,15 @@ var (
 
 var workflowCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create and validate a workflow from YAML definition",
-	Long: `Create a workflow from a YAML file or project directory.
+	Short: "Create and register a workflow with Temporal",
+	Long: `Create and register a workflow from a YAML file or project directory.
 	
-This command validates the workflow definition and ensures all activities
-are properly defined. It does not execute the workflow.
+This command validates the workflow definition, ensures all activities
+are properly defined, and registers the workflow type with Temporal by
+starting a worker that implements the workflow.
+
+The worker will continue running to keep the workflow type available.
+Press Ctrl+C to stop the worker and unregister the workflow type.
 
 Examples:
   # Create from a single workflow file
@@ -30,8 +38,11 @@ Examples:
   # Create from a project directory
   ono workflow create --project /path/to/project
   
-  # Validate a specific workflow in a project
-  ono workflow create --project /path/to/project research-workflow`,
+  # Create a specific workflow in a project
+  ono workflow create --project /path/to/project research-workflow
+  
+  # Create in a specific namespace
+  ono workflow create --file workflow.yaml --namespace production`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: createWorkflow,
 }
@@ -150,14 +161,54 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\n✓ Workflow '%s' is valid and ready to run!\n", workflowToValidate.Name)
-	fmt.Fprintf(cmd.OutOrStdout(), "\nTo run this workflow, use:\n")
-	if createFilePath != "" {
-		fmt.Fprintf(cmd.OutOrStdout(), "  ono workflow run --file %s\n", createFilePath)
-	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "  ono workflow run --project %s %s\n", createProjectPath, workflowToValidate.Name)
+	fmt.Fprintf(cmd.OutOrStdout(), "\n✓ Workflow '%s' is valid!\n", workflowToValidate.Name)
+	
+	// Connect to Temporal server
+	fmt.Fprintf(cmd.OutOrStdout(), "\nConnecting to Temporal server...\n")
+	c, err := client.Dial(client.Options{
+		HostPort:  fmt.Sprintf("%s:%d", serverHost, serverPort),
+		Namespace: namespace,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to Temporal server: %w", err)
 	}
-
+	defer c.Close()
+	
+	// Create task queue name for this workflow
+	taskQueueName := fmt.Sprintf("%s-queue", workflowToValidate.Name)
+	
+	// Create a worker for this workflow
+	w := worker.New(c, taskQueueName, worker.Options{
+		MaxConcurrentWorkflowTaskPollers: 2,
+		MaxConcurrentActivityTaskPollers: 2,
+	})
+	
+	// Register the workflow
+	workflowFunc := workflows.CreateDynamicWorkflow(workflowToValidate, project, registry, comp)
+	w.RegisterWorkflow(workflowFunc)
+	
+	// Register all activities used by this workflow with their names
+	for i := range project.Activities {
+		activityDef := &project.Activities[i]
+		activityFunc := workflows.CreateDynamicActivity(activityDef)
+		w.RegisterActivityWithOptions(activityFunc, activity.RegisterOptions{
+			Name: activityDef.Name,
+		})
+	}
+	
+	fmt.Fprintf(cmd.OutOrStdout(), "✓ Workflow '%s' registered with task queue '%s'\n", workflowToValidate.Name, taskQueueName)
+	
+	// Start the worker
+	fmt.Fprintf(cmd.OutOrStdout(), "\nStarting worker to handle workflow execution...\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "Press Ctrl+C to stop the worker\n\n")
+	
+	// Run the worker
+	err = w.Run(worker.InterruptCh())
+	if err != nil {
+		return fmt.Errorf("failed to run worker: %w", err)
+	}
+	
+	fmt.Fprintf(cmd.OutOrStdout(), "\nWorker stopped. Workflow '%s' is no longer available.\n", workflowToValidate.Name)
 	return nil
 }
 

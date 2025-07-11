@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -75,23 +74,19 @@ func runDevServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start dev server: %w", err)
 	}
 
-	// Handle graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	fmt.Println("\nTemporal dev server is running!")
+	fmt.Println("Press Ctrl+C to stop")
 
+	// Handle graceful shutdown
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
-	select {
-	case sig := <-interrupt:
-		fmt.Printf("\nReceived signal %v, shutting down...\n", sig)
-		if err := devServer.Stop(); err != nil {
-			return fmt.Errorf("failed to stop server: %w", err)
-		}
-	case <-ctx.Done():
-		if err := devServer.Stop(); err != nil {
-			return fmt.Errorf("failed to stop server: %w", err)
-		}
+	// Wait for interrupt signal
+	sig := <-interrupt
+	fmt.Printf("\nReceived signal %v, shutting down...\n", sig)
+	
+	if err := devServer.Stop(); err != nil {
+		return fmt.Errorf("failed to stop server: %w", err)
 	}
 
 	return nil

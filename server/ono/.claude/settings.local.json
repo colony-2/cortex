@@ -18,7 +18,13 @@
       "Bash(./bin/ono workflow create:*)",
       "Bash(go build:*)",
       "Bash(go run:*)",
-      "Bash(./build/ono:*)"
+      "Bash(./build/ono:*)",
+      "Bash(build/ono workflow list:*)",
+      "Bash(timeout:*)",
+      "Bash(go test:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(chmod:*)"
     ],
     "deny": [
       "Write(Makefile)",

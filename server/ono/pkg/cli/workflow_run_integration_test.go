@@ -287,7 +287,7 @@ func TestWorkflowRunWithTestSuite(t *testing.T) {
 	})
 }
 
-func TestWorkflowRunFlags(t *testing.T) {
+func TestWorkflowRunFlagsIntegration(t *testing.T) {
 	// Test that all flags are properly registered
 	cmd := workflowRunCmd
 

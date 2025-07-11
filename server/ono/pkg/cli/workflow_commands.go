@@ -40,7 +40,9 @@ func init() {
 	// Set flags for the create command
 	workflowCreateCmd.Flags().StringVar(&createProjectPath, "project", "", "Path to project directory")
 	workflowCreateCmd.Flags().StringVar(&createFilePath, "file", "", "Path to single workflow file")
+	workflowCreateCmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Temporal namespace")
 	workflowCreateCmd.MarkFlagsMutuallyExclusive("project", "file")
+	addServerFlags(workflowCreateCmd)
 
 	// Set flags for the run command
 	workflowRunCmd.Flags().StringVarP(&workflowFile, "file", "f", "", "Path to workflow YAML file")
