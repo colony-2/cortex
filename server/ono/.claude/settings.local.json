@@ -24,7 +24,8 @@
       "Bash(go test:*)",
       "Bash(pkill:*)",
       "Bash(true)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(go get:*)"
     ],
     "deny": [
       "Write(Makefile)",

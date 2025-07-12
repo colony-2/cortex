@@ -1,0 +1,126 @@
+package recipe
+
+import (
+	"time"
+
+	"vibethis/ono/pkg/yaml"
+)
+
+// Recipe represents a discovered recipe with its metadata
+type Recipe struct {
+	// Core identity
+	Name        string
+	Version     string
+	Description string
+	
+	// File paths
+	BasePath       string // Directory containing the recipe
+	ManifestPath   string // Path to recipe.yaml or single-file recipe
+	WorkflowPath   string
+	ActivitiesPath string
+	AgentsPath     string
+	
+	// Content
+	Project    *yaml.Project
+	Workflow   *yaml.WorkflowDefinition
+	Activities []yaml.ActivityDefinition
+	Agents     map[string]yaml.AgentDefinition
+	
+	// Metadata
+	Hash         string    // Canonical hash of recipe content
+	LastModified time.Time
+	WorkerStatus WorkerStatus
+}
+
+// WorkerStatus represents the status of a recipe's worker
+type WorkerStatus string
+
+const (
+	WorkerStatusRunning WorkerStatus = "running"
+	WorkerStatusStopped WorkerStatus = "stopped"
+	WorkerStatusFailed  WorkerStatus = "failed"
+	WorkerStatusStarting WorkerStatus = "starting"
+)
+
+// Job represents an execution instance of a recipe
+type Job struct {
+	ID          string
+	RecipeName  string
+	RecipeVersion string
+	Status      JobStatus
+	StartTime   time.Time
+	EndTime     *time.Time
+	Input       map[string]interface{}
+	Output      map[string]interface{}
+	Error       string
+	
+	// Temporal workflow execution details (internal use)
+	WorkflowID  string
+	RunID       string
+}
+
+// JobStatus represents the execution status of a job
+type JobStatus string
+
+const (
+	JobStatusRunning   JobStatus = "running"
+	JobStatusCompleted JobStatus = "completed"
+	JobStatusFailed    JobStatus = "failed"
+	JobStatusCanceled  JobStatus = "canceled"
+	JobStatusTerminated JobStatus = "terminated"
+)
+
+// ActivityExecution represents the execution state of an activity within a job
+type ActivityExecution struct {
+	Name      string // Activity name from YAML definition
+	Status    ActivityStatus
+	StartTime time.Time
+	EndTime   *time.Time
+	Duration  time.Duration
+	Result    interface{}
+	Error     string
+	
+	// Internal Temporal activity details
+	ActivityID   string
+	ActivityType string
+}
+
+// ActivityStatus represents the execution status of an activity
+type ActivityStatus string
+
+const (
+	ActivityStatusPending   ActivityStatus = "pending"
+	ActivityStatusRunning   ActivityStatus = "running"
+	ActivityStatusCompleted ActivityStatus = "completed"
+	ActivityStatusFailed    ActivityStatus = "failed"
+	ActivityStatusSkipped   ActivityStatus = "skipped"
+)
+
+// RecipeManifest represents the recipe.yaml structure
+type RecipeManifest struct {
+	Recipe struct {
+		Name        string `yaml:"name"`
+		Version     string `yaml:"version"`
+		Description string `yaml:"description"`
+		Files       struct {
+			Workflow   string `yaml:"workflow"`
+			Activities string `yaml:"activities"`
+			Agents     string `yaml:"agents"`
+		} `yaml:"files"`
+	} `yaml:"recipe"`
+}
+
+// RecipeFilter represents filter criteria for listing recipes
+type RecipeFilter struct {
+	Status       *WorkerStatus
+	IncludeRemoved bool // Include recipes that are no longer present but have historical data
+}
+
+// JobFilter represents filter criteria for listing jobs
+type JobFilter struct {
+	RecipeName string
+	Status     *JobStatus
+	StartTime  *time.Time
+	EndTime    *time.Time
+	Limit      int
+}
