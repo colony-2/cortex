@@ -14,7 +14,10 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(ono2.StartCmd)
+	rootCmd.AddCommand(ono2.StartWithRecipesCmd)
 	rootCmd.AddCommand(ono2.WorkflowCmd)
+	rootCmd.AddCommand(ono2.NewRecipeCommand())
+	rootCmd.AddCommand(ono2.NewJobCommand())
 }
 
 func main() {

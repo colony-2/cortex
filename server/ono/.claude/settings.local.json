@@ -25,7 +25,9 @@
       "Bash(pkill:*)",
       "Bash(true)",
       "Bash(chmod:*)",
-      "Bash(go get:*)"
+      "Bash(go get:*)",
+      "Bash(git commit:*)",
+      "Bash(./cmd/ono/ono start-recipes:*)"
     ],
     "deny": [
       "Write(Makefile)",
