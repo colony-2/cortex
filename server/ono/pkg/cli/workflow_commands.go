@@ -7,6 +7,7 @@ import (
 var (
 	serverHost string
 	serverPort int
+	namespace  string
 )
 
 var WorkflowCmd = &cobra.Command{

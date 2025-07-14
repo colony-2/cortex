@@ -35,7 +35,7 @@ func TestCLI_RecipeCommands(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverCmd := exec.CommandContext(ctx, binPath, "start-recipes",
+	serverCmd := exec.CommandContext(ctx, binPath, "start",
 		"--recipes", recipesDir,
 		"--port", "7234", // Use different port to avoid conflicts
 		"--namespace", "test-namespace",
@@ -204,7 +204,7 @@ activities:
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverCmd := exec.CommandContext(ctx, binPath, "start-recipes",
+	serverCmd := exec.CommandContext(ctx, binPath, "start",
 		"--recipes", recipesDir,
 		"--port", "7235",
 		"--namespace", "test-namespace-2",
@@ -294,7 +294,7 @@ func TestCLI_ErrorHandling(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverCmd := exec.CommandContext(ctx, binPath, "start-recipes",
+	serverCmd := exec.CommandContext(ctx, binPath, "start",
 		"--recipes", testDir,
 		"--port", "7236",
 		"--namespace", "test-namespace-3",
@@ -368,7 +368,7 @@ func TestCLI_Formatting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverCmd := exec.CommandContext(ctx, binPath, "start-recipes",
+	serverCmd := exec.CommandContext(ctx, binPath, "start",
 		"--recipes", recipesDir,
 		"--port", "7237",
 		"--namespace", "test-namespace-4",
@@ -462,7 +462,7 @@ func TestCLI_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	serverCmd := exec.CommandContext(ctx, binPath, "start-recipes",
+	serverCmd := exec.CommandContext(ctx, binPath, "start",
 		"--recipes", recipesDir,
 		"--port", "7238",
 		"--namespace", "test-namespace-5",

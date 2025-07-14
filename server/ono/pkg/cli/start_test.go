@@ -7,7 +7,7 @@ import (
 )
 
 func TestStartCommand(t *testing.T) {
-	cmd := StartCmd
+	cmd := StartWithRecipesCmd
 
 	assert.NotNil(t, cmd)
 	assert.Equal(t, "start", cmd.Use)
@@ -23,19 +23,19 @@ func TestStartCommand(t *testing.T) {
 }
 
 func TestStartCommandDefaultFlags(t *testing.T) {
-	cmd := StartCmd
+	cmd := StartWithRecipesCmd
 
 	portFlag := cmd.Flags().Lookup("port")
 	assert.Equal(t, "7233", portFlag.DefValue)
 
 	uiPortFlag := cmd.Flags().Lookup("ui-port")
-	assert.Equal(t, "8233", uiPortFlag.DefValue)
+	assert.Equal(t, "8080", uiPortFlag.DefValue)
 
 	namespaceFlag := cmd.Flags().Lookup("namespace")
 	assert.Equal(t, "default", namespaceFlag.DefValue)
 
 	dbFlag := cmd.Flags().Lookup("db-filename")
-	assert.Equal(t, "./ono.db", dbFlag.DefValue)
+	assert.Equal(t, "", dbFlag.DefValue)
 
 	logLevelFlag := cmd.Flags().Lookup("log-level")
 	assert.Equal(t, "info", logLevelFlag.DefValue)

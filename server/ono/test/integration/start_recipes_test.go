@@ -30,7 +30,7 @@ func TestStartRecipesCommand(t *testing.T) {
 	dbPath := filepath.Join(tempDir, "test.db")
 
 	// Start the server in the background
-	cmd := exec.Command("./build/ono", "start-recipes",
+	cmd := exec.Command("./build/ono", "start",
 		"--db-filename", dbPath,
 		"--port", "17233", // Use non-default port to avoid conflicts
 		"--ui-port", "18080",
@@ -117,7 +117,7 @@ func TestStartRecipesWithExampleRecipe(t *testing.T) {
 	dbPath := filepath.Join(tempDir, "test.db")
 
 	// Start the server
-	cmd := exec.Command("./build/ono", "start-recipes",
+	cmd := exec.Command("./build/ono", "start",
 		"--db-filename", dbPath,
 		"--port", "17234", // Different port from other test
 		"--ui-port", "18081",

@@ -42,12 +42,12 @@ func TestStartCommandSmoke(t *testing.T) {
 
 func TestStartCommandInit(t *testing.T) {
 	// Test that the command itself is properly initialized
-	if StartCmd == nil {
-		t.Fatal("StartCmd is nil")
+	if StartWithRecipesCmd == nil {
+		t.Fatal("StartWithRecipesCmd is nil")
 	}
 
-	if StartCmd.RunE == nil {
-		t.Fatal("StartCmd.RunE is nil")
+	if StartWithRecipesCmd.RunE == nil {
+		t.Fatal("StartWithRecipesCmd.RunE is nil")
 	}
 
 	// Test with minimal context

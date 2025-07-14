@@ -18,7 +18,7 @@ import (
 
 // StartWithRecipesCmd represents the start command with recipe support
 var StartWithRecipesCmd = &cobra.Command{
-	Use:   "start-recipes",
+	Use:   "start",
 	Short: "Start Temporal dev server with automatic recipe worker management",
 	Long: `Starts a local Temporal development server with automatic recipe discovery
 and worker management. 
