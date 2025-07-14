@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"text/tabwriter"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	
+
 	"vibethis/ono/internal/recipe"
+	"vibethis/ono/pkg/cli/format"
 )
 
 // NewRecipeListCommand creates the recipe list command
@@ -49,7 +50,7 @@ The output includes recipe name, version, status, worker status, and last update
 func runRecipeList(cmd *cobra.Command, format, status string) error {
 	// Get recipe directory from config
 	recipesDir := getRecipesDir()
-	
+
 	// Create logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -75,13 +76,13 @@ func runRecipeList(cmd *cobra.Command, format, status string) error {
 	case "current":
 		running := recipe.WorkerStatusRunning
 		filter = &recipe.RecipeFilter{
-			Status: &running,
+			Status:         &running,
 			IncludeRemoved: false,
 		}
 	case "removed":
 		stopped := recipe.WorkerStatusStopped
 		filter = &recipe.RecipeFilter{
-			Status: &stopped,
+			Status:         &stopped,
 			IncludeRemoved: true,
 		}
 	case "all":
@@ -110,32 +111,12 @@ func runRecipeList(cmd *cobra.Command, format, status string) error {
 }
 
 func outputRecipesTable(cmd *cobra.Command, recipes []*recipe.Recipe) error {
-	if len(recipes) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No recipes found.")
-		return nil
-	}
+	// Use color output if terminal supports it
+	useColor := color.NoColor == false
+	formatter := format.NewRecipeFormatter(useColor)
 
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	defer w.Flush()
-
-	// Header
-	fmt.Fprintln(w, "RECIPE NAME\tVERSION\tSTATUS\tWORKER STATUS\tLAST UPDATED")
-
-	// Rows
-	for _, r := range recipes {
-		status := "Active"
-		if r.WorkerStatus == recipe.WorkerStatusStopped {
-			status = "Removed"
-		}
-		
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			r.Name,
-			r.Version,
-			status,
-			r.WorkerStatus,
-			r.LastModified.Format("2006-01-02 15:04:05"),
-		)
-	}
+	output := formatter.FormatRecipeList(recipes)
+	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	return nil
 }
@@ -157,7 +138,7 @@ func outputRecipesJSON(cmd *cobra.Command, recipes []*recipe.Recipe) error {
 		if r.WorkerStatus == recipe.WorkerStatusStopped {
 			status = "removed"
 		}
-		
+
 		output[i] = recipeOutput{
 			Name:         r.Name,
 			Version:      r.Version,
@@ -179,12 +160,12 @@ func getRecipesDir() string {
 	if dir := os.Getenv("ONO_RECIPE_DIR"); dir != "" {
 		return dir
 	}
-	
+
 	// Default to ~/.ono/recipes
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ".ono/recipes"
 	}
-	
+
 	return filepath.Join(homeDir, ".ono", "recipes")
 }

@@ -50,19 +50,35 @@ type Job struct {
 	Status      JobStatus
 	StartTime   time.Time
 	EndTime     *time.Time
+	UpdateTime  time.Time
 	Input       map[string]interface{}
 	Output      map[string]interface{}
 	Error       string
 	
+	// Optional fields
+	Duration     *time.Duration
+	Inputs       map[string]interface{} // alias for Input
+	Outputs      map[string]interface{} // alias for Output
+	Activities   []*ActivityExecution
+	WorkflowType string
+	
 	// Temporal workflow execution details (internal use)
 	WorkflowID  string
 	RunID       string
+	ExecutionInfo *WorkflowExecutionInfo
+}
+
+// WorkflowExecutionInfo contains Temporal-specific execution details
+type WorkflowExecutionInfo struct {
+	WorkflowID string
+	RunID      string
 }
 
 // JobStatus represents the execution status of a job
 type JobStatus string
 
 const (
+	JobStatusUnknown   JobStatus = "unknown"
 	JobStatusRunning   JobStatus = "running"
 	JobStatusCompleted JobStatus = "completed"
 	JobStatusFailed    JobStatus = "failed"
@@ -73,12 +89,13 @@ const (
 // ActivityExecution represents the execution state of an activity within a job
 type ActivityExecution struct {
 	Name      string // Activity name from YAML definition
-	Status    ActivityStatus
+	Status    string // Use string for flexibility
 	StartTime time.Time
-	EndTime   *time.Time
-	Duration  time.Duration
-	Result    interface{}
+	EndTime   time.Time
+	Duration  *time.Duration
+	Result    map[string]interface{}
 	Error     string
+	Attempt   int
 	
 	// Internal Temporal activity details
 	ActivityID   string

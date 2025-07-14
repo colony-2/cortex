@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"text/tabwriter"
-	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
-	
+
 	"vibethis/ono/internal/recipe"
+	"vibethis/ono/pkg/cli/format"
 )
 
 // NewRecipeHistoryCommand creates the recipe history command
@@ -59,7 +59,7 @@ their status, start time, duration, and result summary.`,
 func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, format, namespace, serverAddr string) error {
 	// Get recipe directory from config
 	recipesDir := getRecipesDir()
-	
+
 	// Create logger
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
@@ -77,7 +77,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	defer registry.Stop()
 
 	// Verify the recipe exists
-	r, err := registry.GetRecipe(recipeName)
+	_, err = registry.GetRecipe(recipeName)
 	if err != nil {
 		return fmt.Errorf("recipe not found: %w", err)
 	}
@@ -94,7 +94,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 
 	// Build query for listing workflows
 	query := fmt.Sprintf(`TaskQueue = "%s-%s"`, "ono-recipes", recipeName)
-	
+
 	// Add status filter if specified
 	switch status {
 	case "running":
@@ -111,7 +111,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 
 	// List workflow executions
 	ctx := context.Background()
-	
+
 	listRequest := &workflowservice.ListWorkflowExecutionsRequest{
 		PageSize: int32(limit),
 		Query:    query,
@@ -124,49 +124,13 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 
 	workflows := resp.Executions
 
-	// Convert to job format
-	jobs := make([]*recipe.Job, len(workflows))
-	for i, wf := range workflows {
-		job := &recipe.Job{
-			ID:          wf.Execution.WorkflowId,
-			RecipeName:  recipeName,
-			RecipeVersion: r.Version,
-			StartTime:   wf.StartTime.AsTime(),
-			WorkflowID:  wf.Execution.WorkflowId,
-			RunID:       wf.Execution.RunId,
-		}
+	// Create transformer to convert workflow executions to jobs
+	transformer := recipe.NewTransformer(registry)
 
-		// Map status
-		switch wf.Status {
-		case 1: // Running
-			job.Status = recipe.JobStatusRunning
-		case 2: // Completed
-			job.Status = recipe.JobStatusCompleted
-			if wf.CloseTime != nil {
-				endTime := wf.CloseTime.AsTime()
-				job.EndTime = &endTime
-			}
-		case 3: // Failed
-			job.Status = recipe.JobStatusFailed
-			if wf.CloseTime != nil {
-				endTime := wf.CloseTime.AsTime()
-				job.EndTime = &endTime
-			}
-		case 4: // Canceled
-			job.Status = recipe.JobStatusCanceled
-			if wf.CloseTime != nil {
-				endTime := wf.CloseTime.AsTime()
-				job.EndTime = &endTime
-			}
-		case 5: // Terminated
-			job.Status = recipe.JobStatusTerminated
-			if wf.CloseTime != nil {
-				endTime := wf.CloseTime.AsTime()
-				job.EndTime = &endTime
-			}
-		}
-
-		jobs[i] = job
+	// Convert workflow executions to jobs
+	jobs, err := transformer.WorkflowExecutionsToJobs(workflows, recipeName)
+	if err != nil {
+		return fmt.Errorf("failed to transform workflow executions: %w", err)
 	}
 
 	// Output results
@@ -181,42 +145,18 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 }
 
 func outputJobsTable(cmd *cobra.Command, jobs []*recipe.Job) error {
-	if len(jobs) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No jobs found.")
-		return nil
+	// Use color output if terminal supports it
+	useColor := color.NoColor == false
+	formatter := format.NewRecipeFormatter(useColor)
+
+	// Get recipe name from first job (all jobs are for same recipe)
+	recipeName := ""
+	if len(jobs) > 0 {
+		recipeName = jobs[0].RecipeName
 	}
 
-	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 3, ' ', 0)
-	defer w.Flush()
-
-	// Header
-	fmt.Fprintln(w, "JOB ID\tSTATUS\tSTART TIME\tDURATION\tRESULT SUMMARY")
-
-	// Rows
-	for _, job := range jobs {
-		duration := "Running"
-		if job.EndTime != nil {
-			duration = job.EndTime.Sub(job.StartTime).Round(time.Second).String()
-		}
-
-		resultSummary := ""
-		if job.Status == recipe.JobStatusCompleted {
-			resultSummary = "Success"
-		} else if job.Status == recipe.JobStatusFailed && job.Error != "" {
-			resultSummary = job.Error
-			if len(resultSummary) > 50 {
-				resultSummary = resultSummary[:47] + "..."
-			}
-		}
-
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			job.ID,
-			job.Status,
-			job.StartTime.Format("2006-01-02 15:04:05"),
-			duration,
-			resultSummary,
-		)
-	}
+	output := formatter.FormatJobList(jobs, recipeName)
+	fmt.Fprint(cmd.OutOrStdout(), output)
 
 	return nil
 }
