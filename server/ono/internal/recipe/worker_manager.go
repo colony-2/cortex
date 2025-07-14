@@ -110,7 +110,7 @@ func (m *WorkerManager) StopWorker(recipeName string) error {
 
 	w, exists := m.workers[recipeName]
 	if !exists {
-		return fmt.Errorf("no worker found for recipe %q", recipeName)
+		return fmt.Errorf("worker not found for recipe %q", recipeName)
 	}
 
 	w.Stop()

@@ -41,15 +41,22 @@ func (t *Transformer) WorkflowExecutionToJob(
 
 	// Create job instance
 	job := &Job{
-		ID:         jobID,
-		RecipeName: recipeName,
-		Status:     status,
-		StartTime:  startTime,
-		UpdateTime: execution.CloseTime.AsTime(),
+		ID:           jobID,
+		RecipeName:   recipeName,
+		Status:       status,
+		StartTime:    startTime,
+		UpdateTime:   startTime, // Default to start time
+		WorkflowType: execution.Type.Name,
+		RunID:        execution.Execution.RunId,
 		ExecutionInfo: &WorkflowExecutionInfo{
 			WorkflowID: execution.Execution.WorkflowId,
 			RunID:      execution.Execution.RunId,
 		},
+	}
+	
+	// Update time if available
+	if execution.CloseTime != nil && !execution.CloseTime.AsTime().IsZero() {
+		job.UpdateTime = execution.CloseTime.AsTime()
 	}
 
 	// Add error message if failed
@@ -57,9 +64,11 @@ func (t *Transformer) WorkflowExecutionToJob(
 		job.Error = t.extractErrorFromExecution(execution)
 	}
 
-	// Calculate duration if completed
-	if execution.CloseTime != nil {
-		duration := execution.CloseTime.AsTime().Sub(startTime)
+	// Calculate duration and end time if completed
+	if execution.CloseTime != nil && !execution.CloseTime.AsTime().IsZero() {
+		endTime := execution.CloseTime.AsTime()
+		job.EndTime = &endTime
+		duration := endTime.Sub(startTime)
 		job.Duration = &duration
 	}
 

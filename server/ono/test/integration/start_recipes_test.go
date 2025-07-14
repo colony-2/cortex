@@ -1,10 +1,9 @@
-// +build integration
+//go:build integration
 
 package integration
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,7 +67,8 @@ func TestStartRecipesCommand(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = c.DescribeNamespace(ctx, "default")
+	// Verify connection by checking the service info
+	_, err = c.WorkflowService().GetSystemInfo(ctx, nil)
 	if err != nil {
 		t.Errorf("Failed to describe namespace: %v", err)
 	}

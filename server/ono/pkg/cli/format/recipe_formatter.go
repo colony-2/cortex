@@ -63,6 +63,10 @@ func (f *RecipeFormatter) FormatRecipeList(recipes []*recipe.Recipe) string {
 
 // FormatRecipeDetail formats detailed recipe information
 func (f *RecipeFormatter) FormatRecipeDetail(r *recipe.Recipe) string {
+	if r == nil {
+		return "Recipe not found"
+	}
+	
 	var sb strings.Builder
 	
 	// Header
@@ -164,6 +168,10 @@ func (f *RecipeFormatter) FormatJobList(jobs []*recipe.Job, recipeName string) s
 
 // FormatJobDetail formats detailed job information
 func (f *RecipeFormatter) FormatJobDetail(job *recipe.Job) string {
+	if job == nil {
+		return "Job not found"
+	}
+	
 	var sb strings.Builder
 	
 	// Header

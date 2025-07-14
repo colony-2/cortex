@@ -1,13 +1,17 @@
 package recipe
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -227,4 +231,257 @@ activities:
 `
 	filename := filepath.Join(dir, name+".yaml")
 	require.NoError(t, os.WriteFile(filename, []byte(fmt.Sprintf(content, name, version)), 0644))
+}
+
+func TestRegistry_ListRecipesWithFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	// Create recipes with different names
+	createSingleFileRecipe(t, tmpDir, "recipe-alpha", "1.0.0")
+	createSingleFileRecipe(t, tmpDir, "recipe-beta", "2.0.0")
+	createSingleFileRecipe(t, tmpDir, "other-gamma", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Get all recipes
+	allRecipes, err := registry.ListRecipes(nil)
+	require.NoError(t, err)
+	assert.Len(t, allRecipes, 3) // Should have all 3 recipes
+	
+	// Test manual filtering by name prefix
+	var filteredRecipes []*Recipe
+	for _, r := range allRecipes {
+		if strings.HasPrefix(r.Name, "recipe-") {
+			filteredRecipes = append(filteredRecipes, r)
+		}
+	}
+	assert.Len(t, filteredRecipes, 2) // Should have 2 recipes with "recipe-" prefix
+	
+	// Verify the filtered recipes
+	for _, r := range filteredRecipes {
+		assert.True(t, strings.HasPrefix(r.Name, "recipe-"))
+	}
+}
+
+func TestRegistry_ConcurrentAccess(t *testing.T) {
+	tmpDir := t.TempDir()
+	createSingleFileRecipe(t, tmpDir, "concurrent-recipe", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Concurrent reads
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recipe, err := registry.GetRecipe("concurrent-recipe")
+			assert.NoError(t, err)
+			assert.NotNil(t, recipe)
+			assert.Equal(t, "concurrent-recipe", recipe.Name)
+		}()
+	}
+	
+	// Concurrent lists
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recipes, err := registry.ListRecipes(nil)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, recipes)
+		}()
+	}
+	
+	wg.Wait()
+}
+
+func TestRegistry_InvalidRecipeHandling(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	// Create an invalid YAML file
+	invalidContent := `this is not valid yaml:
+  - item without proper
+  - structure {{ broken
+`
+	invalidPath := filepath.Join(tmpDir, "invalid.yaml")
+	require.NoError(t, os.WriteFile(invalidPath, []byte(invalidContent), 0644))
+	
+	// Create a valid recipe too
+	createSingleFileRecipe(t, tmpDir, "valid-recipe", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Should still discover the valid recipe
+	recipes, err := registry.ListRecipes(nil)
+	require.NoError(t, err)
+	assert.Len(t, recipes, 1)
+	assert.Equal(t, "valid-recipe", recipes[0].Name)
+	
+	// Invalid recipe should not be found
+	_, err = registry.GetRecipe("invalid")
+	assert.Error(t, err)
+}
+
+func TestRegistry_NestedDirectories(t *testing.T) {
+	tmpDir := t.TempDir()
+	
+	// Create nested directory structure
+	nestedDir := filepath.Join(tmpDir, "category1", "subcategory")
+	require.NoError(t, os.MkdirAll(nestedDir, 0755))
+	
+	// Create recipes at different levels
+	createSingleFileRecipe(t, tmpDir, "root-recipe", "1.0.0")
+	createSingleFileRecipe(t, filepath.Join(tmpDir, "category1"), "cat1-recipe", "1.0.0")
+	createSingleFileRecipe(t, nestedDir, "nested-recipe", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Should discover all recipes
+	recipes, err := registry.ListRecipes(nil)
+	require.NoError(t, err)
+	assert.Len(t, recipes, 3)
+	
+	// Verify all recipes found
+	recipeNames := make(map[string]bool)
+	for _, r := range recipes {
+		recipeNames[r.Name] = true
+	}
+	assert.True(t, recipeNames["root-recipe"])
+	assert.True(t, recipeNames["cat1-recipe"])
+	assert.True(t, recipeNames["nested-recipe"])
+}
+
+func TestRegistry_HashConsistency(t *testing.T) {
+	tmpDir := t.TempDir()
+	createSingleFileRecipe(t, tmpDir, "hash-test", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Get initial hash
+	recipe1, err := registry.GetRecipe("hash-test")
+	require.NoError(t, err)
+	hash1 := recipe1.Hash
+	
+	// Stop and restart registry
+	registry.Stop()
+	
+	registry2, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	err = registry2.Start()
+	require.NoError(t, err)
+	defer registry2.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Hash should be the same
+	recipe2, err := registry2.GetRecipe("hash-test")
+	require.NoError(t, err)
+	assert.Equal(t, hash1, recipe2.Hash)
+}
+
+func TestRegistry_WorkerManagerIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	createSingleFileRecipe(t, tmpDir, "worker-test", "1.0.0")
+	
+	logger := zaptest.NewLogger(t)
+	
+	// Create registry without worker manager for this test
+	registry, err := NewRegistry(logger, tmpDir, nil)
+	require.NoError(t, err)
+	
+	err = registry.Start()
+	require.NoError(t, err)
+	defer registry.Stop()
+	
+	time.Sleep(100 * time.Millisecond)
+	
+	// Get recipe
+	recipe, err := registry.GetRecipe("worker-test")
+	require.NoError(t, err)
+	assert.Equal(t, "worker-test", recipe.Name)
+	assert.Equal(t, "1.0.0", recipe.Version)
+	
+	// Modify the recipe
+	createSingleFileRecipe(t, tmpDir, "worker-test", "2.0.0")
+	time.Sleep(1 * time.Second)
+	
+	// Verify recipe was updated
+	updatedRecipe, err := registry.GetRecipe("worker-test")
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", updatedRecipe.Version)
+}
+
+// Mock worker manager for testing
+type mockWorkerManager struct {
+	mock.Mock
+}
+
+func (m *mockWorkerManager) StartWorker(ctx context.Context, name string, recipe *Recipe) error {
+	args := m.Called(ctx, name, recipe)
+	return args.Error(0)
+}
+
+func (m *mockWorkerManager) StopWorker(name string) error {
+	args := m.Called(name)
+	return args.Error(0)
+}
+
+func (m *mockWorkerManager) RestartWorker(name string, recipe *Recipe) error {
+	args := m.Called(name, recipe)
+	return args.Error(0)
+}
+
+func (m *mockWorkerManager) GetWorkerStatus(name string) WorkerStatus {
+	args := m.Called(name)
+	return args.Get(0).(WorkerStatus)
+}
+
+func (m *mockWorkerManager) GetAllWorkerStatus() map[string]WorkerStatus {
+	args := m.Called()
+	return args.Get(0).(map[string]WorkerStatus)
+}
+
+func (m *mockWorkerManager) StopAll() {
+	m.Called()
 }

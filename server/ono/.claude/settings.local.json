@@ -27,7 +27,8 @@
       "Bash(chmod:*)",
       "Bash(go get:*)",
       "Bash(git commit:*)",
-      "Bash(./cmd/ono/ono start-recipes:*)"
+      "Bash(./cmd/ono/ono start-recipes:*)",
+      "Bash(ls:*)"
     ],
     "deny": [
       "Write(Makefile)",

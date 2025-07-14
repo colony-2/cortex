@@ -157,8 +157,8 @@ func (r *Registry) discoverRecipes() error {
 			return nil
 		}
 
-		// Check for single-file recipes (*.yaml files in root)
-		if !d.IsDir() && filepath.Dir(path) == r.recipesDir && strings.HasSuffix(d.Name(), ".yaml") {
+		// Check for single-file recipes (*.yaml files)
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".yaml") && d.Name() != "recipe.yaml" {
 			recipe, err := r.loadSingleFileRecipe(path)
 			if err != nil {
 				r.logger.Error("Failed to load single-file recipe", 
