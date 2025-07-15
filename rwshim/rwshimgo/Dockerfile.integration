@@ -1,0 +1,19 @@
+# Use golang:1.24 which already has Go and gcc installed
+FROM golang:1.24
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy all source files
+COPY . /workspace/
+
+# Build the C components
+RUN cd clib && \
+    gcc -o test_app test_app.c && \
+    gcc -shared -fPIC -o intercept.so intercept.c -ldl
+
+# Build the Go library
+RUN cd rwshimgo && go mod download && go build ./...
+
+# Run integration tests
+CMD ["go", "test", "-tags=integration", "-v", "./rwshimgo", "-run", "TestIntegrationWithCShim"]

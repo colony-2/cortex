@@ -22,7 +22,7 @@ The shim intercepts all `read()` and `write()` system calls by providing its own
 ## Socket Protocol
 
 ### Socket Location
-The shim expects a Unix domain socket at: `/tmp/monitor.sock`
+The shim expects a Unix domain socket at: `/tmp/vibethis-rwshim.sock`
 
 ### Request Format
 The shim sends requests as ASCII text messages with the following format:
@@ -66,10 +66,10 @@ The response must be sent before closing the connection.
 // Create Unix domain socket
 int sock = socket(AF_UNIX, SOCK_STREAM, 0);
 
-// Bind to /tmp/monitor.sock
+// Bind to /tmp/vibethis-rwshim.sock
 struct sockaddr_un addr = {0};
 addr.sun_family = AF_UNIX;
-strcpy(addr.sun_path, "/tmp/monitor.sock");
+strcpy(addr.sun_path, "/tmp/vibethis-rwshim.sock");
 bind(sock, (struct sockaddr*)&addr, sizeof(addr));
 
 // Listen for connections

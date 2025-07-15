@@ -11,7 +11,7 @@
 #include <signal.h>
 #include <errno.h>
 
-static const char *SOCK_PATH = "/tmp/monitor.sock";
+static const char *SOCK_PATH = "/tmp/vibethis-rwshim.sock";
 static int server_fd = -1;
 
 typedef enum {

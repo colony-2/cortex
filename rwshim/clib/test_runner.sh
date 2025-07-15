@@ -26,7 +26,7 @@ echo "Exit code: $TEST_EXIT"
 
 kill $MONITOR_PID 2>/dev/null || true
 wait $MONITOR_PID 2>/dev/null || true
-rm -f test_output.txt /tmp/monitor.sock
+rm -f test_output.txt /tmp/vibethis-rwshim.sock
 
 echo ""
 echo "=== Test 3: Shimmed execution with DENY_ALL policy ==="
@@ -38,7 +38,7 @@ DYLD_INSERT_LIBRARIES=./intercept.dylib ./test_app 2>&1 || echo "Expected failur
 
 kill $MONITOR_PID 2>/dev/null || true
 wait $MONITOR_PID 2>/dev/null || true
-rm -f test_output.txt /tmp/monitor.sock
+rm -f test_output.txt /tmp/vibethis-rwshim.sock
 
 echo ""
 echo "=== Test 4: Shimmed execution with DENY_WRITES policy ==="
@@ -50,7 +50,7 @@ DYLD_INSERT_LIBRARIES=./intercept.dylib ./test_app 2>&1 || echo "Expected failur
 
 kill $MONITOR_PID 2>/dev/null || true
 wait $MONITOR_PID 2>/dev/null || true
-rm -f test_output.txt /tmp/monitor.sock
+rm -f test_output.txt /tmp/vibethis-rwshim.sock
 
 echo ""
 echo "=== Test 5: Shimmed execution with DENY_READS policy ==="
@@ -66,7 +66,7 @@ DYLD_INSERT_LIBRARIES=./intercept.dylib ./test_app 2>&1 || echo "Expected failur
 
 kill $MONITOR_PID 2>/dev/null || true
 wait $MONITOR_PID 2>/dev/null || true
-rm -f test_output.txt /tmp/monitor.sock
+rm -f test_output.txt /tmp/vibethis-rwshim.sock
 
 echo ""
 echo "=== Test 6: No monitor running (should allow by default) ==="

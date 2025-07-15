@@ -14,7 +14,7 @@
 #include <pthread.h>
 #include <limits.h>
 
-static const char *SOCK_PATH = "/tmp/monitor.sock";
+static const char *SOCK_PATH = "/tmp/vibethis-rwshim.sock";
 static ssize_t (*real_write)(int,const void*,size_t) = NULL;
 static ssize_t (*real_read) (int,void*,size_t)       = NULL;
 
