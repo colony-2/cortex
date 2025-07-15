@@ -9,6 +9,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/vibethis/embeddedtemporal v0.0.0-00010101000000-000000000000
+	github.com/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	go.temporal.io/api v1.50.0
 	go.temporal.io/sdk v1.34.0
 	go.temporal.io/server v1.28.0
@@ -19,6 +20,8 @@ require (
 )
 
 replace github.com/vibethis/embeddedtemporal => ../embeddedtemporal
+
+replace github.com/vibethis/server/recipe-core => ../recipe-core
 
 require (
 	cel.dev/expr v0.20.0 // indirect

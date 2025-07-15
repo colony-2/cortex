@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Provider interface for LLM providers

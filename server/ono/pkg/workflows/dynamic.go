@@ -7,7 +7,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
 	"vibethis/ono/pkg/compiler"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // CreateDynamicWorkflow creates a Temporal workflow function from a YAML workflow definition

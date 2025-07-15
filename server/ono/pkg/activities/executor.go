@@ -6,7 +6,7 @@ import (
 
 	"go.temporal.io/sdk/activity"
 	"vibethis/ono/pkg/activities/llm"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Executor handles execution of activities based on their implementation type

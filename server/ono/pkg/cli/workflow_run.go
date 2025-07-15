@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.temporal.io/sdk/client"
 	"vibethis/ono/pkg/compiler"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	yamlpkg "vibethis/ono/pkg/yaml"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestHashComputer_ComputeRecipeHash(t *testing.T) {

@@ -5,7 +5,11 @@
       "Bash(mkdir:*)",
       "Bash(moon run:*)",
       "Bash(go:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(git restore:*)"
     ],
     "deny": []
   }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestMockResearchActivity(t *testing.T) {

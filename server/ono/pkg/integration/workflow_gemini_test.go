@@ -13,7 +13,7 @@ import (
 	"vibethis/ono/pkg/activities"
 	"vibethis/ono/pkg/activities/llm"
 	"vibethis/ono/pkg/compiler"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestResearchProjectWithGemini(t *testing.T) {

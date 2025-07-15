@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"vibethis/ono/pkg/activities/llm"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func main() {

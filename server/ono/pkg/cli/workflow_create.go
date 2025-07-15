@@ -11,7 +11,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"vibethis/ono/pkg/compiler"
 	"vibethis/ono/pkg/workflows"
-	"vibethis/ono/pkg/yaml"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 var (

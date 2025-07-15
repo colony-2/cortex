@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap/zaptest"
-	yamlpkg "vibethis/ono/pkg/yaml"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Mock types for testing

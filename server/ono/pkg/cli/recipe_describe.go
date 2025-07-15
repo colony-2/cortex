@@ -11,7 +11,7 @@ import (
 
 	"vibethis/ono/internal/recipe"
 	formatpkg "vibethis/ono/pkg/cli/format"
-	yamlpkg "vibethis/ono/pkg/yaml"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // NewRecipeDescribeCommand creates the recipe describe command

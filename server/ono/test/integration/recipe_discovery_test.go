@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	
-	"vibethis/ono/internal/recipe"
+	"github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func TestRecipeDiscovery_FullLifecycle(t *testing.T) {
