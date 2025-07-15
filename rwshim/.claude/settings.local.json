@@ -6,7 +6,8 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(ls:*)",
-      "Bash(moon run:*)"
+      "Bash(moon run:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }
