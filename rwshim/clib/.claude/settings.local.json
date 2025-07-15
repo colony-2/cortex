@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./test_runner.sh)",
+      "Bash(gcc:*)",
+      "Bash(ldd:*)",
+      "Bash(otool:*)",
+      "Bash(./run_tests_docker.sh:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": []
+  }
+}
