@@ -4,13 +4,15 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/vibethis/embeddedtemporal"
 )
 
 func TestStartCommandSmoke(t *testing.T) {
 	// This test checks if the start command can at least initialize
 	// without actually starting the server
 
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  27233, // Use very high port to avoid conflicts
 		UIPort:        28233,
@@ -21,7 +23,7 @@ func TestStartCommandSmoke(t *testing.T) {
 		EnableUI:      false,
 	}
 
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create dev server: %v", err)
 	}

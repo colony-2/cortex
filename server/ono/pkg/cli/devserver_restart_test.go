@@ -3,11 +3,13 @@ package cli
 import (
 	"testing"
 	"time"
+
+	"github.com/vibethis/embeddedtemporal"
 )
 
 func TestDevServerRestart(t *testing.T) {
 	// Test that server can be restarted after stopping
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17233, // Use a non-default port to avoid conflicts
 		UIPort:       18233,
@@ -18,7 +20,7 @@ func TestDevServerRestart(t *testing.T) {
 	}
 
 	// First start
-	server1, err := NewDevServer(opts)
+	server1, err := embeddedtemporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create first server: %v", err)
 	}
@@ -41,7 +43,7 @@ func TestDevServerRestart(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Second start - this should work without errors
-	server2, err := NewDevServer(opts)
+	server2, err := embeddedtemporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create second server: %v", err)
 	}

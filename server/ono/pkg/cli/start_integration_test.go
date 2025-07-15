@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vibethis/embeddedtemporal"
 )
 
 func TestDevServerStartStop(t *testing.T) {
@@ -19,7 +20,7 @@ func TestDevServerStartStop(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17233, // Use non-standard port to avoid conflicts
 		UIPort:        18233,
@@ -31,7 +32,7 @@ func TestDevServerStartStop(t *testing.T) {
 	}
 
 	// Create dev server
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	require.NoError(t, err)
 	require.NotNil(t, devServer)
 
@@ -68,7 +69,7 @@ func TestDevServerWithCustomNamespace(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test-custom.db")
 
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17234, // Different port
 		UIPort:        18234,
@@ -79,7 +80,7 @@ func TestDevServerWithCustomNamespace(t *testing.T) {
 		EnableUI:      false,
 	}
 
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	require.NoError(t, err)
 
 	// Start server in background
@@ -112,62 +113,8 @@ func TestDevServerWithCustomNamespace(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestBuildSQLiteAttributesIntegration(t *testing.T) {
-	devServer := &DevServer{
-		options: DevServerOptions{
-			SQLitePragmas: map[string]string{
-				"cache_size": "-2000",
-				"page_size":  "4096",
-			},
-		},
-	}
+// TestBuildSQLiteAttributesIntegration has been removed as it tested internal implementation details
+// that are now handled within the embeddedtemporal package
 
-	attrs := devServer.buildSQLiteAttributes()
-	assert.Equal(t, "rwc", attrs["mode"])
-	assert.Equal(t, "WAL", attrs["_journal_mode"])
-	assert.Equal(t, "NORMAL", attrs["_synchronous"])
-	assert.Equal(t, "-2000", attrs["_cache_size"])
-	assert.Equal(t, "4096", attrs["_page_size"])
-}
-
-func TestDevServerConfig(t *testing.T) {
-	tests := []struct {
-		name    string
-		opts    DevServerOptions
-		wantErr bool
-	}{
-		{
-			name: "valid config with file",
-			opts: DevServerOptions{
-				FrontendIP:   "127.0.0.1",
-				FrontendPort: 7233,
-				DatabaseFile: "./test.db",
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid config with required database file",
-			opts: DevServerOptions{
-				FrontendIP:   "127.0.0.1",
-				FrontendPort: 7233,
-				DatabaseFile: "./required.db",
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			devServer := &DevServer{options: tt.opts}
-			cfg, err := devServer.buildConfig()
-
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, cfg)
-				assert.NotNil(t, cfg.Persistence)
-			}
-		})
-	}
-}
+// TestDevServerConfig has been removed as it tested internal implementation details
+// that are now handled within the embeddedtemporal package

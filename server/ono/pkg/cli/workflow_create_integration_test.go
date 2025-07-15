@@ -12,12 +12,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vibethis/embeddedtemporal"
 	"go.temporal.io/sdk/client"
 )
 
 func TestWorkflowCreateWithRunningServer(t *testing.T) {
 	// Start a test server
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17240,
 		UIPort:        18240,
@@ -28,7 +29,7 @@ func TestWorkflowCreateWithRunningServer(t *testing.T) {
 		EnableUI:      false,
 	}
 
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	require.NoError(t, err)
 
 	err = devServer.Start()
@@ -82,7 +83,7 @@ func TestWorkflowCreateWithRunningServer(t *testing.T) {
 
 func TestWorkflowCreateCommandIntegration(t *testing.T) {
 	// Start a test server
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17241,
 		UIPort:        18241,
@@ -93,7 +94,7 @@ func TestWorkflowCreateCommandIntegration(t *testing.T) {
 		EnableUI:      false,
 	}
 
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	require.NoError(t, err)
 
 	err = devServer.Start()
@@ -237,7 +238,7 @@ func TestWorkflowCreateCommandIntegration(t *testing.T) {
 
 func TestWorkflowCreateExamplesIntegration(t *testing.T) {
 	// Start a test server
-	opts := DevServerOptions{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17242,
 		UIPort:        18242,
@@ -248,7 +249,7 @@ func TestWorkflowCreateExamplesIntegration(t *testing.T) {
 		EnableUI:      false,
 	}
 
-	devServer, err := NewDevServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	require.NoError(t, err)
 
 	err = devServer.Start()
