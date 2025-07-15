@@ -1,6 +1,6 @@
 // +build integration
 
-package rwshimgo
+package rwshim
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -159,8 +160,8 @@ func TestIntegrationWithCShim(t *testing.T) {
 
 		// Capture output
 		var stdout, stderr bytes.Buffer
-		proc.cmd.Stdout = &stdout
-		proc.cmd.Stderr = &stderr
+		proc.GetCmd().Stdout = &stdout
+		proc.GetCmd().Stderr = &stderr
 
 		if err := proc.Start(); err != nil {
 			t.Fatalf("Failed to start process: %v", err)
@@ -228,12 +229,350 @@ func TestIntegrationWithCShim(t *testing.T) {
 	})
 }
 
+// TestProcessIntegration contains process-specific integration tests
+func TestProcessIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Find the intercept library
+	shimPath := findInterceptLibrary(t)
+
+	t.Run("ProcessCreation", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		
+		// Test creating a simple process
+		proc, err := monitor.StartProcess(ctx, "echo", []string{"test"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		// Check that process hasn't started yet
+		if proc.Pid() != -1 {
+			t.Error("Process should not have a PID before Start()")
+		}
+	})
+
+	t.Run("ProcessExecution", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		// Capture output
+		var stdout bytes.Buffer
+		
+		ctx := context.Background()
+		proc, err := monitor.StartProcess(ctx, "echo", []string{"hello", "world"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		// Redirect stdout to our buffer
+		r, w, _ := os.Pipe()
+		proc.GetCmd().Stdout = w
+		
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		// Check PID
+		if proc.Pid() <= 0 {
+			t.Error("Started process should have a valid PID")
+		}
+
+		// Use a waitgroup to ensure output is read
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Read output
+			buf := make([]byte, 1024)
+			n, _ := r.Read(buf)
+			stdout.Write(buf[:n])
+			r.Close()
+		}()
+
+		err = proc.Wait()
+		w.Close()
+		wg.Wait() // Wait for output to be read
+
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		// Check exit code
+		if proc.ExitCode() != 0 {
+			t.Errorf("Expected exit code 0, got %d", proc.ExitCode())
+		}
+
+		// Check output
+		output := strings.TrimSpace(stdout.String())
+		if output != "hello world" {
+			t.Errorf("Expected 'hello world', got '%s'", output)
+		}
+	})
+
+	t.Run("ProcessOptions", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		
+		// Test with multiple options
+		tempDir := t.TempDir()
+		envVar := "TEST_VAR=test_value"
+		
+		proc, err := monitor.StartProcess(ctx, "sh", []string{"-c", "pwd && echo $TEST_VAR"},
+			WithShimPath(shimPath),
+			WithDir(tempDir),
+			WithEnv([]string{envVar}))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		// Capture output
+		var stdout bytes.Buffer
+		r, w, _ := os.Pipe()
+		proc.GetCmd().Stdout = w
+
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		err = proc.Wait()
+		w.Close()
+
+		// Read output
+		buf := make([]byte, 1024)
+		n, _ := r.Read(buf)
+		stdout.Write(buf[:n])
+		r.Close()
+
+		output := strings.TrimSpace(stdout.String())
+		lines := strings.Split(output, "\n")
+		
+		// Check working directory (handle symlink resolution on macOS)
+		if len(lines) > 0 {
+			resolvedTempDir, _ := filepath.EvalSymlinks(tempDir)
+			resolvedOutput, _ := filepath.EvalSymlinks(lines[0])
+			if resolvedOutput != resolvedTempDir {
+				t.Errorf("Expected working directory %s, got %s", resolvedTempDir, resolvedOutput)
+			}
+		}
+		
+		// Check environment variable
+		if len(lines) > 1 && lines[1] != "test_value" {
+			t.Errorf("Expected env var value 'test_value', got %s", lines[1])
+		}
+	})
+
+	t.Run("ProcessWaitTimeout", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		
+		// Create a long-running process
+		proc, err := monitor.StartProcess(ctx, "sleep", []string{"5"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		// Wait with short timeout
+		err = proc.WaitWithTimeout(100 * time.Millisecond)
+		if err == nil {
+			t.Error("WaitWithTimeout should timeout")
+		}
+		if !strings.Contains(err.Error(), "timeout") {
+			t.Errorf("Expected timeout error, got: %v", err)
+		}
+
+		// Kill the process to clean up
+		proc.Kill()
+	})
+
+	t.Run("ProcessKill", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		
+		// Create a long-running process
+		proc, err := monitor.StartProcess(ctx, "sleep", []string{"10"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		// Kill the process
+		err = proc.Kill()
+		if err != nil {
+			t.Fatalf("Failed to kill process: %v", err)
+		}
+
+		// Wait should complete quickly
+		done := make(chan error)
+		go func() {
+			done <- proc.Wait()
+		}()
+
+		select {
+		case <-done:
+			// Process terminated as expected
+		case <-time.After(1 * time.Second):
+			t.Error("Process did not terminate after Kill()")
+		}
+	})
+
+	t.Run("ProcessDoubleStart", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		proc, err := monitor.StartProcess(ctx, "echo", []string{"test"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		// Try to start again
+		err = proc.Start()
+		if err == nil {
+			t.Error("Starting an already started process should return an error")
+		}
+
+		proc.Wait()
+	})
+
+	t.Run("ProcessWithContext", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		// Create a context that we'll cancel
+		ctx, cancel := context.WithCancel(context.Background())
+		
+		// Create a long-running process
+		proc, err := monitor.StartProcess(ctx, "sleep", []string{"10"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		err = proc.Start()
+		if err != nil {
+			t.Fatalf("Failed to start process: %v", err)
+		}
+
+		// Cancel the context
+		cancel()
+
+		// Process should terminate
+		done := make(chan error)
+		go func() {
+			done <- proc.Wait()
+		}()
+
+		select {
+		case <-done:
+			// Process terminated as expected
+		case <-time.After(1 * time.Second):
+			t.Error("Process did not terminate after context cancellation")
+			proc.Kill()
+		}
+	})
+
+	t.Run("ProcessNotStartedErrors", func(t *testing.T) {
+		monitor := NewMonitor(AllowAll)
+		err := monitor.Start()
+		if err != nil {
+			t.Fatalf("Failed to start monitor: %v", err)
+		}
+		defer monitor.Stop()
+
+		ctx := context.Background()
+		proc, err := monitor.StartProcess(ctx, "echo", []string{"test"}, WithShimPath(shimPath))
+		if err != nil {
+			t.Fatalf("Failed to create process: %v", err)
+		}
+
+		// Test operations on non-started process
+		err = proc.Wait()
+		if err == nil || !strings.Contains(err.Error(), "not started") {
+			t.Error("Wait on non-started process should return 'not started' error")
+		}
+
+		err = proc.WaitWithTimeout(100 * time.Millisecond)
+		if err == nil || !strings.Contains(err.Error(), "not started") {
+			t.Error("WaitWithTimeout on non-started process should return 'not started' error")
+		}
+
+		err = proc.Kill()
+		if err == nil || !strings.Contains(err.Error(), "not started") {
+			t.Error("Kill on non-started process should return 'not started' error")
+		}
+
+		if proc.Pid() != -1 {
+			t.Error("Pid of non-started process should be -1")
+		}
+
+		if proc.ExitCode() != -1 {
+			t.Error("ExitCode of non-started process should be -1")
+		}
+	})
+}
+
 // findTestApp locates the test_app binary
 func findTestApp(t *testing.T) string {
 	searchPaths := []string{
 		"./test_app",
 		"../clib/test_app",
 		"./clib/test_app",
+		"../../clib/test_app",
+		"../../../clib/test_app",
 	}
 
 	// Also check relative to test binary location
@@ -243,6 +582,7 @@ func findTestApp(t *testing.T) string {
 			filepath.Join(exeDir, "test_app"),
 			filepath.Join(exeDir, "..", "clib", "test_app"),
 			filepath.Join(exeDir, "..", "..", "clib", "test_app"),
+			filepath.Join(exeDir, "..", "..", "..", "clib", "test_app"),
 		)
 	}
 
@@ -263,6 +603,8 @@ func findInterceptLibrary(t *testing.T) string {
 		"./intercept.so",
 		"../clib/intercept.so",
 		"./clib/intercept.so",
+		"../../clib/intercept.so",
+		"../../../clib/intercept.so",
 	}
 
 	// Also check relative to test binary location
@@ -272,6 +614,7 @@ func findInterceptLibrary(t *testing.T) string {
 			filepath.Join(exeDir, "intercept.so"),
 			filepath.Join(exeDir, "..", "clib", "intercept.so"),
 			filepath.Join(exeDir, "..", "..", "clib", "intercept.so"),
+			filepath.Join(exeDir, "..", "..", "..", "clib", "intercept.so"),
 		)
 	}
 

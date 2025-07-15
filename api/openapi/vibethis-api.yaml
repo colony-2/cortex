@@ -531,9 +531,7 @@ paths:
                 type: object
                 properties:
                   status:
-                    type: string
-                    enum: ["none", "stopped", "running", "error"]
-                    description: Current container status
+                    $ref: '#/components/schemas/ContainerStatus'
                   containerId:
                     type: string
                     description: Container ID (if exists)
@@ -905,6 +903,11 @@ components:
         message:
           type: string
           description: Commit message
+
+    ContainerStatus:
+      type: string
+      enum: ["none", "stopped", "running", "error"]
+      description: Current container status
 
 tags:
   - name: Graph

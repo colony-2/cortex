@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/divisive-ai/vibethis/rwshim/rwshimgo"
+	"github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func simpleExample() {
 	fmt.Println("=== Example 1: Simple Allow-All Policy ===")
 
 	// Create monitor with allow-all policy
-	monitor := rwshimgo.NewMonitor(rwshimgo.AllowAll)
+	monitor := rwshim.NewMonitor(rwshim.AllowAll)
 
 	// Start the monitor
 	if err := monitor.Start(); err != nil {
@@ -61,22 +61,22 @@ func customPolicyExample() {
 	fmt.Println("=== Example 2: Custom Policy with Logging ===")
 
 	// Create a custom policy that logs all operations
-	customPolicy := func(req rwshimgo.Request) rwshimgo.Response {
+	customPolicy := func(req rwshim.Request) rwshim.Response {
 		fmt.Printf("Intercepted: %s fd=%d size=%d file=%s\n",
 			req.Operation, req.FD, req.Size, req.Filename)
 		
 		// Deny writes to /etc
-		if req.Operation == rwshimgo.OpWrite && len(req.Filename) >= 4 && req.Filename[:4] == "/etc" {
+		if req.Operation == rwshim.OpWrite && len(req.Filename) >= 4 && req.Filename[:4] == "/etc" {
 			fmt.Printf("  -> DENIED (write to /etc)\n")
-			return rwshimgo.Response{Allow: false}
+			return rwshim.Response{Allow: false}
 		}
 		
 		fmt.Printf("  -> ALLOWED\n")
-		return rwshimgo.Response{Allow: true}
+		return rwshim.Response{Allow: true}
 	}
 
 	// Create and start monitor
-	monitor := rwshimgo.NewMonitor(customPolicy)
+	monitor := rwshim.NewMonitor(customPolicy)
 	if err := monitor.Start(); err != nil {
 		log.Fatal("Failed to start monitor:", err)
 	}
@@ -104,23 +104,23 @@ func policyBuilderExample() {
 	fmt.Println("=== Example 3: Using PolicyBuilder ===")
 
 	// Build a complex policy
-	policy := rwshimgo.NewPolicyBuilder().
+	policy := rwshim.NewPolicyBuilder().
 		// Allow all reads from standard streams
-		AllowRead(rwshimgo.MatchStdStreams()).
+		AllowRead(rwshim.MatchStdStreams()).
 		// Allow all writes to standard streams
-		AllowWrite(rwshimgo.MatchStdStreams()).
+		AllowWrite(rwshim.MatchStdStreams()).
 		// Deny writes to .log files
-		DenyWrite(rwshimgo.MatchFilenameSuffix(".log")).
+		DenyWrite(rwshim.MatchFilenameSuffix(".log")).
 		// Allow reads from /tmp
-		AllowRead(rwshimgo.MatchFilenamePrefix("/tmp/")).
+		AllowRead(rwshim.MatchFilenamePrefix("/tmp/")).
 		// Deny large writes (>1MB)
-		DenyWrite(rwshimgo.MatchLargeOperations(1024 * 1024)).
+		DenyWrite(rwshim.MatchLargeOperations(1024 * 1024)).
 		// Default: allow everything else
 		Default(true).
 		Build()
 
 	// Create and start monitor
-	monitor := rwshimgo.NewMonitor(policy)
+	monitor := rwshim.NewMonitor(policy)
 	if err := monitor.Start(); err != nil {
 		log.Fatal("Failed to start monitor:", err)
 	}
@@ -147,17 +147,17 @@ func multiProcessExample() {
 
 	// Create monitor with a policy that counts operations
 	var readCount, writeCount int
-	countingPolicy := func(req rwshimgo.Request) rwshimgo.Response {
+	countingPolicy := func(req rwshim.Request) rwshim.Response {
 		switch req.Operation {
-		case rwshimgo.OpRead:
+		case rwshim.OpRead:
 			readCount++
-		case rwshimgo.OpWrite:
+		case rwshim.OpWrite:
 			writeCount++
 		}
-		return rwshimgo.Response{Allow: true}
+		return rwshim.Response{Allow: true}
 	}
 
-	monitor := rwshimgo.NewMonitor(countingPolicy)
+	monitor := rwshim.NewMonitor(countingPolicy)
 	if err := monitor.Start(); err != nil {
 		log.Fatal("Failed to start monitor:", err)
 	}

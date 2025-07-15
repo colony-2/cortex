@@ -4,9 +4,15 @@ Go library for rwshim read/write interception. Hosts Unix socket server, launche
 
 ## Core API
 
+The public API is available through two import paths:
+- `github.com/divisive-ai/vibethis/rwshim/rwshimgo` - Backwards compatibility
+- `github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim` - Recommended
+
 ```go
+import "github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
+
 // Start monitor
-monitor := rwshimgo.NewMonitor(rwshimgo.AllowAll)
+monitor := rwshim.NewMonitor(rwshim.AllowAll)
 monitor.Start()
 defer monitor.Stop()
 
@@ -54,6 +60,25 @@ StartProcess(ctx, cmd, args,
 - `Request`: {Operation, FD, Size, Filename}
 - `Response`: {Allow bool}
 - `PolicyFunc`: func(Request) Response
+
+## Project Structure
+
+```
+rwshimgo/
+├── pkg/rwshim/         # Public API
+│   ├── types.go        # Public types
+│   ├── monitor.go      # Monitor API
+│   ├── process.go      # Process API
+│   ├── policies.go     # Policy helpers
+│   └── matchers.go     # Matcher functions
+├── internal/           # Internal implementation
+│   ├── types.go        # Internal types
+│   ├── monitor.go      # Monitor implementation
+│   └── process.go      # Process implementation
+├── example/            # Example usage
+└── rwshim.go          # Backwards compatibility wrapper
+
+```
 
 ## Testing
 

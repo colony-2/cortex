@@ -1,228 +1,87 @@
+// Package rwshimgo provides the compatibility wrapper for backwards compatibility.
+// All functionality is now in the pkg/rwshim package.
 package rwshimgo
 
-import (
-	"bufio"
-	"context"
-	"fmt"
-	"net"
-	"os"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
-)
+import "github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
 
-const (
-	// DefaultSocketPath is the default Unix domain socket path
-	DefaultSocketPath = "/tmp/vibethis-rwshim.sock"
-)
+// Re-export all public types and functions for backwards compatibility
 
 // Operation represents a read or write operation
-type Operation string
+type Operation = rwshim.Operation
 
 const (
 	// OpRead represents a read operation
-	OpRead Operation = "READ"
+	OpRead = rwshim.OpRead
 	// OpWrite represents a write operation
-	OpWrite Operation = "WRITE"
+	OpWrite = rwshim.OpWrite
 )
 
 // Request represents an intercepted I/O operation
-type Request struct {
-	Operation Operation
-	FD        int
-	Size      int64
-	Filename  string
-}
+type Request = rwshim.Request
 
 // Response represents the decision for an I/O operation
-type Response struct {
-	Allow bool
-}
+type Response = rwshim.Response
 
 // PolicyFunc is the callback function type for deciding whether to allow operations
-type PolicyFunc func(req Request) Response
+type PolicyFunc = rwshim.PolicyFunc
 
 // Monitor manages the Unix domain socket server and intercepts I/O operations
-type Monitor struct {
-	socketPath string
-	listener   net.Listener
-	policy     PolicyFunc
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	mu         sync.Mutex
-	running    bool
-}
+type Monitor = rwshim.Monitor
+
+// Process represents a monitored process
+type Process = rwshim.Process
+
+// ProcessOption configures process execution
+type ProcessOption = rwshim.ProcessOption
+
+// PolicyBuilder helps create complex policies
+type PolicyBuilder = rwshim.PolicyBuilder
+
+// PolicyRule represents a single policy rule
+type PolicyRule = rwshim.PolicyRule
+
+const (
+	// DefaultSocketPath is the default Unix domain socket path
+	DefaultSocketPath = rwshim.DefaultSocketPath
+)
 
 // NewMonitor creates a new Monitor with the given policy function
-func NewMonitor(policy PolicyFunc) *Monitor {
-	return &Monitor{
-		socketPath: DefaultSocketPath,
-		policy:     policy,
-	}
-}
+var NewMonitor = rwshim.NewMonitor
 
 // NewMonitorWithPath creates a new Monitor with a custom socket path
-func NewMonitorWithPath(socketPath string, policy PolicyFunc) *Monitor {
-	return &Monitor{
-		socketPath: socketPath,
-		policy:     policy,
-	}
-}
+var NewMonitorWithPath = rwshim.NewMonitorWithPath
 
-// Start begins listening on the Unix domain socket
-func (m *Monitor) Start() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// WithShimPath sets a custom path to the intercept.so library
+var WithShimPath = rwshim.WithShimPath
 
-	if m.running {
-		return fmt.Errorf("monitor is already running")
-	}
+// WithEnv adds environment variables to the process
+var WithEnv = rwshim.WithEnv
 
-	// Remove existing socket file if it exists
-	os.Remove(m.socketPath)
+// WithDir sets the working directory for the process
+var WithDir = rwshim.WithDir
 
-	// Create Unix domain socket
-	listener, err := net.Listen("unix", m.socketPath)
-	if err != nil {
-		return fmt.Errorf("failed to create socket: %w", err)
-	}
+// WithStdin sets the process stdin
+var WithStdin = rwshim.WithStdin
 
-	m.listener = listener
-	m.ctx, m.cancel = context.WithCancel(context.Background())
-	m.running = true
+// WithStdout sets the process stdout
+var WithStdout = rwshim.WithStdout
 
-	// Start accepting connections
-	m.wg.Add(1)
-	go m.acceptLoop()
+// WithStderr sets the process stderr
+var WithStderr = rwshim.WithStderr
 
-	return nil
-}
+// Common policy implementations
+var AllowAll = rwshim.AllowAll
+var DenyAll = rwshim.DenyAll
+var DenyWrites = rwshim.DenyWrites
+var DenyReads = rwshim.DenyReads
 
-// Stop gracefully shuts down the monitor
-func (m *Monitor) Stop() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// NewPolicyBuilder creates a new policy builder
+var NewPolicyBuilder = rwshim.NewPolicyBuilder
 
-	if !m.running {
-		return nil
-	}
-
-	// Cancel context to signal shutdown
-	m.cancel()
-
-	// Close listener
-	if m.listener != nil {
-		m.listener.Close()
-	}
-
-	// Wait for all goroutines to finish
-	m.wg.Wait()
-
-	// Clean up socket file
-	os.Remove(m.socketPath)
-
-	m.running = false
-	return nil
-}
-
-// acceptLoop handles incoming connections
-func (m *Monitor) acceptLoop() {
-	defer m.wg.Done()
-
-	for {
-		conn, err := m.listener.Accept()
-		if err != nil {
-			// Check if we're shutting down
-			select {
-			case <-m.ctx.Done():
-				return
-			default:
-				// Log error and continue
-				continue
-			}
-		}
-
-		// Handle connection in a new goroutine
-		m.wg.Add(1)
-		go m.handleConnection(conn)
-	}
-}
-
-// handleConnection processes a single client connection
-func (m *Monitor) handleConnection(conn net.Conn) {
-	defer m.wg.Done()
-	defer conn.Close()
-
-	// Set read deadline to prevent blocking forever
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-
-	// Read request
-	reader := bufio.NewReader(conn)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return
-	}
-
-	// Parse request
-	req, err := parseRequest(strings.TrimSpace(line))
-	if err != nil {
-		return
-	}
-
-	// Apply policy
-	resp := m.policy(*req)
-
-	// Send response
-	responseStr := "DENY\n"
-	if resp.Allow {
-		responseStr = "ALLOW\n"
-	}
-	conn.Write([]byte(responseStr))
-}
-
-// parseRequest parses a request line into a Request struct
-func parseRequest(line string) (*Request, error) {
-	parts := strings.Fields(line)
-	if len(parts) < 4 {
-		return nil, fmt.Errorf("invalid request format")
-	}
-
-	op := Operation(parts[0])
-	if op != OpRead && op != OpWrite {
-		return nil, fmt.Errorf("invalid operation: %s", parts[0])
-	}
-
-	fd, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("invalid FD: %s", parts[1])
-	}
-
-	size, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid size: %s", parts[2])
-	}
-
-	// Join remaining parts as filename (in case it contains spaces)
-	filename := strings.Join(parts[3:], " ")
-
-	return &Request{
-		Operation: op,
-		FD:        fd,
-		Size:      size,
-		Filename:  filename,
-	}, nil
-}
-
-// IsRunning returns whether the monitor is currently running
-func (m *Monitor) IsRunning() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.running
-}
-
-// SocketPath returns the path to the Unix domain socket
-func (m *Monitor) SocketPath() string {
-	return m.socketPath
-}
+// Common matcher functions
+var MatchFilename = rwshim.MatchFilename
+var MatchFilenamePrefix = rwshim.MatchFilenamePrefix
+var MatchFilenameSuffix = rwshim.MatchFilenameSuffix
+var MatchFD = rwshim.MatchFD
+var MatchStdStreams = rwshim.MatchStdStreams
+var MatchLargeOperations = rwshim.MatchLargeOperations

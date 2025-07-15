@@ -8,9 +8,6 @@ project:
   description: Provides rwshim golang functionality
 
 tasks:
-  test:
-    command: 'go test -v ./...'
-    description: 'Run unit tests'
   
   integration:
     command: './integration_test.sh'

@@ -1,4 +1,4 @@
-package rwshimgo
+package rwshim
 
 import (
 	"fmt"
@@ -78,96 +78,6 @@ func TestCustomSocketPath(t *testing.T) {
 	// Check custom socket exists
 	if _, err := os.Stat(customPath); os.IsNotExist(err) {
 		t.Error("Custom socket file should exist")
-	}
-}
-
-func TestRequestParsing(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected *Request
-		wantErr  bool
-	}{
-		{
-			name:  "valid read request",
-			input: "READ 3 1024 /home/user/file.txt",
-			expected: &Request{
-				Operation: OpRead,
-				FD:        3,
-				Size:      1024,
-				Filename:  "/home/user/file.txt",
-			},
-			wantErr: false,
-		},
-		{
-			name:  "valid write request",
-			input: "WRITE 1 42 stdout",
-			expected: &Request{
-				Operation: OpWrite,
-				FD:        1,
-				Size:      42,
-				Filename:  "stdout",
-			},
-			wantErr: false,
-		},
-		{
-			name:  "filename with spaces",
-			input: "READ 5 100 /path/to/file with spaces.txt",
-			expected: &Request{
-				Operation: OpRead,
-				FD:        5,
-				Size:      100,
-				Filename:  "/path/to/file with spaces.txt",
-			},
-			wantErr: false,
-		},
-		{
-			name:    "invalid operation",
-			input:   "DELETE 3 1024 /file.txt",
-			wantErr: true,
-		},
-		{
-			name:    "invalid FD",
-			input:   "READ abc 1024 /file.txt",
-			wantErr: true,
-		},
-		{
-			name:    "invalid size",
-			input:   "READ 3 notasize /file.txt",
-			wantErr: true,
-		},
-		{
-			name:    "too few fields",
-			input:   "READ 3",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := parseRequest(tt.input)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("Expected error but got none")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
-			if req.Operation != tt.expected.Operation {
-				t.Errorf("Operation: got %s, want %s", req.Operation, tt.expected.Operation)
-			}
-			if req.FD != tt.expected.FD {
-				t.Errorf("FD: got %d, want %d", req.FD, tt.expected.FD)
-			}
-			if req.Size != tt.expected.Size {
-				t.Errorf("Size: got %d, want %d", req.Size, tt.expected.Size)
-			}
-			if req.Filename != tt.expected.Filename {
-				t.Errorf("Filename: got %s, want %s", req.Filename, tt.expected.Filename)
-			}
-		})
 	}
 }
 

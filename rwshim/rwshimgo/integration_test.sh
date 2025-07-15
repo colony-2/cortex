@@ -30,5 +30,5 @@ cd ..
 echo ""
 echo "=== Running integration tests ==="
 cd rwshimgo
-go test -tags=integration -v . -run TestIntegrationWithCShim
+go test -tags=integration -v ./...
 '

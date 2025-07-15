@@ -1,4 +1,4 @@
-package rwshimgo
+package internal
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// Process represents a monitored process
-type Process struct {
+// ProcessImpl represents a monitored process
+type ProcessImpl struct {
 	cmd        *exec.Cmd
-	monitor    *Monitor
+	monitor    *MonitorImpl
 	shimPath   string
 	mu         sync.Mutex
 	started    bool
@@ -22,52 +22,52 @@ type Process struct {
 }
 
 // ProcessOption configures process execution
-type ProcessOption func(*Process)
+type ProcessOption func(*ProcessImpl)
 
 // WithShimPath sets a custom path to the intercept.so library
 func WithShimPath(path string) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.shimPath = path
 	}
 }
 
 // WithEnv adds environment variables to the process
 func WithEnv(env []string) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.cmd.Env = append(p.cmd.Env, env...)
 	}
 }
 
 // WithDir sets the working directory for the process
 func WithDir(dir string) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.cmd.Dir = dir
 	}
 }
 
 // WithStdin sets the process stdin
 func WithStdin(stdin *os.File) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.cmd.Stdin = stdin
 	}
 }
 
 // WithStdout sets the process stdout
 func WithStdout(stdout *os.File) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.cmd.Stdout = stdout
 	}
 }
 
 // WithStderr sets the process stderr
 func WithStderr(stderr *os.File) ProcessOption {
-	return func(p *Process) {
+	return func(p *ProcessImpl) {
 		p.cmd.Stderr = stderr
 	}
 }
 
-// StartProcess starts a new process with the shim library preloaded
-func (m *Monitor) StartProcess(ctx context.Context, command string, args []string, opts ...ProcessOption) (*Process, error) {
+// NewProcess creates a new process with the shim library preloaded
+func NewProcess(ctx context.Context, m *MonitorImpl, command string, args []string, opts ...ProcessOption) (*ProcessImpl, error) {
 	// Ensure monitor is running
 	if !m.IsRunning() {
 		return nil, fmt.Errorf("monitor must be started before launching processes")
@@ -79,7 +79,7 @@ func (m *Monitor) StartProcess(ctx context.Context, command string, args []strin
 	cmd.Env = append([]string{}, os.Environ()...)
 
 	// Create process object
-	p := &Process{
+	p := &ProcessImpl{
 		cmd:      cmd,
 		monitor:  m,
 		finished: make(chan struct{}),
@@ -129,7 +129,7 @@ func (m *Monitor) StartProcess(ctx context.Context, command string, args []strin
 }
 
 // Start begins execution of the process
-func (p *Process) Start() error {
+func (p *ProcessImpl) Start() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -154,7 +154,7 @@ func (p *Process) Start() error {
 }
 
 // Wait waits for the process to complete
-func (p *Process) Wait() error {
+func (p *ProcessImpl) Wait() error {
 	p.mu.Lock()
 	if !p.started {
 		p.mu.Unlock()
@@ -170,7 +170,7 @@ func (p *Process) Wait() error {
 }
 
 // WaitWithTimeout waits for the process to complete with a timeout
-func (p *Process) WaitWithTimeout(timeout time.Duration) error {
+func (p *ProcessImpl) WaitWithTimeout(timeout time.Duration) error {
 	p.mu.Lock()
 	if !p.started {
 		p.mu.Unlock()
@@ -190,7 +190,7 @@ func (p *Process) WaitWithTimeout(timeout time.Duration) error {
 }
 
 // Kill forcefully terminates the process
-func (p *Process) Kill() error {
+func (p *ProcessImpl) Kill() error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
 	}
@@ -198,7 +198,7 @@ func (p *Process) Kill() error {
 }
 
 // Signal sends a signal to the process
-func (p *Process) Signal(sig syscall.Signal) error {
+func (p *ProcessImpl) Signal(sig syscall.Signal) error {
 	if p.cmd.Process == nil {
 		return fmt.Errorf("process not started")
 	}
@@ -206,7 +206,7 @@ func (p *Process) Signal(sig syscall.Signal) error {
 }
 
 // Pid returns the process ID
-func (p *Process) Pid() int {
+func (p *ProcessImpl) Pid() int {
 	if p.cmd.Process == nil {
 		return -1
 	}
@@ -214,7 +214,7 @@ func (p *Process) Pid() int {
 }
 
 // ExitCode returns the process exit code (only valid after Wait)
-func (p *Process) ExitCode() int {
+func (p *ProcessImpl) ExitCode() int {
 	if p.cmd.ProcessState == nil {
 		return -1
 	}

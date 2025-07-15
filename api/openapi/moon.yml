@@ -16,5 +16,7 @@ tasks:
   build:
     command: 'echo'
     args: ['OpenAPI spec is ready']
+    inputs:
+      - vibethis-api.yaml
     outputs:
       - 'vibethis-api.yaml'
