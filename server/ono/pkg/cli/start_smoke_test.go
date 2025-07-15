@@ -26,14 +26,10 @@ func TestStartCommandSmoke(t *testing.T) {
 		t.Fatalf("Failed to create dev server: %v", err)
 	}
 
-	// Try to build config
-	cfg, err := devServer.buildConfig()
-	if err != nil {
-		t.Fatalf("Failed to build config: %v", err)
-	}
-
-	if cfg == nil {
-		t.Fatal("Config should not be nil")
+	// The buildConfig method is now internal to embeddedtemporal
+	// We can't test it directly anymore, but we can verify the server was created
+	if devServer == nil {
+		t.Fatal("DevServer should not be nil")
 	}
 
 	// Don't actually start the server in unit tests
