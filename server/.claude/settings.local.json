@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(mkdir:*)",
+      "Bash(moon run:*)",
+      "Bash(go:*)",
+      "Bash(ls:*)"
     ],
     "deny": []
   }
