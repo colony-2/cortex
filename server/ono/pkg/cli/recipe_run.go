@@ -11,7 +11,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 	
-	"vibethis/ono/internal/recipe"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 )
 
 // NewRecipeRunCommand creates the recipe run command
@@ -94,7 +94,7 @@ func runRecipeRun(cmd *cobra.Command, recipeName, inputJSON, inputFile, jobID st
 	defer logger.Sync()
 
 	// Create recipe registry
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}

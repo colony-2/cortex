@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 	
-	"vibethis/ono/internal/recipe"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 )
 
 // NewJobRestartCommand creates the job restart command
@@ -65,7 +65,7 @@ func runJobRestart(cmd *cobra.Command, recipeName, jobID, fromActivity, inputJSO
 	defer logger.Sync()
 
 	// Create recipe registry to get recipe details
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}

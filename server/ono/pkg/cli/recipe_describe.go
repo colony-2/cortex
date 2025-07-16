@@ -9,7 +9,8 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	"vibethis/ono/internal/recipe"
+	recipecore "github.com/vibethis/server/recipe-core"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 	formatpkg "vibethis/ono/pkg/cli/format"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
@@ -51,7 +52,7 @@ func runRecipeDescribe(cmd *cobra.Command, recipeName, format string) error {
 	defer logger.Sync()
 
 	// Create recipe registry
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -81,7 +82,7 @@ func runRecipeDescribe(cmd *cobra.Command, recipeName, format string) error {
 	}
 }
 
-func outputRecipeText(cmd *cobra.Command, r *recipe.Recipe) error {
+func outputRecipeText(cmd *cobra.Command, r *recipecore.Recipe) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := formatpkg.NewRecipeFormatter(useColor)
@@ -92,7 +93,7 @@ func outputRecipeText(cmd *cobra.Command, r *recipe.Recipe) error {
 	return nil
 }
 
-func outputRecipeJSON(cmd *cobra.Command, r *recipe.Recipe) error {
+func outputRecipeJSON(cmd *cobra.Command, r *recipecore.Recipe) error {
 	// Create a simplified structure for JSON output
 	type recipeOutput struct {
 		Name         string                       `json:"name"`
@@ -116,7 +117,7 @@ func outputRecipeJSON(cmd *cobra.Command, r *recipe.Recipe) error {
 		Activities:   r.Activities,
 	}
 
-	if r.WorkerStatus == recipe.WorkerStatusStopped {
+	if r.WorkerStatus == recipecore.WorkerStatusStopped {
 		output.Status = "removed"
 	}
 
@@ -125,7 +126,7 @@ func outputRecipeJSON(cmd *cobra.Command, r *recipe.Recipe) error {
 	return encoder.Encode(output)
 }
 
-func outputRecipeYAML(cmd *cobra.Command, r *recipe.Recipe) error {
+func outputRecipeYAML(cmd *cobra.Command, r *recipecore.Recipe) error {
 	// Create a structure that matches the YAML format
 	output := map[string]interface{}{
 		"recipe": map[string]interface{}{

@@ -14,7 +14,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	"vibethis/ono/internal/recipe"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 )
 
 // StartWithRecipesCmd represents the start command with recipe support
@@ -109,8 +109,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nTemporal dev server is running!")
 
 	// Start recipe system if enabled
-	var registry *recipe.Registry
-	var workerManager *recipe.WorkerManager
+	var recipeWorker *recipeworker.Worker
 	
 	if enableRecipes {
 		// Get recipe directory
@@ -136,25 +135,23 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 		}
 		defer c.Close()
 		
-		// Create worker manager
-		workerManager = recipe.NewWorkerManager(logger, c)
-		
-		// Create and start recipe registry
-		registry, err = recipe.NewRegistry(logger, recipeDir, workerManager)
+		// Create and start recipe worker
+		recipeWorker, err = recipeworker.NewWorker(logger, recipeDir, c)
 		if err != nil {
 			devServer.Stop()
-			return fmt.Errorf("failed to create recipe registry: %w", err)
+			return fmt.Errorf("failed to create recipe worker: %w", err)
 		}
 		
-		if err := registry.Start(); err != nil {
+		if err := recipeWorker.Start(); err != nil {
 			devServer.Stop()
-			return fmt.Errorf("failed to start recipe registry: %w", err)
+			return fmt.Errorf("failed to start recipe worker: %w", err)
 		}
 		
 		// Wait a moment for initial discovery
 		time.Sleep(500 * time.Millisecond)
 		
 		// List discovered recipes
+		registry := recipeWorker.GetRegistry()
 		recipes, _ := registry.ListRecipes(nil)
 		if len(recipes) > 0 {
 			fmt.Printf("\nDiscovered %d recipe(s):\n", len(recipes))
@@ -178,13 +175,9 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nReceived signal %v, shutting down...\n", sig)
 	
 	// Stop recipe system first
-	if registry != nil {
+	if recipeWorker != nil {
 		fmt.Println("Stopping recipe workers...")
-		registry.Stop()
-	}
-	
-	if workerManager != nil {
-		workerManager.StopAll()
+		recipeWorker.Stop()
 	}
 	
 	// Stop Temporal server

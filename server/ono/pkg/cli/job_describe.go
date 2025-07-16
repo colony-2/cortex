@@ -11,7 +11,9 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	"vibethis/ono/internal/recipe"
+	recipecore "github.com/vibethis/server/recipe-core"
+	recipehistory "github.com/vibethis/server/recipe-history"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 	"vibethis/ono/pkg/cli/format"
 )
 
@@ -60,7 +62,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	defer logger.Sync()
 
 	// Create recipe registry to get recipe details
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -71,8 +73,8 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	}
 	defer registry.Stop()
 
-	// Get the recipe
-	r, err := registry.GetRecipe(recipeName)
+	// Verify the recipe exists
+	_, err = registry.GetRecipe(recipeName)
 	if err != nil {
 		return fmt.Errorf("recipe not found: %w", err)
 	}
@@ -95,7 +97,11 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	}
 
 	// Create transformer to convert workflow data to job
-	transformer := recipe.NewTransformer(registry)
+	// Create GetRecipeFunc that uses the registry
+	getRecipe := func(name string) (*recipecore.Recipe, error) {
+		return registry.GetRecipe(name)
+	}
+	transformer := recipehistory.NewTransformer(getRecipe)
 
 	// Transform workflow description to job
 	job, err := transformer.DescribeWorkflowToJob(desc, recipeName)
@@ -121,7 +127,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 			hist := &history.History{
 				Events: events,
 			}
-			activities, err := transformer.HistoryToActivityExecutions(hist, r)
+			activities, err := transformer.HistoryToActivityExecutions(hist, recipeName)
 			if err != nil {
 				logger.Warn("Failed to transform activity history", zap.Error(err))
 			} else {
@@ -141,7 +147,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	}
 }
 
-func outputJobText(cmd *cobra.Command, job *recipe.Job) error {
+func outputJobText(cmd *cobra.Command, job *recipecore.Job) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := format.NewRecipeFormatter(useColor)
@@ -152,7 +158,7 @@ func outputJobText(cmd *cobra.Command, job *recipe.Job) error {
 	return nil
 }
 
-func outputJobJSON(cmd *cobra.Command, job *recipe.Job) error {
+func outputJobJSON(cmd *cobra.Command, job *recipecore.Job) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(job)

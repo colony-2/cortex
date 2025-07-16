@@ -1,4 +1,4 @@
-package recipe
+package recipeworker
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap/zaptest"
+	recipecore "github.com/vibethis/server/recipe-core"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
@@ -54,7 +55,7 @@ func TestWorkerManager_StartStopWorker(t *testing.T) {
 	manager := NewWorkerManager(logger, mockClient)
 	
 	// Create a test recipe
-	_ = &Recipe{
+	_ = &recipecore.Recipe{
 		Name:        "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
@@ -74,7 +75,7 @@ func TestWorkerManager_StartStopWorker(t *testing.T) {
 	
 	// Test worker status for non-existent worker
 	status := manager.GetWorkerStatus("non-existent")
-	assert.Equal(t, WorkerStatusStopped, status)
+	assert.Equal(t, recipecore.WorkerStatusStopped, status)
 	
 	
 	// Note: We can't test actual worker start without a real client
@@ -90,7 +91,7 @@ func TestWorkerManager_RestartWorker(t *testing.T) {
 	mockClient := &mockClient{}
 	manager := NewWorkerManager(logger, mockClient)
 	
-	testRecipe := &Recipe{
+	testRecipe := &recipecore.Recipe{
 		Name:        "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
@@ -126,7 +127,7 @@ func TestWorkerManager_ConcurrentOperations(t *testing.T) {
 			defer wg.Done()
 			recipeName := fmt.Sprintf("recipe-%d", id)
 			status := manager.GetWorkerStatus(recipeName)
-			assert.Equal(t, WorkerStatusStopped, status)
+			assert.Equal(t, recipecore.WorkerStatusStopped, status)
 		}(i)
 	}
 	wg.Wait()
@@ -149,6 +150,9 @@ func TestWorkerManager_TaskQueueNaming(t *testing.T) {
 	// Task queue for a recipe would be: base-recipeName
 	taskQueue := fmt.Sprintf("%s-%s", manager.taskQueue, recipeName)
 	assert.Equal(t, expectedQueue, taskQueue)
+	
+	// Test GetTaskQueueForRecipe method
+	assert.Equal(t, expectedQueue, manager.GetTaskQueueForRecipe(recipeName))
 }
 
 func TestWorkerManager_ErrorHandling(t *testing.T) {
@@ -228,7 +232,7 @@ func TestWorkerManager_Integration(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	manager := NewWorkerManager(logger, c)
 	
-	recipe := &Recipe{
+	recipe := &recipecore.Recipe{
 		Name:        "integration-test-recipe",
 		Version:     "1.0.0",
 		Description: "Integration test recipe",
@@ -243,7 +247,7 @@ func TestWorkerManager_Integration(t *testing.T) {
 	
 	// Verify status
 	status := manager.GetWorkerStatus("integration-test-recipe")
-	assert.Equal(t, WorkerStatusRunning, status)
+	assert.Equal(t, recipecore.WorkerStatusRunning, status)
 	
 	// Test stopping the worker
 	err = manager.StopWorker("integration-test-recipe")
@@ -251,7 +255,7 @@ func TestWorkerManager_Integration(t *testing.T) {
 	
 	// Verify stopped
 	status = manager.GetWorkerStatus("integration-test-recipe")
-	assert.Equal(t, WorkerStatusStopped, status)
+	assert.Equal(t, recipecore.WorkerStatusStopped, status)
 	
 	// Cleanup
 	manager.StopAll()

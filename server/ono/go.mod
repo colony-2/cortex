@@ -4,13 +4,13 @@ go 1.24.1
 
 require (
 	github.com/fatih/color v1.18.0
-	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
 	github.com/vibethis/embeddedtemporal v0.0.0-00010101000000-000000000000
 	github.com/vibethis/server/recipe-core v0.0.0
-	github.com/vibethis/server/recipe-history v0.0.0
+	github.com/vibethis/server/recipe-history v0.0.0-00010101000000-000000000000
+	github.com/vibethis/server/recipe-worker v0.0.0
 	go.temporal.io/api v1.50.0
 	go.temporal.io/sdk v1.34.0
 	go.temporal.io/server v1.28.0
@@ -24,6 +24,8 @@ replace github.com/vibethis/embeddedtemporal => ../embeddedtemporal
 replace github.com/vibethis/server/recipe-core => ../recipe-core
 
 replace github.com/vibethis/server/recipe-history => ../recipe-history
+
+replace github.com/vibethis/server/recipe-worker => ../recipe-worker
 
 require (
 	cel.dev/expr v0.20.0 // indirect
@@ -60,6 +62,7 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

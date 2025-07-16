@@ -11,7 +11,9 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	"vibethis/ono/internal/recipe"
+	recipecore "github.com/vibethis/server/recipe-core"
+	recipehistory "github.com/vibethis/server/recipe-history"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 	"vibethis/ono/pkg/cli/format"
 )
 
@@ -65,7 +67,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	defer logger.Sync()
 
 	// Create recipe registry to verify recipe exists
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -126,7 +128,11 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	workflows := resp.Executions
 
 	// Create transformer to convert workflow executions to jobs
-	transformer := recipe.NewTransformer(registry)
+	// Create GetRecipeFunc that uses the registry
+	getRecipe := func(name string) (*recipecore.Recipe, error) {
+		return registry.GetRecipe(name)
+	}
+	transformer := recipehistory.NewTransformer(getRecipe)
 
 	// Convert workflow executions to jobs
 	jobs, err := transformer.WorkflowExecutionsToJobs(workflows, recipeName)
@@ -145,7 +151,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	}
 }
 
-func outputJobsTable(cmd *cobra.Command, jobs []*recipe.Job) error {
+func outputJobsTable(cmd *cobra.Command, jobs []*recipecore.Job) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := format.NewRecipeFormatter(useColor)
@@ -162,7 +168,7 @@ func outputJobsTable(cmd *cobra.Command, jobs []*recipe.Job) error {
 	return nil
 }
 
-func outputJobsJSON(cmd *cobra.Command, jobs []*recipe.Job) error {
+func outputJobsJSON(cmd *cobra.Command, jobs []*recipecore.Job) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(jobs)

@@ -14,7 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	
-	"vibethis/ono/internal/recipe"
+	recipecore "github.com/vibethis/server/recipe-core"
+	recipeworker "github.com/vibethis/server/recipe-worker"
 )
 
 func TestRecipeDiscovery_FullLifecycle(t *testing.T) {
@@ -31,7 +32,7 @@ func TestRecipeDiscovery_FullLifecycle(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	// Create registry
-	registry, err := recipe.NewRegistry(logger, recipesDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -149,7 +150,7 @@ activities:
 	// Recipe should still exist but be stopped
 	r, err := registry.GetRecipe("integration-test")
 	require.NoError(t, err)
-	assert.Equal(t, recipe.WorkerStatusStopped, r.WorkerStatus)
+	assert.Equal(t, recipecore.WorkerStatusStopped, r.WorkerStatus)
 }
 
 func TestRecipeDiscovery_MultipleRecipes(t *testing.T) {
@@ -208,7 +209,7 @@ activities:
 	}
 
 	// Create registry
-	registry, err := recipe.NewRegistry(logger, testDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -228,7 +229,7 @@ activities:
 	allRecipes, err = registry.ListRecipes(nil)
 	require.NoError(t, err)
 	
-	var dataRecipes []*recipe.Recipe
+	var dataRecipes []*recipecore.Recipe
 	for _, r := range allRecipes {
 		if strings.HasPrefix(r.Name, "data-") {
 			dataRecipes = append(dataRecipes, r)
@@ -307,7 +308,7 @@ func TestRecipeDiscovery_InvalidRecipes(t *testing.T) {
 	}
 
 	// Create registry
-	registry, err := recipe.NewRegistry(logger, testDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -334,7 +335,7 @@ func TestRecipeDiscovery_FileWatchingStress(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	// Create registry
-	registry, err := recipe.NewRegistry(logger, testDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -390,7 +391,7 @@ func TestRecipeDiscovery_FileWatchingStress(t *testing.T) {
 		name := fmt.Sprintf("stress-test-%d", i)
 		r, err := registry.GetRecipe(name)
 		require.NoError(t, err)
-		assert.Equal(t, recipe.WorkerStatusStopped, r.WorkerStatus)
+		assert.Equal(t, recipecore.WorkerStatusStopped, r.WorkerStatus)
 	}
 }
 
@@ -473,7 +474,7 @@ workflow:
 	))
 
 	// Create registry
-	registry, err := recipe.NewRegistry(logger, testDir, nil)
+	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
