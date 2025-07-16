@@ -113,8 +113,9 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	ctx := context.Background()
 
 	listRequest := &workflowservice.ListWorkflowExecutionsRequest{
-		PageSize: int32(limit),
-		Query:    query,
+		Namespace: namespace,
+		PageSize:  int32(limit),
+		Query:     query,
 	}
 
 	resp, err := c.WorkflowService().ListWorkflowExecutions(ctx, listRequest)

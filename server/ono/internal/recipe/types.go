@@ -3,7 +3,7 @@ package recipe
 import (
 	"go.uber.org/zap"
 	
-	recipecore "github.com/vibethis/server/recipe-core/pkg/recipe"
+	recipecore "github.com/vibethis/server/recipe-core"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 

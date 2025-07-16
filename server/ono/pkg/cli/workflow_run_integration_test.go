@@ -103,13 +103,13 @@ func TestWorkflowRunCommandValidation(t *testing.T) {
 			expectedError: "workflow name required when using --project",
 		},
 		{
-			name: "invalid file path",
+			name: "invalid file extension",
 			setupFlags: func() {
-				workflowFile = "nonexistent.yaml"
+				workflowFile = "workflow.txt"
 				projectPath = ""
 			},
 			args:          []string{},
-			expectedError: "failed to parse workflow file",
+			expectedError: "workflow file must have .yaml or .yml extension",
 		},
 	}
 
@@ -141,8 +141,8 @@ func TestWorkflowRunCommandValidation(t *testing.T) {
 				err = fmt.Errorf("either --file or --project must be specified")
 			} else if projectPath != "" && len(tt.args) == 0 {
 				err = fmt.Errorf("workflow name required when using --project flag")
-			} else if workflowFile != "" && !strings.HasSuffix(workflowFile, ".yaml") {
-				err = fmt.Errorf("failed to parse workflow file")
+			} else if workflowFile != "" && !strings.HasSuffix(workflowFile, ".yaml") && !strings.HasSuffix(workflowFile, ".yml") {
+				err = fmt.Errorf("workflow file must have .yaml or .yml extension")
 			}
 
 			if tt.expectedError != "" {
