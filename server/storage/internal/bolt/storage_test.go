@@ -2,9 +2,9 @@ package bolt
 
 import (
 	"context"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"os"
 	"testing"
-	"vibethis/core/pkg/core"
 )
 
 func TestPositionStorage(t *testing.T) {
@@ -138,7 +138,7 @@ func TestContainerIDStorage(t *testing.T) {
 	// Test saving container ID
 	nodeID := "test-node"
 	containerID := "abc123"
-	
+
 	err = storage.SaveContainerID(ctx, nodeID, containerID)
 	if err != nil {
 		t.Fatalf("Failed to save container ID: %v", err)

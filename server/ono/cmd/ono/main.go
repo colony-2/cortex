@@ -1,8 +1,8 @@
 package main
 
 import (
+	ono2 "github.com/divisive-ai/vibethis/server/ono/pkg/cli"
 	"os"
-	ono2 "vibethis/ono/pkg/cli"
 
 	"github.com/spf13/cobra"
 )

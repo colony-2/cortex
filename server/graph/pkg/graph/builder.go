@@ -3,21 +3,21 @@ package graph
 
 import (
 	"context"
-	"vibethis/core/pkg/core"
-	"vibethis/graph/internal/builder"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/graph/internal/builder"
 )
 
 // Builder provides graph building functionality.
 type Builder struct {
-	rootPath  string
-	builder   *builder.Builder
+	rootPath string
+	builder  *builder.Builder
 }
 
 // NewBuilder creates a new graph builder for the given root path.
 func NewBuilder(rootPath string) *Builder {
 	return &Builder{
-		rootPath:  rootPath,
-		builder:   builder.New(rootPath),
+		rootPath: rootPath,
+		builder:  builder.New(rootPath),
 	}
 }
 
@@ -32,13 +32,13 @@ func (b *Builder) GetNode(ctx context.Context, nodeID string) (*core.Node, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for _, node := range graph.Nodes {
 		if node.ID == nodeID {
 			return &node, nil
 		}
 	}
-	
+
 	return nil, ErrNodeNotFound
 }
 

@@ -9,9 +9,10 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
-	formatpkg "vibethis/ono/pkg/cli/format"
+	formatpkg "github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeDescribeCommand creates the recipe describe command
@@ -51,7 +52,7 @@ func runRecipeDescribe(cmd *cobra.Command, recipeName, format string) error {
 	defer logger.Sync()
 
 	// Create recipe registry
-	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
+	registry, err := worker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -81,7 +82,7 @@ func runRecipeDescribe(cmd *cobra.Command, recipeName, format string) error {
 	}
 }
 
-func outputRecipeText(cmd *cobra.Command, r *recipecore.Recipe) error {
+func outputRecipeText(cmd *cobra.Command, r *recipe.Recipe) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := formatpkg.NewRecipeFormatter(useColor)
@@ -92,17 +93,17 @@ func outputRecipeText(cmd *cobra.Command, r *recipecore.Recipe) error {
 	return nil
 }
 
-func outputRecipeJSON(cmd *cobra.Command, r *recipecore.Recipe) error {
+func outputRecipeJSON(cmd *cobra.Command, r *recipe.Recipe) error {
 	// Create a simplified structure for JSON output
 	type recipeOutput struct {
-		Name         string                       `json:"name"`
-		Version      string                       `json:"version"`
-		Description  string                       `json:"description"`
-		Status       string                       `json:"status"`
-		WorkerStatus string                       `json:"worker_status"`
-		LastModified string                       `json:"last_modified"`
-		Workflow     *recipecore.WorkflowDefinition  `json:"workflow,omitempty"`
-		Activities   []recipecore.ActivityDefinition `json:"activities,omitempty"`
+		Name         string                      `json:"name"`
+		Version      string                      `json:"version"`
+		Description  string                      `json:"description"`
+		Status       string                      `json:"status"`
+		WorkerStatus string                      `json:"worker_status"`
+		LastModified string                      `json:"last_modified"`
+		Workflow     *yamlpkg.WorkflowDefinition `json:"workflow,omitempty"`
+		Activities   []recipe.ActivityDefinition `json:"activities,omitempty"`
 	}
 
 	output := recipeOutput{
@@ -116,7 +117,7 @@ func outputRecipeJSON(cmd *cobra.Command, r *recipecore.Recipe) error {
 		Activities:   r.Activities,
 	}
 
-	if r.WorkerStatus == recipecore.WorkerStatusStopped {
+	if r.WorkerStatus == recipe.WorkerStatusStopped {
 		output.Status = "removed"
 	}
 
@@ -125,7 +126,7 @@ func outputRecipeJSON(cmd *cobra.Command, r *recipecore.Recipe) error {
 	return encoder.Encode(output)
 }
 
-func outputRecipeYAML(cmd *cobra.Command, r *recipecore.Recipe) error {
+func outputRecipeYAML(cmd *cobra.Command, r *recipe.Recipe) error {
 	// Create a structure that matches the YAML format
 	output := map[string]interface{}{
 		"recipe": map[string]interface{}{

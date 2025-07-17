@@ -11,10 +11,10 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	recipecore "github.com/vibethis/server/recipe-core"
-	recipehistory "github.com/vibethis/server/recipe-history"
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
-	"vibethis/ono/pkg/cli/format"
+	"github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	history "github.com/vibethis/server/recipe-history/pkg/history"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeHistoryCommand creates the recipe history command
@@ -67,7 +67,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	defer logger.Sync()
 
 	// Create recipe registry to verify recipe exists
-	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
+	registry, err := worker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -129,10 +129,10 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 
 	// Create transformer to convert workflow executions to jobs
 	// Create GetRecipeFunc that uses the registry
-	getRecipe := func(name string) (*recipecore.Recipe, error) {
+	getRecipe := func(name string) (*recipe.Recipe, error) {
 		return registry.GetRecipe(name)
 	}
-	transformer := recipehistory.NewTransformer(getRecipe)
+	transformer := history.NewTransformer(getRecipe)
 
 	// Convert workflow executions to jobs
 	jobs, err := transformer.WorkflowExecutionsToJobs(workflows, recipeName)
@@ -151,7 +151,7 @@ func runRecipeHistory(cmd *cobra.Command, recipeName string, limit int, status, 
 	}
 }
 
-func outputJobsTable(cmd *cobra.Command, jobs []*recipecore.Job) error {
+func outputJobsTable(cmd *cobra.Command, jobs []*recipe.Job) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := format.NewRecipeFormatter(useColor)
@@ -168,7 +168,7 @@ func outputJobsTable(cmd *cobra.Command, jobs []*recipecore.Job) error {
 	return nil
 }
 
-func outputJobsJSON(cmd *cobra.Command, jobs []*recipecore.Job) error {
+func outputJobsJSON(cmd *cobra.Command, jobs []*recipe.Job) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(jobs)

@@ -8,7 +8,7 @@ import (
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Client provides recipe-centric view of execution history
@@ -28,7 +28,7 @@ func NewClient(temporal client.Client, getRecipe GetRecipeFunc, logger *zap.Logg
 }
 
 // ListJobs lists job executions for a recipe
-func (c *Client) ListJobs(ctx context.Context, recipeName string, filter *JobFilter) ([]*recipecore.Job, error) {
+func (c *Client) ListJobs(ctx context.Context, recipeName string, filter *JobFilter) ([]*recipe.Job, error) {
 	// Build query for listing workflows
 	query := fmt.Sprintf(`TaskQueue = "%s-%s"`, "ono-recipes", recipeName)
 
@@ -75,7 +75,7 @@ func (c *Client) ListJobs(ctx context.Context, recipeName string, filter *JobFil
 }
 
 // GetJob retrieves detailed information about a specific job
-func (c *Client) GetJob(ctx context.Context, recipeName, jobID string, includeActivities bool) (*recipecore.Job, error) {
+func (c *Client) GetJob(ctx context.Context, recipeName, jobID string, includeActivities bool) (*recipe.Job, error) {
 	// Get workflow execution details
 	desc, err := c.temporal.DescribeWorkflowExecution(ctx, jobID, "")
 	if err != nil {
@@ -104,7 +104,7 @@ func (c *Client) GetJob(ctx context.Context, recipeName, jobID string, includeAc
 }
 
 // getActivityExecutions retrieves activity execution history for a workflow
-func (c *Client) getActivityExecutions(ctx context.Context, workflowID, recipeName string) ([]*recipecore.ActivityExecution, error) {
+func (c *Client) getActivityExecutions(ctx context.Context, workflowID, recipeName string) ([]*recipe.ActivityExecution, error) {
 	// Get workflow history
 	iter := c.temporal.GetWorkflowHistory(ctx, workflowID, "", false, 0)
 	var events []*history.HistoryEvent

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func TestRecipeFormatter_FormatRecipeList(t *testing.T) {
@@ -15,22 +15,22 @@ func TestRecipeFormatter_FormatRecipeList(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		recipes  []*recipecore.Recipe
+		recipes  []*recipe.Recipe
 		contains []string
 	}{
 		{
 			name:     "empty list",
-			recipes:  []*recipecore.Recipe{},
+			recipes:  []*recipe.Recipe{},
 			contains: []string{"No recipes found"},
 		},
 		{
 			name: "single recipe",
-			recipes: []*recipecore.Recipe{
+			recipes: []*recipe.Recipe{
 				{
 					Name:         "test-recipe",
 					Version:      "1.0.0",
 					Description:  "Test recipe",
-					WorkerStatus: recipecore.WorkerStatusRunning,
+					WorkerStatus: recipe.WorkerStatusRunning,
 					LastModified: time.Now(),
 				},
 			},
@@ -43,26 +43,26 @@ func TestRecipeFormatter_FormatRecipeList(t *testing.T) {
 		},
 		{
 			name: "multiple recipes with different statuses",
-			recipes: []*recipecore.Recipe{
+			recipes: []*recipe.Recipe{
 				{
 					Name:         "recipe-1",
 					Version:      "1.0.0",
 					Description:  "First recipe",
-					WorkerStatus: recipecore.WorkerStatusRunning,
+					WorkerStatus: recipe.WorkerStatusRunning,
 					LastModified: time.Now(),
 				},
 				{
 					Name:         "recipe-2",
 					Version:      "2.0.0",
 					Description:  "Second recipe",
-					WorkerStatus: recipecore.WorkerStatusStopped,
+					WorkerStatus: recipe.WorkerStatusStopped,
 					LastModified: time.Now().Add(-24 * time.Hour),
 				},
 				{
 					Name:         "recipe-3",
 					Version:      "3.0.0",
 					Description:  "Third recipe",
-					WorkerStatus: recipecore.WorkerStatusFailed,
+					WorkerStatus: recipe.WorkerStatusFailed,
 					LastModified: time.Now().Add(-48 * time.Hour),
 				},
 			},
@@ -88,13 +88,13 @@ func TestRecipeFormatter_FormatRecipeList(t *testing.T) {
 func TestRecipeFormatter_FormatRecipeDetail(t *testing.T) {
 	formatter := NewRecipeFormatter(false)
 
-	recipe := &recipecore.Recipe{
+	recipe := &recipe.Recipe{
 		Name:         "detailed-recipe",
 		Version:      "1.2.3",
 		Description:  "A detailed test recipe",
 		BasePath:     "/path/to/recipe",
 		Hash:         "abc123def456",
-		WorkerStatus: recipecore.WorkerStatusRunning,
+		WorkerStatus: recipe.WorkerStatusRunning,
 		LastModified: time.Now(),
 	}
 
@@ -122,21 +122,21 @@ func TestRecipeFormatter_FormatJobList(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		jobs     []*recipecore.Job
+		jobs     []*recipe.Job
 		contains []string
 	}{
 		{
 			name:     "empty job list",
-			jobs:     []*recipecore.Job{},
+			jobs:     []*recipe.Job{},
 			contains: []string{"No jobs found"},
 		},
 		{
 			name: "single job",
-			jobs: []*recipecore.Job{
+			jobs: []*recipe.Job{
 				{
 					ID:         "job-123",
 					RecipeName: "test-recipe",
-					Status:     recipecore.JobStatusRunning,
+					Status:     recipe.JobStatusRunning,
 					StartTime:  time.Now().Add(-5 * time.Minute),
 				},
 			},
@@ -147,17 +147,17 @@ func TestRecipeFormatter_FormatJobList(t *testing.T) {
 		},
 		{
 			name: "multiple jobs with different statuses",
-			jobs: []*recipecore.Job{
+			jobs: []*recipe.Job{
 				{
 					ID:         "job-1",
 					RecipeName: "recipe-a",
-					Status:     recipecore.JobStatusRunning,
+					Status:     recipe.JobStatusRunning,
 					StartTime:  time.Now().Add(-10 * time.Minute),
 				},
 				{
 					ID:         "job-2",
 					RecipeName: "recipe-b",
-					Status:     recipecore.JobStatusCompleted,
+					Status:     recipe.JobStatusCompleted,
 					StartTime:  time.Now().Add(-1 * time.Hour),
 					EndTime:    func() *time.Time { t := time.Now().Add(-30 * time.Minute); return &t }(),
 					Duration:   ptrDuration(30 * time.Minute),
@@ -165,7 +165,7 @@ func TestRecipeFormatter_FormatJobList(t *testing.T) {
 				{
 					ID:         "job-3",
 					RecipeName: "recipe-c",
-					Status:     recipecore.JobStatusFailed,
+					Status:     recipe.JobStatusFailed,
 					StartTime:  time.Now().Add(-2 * time.Hour),
 					EndTime:    func() *time.Time { t := time.Now().Add(-1 * time.Hour); return &t }(),
 					Duration:   ptrDuration(1 * time.Hour),
@@ -194,16 +194,16 @@ func TestRecipeFormatter_FormatJobDetail(t *testing.T) {
 	formatter := NewRecipeFormatter(false)
 
 	endTime := time.Now()
-	job := &recipecore.Job{
+	job := &recipe.Job{
 		ID:           "job-detail-123",
 		RecipeName:   "detailed-recipe",
-		Status:       recipecore.JobStatusCompleted,
+		Status:       recipe.JobStatusCompleted,
 		WorkflowType: "RecipeWorkflow",
 		StartTime:    time.Now().Add(-1 * time.Hour),
 		UpdateTime:   time.Now(),
 		EndTime:      &endTime,
 		Duration:     ptrDuration(1 * time.Hour),
-		Activities: []*recipecore.ActivityExecution{
+		Activities: []*recipe.ActivityExecution{
 			{
 				Name:      "PrepareData",
 				Status:    "completed",
@@ -219,7 +219,7 @@ func TestRecipeFormatter_FormatJobDetail(t *testing.T) {
 				Duration:  ptrDuration(20 * time.Minute),
 			},
 		},
-		ExecutionInfo: &recipecore.WorkflowExecutionInfo{
+		ExecutionInfo: &recipe.WorkflowExecutionInfo{
 			WorkflowID: "job-detail-123",
 			RunID:      "run-456",
 		},
@@ -251,10 +251,10 @@ func TestRecipeFormatter_ColorSupport(t *testing.T) {
 	// Test with color support
 	formatter := NewRecipeFormatter(true)
 
-	recipe := &recipecore.Recipe{
+	recipe := &recipe.Recipe{
 		Name:         "color-test",
 		Version:      "1.0.0",
-		WorkerStatus: recipecore.WorkerStatusRunning,
+		WorkerStatus: recipe.WorkerStatusRunning,
 		Hash:         "abcdef0123456789abcdef0123456789",
 	}
 
@@ -279,14 +279,14 @@ func TestRecipeFormatter_StatusColors(t *testing.T) {
 		status   interface{}
 		contains string
 	}{
-		{recipecore.WorkerStatusRunning, "running"},
-		{recipecore.WorkerStatusStopped, "stopped"},
-		{recipecore.WorkerStatusFailed, "failed"},
-		{recipecore.JobStatusRunning, "running"},
-		{recipecore.JobStatusCompleted, "completed"},
-		{recipecore.JobStatusFailed, "failed"},
-		{recipecore.JobStatusCanceled, "canceled"},
-		{recipecore.JobStatusTerminated, "terminated"},
+		{recipe.WorkerStatusRunning, "running"},
+		{recipe.WorkerStatusStopped, "stopped"},
+		{recipe.WorkerStatusFailed, "failed"},
+		{recipe.JobStatusRunning, "running"},
+		{recipe.JobStatusCompleted, "completed"},
+		{recipe.JobStatusFailed, "failed"},
+		{recipe.JobStatusCanceled, "canceled"},
+		{recipe.JobStatusTerminated, "terminated"},
 		{"pending", "pending"},
 		{"running", "running"},
 		{"completed", "completed"},
@@ -298,9 +298,9 @@ func TestRecipeFormatter_StatusColors(t *testing.T) {
 		var output string
 		
 		switch s := tt.status.(type) {
-		case recipecore.WorkerStatus:
+		case recipe.WorkerStatus:
 			output = formatter.formatWorkerStatus(s)
-		case recipecore.JobStatus:
+		case recipe.JobStatus:
 			output = formatter.formatJobStatus(s)
 		case string:
 			output = formatter.formatActivityStatus(s)
@@ -315,18 +315,18 @@ func TestRecipeFormatter_TableFormatting(t *testing.T) {
 	formatter := NewRecipeFormatter(false)
 
 	// Test that tables are properly aligned
-	recipes := []*recipecore.Recipe{
+	recipes := []*recipe.Recipe{
 		{
 			Name:         "short",
 			Version:      "1.0.0",
 			Description:  "Short desc",
-			WorkerStatus: recipecore.WorkerStatusRunning,
+			WorkerStatus: recipe.WorkerStatusRunning,
 		},
 		{
 			Name:         "very-long-recipe-name",
 			Version:      "10.20.30",
 			Description:  "This is a much longer description that should still align properly",
-			WorkerStatus: recipecore.WorkerStatusStopped,
+			WorkerStatus: recipe.WorkerStatusStopped,
 		},
 	}
 
@@ -370,7 +370,7 @@ func TestRecipeFormatter_ErrorHandling(t *testing.T) {
 func TestRecipeFormatter_WriterOutput(t *testing.T) {
 	formatter := NewRecipeFormatter(false)
 
-	recipes := []*recipecore.Recipe{
+	recipes := []*recipe.Recipe{
 		{
 			Name:    "test-recipe",
 			Version: "1.0.0",

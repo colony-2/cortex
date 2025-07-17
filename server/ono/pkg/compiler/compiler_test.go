@@ -6,28 +6,29 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestCompileSimpleWorkflow(t *testing.T) {
 	// Create a simple workflow definition
-	workflowDef := &recipecore.WorkflowDefinition{
+	workflowDef := &yamlpkg.WorkflowDefinition{
 		Name:        "test_workflow",
 		Description: "Test workflow",
 		Version:     "1.0",
-		Inputs: []recipecore.InputDefinition{
+		Inputs: []yamlpkg.InputDefinition{
 			{Name: "input1", Type: "string", Required: true},
 		},
-		Outputs: []recipecore.OutputDefinition{
+		Outputs: []yamlpkg.OutputDefinition{
 			{Name: "output1", Type: "string"},
 		},
-		Workflow: recipecore.WorkflowSpec{
+		Workflow: yamlpkg.WorkflowSpec{
 			Type: "sequential",
-			RetryPolicy: recipecore.RetryPolicy{
+			RetryPolicy: yamlpkg.RetryPolicy{
 				InitialInterval: time.Second,
 				MaximumAttempts: 3,
 			},
-			Steps: []recipecore.Step{
+			Steps: []yamlpkg.Step{
 				{
 					ID:       "step1",
 					Activity: "test_activity",
@@ -47,7 +48,7 @@ func TestCompileSimpleWorkflow(t *testing.T) {
 
 	// Create activity registry and register test activity
 	registry := NewActivityRegistry()
-	registry.RegisterActivity(&recipecore.ActivityDefinition{
+	registry.RegisterActivity(&recipe.ActivityDefinition{
 		Name:    "test_activity",
 		Timeout: 5 * time.Minute,
 	})
@@ -114,15 +115,15 @@ func TestTemplateResolver(t *testing.T) {
 }
 
 func TestParallelWorkflowCompilation(t *testing.T) {
-	workflowDef := &recipecore.WorkflowDefinition{
+	workflowDef := &yamlpkg.WorkflowDefinition{
 		Name:    "parallel_workflow",
 		Version: "1.0",
-		Workflow: recipecore.WorkflowSpec{
+		Workflow: yamlpkg.WorkflowSpec{
 			Type: "sequential",
-			Steps: []recipecore.Step{
+			Steps: []yamlpkg.Step{
 				{
 					ID: "parallel_tasks",
-					Parallel: []recipecore.Step{
+					Parallel: []yamlpkg.Step{
 						{
 							ID:       "task_a",
 							Activity: "activity_a",
@@ -144,8 +145,8 @@ func TestParallelWorkflowCompilation(t *testing.T) {
 	}
 
 	registry := NewActivityRegistry()
-	registry.RegisterActivity(&recipecore.ActivityDefinition{Name: "activity_a", Timeout: time.Minute})
-	registry.RegisterActivity(&recipecore.ActivityDefinition{Name: "activity_b", Timeout: time.Minute})
+	registry.RegisterActivity(&recipe.ActivityDefinition{Name: "activity_a", Timeout: time.Minute})
+	registry.RegisterActivity(&recipe.ActivityDefinition{Name: "activity_b", Timeout: time.Minute})
 
 	compiler := NewCompiler(registry)
 	workflowFunc, err := compiler.CompileWorkflow(workflowDef)
@@ -157,7 +158,7 @@ func TestActivityRegistry(t *testing.T) {
 	registry := NewActivityRegistry()
 
 	// Register activity
-	activityDef := &recipecore.ActivityDefinition{
+	activityDef := &recipe.ActivityDefinition{
 		Name:        "test_activity",
 		Description: "Test activity",
 		Timeout:     5 * time.Minute,

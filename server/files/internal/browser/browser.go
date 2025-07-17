@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"vibethis/files/internal/security"
+	"github.com/divisive-ai/vibethis/server/files/internal/security"
 )
 
 // FileInfo represents information about a file or directory
@@ -39,7 +39,7 @@ func New(validator security.Validator, allowedExtensions []string, maxFileSize i
 func (b *Browser) ListFiles(ctx context.Context, nodePath string) ([]FileInfo, error) {
 	// nodePath is already an absolute path
 	fullPath := nodePath
-	
+
 	// Validate path
 	if b.validator != nil {
 		if err := b.validator.ValidatePath(fullPath); err != nil {
@@ -91,7 +91,7 @@ func (b *Browser) ListFiles(ctx context.Context, nodePath string) ([]FileInfo, e
 func (b *Browser) ReadFile(ctx context.Context, nodePath, filePath string) ([]byte, error) {
 	// nodePath is already an absolute path
 	fullPath := filepath.Join(nodePath, filePath)
-	
+
 	// Validate path
 	if b.validator != nil {
 		if err := b.validator.ValidatePath(fullPath); err != nil {
@@ -122,7 +122,7 @@ func (b *Browser) ReadFile(ctx context.Context, nodePath, filePath string) ([]by
 func (b *Browser) WriteFile(ctx context.Context, nodePath, filePath string, content []byte) error {
 	// nodePath is already an absolute path
 	fullPath := filepath.Join(nodePath, filePath)
-	
+
 	// Validate path
 	if b.validator != nil {
 		if err := b.validator.ValidatePath(fullPath); err != nil {
@@ -152,7 +152,7 @@ func (b *Browser) WriteFile(ctx context.Context, nodePath, filePath string, cont
 func (b *Browser) CreateDirectory(ctx context.Context, nodePath, dirPath string) error {
 	// nodePath is already an absolute path
 	fullPath := filepath.Join(nodePath, dirPath)
-	
+
 	// Validate path
 	if b.validator != nil {
 		if err := b.validator.ValidatePath(fullPath); err != nil {
@@ -171,7 +171,7 @@ func (b *Browser) CreateDirectory(ctx context.Context, nodePath, dirPath string)
 func (b *Browser) Delete(ctx context.Context, nodePath, path string) error {
 	// nodePath is already an absolute path
 	fullPath := filepath.Join(nodePath, path)
-	
+
 	// Validate path
 	if b.validator != nil {
 		if err := b.validator.ValidatePath(fullPath); err != nil {

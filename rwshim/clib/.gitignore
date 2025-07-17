@@ -1,2 +1,4 @@
 intercept.so
 intercept.dylib
+mock_monitor
+test_app

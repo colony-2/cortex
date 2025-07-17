@@ -4,14 +4,14 @@ package web
 import (
 	"context"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
+	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"io/fs"
 	"net/http"
-	"vibethis/api/internal/handlers"
-	"vibethis/api/internal/middleware"
-	"vibethis/container/pkg/container"
-	"vibethis/core/pkg/core"
-	"vibethis/files/pkg/files"
-	"vibethis/git/pkg/git"
 )
 
 // Config defines configuration for the web server.

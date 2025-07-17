@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
 	"github.com/gorilla/mux"
-	"vibethis/openapi/pkg/openapi"
 )
 
 // GetGitStatus handles GET /api/nodes/{nodeId}/git/status

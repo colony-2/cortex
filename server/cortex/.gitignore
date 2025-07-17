@@ -1,1 +1,3 @@
 internal/static/assets/**
+static/assets/**
+build/**

@@ -8,24 +8,24 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/gorilla/mux"
-	"vibethis/core/pkg/core"
-	"vibethis/files/pkg/files"
 )
 
 // mockFilesBrowser implements files.Browser for testing
 type mockFilesBrowser struct {
-	listFilesCalled   bool
-	readFileCalled    bool
-	writeFileCalled   bool
-	receivedNodePath  string
-	receivedFilePath  string
-	receivedContent   []byte
-	listFilesReturn   []files.FileInfo
-	listFilesError    error
-	readFileReturn    []byte
-	readFileError     error
-	writeFileError    error
+	listFilesCalled  bool
+	readFileCalled   bool
+	writeFileCalled  bool
+	receivedNodePath string
+	receivedFilePath string
+	receivedContent  []byte
+	listFilesReturn  []files.FileInfo
+	listFilesError   error
+	readFileReturn   []byte
+	readFileError    error
+	writeFileError   error
 }
 
 func (m *mockFilesBrowser) ListFiles(ctx context.Context, nodePath string) ([]files.FileInfo, error) {
@@ -81,7 +81,7 @@ func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
 			{Name: "test.txt", Path: "test.txt", IsDir: false, Size: 100, Type: "text"},
 		},
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -92,26 +92,26 @@ func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		files: mockFiles,
 		graph: mockGraph,
 	}
-	
+
 	// Create request
 	req := httptest.NewRequest("GET", "/api/nodes/test-node/files", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.GetFiles(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the file browser was called with the actual path, not the node ID
 	if !mockFiles.listFilesCalled {
 		t.Error("ListFiles was not called")
@@ -126,7 +126,7 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 	mockFiles := &mockFilesBrowser{
 		readFileReturn: []byte("test content"),
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -137,13 +137,13 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		files: mockFiles,
 		graph: mockGraph,
 	}
-	
+
 	// Create request
 	req := httptest.NewRequest("GET", "/api/nodes/test-node/files/subdir/file.txt", nil)
 	req = mux.SetURLVars(req, map[string]string{
@@ -151,15 +151,15 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 		"filePath": "subdir/file.txt",
 	})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.GetFile(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the file browser was called with the actual path, not the node ID
 	if !mockFiles.readFileCalled {
 		t.Error("ReadFile was not called")
@@ -175,7 +175,7 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockFiles := &mockFilesBrowser{}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -186,19 +186,19 @@ func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		files: mockFiles,
 		graph: mockGraph,
 	}
-	
+
 	// Create request body
 	reqBody := map[string]string{
 		"content": "new file content",
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	
+
 	// Create request
 	req := httptest.NewRequest("PUT", "/api/nodes/test-node/files/newfile.txt", bytes.NewReader(bodyBytes))
 	req = mux.SetURLVars(req, map[string]string{
@@ -206,15 +206,15 @@ func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 		"filePath": "newfile.txt",
 	})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.PutFile(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the file browser was called with the actual path, not the node ID
 	if !mockFiles.writeFileCalled {
 		t.Error("WriteFile was not called")
@@ -236,13 +236,13 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		files: mockFiles,
 		graph: mockGraph,
 	}
-	
+
 	tests := []struct {
 		name   string
 		method string
@@ -253,7 +253,7 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 		{"GetFile", "GET", "/api/nodes/nonexistent/files/file.txt", nil},
 		{"PutFile", "PUT", "/api/nodes/nonexistent/files/file.txt", []byte(`{"content":"test"}`)},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create request
@@ -263,16 +263,16 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 			} else {
 				req = httptest.NewRequest(tt.method, tt.path, nil)
 			}
-			
+
 			// Set URL vars based on path
 			vars := map[string]string{"nodeId": "nonexistent"}
 			if tt.name == "GetFile" || tt.name == "PutFile" {
 				vars["filePath"] = "file.txt"
 			}
 			req = mux.SetURLVars(req, vars)
-			
+
 			w := httptest.NewRecorder()
-			
+
 			// Call appropriate handler
 			switch tt.name {
 			case "GetFiles":
@@ -282,7 +282,7 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 			case "PutFile":
 				h.PutFile(w, req)
 			}
-			
+
 			// Verify 404 response
 			if w.Code != http.StatusNotFound {
 				t.Errorf("Expected status 404, got %d", w.Code)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/divisive-ai/vibethis/server/ono/pkg/activities/llm"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 	"go.temporal.io/sdk/activity"
-	"vibethis/ono/pkg/activities/llm"
-	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 // Executor handles execution of activities based on their implementation type
@@ -31,7 +31,7 @@ func (e *Executor) SetUseMock(useMock bool) {
 }
 
 // ExecuteActivity executes an activity based on its definition
-func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Check if this is an activity context before using activity.GetLogger
 	if activity.IsActivity(ctx) {
 		logger := activity.GetLogger(ctx)
@@ -54,13 +54,13 @@ func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipecore.
 	}
 }
 
-func (e *Executor) executeHTTPActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) executeHTTPActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// For now, use mock implementation
 	// In a real implementation, this would make HTTP requests based on the config
 	if activity.IsActivity(ctx) {
 		activity.GetLogger(ctx).Info("Executing HTTP activity (mock)", "config", activityDef.Implementation.Config)
 	}
-	
+
 	// Route to appropriate mock handler based on activity name
 	switch activityDef.Name {
 	case "research_activity":
@@ -74,17 +74,17 @@ func (e *Executor) executeHTTPActivity(ctx context.Context, activityDef *recipec
 	}
 }
 
-func (e *Executor) executeGRPCActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) executeGRPCActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Mock implementation
 	return e.mockHandler.GenericActivity(ctx, activityDef.Name, inputs)
 }
 
-func (e *Executor) executeScriptActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) executeScriptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Mock implementation
 	return e.mockHandler.GenericActivity(ctx, activityDef.Name, inputs)
 }
 
-func (e *Executor) executeFunctionActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) executeFunctionActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// For now, route to mock handlers based on activity name
 	switch activityDef.Name {
 	case "research_activity":
@@ -98,38 +98,38 @@ func (e *Executor) executeFunctionActivity(ctx context.Context, activityDef *rec
 	}
 }
 
-func (e *Executor) executeAIPromptActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) executeAIPromptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Check if we should use real LLM or mock
 	if !e.useMock {
 		// Use real LLM executor
 		return e.llmExecutor.ExecuteAIPromptActivity(ctx, activityDef, inputs)
 	}
-	
+
 	// Use mock implementation
 	if activity.IsActivity(ctx) {
-		activity.GetLogger(ctx).Info("Executing AI prompt activity (mock)", 
+		activity.GetLogger(ctx).Info("Executing AI prompt activity (mock)",
 			"model", activityDef.Implementation.Config["model"],
 			"prompt", activityDef.Implementation.Config["prompt"])
 	}
-	
+
 	// Route to write report handler for ai_prompt activities
 	if activityDef.Name == "write_report_activity" {
 		return e.mockHandler.WriteReportActivity(ctx, inputs)
 	}
-	
+
 	return e.mockHandler.GenericActivity(ctx, activityDef.Name, inputs)
 }
 
 // RegisterActivities registers all activities with the Temporal worker
-func (e *Executor) RegisterActivities(activityDefs []recipecore.ActivityDefinition) map[string]interface{} {
+func (e *Executor) RegisterActivities(activityDefs []recipe.ActivityDefinition) map[string]interface{} {
 	activities := make(map[string]interface{})
-	
+
 	for _, def := range activityDefs {
 		def := def // capture loop variable
 		activities[def.Name] = func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 			return e.ExecuteActivity(ctx, &def, inputs)
 		}
 	}
-	
+
 	return activities
 }

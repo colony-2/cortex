@@ -1,4 +1,4 @@
-module github.com/vibethis/recipe-history
+module github.com/vibethis/server/recipe-history
 
 go 1.24.1
 

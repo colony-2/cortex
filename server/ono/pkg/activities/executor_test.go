@@ -7,7 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestMockResearchActivity(t *testing.T) {
@@ -96,10 +97,10 @@ func TestExecutor(t *testing.T) {
 	executor := NewExecutor()
 	
 	// Test HTTP activity
-	httpActivity := &recipecore.ActivityDefinition{
+	httpActivity := &recipe.ActivityDefinition{
 		Name:    "research_activity",
 		Timeout: 5 * time.Minute,
-		Implementation: recipecore.ActivityImplementation{
+		Implementation: yamlpkg.ActivityImplementation{
 			Type: "http",
 			Config: map[string]interface{}{
 				"method": "POST",
@@ -117,10 +118,10 @@ func TestExecutor(t *testing.T) {
 	assert.NotNil(t, outputs["research_results"])
 	
 	// Test AI prompt activity
-	aiActivity := &recipecore.ActivityDefinition{
+	aiActivity := &recipe.ActivityDefinition{
 		Name:    "write_report_activity",
 		Timeout: 10 * time.Minute,
-		Implementation: recipecore.ActivityImplementation{
+		Implementation: yamlpkg.ActivityImplementation{
 			Type: "ai_prompt",
 			Config: map[string]interface{}{
 				"model":  "gpt-4",
@@ -143,18 +144,18 @@ func TestExecutor(t *testing.T) {
 func TestRegisterActivities(t *testing.T) {
 	executor := NewExecutor()
 	
-	activityDefs := []recipecore.ActivityDefinition{
+	activityDefs := []recipe.ActivityDefinition{
 		{
 			Name:    "test_activity_1",
 			Timeout: time.Minute,
-			Implementation: recipecore.ActivityImplementation{
+			Implementation: yamlpkg.ActivityImplementation{
 				Type: "function",
 			},
 		},
 		{
 			Name:    "test_activity_2",
 			Timeout: time.Minute,
-			Implementation: recipecore.ActivityImplementation{
+			Implementation: yamlpkg.ActivityImplementation{
 				Type: "http",
 			},
 		},

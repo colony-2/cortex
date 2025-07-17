@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
-	"vibethis/ono/pkg/cli/format"
+	"github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeListCommand creates the recipe list command
@@ -57,7 +57,7 @@ func runRecipeList(cmd *cobra.Command, format, status string) error {
 	defer logger.Sync()
 
 	// Create recipe registry (without worker manager for listing)
-	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
+	registry, err := worker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -72,22 +72,22 @@ func runRecipeList(cmd *cobra.Command, format, status string) error {
 	time.Sleep(100 * time.Millisecond)
 
 	// Build filter
-	var filter *recipecore.RecipeFilter
+	var filter *recipe.RecipeFilter
 	switch status {
 	case "current":
-		running := recipecore.WorkerStatusRunning
-		filter = &recipecore.RecipeFilter{
+		running := recipe.WorkerStatusRunning
+		filter = &recipe.RecipeFilter{
 			Status:         &running,
 			IncludeRemoved: false,
 		}
 	case "removed":
-		stopped := recipecore.WorkerStatusStopped
-		filter = &recipecore.RecipeFilter{
+		stopped := recipe.WorkerStatusStopped
+		filter = &recipe.RecipeFilter{
 			Status:         &stopped,
 			IncludeRemoved: true,
 		}
 	case "all":
-		filter = &recipecore.RecipeFilter{
+		filter = &recipe.RecipeFilter{
 			IncludeRemoved: true,
 		}
 	default:
@@ -111,7 +111,7 @@ func runRecipeList(cmd *cobra.Command, format, status string) error {
 	}
 }
 
-func outputRecipesTable(cmd *cobra.Command, recipes []*recipecore.Recipe) error {
+func outputRecipesTable(cmd *cobra.Command, recipes []*recipe.Recipe) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := format.NewRecipeFormatter(useColor)
@@ -122,7 +122,7 @@ func outputRecipesTable(cmd *cobra.Command, recipes []*recipecore.Recipe) error 
 	return nil
 }
 
-func outputRecipesJSON(cmd *cobra.Command, recipes []*recipecore.Recipe) error {
+func outputRecipesJSON(cmd *cobra.Command, recipes []*recipe.Recipe) error {
 	// Create simplified output for JSON
 	type recipeOutput struct {
 		Name         string    `json:"name"`
@@ -136,7 +136,7 @@ func outputRecipesJSON(cmd *cobra.Command, recipes []*recipecore.Recipe) error {
 	output := make([]recipeOutput, len(recipes))
 	for i, r := range recipes {
 		status := "active"
-		if r.WorkerStatus == recipecore.WorkerStatusStopped {
+		if r.WorkerStatus == recipe.WorkerStatusStopped {
 			status = "removed"
 		}
 

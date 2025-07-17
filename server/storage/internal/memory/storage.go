@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"vibethis/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 )
 
 // Storage implements core.Storage using in-memory maps

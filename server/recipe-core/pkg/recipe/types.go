@@ -3,7 +3,7 @@ package recipe
 import (
 	"time"
 
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	yaml "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Recipe represents a discovered recipe with its metadata

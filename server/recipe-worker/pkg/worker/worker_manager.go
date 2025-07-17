@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
-	"github.com/vibethis/server/recipe-core"
+	"github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // WorkerManager manages the lifecycle of workers for recipes
@@ -33,7 +33,7 @@ func NewWorkerManager(logger *zap.Logger, temporalClient client.Client) *WorkerM
 }
 
 // StartWorker starts a new worker for a recipe
-func (m *WorkerManager) StartWorker(recipe *recipecore.Recipe) error {
+func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -122,7 +122,7 @@ func (m *WorkerManager) StopWorker(recipeName string) error {
 }
 
 // RestartWorker restarts a worker for a recipe
-func (m *WorkerManager) RestartWorker(recipeName string, recipe *recipecore.Recipe) error {
+func (m *WorkerManager) RestartWorker(recipeName string, recipe *recipe.Recipe) error {
 	// Stop existing worker if it exists
 	_ = m.StopWorker(recipeName)
 
@@ -144,17 +144,17 @@ func (m *WorkerManager) StopAll() {
 }
 
 // GetWorkerStatus returns the status of a worker
-func (m *WorkerManager) GetWorkerStatus(recipeName string) recipecore.WorkerStatus {
+func (m *WorkerManager) GetWorkerStatus(recipeName string) recipe.WorkerStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	_, exists := m.workers[recipeName]
 	if exists {
 		// TODO: Check actual worker health
-		return recipecore.WorkerStatusRunning
+		return recipe.WorkerStatusRunning
 	}
 
-	return recipecore.WorkerStatusStopped
+	return recipe.WorkerStatusStopped
 }
 
 // GetTaskQueueForRecipe returns the task queue name for a recipe

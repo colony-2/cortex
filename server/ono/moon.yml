@@ -16,12 +16,9 @@ tasks:
     outputs:
       - build/ono
 
-  start:
-    command: go run cmd/ono start
-    description: Start the Ono server with default persistence (./ono.db)
 
   install:
-    command: go install cmd/ono
+    command: go install ./cmd/ono
     description: Install Ono server and CLI tools
 
   integration:

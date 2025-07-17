@@ -15,7 +15,11 @@
       "Bash(done)",
       "Bash(for file in *.go)",
       "Bash(do sed -i '' 's/embeddedtemporal\\./temporal./g' \"$file\")",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(chmod:*)",
+      "Bash(./update_imports.sh)",
+      "Bash(./perform_import_updates.sh:*)",
+      "Bash(./fix_remaining_imports.sh)"
     ],
     "deny": []
   }

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // RecipeFormatter handles formatting of recipe-related output
@@ -22,7 +22,7 @@ func NewRecipeFormatter(useColor bool) *RecipeFormatter {
 }
 
 // FormatRecipeList formats a list of recipes for display
-func (f *RecipeFormatter) FormatRecipeList(recipes []*recipecore.Recipe) string {
+func (f *RecipeFormatter) FormatRecipeList(recipes []*recipe.Recipe) string {
 	if len(recipes) == 0 {
 		return "No recipes found."
 	}
@@ -62,7 +62,7 @@ func (f *RecipeFormatter) FormatRecipeList(recipes []*recipecore.Recipe) string 
 }
 
 // FormatRecipeDetail formats detailed recipe information
-func (f *RecipeFormatter) FormatRecipeDetail(r *recipecore.Recipe) string {
+func (f *RecipeFormatter) FormatRecipeDetail(r *recipe.Recipe) string {
 	if r == nil {
 		return "Recipe not found"
 	}
@@ -117,7 +117,7 @@ func (f *RecipeFormatter) FormatRecipeDetail(r *recipecore.Recipe) string {
 }
 
 // FormatJobList formats a list of jobs for display
-func (f *RecipeFormatter) FormatJobList(jobs []*recipecore.Job, recipeName string) string {
+func (f *RecipeFormatter) FormatJobList(jobs []*recipe.Job, recipeName string) string {
 	if len(jobs) == 0 {
 		return fmt.Sprintf("No jobs found for recipe '%s'.", recipeName)
 	}
@@ -167,7 +167,7 @@ func (f *RecipeFormatter) FormatJobList(jobs []*recipecore.Job, recipeName strin
 }
 
 // FormatJobDetail formats detailed job information
-func (f *RecipeFormatter) FormatJobDetail(job *recipecore.Job) string {
+func (f *RecipeFormatter) FormatJobDetail(job *recipe.Job) string {
 	if job == nil {
 		return "Job not found"
 	}
@@ -275,38 +275,38 @@ func (f *RecipeFormatter) formatField(name, value string) string {
 	return fmt.Sprintf("%s: %s\n", name, value)
 }
 
-func (f *RecipeFormatter) formatWorkerStatus(status recipecore.WorkerStatus) string {
+func (f *RecipeFormatter) formatWorkerStatus(status recipe.WorkerStatus) string {
 	statusStr := string(status)
 	if !f.useColor {
 		return statusStr
 	}
 	
 	switch status {
-	case recipecore.WorkerStatusRunning:
+	case recipe.WorkerStatusRunning:
 		return color.GreenString(statusStr)
-	case recipecore.WorkerStatusStopped:
+	case recipe.WorkerStatusStopped:
 		return color.YellowString(statusStr)
-	case recipecore.WorkerStatusFailed:
+	case recipe.WorkerStatusFailed:
 		return color.RedString(statusStr)
 	default:
 		return statusStr
 	}
 }
 
-func (f *RecipeFormatter) formatJobStatus(status recipecore.JobStatus) string {
+func (f *RecipeFormatter) formatJobStatus(status recipe.JobStatus) string {
 	statusStr := string(status)
 	if !f.useColor {
 		return statusStr
 	}
 	
 	switch status {
-	case recipecore.JobStatusRunning:
+	case recipe.JobStatusRunning:
 		return color.CyanString(statusStr)
-	case recipecore.JobStatusCompleted:
+	case recipe.JobStatusCompleted:
 		return color.GreenString(statusStr)
-	case recipecore.JobStatusFailed:
+	case recipe.JobStatusFailed:
 		return color.RedString(statusStr)
-	case recipecore.JobStatusCanceled:
+	case recipe.JobStatusCanceled:
 		return color.YellowString(statusStr)
 	default:
 		return statusStr

@@ -13,20 +13,21 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
-	"github.com/vibethis/server/recipe-core"
+	"github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Registry manages the discovery and tracking of recipes
 type Registry struct {
 	logger       *zap.Logger
 	recipesDir   string
-	recipes      map[string]*recipecore.Recipe // key is recipe name
+	recipes      map[string]*recipe.Recipe // key is recipe name
 	mu           sync.RWMutex
 	watcher      *fsnotify.Watcher
 	ctx          context.Context
 	cancel       context.CancelFunc
 	workerManager *WorkerManager
-	hashComputer *recipecore.HashComputer
+	hashComputer *recipe.HashComputer
 }
 
 // NewRegistry creates a new recipe registry
@@ -51,12 +52,12 @@ func NewRegistry(logger *zap.Logger, recipesDir string, workerManager *WorkerMan
 	r := &Registry{
 		logger:        logger,
 		recipesDir:    absDir,
-		recipes:       make(map[string]*recipecore.Recipe),
+		recipes:       make(map[string]*recipe.Recipe),
 		watcher:       watcher,
 		ctx:           ctx,
 		cancel:        cancel,
 		workerManager: workerManager,
-		hashComputer:  recipecore.NewHashComputer(),
+		hashComputer:  recipe.NewHashComputer(),
 	}
 
 	return r, nil
@@ -91,7 +92,7 @@ func (r *Registry) Stop() error {
 }
 
 // GetRecipe returns a recipe by name
-func (r *Registry) GetRecipe(name string) (*recipecore.Recipe, error) {
+func (r *Registry) GetRecipe(name string) (*recipe.Recipe, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -104,11 +105,11 @@ func (r *Registry) GetRecipe(name string) (*recipecore.Recipe, error) {
 }
 
 // ListRecipes returns all discovered recipes
-func (r *Registry) ListRecipes(filter *recipecore.RecipeFilter) ([]*recipecore.Recipe, error) {
+func (r *Registry) ListRecipes(filter *recipe.RecipeFilter) ([]*recipe.Recipe, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var recipes []*recipecore.Recipe
+	var recipes []*recipe.Recipe
 	for _, recipe := range r.recipes {
 		// Apply filters
 		if filter != nil && filter.Status != nil {
@@ -125,7 +126,7 @@ func (r *Registry) ListRecipes(filter *recipecore.RecipeFilter) ([]*recipecore.R
 
 // discoverRecipes scans the recipes directory for recipe definitions
 func (r *Registry) discoverRecipes() error {
-	discovered := make(map[string]*recipecore.Recipe)
+	discovered := make(map[string]*recipe.Recipe)
 
 	err := filepath.WalkDir(r.recipesDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -188,7 +189,7 @@ func (r *Registry) discoverRecipes() error {
 			if r.workerManager != nil {
 				r.workerManager.StopWorker(name)
 			}
-			oldRecipe.WorkerStatus = recipecore.WorkerStatusStopped
+			oldRecipe.WorkerStatus = recipe.WorkerStatusStopped
 		}
 	}
 
@@ -199,7 +200,7 @@ func (r *Registry) discoverRecipes() error {
 		if !exists {
 			// New recipe
 			r.logger.Info("New recipe discovered", zap.String("name", name))
-			newRecipe.WorkerStatus = recipecore.WorkerStatusStarting
+			newRecipe.WorkerStatus = recipe.WorkerStatusStarting
 			if r.workerManager != nil {
 				go r.startWorkerAsync(newRecipe)
 			}
@@ -209,7 +210,7 @@ func (r *Registry) discoverRecipes() error {
 				zap.String("name", name),
 				zap.String("oldHash", oldRecipe.Hash),
 				zap.String("newHash", newRecipe.Hash))
-			newRecipe.WorkerStatus = recipecore.WorkerStatusStarting
+			newRecipe.WorkerStatus = recipe.WorkerStatusStarting
 			if r.workerManager != nil {
 				r.workerManager.RestartWorker(name, newRecipe)
 			}
@@ -225,11 +226,11 @@ func (r *Registry) discoverRecipes() error {
 }
 
 // loadMultiFileRecipe loads a recipe from a directory with multiple files
-func (r *Registry) loadMultiFileRecipe(dir string) (*recipecore.Recipe, error) {
+func (r *Registry) loadMultiFileRecipe(dir string) (*recipe.Recipe, error) {
 	manifestPath := filepath.Join(dir, "recipe.yaml")
 	
 	// Load recipe manifest
-	var manifest recipecore.RecipeManifest
+	var manifest recipe.RecipeManifest
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read recipe manifest: %w", err)
@@ -239,7 +240,7 @@ func (r *Registry) loadMultiFileRecipe(dir string) (*recipecore.Recipe, error) {
 		return nil, fmt.Errorf("failed to parse recipe manifest: %w", err)
 	}
 
-	recipe := &recipecore.Recipe{
+	recipe := &recipe.Recipe{
 		Name:         manifest.Recipe.Name,
 		Version:      manifest.Recipe.Version,
 		Description:  manifest.Recipe.Description,
@@ -288,9 +289,9 @@ func (r *Registry) loadMultiFileRecipe(dir string) (*recipecore.Recipe, error) {
 }
 
 // loadSingleFileRecipe loads a recipe from a single YAML file
-func (r *Registry) loadSingleFileRecipe(path string) (*recipecore.Recipe, error) {
+func (r *Registry) loadSingleFileRecipe(path string) (*recipe.Recipe, error) {
 	// Parse as project file
-	parser := recipecore.NewYamlParser()
+	parser := yamlpkg.NewParser()
 	project, err := parser.ParseProject(path)
 	if err != nil {
 		// Not a valid project file, skip
@@ -317,7 +318,7 @@ func (r *Registry) loadSingleFileRecipe(path string) (*recipecore.Recipe, error)
 		return nil, nil
 	}
 
-	recipe := &recipecore.Recipe{
+	recipe := &recipe.Recipe{
 		Name:         name,
 		Version:      version,
 		Description:  description,
@@ -340,13 +341,13 @@ func (r *Registry) loadSingleFileRecipe(path string) (*recipecore.Recipe, error)
 }
 
 // Helper methods to load individual files
-func (r *Registry) loadWorkflowFile(path string) (*recipecore.WorkflowDefinition, error) {
+func (r *Registry) loadWorkflowFile(path string) (*yamlpkg.WorkflowDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var workflow recipecore.WorkflowDefinition
+	var workflow yamlpkg.WorkflowDefinition
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
 		return nil, err
 	}
@@ -354,14 +355,14 @@ func (r *Registry) loadWorkflowFile(path string) (*recipecore.WorkflowDefinition
 	return &workflow, nil
 }
 
-func (r *Registry) loadActivitiesFile(path string) ([]recipecore.ActivityDefinition, error) {
+func (r *Registry) loadActivitiesFile(path string) ([]recipe.ActivityDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	var activities struct {
-		Activities []recipecore.ActivityDefinition `yaml:"activities"`
+		Activities []recipe.ActivityDefinition `yaml:"activities"`
 	}
 	if err := yaml.Unmarshal(data, &activities); err != nil {
 		return nil, err
@@ -370,14 +371,14 @@ func (r *Registry) loadActivitiesFile(path string) ([]recipecore.ActivityDefinit
 	return activities.Activities, nil
 }
 
-func (r *Registry) loadAgentsFile(path string) (map[string]recipecore.AgentDefinition, error) {
+func (r *Registry) loadAgentsFile(path string) (map[string]yamlpkg.AgentDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	var agents struct {
-		Agents map[string]recipecore.AgentDefinition `yaml:"agents"`
+		Agents map[string]yamlpkg.AgentDefinition `yaml:"agents"`
 	}
 	if err := yaml.Unmarshal(data, &agents); err != nil {
 		return nil, err
@@ -434,18 +435,18 @@ func (r *Registry) watchForChanges() {
 }
 
 // startWorkerAsync starts a worker for a recipe asynchronously
-func (r *Registry) startWorkerAsync(recipe *recipecore.Recipe) {
-	if err := r.workerManager.StartWorker(recipe); err != nil {
+func (r *Registry) startWorkerAsync(rec *recipe.Recipe) {
+	if err := r.workerManager.StartWorker(rec); err != nil {
 		r.logger.Error("Failed to start worker", 
-			zap.String("recipe", recipe.Name),
+			zap.String("recipe", rec.Name),
 			zap.Error(err))
 		
 		r.mu.Lock()
-		recipe.WorkerStatus = recipecore.WorkerStatusFailed
+		rec.WorkerStatus = recipe.WorkerStatusFailed
 		r.mu.Unlock()
 	} else {
 		r.mu.Lock()
-		recipe.WorkerStatus = recipecore.WorkerStatusRunning
+		rec.WorkerStatus = recipe.WorkerStatusRunning
 		r.mu.Unlock()
 	}
 }

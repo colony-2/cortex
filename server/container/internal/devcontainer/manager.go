@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"vibethis/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 )
 
 // Manager implements the container.Manager interface using devcontainers
@@ -20,7 +20,7 @@ func NewManager() (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Manager{
 		docker: docker,
 	}, nil
@@ -30,7 +30,7 @@ func NewManager() (*Manager, error) {
 func (m *Manager) Create(ctx context.Context, nodePath string) (string, error) {
 	// Look for devcontainer.json in the node path
 	devcontainerPath := filepath.Join(nodePath, ".devcontainer", "devcontainer.json")
-	
+
 	// Load devcontainer configuration
 	dc, err := LoadDevContainer(devcontainerPath)
 	if err != nil {
@@ -44,24 +44,24 @@ func (m *Manager) Create(ctx context.Context, nodePath string) (string, error) {
 			},
 		}
 	}
-	
+
 	// Build docker run configuration
 	config, err := BuildDockerRunCommand(dc, nodePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to build docker config: %w", err)
 	}
-	
+
 	// Validate the image exists
 	if err := m.docker.ValidateImage(ctx, config.Image); err != nil {
 		return "", fmt.Errorf("invalid image: %w", err)
 	}
-	
+
 	// Create the container
 	containerID, err := m.docker.CreateContainer(ctx, config)
 	if err != nil {
 		return "", fmt.Errorf("failed to create container: %w", err)
 	}
-	
+
 	return containerID, nil
 }
 
@@ -94,7 +94,7 @@ func (m *Manager) GetInfo(ctx context.Context, containerID string) (*container.I
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &container.Info{
 		ID:     containerID,
 		Status: mapDockerStatus(status),
@@ -107,7 +107,7 @@ func (m *Manager) GetStatus(ctx context.Context, containerID string) (container.
 	if err != nil {
 		return container.StatusNone, err
 	}
-	
+
 	return mapDockerStatus(status), nil
 }
 

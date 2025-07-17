@@ -1,10 +1,10 @@
-module vibethis/container
+module github.com/divisive-ai/vibethis/server/container
 
 go 1.23.0
 
 toolchain go1.24.1
 
-replace vibethis/core => ../core
+replace github.com/divisive-ai/vibethis/server/core => ../core
 
 require github.com/docker/docker v28.3.0+incompatible
 

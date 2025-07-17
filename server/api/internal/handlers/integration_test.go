@@ -7,14 +7,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/gorilla/mux"
-	"vibethis/core/pkg/core"
 )
 
 func TestIntegrationPositionPersistence(t *testing.T) {
 	// Create mock storage
 	storage := newMockStorage()
-	
+
 	// Create handlers
 	h := &Handlers{
 		storage: storage,
@@ -166,7 +166,7 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 func TestIntegrationErrorHandling(t *testing.T) {
 	// Create mock storage
 	storage := newMockStorage()
-	
+
 	// Create handlers
 	h := &Handlers{
 		storage: storage,
@@ -188,7 +188,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	// Test 2: Wrong data type
 	wrongData := map[string]string{"wrong": "type"}
 	body, _ := json.Marshal(wrongData)
-	
+
 	req = httptest.NewRequest("POST", "/api/positions", bytes.NewReader(body))
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -200,7 +200,7 @@ func TestIntegrationErrorHandling(t *testing.T) {
 	// Test 3: Empty array (should succeed)
 	emptyPositions := []core.Position{}
 	body, _ = json.Marshal(emptyPositions)
-	
+
 	req = httptest.NewRequest("POST", "/api/positions", bytes.NewReader(body))
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

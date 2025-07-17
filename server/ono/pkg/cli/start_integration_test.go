@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/server/embeddedtemporal"
+	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 )
 
 func TestDevServerStartStop(t *testing.T) {
@@ -20,7 +20,7 @@ func TestDevServerStartStop(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17233, // Use non-standard port to avoid conflicts
 		UIPort:        18233,
@@ -69,7 +69,7 @@ func TestDevServerWithCustomNamespace(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test-custom.db")
 
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17234, // Different port
 		UIPort:        18234,

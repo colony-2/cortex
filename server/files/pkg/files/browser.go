@@ -3,8 +3,8 @@ package files
 
 import (
 	"context"
-	"vibethis/files/internal/browser"
-	"vibethis/files/internal/security"
+	"github.com/divisive-ai/vibethis/server/files/internal/browser"
+	"github.com/divisive-ai/vibethis/server/files/internal/security"
 )
 
 // FileInfo represents information about a file or directory.
@@ -20,16 +20,16 @@ type FileInfo struct {
 type Browser interface {
 	// ListFiles returns a list of files in the specified node directory.
 	ListFiles(ctx context.Context, nodePath string) ([]FileInfo, error)
-	
+
 	// ReadFile reads the contents of a file within a node directory.
 	ReadFile(ctx context.Context, nodePath, filePath string) ([]byte, error)
-	
+
 	// WriteFile writes content to a file within a node directory.
 	WriteFile(ctx context.Context, nodePath, filePath string, content []byte) error
-	
+
 	// CreateDirectory creates a new directory within a node directory.
 	CreateDirectory(ctx context.Context, nodePath, dirPath string) error
-	
+
 	// Delete removes a file or directory within a node directory.
 	Delete(ctx context.Context, nodePath, path string) error
 }
@@ -39,7 +39,7 @@ type Config struct {
 	// AllowedExtensions restricts browsable files to these extensions.
 	// If empty, all files are allowed.
 	AllowedExtensions []string
-	
+
 	// MaxFileSize is the maximum file size that can be read.
 	// If 0, no limit is enforced.
 	MaxFileSize int64
@@ -64,7 +64,7 @@ func (a *browserAdapter) ListFiles(ctx context.Context, nodePath string) ([]File
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert internal FileInfo to public FileInfo
 	result := make([]FileInfo, len(files))
 	for i, f := range files {

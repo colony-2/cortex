@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
+	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
 	"github.com/gorilla/mux"
-	"vibethis/container/pkg/container"
-	"vibethis/core/pkg/core"
-	"vibethis/files/pkg/files"
-	"vibethis/git/pkg/git"
-	"vibethis/openapi/pkg/openapi"
 )
 
 // Handlers contains all HTTP handlers
@@ -41,25 +41,25 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
-	
+
 	// Graph endpoints
 	api.HandleFunc("/graph", h.GetGraph).Methods("GET")
-	
+
 	// Position endpoints
 	api.HandleFunc("/positions", h.GetPositions).Methods("GET")
 	api.HandleFunc("/positions", h.SavePositions).Methods("POST")
-	
+
 	// Node endpoints
 	api.HandleFunc("/nodes/{nodeId}/files", h.GetFiles).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.GetFile).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.PutFile).Methods("PUT")
-	
+
 	// Git endpoints
 	api.HandleFunc("/nodes/{nodeId}/git/status", h.GetGitStatus).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/git/diff", h.GetGitDiff).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/git/history", h.GetGitHistory).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/git/commit", h.CreateGitCommit).Methods("POST")
-	
+
 	// Container endpoints
 	api.HandleFunc("/nodes/{nodeId}/container/status", h.GetContainerStatus).Methods("GET")
 	api.HandleFunc("/nodes/{nodeId}/container/create", h.CreateContainer).Methods("POST")
@@ -67,13 +67,13 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 	api.HandleFunc("/nodes/{nodeId}/container/stop", h.StopContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/restart", h.RestartContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/reset", h.ResetContainer).Methods("POST")
-	
+
 	// Static files and SPA routes (everything not under /api)
 	if staticHandler != nil {
 		// Use a custom handler that excludes /api paths
 		r.PathPrefix("/").Handler(&nonAPIHandler{staticHandler: staticHandler})
 	}
-	
+
 	return r
 }
 
@@ -102,12 +102,12 @@ func (h *Handlers) GetPositions(w http.ResponseWriter, r *http.Request) {
 // SavePositions handles POST /api/positions
 func (h *Handlers) SavePositions(w http.ResponseWriter, r *http.Request) {
 	var apiPositions []openapi.Position
-	
+
 	if r.Body == nil {
 		http.Error(w, "Request body is required", http.StatusBadRequest)
 		return
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&apiPositions); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
@@ -183,7 +183,7 @@ func (h *nonAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	
+
 	// Serve static files for all other paths
 	h.staticHandler.ServeHTTP(w, r)
 }

@@ -1,7 +1,7 @@
-module vibethis/graph
+module github.com/divisive-ai/vibethis/server/graph
 
-go 1.21
+go 1.24
 
-require vibethis/core v0.0.0
+require github.com/divisive-ai/vibethis/server/core v0.0.0
 
-replace vibethis/core => ../core
+replace github.com/divisive-ai/vibethis/server/core => ../core

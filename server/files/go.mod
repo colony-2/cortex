@@ -1,5 +1,5 @@
-module vibethis/files
+module github.com/divisive-ai/vibethis/server/files
 
-go 1.21
+go 1.24
 
-replace vibethis/core => ../core
+replace github.com/divisive-ai/vibethis/server/core => ../core

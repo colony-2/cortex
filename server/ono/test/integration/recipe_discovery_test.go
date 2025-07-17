@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	
-	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 func TestRecipeDiscovery_FullLifecycle(t *testing.T) {
@@ -32,7 +32,7 @@ func TestRecipeDiscovery_FullLifecycle(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	// Create registry
-	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
+	registry, err := worker.NewRegistry(logger, recipesDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -209,7 +209,7 @@ activities:
 	}
 
 	// Create registry
-	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
+	registry, err := worker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -229,7 +229,7 @@ activities:
 	allRecipes, err = registry.ListRecipes(nil)
 	require.NoError(t, err)
 	
-	var dataRecipes []*recipecore.Recipe
+	var dataRecipes []*recipe.Recipe
 	for _, r := range allRecipes {
 		if strings.HasPrefix(r.Name, "data-") {
 			dataRecipes = append(dataRecipes, r)
@@ -308,7 +308,7 @@ func TestRecipeDiscovery_InvalidRecipes(t *testing.T) {
 	}
 
 	// Create registry
-	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
+	registry, err := worker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -335,7 +335,7 @@ func TestRecipeDiscovery_FileWatchingStress(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	// Create registry
-	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
+	registry, err := worker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry
@@ -474,7 +474,7 @@ workflow:
 	))
 
 	// Create registry
-	registry, err := recipeworker.NewRegistry(logger, testDir, nil)
+	registry, err := worker.NewRegistry(logger, testDir, nil)
 	require.NoError(t, err)
 
 	// Start registry

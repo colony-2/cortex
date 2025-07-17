@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"vibethis/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 )
 
 // mockStorage implements core.Storage for testing
@@ -70,7 +70,7 @@ var ErrNotFound = fmt.Errorf("not found")
 func TestPositionHandlers(t *testing.T) {
 	// Create mock storage
 	storage := newMockStorage()
-	
+
 	// Create handlers
 	h := &Handlers{
 		storage: storage,

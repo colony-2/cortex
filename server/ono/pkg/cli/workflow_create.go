@@ -5,13 +5,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/divisive-ai/vibethis/server/ono/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/ono/pkg/workflows"
 	"github.com/spf13/cobra"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
-	"vibethis/ono/pkg/compiler"
-	"vibethis/ono/pkg/workflows"
-	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 var (
@@ -63,14 +63,14 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse project
-	parser := recipecore.NewYamlParser()
+	parser := yamlpkg.NewParser()
 	project, err := parser.ParseProject(path)
 	if err != nil {
 		return fmt.Errorf("failed to parse project: %w", err)
 	}
 
 	// If a specific workflow name was provided, validate only that one
-	var workflowToValidate *recipecore.WorkflowDefinition
+	var workflowToValidate *yamlpkg.WorkflowDefinition
 	if len(args) > 0 && createProjectPath != "" {
 		workflowName := args[0]
 
@@ -162,7 +162,7 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "\n✓ Workflow '%s' is valid!\n", workflowToValidate.Name)
-	
+
 	// Connect to Temporal server
 	fmt.Fprintf(cmd.OutOrStdout(), "\nConnecting to Temporal server...\n")
 	c, err := client.Dial(client.Options{
@@ -173,20 +173,20 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to connect to Temporal server: %w", err)
 	}
 	defer c.Close()
-	
+
 	// Create task queue name for this workflow
 	taskQueueName := fmt.Sprintf("%s-queue", workflowToValidate.Name)
-	
+
 	// Create a worker for this workflow
 	w := worker.New(c, taskQueueName, worker.Options{
 		MaxConcurrentWorkflowTaskPollers: 2,
 		MaxConcurrentActivityTaskPollers: 2,
 	})
-	
+
 	// Register the workflow
 	workflowFunc := workflows.CreateDynamicWorkflow(workflowToValidate, project, registry, comp)
 	w.RegisterWorkflow(workflowFunc)
-	
+
 	// Register all activities used by this workflow with their names
 	for i := range project.Activities {
 		activityDef := &project.Activities[i]
@@ -195,19 +195,19 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 			Name: activityDef.Name,
 		})
 	}
-	
+
 	fmt.Fprintf(cmd.OutOrStdout(), "✓ Workflow '%s' registered with task queue '%s'\n", workflowToValidate.Name, taskQueueName)
-	
+
 	// Start the worker
 	fmt.Fprintf(cmd.OutOrStdout(), "\nStarting worker to handle workflow execution...\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "Press Ctrl+C to stop the worker\n\n")
-	
+
 	// Run the worker
 	err = w.Run(worker.InterruptCh())
 	if err != nil {
 		return fmt.Errorf("failed to run worker: %w", err)
 	}
-	
+
 	fmt.Fprintf(cmd.OutOrStdout(), "\nWorker stopped. Workflow '%s' is no longer available.\n", workflowToValidate.Name)
 	return nil
 }

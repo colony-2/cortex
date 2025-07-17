@@ -1,6 +1,6 @@
-module vibethis/openapi
+module github.com/divisive-ai/vibethis/server/openapi
 
-go 1.21
+go 1.24
 
 require (
 	github.com/getkin/kin-openapi v0.122.0

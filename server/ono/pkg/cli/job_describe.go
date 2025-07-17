@@ -7,14 +7,14 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"go.temporal.io/api/history/v1"
+	temporalhistory "go.temporal.io/api/history/v1"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	recipecore "github.com/vibethis/server/recipe-core"
-	recipehistory "github.com/vibethis/server/recipe-history"
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
-	"vibethis/ono/pkg/cli/format"
+	"github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	history "github.com/vibethis/server/recipe-history/pkg/history"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewJobDescribeCommand creates the job describe command
@@ -62,7 +62,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	defer logger.Sync()
 
 	// Create recipe registry to get recipe details
-	registry, err := recipeworker.NewRegistry(logger, recipesDir, nil)
+	registry, err := worker.NewRegistry(logger, recipesDir, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create recipe registry: %w", err)
 	}
@@ -98,10 +98,10 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 
 	// Create transformer to convert workflow data to job
 	// Create GetRecipeFunc that uses the registry
-	getRecipe := func(name string) (*recipecore.Recipe, error) {
+	getRecipe := func(name string) (*recipe.Recipe, error) {
 		return registry.GetRecipe(name)
 	}
-	transformer := recipehistory.NewTransformer(getRecipe)
+	transformer := history.NewTransformer(getRecipe)
 
 	// Transform workflow description to job
 	job, err := transformer.DescribeWorkflowToJob(desc, recipeName)
@@ -113,7 +113,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	if verbose && len(desc.PendingActivities) == 0 {
 		// Get workflow history to extract completed activities
 		iter := c.GetWorkflowHistory(ctx, jobID, "", false, 0)
-		var events []*history.HistoryEvent
+		var events []*temporalhistory.HistoryEvent
 		for iter.HasNext() {
 			event, err := iter.Next()
 			if err != nil {
@@ -124,7 +124,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 		}
 
 		if len(events) > 0 {
-			hist := &history.History{
+			hist := &temporalhistory.History{
 				Events: events,
 			}
 			activities, err := transformer.HistoryToActivityExecutions(hist, recipeName)
@@ -147,7 +147,7 @@ func runJobDescribe(cmd *cobra.Command, recipeName, jobID string, format string,
 	}
 }
 
-func outputJobText(cmd *cobra.Command, job *recipecore.Job) error {
+func outputJobText(cmd *cobra.Command, job *recipe.Job) error {
 	// Use color output if terminal supports it
 	useColor := color.NoColor == false
 	formatter := format.NewRecipeFormatter(useColor)
@@ -158,7 +158,7 @@ func outputJobText(cmd *cobra.Command, job *recipecore.Job) error {
 	return nil
 }
 
-func outputJobJSON(cmd *cobra.Command, job *recipecore.Job) error {
+func outputJobJSON(cmd *cobra.Command, job *recipe.Job) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(job)

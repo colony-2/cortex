@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/gorilla/mux"
-	"vibethis/container/pkg/container"
-	"vibethis/core/pkg/core"
 )
 
 // mockContainerManager implements container.Manager for testing
@@ -64,7 +64,7 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	mockContainer := &mockContainerManager{
 		containerIDRet: "test-container-123",
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -75,29 +75,29 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	mockStorage := newMockStorage()
-	
+
 	// Create handlers
 	h := &Handlers{
 		container: mockContainer,
 		graph:     mockGraph,
 		storage:   mockStorage,
 	}
-	
+
 	// Create request
 	req := httptest.NewRequest("POST", "/api/nodes/test-node/container/create", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.CreateContainer(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the container manager was called with the actual path, not the node ID
 	if !mockContainer.createCalled {
 		t.Error("Create was not called")
@@ -105,7 +105,7 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	if mockContainer.receivedPath != "/actual/path/to/node" {
 		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockContainer.receivedPath)
 	}
-	
+
 	// Verify response contains container ID
 	var response map[string]string
 	if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
@@ -114,7 +114,7 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	if response["containerId"] != "test-container-123" {
 		t.Errorf("Expected containerId 'test-container-123', got '%s'", response["containerId"])
 	}
-	
+
 	// Verify container ID was saved to storage
 	savedID, err := mockStorage.GetContainerID(context.Background(), "test-node")
 	if err != nil {
@@ -132,22 +132,22 @@ func TestCreateContainer_NodeNotFound(t *testing.T) {
 		nodes: map[string]*core.Node{},
 	}
 	mockStorage := newMockStorage()
-	
+
 	// Create handlers
 	h := &Handlers{
 		container: mockContainer,
 		graph:     mockGraph,
 		storage:   mockStorage,
 	}
-	
+
 	// Create request
 	req := httptest.NewRequest("POST", "/api/nodes/nonexistent/container/create", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "nonexistent"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.CreateContainer(w, req)
-	
+
 	// Verify 404 response
 	if w.Code != http.StatusNotFound {
 		t.Errorf("Expected status 404, got %d", w.Code)
@@ -155,7 +155,7 @@ func TestCreateContainer_NodeNotFound(t *testing.T) {
 	if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Node not found")) {
 		t.Errorf("Expected 'Node not found' in response, got: %s", body)
 	}
-	
+
 	// Verify container manager was not called
 	if mockContainer.createCalled {
 		t.Error("Create should not have been called")

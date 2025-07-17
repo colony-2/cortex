@@ -1,10 +1,10 @@
 # https://moonrepo.dev/docs/config/project
 $schema: '../../../.moon/cache/schemas/project.json'
 
-id: 'be-vibethis'
+id: 'cortex'
 
 project:
-  description: 'Main vibethis server application'
+  description: 'Cortex Server'
   channel: '#backend'
 
 language: 'go'
@@ -22,7 +22,7 @@ tasks:
   build:
     script: |
       mkdir -p build
-      go build -o build/vibethis .
+      go build -o build/cortex ./cmd/cortex
     deps:
       - '~:build-frontend-copy'
     outputs:
@@ -61,7 +61,7 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   install:
     script: |
-      go install -tags=prod -ldflags="-X main.defaultPort=8081" .
+      go install -tags=prod -ldflags="-X main.defaultPort=8081" ./cmd/cortex
     deps:
       - '~:build'
       - '~:build-frontend-copy'

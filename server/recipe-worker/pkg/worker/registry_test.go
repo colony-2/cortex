@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func TestRegistry_NewRegistry(t *testing.T) {
@@ -237,22 +237,22 @@ func TestRegistry_ListRecipesWithFilter(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Add some test recipes manually
-	registry.recipes["recipe1"] = &recipecore.Recipe{
+	registry.recipes["recipe1"] = &recipe.Recipe{
 		Name:         "recipe1",
-		WorkerStatus: recipecore.WorkerStatusRunning,
+		WorkerStatus: recipe.WorkerStatusRunning,
 	}
-	registry.recipes["recipe2"] = &recipecore.Recipe{
+	registry.recipes["recipe2"] = &recipe.Recipe{
 		Name:         "recipe2",
-		WorkerStatus: recipecore.WorkerStatusStopped,
+		WorkerStatus: recipe.WorkerStatusStopped,
 	}
-	registry.recipes["recipe3"] = &recipecore.Recipe{
+	registry.recipes["recipe3"] = &recipe.Recipe{
 		Name:         "recipe3",
-		WorkerStatus: recipecore.WorkerStatusRunning,
+		WorkerStatus: recipe.WorkerStatusRunning,
 	}
 	
 	// Test filter by status
-	runningStatus := recipecore.WorkerStatusRunning
-	filter := &recipecore.RecipeFilter{
+	runningStatus := recipe.WorkerStatusRunning
+	filter := &recipe.RecipeFilter{
 		Status: &runningStatus,
 	}
 	
@@ -261,8 +261,8 @@ func TestRegistry_ListRecipesWithFilter(t *testing.T) {
 	assert.Len(t, recipes, 2)
 	
 	// Verify all returned recipes have running status
-	for _, recipe := range recipes {
-		assert.Equal(t, recipecore.WorkerStatusRunning, recipe.WorkerStatus)
+	for _, r := range recipes {
+		assert.Equal(t, recipe.WorkerStatusRunning, r.WorkerStatus)
 	}
 }
 

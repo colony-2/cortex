@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"vibethis/vibethis/internal/config"
-	"vibethis/vibethis/internal/setup"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/setup"
 
 	"github.com/spf13/cobra"
 )
@@ -40,7 +40,7 @@ func Execute() error {
 	var createNew bool
 
 	rootCmd := &cobra.Command{
-		Use:   "vibethis [path]",
+		Use:   "github.com/divisive-ai/vibethis/server [path]",
 		Short: "A visual graph-based project manager",
 		Long: `vibethis is a tool for visualizing and managing project dependencies
 as an interactive graph. It provides a web interface for browsing files,
@@ -54,10 +54,10 @@ managing dependencies, and working with development containers.`,
 			} else {
 				cfg.RootPath = "."
 			}
-			
+
 			// Handle --new flag
 			cfg.CreateNew = createNew
-			
+
 			return run(cfg)
 		},
 	}

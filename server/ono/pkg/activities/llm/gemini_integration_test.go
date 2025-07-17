@@ -10,7 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestGeminiIntegration(t *testing.T) {
@@ -60,19 +61,19 @@ func TestGeminiReportGeneration(t *testing.T) {
 	executor.RegisterProvider("gemini", provider)
 
 	// Create a report generation activity
-	activityDef := &recipecore.ActivityDefinition{
+	activityDef := &recipe.ActivityDefinition{
 		Name:        "write_report_activity",
 		Description: "Generate a comprehensive report",
 		Timeout:     10 * time.Minute,
-		Inputs: []recipecore.InputDefinition{
+		Inputs: []yamlpkg.InputDefinition{
 			{Name: "research", Type: "object"},
 			{Name: "analysis", Type: "object"},
 			{Name: "topic", Type: "string"},
 		},
-		Outputs: []recipecore.OutputDefinition{
+		Outputs: []yamlpkg.OutputDefinition{
 			{Name: "final_report", Type: "string"},
 		},
-		Implementation: recipecore.ActivityImplementation{
+		Implementation: yamlpkg.ActivityImplementation{
 			Type: "ai_prompt",
 			Config: map[string]interface{}{
 				"provider":    "gemini",

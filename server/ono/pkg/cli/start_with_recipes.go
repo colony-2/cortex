@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/vibethis/server/embeddedtemporal"
+	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
+	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // StartWithRecipesCmd represents the start command with recipe support
@@ -70,7 +70,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create dev server options
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    ip,
 		FrontendPort:  port,
 		UIPort:        uiPort,
@@ -97,7 +97,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Database: %s\n", opts.DatabaseFile)
 
 	// Create and start dev server
-	devServer, err := embeddedtemporal.NewServer(opts)
+	devServer, err := temporal.NewServer(opts)
 	if err != nil {
 		return fmt.Errorf("failed to create dev server: %w", err)
 	}
@@ -109,7 +109,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nTemporal dev server is running!")
 
 	// Start recipe system if enabled
-	var recipeWorker *recipeworker.Worker
+	var recipeWorker *worker.Worker
 	
 	if enableRecipes {
 		// Get recipe directory
@@ -136,7 +136,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 		defer c.Close()
 		
 		// Create and start recipe worker
-		recipeWorker, err = recipeworker.NewWorker(logger, recipeDir, c)
+		recipeWorker, err = worker.NewWorker(logger, recipeDir, c)
 		if err != nil {
 			devServer.Stop()
 			return fmt.Errorf("failed to create recipe worker: %w", err)

@@ -6,7 +6,8 @@ import (
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Compiler compiles YAML definitions into Temporal workflows
@@ -22,7 +23,7 @@ func NewCompiler(registry *ActivityRegistry) *Compiler {
 }
 
 // CompileWorkflow compiles a YAML workflow definition into a Temporal workflow
-func (c *Compiler) CompileWorkflow(def *recipecore.WorkflowDefinition) (interface{}, error) {
+func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}, error) {
 	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		// Create workflow state
 		state := &WorkflowState{
@@ -67,7 +68,7 @@ func (c *Compiler) CompileWorkflow(def *recipecore.WorkflowDefinition) (interfac
 	}, nil
 }
 
-func (c *Compiler) executeSequentialSteps(ctx workflow.Context, steps []recipecore.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
+func (c *Compiler) executeSequentialSteps(ctx workflow.Context, steps []yamlpkg.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
 	for _, step := range steps {
 		if len(step.Parallel) > 0 {
 			// Execute parallel sub-steps
@@ -84,7 +85,7 @@ func (c *Compiler) executeSequentialSteps(ctx workflow.Context, steps []recipeco
 	return nil
 }
 
-func (c *Compiler) executeParallelSteps(ctx workflow.Context, steps []recipecore.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
+func (c *Compiler) executeParallelSteps(ctx workflow.Context, steps []yamlpkg.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
 	// Create selector for parallel execution
 	selector := workflow.NewSelector(ctx)
 	
@@ -135,7 +136,7 @@ func (c *Compiler) executeParallelSteps(ctx workflow.Context, steps []recipecore
 	return nil
 }
 
-func (c *Compiler) executeStep(ctx workflow.Context, step recipecore.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
+func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
 	// Resolve inputs
 	resolver := NewTemplateResolver(state)
 	inputs := make(map[string]interface{})
@@ -191,22 +192,22 @@ type StepResult struct {
 
 // ActivityRegistry manages activity definitions
 type ActivityRegistry struct {
-	activities map[string]*recipecore.ActivityDefinition
+	activities map[string]*recipe.ActivityDefinition
 }
 
 // NewActivityRegistry creates a new activity registry
 func NewActivityRegistry() *ActivityRegistry {
 	return &ActivityRegistry{
-		activities: make(map[string]*recipecore.ActivityDefinition),
+		activities: make(map[string]*recipe.ActivityDefinition),
 	}
 }
 
 // RegisterActivity registers an activity definition
-func (r *ActivityRegistry) RegisterActivity(def *recipecore.ActivityDefinition) {
+func (r *ActivityRegistry) RegisterActivity(def *recipe.ActivityDefinition) {
 	r.activities[def.Name] = def
 }
 
 // GetActivity retrieves an activity definition
-func (r *ActivityRegistry) GetActivity(name string) *recipecore.ActivityDefinition {
+func (r *ActivityRegistry) GetActivity(name string) *recipe.ActivityDefinition {
 	return r.activities[name]
 }

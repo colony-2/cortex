@@ -2,16 +2,16 @@
 package storage
 
 import (
-	"vibethis/core/pkg/core"
-	"vibethis/storage/internal/bolt"
-	"vibethis/storage/internal/memory"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/storage/internal/bolt"
+	"github.com/divisive-ai/vibethis/server/storage/internal/memory"
 )
 
 // Config defines configuration options for storage backends.
 type Config struct {
 	// DatabasePath is the path to the database file (for BoltDB).
 	DatabasePath string
-	
+
 	// ReadOnly indicates if the storage should be opened in read-only mode.
 	ReadOnly bool
 }

@@ -1,4 +1,4 @@
-module vibethis/ono
+module github.com/divisive-ai/vibethis/server/ono
 
 go 1.24.1
 

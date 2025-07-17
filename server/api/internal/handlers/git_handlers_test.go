@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/gorilla/mux"
-	"vibethis/core/pkg/core"
-	"vibethis/git/pkg/git"
 )
 
 // mockGitRepository implements git.Repository for testing
@@ -88,7 +88,7 @@ func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
 			HasRemote: true,
 		},
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -99,26 +99,26 @@ func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		git:   mockGit,
 		graph: mockGraph,
 	}
-	
+
 	// Create request
 	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/status", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.GetGitStatus(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the git repository was called with the actual path, not the node ID
 	if !mockGit.getStatusCalled {
 		t.Error("GetStatus was not called")
@@ -133,7 +133,7 @@ func TestGetGitDiff_NodeIDToPathTranslation(t *testing.T) {
 	mockGit := &mockGitRepository{
 		diffReturn: "diff --git a/file.txt b/file.txt\n...",
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -144,26 +144,26 @@ func TestGetGitDiff_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		git:   mockGit,
 		graph: mockGraph,
 	}
-	
+
 	// Create request with staged=true
 	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/diff?staged=true", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.GetGitDiff(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the git repository was called with the actual path, not the node ID
 	if !mockGit.getDiffCalled {
 		t.Error("GetDiff was not called")
@@ -183,7 +183,7 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 			{Hash: "abc123", Message: "Test commit", Author: "Test User"},
 		},
 	}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -194,26 +194,26 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		git:   mockGit,
 		graph: mockGraph,
 	}
-	
+
 	// Create request with limit
 	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/history?limit=10", nil)
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.GetGitHistory(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the git repository was called with the actual path, not the node ID
 	if !mockGit.getHistoryCalled {
 		t.Error("GetHistory was not called")
@@ -229,7 +229,7 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockGit := &mockGitRepository{}
-	
+
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{
 			"test-node": {
@@ -240,33 +240,33 @@ func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		git:   mockGit,
 		graph: mockGraph,
 	}
-	
+
 	// Create request body
 	reqBody := map[string]interface{}{
 		"message": "Test commit message",
 		"files":   []string{"file1.txt", "file2.txt"},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	
+
 	// Create request
 	req := httptest.NewRequest("POST", "/api/nodes/test-node/git/commit", bytes.NewReader(bodyBytes))
 	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
 	w := httptest.NewRecorder()
-	
+
 	// Call handler
 	h.CreateGitCommit(w, req)
-	
+
 	// Verify response
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
-	
+
 	// Verify the git repository was called with the actual path, not the node ID
 	if !mockGit.stageFilesCalled {
 		t.Error("StageFiles was not called")
@@ -291,13 +291,13 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 	mockGraph := &mockGraphBuilder{
 		nodes: map[string]*core.Node{},
 	}
-	
+
 	// Create handlers
 	h := &Handlers{
 		git:   mockGit,
 		graph: mockGraph,
 	}
-	
+
 	tests := []struct {
 		name   string
 		method string
@@ -309,7 +309,7 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 		{"GetGitHistory", "GET", "/api/nodes/nonexistent/git/history", nil},
 		{"CreateGitCommit", "POST", "/api/nodes/nonexistent/git/commit", []byte(`{"message":"test"}`)},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create request
@@ -319,10 +319,10 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 			} else {
 				req = httptest.NewRequest(tt.method, tt.path, nil)
 			}
-			
+
 			req = mux.SetURLVars(req, map[string]string{"nodeId": "nonexistent"})
 			w := httptest.NewRecorder()
-			
+
 			// Call appropriate handler
 			switch tt.name {
 			case "GetGitStatus":
@@ -334,7 +334,7 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 			case "CreateGitCommit":
 				h.CreateGitCommit(w, req)
 			}
-			
+
 			// Verify 404 response
 			if w.Code != http.StatusNotFound {
 				t.Errorf("Expected status 404, got %d", w.Code)

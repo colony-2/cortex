@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // This is a standalone test program to demonstrate Gemini integration
@@ -11,8 +12,8 @@ import (
 	"log"
 	"time"
 
-	"vibethis/ono/pkg/activities/llm"
-	recipecore "github.com/vibethis/server/recipe-core"
+	"github.com/divisive-ai/vibethis/server/ono/pkg/activities/llm"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func main() {
@@ -34,14 +35,14 @@ func main() {
 	fmt.Println("✓ Created Gemini provider")
 
 	// Define an activity
-	activityDef := &recipecore.ActivityDefinition{
+	activityDef := &recipe.ActivityDefinition{
 		Name:        "test_gemini_activity",
 		Description: "Test Gemini report generation",
 		Timeout:     2 * time.Minute,
-		Outputs: []recipecore.OutputDefinition{
+		Outputs: []recipe.OutputDefinition{
 			{Name: "final_report", Type: "string"},
 		},
-		Implementation: recipecore.ActivityImplementation{
+		Implementation: recipe.ActivityImplementation{
 			Type: "ai_prompt",
 			Config: map[string]interface{}{
 				"provider":    "gemini",

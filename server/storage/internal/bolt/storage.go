@@ -8,12 +8,12 @@ import (
 	"sync"
 
 	"github.com/boltdb/bolt"
-	"vibethis/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 )
 
 const (
-	positionsBucket    = "positions"
-	containerIDBucket  = "container_ids"
+	positionsBucket   = "positions"
+	containerIDBucket = "container_ids"
 )
 
 // Storage implements core.Storage using BoltDB
@@ -26,7 +26,7 @@ type Storage struct {
 // New creates a new BoltDB storage implementation
 func New(dbPath string, readOnly bool) (core.Storage, error) {
 	dbFile := filepath.Join(dbPath, ".vibethis.db")
-	
+
 	db, err := bolt.Open(dbFile, 0600, &bolt.Options{
 		ReadOnly: readOnly,
 	})

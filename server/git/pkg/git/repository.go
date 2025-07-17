@@ -3,18 +3,18 @@ package git
 
 import (
 	"context"
+	"github.com/divisive-ai/vibethis/server/git/internal/commands"
 	"time"
-	"vibethis/git/internal/commands"
 )
 
 // Status represents the current status of a Git repository.
 type Status struct {
-	Branch       string       `json:"branch"`
-	Clean        bool         `json:"clean"`
-	Files        []StatusFile `json:"files"`
-	Ahead        int          `json:"ahead"`
-	Behind       int          `json:"behind"`
-	HasRemote    bool         `json:"hasRemote"`
+	Branch    string       `json:"branch"`
+	Clean     bool         `json:"clean"`
+	Files     []StatusFile `json:"files"`
+	Ahead     int          `json:"ahead"`
+	Behind    int          `json:"behind"`
+	HasRemote bool         `json:"hasRemote"`
 }
 
 // StatusFile represents a single file in the Git status.
@@ -36,19 +36,19 @@ type Commit struct {
 type Repository interface {
 	// GetStatus returns the current Git status of a node directory.
 	GetStatus(ctx context.Context, nodePath string) (*Status, error)
-	
+
 	// GetDiff returns the diff of uncommitted changes.
 	GetDiff(ctx context.Context, nodePath string, staged bool) (string, error)
-	
+
 	// GetHistory returns the commit history for a node.
 	GetHistory(ctx context.Context, nodePath string, limit int) ([]Commit, error)
-	
+
 	// CreateCommit creates a new commit with the given message.
 	CreateCommit(ctx context.Context, nodePath, message string) error
-	
+
 	// StageFiles stages the specified files for commit.
 	StageFiles(ctx context.Context, nodePath string, files []string) error
-	
+
 	// UnstageFiles unstages the specified files.
 	UnstageFiles(ctx context.Context, nodePath string, files []string) error
 }
@@ -57,7 +57,7 @@ type Repository interface {
 type Config struct {
 	// DefaultAuthor is used when no Git user is configured.
 	DefaultAuthor string
-	
+
 	// DefaultEmail is used when no Git email is configured.
 	DefaultEmail string
 }
@@ -78,7 +78,7 @@ func (a *repoAdapter) GetStatus(ctx context.Context, nodePath string) (*Status, 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert internal Status to public Status
 	result := &Status{
 		Branch:    status.Branch,
@@ -88,14 +88,14 @@ func (a *repoAdapter) GetStatus(ctx context.Context, nodePath string) (*Status, 
 		Behind:    status.Behind,
 		HasRemote: status.HasRemote,
 	}
-	
+
 	for i, f := range status.Files {
 		result.Files[i] = StatusFile{
 			Path:   f.Path,
 			Status: f.Status,
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -108,7 +108,7 @@ func (a *repoAdapter) GetHistory(ctx context.Context, nodePath string, limit int
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert internal Commit to public Commit
 	result := make([]Commit, len(commits))
 	for i, c := range commits {
@@ -120,7 +120,7 @@ func (a *repoAdapter) GetHistory(ctx context.Context, nodePath string, limit int
 			ShortHash: c.ShortHash,
 		}
 	}
-	
+
 	return result, nil
 }
 

@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"vibethis/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 )
 
 // MockMoonExecutor allows us to mock moon command execution for testing
@@ -73,7 +73,7 @@ func TestBuildGraphWithMoon(t *testing.T) {
 		// Use the directory name as prefix (the temp dir has a random name)
 		baseName := filepath.Base(tempDir)
 		moonContent := fmt.Sprintf("id: %s-%s\nlanguage: unknown\nproject:\n  description: %s\n", baseName, nodeName, nodeData.desc)
-		
+
 		if len(nodeData.deps) > 0 {
 			moonContent += "dependsOn:\n"
 			for _, dep := range nodeData.deps {
@@ -104,41 +104,40 @@ vcs:
 	if err := os.WriteFile(workspaceFile, []byte(workspaceContent), 0644); err != nil {
 		t.Fatalf("Failed to write workspace.yml: %v", err)
 	}
-	
+
 	// Verify the file was created
 	if _, err := os.Stat(workspaceFile); err != nil {
 		t.Fatalf("workspace.yml was not created: %v", err)
 	}
-	
+
 	// Initialize a git repository to prevent moon from searching parent directories
 	gitCmd := exec.Command("git", "init")
 	gitCmd.Dir = tempDir
 	if err := gitCmd.Run(); err != nil {
 		t.Fatalf("Failed to initialize git repository: %v", err)
 	}
-	
+
 	// Set git config for the test
 	gitConfig := exec.Command("git", "config", "user.email", "test@example.com")
 	gitConfig.Dir = tempDir
 	gitConfig.Run()
-	
+
 	gitConfig2 := exec.Command("git", "config", "user.name", "Test User")
 	gitConfig2.Dir = tempDir
 	gitConfig2.Run()
-	
+
 	// Add all files and create initial commit
 	gitAdd := exec.Command("git", "add", ".")
 	gitAdd.Dir = tempDir
 	if err := gitAdd.Run(); err != nil {
 		t.Fatalf("Failed to add files to git: %v", err)
 	}
-	
+
 	gitCommit := exec.Command("git", "commit", "-m", "Initial commit")
 	gitCommit.Dir = tempDir
 	if err := gitCommit.Run(); err != nil {
 		t.Fatalf("Failed to create initial commit: %v", err)
 	}
-	
 
 	// Build the graph
 	builder := New(tempDir)
@@ -247,7 +246,7 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 		t.Fatal("Failed to get current file path")
 	}
 	testDir := filepath.Dir(filename)
-	
+
 	// Use the actual example directory relative to the test file
 	exampleDir := filepath.Join(testDir, "..", "..", "..", "..", ".example")
 	absExampleDir, err := filepath.Abs(exampleDir)
@@ -270,7 +269,7 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 	// Verify we got all 13 nodes from the example directory
 	expectedNodes := []string{
 		"example-api", "example-auth", "example-cache", "example-config", "example-database", "example-frontend",
-		"example-gateway", "example-logger", "example-monitoring", "example-service-a", "example-service-b", 
+		"example-gateway", "example-logger", "example-monitoring", "example-service-a", "example-service-b",
 		"example-service-c", "example-shared-utils",
 	}
 
@@ -305,12 +304,12 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 		if len(apiNode.Dependencies) != len(expectedDeps) {
 			t.Errorf("API node: expected %d dependencies, got %d", len(expectedDeps), len(apiNode.Dependencies))
 		}
-		
+
 		depSet := make(map[string]bool)
 		for _, dep := range apiNode.Dependencies {
 			depSet[dep] = true
 		}
-		
+
 		for _, expected := range expectedDeps {
 			if !depSet[expected] {
 				t.Errorf("API node: missing expected dependency %s", expected)
@@ -408,7 +407,7 @@ func TestBuildGraphWithMockData(t *testing.T) {
 	if err := json.Unmarshal(firstNode.Config.DependsOn, &deps); err != nil {
 		t.Fatalf("Failed to parse dependencies: %v", err)
 	}
-	
+
 	if len(deps) != 2 {
 		t.Errorf("Expected first node to have 2 dependencies, got %d", len(deps))
 	}

@@ -12,13 +12,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/server/embeddedtemporal"
+	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 	"go.temporal.io/sdk/client"
 )
 
 func TestWorkflowCreateWithRunningServer(t *testing.T) {
 	// Start a test server
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17240,
 		UIPort:        18240,
@@ -83,7 +83,7 @@ func TestWorkflowCreateWithRunningServer(t *testing.T) {
 
 func TestWorkflowCreateCommandIntegration(t *testing.T) {
 	// Start a test server
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17241,
 		UIPort:        18241,
@@ -238,7 +238,7 @@ func TestWorkflowCreateCommandIntegration(t *testing.T) {
 
 func TestWorkflowCreateExamplesIntegration(t *testing.T) {
 	// Start a test server
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:    "127.0.0.1",
 		FrontendPort:  17242,
 		UIPort:        18242,

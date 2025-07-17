@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"os"
 
-	"vibethis/api/pkg/web"
-	"vibethis/container/pkg/container"
-	"vibethis/files/pkg/files"
-	"vibethis/git/pkg/git"
-	"vibethis/graph/pkg/graph"
-	"vibethis/storage/pkg/storage"
-	"vibethis/vibethis/internal/config"
-	"vibethis/vibethis/internal/static"
+	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
+	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 )
 
 // InitializeDependencies initializes all application dependencies
@@ -46,8 +46,8 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	// Initialize git repository
 	gitRepo := git.NewRepository(git.Config{
-		DefaultAuthor: "vibethis",
-		DefaultEmail:  "vibethis@example.com",
+		DefaultAuthor: "github.com/divisive-ai/vibethis/server",
+		DefaultEmail:  "github.com/divisive-ai/vibethis/server@example.com",
 	})
 
 	// Initialize container manager

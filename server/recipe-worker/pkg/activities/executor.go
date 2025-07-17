@@ -5,16 +5,16 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/activity"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // ExecutorImplementation defines the interface for activity execution implementations
 type ExecutorImplementation interface {
-	ExecuteHTTPActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteGRPCActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteScriptActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteFunctionActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteAIPromptActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteHTTPActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteGRPCActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteScriptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteFunctionActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteAIPromptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
 // Executor handles execution of activities based on their implementation type
@@ -30,7 +30,7 @@ func NewExecutor(impl ExecutorImplementation) *Executor {
 }
 
 // ExecuteActivity executes an activity based on its definition
-func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Check if this is an activity context before using activity.GetLogger
 	if activity.IsActivity(ctx) {
 		logger := activity.GetLogger(ctx)
@@ -54,7 +54,7 @@ func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipecore.
 }
 
 // RegisterActivities registers all activities with the Temporal worker
-func (e *Executor) RegisterActivities(activityDefs []recipecore.ActivityDefinition) map[string]interface{} {
+func (e *Executor) RegisterActivities(activityDefs []recipe.ActivityDefinition) map[string]interface{} {
 	activities := make(map[string]interface{})
 	
 	for _, def := range activityDefs {

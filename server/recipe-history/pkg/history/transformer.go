@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	recipecore "github.com/vibethis/server/recipe-core"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Transformer handles the transformation between Recipe/Job abstractions
@@ -20,7 +20,7 @@ type Transformer struct {
 }
 
 // GetRecipeFunc is a function type for retrieving recipes by name
-type GetRecipeFunc func(name string) (*recipecore.Recipe, error)
+type GetRecipeFunc func(name string) (*recipe.Recipe, error)
 
 // NewTransformer creates a new transformer instance
 func NewTransformer(getRecipe GetRecipeFunc) *Transformer {
@@ -33,7 +33,7 @@ func NewTransformer(getRecipe GetRecipeFunc) *Transformer {
 func (t *Transformer) WorkflowExecutionToJob(
 	execution *workflow.WorkflowExecutionInfo,
 	recipeName string,
-) (*recipecore.Job, error) {
+) (*recipe.Job, error) {
 	// Extract job ID from workflow ID (format: recipe-name-timestamp)
 	jobID := execution.Execution.WorkflowId
 
@@ -44,7 +44,7 @@ func (t *Transformer) WorkflowExecutionToJob(
 	status := t.mapWorkflowStatusToJobStatus(execution.Status)
 
 	// Create job instance
-	job := &recipecore.Job{
+	job := &recipe.Job{
 		ID:           jobID,
 		RecipeName:   recipeName,
 		Status:       status,
@@ -52,7 +52,7 @@ func (t *Transformer) WorkflowExecutionToJob(
 		UpdateTime:   startTime, // Default to start time
 		WorkflowType: execution.Type.Name,
 		RunID:        execution.Execution.RunId,
-		ExecutionInfo: &recipecore.WorkflowExecutionInfo{
+		ExecutionInfo: &recipe.WorkflowExecutionInfo{
 			WorkflowID: execution.Execution.WorkflowId,
 			RunID:      execution.Execution.RunId,
 		},
@@ -64,7 +64,7 @@ func (t *Transformer) WorkflowExecutionToJob(
 	}
 
 	// Add error message if failed
-	if status == recipecore.JobStatusFailed && execution.GetHistoryLength() > 0 {
+	if status == recipe.JobStatusFailed && execution.GetHistoryLength() > 0 {
 		job.Error = t.extractErrorFromExecution(execution)
 	}
 
@@ -83,8 +83,8 @@ func (t *Transformer) WorkflowExecutionToJob(
 func (t *Transformer) WorkflowExecutionsToJobs(
 	executions []*workflow.WorkflowExecutionInfo,
 	recipeName string,
-) ([]*recipecore.Job, error) {
-	jobs := make([]*recipecore.Job, 0, len(executions))
+) ([]*recipe.Job, error) {
+	jobs := make([]*recipe.Job, 0, len(executions))
 
 	for _, exec := range executions {
 		job, err := t.WorkflowExecutionToJob(exec, recipeName)
@@ -102,7 +102,7 @@ func (t *Transformer) WorkflowExecutionsToJobs(
 func (t *Transformer) DescribeWorkflowToJob(
 	desc *workflowservice.DescribeWorkflowExecutionResponse,
 	recipeName string,
-) (*recipecore.Job, error) {
+) (*recipe.Job, error) {
 	info := desc.WorkflowExecutionInfo
 
 	// Create basic job from execution info
@@ -113,7 +113,7 @@ func (t *Transformer) DescribeWorkflowToJob(
 
 	// Add pending activities
 	if len(desc.PendingActivities) > 0 {
-		job.Activities = make([]*recipecore.ActivityExecution, 0, len(desc.PendingActivities))
+		job.Activities = make([]*recipe.ActivityExecution, 0, len(desc.PendingActivities))
 		for _, pa := range desc.PendingActivities {
 			activity := t.pendingActivityToExecution(pa)
 			job.Activities = append(job.Activities, activity)
@@ -137,19 +137,19 @@ func (t *Transformer) DescribeWorkflowToJob(
 func (t *Transformer) HistoryToActivityExecutions(
 	history *history.History,
 	recipeName string,
-) ([]*recipecore.ActivityExecution, error) {
+) ([]*recipe.ActivityExecution, error) {
 	// Get recipe to help with activity name mapping
-	recipe, _ := t.getRecipe(recipeName)
+	rec, _ := t.getRecipe(recipeName)
 	
-	activities := make([]*recipecore.ActivityExecution, 0)
-	activityMap := make(map[int64]*recipecore.ActivityExecution) // eventID -> activity
+	activities := make([]*recipe.ActivityExecution, 0)
+	activityMap := make(map[int64]*recipe.ActivityExecution) // eventID -> activity
 
 	for _, event := range history.Events {
 		switch event.GetEventType() {
 		case enums.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED:
 			scheduled := event.GetActivityTaskScheduledEventAttributes()
-			activity := &recipecore.ActivityExecution{
-				Name:       t.extractActivityName(scheduled.ActivityType.Name, recipe),
+			activity := &recipe.ActivityExecution{
+				Name:       t.extractActivityName(scheduled.ActivityType.Name, rec),
 				Status:     "scheduled",
 				StartTime:  event.EventTime.AsTime(),
 				ActivityID: fmt.Sprintf("%d", event.EventId),
@@ -202,29 +202,29 @@ func (t *Transformer) HistoryToActivityExecutions(
 }
 
 // mapWorkflowStatusToJobStatus maps Temporal workflow status to JobStatus
-func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutionStatus) recipecore.JobStatus {
+func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutionStatus) recipe.JobStatus {
 	switch status {
 	case enums.WORKFLOW_EXECUTION_STATUS_RUNNING:
-		return recipecore.JobStatusRunning
+		return recipe.JobStatusRunning
 	case enums.WORKFLOW_EXECUTION_STATUS_COMPLETED:
-		return recipecore.JobStatusCompleted
+		return recipe.JobStatusCompleted
 	case enums.WORKFLOW_EXECUTION_STATUS_FAILED:
-		return recipecore.JobStatusFailed
+		return recipe.JobStatusFailed
 	case enums.WORKFLOW_EXECUTION_STATUS_CANCELED:
-		return recipecore.JobStatusCanceled
+		return recipe.JobStatusCanceled
 	case enums.WORKFLOW_EXECUTION_STATUS_TERMINATED:
-		return recipecore.JobStatusTerminated
+		return recipe.JobStatusTerminated
 	case enums.WORKFLOW_EXECUTION_STATUS_CONTINUED_AS_NEW:
-		return recipecore.JobStatusRunning
+		return recipe.JobStatusRunning
 	case enums.WORKFLOW_EXECUTION_STATUS_TIMED_OUT:
-		return recipecore.JobStatusFailed
+		return recipe.JobStatusFailed
 	default:
-		return recipecore.JobStatusUnknown
+		return recipe.JobStatusUnknown
 	}
 }
 
 // extractActivityName extracts user-friendly activity name
-func (t *Transformer) extractActivityName(temporalName string, recipe *recipecore.Recipe) string {
+func (t *Transformer) extractActivityName(temporalName string, recipe *recipe.Recipe) string {
 	// If we have recipe metadata, try to map to original activity name
 	if recipe != nil {
 		for _, activity := range recipe.Activities {
@@ -246,8 +246,8 @@ func (t *Transformer) extractActivityName(temporalName string, recipe *recipecor
 }
 
 // pendingActivityToExecution converts pending activity to execution
-func (t *Transformer) pendingActivityToExecution(pa *workflow.PendingActivityInfo) *recipecore.ActivityExecution {
-	return &recipecore.ActivityExecution{
+func (t *Transformer) pendingActivityToExecution(pa *workflow.PendingActivityInfo) *recipe.ActivityExecution {
+	return &recipe.ActivityExecution{
 		Name:       pa.ActivityType.Name,
 		ActivityID: pa.ActivityId,
 		Status:     t.mapPendingActivityState(pa.State),

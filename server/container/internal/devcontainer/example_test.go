@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"vibethis/container/internal/devcontainer"
+	"github.com/divisive-ai/vibethis/server/container/internal/devcontainer"
 )
 
 func Example() {

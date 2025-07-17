@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	
-	"vibethis/openapi/pkg/openapi"
+
+	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
 )
 
 // GetGraph handles GET /api/graph
