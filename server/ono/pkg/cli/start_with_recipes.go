@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
+	"github.com/vibethis/server/embeddedtemporal"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 )
 
 // StartWithRecipesCmd represents the start command with recipe support
@@ -70,7 +70,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create dev server options
-	opts := temporal.Options{
+	opts := embeddedtemporal.Options{
 		FrontendIP:    ip,
 		FrontendPort:  port,
 		UIPort:        uiPort,
@@ -97,7 +97,7 @@ func runStartWithRecipes(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Database: %s\n", opts.DatabaseFile)
 
 	// Create and start dev server
-	devServer, err := temporal.NewServer(opts)
+	devServer, err := embeddedtemporal.NewServer(opts)
 	if err != nil {
 		return fmt.Errorf("failed to create dev server: %w", err)
 	}

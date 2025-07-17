@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 	"vibethis/ono/pkg/cli/format"
 )
 

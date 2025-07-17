@@ -2,7 +2,6 @@ package embeddedtemporal
 
 import (
 	"go.temporal.io/sdk/client"
-	"go.uber.org/zap"
 	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 )
 
@@ -12,18 +11,22 @@ type Options = temporal.Options
 type ClientOptions = temporal.ClientOptions
 
 // Re-export functions
-func NewServer(opts Options, logger *zap.Logger) (*Server, error) {
-	return temporal.NewServer(opts, logger)
+func NewServer(opts Options) (*Server, error) {
+	return temporal.NewServer(opts)
 }
 
-func CreateClient(opts ClientOptions) (client.Client, error) {
-	return temporal.CreateClient(opts)
+func NewClient(opts ClientOptions) (client.Client, error) {
+	return temporal.NewClient(opts)
+}
+
+func NewNamespaceClient(hostPort string) (client.NamespaceClient, error) {
+	return temporal.NewNamespaceClient(hostPort)
 }
 
 func IsPortAvailable(host string, port int) bool {
 	return temporal.IsPortAvailable(host, port)
 }
 
-func GetFreePort() (int, error) {
-	return temporal.GetFreePort()
+func FindFreePort() int {
+	return temporal.FindFreePort()
 }

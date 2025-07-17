@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	github.com/vibethis/embeddedtemporal v0.0.0-00010101000000-000000000000
+	github.com/vibethis/server/embeddedtemporal v0.0.0-00010101000000-000000000000
 	github.com/vibethis/server/recipe-core v0.0.0
 	github.com/vibethis/server/recipe-history v0.0.0-00010101000000-000000000000
 	github.com/vibethis/server/recipe-worker v0.0.0
@@ -19,7 +19,7 @@ require (
 	modernc.org/sqlite v1.34.1
 )
 
-replace github.com/vibethis/embeddedtemporal => ../embeddedtemporal
+replace github.com/vibethis/server/embeddedtemporal => ../embeddedtemporal
 
 replace github.com/vibethis/server/recipe-core => ../recipe-core
 

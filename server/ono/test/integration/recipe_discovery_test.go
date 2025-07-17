@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap/zaptest"
 	
 	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 )
 
 func TestRecipeDiscovery_FullLifecycle(t *testing.T) {

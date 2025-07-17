@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 	
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 )
 
 // NewJobRestartCommand creates the job restart command

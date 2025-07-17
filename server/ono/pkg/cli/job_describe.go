@@ -13,7 +13,7 @@ import (
 
 	recipecore "github.com/vibethis/server/recipe-core"
 	recipehistory "github.com/vibethis/server/recipe-history"
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 	"vibethis/ono/pkg/cli/format"
 )
 

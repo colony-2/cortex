@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	recipecore "github.com/vibethis/server/recipe-core"
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/vibethis/server/recipe-worker/recipe-worker"
 	formatpkg "vibethis/ono/pkg/cli/format"
 )
 
