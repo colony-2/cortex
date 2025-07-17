@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/embeddedtemporal"
+	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 	_ "modernc.org/sqlite"
 )
 
@@ -49,14 +49,14 @@ func TestDevServerDirectoryCreation(t *testing.T) {
 	tmpDir := t.TempDir()
 	nestedPath := filepath.Join(tmpDir, "nested", "dir", "temporal.db")
 
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17238,
 		DatabaseFile: nestedPath,
 		LogLevel:     "error",
 	}
 
-	devServer, err := embeddedtemporal.NewServer(opts)
+	devServer, err := temporal.NewServer(opts)
 	require.NoError(t, err)
 	
 	// Start the server - this should create the directory

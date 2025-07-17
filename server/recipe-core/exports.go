@@ -3,6 +3,7 @@ package recipecore
 import (
 	"go.uber.org/zap"
 	"github.com/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Re-export all types from pkg/recipe at the root level
@@ -51,4 +52,26 @@ func NewHashComputer() *HashComputer {
 
 func NewParser(logger *zap.Logger) *Parser {
 	return recipe.NewParser(logger)
+}
+
+// Re-export yaml package types
+type WorkflowDefinition = yaml.WorkflowDefinition
+type InputDefinition = yaml.InputDefinition
+type OutputDefinition = yaml.OutputDefinition
+type WorkflowSpec = yaml.WorkflowSpec
+type RetryPolicy = yaml.RetryPolicy
+type Step = yaml.Step
+type ActivityDefinition = yaml.ActivityDefinition
+type ActivityRetryPolicy = yaml.ActivityRetryPolicy
+type ActivityImplementation = yaml.ActivityImplementation
+type ProjectManifest = yaml.ProjectManifest
+type ActivitiesFile = yaml.ActivitiesFile
+type AgentDefinition = yaml.AgentDefinition
+type AgentsFile = yaml.AgentsFile
+type Project = yaml.Project
+type YamlParser = yaml.Parser
+
+// Re-export yaml package constructor
+func NewYamlParser() *YamlParser {
+	return yaml.NewParser()
 }

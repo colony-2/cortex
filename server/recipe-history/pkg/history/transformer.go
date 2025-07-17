@@ -1,4 +1,4 @@
-package recipehistory
+package history
 
 import (
 	"encoding/json"

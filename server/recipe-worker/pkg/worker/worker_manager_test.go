@@ -11,7 +11,6 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap/zaptest"
 	recipecore "github.com/vibethis/server/recipe-core"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Mock types for testing
@@ -59,10 +58,10 @@ func TestWorkerManager_StartStopWorker(t *testing.T) {
 		Name:        "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
-		Workflow: &yamlpkg.WorkflowDefinition{
+		Workflow: &recipecore.WorkflowDefinition{
 			Name: "test-workflow",
 		},
-		Activities: []yamlpkg.ActivityDefinition{
+		Activities: []recipecore.ActivityDefinition{
 			{Name: "activity1"},
 			{Name: "activity2"},
 		},
@@ -95,7 +94,7 @@ func TestWorkerManager_RestartWorker(t *testing.T) {
 		Name:        "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
-		Workflow: &yamlpkg.WorkflowDefinition{
+		Workflow: &recipecore.WorkflowDefinition{
 			Name: "test-workflow",
 		},
 	}
@@ -236,7 +235,7 @@ func TestWorkerManager_Integration(t *testing.T) {
 		Name:        "integration-test-recipe",
 		Version:     "1.0.0",
 		Description: "Integration test recipe",
-		Workflow: &yamlpkg.WorkflowDefinition{
+		Workflow: &recipecore.WorkflowDefinition{
 			Name: "test-workflow",
 		},
 	}

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.temporal.io/sdk/client"
 	"vibethis/ono/pkg/compiler"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 var (
@@ -48,9 +48,9 @@ Examples:
 }
 
 func executeWorkflow(cmd *cobra.Command, args []string) error {
-	var project *yaml.Project
+	var project *recipecore.Project
 	var err error
-	parser := yaml.NewParser()
+	parser := recipecore.NewYamlParser()
 
 	// Determine how to load the workflow
 	if workflowFile != "" && projectPath != "" {

@@ -6,12 +6,12 @@ import (
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 // WorkflowExecutor interface for executing workflow logic
 type WorkflowExecutor interface {
-	ExecuteWorkflow(ctx workflow.Context, workflowDef *yaml.WorkflowDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteWorkflow(ctx workflow.Context, workflowDef *recipecore.WorkflowDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
 // ActivityInvoker interface for invoking activities from workflows
@@ -20,7 +20,7 @@ type ActivityInvoker interface {
 }
 
 // CreateDynamicWorkflow creates a Temporal workflow function from a YAML workflow definition
-func CreateDynamicWorkflow(workflowDef *yaml.WorkflowDefinition, project *yaml.Project, executor WorkflowExecutor) interface{} {
+func CreateDynamicWorkflow(workflowDef *recipecore.WorkflowDefinition, project *recipecore.Project, executor WorkflowExecutor) interface{} {
 	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		if executor != nil {
 			return executor.ExecuteWorkflow(ctx, workflowDef, inputs)
@@ -42,7 +42,7 @@ func CreateDynamicWorkflow(workflowDef *yaml.WorkflowDefinition, project *yaml.P
 }
 
 // CreateDynamicActivity creates a Temporal activity function from a YAML activity definition
-func CreateDynamicActivity(activityDef *yaml.ActivityDefinition) interface{} {
+func CreateDynamicActivity(activityDef *recipecore.ActivityDefinition) interface{} {
 	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		// Get activity info for logging
 		info := activity.GetInfo(ctx)

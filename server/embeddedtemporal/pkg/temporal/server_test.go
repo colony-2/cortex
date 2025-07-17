@@ -1,4 +1,4 @@
-package embeddedtemporal_test
+package temporal_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vibethis/embeddedtemporal"
+	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )
@@ -23,7 +23,7 @@ func TestServerLifecycle(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "temporal.db")
 
 	// Create server options
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17233,
 		DatabaseFile: dbPath,
@@ -32,7 +32,7 @@ func TestServerLifecycle(t *testing.T) {
 	}
 
 	// Create server
-	server, err := embeddedtemporal.NewServer(opts)
+	server, err := temporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestServerWithCustomPragmas(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "temporal.db")
 
 	// Create server options with custom pragmas
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17234,
 		DatabaseFile: dbPath,
@@ -113,7 +113,7 @@ func TestServerWithCustomPragmas(t *testing.T) {
 	}
 
 	// Create and start server
-	server, err := embeddedtemporal.NewServer(opts)
+	server, err := temporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestServerRestart(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "temporal.db")
 
 	// Create server options
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17235,
 		DatabaseFile: dbPath,
@@ -148,7 +148,7 @@ func TestServerRestart(t *testing.T) {
 	}
 
 	// First server instance
-	server1, err := embeddedtemporal.NewServer(opts)
+	server1, err := temporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create first server: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestServerRestart(t *testing.T) {
 	}
 
 	// Create second server instance with same database
-	server2, err := embeddedtemporal.NewServer(opts)
+	server2, err := temporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create second server: %v", err)
 	}
@@ -204,18 +204,18 @@ func TestServerRestart(t *testing.T) {
 
 func TestPortAvailability(t *testing.T) {
 	// Test IsPortAvailable function
-	if !embeddedtemporal.IsPortAvailable("127.0.0.1", 0) {
+	if !temporal.IsPortAvailable("127.0.0.1", 0) {
 		t.Fatal("Port 0 should always be available")
 	}
 
 	// Find a free port
-	port := embeddedtemporal.FindFreePort()
+	port := temporal.FindFreePort()
 	if port <= 0 {
 		t.Fatal("FindFreePort should return a valid port")
 	}
 
 	// Verify the port is actually available
-	if !embeddedtemporal.IsPortAvailable("127.0.0.1", port) {
+	if !temporal.IsPortAvailable("127.0.0.1", port) {
 		t.Fatalf("Port %d should be available", port)
 	}
 }
@@ -231,7 +231,7 @@ func TestClientCreation(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "temporal.db")
 
 	// Create and start server
-	opts := embeddedtemporal.Options{
+	opts := temporal.Options{
 		FrontendIP:   "127.0.0.1",
 		FrontendPort: 17236,
 		DatabaseFile: dbPath,
@@ -239,7 +239,7 @@ func TestClientCreation(t *testing.T) {
 		Namespaces:   []string{"client-test"},
 	}
 
-	server, err := embeddedtemporal.NewServer(opts)
+	server, err := temporal.NewServer(opts)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestClientCreation(t *testing.T) {
 	defer server.Stop()
 
 	// Test NewClient helper
-	c, err := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{
+	c, err := temporal.NewClient(temporal.ClientOptions{
 		HostPort:  server.GetFrontendAddress(),
 		Namespace: "client-test",
 	})
@@ -275,7 +275,7 @@ func TestClientCreation(t *testing.T) {
 	}
 
 	// Test NewNamespaceClient helper
-	nc, err := embeddedtemporal.NewNamespaceClient(server.GetFrontendAddress())
+	nc, err := temporal.NewNamespaceClient(server.GetFrontendAddress())
 	if err != nil {
 		t.Fatalf("Failed to create namespace client: %v", err)
 	}

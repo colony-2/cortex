@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 // Provider interface for LLM providers
@@ -32,7 +32,7 @@ func (e *Executor) RegisterProvider(name string, provider Provider) {
 }
 
 // ExecuteAIPromptActivity executes an AI prompt activity
-func (e *Executor) ExecuteAIPromptActivity(ctx context.Context, activityDef *yaml.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) ExecuteAIPromptActivity(ctx context.Context, activityDef *recipecore.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 	config := activityDef.Implementation.Config
 
 	// Get provider name

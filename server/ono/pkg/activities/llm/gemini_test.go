@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 func TestLoadGeminiAPIKey(t *testing.T) {
@@ -79,9 +79,9 @@ func TestExecuteAIPromptActivityValidation(t *testing.T) {
 	executor.RegisterProvider("openai", &mockProvider{})
 	
 	// Test missing prompt
-	activityDef := &yaml.ActivityDefinition{
+	activityDef := &recipecore.ActivityDefinition{
 		Name: "test_activity",
-		Implementation: yaml.ActivityImplementation{
+		Implementation: recipecore.ActivityImplementation{
 			Type:   "ai_prompt",
 			Config: map[string]interface{}{
 				// missing prompt

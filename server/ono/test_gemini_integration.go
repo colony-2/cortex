@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"vibethis/ono/pkg/activities/llm"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 func main() {
@@ -34,14 +34,14 @@ func main() {
 	fmt.Println("✓ Created Gemini provider")
 
 	// Define an activity
-	activityDef := &yaml.ActivityDefinition{
+	activityDef := &recipecore.ActivityDefinition{
 		Name:        "test_gemini_activity",
 		Description: "Test Gemini report generation",
 		Timeout:     2 * time.Minute,
-		Outputs: []yaml.OutputDefinition{
+		Outputs: []recipecore.OutputDefinition{
 			{Name: "final_report", Type: "string"},
 		},
-		Implementation: yaml.ActivityImplementation{
+		Implementation: recipecore.ActivityImplementation{
 			Type: "ai_prompt",
 			Config: map[string]interface{}{
 				"provider":    "gemini",

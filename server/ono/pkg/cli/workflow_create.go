@@ -11,7 +11,7 @@ import (
 	"go.temporal.io/sdk/worker"
 	"vibethis/ono/pkg/compiler"
 	"vibethis/ono/pkg/workflows"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 var (
@@ -63,14 +63,14 @@ func createWorkflow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse project
-	parser := yaml.NewParser()
+	parser := recipecore.NewYamlParser()
 	project, err := parser.ParseProject(path)
 	if err != nil {
 		return fmt.Errorf("failed to parse project: %w", err)
 	}
 
 	// If a specific workflow name was provided, validate only that one
-	var workflowToValidate *yaml.WorkflowDefinition
+	var workflowToValidate *recipecore.WorkflowDefinition
 	if len(args) > 0 && createProjectPath != "" {
 		workflowName := args[0]
 

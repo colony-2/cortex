@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"github.com/vibethis/server/recipe-core"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Registry manages the discovery and tracking of recipes
@@ -291,7 +290,7 @@ func (r *Registry) loadMultiFileRecipe(dir string) (*recipecore.Recipe, error) {
 // loadSingleFileRecipe loads a recipe from a single YAML file
 func (r *Registry) loadSingleFileRecipe(path string) (*recipecore.Recipe, error) {
 	// Parse as project file
-	parser := yamlpkg.NewParser()
+	parser := recipecore.NewYamlParser()
 	project, err := parser.ParseProject(path)
 	if err != nil {
 		// Not a valid project file, skip
@@ -341,13 +340,13 @@ func (r *Registry) loadSingleFileRecipe(path string) (*recipecore.Recipe, error)
 }
 
 // Helper methods to load individual files
-func (r *Registry) loadWorkflowFile(path string) (*yamlpkg.WorkflowDefinition, error) {
+func (r *Registry) loadWorkflowFile(path string) (*recipecore.WorkflowDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var workflow yamlpkg.WorkflowDefinition
+	var workflow recipecore.WorkflowDefinition
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
 		return nil, err
 	}
@@ -355,14 +354,14 @@ func (r *Registry) loadWorkflowFile(path string) (*yamlpkg.WorkflowDefinition, e
 	return &workflow, nil
 }
 
-func (r *Registry) loadActivitiesFile(path string) ([]yamlpkg.ActivityDefinition, error) {
+func (r *Registry) loadActivitiesFile(path string) ([]recipecore.ActivityDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	var activities struct {
-		Activities []yamlpkg.ActivityDefinition `yaml:"activities"`
+		Activities []recipecore.ActivityDefinition `yaml:"activities"`
 	}
 	if err := yaml.Unmarshal(data, &activities); err != nil {
 		return nil, err
@@ -371,14 +370,14 @@ func (r *Registry) loadActivitiesFile(path string) ([]yamlpkg.ActivityDefinition
 	return activities.Activities, nil
 }
 
-func (r *Registry) loadAgentsFile(path string) (map[string]yamlpkg.AgentDefinition, error) {
+func (r *Registry) loadAgentsFile(path string) (map[string]recipecore.AgentDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	var agents struct {
-		Agents map[string]yamlpkg.AgentDefinition `yaml:"agents"`
+		Agents map[string]recipecore.AgentDefinition `yaml:"agents"`
 	}
 	if err := yaml.Unmarshal(data, &agents); err != nil {
 		return nil, err

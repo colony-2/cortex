@@ -13,7 +13,7 @@ import (
 	"vibethis/ono/pkg/activities"
 	"vibethis/ono/pkg/activities/llm"
 	"vibethis/ono/pkg/compiler"
-	"github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipecore "github.com/vibethis/server/recipe-core"
 )
 
 func TestResearchProjectWithGemini(t *testing.T) {
@@ -29,7 +29,7 @@ func TestResearchProjectWithGemini(t *testing.T) {
 	}
 
 	// Parse the research project
-	parser := yaml.NewParser()
+	parser := recipecore.NewYamlParser()
 	projectPath := filepath.Join("..", "..", "example", "research_project")
 	
 	project, err := parser.ParseProject(projectPath)
@@ -127,7 +127,7 @@ func TestGeminiWorkflowYAML(t *testing.T) {
 	}
 
 	// Parse the Gemini example workflow
-	parser := yaml.NewParser()
+	parser := recipecore.NewYamlParser()
 	workflowPath := filepath.Join("..", "..", "example", "gemini_workflow.yaml")
 	
 	project, err := parser.ParseProject(workflowPath)
@@ -173,7 +173,7 @@ func TestAllExampleWorkflows(t *testing.T) {
 		{"Gemini Workflow", filepath.Join("..", "..", "example", "gemini_workflow.yaml")},
 	}
 
-	parser := yaml.NewParser()
+	parser := recipecore.NewYamlParser()
 
 	for _, example := range examples {
 		t.Run(example.name, func(t *testing.T) {
@@ -192,7 +192,7 @@ func TestAllExampleWorkflows(t *testing.T) {
 	}
 }
 
-func findActivity(activities []yaml.ActivityDefinition, name string) *yaml.ActivityDefinition {
+func findActivity(activities []recipecore.ActivityDefinition, name string) *recipecore.ActivityDefinition {
 	for i := range activities {
 		if activities[i].Name == name {
 			return &activities[i]

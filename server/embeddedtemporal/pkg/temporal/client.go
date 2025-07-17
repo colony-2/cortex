@@ -1,4 +1,4 @@
-package embeddedtemporal
+package temporal
 
 import (
 	"fmt"

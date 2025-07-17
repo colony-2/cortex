@@ -12,7 +12,6 @@ import (
 	recipecore "github.com/vibethis/server/recipe-core"
 	recipeworker "github.com/vibethis/server/recipe-worker"
 	formatpkg "vibethis/ono/pkg/cli/format"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // NewRecipeDescribeCommand creates the recipe describe command
@@ -102,8 +101,8 @@ func outputRecipeJSON(cmd *cobra.Command, r *recipecore.Recipe) error {
 		Status       string                       `json:"status"`
 		WorkerStatus string                       `json:"worker_status"`
 		LastModified string                       `json:"last_modified"`
-		Workflow     *yamlpkg.WorkflowDefinition  `json:"workflow,omitempty"`
-		Activities   []yamlpkg.ActivityDefinition `json:"activities,omitempty"`
+		Workflow     *recipecore.WorkflowDefinition  `json:"workflow,omitempty"`
+		Activities   []recipecore.ActivityDefinition `json:"activities,omitempty"`
 	}
 
 	output := recipeOutput{
