@@ -1,4 +1,4 @@
-package recipeworker
+package worker
 
 import (
 	"fmt"

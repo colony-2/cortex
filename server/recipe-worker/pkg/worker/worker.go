@@ -1,4 +1,4 @@
-package recipeworker
+package worker
 
 import (
 	"go.temporal.io/sdk/client"
