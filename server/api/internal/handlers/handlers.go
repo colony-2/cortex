@@ -67,6 +67,7 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 	api.HandleFunc("/nodes/{nodeId}/container/stop", h.StopContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/restart", h.RestartContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/reset", h.ResetContainer).Methods("POST")
+	api.HandleFunc("/nodes/{nodeId}/container/devcontainer", h.UpdateDevcontainer).Methods("PUT")
 
 	// Static files and SPA routes (everything not under /api)
 	if staticHandler != nil {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Space, message, Spin, Alert, Card, Empty, Modal, Radio, Tooltip } from 'antd';
+import { Button, Space, message, Spin, Alert, Card, Empty, Modal } from 'antd';
 import { 
   PlayCircleOutlined, 
   ReloadOutlined, 
@@ -8,155 +8,11 @@ import {
   EditOutlined, 
   SaveOutlined, 
   CloseOutlined, 
-  FileAddOutlined,
-  AppstoreOutlined,
-  CodeOutlined
+  FileAddOutlined
 } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
-import Form from '@rjsf/core';
-import validator from '@rjsf/validator-ajv8';
-import type { RJSFSchema } from '@rjsf/utils';
 import type { DependencyNode } from '@vibethis/shared';
-import { ConfigProvider, theme } from 'antd';
-import { 
-  Input, 
-  Select, 
-  Switch, 
-  InputNumber, 
-  Form as AntForm
-} from 'antd';
 
-// Custom Ant Design widgets for RJSF
-const AntDTextWidget = (props: any) => {
-  return (
-    <Input 
-      value={props.value || ''} 
-      onChange={(e) => props.onChange(e.target.value)}
-      placeholder={props.placeholder}
-      disabled={props.disabled}
-    />
-  );
-};
-
-const AntDSelectWidget = (props: any) => {
-  const { enumOptions } = props.options;
-  return (
-    <Select
-      value={props.value}
-      onChange={props.onChange}
-      disabled={props.disabled}
-      style={{ width: '100%' }}
-    >
-      {enumOptions?.map((option: any) => (
-        <Select.Option key={option.value} value={option.value}>
-          {option.label}
-        </Select.Option>
-      ))}
-    </Select>
-  );
-};
-
-const AntDBooleanWidget = (props: any) => {
-  return (
-    <Switch
-      checked={props.value}
-      onChange={props.onChange}
-      disabled={props.disabled}
-    />
-  );
-};
-
-const AntDNumberWidget = (props: any) => {
-  return (
-    <InputNumber
-      value={props.value}
-      onChange={props.onChange}
-      disabled={props.disabled}
-      style={{ width: '100%' }}
-    />
-  );
-};
-
-// Custom field template for Ant Design styling
-const CustomFieldTemplate = (props: any) => {
-  const { label, help, required, description, errors, children } = props;
-  return (
-    <AntForm.Item
-      label={label}
-      required={required}
-      help={help || description}
-      validateStatus={errors && errors.length > 0 ? 'error' : ''}
-      extra={errors}
-    >
-      {children}
-    </AntForm.Item>
-  );
-};
-
-const widgets = {
-  TextWidget: AntDTextWidget,
-  SelectWidget: AntDSelectWidget,
-  CheckboxWidget: AntDBooleanWidget,
-  NumberWidget: AntDNumberWidget,
-};
-
-// JSON Schema for devcontainer configuration
-const devcontainerSchema: RJSFSchema = {
-  type: 'object',
-  properties: {
-    name: {
-      type: 'string',
-      title: 'Container Name',
-      description: 'A human-readable name for the dev container',
-    },
-    image: {
-      type: 'string',
-      title: 'Base Image',
-      description: 'Docker image to use as the base',
-      default: 'mcr.microsoft.com/devcontainers/base:ubuntu',
-    },
-    features: {
-      type: 'object',
-      title: 'Features',
-      description: 'Dev container features to install',
-      additionalProperties: true,
-    },
-    forwardPorts: {
-      type: 'array',
-      title: 'Forward Ports',
-      items: {
-        type: 'number',
-      },
-      description: 'Ports to forward from the container to the host',
-    },
-    postCreateCommand: {
-      type: 'string',
-      title: 'Post Create Command',
-      description: 'Command to run after creating the container',
-    },
-    customizations: {
-      type: 'object',
-      title: 'Customizations',
-      properties: {
-        vscode: {
-          type: 'object',
-          title: 'VS Code',
-          properties: {
-            extensions: {
-              type: 'array',
-              title: 'Extensions',
-              items: {
-                type: 'string',
-              },
-              description: 'VS Code extensions to install',
-            },
-          },
-        },
-      },
-    },
-  },
-  required: ['name', 'image'],
-};
 
 export interface EnvEditorProps {
   node: DependencyNode;
@@ -169,9 +25,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
   const [originalContent, setOriginalContent] = useState<string>('');
   const [containerStatus, setContainerStatus] = useState<'stopped' | 'running' | 'none'>('none');
   const [containerId, setContainerId] = useState<string | null>(null);
-  const [fileExists, setFileExists] = useState(false);
-  const [viewMode, setViewMode] = useState<'gui' | 'ide'>('gui');
-  const [formData, setFormData] = useState<any>({});
+  const [hasDevcontainer, setHasDevcontainer] = useState(false);
 
   // Helper function to show detailed error messages
   const showError = (title: string, error: any) => {
@@ -222,66 +76,35 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     });
   };
 
-  // Parse JSON content to form data
-  const parseJsonToFormData = (json: string) => {
-    try {
-      const parsed = JSON.parse(json);
-      setFormData(parsed);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  };
 
-  // Convert form data to JSON string
-  const formDataToJson = (data: any) => {
-    return JSON.stringify(data, null, 2);
-  };
-
-  // Load devcontainer.json file
+  // Load container status and devcontainer.json
   useEffect(() => {
-    loadDevcontainerFile();
-    checkContainerStatus();
+    loadContainerStatus();
   }, [node]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadDevcontainerFile = async () => {
+  const loadContainerStatus = async () => {
     setLoading(true);
-    try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/files/.devcontainer/devcontainer.json`);
-      if (response.ok) {
-        const data = await response.text();
-        setContent(data);
-        setOriginalContent(data);
-        setFileExists(true);
-        parseJsonToFormData(data);
-      } else if (response.status === 404) {
-        // File doesn't exist
-        setFileExists(false);
-        setContent('');
-        setOriginalContent('');
-        setFormData({});
-      } else {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-    } catch (error: any) {
-      console.error('Error loading devcontainer.json:', error);
-      showError('Failed to load devcontainer configuration', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkContainerStatus = async () => {
     try {
       const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/status`);
       if (response.ok) {
         const data = await response.json();
         setContainerStatus(data.status);
         setContainerId(data.containerId);
+        setHasDevcontainer(data.hasDevcontainer);
+        if (data.devcontainerContent) {
+          setContent(data.devcontainerContent);
+          setOriginalContent(data.devcontainerContent);
+        } else {
+          setContent('');
+          setOriginalContent('');
+        }
+      } else {
+        console.error('Error loading container status');
       }
     } catch (error) {
-      console.error('Error checking container status:', error);
+      console.error('Error loading container status:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -300,33 +123,25 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     };
     const defaultContent = JSON.stringify(defaultConfig, null, 2);
     setContent(defaultContent);
-    setFormData(defaultConfig);
     setOriginalContent('');
     setEditMode(true);
   };
 
   const saveDevcontainerFile = async () => {
-    // If in GUI mode, convert form data to JSON
-    if (viewMode === 'gui') {
-      setContent(formDataToJson(formData));
-    }
-    
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/files/.devcontainer/devcontainer.json`, {
+      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/devcontainer`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ content: viewMode === 'gui' ? formDataToJson(formData) : content }),
+        body: JSON.stringify({ content }),
       });
 
       if (response.ok) {
-        const savedContent = viewMode === 'gui' ? formDataToJson(formData) : content;
-        setOriginalContent(savedContent);
-        setContent(savedContent);
+        setOriginalContent(content);
         setEditMode(false);
-        setFileExists(true);
+        setHasDevcontainer(true);
         message.success('Devcontainer configuration saved');
       } else {
         const errorText = await response.text();
@@ -341,13 +156,11 @@ export default function EnvEditor({ node }: EnvEditorProps) {
   };
 
   const cancelEdit = () => {
-    if (!fileExists && originalContent === '') {
+    if (!hasDevcontainer && originalContent === '') {
       // If we were creating a new file, clear the content
       setContent('');
-      setFormData({});
     } else {
       setContent(originalContent);
-      parseJsonToFormData(originalContent);
     }
     setEditMode(false);
   };
@@ -449,22 +262,6 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     }
   };
 
-  const handleViewModeChange = (newMode: 'gui' | 'ide') => {
-    // If switching from IDE to GUI, validate JSON first
-    if (viewMode === 'ide' && newMode === 'gui') {
-      if (!parseJsonToFormData(content)) {
-        message.error('Cannot switch to GUI mode: Invalid JSON format');
-        return;
-      }
-    }
-    
-    // If switching from GUI to IDE, update content
-    if (viewMode === 'gui' && newMode === 'ide') {
-      setContent(formDataToJson(formData));
-    }
-    
-    setViewMode(newMode);
-  };
 
   const editorOptions = {
     readOnly: false,
@@ -477,7 +274,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px' }}>
-      {fileExists && (
+      {hasDevcontainer && (
         <div style={{ marginBottom: '16px' }}>
           <h3>Devcontainer Service Controls</h3>
           <Space wrap>
@@ -544,21 +341,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
       <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3>devcontainer.json Configuration</h3>
         <Space>
-          {fileExists && editMode && (
-            <Radio.Group value={viewMode} onChange={(e) => handleViewModeChange(e.target.value)}>
-              <Tooltip title="Graphical User Interface">
-                <Radio.Button value="gui">
-                  <AppstoreOutlined /> GUI
-                </Radio.Button>
-              </Tooltip>
-              <Tooltip title="Integrated Development Environment">
-                <Radio.Button value="ide">
-                  <CodeOutlined /> IDE
-                </Radio.Button>
-              </Tooltip>
-            </Radio.Group>
-          )}
-          {fileExists && (
+          {hasDevcontainer && (
             <Space>
               {!editMode ? (
                 <Button
@@ -597,10 +380,10 @@ export default function EnvEditor({ node }: EnvEditorProps) {
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
             <Spin size="large" />
           </div>
-        ) : !fileExists && !editMode ? (
+        ) : !hasDevcontainer && !editMode ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', padding: '40px' }}>
             <Empty
-              description="No devcontainer.json file exists"
+              description="No local devcontainer.json configuration"
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             >
               <Button
@@ -614,30 +397,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
             </Empty>
           </div>
         ) : editMode ? (
-          viewMode === 'gui' ? (
-            <div style={{ padding: '20px', overflow: 'auto', height: '100%' }}>
-              <ConfigProvider
-                theme={{
-                  algorithm: theme.defaultAlgorithm,
-                }}
-              >
-                <Form
-                  schema={devcontainerSchema}
-                  validator={validator}
-                  formData={formData}
-                  onChange={(e) => setFormData(e.formData)}
-                  widgets={widgets}
-                  templates={{ FieldTemplate: CustomFieldTemplate }}
-                  uiSchema={{
-                    'ui:submitButtonOptions': {
-                      norender: true,
-                    },
-                  }}
-                />
-              </ConfigProvider>
-            </div>
-          ) : (
-            <Editor
+          <Editor
               height="100%"
               language="json"
               value={content}
@@ -655,7 +415,6 @@ export default function EnvEditor({ node }: EnvEditorProps) {
                 });
               }}
             />
-          )
         ) : (
           <Card style={{ height: '100%', overflow: 'auto' }}>
             <pre style={{ 

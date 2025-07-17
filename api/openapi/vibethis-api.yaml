@@ -535,6 +535,12 @@ paths:
                   containerId:
                     type: string
                     description: Container ID (if exists)
+                  hasDevcontainer:
+                    type: boolean
+                    description: Whether a devcontainer.json file exists
+                  devcontainerContent:
+                    type: string
+                    description: Content of the devcontainer.json file (if exists)
               examples:
                 noContainer:
                   value:
@@ -724,6 +730,54 @@ paths:
                   value: "Failed to remove container"
                 deleteError:
                   value: "Failed to delete container ID"
+
+  /api/nodes/{nodeId}/container/devcontainer:
+    put:
+      summary: Update devcontainer configuration
+      description: Updates or creates the devcontainer.json file for a node
+      operationId: updateDevcontainer
+      tags:
+        - Container
+      parameters:
+        - name: nodeId
+          in: path
+          required: true
+          description: ID of the node
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  description: JSON content for the devcontainer.json file
+              required:
+                - content
+      responses:
+        '200':
+          description: Devcontainer configuration updated successfully
+        '400':
+          description: Invalid request body or JSON content
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Node not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Failed to update devcontainer configuration
+          content:
+            text/plain:
+              schema:
+                type: string
 
 components:
   schemas:
