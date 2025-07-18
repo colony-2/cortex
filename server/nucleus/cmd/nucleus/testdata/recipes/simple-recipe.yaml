@@ -1,0 +1,20 @@
+name: simple-test-recipe
+version: 1.0.0
+description: A simple test recipe for integration testing
+
+workflow:
+  steps:
+    - name: step1
+      activity:
+        type: http
+        config:
+          url: https://httpbin.org/get
+          method: GET
+    
+    - name: step2
+      activity:
+        type: function
+        config:
+          function: test-function
+          args:
+            message: "Hello from test"
