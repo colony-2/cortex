@@ -7,17 +7,17 @@ test.describe('EnvEditor', () => {
   });
 
   test('should show create button when devcontainer.json does not exist', async ({ page }) => {
-    // Mock API response for missing devcontainer.json
-    await page.route('**/api/nodes/*/files/.devcontainer/devcontainer.json', async route => {
-      await route.fulfill({ status: 404 });
-    });
-    
-    // Mock API response for container status
+    // Mock API response for container status with no devcontainer
     await page.route('**/api/nodes/*/container/status', async route => {
       await route.fulfill({ 
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ status: 'none', containerId: null })
+        body: JSON.stringify({ 
+          status: 'none', 
+          containerId: null,
+          hasDevcontainer: false,
+          devcontainerContent: ''
+        })
       });
     });
     
@@ -37,7 +37,7 @@ test.describe('EnvEditor', () => {
     await page.waitForTimeout(500);
     
     // Check for the empty state and create button
-    await expect(page.locator('.ant-empty-description').filter({ hasText: 'No devcontainer.json file exists' })).toBeVisible();
+    await expect(page.locator('.ant-empty-description').filter({ hasText: 'No local devcontainer.json configuration' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Create devcontainer.json' })).toBeVisible();
     
     // Verify that container controls are NOT shown when no devcontainer.json exists
@@ -60,20 +60,17 @@ test.describe('EnvEditor', () => {
       postCreateCommand: ""
     };
     
-    await page.route('**/api/nodes/*/files/.devcontainer/devcontainer.json', async route => {
-      await route.fulfill({ 
-        status: 200,
-        contentType: 'text/plain',
-        body: JSON.stringify(mockConfig, null, 2)
-      });
-    });
-    
-    // Mock API response for container status
+    // Mock API response for container status with existing devcontainer
     await page.route('**/api/nodes/*/container/status', async route => {
       await route.fulfill({ 
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ status: 'none', containerId: null })
+        body: JSON.stringify({ 
+          status: 'none', 
+          containerId: null,
+          hasDevcontainer: true,
+          devcontainerContent: JSON.stringify(mockConfig, null, 2)
+        })
       });
     });
     

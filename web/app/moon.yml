@@ -3,6 +3,13 @@ project:
   description: Main React application that orchestrates the graph visualization interface.
 
 tasks:
+  build:
+    deps:
+      - ui-config:build
+      - ui-changes:build
+      - ui-files:build
+      - ui-flowchart:build
+      - shared:build
   e2e:
     command: npx
     args: [playwright, test, --reporter=list]

@@ -64,7 +64,8 @@
       "Bash(go install:*)",
       "Bash(vibethis:*)",
       "Bash(timeout 5 moon run:*)",
-      "Bash(go tool cover:*)"
+      "Bash(go tool cover:*)",
+      "WebFetch(domain:moonrepo.dev)"
     ],
     "deny": []
   }
