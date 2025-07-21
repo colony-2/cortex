@@ -15,13 +15,28 @@ import (
 // Parser parses recipe files from disk
 type Parser struct {
 	logger *zap.Logger
+	activityTypeRegistry *ActivityTypeRegistry
 }
 
 // NewParser creates a new recipe parser
 func NewParser(logger *zap.Logger) *Parser {
 	return &Parser{
 		logger: logger,
+		activityTypeRegistry: NewActivityTypeRegistry(),
 	}
+}
+
+// NewParserWithRegistry creates a new recipe parser with a custom activity type registry
+func NewParserWithRegistry(logger *zap.Logger, registry *ActivityTypeRegistry) *Parser {
+	return &Parser{
+		logger: logger,
+		activityTypeRegistry: registry,
+	}
+}
+
+// GetActivityTypeRegistry returns the parser's activity type registry
+func (p *Parser) GetActivityTypeRegistry() *ActivityTypeRegistry {
+	return p.activityTypeRegistry
 }
 
 // ParseRecipe parses a recipe from a path (file or directory)
@@ -344,6 +359,34 @@ func (p *Parser) validateRecipe(recipe *Recipe) error {
 
 	if recipe.Workflow == nil {
 		return fmt.Errorf("workflow definition is required")
+	}
+
+	// Validate all activities
+	for i, activity := range recipe.Activities {
+		if err := p.validateActivity(&activity); err != nil {
+			return fmt.Errorf("activity %d (%s): %w", i, activity.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// validateActivity validates an activity definition against its type
+func (p *Parser) validateActivity(activity *ActivityDefinition) error {
+	if activity.Name == "" {
+		return fmt.Errorf("activity name is required")
+	}
+
+	if activity.Implementation.Type == "" {
+		return fmt.Errorf("activity implementation type is required")
+	}
+
+	// Validate against registered activity types
+	if err := p.activityTypeRegistry.ValidateActivityConfig(
+		activity.Implementation.Type,
+		activity.Implementation.Config,
+	); err != nil {
+		return fmt.Errorf("invalid activity configuration: %w", err)
 	}
 
 	return nil
