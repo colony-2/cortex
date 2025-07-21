@@ -26,12 +26,12 @@ type Registry struct {
 	watcher      *fsnotify.Watcher
 	ctx          context.Context
 	cancel       context.CancelFunc
-	workerManager *WorkerManager
+	workerManager WorkerManagerInterface
 	hashComputer *recipe.HashComputer
 }
 
 // NewRegistry creates a new recipe registry
-func NewRegistry(logger *zap.Logger, recipesDir string, workerManager *WorkerManager) (*Registry, error) {
+func NewRegistry(logger *zap.Logger, recipesDir string, workerManager WorkerManagerInterface) (*Registry, error) {
 	absDir, err := filepath.Abs(recipesDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve recipes directory: %w", err)
@@ -190,6 +190,7 @@ func (r *Registry) discoverRecipes() error {
 				r.workerManager.StopWorker(name)
 			}
 			oldRecipe.WorkerStatus = recipe.WorkerStatusStopped
+			delete(r.recipes, name) // Remove from registry
 		}
 	}
 

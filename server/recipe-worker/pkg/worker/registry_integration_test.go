@@ -4,43 +4,98 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 )
+
+// MockWorkerManager tracks worker operations without creating real workers
+type MockWorkerManager struct {
+	workers map[string]bool
+	mu      sync.RWMutex
+	logger  *zap.Logger
+}
+
+func (m *MockWorkerManager) StartWorker(r *recipe.Recipe) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.workers[r.Name] = true
+	m.logger.Info("Mock: Started worker", zap.String("recipe", r.Name))
+	return nil
+}
+
+func (m *MockWorkerManager) StopWorker(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.workers, name)
+	m.logger.Info("Mock: Stopped worker", zap.String("recipe", name))
+	return nil
+}
+
+func (m *MockWorkerManager) RestartWorker(name string, r *recipe.Recipe) error {
+	m.StopWorker(name)
+	return m.StartWorker(r)
+}
+
+func (m *MockWorkerManager) StopAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.workers = make(map[string]bool)
+}
+
+func (m *MockWorkerManager) GetWorkerStatus(name string) recipe.WorkerStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.workers[name] {
+		return recipe.WorkerStatusRunning
+	}
+	return recipe.WorkerStatusStopped
+}
+
+func (m *MockWorkerManager) GetTaskQueueForRecipe(name string) string {
+	return fmt.Sprintf("ono-recipes-%s", name)
+}
 
 func TestRegistryWorkerIntegration(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 	
-	// Create mock client - testsuite doesn't provide a client, we'll use nil for now
-	// In real tests, we'd use a proper mock client
-	manager := NewWorkerManager(logger, nil)
+	// For integration testing of registry, we'll use a mock manager
+	// that tracks calls without creating real workers
+	manager := &MockWorkerManager{
+		workers: make(map[string]bool),
+		logger:  logger,
+	}
 	
-	// Create registry with the manager
+	// Create registry with the mock manager
 	registry, err := NewRegistry(logger, tempDir, manager)
 	require.NoError(t, err)
 	
-	// Create a test recipe file - using workflow as top-level for single file
+	// Create a test recipe file - using correct nested structure
 	recipeContent := `
 workflow:
   name: integration-test
   version: "1.0.0"
   description: Integration test recipe
-  type: sequential
-  steps:
-    - id: step1
-      activity: process-data
-      inputs:
-        data: "test-data"
-      outputs:
-        result: processed
-  outputs:
-    final_result: "{{ .Steps.step1.outputs.result }}"
+  
+  workflow:
+    type: sequential
+    steps:
+      - id: step1
+        activity: process-data
+        inputs:
+          data: "test-data"
+        outputs:
+          result: processed
+    outputs:
+      final_result: "{{ .Steps.step1.outputs.result }}"
+      
 activities:
   - name: process-data
     description: Process data activity
@@ -77,22 +132,25 @@ workflow:
   name: integration-test  
   version: "2.0.0"
   description: Updated integration test recipe
-  type: sequential
-  steps:
-    - id: step1
-      activity: process-data
-      inputs:
-        data: "updated-test-data"
-      outputs:
-        result: processed
-    - id: step2
-      activity: transform-data
-      inputs:
-        input: "{{ .Steps.step1.outputs.result }}"
-      outputs:
-        result: transformed
-  outputs:
-    final_result: "{{ .Steps.step2.outputs.result }}"
+  
+  workflow:
+    type: sequential
+    steps:
+      - id: step1
+        activity: process-data
+        inputs:
+          data: "updated-test-data"
+        outputs:
+          result: processed
+      - id: step2
+        activity: transform-data
+        inputs:
+          input: "{{ .Steps.step1.outputs.result }}"
+        outputs:
+          result: transformed
+    outputs:
+      final_result: "{{ .Steps.step2.outputs.result }}"
+      
 activities:
   - name: process-data
     description: Process data activity
@@ -126,8 +184,9 @@ activities:
 	
 	// Verify recipe was removed
 	_, err = registry.GetRecipe(recipeName)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "not found")
+	}
 	
 	// Verify worker was stopped
 	status = manager.GetWorkerStatus(recipeName)
@@ -141,9 +200,11 @@ func TestMultiFileRecipeWorkerCreation(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 	
-	// Create mock client - testsuite doesn't provide a client, we'll use nil for now
-	// In real tests, we'd use a proper mock client
-	manager := NewWorkerManager(logger, nil)
+	// Use mock manager for testing
+	manager := &MockWorkerManager{
+		workers: make(map[string]bool),
+		logger:  logger,
+	}
 	
 	// Create registry
 	registry, err := NewRegistry(logger, tempDir, manager)
@@ -170,22 +231,24 @@ recipe:
 	// Create workflow.yaml
 	workflowContent := `
 name: multi-workflow
-type: sequential
-steps:
-  - id: prepare
-    activity: prepare-data
-    inputs:
-      source: "test"
-    outputs:
-      data: prepared
-  - id: process
-    activity: process-data
-    inputs:
-      data: "{{ .Steps.prepare.outputs.data }}"
-    outputs:
-      result: processed
-outputs:
-  result: "{{ .Steps.process.outputs.result }}"
+version: "1.0.0"
+workflow:
+  type: sequential
+  steps:
+    - id: prepare
+      activity: prepare-data
+      inputs:
+        source: "test"
+      outputs:
+        data: prepared
+    - id: process
+      activity: process-data
+      inputs:
+        data: "{{ .Steps.prepare.outputs.data }}"
+      outputs:
+        result: processed
+  outputs:
+    result: "{{ .Steps.process.outputs.result }}"
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
 	require.NoError(t, err)
@@ -239,9 +302,11 @@ func TestConcurrentRecipeDiscovery(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 	
-	// Create mock client - testsuite doesn't provide a client, we'll use nil for now
-	// In real tests, we'd use a proper mock client
-	manager := NewWorkerManager(logger, nil)
+	// Use mock manager for testing
+	manager := &MockWorkerManager{
+		workers: make(map[string]bool),
+		logger:  logger,
+	}
 	
 	// Create registry
 	registry, err := NewRegistry(logger, tempDir, manager)
@@ -254,20 +319,22 @@ func TestConcurrentRecipeDiscovery(t *testing.T) {
 	for i := 0; i < recipeCount; i++ {
 		go func(index int) {
 			recipeContent := fmt.Sprintf(`
-name: concurrent-test-%d
-version: "1.0.0"
 workflow:
-  name: workflow-%d
-  type: sequential
-  steps:
-    - id: step1
-      activity: activity-%d
+  name: concurrent-test-%d
+  version: "1.0.0"
+  
+  workflow:
+    type: sequential
+    steps:
+      - id: step1
+        activity: activity-%d
+        
 activities:
   - name: activity-%d
     timeout: 30s
     implementation:
       type: function
-`, index, index, index, index)
+`, index, index, index)
 			
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))
 			err := os.WriteFile(recipePath, []byte(recipeContent), 0644)

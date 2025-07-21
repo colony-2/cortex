@@ -20,7 +20,9 @@
       "Bash(./update_imports.sh)",
       "Bash(./perform_import_updates.sh:*)",
       "Bash(./fix_remaining_imports.sh)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(moon task:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

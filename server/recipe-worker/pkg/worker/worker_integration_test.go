@@ -1,11 +1,13 @@
 package worker
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
@@ -78,13 +80,12 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	registry.RegisterActivity(activityDef)
 	comp := compiler.NewCompiler(registry)
 
-	// Register the activity
-	s.env.RegisterActivity(recipeworkflows.CreateDynamicActivity(activityDef))
-
-	// Mock the activity
-	s.env.OnActivity("echo-activity", mock.Anything, mock.Anything).Return(
-		map[string]interface{}{"echoed": "Hello, World!"},
-		nil,
+	// Register activity with name
+	s.env.RegisterActivityWithOptions(
+		recipeworkflows.CreateDynamicActivity(activityDef),
+		activity.RegisterOptions{
+			Name: "echo-activity",
+		},
 	)
 
 	// Create and register the workflow
@@ -94,6 +95,12 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 		workflow.RegisterOptions{
 			Name: "test-workflow",
 		},
+	)
+	
+	// Mock the activity - must be after RegisterWorkflow
+	s.env.OnActivity("echo-activity", mock.Anything, mock.Anything).Return(
+		map[string]interface{}{"echoed": "Hello, World!"},
+		nil,
 	)
 
 	// Execute the workflow
@@ -162,17 +169,12 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 	registry.RegisterActivity(activityDef)
 	comp := compiler.NewCompiler(registry)
 
-	// Register the activity
-	s.env.RegisterActivity(recipeworkflows.CreateDynamicActivity(activityDef))
-
-	// Mock the activity calls
-	s.env.OnActivity("process-activity", mock.Anything, map[string]interface{}{"data": "data1"}).Return(
-		map[string]interface{}{"result": "processed-data1"},
-		nil,
-	)
-	s.env.OnActivity("process-activity", mock.Anything, map[string]interface{}{"data": "data2"}).Return(
-		map[string]interface{}{"result": "processed-data2"},
-		nil,
+	// Register activity with name
+	s.env.RegisterActivityWithOptions(
+		recipeworkflows.CreateDynamicActivity(activityDef),
+		activity.RegisterOptions{
+			Name: "process-activity",
+		},
 	)
 
 	// Create and register the workflow
@@ -182,6 +184,16 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 		workflow.RegisterOptions{
 			Name: "parallel-workflow",
 		},
+	)
+	
+	// Mock the activity calls - must be after RegisterWorkflow
+	s.env.OnActivity("process-activity", mock.Anything, map[string]interface{}{"data": "data1"}).Return(
+		map[string]interface{}{"result": "processed-data1"},
+		nil,
+	)
+	s.env.OnActivity("process-activity", mock.Anything, map[string]interface{}{"data": "data2"}).Return(
+		map[string]interface{}{"result": "processed-data2"},
+		nil,
 	)
 
 	// Execute the workflow
@@ -237,18 +249,11 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 	registry.RegisterActivity(activityDef)
 	comp := compiler.NewCompiler(registry)
 
-	// Register the activity
-	s.env.RegisterActivity(recipeworkflows.CreateDynamicActivity(activityDef))
-
-	// Mock the activity to fail twice then succeed
-	attemptCount := 0
-	s.env.OnActivity("flaky-activity", mock.Anything, mock.Anything).Return(
-		func(inputs map[string]interface{}) (map[string]interface{}, error) {
-			attemptCount++
-			if attemptCount < 3 {
-				return nil, temporal.NewApplicationError("temporary failure", "TEMPORARY")
-			}
-			return map[string]interface{}{"result": "success after retries"}, nil
+	// Register activity with name
+	s.env.RegisterActivityWithOptions(
+		recipeworkflows.CreateDynamicActivity(activityDef),
+		activity.RegisterOptions{
+			Name: "flaky-activity",
 		},
 	)
 
@@ -258,6 +263,18 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 		workflowFunc,
 		workflow.RegisterOptions{
 			Name: "retry-workflow",
+		},
+	)
+	
+	// Mock the activity to fail twice then succeed - must be after RegisterWorkflow
+	attemptCount := 0
+	s.env.OnActivity("flaky-activity", mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+			attemptCount++
+			if attemptCount < 3 {
+				return nil, temporal.NewApplicationError("temporary failure", "TEMPORARY")
+			}
+			return map[string]interface{}{"result": "success after retries"}, nil
 		},
 	)
 
