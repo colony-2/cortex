@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
@@ -10,25 +9,32 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
-	"github.com/vibethis/server/recipe-core/pkg/recipe"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
+	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
 )
 
 // WorkerManager manages the lifecycle of workers for recipes
 type WorkerManager struct {
-	logger        *zap.Logger
+	logger         *zap.Logger
 	temporalClient client.Client
-	workers       map[string]worker.Worker // key is recipe name
-	mu            sync.RWMutex
-	taskQueue     string // Base task queue name
+	workers        map[string]worker.Worker // key is recipe name
+	mu             sync.RWMutex
+	taskQueue      string // Base task queue name
+	compiler       *compiler.Compiler
+	activityRegistry *compiler.ActivityRegistry
 }
 
 // NewWorkerManager creates a new worker manager
 func NewWorkerManager(logger *zap.Logger, temporalClient client.Client) *WorkerManager {
+	activityRegistry := compiler.NewActivityRegistry()
 	return &WorkerManager{
-		logger:         logger,
-		temporalClient: temporalClient,
-		workers:        make(map[string]worker.Worker),
-		taskQueue:      "ono-recipes", // Base task queue
+		logger:           logger,
+		temporalClient:   temporalClient,
+		workers:          make(map[string]worker.Worker),
+		taskQueue:        "ono-recipes", // Base task queue
+		activityRegistry: activityRegistry,
+		compiler:         compiler.NewCompiler(activityRegistry),
 	}
 }
 
@@ -54,38 +60,38 @@ func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 	// Create the worker
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 
+	// Register all activities first
+	for _, activityDef := range recipe.Activities {
+		// Register activity definition with the registry (pass by reference)
+		actDef := activityDef // Create a copy to get a stable pointer
+		m.activityRegistry.RegisterActivity(&actDef)
+	}
+	
 	// Register the workflow if it exists
 	if recipe.Workflow != nil {
-		// TODO: Create dynamic workflow function
-		// For now, register a placeholder workflow
+		// Create dynamic workflow using the compiler as executor
+		workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe.Workflow, recipe.Project, m.compiler)
+		
 		w.RegisterWorkflowWithOptions(
-			func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"status": "completed",
-					"recipe": recipe.Name,
-				}, nil
-			},
+			workflowFunc,
 			workflow.RegisterOptions{
 				Name: recipe.Workflow.Name,
 			},
 		)
 	}
 
-	// Register all activities
+	// Register all activities with dynamic implementations
 	for _, activityDef := range recipe.Activities {
 		// Create a copy to avoid closure issues
 		actDef := activityDef
-		// TODO: Create dynamic activity function
-		// For now, register a placeholder activity
+		
+		// Create dynamic activity function
+		activityFunc := recipeworkflows.CreateDynamicActivity(&actDef)
+		
 		w.RegisterActivityWithOptions(
-			func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-				return map[string]interface{}{
-					"status": "completed",
-					"activity": actDef.Name,
-				}, nil
-			},
+			activityFunc,
 			activity.RegisterOptions{
-				Name: actDef.Name,
+				Name: activityDef.Name,
 			},
 		)
 	}

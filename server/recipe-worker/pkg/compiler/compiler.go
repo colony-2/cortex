@@ -22,9 +22,8 @@ func NewCompiler(registry *ActivityRegistry) *Compiler {
 	}
 }
 
-// CompileWorkflow compiles a YAML workflow definition into a Temporal workflow
-func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}, error) {
-	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+// ExecuteWorkflow implements the WorkflowExecutor interface
+func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.WorkflowDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 		// Create workflow state
 		state := &WorkflowState{
 			Inputs:  inputs,
@@ -65,6 +64,12 @@ func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}
 		}
 
 		return state.Outputs, nil
+}
+
+// CompileWorkflow compiles a YAML workflow definition into a Temporal workflow
+func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}, error) {
+	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+		return c.ExecuteWorkflow(ctx, def, inputs)
 	}, nil
 }
 
