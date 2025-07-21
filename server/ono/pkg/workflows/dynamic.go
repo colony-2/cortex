@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ono/pkg/compiler"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
 	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
 	"go.temporal.io/sdk/activity"

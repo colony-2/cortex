@@ -12,7 +12,7 @@ import (
 func TestWorkflowCreateConnectsToTemporal(t *testing.T) {
 	// Setup test - set the flag variables directly
 	createProjectPath = ""
-	createFilePath = "../../example/simple_workflow.yaml"
+	createFilePath = "../../../recipe-core/examples/simple_workflow.yaml"
 	serverHost = "127.0.0.1"
 	serverPort = 7233
 	namespace = "default"

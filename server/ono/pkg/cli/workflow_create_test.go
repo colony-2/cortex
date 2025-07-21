@@ -53,7 +53,7 @@ func TestWorkflowCreateCommand(t *testing.T) {
 		{
 			name: "project with specific workflow not found",
 			setupFunc: func() {
-				createProjectPath = "../../example/research_project"
+				createProjectPath = "../../../recipe-worker/examples/research_project"
 				createFilePath = ""
 			},
 			args:          []string{"nonexistent"},

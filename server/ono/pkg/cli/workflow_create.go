@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/divisive-ai/vibethis/server/ono/pkg/compiler"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/ono/pkg/workflows"
 	"github.com/spf13/cobra"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"

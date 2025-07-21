@@ -10,7 +10,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/ono/pkg/activities"
 	"github.com/divisive-ai/vibethis/server/ono/pkg/activities/llm"
-	"github.com/divisive-ai/vibethis/server/ono/pkg/compiler"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"

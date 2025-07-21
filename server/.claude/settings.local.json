@@ -19,7 +19,8 @@
       "Bash(chmod:*)",
       "Bash(./update_imports.sh)",
       "Bash(./perform_import_updates.sh:*)",
-      "Bash(./fix_remaining_imports.sh)"
+      "Bash(./fix_remaining_imports.sh)",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

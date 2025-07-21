@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/ono/pkg/compiler"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"

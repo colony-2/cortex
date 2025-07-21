@@ -1,0 +1,41 @@
+# Minimal workflow example - demonstrates basic recipe structure
+workflow:
+  name: hello_world
+  description: A minimal workflow that demonstrates basic structure
+  version: "1.0"
+  
+  inputs:
+    - name: name
+      type: string
+      required: true
+      description: Name to greet
+  
+  outputs:
+    - name: greeting
+      type: string
+      description: The greeting message
+  
+  workflow:
+    type: sequential
+    steps:
+      - id: greet
+        activity: echo
+        inputs:
+          message: "Hello, {{ .Inputs.name }}!"
+        outputs:
+          result: greeting_message
+    
+    outputs:
+      greeting: "{{ .Steps.greet.outputs.result }}"
+
+activities:
+  - name: echo
+    description: Simple echo activity
+    timeout: 10s
+    inputs:
+      - name: message
+        type: string
+        required: true
+    outputs:
+      - name: result
+        type: string

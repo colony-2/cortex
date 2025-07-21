@@ -41,7 +41,7 @@ func TestWorkflowCreateWithRunningServer(t *testing.T) {
 
 	// Setup workflow create command
 	createProjectPath = ""
-	createFilePath = "../../example/simple_workflow.yaml"
+	createFilePath = "../../../recipe-core/examples/simple_workflow.yaml"
 	serverHost = "127.0.0.1"
 	serverPort = 17240
 	namespace = "test-namespace"
@@ -116,7 +116,7 @@ func TestWorkflowCreateCommandIntegration(t *testing.T) {
 			name: "valid file",
 			setupFunc: func() {
 				createProjectPath = ""
-				createFilePath = "../../example/simple_workflow.yaml"
+				createFilePath = "../../../recipe-core/examples/simple_workflow.yaml"
 				serverHost = "127.0.0.1"
 				serverPort = 17241
 				namespace = "default"

@@ -1,0 +1,126 @@
+# Template features example - demonstrates advanced template capabilities
+workflow:
+  name: template_demo
+  description: Demonstrates various template features and expressions
+  version: "1.0"
+  
+  inputs:
+    - name: items
+      type: array
+      required: true
+      description: List of items to process
+    - name: separator
+      type: string
+      required: false
+      default: ", "
+      description: Separator for joining items
+  
+  outputs:
+    - name: summary
+      type: object
+      description: Processing summary
+  
+  workflow:
+    type: sequential
+    
+    steps:
+      # Demonstrate input references and default values
+      - id: prepare
+        activity: prepare_data
+        inputs:
+          items: "{{ .Inputs.items }}"
+          separator: "{{ .Inputs.separator }}"
+        outputs:
+          prepared: prepared_data
+      
+      # Demonstrate join function
+      - id: format
+        activity: format_text
+        inputs:
+          text: "Processing items: {{ join .Inputs.separator .Inputs.items }}"
+          count: "{{ len .Inputs.items }}"
+        outputs:
+          formatted: formatted_text
+      
+      # Demonstrate nested references
+      - id: analyze
+        activity: analyze_data
+        inputs:
+          data: "{{ .Steps.prepare.outputs.prepared }}"
+          metadata:
+            source: "template_demo"
+            step_id: "{{ .Context.workflowID }}"
+            formatted_output: "{{ .Steps.format.outputs.formatted }}"
+        outputs:
+          analysis: result
+      
+      # Demonstrate JSON serialization
+      - id: summarize
+        activity: create_summary
+        inputs:
+          results: |
+            {{- json (dict
+              "prepared_data" .Steps.prepare.outputs.prepared
+              "formatted_text" .Steps.format.outputs.formatted
+              "analysis" .Steps.analyze.outputs.analysis
+              "item_count" (len .Inputs.items)
+            ) -}}
+        outputs:
+          summary: final_summary
+    
+    outputs:
+      summary: "{{ .Steps.summarize.outputs.summary }}"
+
+activities:
+  - name: prepare_data
+    description: Prepare data for processing
+    timeout: 30s
+    inputs:
+      - name: items
+        type: array
+        required: true
+      - name: separator
+        type: string
+        required: true
+    outputs:
+      - name: prepared
+        type: object
+  
+  - name: format_text
+    description: Format text with templates
+    timeout: 10s
+    inputs:
+      - name: text
+        type: string
+        required: true
+      - name: count
+        type: integer
+        required: true
+    outputs:
+      - name: formatted
+        type: string
+  
+  - name: analyze_data
+    description: Analyze prepared data
+    timeout: 1m
+    inputs:
+      - name: data
+        type: object
+        required: true
+      - name: metadata
+        type: object
+        required: false
+    outputs:
+      - name: analysis
+        type: object
+  
+  - name: create_summary
+    description: Create final summary
+    timeout: 30s
+    inputs:
+      - name: results
+        type: string
+        required: true
+    outputs:
+      - name: summary
+        type: object
