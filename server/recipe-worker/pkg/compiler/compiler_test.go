@@ -32,7 +32,7 @@ func TestCompileSimpleWorkflow(t *testing.T) {
 				{
 					ID:       "step1",
 					Activity: "test_activity",
-					Inputs: map[string]string{
+					Inputs: map[string]interface{}{
 						"param1": "{{ .Inputs.input1 }}",
 					},
 					Outputs: map[string]string{

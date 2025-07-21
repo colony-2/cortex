@@ -115,3 +115,37 @@ func (r *TemplateResolver) ResolveStepOutput(stepID, outputName string) (interfa
 	
 	return output, nil
 }
+
+// ResolveValue recursively resolves templates in a value (which can be a string, map, slice, etc.)
+func (r *TemplateResolver) ResolveValue(value interface{}) (interface{}, error) {
+	switch v := value.(type) {
+	case string:
+		// Resolve string templates
+		return r.Resolve(v)
+	case map[string]interface{}:
+		// Recursively resolve map values
+		result := make(map[string]interface{})
+		for key, val := range v {
+			resolved, err := r.ResolveValue(val)
+			if err != nil {
+				return nil, err
+			}
+			result[key] = resolved
+		}
+		return result, nil
+	case []interface{}:
+		// Recursively resolve slice values
+		result := make([]interface{}, len(v))
+		for i, val := range v {
+			resolved, err := r.ResolveValue(val)
+			if err != nil {
+				return nil, err
+			}
+			result[i] = resolved
+		}
+		return result, nil
+	default:
+		// For other types (numbers, bools, etc.), return as-is
+		return value, nil
+	}
+}

@@ -141,12 +141,22 @@ func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *W
 	resolver := NewTemplateResolver(state)
 	inputs := make(map[string]interface{})
 	
-	for key, template := range step.Inputs {
-		value, err := resolver.Resolve(template)
-		if err != nil {
-			return fmt.Errorf("failed to resolve input %s: %w", key, err)
+	for key, inputValue := range step.Inputs {
+		// Check if the input is a string that needs template resolution
+		if strValue, ok := inputValue.(string); ok {
+			value, err := resolver.Resolve(strValue)
+			if err != nil {
+				return fmt.Errorf("failed to resolve input %s: %w", key, err)
+			}
+			inputs[key] = value
+		} else {
+			// For non-string values, recursively resolve templates in nested structures
+			resolved, err := resolver.ResolveValue(inputValue)
+			if err != nil {
+				return fmt.Errorf("failed to resolve input %s: %w", key, err)
+			}
+			inputs[key] = resolved
 		}
-		inputs[key] = value
 	}
 	
 	// Get activity definition

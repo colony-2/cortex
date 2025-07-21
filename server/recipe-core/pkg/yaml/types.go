@@ -47,11 +47,11 @@ type RetryPolicy struct {
 
 // Step represents a workflow step
 type Step struct {
-	ID       string            `yaml:"id"`
-	Activity string            `yaml:"activity"`
-	Inputs   map[string]string `yaml:"inputs"`
-	Outputs  map[string]string `yaml:"outputs"`
-	Parallel []Step            `yaml:"parallel"`
+	ID       string                 `yaml:"id"`
+	Activity string                 `yaml:"activity"`
+	Inputs   map[string]interface{} `yaml:"inputs"`
+	Outputs  map[string]string      `yaml:"outputs"`
+	Parallel []Step                 `yaml:"parallel"`
 }
 
 // ActivityDefinition represents an activity YAML structure
