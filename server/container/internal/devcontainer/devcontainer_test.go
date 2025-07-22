@@ -139,7 +139,10 @@ func TestFindDevContainerFile(t *testing.T) {
 			}
 
 			if !tt.wantErr {
-				expectedPath := filepath.Join(tmpDir, tt.wantFile)
+				var expectedPath string
+				if tt.wantFile != "" {
+					expectedPath = filepath.Join(tmpDir, tt.wantFile)
+				}
 				if got != expectedPath {
 					t.Errorf("FindDevContainerFile() = %v, want %v", got, expectedPath)
 				}

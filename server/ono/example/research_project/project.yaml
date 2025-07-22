@@ -1,0 +1,8 @@
+name: research_report_project
+version: "1.0"
+description: Research and report generation workflow
+
+files:
+  workflow: ./workflow.yaml
+  activities: ./activities.yaml
+  agents: ./agents.yaml

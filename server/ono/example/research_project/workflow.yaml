@@ -1,0 +1,57 @@
+name: research_report_workflow
+description: Research a topic and generate a comprehensive report
+version: "1.0"
+
+inputs:
+  - name: topic
+    type: string
+    required: true
+    description: The topic to research
+  - name: max_sources
+    type: int
+    default: 10
+    description: Maximum number of sources to research
+
+outputs:
+  - name: report
+    type: string
+    description: The final generated report
+  - name: sources
+    type: array
+    description: List of sources used
+
+workflow:
+  type: sequential
+  retry_policy:
+    initial_interval: 1s
+    maximum_attempts: 3
+    
+  steps:
+    - id: research
+      activity: research_activity
+      inputs:
+        topic: "{{ .Inputs.topic }}"
+        max_sources: "{{ .Inputs.max_sources }}"
+      outputs:
+        research_data: research_results
+        
+    - id: analyze
+      activity: analyze_activity
+      inputs:
+        data: "{{ .Steps.research.outputs.research_data }}"
+        topic: "{{ .Inputs.topic }}"
+      outputs:
+        analysis: analysis_results
+        
+    - id: write_report
+      activity: write_report_activity
+      inputs:
+        research: "{{ .Steps.research.outputs.research_data }}"
+        analysis: "{{ .Steps.analyze.outputs.analysis }}"
+        topic: "{{ .Inputs.topic }}"
+      outputs:
+        report: final_report
+        
+  outputs:
+    report: "{{ .Steps.write_report.outputs.report }}"
+    sources: "{{ .Steps.research.outputs.research_data.sources }}"
