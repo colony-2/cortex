@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(moon run:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": []
+  }
+}

@@ -23,7 +23,8 @@
       "Bash(cp:*)",
       "Bash(moon task:*)",
       "WebFetch(domain:github.com)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(make test-recipe-worker:*)"
     ],
     "deny": []
   }

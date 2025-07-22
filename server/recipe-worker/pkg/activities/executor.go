@@ -6,6 +6,7 @@ import (
 
 	"go.temporal.io/sdk/activity"
 	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/vibethis/server/recipe-worker"
 )
 
 // ExecutorImplementation defines the interface for activity execution implementations
@@ -20,12 +21,22 @@ type ExecutorImplementation interface {
 // Executor handles execution of activities based on their implementation type
 type Executor struct {
 	implementation ExecutorImplementation
+	providerRegistry *worker.ProviderRegistry
 }
 
 // NewExecutor creates a new activity executor
 func NewExecutor(impl ExecutorImplementation) *Executor {
 	return &Executor{
 		implementation: impl,
+		providerRegistry: worker.NewProviderRegistry(),
+	}
+}
+
+// NewExecutorWithRegistry creates a new activity executor with a custom provider registry
+func NewExecutorWithRegistry(impl ExecutorImplementation, registry *worker.ProviderRegistry) *Executor {
+	return &Executor{
+		implementation: impl,
+		providerRegistry: registry,
 	}
 }
 
@@ -37,6 +48,27 @@ func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipe.Acti
 		logger.Info("Executing activity", "name", activityDef.Name, "type", activityDef.Implementation.Type)
 	}
 
+	// First check if a provider is registered for this activity type
+	if e.providerRegistry.Has(activityDef.Implementation.Type) {
+		provider, err := e.providerRegistry.Get(activityDef.Implementation.Type)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get provider for type %s: %w", activityDef.Implementation.Type, err)
+		}
+		
+		// Execute using the provider
+		result, err := provider.Execute(ctx, activityDef.Implementation.Config, inputs)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Convert result to map if needed
+		if resultMap, ok := result.(map[string]interface{}); ok {
+			return resultMap, nil
+		}
+		return map[string]interface{}{"result": result}, nil
+	}
+	
+	// Fall back to built-in implementations
 	switch activityDef.Implementation.Type {
 	case "http":
 		return e.implementation.ExecuteHTTPActivity(ctx, activityDef, inputs)
@@ -65,4 +97,14 @@ func (e *Executor) RegisterActivities(activityDefs []recipe.ActivityDefinition) 
 	}
 	
 	return activities
+}
+
+// RegisterProvider registers a custom activity provider
+func (e *Executor) RegisterProvider(provider worker.ActivityProvider) error {
+	return e.providerRegistry.Register(provider)
+}
+
+// GetProviderRegistry returns the provider registry
+func (e *Executor) GetProviderRegistry() *worker.ProviderRegistry {
+	return e.providerRegistry
 }
