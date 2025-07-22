@@ -9,11 +9,15 @@ tasks:
       - 'go.mod'
       - 'go.sum'
     platform: 'system'
+    deps:
+      - "^:build"
     options:
       runInCI: true
 
   test:
     command: 'go test ./...'
+    deps:
+      - "^:build"
     inputs:
       - '**/*.go'
       - 'go.mod'
@@ -31,6 +35,8 @@ tasks:
       runInCI: true
   tidy:
     command: 'go mod tidy'
+    deps:
+      - "^:tidy"
     inputs:
       - '**/*.go'
       - 'go.mod'

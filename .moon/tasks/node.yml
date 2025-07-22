@@ -24,6 +24,8 @@ tasks:
       - '@group(lockfile)'      # ← hash the real lock-file
     outputs:
       - dist/
+    deps:
+      - "^:build"
     platform: node
     options:
       runInCI: true
@@ -31,6 +33,8 @@ tasks:
   test:
     command: npx
     args: [vitest, run]
+    deps:
+      - "^:build"
     inputs:
       - '@group(sources)'
       - tests/**/*
