@@ -10,7 +10,35 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: true,
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+              return 'react-vendor';
+            }
+            if (id.includes('antd') || id.includes('@ant-design')) {
+              return 'antd';
+            }
+            if (id.includes('monaco-editor')) {
+              return 'monaco';
+            }
+            if (id.includes('@xyflow')) {
+              return 'xyflow';
+            }
+            if (id.includes('@rjsf')) {
+              return 'rjsf';
+            }
+            if (id.includes('js-yaml')) {
+              return 'yaml';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    }
   },
   resolve: {
     alias: {
