@@ -3,7 +3,10 @@
     "allow": [
       "Bash(moon run:*)",
       "Bash(mkdir:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(go mod:*)",
+      "Bash(go test:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
