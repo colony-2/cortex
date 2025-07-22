@@ -18,28 +18,31 @@ import (
 
 // WorkerManager manages the lifecycle of workers for recipes
 type WorkerManager struct {
-	logger           *zap.Logger
-	temporalClient   client.Client
-	workers          map[string]worker.Worker // key is recipe name
-	mu               sync.RWMutex
-	taskQueue        string // Base task queue name
-	compiler         *compiler.Compiler
-	activityRegistry *compiler.ActivityRegistry
-	providerRegistry *recipeworker.ProviderRegistry
+	logger               *zap.Logger
+	temporalClient       client.Client
+	workers              map[string]worker.Worker // key is recipe name
+	mu                   sync.RWMutex
+	taskQueue            string // Base task queue name
+	compiler             *compiler.Compiler
+	activityRegistry     *compiler.ActivityRegistry
+	providerRegistry     *recipeworker.ProviderRegistry
+	activityTypeRegistry *recipe.ActivityTypeRegistry
 }
 
 // NewWorkerManager creates a new worker manager
 func NewWorkerManager(logger *zap.Logger, temporalClient client.Client) *WorkerManager {
 	activityRegistry := compiler.NewActivityRegistry()
 	providerRegistry := recipeworker.NewProviderRegistry()
+	activityTypeRegistry := recipe.NewActivityTypeRegistry()
 	return &WorkerManager{
-		logger:           logger,
-		temporalClient:   temporalClient,
-		workers:          make(map[string]worker.Worker),
-		taskQueue:        "ono-recipes", // Base task queue
-		activityRegistry: activityRegistry,
-		compiler:         compiler.NewCompiler(activityRegistry),
-		providerRegistry: providerRegistry,
+		logger:               logger,
+		temporalClient:       temporalClient,
+		workers:              make(map[string]worker.Worker),
+		taskQueue:            "ono-recipes", // Base task queue
+		activityRegistry:     activityRegistry,
+		compiler:             compiler.NewCompiler(activityRegistry),
+		providerRegistry:     providerRegistry,
+		activityTypeRegistry: activityTypeRegistry,
 	}
 }
 
@@ -173,9 +176,48 @@ func (m *WorkerManager) GetTaskQueueForRecipe(recipeName string) string {
 	return fmt.Sprintf("%s-%s", m.taskQueue, recipeName)
 }
 
+// GetActivityTypeRegistry returns the activity type registry for testing
+func (m *WorkerManager) GetActivityTypeRegistry() *recipe.ActivityTypeRegistry {
+	return m.activityTypeRegistry
+}
+
 // RegisterProvider registers a custom activity provider
+// If the provider implements ActivityProviderWithSchema, it will also register
+// the activity type with recipe-core's ActivityTypeRegistry for validation
 func (m *WorkerManager) RegisterProvider(provider recipeworker.ActivityProvider) error {
-	return m.providerRegistry.Register(provider)
+	// First register with provider registry
+	if err := m.providerRegistry.Register(provider); err != nil {
+		return err
+	}
+	
+	// Check if provider has schema information
+	if schemaProvider, ok := provider.(recipeworker.ActivityProviderWithSchema); ok {
+		// Build activity type definition
+		configSchema, inputSchema, outputSchema := schemaProvider.GetSchemas()
+		options := schemaProvider.GetSchemaOptions()
+		
+		activityTypeDef := &recipe.ActivityTypeDefinition{
+			Type:                   provider.GetType(),
+			Description:            schemaProvider.GetDescription(),
+			ConfigSchema:           recipe.JSONSchema(configSchema),
+			InputSchema:            recipe.JSONSchema(inputSchema),
+			OutputSchema:           recipe.JSONSchema(outputSchema),
+			RequiredConfig:         options.RequiredConfig,
+			AllowAdditionalConfig:  options.AllowAdditionalConfig,
+			AllowAdditionalInputs:  options.AllowAdditionalInputs,
+			AllowAdditionalOutputs: options.AllowAdditionalOutputs,
+		}
+		
+		// Register with activity type registry
+		if err := m.activityTypeRegistry.RegisterActivityType(activityTypeDef); err != nil {
+			// Rollback provider registration
+			// Note: ProviderRegistry doesn't have an Unregister method, so we can't rollback
+			// In production, you might want to add an Unregister method
+			return fmt.Errorf("failed to register activity type: %w", err)
+		}
+	}
+	
+	return nil
 }
 
 // createActivityWithProvider creates an activity function that uses the provider registry

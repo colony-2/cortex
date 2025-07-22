@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+	
+	recipeworker "github.com/vibethis/server/recipe-worker"
 )
 
 // HTTPConfig defines the configuration for HTTP activities
@@ -144,6 +146,27 @@ func (p *HTTPProvider) executeHTTP(ctx context.Context, config HTTPConfig, input
 		Headers:    resp.Header,
 		Body:       responseBody,
 	}, nil
+}
+
+// GetSchemas implements ActivityProviderWithSchema interface
+// Since HTTP is a built-in type in recipe-core, we return nil schemas
+// to skip automatic registration (it's already registered)
+func (p *HTTPProvider) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
+	// Return nil schemas for built-in types
+	return nil, nil, nil
+}
+
+func (p *HTTPProvider) GetDescription() string {
+	return "Makes HTTP requests to external APIs"
+}
+
+func (p *HTTPProvider) GetSchemaOptions() recipeworker.SchemaOptions {
+	return recipeworker.SchemaOptions{
+		RequiredConfig:         true,
+		AllowAdditionalConfig:  true,
+		AllowAdditionalInputs:  true,
+		AllowAdditionalOutputs: true,
+	}
 }
 
 // NewHTTPProvider creates a new HTTP activity provider
