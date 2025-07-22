@@ -7,7 +7,7 @@ fileGroups:
 
   # absolute path (leading slash) → resolved from workspace root
   lockfile:
-    - '/web/package-lock.json'
+    - 'package-lock.json'
 
   config:
     - 'vite.config.[jt]s'
@@ -17,7 +17,7 @@ fileGroups:
 tasks:
   build:
     command: vite
-    args: [build]
+    args: [build, --logLevel, warn]
     inputs:
       - '@group(sources)'
       - '@group(config)'
@@ -32,7 +32,7 @@ tasks:
 
   test:
     command: npx
-    args: [vitest, run]
+    args: [vitest, run, --reporter=dot]
     deps:
       - "^:build"
     inputs:

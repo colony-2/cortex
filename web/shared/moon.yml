@@ -34,7 +34,8 @@ tasks:
       runInCI: true
       
   bundle:
-    command: 'vite build'
+    command: vite
+    args: [build, --logLevel, warn]
     deps:
       - '~:compile'
     inputs:
