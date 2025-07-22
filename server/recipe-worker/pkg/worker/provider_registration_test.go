@@ -44,20 +44,21 @@ func TestProviderRegistrationWithSchema(t *testing.T) {
 	assert.NotNil(t, activityType.ConfigSchema)
 }
 
-// TestProviderRegistrationWithoutSchema tests that providers without schemas are only registered in provider registry
+// TestProviderRegistrationWithoutSchema tests that providers without schemas fail registration
 func TestProviderRegistrationWithoutSchema(t *testing.T) {
 	// Create worker manager
 	logger := zaptest.NewLogger(t)
 	workerManager := worker.NewWorkerManager(logger, nil)
 	
-	// Create a basic provider (no schema)
+	// Create a provider with no schemas
 	provider := &mockProvider{
 		activityType: "basic_activity",
 	}
 	
-	// Register provider
+	// Register provider should fail
 	err := workerManager.RegisterProvider(provider)
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must provide at least one schema")
 	
 	// Verify it was NOT registered in the activity type registry
 	activityTypeRegistry := workerManager.GetActivityTypeRegistry()
@@ -65,33 +66,39 @@ func TestProviderRegistrationWithoutSchema(t *testing.T) {
 	assert.False(t, exists)
 }
 
-// TestBuiltInProviderSkipsTypeRegistration tests that built-in providers with nil schemas skip type registration
-func TestBuiltInProviderSkipsTypeRegistration(t *testing.T) {
+// TestProviderWithOnlyOutputSchema tests that providers can register with just output schema
+func TestProviderWithOnlyOutputSchema(t *testing.T) {
 	// Create worker manager
 	logger := zaptest.NewLogger(t)
 	workerManager := worker.NewWorkerManager(logger, nil)
 	
-	// Create a provider that returns nil schemas (like built-in types)
+	// Create a provider with only output schema
 	provider := &mockProviderWithSchema{
-		activityType: "http", // Pretend to be HTTP provider
-		description:  "HTTP requests",
-		// Leave schemas nil
+		activityType: "output_only",
+		description:  "Provider with output schema only",
+		// Only output schema provided
+		outputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"result": map[string]interface{}{"type": "string"},
+			},
+		},
 	}
 	
-	// Get current count of activity types
-	activityTypeRegistry := workerManager.GetActivityTypeRegistry()
-	initialTypes := activityTypeRegistry.ListActivityTypes()
-	
-	// Register provider
+	// Register provider should succeed
 	err := workerManager.RegisterProvider(provider)
 	require.NoError(t, err)
 	
-	// Verify no new types were added (since http is already built-in)
-	finalTypes := activityTypeRegistry.ListActivityTypes()
-	assert.Equal(t, len(initialTypes), len(finalTypes))
+	// Verify it was registered in the activity type registry
+	activityTypeRegistry := workerManager.GetActivityTypeRegistry()
+	activityType, exists := activityTypeRegistry.GetActivityType("output_only")
+	assert.True(t, exists)
+	assert.NotNil(t, activityType.OutputSchema)
+	assert.Nil(t, activityType.ConfigSchema)
+	assert.Nil(t, activityType.InputSchema)
 }
 
-// mockProvider is a basic provider without schema support
+// mockProvider is a basic provider that returns no schemas
 type mockProvider struct {
 	activityType string
 }
@@ -104,7 +111,19 @@ func (m *mockProvider) Execute(ctx context.Context, args ...interface{}) (interf
 	return map[string]interface{}{"status": "ok"}, nil
 }
 
-// mockProviderWithSchema implements ActivityProviderWithSchema
+func (m *mockProvider) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
+	return nil, nil, nil
+}
+
+func (m *mockProvider) GetDescription() string {
+	return "Mock provider"
+}
+
+func (m *mockProvider) GetSchemaOptions() recipeworker.SchemaOptions {
+	return recipeworker.SchemaOptions{}
+}
+
+// mockProviderWithSchema implements ActivityProvider with schema support
 type mockProviderWithSchema struct {
 	activityType  string
 	description   string

@@ -148,12 +148,69 @@ func (p *HTTPProvider) executeHTTP(ctx context.Context, config HTTPConfig, input
 	}, nil
 }
 
-// GetSchemas implements ActivityProviderWithSchema interface
-// Since HTTP is a built-in type in recipe-core, we return nil schemas
-// to skip automatic registration (it's already registered)
+// GetSchemas implements ActivityProvider interface
 func (p *HTTPProvider) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
-	// Return nil schemas for built-in types
-	return nil, nil, nil
+	configSchema = map[string]interface{}{
+		"type":     "object",
+		"required": []string{"method", "url"},
+		"properties": map[string]interface{}{
+			"method": map[string]interface{}{
+				"type": "string",
+				"enum": []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"},
+			},
+			"url": map[string]interface{}{
+				"type":   "string",
+				"format": "uri",
+			},
+			"headers": map[string]interface{}{
+				"type": "object",
+				"additionalProperties": map[string]interface{}{
+					"type": "string",
+				},
+			},
+			"timeout": map[string]interface{}{
+				"type":        "integer",
+				"minimum":     1,
+				"description": "Request timeout in seconds",
+			},
+		},
+	}
+	
+	inputSchema = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"body": map[string]interface{}{
+				"description": "Request body (will be JSON encoded)",
+			},
+			"queryParams": map[string]interface{}{
+				"type": "object",
+				"additionalProperties": map[string]interface{}{
+					"type": "string",
+				},
+				"description": "URL query parameters",
+			},
+		},
+	}
+	
+	outputSchema = map[string]interface{}{
+		"type":     "object",
+		"required": []string{"statusCode", "headers", "body"},
+		"properties": map[string]interface{}{
+			"statusCode": map[string]interface{}{
+				"type":        "integer",
+				"description": "HTTP response status code",
+			},
+			"headers": map[string]interface{}{
+				"type":        "object",
+				"description": "Response headers",
+			},
+			"body": map[string]interface{}{
+				"description": "Response body (parsed as JSON if possible)",
+			},
+		},
+	}
+	
+	return
 }
 
 func (p *HTTPProvider) GetDescription() string {

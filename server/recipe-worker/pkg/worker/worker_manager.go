@@ -182,39 +182,41 @@ func (m *WorkerManager) GetActivityTypeRegistry() *recipe.ActivityTypeRegistry {
 }
 
 // RegisterProvider registers a custom activity provider
-// If the provider implements ActivityProviderWithSchema, it will also register
-// the activity type with recipe-core's ActivityTypeRegistry for validation
+// Providers must provide schemas for validation
 func (m *WorkerManager) RegisterProvider(provider recipeworker.ActivityProvider) error {
 	// First register with provider registry
 	if err := m.providerRegistry.Register(provider); err != nil {
 		return err
 	}
 	
-	// Check if provider has schema information
-	if schemaProvider, ok := provider.(recipeworker.ActivityProviderWithSchema); ok {
-		// Build activity type definition
-		configSchema, inputSchema, outputSchema := schemaProvider.GetSchemas()
-		options := schemaProvider.GetSchemaOptions()
-		
-		activityTypeDef := &recipe.ActivityTypeDefinition{
-			Type:                   provider.GetType(),
-			Description:            schemaProvider.GetDescription(),
-			ConfigSchema:           recipe.JSONSchema(configSchema),
-			InputSchema:            recipe.JSONSchema(inputSchema),
-			OutputSchema:           recipe.JSONSchema(outputSchema),
-			RequiredConfig:         options.RequiredConfig,
-			AllowAdditionalConfig:  options.AllowAdditionalConfig,
-			AllowAdditionalInputs:  options.AllowAdditionalInputs,
-			AllowAdditionalOutputs: options.AllowAdditionalOutputs,
-		}
-		
-		// Register with activity type registry
-		if err := m.activityTypeRegistry.RegisterActivityType(activityTypeDef); err != nil {
-			// Rollback provider registration
-			// Note: ProviderRegistry doesn't have an Unregister method, so we can't rollback
-			// In production, you might want to add an Unregister method
-			return fmt.Errorf("failed to register activity type: %w", err)
-		}
+	// Get schema information
+	configSchema, inputSchema, outputSchema := provider.GetSchemas()
+	
+	// Require at least one schema
+	if configSchema == nil && inputSchema == nil && outputSchema == nil {
+		return fmt.Errorf("provider %q must provide at least one schema (config, input, or output)", provider.GetType())
+	}
+	
+	options := provider.GetSchemaOptions()
+	
+	activityTypeDef := &recipe.ActivityTypeDefinition{
+		Type:                   provider.GetType(),
+		Description:            provider.GetDescription(),
+		ConfigSchema:           recipe.JSONSchema(configSchema),
+		InputSchema:            recipe.JSONSchema(inputSchema),
+		OutputSchema:           recipe.JSONSchema(outputSchema),
+		RequiredConfig:         options.RequiredConfig,
+		AllowAdditionalConfig:  options.AllowAdditionalConfig,
+		AllowAdditionalInputs:  options.AllowAdditionalInputs,
+		AllowAdditionalOutputs: options.AllowAdditionalOutputs,
+	}
+	
+	// Register with activity type registry
+	if err := m.activityTypeRegistry.RegisterActivityType(activityTypeDef); err != nil {
+		// Rollback provider registration
+		// Note: ProviderRegistry doesn't have an Unregister method, so we can't rollback
+		// In production, you might want to add an Unregister method
+		return fmt.Errorf("failed to register activity type: %w", err)
 	}
 	
 	return nil

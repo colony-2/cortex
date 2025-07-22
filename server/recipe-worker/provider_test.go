@@ -214,3 +214,18 @@ func (m *mockProvider) Execute(ctx context.Context, args ...interface{}) (interf
 	}
 	return map[string]interface{}{"status": "mock"}, nil
 }
+
+func (m *mockProvider) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
+	// Return basic schemas for testing
+	return map[string]interface{}{"type": "object"},
+		map[string]interface{}{"type": "object"},
+		map[string]interface{}{"type": "object"}
+}
+
+func (m *mockProvider) GetDescription() string {
+	return "Mock provider for testing"
+}
+
+func (m *mockProvider) GetSchemaOptions() worker.SchemaOptions {
+	return worker.SchemaOptions{}
+}

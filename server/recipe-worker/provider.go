@@ -16,21 +16,18 @@ type ActivityProvider interface {
 	// The args are: config (activity configuration) and inputs (runtime inputs)
 	// Returns the activity result or an error
 	Execute(ctx context.Context, args ...interface{}) (interface{}, error)
-}
-
-// ActivityProviderWithSchema extends ActivityProvider with schema information
-// Providers can optionally implement this interface to provide validation schemas
-type ActivityProviderWithSchema interface {
-	ActivityProvider
 	
 	// GetSchemas returns the schemas for config, input, and output validation
 	// Return nil for any schema to skip validation for that aspect
+	// Providers that don't need schema validation can return nil, nil, nil
 	GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{})
 	
 	// GetDescription returns a human-readable description of the activity
+	// Return empty string if no description is needed
 	GetDescription() string
 	
 	// GetSchemaOptions returns additional schema validation options
+	// Return zero value for default options
 	GetSchemaOptions() SchemaOptions
 }
 
@@ -87,6 +84,27 @@ func (a *TypedProviderAdapter[TConfig, TInput, TOutput]) Execute(ctx context.Con
 	return a.executor(ctx, config, input)
 }
 
+// Default schema methods for TypedProviderAdapter
+func (a *TypedProviderAdapter[TConfig, TInput, TOutput]) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
+	// Return basic object schemas by default
+	// This ensures providers always have schemas
+	return map[string]interface{}{"type": "object"},
+		map[string]interface{}{"type": "object"},
+		map[string]interface{}{"type": "object"}
+}
+
+func (a *TypedProviderAdapter[TConfig, TInput, TOutput]) GetDescription() string {
+	return fmt.Sprintf("Activity provider for type: %s", a.activityType)
+}
+
+func (a *TypedProviderAdapter[TConfig, TInput, TOutput]) GetSchemaOptions() SchemaOptions {
+	return SchemaOptions{
+		AllowAdditionalConfig:  true,
+		AllowAdditionalInputs:  true,
+		AllowAdditionalOutputs: true,
+	}
+}
+
 // ExtendedTypedProvider creates a typed provider with schema information
 type ExtendedTypedProvider[TConfig any, TInput any, TOutput any] struct {
 	TypedProviderAdapter[TConfig, TInput, TOutput]
@@ -103,7 +121,7 @@ func NewTypedProviderWithSchema[TConfig any, TInput any, TOutput any](
 	description string,
 	executor func(ctx context.Context, config TConfig, input TInput) (TOutput, error),
 	options ...func(*ExtendedTypedProvider[TConfig, TInput, TOutput]),
-) ActivityProviderWithSchema {
+) ActivityProvider {
 	p := &ExtendedTypedProvider[TConfig, TInput, TOutput]{
 		TypedProviderAdapter: TypedProviderAdapter[TConfig, TInput, TOutput]{
 			activityType: activityType,
