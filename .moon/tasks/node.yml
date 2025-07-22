@@ -29,8 +29,8 @@ tasks:
       runInCI: true
 
   test:
-    command: vitest
-    args: [run]
+    command: npx
+    args: [vitest, run]
     inputs:
       - '@group(sources)'
       - tests/**/*

@@ -2,11 +2,13 @@ package worker_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap/zaptest"
@@ -54,8 +56,37 @@ func (p *CustomMathProvider) Execute(ctx context.Context, args ...interface{}) (
 	inputs := args[1].(map[string]interface{})
 	
 	operation := config["operation"].(string)
-	a := inputs["a"].(float64)
-	b := inputs["b"].(float64)
+	
+	// Convert inputs to float64, handling both float64 and string types
+	var a, b float64
+	
+	switch v := inputs["a"].(type) {
+	case float64:
+		a = v
+	case string:
+		n, err := fmt.Sscanf(v, "%f", &a)
+		if err != nil || n != 1 {
+			return nil, fmt.Errorf("invalid numeric value for 'a': %v", v)
+		}
+	case int:
+		a = float64(v)
+	default:
+		return nil, fmt.Errorf("invalid type for 'a': %T", v)
+	}
+	
+	switch v := inputs["b"].(type) {
+	case float64:
+		b = v
+	case string:
+		n, err := fmt.Sscanf(v, "%f", &b)
+		if err != nil || n != 1 {
+			return nil, fmt.Errorf("invalid numeric value for 'b': %v", v)
+		}
+	case int:
+		b = float64(v)
+	default:
+		return nil, fmt.Errorf("invalid type for 'b': %T", v)
+	}
 	
 	var result float64
 	switch operation {
@@ -145,6 +176,7 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 			{
 				Name:        "calculate-sum",
 				Description: "Add two numbers",
+				Timeout:     10 * time.Second,
 				Implementation: yamlpkg.ActivityImplementation{
 					Type: "math",
 					Config: map[string]interface{}{
@@ -155,6 +187,7 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 			{
 				Name:        "calculate-product",
 				Description: "Multiply two numbers",
+				Timeout:     10 * time.Second,
 				Implementation: yamlpkg.ActivityImplementation{
 					Type: "math",
 					Config: map[string]interface{}{
@@ -167,6 +200,7 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 	
 	// Create workflow definition
 	project := &yamlpkg.Project{
+		Activities: testRecipe.Activities,
 		Workflow: &yamlpkg.WorkflowDefinition{
 			Name: "math-calculation",
 			Workflow: yamlpkg.WorkflowSpec{
@@ -176,22 +210,22 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 						ID:       "step1",
 						Activity: "calculate-sum",
 						Inputs: map[string]interface{}{
-							"a": "${ inputs.x }",
-							"b": "${ inputs.y }",
+							"a": "{{ .Inputs.x }}",
+							"b": "{{ .Inputs.y }}",
 						},
 					},
 					{
 						ID:       "step2",
 						Activity: "calculate-product",
 						Inputs: map[string]interface{}{
-							"a": "${ steps.step1.outputs.result }",
-							"b": "${ inputs.z }",
+							"a": "{{ .Steps.step1.outputs.result }}",
+							"b": "{{ .Inputs.z }}",
 						},
 					},
 				},
 				Outputs: map[string]string{
-					"sum":          "${ steps.step1.outputs.result }",
-					"final_result": "${ steps.step2.outputs.result }",
+					"sum":          "{{ .Steps.step1.outputs.result }}",
+					"final_result": "{{ .Steps.step2.outputs.result }}",
 				},
 			},
 		},
@@ -213,7 +247,10 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 			}
 			return result.(map[string]interface{}), nil
 		}
-		s.env.RegisterActivity(activityFunc)
+		// Register with activity name
+		s.env.RegisterActivityWithOptions(activityFunc, activity.RegisterOptions{
+			Name: actDef.Name,
+		})
 	}
 	
 	// Create and register workflow
@@ -239,8 +276,8 @@ func (s *ProviderIntegrationTestSuite) TestCustomProviderWorkflow() {
 	
 	// x=10, y=5, sum=15
 	// sum=15, z=3, product=45
-	s.Equal(15.0, result["sum"])
-	s.Equal(45.0, result["final_result"])
+	s.Equal("15", result["sum"])
+	s.Equal("45", result["final_result"])
 }
 
 func (s *ProviderIntegrationTestSuite) TestTypedProviderWorkflow() {
@@ -306,6 +343,7 @@ func (s *ProviderIntegrationTestSuite) TestTypedProviderWorkflow() {
 	// Create simple workflow
 	activityDef := &yamlpkg.ActivityDefinition{
 		Name: "transform-text",
+		Timeout: 10 * time.Second,
 		Implementation: yamlpkg.ActivityImplementation{
 			Type: "string_transform",
 			Config: map[string]interface{}{
@@ -315,9 +353,28 @@ func (s *ProviderIntegrationTestSuite) TestTypedProviderWorkflow() {
 		},
 	}
 	
-	// Register activity
+	// Register activity with JSON marshaling wrapper
 	activityFunc := func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		result, err := stringProvider.Execute(ctx, activityDef.Implementation.Config, inputs)
+		// Convert maps to typed structs using JSON marshaling
+		configBytes, err := json.Marshal(activityDef.Implementation.Config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal config: %w", err)
+		}
+		var config StringConfig
+		if err := json.Unmarshal(configBytes, &config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		}
+		
+		inputBytes, err := json.Marshal(inputs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal input: %w", err)
+		}
+		var input StringInput
+		if err := json.Unmarshal(inputBytes, &input); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal input: %w", err)
+		}
+		
+		result, err := stringProvider.Execute(ctx, config, input)
 		if err != nil {
 			return nil, err
 		}

@@ -75,7 +75,7 @@ workflow:
     implementation:
       type: function
       config:
-        function: processData`
+        handler: processData`
 				require.NoError(t, os.WriteFile(filepath.Join(dir, "activities.yaml"), []byte(activitiesYAML), 0644))
 
 				// Create empty agents.yaml

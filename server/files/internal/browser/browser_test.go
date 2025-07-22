@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/divisive-ai/vibethis/server/files/internal/security"
 )
 
 func TestListFiles(t *testing.T) {
@@ -48,11 +50,12 @@ func TestListFiles(t *testing.T) {
 	}
 
 	// Create browser
-	b := New(tempDir, nil, nil, 0)
+	validator := security.NewValidator(tempDir)
+	b := New(validator, nil, 0)
 	ctx := context.Background()
 
 	// Test listing files in api directory
-	files, err := b.ListFiles(ctx, "api")
+	files, err := b.ListFiles(ctx, filepath.Join(tempDir, "api"))
 	if err != nil {
 		t.Fatalf("Failed to list files: %v", err)
 	}
@@ -75,7 +78,7 @@ func TestListFiles(t *testing.T) {
 	}
 
 	// Test listing files in frontend/src directory
-	files, err = b.ListFiles(ctx, filepath.Join("frontend", "src"))
+	files, err = b.ListFiles(ctx, filepath.Join(tempDir, "frontend", "src"))
 	if err != nil {
 		t.Fatalf("Failed to list files: %v", err)
 	}
@@ -109,11 +112,12 @@ func TestReadFile(t *testing.T) {
 	}
 
 	// Create browser
-	b := New(tempDir, nil, nil, 0)
+	validator := security.NewValidator(tempDir)
+	b := New(validator, nil, 0)
 	ctx := context.Background()
 
 	// Test reading file
-	content, err := b.ReadFile(ctx, "testnode", "test.txt")
+	content, err := b.ReadFile(ctx, filepath.Join(tempDir, "testnode"), "test.txt")
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -123,7 +127,7 @@ func TestReadFile(t *testing.T) {
 	}
 
 	// Test reading non-existent file
-	_, err = b.ReadFile(ctx, "testnode", "nonexistent.txt")
+	_, err = b.ReadFile(ctx, filepath.Join(tempDir, "testnode"), "nonexistent.txt")
 	if err == nil {
 		t.Error("Expected error when reading non-existent file")
 	}
@@ -143,12 +147,13 @@ func TestWriteFile(t *testing.T) {
 	}
 
 	// Create browser
-	b := New(tempDir, nil, nil, 0)
+	validator := security.NewValidator(tempDir)
+	b := New(validator, nil, 0)
 	ctx := context.Background()
 
 	// Test writing new file
 	testContent := []byte("new file content")
-	err = b.WriteFile(ctx, "testnode", "new.txt", testContent)
+	err = b.WriteFile(ctx, filepath.Join(tempDir, "testnode"), "new.txt", testContent)
 	if err != nil {
 		t.Fatalf("Failed to write file: %v", err)
 	}
@@ -165,7 +170,7 @@ func TestWriteFile(t *testing.T) {
 
 	// Test overwriting existing file
 	newContent := []byte("updated content")
-	err = b.WriteFile(ctx, "testnode", "new.txt", newContent)
+	err = b.WriteFile(ctx, filepath.Join(tempDir, "testnode"), "new.txt", newContent)
 	if err != nil {
 		t.Fatalf("Failed to overwrite file: %v", err)
 	}
@@ -219,11 +224,12 @@ func TestFileTypes(t *testing.T) {
 	}
 
 	// Create browser
-	b := New(tempDir, nil, nil, 0)
+	validator := security.NewValidator(tempDir)
+	b := New(validator, nil, 0)
 	ctx := context.Background()
 
 	// List files and check types
-	files, err := b.ListFiles(ctx, "testnode")
+	files, err := b.ListFiles(ctx, filepath.Join(tempDir, "testnode"))
 	if err != nil {
 		t.Fatalf("Failed to list files: %v", err)
 	}
