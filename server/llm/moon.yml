@@ -1,0 +1,9 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+tasks:
+  integration:
+    command: gotestsum -- -v -tags=integration ./...
+    description: Run integration tests for all LLM adapters (requires API keys)
+    env:
+      # Optional: Set default timeout for integration tests
+      TEST_TIMEOUT: '60s'

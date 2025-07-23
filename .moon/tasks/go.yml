@@ -15,7 +15,7 @@ tasks:
       runInCI: true
 
   test:
-    command: 'go test ./...'
+    command: 'gotestsum -- -v ./...'
     deps:
       - "^:build"
     inputs:

@@ -26,6 +26,7 @@ type Config struct {
 	MaxTokens      int                    `json:"max_tokens,omitempty"`
 	SystemPrompt   string                 `json:"system_prompt,omitempty"`
 	ResponseFormat string                 `json:"response_format,omitempty"` // "text" or "json"
+	ResponseSchema json.RawMessage        `json:"response_schema,omitempty"`  // JSON Schema for structured output
 	TopP           float64                `json:"top_p,omitempty"`
 	StopSequences  []string               `json:"stop_sequences,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`

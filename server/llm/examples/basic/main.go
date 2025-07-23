@@ -22,7 +22,13 @@ func main() {
 		log.Printf("Anthropic error: %v", err)
 	}
 
-	// Example 3: Registry usage
+	// Example 3: Gemini usage
+	fmt.Println("\n=== Gemini Example ===")
+	if err := geminiExample(); err != nil {
+		log.Printf("Gemini error: %v", err)
+	}
+
+	// Example 4: Registry usage
 	fmt.Println("\n=== Registry Example ===")
 	if err := registryExample(); err != nil {
 		log.Printf("Registry error: %v", err)
@@ -91,6 +97,36 @@ func anthropicExample() error {
 	return nil
 }
 
+func geminiExample() error {
+	// Create adapter
+	adapter, err := adapters.NewGeminiAdapter("")
+	if err != nil {
+		return fmt.Errorf("failed to create adapter: %w", err)
+	}
+
+	// Configure for Gemini
+	config := adapters.Config{
+		Model:       "gemini-1.5-flash",
+		Temperature: 0.7,
+		MaxTokens:   200,
+	}
+
+	// Generate response
+	ctx := context.Background()
+	response, err := adapter.Generate(
+		ctx,
+		"Explain the concept of goroutines in Go in simple terms",
+		config,
+	)
+	if err != nil {
+		return fmt.Errorf("generation failed: %w", err)
+	}
+
+	fmt.Printf("Response: %s\n", response.Content)
+	
+	return nil
+}
+
 func registryExample() error {
 	// Create registry
 	registry := adapters.NewRegistry()
@@ -105,6 +141,12 @@ func registryExample() error {
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		if adapter, err := adapters.NewAnthropicAdapter(apiKey); err == nil {
 			registry.Register("anthropic", adapter)
+		}
+	}
+
+	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+		if adapter, err := adapters.NewGeminiAdapter(apiKey); err == nil {
+			registry.Register("gemini", adapter)
 		}
 	}
 
