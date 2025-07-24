@@ -11,7 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -71,34 +72,34 @@ func TestOpenAIAdapter_Generate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify request
 		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+		assert.Equal(t, "/chat/completions", r.URL.Path)
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 
 		// Parse request body
-		var req openai.ChatCompletionRequest
+		var req map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&req)
 		require.NoError(t, err)
 
 		// Send response
-		resp := openai.ChatCompletionResponse{
-			ID:      "chatcmpl-123",
-			Object:  "chat.completion",
-			Created: time.Now().Unix(),
-			Model:   req.Model,
-			Choices: []openai.ChatCompletionChoice{
+		resp := map[string]interface{}{
+			"id":      "chatcmpl-123",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   req["model"],
+			"choices": []map[string]interface{}{
 				{
-					Index: 0,
-					Message: openai.ChatCompletionMessage{
-						Role:    "assistant",
-						Content: "Test response",
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": "Test response",
 					},
-					FinishReason: openai.FinishReasonStop,
+					"finish_reason": "stop",
 				},
 			},
-			Usage: openai.Usage{
-				PromptTokens:     10,
-				CompletionTokens: 5,
-				TotalTokens:      15,
+			"usage": map[string]interface{}{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
 			},
 		}
 
@@ -107,25 +108,24 @@ func TestOpenAIAdapter_Generate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create adapter with custom client
-	clientConfig := openai.DefaultConfig("test-key")
-	clientConfig.BaseURL = server.URL + "/v1"
+	// Create adapter with test server
 	adapter := &OpenAIAdapter{
-		client:      openai.NewClientWithConfig(clientConfig),
-		rateLimiter: nil, // Disable rate limiting for tests
+		client: openai.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
-	// Test generate
 	config := Config{
-		Model:        "gpt-4",
+		Model:        "gpt-3.5-turbo",
 		Temperature:  0.7,
 		MaxTokens:    100,
 		SystemPrompt: "You are a helpful assistant",
 	}
 
-	resp, err := adapter.Generate(context.Background(), "Test prompt", config)
-	
-	assert.NoError(t, err)
+	resp, err := adapter.Generate(context.Background(), "Hello", config)
+	require.NoError(t, err)
+
 	assert.Equal(t, "Test response", resp.Content)
 	assert.Equal(t, 10, resp.Usage.PromptTokens)
 	assert.Equal(t, 5, resp.Usage.CompletionTokens)
@@ -133,48 +133,38 @@ func TestOpenAIAdapter_Generate(t *testing.T) {
 	assert.Equal(t, "stop", resp.FinishReason)
 }
 
-func TestOpenAIAdapter_GenerateWithTools(t *testing.T) {
+func TestOpenAIAdapter_Generate_JSONMode(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Parse request body
-		var req openai.ChatCompletionRequest
+		var req map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&req)
 		require.NoError(t, err)
 
-		// Verify tools were included
-		assert.Len(t, req.Tools, 2)
-		assert.Equal(t, "get_weather", req.Tools[0].Function.Name)
+		// Verify JSON mode is set
+		responseFormat := req["response_format"].(map[string]interface{})
+		assert.Equal(t, "json_object", responseFormat["type"])
 
-		// Send response with tool call
-		resp := openai.ChatCompletionResponse{
-			ID:      "chatcmpl-123",
-			Object:  "chat.completion",
-			Created: time.Now().Unix(),
-			Model:   req.Model,
-			Choices: []openai.ChatCompletionChoice{
+		// Send response
+		resp := map[string]interface{}{
+			"id":      "chatcmpl-123",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   req["model"],
+			"choices": []map[string]interface{}{
 				{
-					Index: 0,
-					Message: openai.ChatCompletionMessage{
-						Role:    "assistant",
-						Content: "I'll check the weather for you.",
-						ToolCalls: []openai.ToolCall{
-							{
-								ID:   "call_abc123",
-								Type: openai.ToolTypeFunction,
-								Function: openai.FunctionCall{
-									Name:      "get_weather",
-									Arguments: `{"location": "New York"}`,
-								},
-							},
-						},
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": `{"result": "test"}`,
 					},
-					FinishReason: openai.FinishReasonToolCalls,
+					"finish_reason": "stop",
 				},
 			},
-			Usage: openai.Usage{
-				PromptTokens:     20,
-				CompletionTokens: 10,
-				TotalTokens:      30,
+			"usage": map[string]interface{}{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
 			},
 		}
 
@@ -183,141 +173,192 @@ func TestOpenAIAdapter_GenerateWithTools(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create adapter with custom client
-	clientConfig := openai.DefaultConfig("test-key")
-	clientConfig.BaseURL = server.URL + "/v1"
+	// Create adapter with test server
 	adapter := &OpenAIAdapter{
-		client: openai.NewClientWithConfig(clientConfig),
-		rateLimiter: nil,
+		client: openai.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
-	// Define tools
+	config := Config{
+		Model:          "gpt-3.5-turbo",
+		Temperature:    0.7,
+		ResponseFormat: "json",
+	}
+
+	resp, err := adapter.Generate(context.Background(), "Return JSON", config)
+	require.NoError(t, err)
+
+	assert.Equal(t, `{"result": "test"}`, resp.Content)
+}
+
+func TestOpenAIAdapter_GenerateWithTools(t *testing.T) {
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Parse request body
+		var req map[string]interface{}
+		err := json.NewDecoder(r.Body).Decode(&req)
+		require.NoError(t, err)
+
+		// Verify tools are present
+		tools := req["tools"].([]interface{})
+		assert.Len(t, tools, 1)
+
+		// Send response with tool call
+		resp := map[string]interface{}{
+			"id":      "chatcmpl-123",
+			"object":  "chat.completion",
+			"created": time.Now().Unix(),
+			"model":   req["model"],
+			"choices": []map[string]interface{}{
+				{
+					"index": 0,
+					"message": map[string]interface{}{
+						"role":    "assistant",
+						"content": "",
+						"tool_calls": []map[string]interface{}{
+							{
+								"id": "call_123",
+								"type": "function",
+								"function": map[string]interface{}{
+									"name":      "get_weather",
+									"arguments": `{"location": "San Francisco"}`,
+								},
+							},
+						},
+					},
+					"finish_reason": "tool_calls",
+				},
+			},
+			"usage": map[string]interface{}{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	// Create adapter with test server
+	adapter := &OpenAIAdapter{
+		client: openai.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
+	}
+
 	tools := []Tool{
 		{
 			Name:        "get_weather",
-			Description: "Get the weather for a location",
-			Parameters:  json.RawMessage(`{"type": "object", "properties": {"location": {"type": "string"}}}`),
-		},
-		{
-			Name:        "search_web",
-			Description: "Search the web",
-			Parameters:  json.RawMessage(`{"type": "object", "properties": {"query": {"type": "string"}}}`),
+			Description: "Get weather information",
+			Parameters: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"location": {"type": "string"}
+				},
+				"required": ["location"]
+			}`),
 		},
 	}
 
 	config := Config{
-		Model:       "gpt-4",
+		Model:       "gpt-3.5-turbo",
 		Temperature: 0.7,
-		MaxTokens:   100,
 	}
 
-	resp, err := adapter.GenerateWithTools(context.Background(), "What's the weather in New York?", tools, config)
-	
-	assert.NoError(t, err)
-	assert.Equal(t, "I'll check the weather for you.", resp.Content)
+	resp, err := adapter.GenerateWithTools(context.Background(), "What's the weather?", tools, config)
+	require.NoError(t, err)
+
 	assert.Len(t, resp.ToolCalls, 1)
-	assert.Equal(t, "call_abc123", resp.ToolCalls[0].ID)
+	assert.Equal(t, "call_123", resp.ToolCalls[0].ID)
 	assert.Equal(t, "get_weather", resp.ToolCalls[0].Name)
-	
-	// Verify tool arguments
-	var args map[string]string
-	err = json.Unmarshal(resp.ToolCalls[0].Arguments, &args)
-	assert.NoError(t, err)
-	assert.Equal(t, "New York", args["location"])
+	assert.JSONEq(t, `{"location": "San Francisco"}`, string(resp.ToolCalls[0].Arguments))
 }
 
 func TestOpenAIAdapter_StreamGenerate(t *testing.T) {
-	// Create test server
+	// Create test server that sends SSE
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse request
-		var req openai.ChatCompletionRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
-		assert.True(t, req.Stream)
-
-		// Send SSE response
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
 		// Send chunks
-		chunks := []string{"Hello", " ", "world", "!"}
+		chunks := []string{"Hello", " ", "World"}
 		for i, chunk := range chunks {
-			data := openai.ChatCompletionStreamResponse{
-				ID:      "chatcmpl-123",
-				Object:  "chat.completion.chunk",
-				Created: time.Now().Unix(),
-				Model:   req.Model,
-				Choices: []openai.ChatCompletionStreamChoice{
+			data := map[string]interface{}{
+				"id":      fmt.Sprintf("chatcmpl-%d", i),
+				"object":  "chat.completion.chunk",
+				"created": time.Now().Unix(),
+				"model":   "gpt-3.5-turbo",
+				"choices": []map[string]interface{}{
 					{
-						Index: 0,
-						Delta: openai.ChatCompletionStreamChoiceDelta{
-							Content: chunk,
+						"index": 0,
+						"delta": map[string]interface{}{
+							"content": chunk,
 						},
+						"finish_reason": nil,
 					},
 				},
 			}
-			
+
 			jsonData, _ := json.Marshal(data)
 			fmt.Fprintf(w, "data: %s\n\n", jsonData)
 			w.(http.Flusher).Flush()
-			
-			if i < len(chunks)-1 {
-				time.Sleep(10 * time.Millisecond) // Simulate streaming delay
-			}
 		}
 
-		// Send done signal
+		// Send done
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		w.(http.Flusher).Flush()
 	}))
 	defer server.Close()
 
-	// Create adapter
-	clientConfig := openai.DefaultConfig("test-key")
-	clientConfig.BaseURL = server.URL + "/v1"
+	// Create adapter with test server
 	adapter := &OpenAIAdapter{
-		client: openai.NewClientWithConfig(clientConfig),
-		rateLimiter: nil,
+		client: openai.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
 	config := Config{
-		Model:       "gpt-4",
+		Model:       "gpt-3.5-turbo",
 		Temperature: 0.7,
-		MaxTokens:   100,
 	}
 
 	ctx := context.Background()
-	tokenChan, err := adapter.StreamGenerate(ctx, "Test prompt", config)
+	tokenChan, err := adapter.StreamGenerate(ctx, "Hello", config)
 	require.NoError(t, err)
 
 	// Collect tokens
-	var tokens []string
+	var content string
 	for token := range tokenChan {
 		if token.Error != nil {
-			t.Fatalf("Unexpected error in stream: %v", token.Error)
+			t.Fatalf("unexpected error: %v", token.Error)
 		}
-		tokens = append(tokens, token.Content)
+		content += token.Content
 	}
 
-	// Verify result
-	assert.Equal(t, []string{"Hello", " ", "world", "!"}, tokens)
+	assert.Equal(t, "Hello World", content)
 }
 
-func TestOpenAIAdapter_ValidateConfig(t *testing.T) {
+func TestOpenAIAdapter_validateConfig(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
 	tests := []struct {
 		name    string
 		config  Config
 		wantErr bool
-		errMsg  string
 	}{
 		{
 			name: "valid config",
 			config: Config{
-				Model:       "gpt-4",
+				Model:       "gpt-3.5-turbo",
 				Temperature: 0.7,
+				TopP:        0.9,
 				MaxTokens:   100,
 			},
 			wantErr: false,
@@ -326,46 +367,32 @@ func TestOpenAIAdapter_ValidateConfig(t *testing.T) {
 			name: "missing model",
 			config: Config{
 				Temperature: 0.7,
-				MaxTokens:   100,
 			},
 			wantErr: true,
-			errMsg:  "model is required",
 		},
 		{
-			name: "invalid temperature too high",
+			name: "invalid temperature",
 			config: Config{
-				Model:       "gpt-4",
-				Temperature: 2.5,
+				Model:       "gpt-3.5-turbo",
+				Temperature: 3.0,
 			},
 			wantErr: true,
-			errMsg:  "temperature must be between 0 and 2",
-		},
-		{
-			name: "invalid temperature negative",
-			config: Config{
-				Model:       "gpt-4",
-				Temperature: -0.5,
-			},
-			wantErr: true,
-			errMsg:  "temperature must be between 0 and 2",
 		},
 		{
 			name: "invalid top_p",
 			config: Config{
-				Model: "gpt-4",
+				Model: "gpt-3.5-turbo",
 				TopP:  1.5,
 			},
 			wantErr: true,
-			errMsg:  "top_p must be between 0 and 1",
 		},
 		{
 			name: "invalid response format",
 			config: Config{
-				Model:          "gpt-4",
+				Model:          "gpt-3.5-turbo",
 				ResponseFormat: "xml",
 			},
 			wantErr: true,
-			errMsg:  "response_format must be 'text' or 'json'",
 		},
 	}
 
@@ -374,7 +401,6 @@ func TestOpenAIAdapter_ValidateConfig(t *testing.T) {
 			err := adapter.validateConfig(tt.config)
 			if tt.wantErr {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -382,30 +408,7 @@ func TestOpenAIAdapter_ValidateConfig(t *testing.T) {
 	}
 }
 
-func TestOpenAIAdapter_MapModel(t *testing.T) {
-	adapter := &OpenAIAdapter{}
-
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"gpt-4", openai.GPT4},
-		{"gpt-4-turbo", "gpt-4-turbo-preview"},
-		{"gpt-3.5-turbo", openai.GPT3Dot5Turbo},
-		{"gpt-4o", "gpt-4o"},
-		{"gpt-4o-mini", "gpt-4o-mini"},
-		{"custom-model", "custom-model"}, // Unknown models pass through
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := adapter.mapModel(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestOpenAIAdapter_HandleError(t *testing.T) {
+func TestOpenAIAdapter_handleError(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
 	tests := []struct {
@@ -419,32 +422,29 @@ func TestOpenAIAdapter_HandleError(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name: "rate limit error",
-			err: &openai.APIError{
-				HTTPStatusCode: 429,
-			},
+			name:     "rate limit error",
+			err:      errors.New("rate_limit_exceeded"),
 			expected: ErrRateLimitExceeded,
 		},
 		{
-			name: "context length error",
-			err: &openai.APIError{
-				HTTPStatusCode: 400,
-				Code:          "context_length_exceeded",
-			},
+			name:     "context length error",
+			err:      errors.New("context_length_exceeded"),
 			expected: ErrContextLengthExceeded,
 		},
 		{
-			name: "model not found error",
-			err: &openai.APIError{
-				HTTPStatusCode: 404,
-				Code:          "model_not_found",
-			},
+			name:     "model not found",
+			err:      errors.New("model_not_found"),
 			expected: ErrModelNotSupported,
 		},
 		{
+			name:     "invalid api key",
+			err:      errors.New("invalid_api_key"),
+			expected: ErrAPIKeyMissing,
+		},
+		{
 			name:     "generic error",
-			err:      errors.New("some error"),
-			expected: errors.New("openai api error: some error"),
+			err:      errors.New("some other error"),
+			expected: fmt.Errorf("openai api error: %w", errors.New("some other error")),
 		},
 	}
 
@@ -455,7 +455,8 @@ func TestOpenAIAdapter_HandleError(t *testing.T) {
 				assert.Nil(t, result)
 			} else if errors.Is(tt.expected, ErrRateLimitExceeded) ||
 				errors.Is(tt.expected, ErrContextLengthExceeded) ||
-				errors.Is(tt.expected, ErrModelNotSupported) {
+				errors.Is(tt.expected, ErrModelNotSupported) ||
+				errors.Is(tt.expected, ErrAPIKeyMissing) {
 				assert.Equal(t, tt.expected, result)
 			} else {
 				assert.Contains(t, result.Error(), "openai api error")

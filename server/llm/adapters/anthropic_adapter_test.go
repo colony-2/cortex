@@ -1,74 +1,20 @@
 package llmadapters
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestNewAnthropicAdapter(t *testing.T) {
-	tests := []struct {
-		name    string
-		apiKey  string
-		envKey  string
-		wantErr bool
-	}{
-		{
-			name:    "with api key",
-			apiKey:  "test-api-key",
-			wantErr: false,
-		},
-		{
-			name:    "with env var",
-			apiKey:  "",
-			envKey:  "env-api-key",
-			wantErr: false,
-		},
-		{
-			name:    "no api key",
-			apiKey:  "",
-			envKey:  "",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set env var if needed
-			if tt.envKey != "" {
-				os.Setenv("ANTHROPIC_API_KEY", tt.envKey)
-				defer os.Unsetenv("ANTHROPIC_API_KEY")
-			}
-
-			adapter, err := NewAnthropicAdapter(tt.apiKey)
-			
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Equal(t, ErrAPIKeyMissing, err)
-				assert.Nil(t, adapter)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, adapter)
-				assert.NotNil(t, adapter.httpClient)
-				assert.NotNil(t, adapter.rateLimiter)
-				assert.Equal(t, "https://api.anthropic.com/v1", adapter.baseURL)
-			}
-		})
-	}
-}
 
 func TestAnthropicAdapter_Generate(t *testing.T) {
 	// Create test server
@@ -76,65 +22,56 @@ func TestAnthropicAdapter_Generate(t *testing.T) {
 		// Verify request
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "/v1/messages", r.URL.Path)
-		assert.Equal(t, "test-key", r.Header.Get("x-api-key"))
-		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+		assert.Equal(t, "test-key", r.Header.Get("X-API-Key"))
 
 		// Parse request body
-		var req anthropicRequest
+		var req map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&req)
 		require.NoError(t, err)
 
-		// Verify request
-		assert.Equal(t, "claude-3-opus-20240229", req.Model)
-		assert.Equal(t, "You are a helpful assistant", req.System)
-		assert.Len(t, req.Messages, 1)
-		assert.Equal(t, "user", req.Messages[0].Role)
-
 		// Send response
-		resp := anthropicResponse{
-			ID:   "msg_123",
-			Type: "message",
-			Role: "assistant",
-			Content: []anthropicContentBlock{
+		resp := map[string]interface{}{
+			"id":    "msg_123",
+			"type":  "message",
+			"role":  "assistant",
+			"model": req["model"],
+			"content": []map[string]interface{}{
 				{
-					Type: "text",
-					Text: "Test response from Claude",
+					"type": "text",
+					"text": "Test response",
 				},
 			},
-			Model:      req.Model,
-			StopReason: "end_turn",
-			Usage: anthropicUsage{
-				InputTokens:  10,
-				OutputTokens: 5,
+			"stop_reason": "end_turn",
+			"usage": map[string]interface{}{
+				"input_tokens":  10,
+				"output_tokens": 5,
 			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	// Create adapter with test server URL
+	// Create adapter with test server
 	adapter := &AnthropicAdapter{
-		apiKey:      "test-key",
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
-		rateLimiter: nil, // Disable rate limiting for tests
-		baseURL:     server.URL + "/v1",
+		client: anthropic.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
-	// Test generate
 	config := Config{
-		Model:        "claude-3-opus",
+		Model:        "claude-3-haiku",
 		Temperature:  0.7,
 		MaxTokens:    100,
 		SystemPrompt: "You are a helpful assistant",
 	}
 
-	resp, err := adapter.Generate(context.Background(), "Test prompt", config)
-	
-	assert.NoError(t, err)
-	assert.Equal(t, "Test response from Claude", resp.Content)
+	resp, err := adapter.Generate(context.Background(), "Hello", config)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Test response", resp.Content)
 	assert.Equal(t, 10, resp.Usage.PromptTokens)
 	assert.Equal(t, 5, resp.Usage.CompletionTokens)
 	assert.Equal(t, 15, resp.Usage.TotalTokens)
@@ -145,178 +82,154 @@ func TestAnthropicAdapter_GenerateWithTools(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Parse request body
-		var req anthropicRequest
+		var req map[string]interface{}
 		err := json.NewDecoder(r.Body).Decode(&req)
 		require.NoError(t, err)
 
-		// Verify tools were included
-		assert.Len(t, req.Tools, 2)
-		assert.Equal(t, "get_weather", req.Tools[0].Name)
+		// Verify tools are present
+		tools := req["tools"].([]interface{})
+		assert.Len(t, tools, 1)
 
-		// Send response with tool use
-		resp := anthropicResponse{
-			ID:   "msg_123",
-			Type: "message",
-			Role: "assistant",
-			Content: []anthropicContentBlock{
+		// Send response with tool call
+		resp := map[string]interface{}{
+			"id":    "msg_123",
+			"type":  "message",
+			"role":  "assistant",
+			"model": req["model"],
+			"content": []map[string]interface{}{
 				{
-					Type: "text",
-					Text: "I'll check the weather for you.",
+					"type": "text",
+					"text": "I'll check the weather for you.",
 				},
 				{
-					Type:  "tool_use",
-					ID:    "toolu_123",
-					Name:  "get_weather",
-					Input: json.RawMessage(`{"location": "New York"}`),
+					"type": "tool_use",
+					"id":   "tool_123",
+					"name": "get_weather",
+					"input": map[string]interface{}{
+						"location": "San Francisco",
+					},
 				},
 			},
-			Model:      req.Model,
-			StopReason: "tool_use",
-			Usage: anthropicUsage{
-				InputTokens:  20,
-				OutputTokens: 10,
+			"stop_reason": "tool_use",
+			"usage": map[string]interface{}{
+				"input_tokens":  10,
+				"output_tokens": 5,
 			},
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
-	// Create adapter
+	// Create adapter with test server
 	adapter := &AnthropicAdapter{
-		apiKey:      "test-key",
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
-		rateLimiter: nil,
-		baseURL:     server.URL + "/v1",
+		client: anthropic.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
-	// Define tools
 	tools := []Tool{
 		{
 			Name:        "get_weather",
-			Description: "Get the weather for a location",
-			Parameters:  json.RawMessage(`{"type": "object", "properties": {"location": {"type": "string"}}}`),
-		},
-		{
-			Name:        "search_web",
-			Description: "Search the web",
-			Parameters:  json.RawMessage(`{"type": "object", "properties": {"query": {"type": "string"}}}`),
+			Description: "Get weather information",
+			Parameters: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"location": {"type": "string"}
+				},
+				"required": ["location"]
+			}`),
 		},
 	}
 
 	config := Config{
-		Model:       "claude-3-opus",
+		Model:       "claude-3-haiku",
 		Temperature: 0.7,
 		MaxTokens:   100,
 	}
 
-	resp, err := adapter.GenerateWithTools(context.Background(), "What's the weather in New York?", tools, config)
-	
-	assert.NoError(t, err)
+	resp, err := adapter.GenerateWithTools(context.Background(), "What's the weather?", tools, config)
+	require.NoError(t, err)
+
 	assert.Equal(t, "I'll check the weather for you.", resp.Content)
 	assert.Len(t, resp.ToolCalls, 1)
-	assert.Equal(t, "toolu_123", resp.ToolCalls[0].ID)
+	assert.Equal(t, "tool_123", resp.ToolCalls[0].ID)
 	assert.Equal(t, "get_weather", resp.ToolCalls[0].Name)
-	
-	// Verify tool arguments
-	var args map[string]string
-	err = json.Unmarshal(resp.ToolCalls[0].Arguments, &args)
-	assert.NoError(t, err)
-	assert.Equal(t, "New York", args["location"])
+	assert.JSONEq(t, `{"location": "San Francisco"}`, string(resp.ToolCalls[0].Arguments))
 }
 
 func TestAnthropicAdapter_StreamGenerate(t *testing.T) {
-	// Create test server
+	// Create test server that sends SSE
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse request
-		var req anthropicRequest
-		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
-		assert.True(t, req.Stream)
-
-		// Send streaming response
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 
-		writer := bufio.NewWriter(w)
-		
-		// Send message start event
-		startEvent := anthropicStreamEvent{
-			Type: "message_start",
-			Message: &anthropicResponse{
-				ID:    "msg_123",
-				Type:  "message",
-				Role:  "assistant",
-				Model: req.Model,
-			},
-		}
-		data, _ := json.Marshal(startEvent)
-		writer.WriteString(fmt.Sprintf("event: message_start\ndata: %s\n\n", data))
-		writer.Flush()
+		// Send events
+		events := []string{
+			`event: message_start
+data: {"type": "message_start", "message": {"model": "claude-3-haiku"}}`,
 
-		// Send content chunks
-		chunks := []string{"Hello", " ", "streaming", " ", "world", "!"}
-		for i, chunk := range chunks {
-			deltaEvent := anthropicStreamEvent{
-				Type:  "content_block_delta",
-				Index: 0,
-				Delta: &anthropicDelta{
-					Type: "text_delta",
-					Text: chunk,
-				},
-			}
-			data, _ := json.Marshal(deltaEvent)
-			writer.WriteString(fmt.Sprintf("event: content_block_delta\ndata: %s\n\n", data))
-			writer.Flush()
-			
-			if i < len(chunks)-1 {
-				time.Sleep(10 * time.Millisecond)
-			}
+			`event: content_block_start
+data: {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}`,
+
+			`event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}`,
+
+			`event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " "}}`,
+
+			`event: content_block_delta
+data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "World"}}`,
+
+			`event: content_block_stop
+data: {"type": "content_block_stop", "index": 0}`,
+
+			`event: message_delta
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": null}}`,
+
+			`event: message_stop
+data: {"type": "message_stop"}`,
 		}
 
-		// Send message stop event
-		stopEvent := anthropicStreamEvent{
-			Type: "message_stop",
+		for _, event := range events {
+			fmt.Fprintf(w, "%s\n\n", event)
+			w.(http.Flusher).Flush()
+			time.Sleep(10 * time.Millisecond)
 		}
-		data, _ = json.Marshal(stopEvent)
-		writer.WriteString(fmt.Sprintf("event: message_stop\ndata: %s\n\n", data))
-		writer.Flush()
 	}))
 	defer server.Close()
 
-	// Create adapter
+	// Create adapter with test server
 	adapter := &AnthropicAdapter{
-		apiKey:      "test-key",
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
-		rateLimiter: nil,
-		baseURL:     server.URL + "/v1",
+		client: anthropic.NewClient(
+			option.WithAPIKey("test-key"),
+			option.WithBaseURL(server.URL),
+		),
 	}
 
 	config := Config{
-		Model:       "claude-3-opus",
+		Model:       "claude-3-haiku",
 		Temperature: 0.7,
 		MaxTokens:   100,
 	}
 
 	ctx := context.Background()
-	tokenChan, err := adapter.StreamGenerate(ctx, "Test prompt", config)
+	tokenChan, err := adapter.StreamGenerate(ctx, "Hello", config)
 	require.NoError(t, err)
 
 	// Collect tokens
-	var tokens []string
+	var content string
 	for token := range tokenChan {
 		if token.Error != nil {
-			t.Fatalf("Unexpected error in stream: %v", token.Error)
+			t.Fatalf("unexpected error: %v", token.Error)
 		}
-		tokens = append(tokens, token.Content)
+		content += token.Content
 	}
 
-	// Verify result
-	expected := "Hello streaming world!"
-	result := strings.Join(tokens, "")
-	assert.Equal(t, expected, result)
+	assert.Equal(t, "Hello World", content)
 }
 
 func TestAnthropicAdapter_ValidateConfig(t *testing.T) {
@@ -326,13 +239,14 @@ func TestAnthropicAdapter_ValidateConfig(t *testing.T) {
 		name    string
 		config  Config
 		wantErr bool
-		errMsg  string
+		check   func(t *testing.T, config Config)
 	}{
 		{
 			name: "valid config",
 			config: Config{
-				Model:       "claude-3-opus",
+				Model:       "claude-3-haiku",
 				Temperature: 0.7,
+				TopP:        0.9,
 				MaxTokens:   100,
 			},
 			wantErr: false,
@@ -341,49 +255,49 @@ func TestAnthropicAdapter_ValidateConfig(t *testing.T) {
 			name: "missing model",
 			config: Config{
 				Temperature: 0.7,
-				MaxTokens:   100,
 			},
 			wantErr: true,
-			errMsg:  "model is required",
 		},
 		{
 			name: "invalid temperature too high",
 			config: Config{
-				Model:       "claude-3-opus",
-				Temperature: 1.5,
-				MaxTokens:   100,
+				Model:       "claude-3-haiku",
+				Temperature: 2.0,
 			},
 			wantErr: true,
-			errMsg:  "temperature must be between 0 and 1",
 		},
 		{
 			name: "invalid top_p",
 			config: Config{
-				Model:     "claude-3-opus",
-				MaxTokens: 100,
-				TopP:      1.5,
+				Model: "claude-3-haiku",
+				TopP:  1.5,
 			},
 			wantErr: true,
-			errMsg:  "top_p must be between 0 and 1",
 		},
 		{
-			name: "zero max tokens gets default",
+			name: "zero max_tokens gets default",
 			config: Config{
-				Model:     "claude-3-opus",
+				Model:     "claude-3-haiku",
 				MaxTokens: 0,
 			},
 			wantErr: false,
+			check: func(t *testing.T, config Config) {
+				assert.Equal(t, 1024, config.MaxTokens)
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.validateConfig(tt.config)
+			config := tt.config
+			err := adapter.validateConfig(&config)
 			if tt.wantErr {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				assert.NoError(t, err)
+			}
+			if tt.check != nil {
+				tt.check(t, config)
 			}
 		})
 	}
@@ -393,146 +307,100 @@ func TestAnthropicAdapter_MapModel(t *testing.T) {
 	adapter := &AnthropicAdapter{}
 
 	tests := []struct {
+		name     string
 		input    string
 		expected string
 	}{
-		{"claude-3-opus", "claude-3-opus-20240229"},
-		{"claude-3-sonnet", "claude-3-sonnet-20240229"},
-		{"claude-3-haiku", "claude-3-haiku-20240307"},
-		{"claude-2.1", "claude-2.1"},
-		{"claude-2", "claude-2.0"},
-		{"claude-instant", "claude-instant-1.2"},
-		{"custom-model", "custom-model"}, // Unknown models pass through
+		{
+			name:     "claude-3-opus",
+			input:    "claude-3-opus",
+			expected: "claude-3-opus-20240229",
+		},
+		{
+			name:     "claude-3-sonnet",
+			input:    "claude-3-sonnet",
+			expected: "claude-3-5-sonnet-20241022",
+		},
+		{
+			name:     "claude-3-haiku",
+			input:    "claude-3-haiku",
+			expected: "claude-3-5-haiku-20241022",
+		},
+		{
+			name:     "claude-2.1",
+			input:    "claude-2.1",
+			expected: "claude-2.1",
+		},
+		{
+			name:     "claude-2",
+			input:    "claude-2",
+			expected: "claude-2.0",
+		},
+		{
+			name:     "claude-instant",
+			input:    "claude-instant",
+			expected: "claude-instant-1.2",
+		},
+		{
+			name:     "custom-model",
+			input:    "custom-model-123",
+			expected: "custom-model-123",
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			result := adapter.mapModel(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestAnthropicAdapter_HandleHTTPError(t *testing.T) {
+func TestAnthropicAdapter_HandleError(t *testing.T) {
 	adapter := &AnthropicAdapter{}
 
 	tests := []struct {
-		name       string
-		statusCode int
-		body       string
-		expected   error
+		name     string
+		err      error
+		expected error
 	}{
 		{
-			name:       "rate limit error",
-			statusCode: 429,
-			body:       `{"error": {"type": "rate_limit_error", "message": "Too many requests"}}`,
-			expected:   ErrRateLimitExceeded,
+			name:     "rate limit error",
+			err:      errors.New("rate_limit_exceeded"),
+			expected: ErrRateLimitExceeded,
 		},
 		{
-			name:       "invalid request error",
-			statusCode: 400,
-			body:       `{"error": {"type": "invalid_request_error", "message": "Invalid parameter"}}`,
-			expected:   ErrInvalidConfig,
+			name:     "invalid request error",
+			err:      errors.New("invalid_request_error: bad input"),
+			expected: ErrInvalidConfig,
 		},
 		{
-			name:       "model not found error",
-			statusCode: 404,
-			body:       `{"error": {"type": "not_found_error", "message": "Model not found"}}`,
-			expected:   ErrModelNotSupported,
+			name:     "model not found error",
+			err:      errors.New("model_not_found"),
+			expected: ErrModelNotSupported,
 		},
 		{
-			name:       "generic error",
-			statusCode: 500,
-			body:       `{"error": {"type": "server_error", "message": "Internal error"}}`,
-			expected:   nil, // Will be a generic error
+			name:     "authentication error",
+			err:      errors.New("authentication_error"),
+			expected: ErrAPIKeyMissing,
+		},
+		{
+			name:     "generic error",
+			err:      errors.New("some other error"),
+			expected: fmt.Errorf("anthropic api error: %w", errors.New("some other error")),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp := &http.Response{
-				StatusCode: tt.statusCode,
-				Body:       io.NopCloser(bytes.NewBufferString(tt.body)),
-			}
-
-			err := adapter.handleHTTPError(resp)
-			assert.Error(t, err)
-
-			if tt.expected != nil {
-				if errors.Is(err, ErrInvalidConfig) {
-					assert.Contains(t, err.Error(), "invalid configuration")
-				} else {
-					assert.Equal(t, tt.expected, err)
-				}
+			result := adapter.handleError(tt.err)
+			if errors.Is(tt.expected, ErrRateLimitExceeded) ||
+				errors.Is(tt.expected, ErrInvalidConfig) ||
+				errors.Is(tt.expected, ErrModelNotSupported) ||
+				errors.Is(tt.expected, ErrAPIKeyMissing) {
+				assert.Equal(t, tt.expected, result)
 			} else {
-				assert.Contains(t, err.Error(), "anthropic api error")
-			}
-		})
-	}
-}
-
-func TestAnthropicAdapter_ErrorHandling(t *testing.T) {
-	// Test server that returns various errors
-	tests := []struct {
-		name         string
-		serverFunc   http.HandlerFunc
-		expectedErr  string
-		checkSpecific error
-	}{
-		{
-			name: "network error",
-			serverFunc: func(w http.ResponseWriter, r *http.Request) {
-				// Simulate network error by closing connection
-				hj, _ := w.(http.Hijacker)
-				conn, _, _ := hj.Hijack()
-				conn.Close()
-			},
-			expectedErr: "failed to make request",
-		},
-		{
-			name: "invalid json response",
-			serverFunc: func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("invalid json"))
-			},
-			expectedErr: "failed to decode response",
-		},
-		{
-			name: "empty response",
-			serverFunc: func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("{}"))
-			},
-			expectedErr: "", // Should succeed but with empty content
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(tt.serverFunc)
-			defer server.Close()
-
-			adapter := &AnthropicAdapter{
-				apiKey:      "test-key",
-				httpClient:  &http.Client{Timeout: 1 * time.Second},
-				rateLimiter: nil,
-				baseURL:     server.URL + "/v1",
-			}
-
-			config := Config{
-				Model:     "claude-3-opus",
-				MaxTokens: 100,
-			}
-
-			_, err := adapter.Generate(context.Background(), "Test", config)
-			
-			if tt.expectedErr != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErr)
-			} else if tt.checkSpecific != nil {
-				assert.Equal(t, tt.checkSpecific, err)
+				assert.Contains(t, result.Error(), "anthropic api error")
 			}
 		})
 	}

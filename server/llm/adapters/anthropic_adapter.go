@@ -1,26 +1,22 @@
 package llmadapters
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	"golang.org/x/time/rate"
 )
 
 // AnthropicAdapter implements the Adapter interface for Anthropic Claude API
 type AnthropicAdapter struct {
-	apiKey      string
-	httpClient  *http.Client
+	client      anthropic.Client
 	rateLimiter *rate.Limiter
-	baseURL     string
 }
 
 // NewAnthropicAdapter creates a new Anthropic adapter
@@ -33,104 +29,17 @@ func NewAnthropicAdapter(apiKey string) (*AnthropicAdapter, error) {
 		}
 	}
 
+	client := anthropic.NewClient(
+		option.WithAPIKey(apiKey),
+	)
+
 	// Create rate limiter: 50 requests per minute
-	rateLimiter := rate.NewLimiter(rate.Every(time.Minute/50), 50)
+	rateLimiter := rate.NewLimiter(rate.Limit(50.0/60), 50)
 
 	return &AnthropicAdapter{
-		apiKey: apiKey,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client:      client,
 		rateLimiter: rateLimiter,
-		baseURL:     "https://api.anthropic.com/v1",
 	}, nil
-}
-
-// anthropicRequest represents the request structure for Anthropic API
-type anthropicRequest struct {
-	Model         string                   `json:"model"`
-	Messages      []anthropicMessage       `json:"messages"`
-	System        string                   `json:"system,omitempty"`
-	MaxTokens     int                      `json:"max_tokens"`
-	Temperature   float64                  `json:"temperature,omitempty"`
-	TopP          float64                  `json:"top_p,omitempty"`
-	StopSequences []string                 `json:"stop_sequences,omitempty"`
-	Stream        bool                     `json:"stream,omitempty"`
-	Tools         []anthropicTool          `json:"tools,omitempty"`
-	Metadata      map[string]interface{}   `json:"metadata,omitempty"`
-}
-
-// anthropicMessage represents a message in the Anthropic format
-type anthropicMessage struct {
-	Role    string                 `json:"role"`
-	Content anthropicContent       `json:"content"`
-}
-
-// anthropicContent can be either a string or an array of content blocks
-type anthropicContent interface{}
-
-// anthropicTextContent represents a text content block
-type anthropicTextContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-// anthropicToolUseContent represents a tool use content block
-type anthropicToolUseContent struct {
-	Type  string          `json:"type"`
-	ID    string          `json:"id"`
-	Name  string          `json:"name"`
-	Input json.RawMessage `json:"input"`
-}
-
-// anthropicTool represents a tool in Anthropic format
-type anthropicTool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"input_schema"`
-}
-
-// anthropicResponse represents the response from Anthropic API
-type anthropicResponse struct {
-	ID           string                    `json:"id"`
-	Type         string                    `json:"type"`
-	Role         string                    `json:"role"`
-	Content      []anthropicContentBlock   `json:"content"`
-	Model        string                    `json:"model"`
-	StopReason   string                    `json:"stop_reason"`
-	StopSequence string                    `json:"stop_sequence"`
-	Usage        anthropicUsage            `json:"usage"`
-}
-
-// anthropicContentBlock represents a content block in the response
-type anthropicContentBlock struct {
-	Type  string          `json:"type"`
-	Text  string          `json:"text,omitempty"`
-	ID    string          `json:"id,omitempty"`
-	Name  string          `json:"name,omitempty"`
-	Input json.RawMessage `json:"input,omitempty"`
-}
-
-// anthropicUsage represents token usage information
-type anthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-}
-
-// anthropicStreamEvent represents a streaming event
-type anthropicStreamEvent struct {
-	Type         string                  `json:"type"`
-	Message      *anthropicResponse      `json:"message,omitempty"`
-	ContentBlock *anthropicContentBlock  `json:"content_block,omitempty"`
-	Delta        *anthropicDelta         `json:"delta,omitempty"`
-	Index        int                     `json:"index,omitempty"`
-	Error        map[string]interface{}  `json:"error,omitempty"`
-}
-
-// anthropicDelta represents a delta update in streaming
-type anthropicDelta struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
 }
 
 // Generate creates a completion for the given prompt
@@ -142,64 +51,114 @@ func (a *AnthropicAdapter) Generate(ctx context.Context, prompt string, config C
 		}
 	}
 
-	// Validate configuration
-	if err := a.validateConfig(config); err != nil {
+	// Validate and adjust configuration
+	if err := a.validateConfig(&config); err != nil {
 		return Response{}, err
 	}
 
-	// Build request
-	req := anthropicRequest{
-		Model: a.mapModel(config.Model),
-		Messages: []anthropicMessage{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		MaxTokens:   config.MaxTokens,
-		Temperature: config.Temperature,
+	// Build messages
+	messages := []anthropic.MessageParam{}
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)))
+
+	// Build request parameters
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(a.mapModel(config.Model)),
+		Messages:  messages,
+		MaxTokens: int64(config.MaxTokens),
 	}
 
+	// Set system prompt if provided
 	if config.SystemPrompt != "" {
-		req.System = config.SystemPrompt
+		params.System = []anthropic.TextBlockParam{
+			{
+				Text: config.SystemPrompt,
+				Type: "text",
+			},
+		}
 	}
 
+	// Set temperature if not default
+	if config.Temperature > 0 {
+		params.Temperature = param.NewOpt(float64(config.Temperature))
+	}
+
+	// Set top_p if provided
 	if config.TopP > 0 {
-		req.TopP = config.TopP
+		params.TopP = param.NewOpt(float64(config.TopP))
 	}
 
+	// Set stop sequences if provided
 	if len(config.StopSequences) > 0 {
-		req.StopSequences = config.StopSequences
+		params.StopSequences = config.StopSequences
 	}
 
-	if config.Metadata != nil {
-		req.Metadata = config.Metadata
+	// Handle structured output with tool use
+	if config.ResponseFormat == "json" && len(config.ResponseSchema) > 0 {
+		// Parse the schema
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal(config.ResponseSchema, &schemaMap); err != nil {
+			return Response{}, fmt.Errorf("invalid response schema: %w", err)
+		}
+
+		// Extract properties and required fields from schema
+		properties, _ := schemaMap["properties"]
+		required := []string{}
+		if req, ok := schemaMap["required"].([]interface{}); ok {
+			for _, r := range req {
+				if s, ok := r.(string); ok {
+					required = append(required, s)
+				}
+			}
+		}
+
+		// Create the input schema
+		inputSchema := anthropic.ToolInputSchemaParam{
+			Type:       "object",
+			Properties: properties,
+			Required:   required,
+		}
+
+		// Create a tool that enforces the schema
+		tool := anthropic.ToolParam{
+			Name:        "json_response",
+			Description: param.NewOpt("Return the response in the specified JSON format"),
+			InputSchema: inputSchema,
+		}
+		
+		params.Tools = []anthropic.ToolUnionParam{
+			{OfTool: &tool},
+		}
+		
+		// Force tool use by setting tool_choice
+		params.ToolChoice = anthropic.ToolChoiceParamOfTool("json_response")
 	}
 
 	// Make API call
-	resp, err := a.makeRequest(ctx, req)
+	message, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return Response{}, err
+		return Response{}, a.handleError(err)
 	}
 
 	// Extract content
-	content := ""
-	for _, block := range resp.Content {
-		if block.Type == "text" {
-			content += block.Text
+	content := a.extractContent(message)
+	
+	// If we used tool for structured output, extract the tool response
+	if config.ResponseFormat == "json" && len(config.ResponseSchema) > 0 {
+		toolCalls := a.extractToolCalls(message)
+		if len(toolCalls) > 0 && toolCalls[0].Name == "json_response" {
+			content = string(toolCalls[0].Arguments)
 		}
 	}
 
 	return Response{
 		Content: content,
 		Usage: Usage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
+			PromptTokens:     int(message.Usage.InputTokens),
+			CompletionTokens: int(message.Usage.OutputTokens),
+			TotalTokens:      int(message.Usage.InputTokens + message.Usage.OutputTokens),
 		},
-		FinishReason: resp.StopReason,
-		Model:        resp.Model,
-		Metadata:     config.Metadata,
+		FinishReason: string(message.StopReason),
+		Model:        string(message.Model),
 	}, nil
 }
 
@@ -212,80 +171,100 @@ func (a *AnthropicAdapter) GenerateWithTools(ctx context.Context, prompt string,
 		}
 	}
 
-	// Validate configuration
-	if err := a.validateConfig(config); err != nil {
+	// Validate and adjust configuration
+	if err := a.validateConfig(&config); err != nil {
 		return Response{}, err
 	}
 
+	// Build messages
+	messages := []anthropic.MessageParam{}
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)))
+
 	// Convert tools to Anthropic format
-	anthropicTools := make([]anthropicTool, len(tools))
+	anthropicTools := make([]anthropic.ToolUnionParam, len(tools))
 	for i, tool := range tools {
-		anthropicTools[i] = anthropicTool{
+		var schemaMap map[string]interface{}
+		if err := json.Unmarshal(tool.Parameters, &schemaMap); err != nil {
+			return Response{}, fmt.Errorf("failed to parse tool parameters: %w", err)
+		}
+
+		// Extract properties and required fields from schema
+		properties, _ := schemaMap["properties"]
+		required := []string{}
+		if req, ok := schemaMap["required"].([]interface{}); ok {
+			for _, r := range req {
+				if s, ok := r.(string); ok {
+					required = append(required, s)
+				}
+			}
+		}
+
+		// Create the input schema
+		inputSchema := anthropic.ToolInputSchemaParam{
+			Type:       "object",
+			Properties: properties,
+			Required:   required,
+		}
+
+		toolParam := anthropic.ToolParam{
 			Name:        tool.Name,
-			Description: tool.Description,
-			InputSchema: tool.Parameters,
+			Description: param.NewOpt(tool.Description),
+			InputSchema: inputSchema,
+		}
+		
+		anthropicTools[i] = anthropic.ToolUnionParam{
+			OfTool: &toolParam,
 		}
 	}
 
-	// Build request
-	req := anthropicRequest{
-		Model: a.mapModel(config.Model),
-		Messages: []anthropicMessage{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		MaxTokens:   config.MaxTokens,
-		Temperature: config.Temperature,
-		Tools:       anthropicTools,
+	// Build request parameters
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(a.mapModel(config.Model)),
+		Messages:  messages,
+		MaxTokens: int64(config.MaxTokens),
+		Tools:     anthropicTools,
 	}
 
+	// Set system prompt if provided
 	if config.SystemPrompt != "" {
-		req.System = config.SystemPrompt
+		params.System = []anthropic.TextBlockParam{
+			{
+				Text: config.SystemPrompt,
+				Type: "text",
+			},
+		}
 	}
 
+	// Set temperature if not default
+	if config.Temperature > 0 {
+		params.Temperature = param.NewOpt(float64(config.Temperature))
+	}
+
+	// Set top_p if provided
 	if config.TopP > 0 {
-		req.TopP = config.TopP
-	}
-
-	if len(config.StopSequences) > 0 {
-		req.StopSequences = config.StopSequences
+		params.TopP = param.NewOpt(float64(config.TopP))
 	}
 
 	// Make API call
-	resp, err := a.makeRequest(ctx, req)
+	message, err := a.client.Messages.New(ctx, params)
 	if err != nil {
-		return Response{}, err
+		return Response{}, a.handleError(err)
 	}
 
 	// Extract content and tool calls
-	content := ""
-	var toolCalls []ToolCall
-	
-	for _, block := range resp.Content {
-		switch block.Type {
-		case "text":
-			content += block.Text
-		case "tool_use":
-			toolCalls = append(toolCalls, ToolCall{
-				ID:        block.ID,
-				Name:      block.Name,
-				Arguments: block.Input,
-			})
-		}
-	}
+	content := a.extractContent(message)
+	toolCalls := a.extractToolCalls(message)
 
 	return Response{
 		Content:   content,
 		ToolCalls: toolCalls,
 		Usage: Usage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
+			PromptTokens:     int(message.Usage.InputTokens),
+			CompletionTokens: int(message.Usage.OutputTokens),
+			TotalTokens:      int(message.Usage.InputTokens + message.Usage.OutputTokens),
 		},
-		FinishReason: resp.StopReason,
-		Model:        resp.Model,
+		FinishReason: string(message.StopReason),
+		Model:        string(message.Model),
 	}, nil
 }
 
@@ -298,45 +277,77 @@ func (a *AnthropicAdapter) StreamGenerate(ctx context.Context, prompt string, co
 		}
 	}
 
-	// Validate configuration
-	if err := a.validateConfig(config); err != nil {
+	// Validate and adjust configuration
+	if err := a.validateConfig(&config); err != nil {
 		return nil, err
 	}
 
-	// Build request
-	req := anthropicRequest{
-		Model: a.mapModel(config.Model),
-		Messages: []anthropicMessage{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		MaxTokens:   config.MaxTokens,
-		Temperature: config.Temperature,
-		Stream:      true,
+	// Build messages
+	messages := []anthropic.MessageParam{}
+	messages = append(messages, anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)))
+
+	// Build request parameters
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(a.mapModel(config.Model)),
+		Messages:  messages,
+		MaxTokens: int64(config.MaxTokens),
 	}
 
+	// Set system prompt if provided
 	if config.SystemPrompt != "" {
-		req.System = config.SystemPrompt
+		params.System = []anthropic.TextBlockParam{
+			{
+				Text: config.SystemPrompt,
+				Type: "text",
+			},
+		}
 	}
 
+	// Set temperature if not default
+	if config.Temperature > 0 {
+		params.Temperature = param.NewOpt(float64(config.Temperature))
+	}
+
+	// Set top_p if provided
 	if config.TopP > 0 {
-		req.TopP = config.TopP
+		params.TopP = param.NewOpt(float64(config.TopP))
 	}
 
+	// Set stop sequences if provided
 	if len(config.StopSequences) > 0 {
-		req.StopSequences = config.StopSequences
+		params.StopSequences = config.StopSequences
 	}
+
+	// Create stream
+	stream := a.client.Messages.NewStreaming(ctx, params)
 
 	// Create output channel
 	tokenChan := make(chan Token)
 
-	// Start goroutine to handle streaming
+	// Start goroutine to read from stream
 	go func() {
 		defer close(tokenChan)
-		
-		if err := a.makeStreamRequest(ctx, req, tokenChan); err != nil {
+
+		for stream.Next() {
+			event := stream.Current()
+
+			// Handle different event types
+			switch event.Type {
+			case "content_block_delta":
+				if event.Delta.Text != "" {
+					select {
+					case tokenChan <- Token{Content: event.Delta.Text}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			case "message_stop":
+				// Stream is ending
+				return
+			}
+		}
+
+		if err := stream.Err(); err != nil {
 			select {
 			case tokenChan <- Token{Error: err}:
 			case <-ctx.Done():
@@ -347,120 +358,10 @@ func (a *AnthropicAdapter) StreamGenerate(ctx context.Context, prompt string, co
 	return tokenChan, nil
 }
 
-// makeRequest makes a non-streaming request to the Anthropic API
-func (a *AnthropicAdapter) makeRequest(ctx context.Context, req anthropicRequest) (*anthropicResponse, error) {
-	jsonData, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/messages", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", a.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := a.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, a.handleHTTPError(resp)
-	}
-
-	var anthropicResp anthropicResponse
-	if err := json.NewDecoder(resp.Body).Decode(&anthropicResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &anthropicResp, nil
-}
-
-// makeStreamRequest makes a streaming request to the Anthropic API
-func (a *AnthropicAdapter) makeStreamRequest(ctx context.Context, req anthropicRequest, tokenChan chan<- Token) error {
-	jsonData, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/messages", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", a.apiKey)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := a.httpClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return a.handleHTTPError(resp)
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	var eventData string
-	
-	for scanner.Scan() {
-		line := scanner.Text()
-		
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-		
-		// Parse SSE format
-		if strings.HasPrefix(line, "data: ") {
-			eventData = strings.TrimPrefix(line, "data: ")
-			
-			// Parse the JSON data
-			var event anthropicStreamEvent
-			if err := json.Unmarshal([]byte(eventData), &event); err != nil {
-				return fmt.Errorf("failed to decode stream event: %w", err)
-			}
-			
-			// Handle different event types
-			switch event.Type {
-			case "content_block_delta":
-				if event.Delta != nil && event.Delta.Type == "text_delta" {
-					select {
-					case tokenChan <- Token{Content: event.Delta.Text}:
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				}
-			case "message_stop":
-				return nil
-			case "error":
-				return fmt.Errorf("stream error: %v", event.Error)
-			}
-		}
-	}
-	
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scanner error: %w", err)
-	}
-	
-	return nil
-}
-
-// validateConfig validates the configuration
-func (a *AnthropicAdapter) validateConfig(config Config) error {
+// validateConfig validates and adjusts the configuration
+func (a *AnthropicAdapter) validateConfig(config *Config) error {
 	if config.Model == "" {
 		return fmt.Errorf("%w: model is required", ErrInvalidConfig)
-	}
-
-	if config.MaxTokens <= 0 {
-		config.MaxTokens = 1024 // Default max tokens for Anthropic
 	}
 
 	if config.Temperature < 0 || config.Temperature > 1 {
@@ -471,50 +372,95 @@ func (a *AnthropicAdapter) validateConfig(config Config) error {
 		return fmt.Errorf("%w: top_p must be between 0 and 1", ErrInvalidConfig)
 	}
 
+	// Anthropic requires max_tokens to be set
+	if config.MaxTokens == 0 {
+		config.MaxTokens = 1024 // Default value
+	}
+
+	if config.MaxTokens < 1 {
+		return fmt.Errorf("%w: max_tokens must be at least 1", ErrInvalidConfig)
+	}
+
 	return nil
 }
 
 // mapModel maps generic model names to Anthropic model names
 func (a *AnthropicAdapter) mapModel(model string) string {
-	// Map common model names to Anthropic model names
-	modelMap := map[string]string{
-		"claude-3-opus":    "claude-3-opus-20240229",
-		"claude-3-sonnet":  "claude-3-sonnet-20240229",
-		"claude-3-haiku":   "claude-3-haiku-20240307",
-		"claude-2.1":       "claude-2.1",
-		"claude-2":         "claude-2.0",
-		"claude-instant":   "claude-instant-1.2",
+	// Map common model names to Anthropic model IDs
+	switch model {
+	case "claude-3-opus":
+		return "claude-3-opus-20240229"
+	case "claude-3-sonnet":
+		return "claude-3-5-sonnet-20241022"
+	case "claude-3-haiku":
+		return "claude-3-5-haiku-20241022"
+	case "claude-2.1":
+		return "claude-2.1"
+	case "claude-2":
+		return "claude-2.0"
+	case "claude-instant":
+		return "claude-instant-1.2"
+	default:
+		// Pass through any specific model version
+		return model
 	}
-
-	if mapped, ok := modelMap[model]; ok {
-		return mapped
-	}
-	return model
 }
 
-// handleHTTPError handles HTTP error responses
-func (a *AnthropicAdapter) handleHTTPError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+// extractContent extracts text content from Anthropic message
+func (a *AnthropicAdapter) extractContent(message *anthropic.Message) string {
+	var content strings.Builder
 	
-	var errResp struct {
-		Error struct {
-			Type    string `json:"type"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	
-	if err := json.Unmarshal(body, &errResp); err == nil {
-		switch resp.StatusCode {
-		case 429:
-			return ErrRateLimitExceeded
-		case 400:
-			if errResp.Error.Type == "invalid_request_error" {
-				return fmt.Errorf("%w: %s", ErrInvalidConfig, errResp.Error.Message)
-			}
-		case 404:
-			return ErrModelNotSupported
+	for _, block := range message.Content {
+		if block.Type == "text" {
+			content.WriteString(block.Text)
 		}
 	}
+	
+	return content.String()
+}
 
-	return fmt.Errorf("anthropic api error: status %d, body: %s", resp.StatusCode, body)
+// extractToolCalls extracts tool calls from Anthropic message
+func (a *AnthropicAdapter) extractToolCalls(message *anthropic.Message) []ToolCall {
+	var toolCalls []ToolCall
+	
+	for _, block := range message.Content {
+		if block.Type == "tool_use" {
+			// Convert input to JSON
+			inputJSON, err := json.Marshal(block.Input)
+			if err != nil {
+				// If we can't marshal, use empty JSON
+				inputJSON = []byte("{}")
+			}
+			
+			toolCalls = append(toolCalls, ToolCall{
+				ID:        block.ID,
+				Name:      block.Name,
+				Arguments: json.RawMessage(inputJSON),
+			})
+		}
+	}
+	
+	return toolCalls
+}
+
+// handleError converts Anthropic errors to adapter errors
+func (a *AnthropicAdapter) handleError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check for specific error patterns
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "rate_limit"):
+		return ErrRateLimitExceeded
+	case strings.Contains(errStr, "invalid_request_error"):
+		return ErrInvalidConfig
+	case strings.Contains(errStr, "model_not_found"):
+		return ErrModelNotSupported
+	case strings.Contains(errStr, "authentication_error"):
+		return ErrAPIKeyMissing
+	default:
+		return fmt.Errorf("anthropic api error: %w", err)
+	}
 }

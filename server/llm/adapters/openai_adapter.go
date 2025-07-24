@@ -3,18 +3,18 @@ package llmadapters
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
+	"strings"
 
-	"github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"golang.org/x/time/rate"
 )
 
 // OpenAIAdapter implements the Adapter interface for OpenAI API
 type OpenAIAdapter struct {
-	client      *openai.Client
+	client      openai.Client
 	rateLimiter *rate.Limiter
 }
 
@@ -28,7 +28,9 @@ func NewOpenAIAdapter(apiKey string) (*OpenAIAdapter, error) {
 		}
 	}
 
-	client := openai.NewClient(apiKey)
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+	)
 	
 	// Create rate limiter: 60 requests per minute
 	rateLimiter := rate.NewLimiter(rate.Limit(1), 60)
@@ -54,63 +56,103 @@ func (a *OpenAIAdapter) Generate(ctx context.Context, prompt string, config Conf
 	}
 
 	// Build messages
-	messages := []openai.ChatCompletionMessage{}
+	messages := []openai.ChatCompletionMessageParamUnion{}
 	
 	if config.SystemPrompt != "" {
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: config.SystemPrompt,
-		})
+		messages = append(messages, openai.SystemMessage(config.SystemPrompt))
 	}
 	
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
-		Content: prompt,
-	})
+	messages = append(messages, openai.UserMessage(prompt))
 
-	// Build request
-	req := openai.ChatCompletionRequest{
-		Model:       a.mapModel(config.Model),
-		Messages:    messages,
-		Temperature: float32(config.Temperature),
-		MaxTokens:   config.MaxTokens,
+	// Build request parameters
+	params := openai.ChatCompletionNewParams{
+		Model:    openai.ChatModel(a.mapModel(config.Model)),
+		Messages: messages,
+	}
+	
+	// Some models (o4, o1) don't support temperature parameter
+	if !strings.HasPrefix(config.Model, "o4") && !strings.HasPrefix(config.Model, "o1") {
+		params.Temperature = openai.Float(float64(config.Temperature))
+	}
+
+	if config.MaxTokens > 0 {
+		// Some models use max_completion_tokens instead of max_tokens
+		if strings.HasPrefix(config.Model, "o4") || strings.HasPrefix(config.Model, "o1") {
+			params.MaxCompletionTokens = openai.Int(int64(config.MaxTokens))
+		} else {
+			params.MaxTokens = openai.Int(int64(config.MaxTokens))
+		}
 	}
 
 	if config.TopP > 0 {
-		req.TopP = float32(config.TopP)
+		params.TopP = openai.Float(float64(config.TopP))
 	}
 
 	if len(config.StopSequences) > 0 {
-		req.Stop = config.StopSequences
+		// OpenAI API accepts stop sequences as a slice or a single string
+		if len(config.StopSequences) == 1 {
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfString: openai.String(config.StopSequences[0])}
+		} else {
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: config.StopSequences}
+		}
 	}
 
+	// Handle response format
 	if config.ResponseFormat == "json" {
-		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		if len(config.ResponseSchema) > 0 {
+			// Use structured output with JSON schema
+			var schema interface{}
+			if err := json.Unmarshal(config.ResponseSchema, &schema); err != nil {
+				return Response{}, fmt.Errorf("invalid response schema: %w", err)
+			}
+			
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONSchema: &openai.ResponseFormatJSONSchemaParam{
+					Type: "json_schema",
+					JSONSchema: openai.ResponseFormatJSONSchemaJSONSchemaParam{
+						Name:   "response",
+						Strict: openai.Bool(true),
+						Schema: schema,
+					},
+				},
+			}
+		} else {
+			// Simple JSON mode
+			params.ResponseFormat = openai.ChatCompletionNewParamsResponseFormatUnion{
+				OfJSONObject: &openai.ResponseFormatJSONObjectParam{
+					Type: "json_object",
+				},
+			}
 		}
 	}
 
 	// Make API call
-	resp, err := a.client.CreateChatCompletion(ctx, req)
+	completion, err := a.client.Chat.Completions.New(ctx, params)
 	if err != nil {
 		return Response{}, a.handleError(err)
 	}
 
-	if len(resp.Choices) == 0 {
+	if len(completion.Choices) == 0 {
 		return Response{}, ErrInvalidResponse
 	}
 
-	choice := resp.Choices[0]
+	choice := completion.Choices[0]
+	
+	// Get content, checking for refusal
+	content := choice.Message.Content
+	if content == "" && choice.Message.Refusal != "" {
+		content = choice.Message.Refusal
+	}
 	
 	return Response{
-		Content: choice.Message.Content,
+		Content: content,
 		Usage: Usage{
-			PromptTokens:     resp.Usage.PromptTokens,
-			CompletionTokens: resp.Usage.CompletionTokens,
-			TotalTokens:      resp.Usage.TotalTokens,
+			PromptTokens:     int(completion.Usage.PromptTokens),
+			CompletionTokens: int(completion.Usage.CompletionTokens),
+			TotalTokens:      int(completion.Usage.TotalTokens),
 		},
 		FinishReason: string(choice.FinishReason),
-		Model:        resp.Model,
+		Model:        completion.Model,
 	}, nil
 }
 
@@ -129,61 +171,68 @@ func (a *OpenAIAdapter) GenerateWithTools(ctx context.Context, prompt string, to
 	}
 
 	// Build messages
-	messages := []openai.ChatCompletionMessage{}
+	messages := []openai.ChatCompletionMessageParamUnion{}
 	
 	if config.SystemPrompt != "" {
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: config.SystemPrompt,
-		})
+		messages = append(messages, openai.SystemMessage(config.SystemPrompt))
 	}
 	
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
-		Content: prompt,
-	})
+	messages = append(messages, openai.UserMessage(prompt))
 
 	// Convert tools to OpenAI format
-	openaiTools := make([]openai.Tool, len(tools))
+	openaiTools := make([]openai.ChatCompletionToolParam, len(tools))
 	for i, tool := range tools {
-		openaiTools[i] = openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: openai.FunctionDefinition{
+		var params interface{}
+		if err := json.Unmarshal(tool.Parameters, &params); err != nil {
+			return Response{}, fmt.Errorf("failed to parse tool parameters: %w", err)
+		}
+
+		openaiTools[i] = openai.ChatCompletionToolParam{
+			Type: "function",
+			Function: openai.FunctionDefinitionParam{
 				Name:        tool.Name,
-				Description: tool.Description,
-				Parameters:  tool.Parameters,
+				Description: openai.String(tool.Description),
+				Parameters:  openai.FunctionParameters(params.(map[string]interface{})),
 			},
 		}
 	}
 
-	// Build request
-	req := openai.ChatCompletionRequest{
-		Model:       a.mapModel(config.Model),
-		Messages:    messages,
-		Temperature: float32(config.Temperature),
-		MaxTokens:   config.MaxTokens,
-		Tools:       openaiTools,
+	// Build request parameters
+	reqParams := openai.ChatCompletionNewParams{
+		Model:    openai.ChatModel(a.mapModel(config.Model)),
+		Messages: messages,
+		Tools:    openaiTools,
+	}
+	
+	// Some models (o4, o1) don't support temperature parameter
+	if !strings.HasPrefix(config.Model, "o4") && !strings.HasPrefix(config.Model, "o1") {
+		reqParams.Temperature = openai.Float(float64(config.Temperature))
+	}
+
+	if config.MaxTokens > 0 {
+		// Some models use max_completion_tokens instead of max_tokens
+		if strings.HasPrefix(config.Model, "o4") || strings.HasPrefix(config.Model, "o1") {
+			reqParams.MaxCompletionTokens = openai.Int(int64(config.MaxTokens))
+		} else {
+			reqParams.MaxTokens = openai.Int(int64(config.MaxTokens))
+		}
 	}
 
 	if config.TopP > 0 {
-		req.TopP = float32(config.TopP)
-	}
-
-	if len(config.StopSequences) > 0 {
-		req.Stop = config.StopSequences
+		reqParams.TopP = openai.Float(float64(config.TopP))
 	}
 
 	// Make API call
-	resp, err := a.client.CreateChatCompletion(ctx, req)
+	completion, err := a.client.Chat.Completions.New(ctx, reqParams)
 	if err != nil {
 		return Response{}, a.handleError(err)
 	}
 
-	if len(resp.Choices) == 0 {
+	if len(completion.Choices) == 0 {
 		return Response{}, ErrInvalidResponse
 	}
 
-	choice := resp.Choices[0]
+	choice := completion.Choices[0]
 	
 	// Convert tool calls
 	var toolCalls []ToolCall
@@ -202,12 +251,12 @@ func (a *OpenAIAdapter) GenerateWithTools(ctx context.Context, prompt string, to
 		Content:   choice.Message.Content,
 		ToolCalls: toolCalls,
 		Usage: Usage{
-			PromptTokens:     resp.Usage.PromptTokens,
-			CompletionTokens: resp.Usage.CompletionTokens,
-			TotalTokens:      resp.Usage.TotalTokens,
+			PromptTokens:     int(completion.Usage.PromptTokens),
+			CompletionTokens: int(completion.Usage.CompletionTokens),
+			TotalTokens:      int(completion.Usage.TotalTokens),
 		},
 		FinishReason: string(choice.FinishReason),
-		Model:        resp.Model,
+		Model:        completion.Model,
 	}, nil
 }
 
@@ -226,42 +275,49 @@ func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, prompt string, confi
 	}
 
 	// Build messages
-	messages := []openai.ChatCompletionMessage{}
+	messages := []openai.ChatCompletionMessageParamUnion{}
 	
 	if config.SystemPrompt != "" {
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: config.SystemPrompt,
-		})
+		messages = append(messages, openai.SystemMessage(config.SystemPrompt))
 	}
 	
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
-		Content: prompt,
-	})
+	messages = append(messages, openai.UserMessage(prompt))
 
-	// Build request
-	req := openai.ChatCompletionRequest{
-		Model:       a.mapModel(config.Model),
-		Messages:    messages,
-		Temperature: float32(config.Temperature),
-		MaxTokens:   config.MaxTokens,
-		Stream:      true,
+	// Build request parameters
+	params := openai.ChatCompletionNewParams{
+		Model:    openai.ChatModel(a.mapModel(config.Model)),
+		Messages: messages,
+	}
+	
+	// Some models (o4, o1) don't support temperature parameter
+	if !strings.HasPrefix(config.Model, "o4") && !strings.HasPrefix(config.Model, "o1") {
+		params.Temperature = openai.Float(float64(config.Temperature))
+	}
+
+	if config.MaxTokens > 0 {
+		// Some models use max_completion_tokens instead of max_tokens
+		if strings.HasPrefix(config.Model, "o4") || strings.HasPrefix(config.Model, "o1") {
+			params.MaxCompletionTokens = openai.Int(int64(config.MaxTokens))
+		} else {
+			params.MaxTokens = openai.Int(int64(config.MaxTokens))
+		}
 	}
 
 	if config.TopP > 0 {
-		req.TopP = float32(config.TopP)
+		params.TopP = openai.Float(float64(config.TopP))
 	}
 
 	if len(config.StopSequences) > 0 {
-		req.Stop = config.StopSequences
+		// OpenAI API accepts stop sequences as a slice or a single string
+		if len(config.StopSequences) == 1 {
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfString: openai.String(config.StopSequences[0])}
+		} else {
+			params.Stop = openai.ChatCompletionNewParamsStopUnion{OfStringArray: config.StopSequences}
+		}
 	}
 
 	// Create stream
-	stream, err := a.client.CreateChatCompletionStream(ctx, req)
-	if err != nil {
-		return nil, a.handleError(err)
-	}
+	stream := a.client.Chat.Completions.NewStreaming(ctx, params)
 
 	// Create output channel
 	tokenChan := make(chan Token)
@@ -269,27 +325,23 @@ func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, prompt string, confi
 	// Start goroutine to read from stream
 	go func() {
 		defer close(tokenChan)
-		defer stream.Close()
 
-		for {
-			response, err := stream.Recv()
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			if err != nil {
+		for stream.Next() {
+			chunk := stream.Current()
+			
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				select {
-				case tokenChan <- Token{Error: err}:
-				case <-ctx.Done():
-				}
-				return
-			}
-
-			if len(response.Choices) > 0 && response.Choices[0].Delta.Content != "" {
-				select {
-				case tokenChan <- Token{Content: response.Choices[0].Delta.Content}:
+				case tokenChan <- Token{Content: chunk.Choices[0].Delta.Content}:
 				case <-ctx.Done():
 					return
 				}
+			}
+		}
+
+		if err := stream.Err(); err != nil {
+			select {
+			case tokenChan <- Token{Error: err}:
+			case <-ctx.Done():
 			}
 		}
 	}()
@@ -324,18 +376,8 @@ func (a *OpenAIAdapter) validateConfig(config Config) error {
 
 // mapModel maps generic model names to OpenAI model names
 func (a *OpenAIAdapter) mapModel(model string) string {
-	// Map common model names to OpenAI model names
-	modelMap := map[string]string{
-		"gpt-4":           openai.GPT4,
-		"gpt-4-turbo":     "gpt-4-turbo-preview",
-		"gpt-3.5-turbo":   openai.GPT3Dot5Turbo,
-		"gpt-4o":          "gpt-4o",
-		"gpt-4o-mini":     "gpt-4o-mini",
-	}
-
-	if mapped, ok := modelMap[model]; ok {
-		return mapped
-	}
+	// The new SDK uses string types for models, so we can just return the model name
+	// All model names are passed through directly
 	return model
 }
 
@@ -345,22 +387,18 @@ func (a *OpenAIAdapter) handleError(err error) error {
 		return nil
 	}
 
-	// Check for specific error types
-	var apiErr *openai.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.HTTPStatusCode {
-		case 429:
-			return ErrRateLimitExceeded
-		case 400:
-			if apiErr.Code == "context_length_exceeded" {
-				return ErrContextLengthExceeded
-			}
-		case 404:
-			if apiErr.Code == "model_not_found" {
-				return ErrModelNotSupported
-			}
-		}
+	// Check for specific error patterns in the error message
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "rate_limit"):
+		return ErrRateLimitExceeded
+	case strings.Contains(errStr, "context_length_exceeded"):
+		return ErrContextLengthExceeded
+	case strings.Contains(errStr, "model_not_found"):
+		return ErrModelNotSupported
+	case strings.Contains(errStr, "invalid_api_key"):
+		return ErrAPIKeyMissing
+	default:
+		return fmt.Errorf("openai api error: %w", err)
 	}
-
-	return fmt.Errorf("openai api error: %w", err)
 }

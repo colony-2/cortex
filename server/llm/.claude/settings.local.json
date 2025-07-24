@@ -7,7 +7,10 @@
       "Bash(mv:*)",
       "Bash(go doc:*)",
       "Bash(go test:*)",
-      "Bash(go get:*)"
+      "Bash(go get:*)",
+      "WebFetch(domain:pkg.go.dev)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:platform.openai.com)"
     ],
     "deny": []
   }

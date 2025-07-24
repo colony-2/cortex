@@ -7,15 +7,15 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/vibethis/server/recipe-worker/pkg/compiler"
+	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap/zaptest"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
-	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
 )
 
 type WorkerIntegrationTestSuite struct {
@@ -96,7 +96,7 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 			Name: "test-workflow",
 		},
 	)
-	
+
 	// Mock the activity - must be after RegisterWorkflow
 	s.env.OnActivity("echo-activity", mock.Anything, mock.Anything).Return(
 		map[string]interface{}{"echoed": "Hello, World!"},
@@ -185,7 +185,7 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 			Name: "parallel-workflow",
 		},
 	)
-	
+
 	// Mock the activity calls - must be after RegisterWorkflow
 	s.env.OnActivity("process-activity", mock.Anything, map[string]interface{}{"data": "data1"}).Return(
 		map[string]interface{}{"result": "processed-data1"},
@@ -265,7 +265,7 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 			Name: "retry-workflow",
 		},
 	)
-	
+
 	// Mock the activity to fail twice then succeed - must be after RegisterWorkflow
 	attemptCount := 0
 	s.env.OnActivity("flaky-activity", mock.Anything, mock.Anything).Return(
@@ -292,7 +292,7 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 
 func (s *WorkerIntegrationTestSuite) TestWorkerManagerWithMockClient() {
 	logger := zaptest.NewLogger(s.T())
-	
+
 	// Create a test recipe
 	_ = &recipe.Recipe{
 		Name:        "test-recipe",

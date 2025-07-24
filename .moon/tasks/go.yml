@@ -13,6 +13,7 @@ tasks:
       - "^:build"
     options:
       runInCI: true
+      outputStyle: stream
 
   test:
     command: 'gotestsum -- -v ./...'
@@ -25,6 +26,7 @@ tasks:
     platform: 'system'
     options:
       runInCI: true
+      outputStyle: stream
 
   lint:
     command: 'go vet ./...'
