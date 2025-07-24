@@ -2,17 +2,46 @@
 
 ## Overview
 
-This specification defines how to create wrappers for activities in the `./activity` module to make them usable in `recipe-worker` through YAML definitions. The goal is to establish a standardized interface that allows any activity to be registered and executed within the recipe system using Go generics for type safety and automatic schema derivation.
+This specification defines how activities in the `./activity` module expose themselves for consumption by `recipe-worker` through YAML definitions. The goal is to establish a standardized interface that allows any activity to be registered and executed within the recipe system using Go generics for type safety and automatic schema derivation.
+
+## Architecture Overview
+
+### Dependency Flow
+
+```
+┌─────────────┐     ┌───────────────┐     ┌──────────────┐
+│   activity  │────▶│  recipe-core  │◀────│recipe-worker │
+└─────────────┘     └───────────────┘     └──────────────┘
+     defines              common              consumes
+  activities &           schemas           activities &
+   interface                              implements logic
+```
+
+**Key Principles:**
+- `activity` module defines the `RegisterableActivity` interface and activity implementations
+- `activity` module has NO dependency on `recipe-worker`
+- `recipe-worker` imports and consumes activities from the `activity` module
+- `recipe-core` contains only common types/schemas used by both
+- All registration, schema generation, and provider bridging logic lives in `recipe-worker`
 
 ## Architecture
 
-### 1. Core Interface Definition (recipe-core)
+### 1. Core Interface Definition (activity module)
 
-A new generic interface will be defined in `recipe-core` that standardizes how activities are shaped for registration:
+The generic interface will be defined in `./activity` that standardizes how activities expose themselves:
 
 ```go
-// RegisterableActivity defines the contract for activities that can be registered
-// and used in recipe-worker via YAML definitions
+// Package activity defines interfaces for activities that can be consumed by recipe-worker
+// Located in: ./activity/pkg/types/activity.go
+package types
+
+import (
+    "context"
+    "time"
+)
+
+// RegisterableActivity defines the contract for activities that can be consumed
+// by external systems like recipe-worker via YAML definitions
 type RegisterableActivity[TConfig any, TInput any, TOutput any] interface {
     // GetMetadata returns activity metadata for registration
     GetMetadata() ActivityMetadata
@@ -31,73 +60,87 @@ type ActivityMetadata struct {
     RetryPolicy    *RetryPolicy   // Default retry configuration
 }
 
-// SchemaGenerator validates struct tags and generates JSON schemas
-type SchemaGenerator interface {
-    // GenerateSchema creates a JSON schema from a Go type
-    // Returns error if any struct field is missing a json tag
-    GenerateSchema(typ reflect.Type) (*jsonschema.Schema, error)
-    
-    // ValidateStructTags ensures all fields have explicit json tags
-    ValidateStructTags(typ reflect.Type) error
+// RetryPolicy defines retry behavior
+type RetryPolicy struct {
+    MaximumAttempts        int32
+    InitialInterval        time.Duration
+    BackoffCoefficient     float64
+    MaximumInterval        time.Duration
+    NonRetryableErrorTypes []string
 }
 ```
 
-### 2. Activity Wrapper Pattern
+### 2. Activity Implementation Pattern (activity module)
 
-Each activity in the `./activity` module will have a corresponding wrapper that implements `RegisterableActivity`:
+Activities in the `./activity` module implement `RegisterableActivity`:
 
 ```go
-// Define typed structs for LLM activity
+// Located in: ./activity/pkg/llm/wrapper.go
+package llm
+
+import (
+    "context"
+    "time"
+    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+)
+
+// Define typed structs for LLM activity - ALL fields MUST have json tags
 type LLMConfig struct {
-    Provider    string  `json:"provider" jsonschema:"enum=openai,enum=anthropic,enum=bedrock,required"`
-    Model       string  `json:"model" jsonschema:"required"`
-    Temperature float64 `json:"temperature,omitempty" jsonschema:"minimum=0,maximum=2"`
+    Provider    string  `json:"provider"`    // Required by consumer
+    Model       string  `json:"model"`       // Required by consumer
+    Temperature float64 `json:"temperature"` // Optional with validation
 }
 
 type LLMInput struct {
-    Prompt    string `json:"prompt" jsonschema:"required"`
-    System    string `json:"system,omitempty"`
-    MaxTokens int    `json:"max_tokens,omitempty"`
+    Prompt    string `json:"prompt"`     // Required
+    System    string `json:"system"`     // Optional
+    MaxTokens int    `json:"max_tokens"` // Optional
 }
 
 type LLMOutput struct {
     Response string                 `json:"response"`
-    Usage    map[string]interface{} `json:"usage,omitempty"`
+    Usage    map[string]interface{} `json:"usage"`
 }
 
-// Example: LLM Activity Wrapper
-type LLMActivityWrapper struct {
-    activity *llm.Activity
+// LLMActivity implements the RegisterableActivity interface
+type LLMActivity struct {
+    client *Client // Internal LLM client
 }
 
-// Implement the generic interface
-var _ RegisterableActivity[LLMConfig, LLMInput, LLMOutput] = (*LLMActivityWrapper)(nil)
+// Ensure we implement the interface
+var _ types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] = (*LLMActivity)(nil)
 
-func NewLLMActivityWrapper() RegisterableActivity[LLMConfig, LLMInput, LLMOutput] {
-    return &LLMActivityWrapper{
-        activity: llm.NewActivity(),
+func NewLLMActivity() types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] {
+    return &LLMActivity{
+        client: NewClient(),
     }
 }
 
-func (w *LLMActivityWrapper) GetMetadata() ActivityMetadata {
-    return ActivityMetadata{
+func (a *LLMActivity) GetMetadata() types.ActivityMetadata {
+    return types.ActivityMetadata{
         Type:           "llm_inference",
         Name:           "LLM Inference",
         Description:    "Executes LLM inference with various providers",
         Version:        "1.0.0",
         DefaultTimeout: 5 * time.Minute,
+        RetryPolicy: &types.RetryPolicy{
+            MaximumAttempts:    3,
+            InitialInterval:    1 * time.Second,
+            BackoffCoefficient: 2.0,
+            MaximumInterval:    30 * time.Second,
+        },
     }
 }
 
-func (w *LLMActivityWrapper) Execute(ctx context.Context, config LLMConfig, inputs LLMInput) (LLMOutput, error) {
+func (a *LLMActivity) Execute(ctx context.Context, config LLMConfig, input LLMInput) (LLMOutput, error) {
     // Direct execution with typed parameters
-    response, err := w.activity.Execute(ctx, llm.Request{
+    response, err := a.client.Complete(ctx, &CompletionRequest{
         Provider:    config.Provider,
         Model:       config.Model,
         Temperature: config.Temperature,
-        Prompt:      inputs.Prompt,
-        System:      inputs.System,
-        MaxTokens:   inputs.MaxTokens,
+        Prompt:      input.Prompt,
+        System:      input.System,
+        MaxTokens:   input.MaxTokens,
     })
     
     if err != nil {
@@ -109,15 +152,23 @@ func (w *LLMActivityWrapper) Execute(ctx context.Context, config LLMConfig, inpu
         Usage:    response.Usage,
     }, nil
 }
-
 ```
 
-### 3. Registration System with Schema Generation
+### 3. Registration System with Schema Generation (recipe-worker)
 
-Activities will be registered with the recipe-worker system, including automatic schema generation:
+The registration system and all schema generation logic lives in `recipe-worker`:
 
 ```go
-// In recipe-worker/pkg/worker/activity_registry.go
+// Located in: recipe-worker/pkg/worker/activity_registry.go
+package worker
+
+import (
+    "fmt"
+    "reflect"
+    
+    "github.com/invopop/jsonschema"
+    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+)
 
 // ActivityRegistration holds the activity and its generated schemas
 type ActivityRegistration struct {
@@ -125,18 +176,26 @@ type ActivityRegistration struct {
     ConfigSchema *jsonschema.Schema
     InputSchema  *jsonschema.Schema
     OutputSchema *jsonschema.Schema
-    Metadata     ActivityMetadata
+    Metadata     types.ActivityMetadata
 }
 
+// ActivityRegistry manages all registered activities
 type ActivityRegistry struct {
     activities map[string]ActivityRegistration
     generator  SchemaGenerator
 }
 
-// Register accepts any generic RegisterableActivity and generates schemas
+// SchemaGenerator validates struct tags and generates JSON schemas
+// This is internal to recipe-worker
+type SchemaGenerator interface {
+    GenerateSchema(typ reflect.Type) (*jsonschema.Schema, error)
+    ValidateStructTags(typ reflect.Type) error
+}
+
+// Register accepts any generic RegisterableActivity from the activity module
 func Register[TConfig any, TInput any, TOutput any](
     r *ActivityRegistry,
-    activity RegisterableActivity[TConfig, TInput, TOutput],
+    activity types.RegisterableActivity[TConfig, TInput, TOutput],
 ) error {
     metadata := activity.GetMetadata()
     
@@ -260,19 +319,30 @@ func (g *DefaultSchemaGenerator) ValidateStructTags(typ reflect.Type) error {
 }
 ```
 
-### 4. Provider Bridge
+### 4. Provider Bridge (recipe-worker)
 
-A generic provider will bridge between the existing provider system and the new registerable activities:
+A generic provider in `recipe-worker` bridges between the existing provider system and activities from the `activity` module:
 
 ```go
-// Generic provider that wraps any RegisterableActivity
+// Located in: recipe-worker/pkg/worker/activity_provider.go
+package worker
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    
+    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+)
+
+// RegisterableActivityProvider wraps any RegisterableActivity for use in recipe-worker
 type RegisterableActivityProvider[TConfig any, TInput any, TOutput any] struct {
-    activity     RegisterableActivity[TConfig, TInput, TOutput]
+    activity     types.RegisterableActivity[TConfig, TInput, TOutput]
     registration ActivityRegistration
 }
 
 func NewActivityProvider[TConfig any, TInput any, TOutput any](
-    activity RegisterableActivity[TConfig, TInput, TOutput],
+    activity types.RegisterableActivity[TConfig, TInput, TOutput],
     registration ActivityRegistration,
 ) *RegisterableActivityProvider[TConfig, TInput, TOutput] {
     return &RegisterableActivityProvider[TConfig, TInput, TOutput]{
@@ -481,60 +551,104 @@ type ConfigWithIgnored struct {
 }
 ```
 
-### 7. Auto-Registration
+### 7. Activity Registration in recipe-worker
 
-Activities can be auto-registered during package initialization:
+Recipe-worker is responsible for discovering and registering activities:
 
 ```go
-// In activity/pkg/llm/register.go
-func init() {
-    registry := worker.GetGlobalActivityRegistry()
-    Register(registry, NewLLMActivityWrapper())
+// Located in: recipe-worker/cmd/worker/main.go or recipe-worker/pkg/worker/init.go
+package main
+
+import (
+    "github.com/divisive-ai/vibethis/server/activity/pkg/llm"
+    "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+)
+
+func initializeActivities(registry *worker.ActivityRegistry) {
+    // Import and register LLM activity
+    llmActivity := llm.NewLLMActivity()
+    worker.Register[llm.LLMConfig, llm.LLMInput, llm.LLMOutput](registry, llmActivity)
+    
+    // Import and register other activities
+    // emailActivity := email.NewEmailActivity()
+    // worker.Register[email.Config, email.Input, email.Output](registry, emailActivity)
 }
 
-// Or with a helper function that handles the generic registration
-func RegisterLLMActivity(registry *ActivityRegistry) {
-    wrapper := NewLLMActivityWrapper()
-    Register[LLMConfig, LLMInput, LLMOutput](registry, wrapper)
+// Alternative: Activity modules can export a registration function
+// Located in: activity/pkg/llm/exports.go
+package llm
+
+import "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+
+// GetActivities returns all activities exported by this package
+func GetActivities() []interface{} {
+    return []interface{}{
+        NewLLMActivity(),
+        // Add other activities from this package
+    }
+}
+
+// Then in recipe-worker:
+func registerAllActivities(registry *worker.ActivityRegistry) {
+    // Register LLM activities
+    for _, activity := range llm.GetActivities() {
+        // Use type assertion to register with proper types
+        switch a := activity.(type) {
+        case types.RegisterableActivity[llm.LLMConfig, llm.LLMInput, llm.LLMOutput]:
+            worker.Register[llm.LLMConfig, llm.LLMInput, llm.LLMOutput](registry, a)
+        }
+    }
 }
 ```
 
 ## Implementation Steps
 
-1. **Add Dependencies**: Add `github.com/invopop/jsonschema` to go.mod
-2. **Define Core Interface**: Create `RegisterableActivity` interface in `recipe-core/pkg/recipe/activity.go`
-3. **Create Registry**: Implement activity registry in `recipe-worker/pkg/worker/activity_registry.go`
-4. **Implement Schema Generator**: Create schema generator using invopop/jsonschema with strict JSON tag validation
-5. **Build Provider Bridge**: Create generic provider to bridge registerable activities
-6. **Wrap Existing Activities**: Create wrappers for activities in `./activity` module ensuring all structs have JSON tags
-7. **Update Worker**: Modify worker to use the registry for activity discovery
-8. **Add Tests**: Create comprehensive tests for registration, validation, and execution
-9. **Documentation**: Update documentation with examples and best practices
+1. **Define Core Interface in activity module**:
+   - Create `RegisterableActivity` interface in `./activity/pkg/types/activity.go`
+   - Define `ActivityMetadata` and `RetryPolicy` types
+   - No dependencies on recipe-worker or recipe-core
 
-## Required Imports
+2. **Update existing activities**:
+   - Modify activities in `./activity` to implement `RegisterableActivity`
+   - Ensure all config/input/output structs have explicit JSON tags on every field
+   - Export type definitions for use by consumers
 
-```go
-import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "reflect"
-    "time"
-    
-    "github.com/invopop/jsonschema"
-)
-```
+3. **Add Dependencies to recipe-worker**: 
+   - Add `github.com/invopop/jsonschema` to recipe-worker's go.mod
+   - Add dependency on `./activity` module
+
+4. **Implement Registry in recipe-worker**:
+   - Create activity registry in `recipe-worker/pkg/worker/activity_registry.go`
+   - Implement schema generator using invopop/jsonschema with strict JSON tag validation
+   - Build generic provider to bridge registerable activities
+
+5. **Update Worker initialization**:
+   - Modify worker to import activities from `./activity`
+   - Register activities during startup
+   - Use the registry for activity discovery
+
+6. **Add Tests**:
+   - Test registration with missing JSON tags (should fail)
+   - Test schema generation
+   - Test activity execution through the provider bridge
+
+7. **Documentation**:
+   - Document the registration process
+   - Provide examples of creating new activities
+   - Show how recipe-worker consumes activities
 
 ## Benefits
 
-1. **Type Safety**: Full compile-time type checking with generics instead of runtime map[string]interface{} conversions
-2. **Automatic Schema Generation**: JSON schemas derived automatically from Go structs with tags
-3. **Standardization**: All activities follow the same interface
-4. **Discoverability**: Activities self-document through metadata and schemas
-5. **Extensibility**: Easy to add new activities by implementing the interface
-6. **Backwards Compatibility**: Existing provider system continues to work
-7. **YAML Support**: Activities automatically work with YAML definitions
-8. **Reduced Boilerplate**: No need to manually define schemas or type conversion code
+1. **Clean Architecture**: Clear separation of concerns - activities don't depend on recipe-worker
+2. **Type Safety**: Full compile-time type checking with generics instead of runtime map[string]interface{} conversions
+3. **Automatic Schema Generation**: JSON schemas derived automatically from Go structs with tags
+4. **Enforced Standards**: Registration fails if struct fields lack JSON tags, ensuring consistency
+5. **Discoverability**: Activities self-document through metadata and schemas
+6. **Extensibility**: Easy to add new activities by implementing the interface in the activity module
+7. **Backwards Compatibility**: Existing provider system in recipe-worker continues to work
+8. **YAML Support**: Activities automatically work with YAML definitions in recipe-core
+9. **Reduced Boilerplate**: No need to manually define schemas or type conversion code
+10. **Testability**: Activities can be tested independently without recipe-worker dependencies
 
 ## Example Usage
 
@@ -612,7 +726,9 @@ activities:
 
 ## Migration Path
 
-1. Existing activities continue to work through the current provider system
-2. New wrappers can be added incrementally
-3. Once all activities are wrapped, the old system can be deprecated
-4. YAML recipes remain unchanged, only internal implementation changes
+1. **Phase 1**: Define `RegisterableActivity` interface in `./activity`
+2. **Phase 2**: Update activities to implement the new interface while maintaining existing functionality
+3. **Phase 3**: Update recipe-worker to consume activities via the new interface
+4. **Phase 4**: Existing provider system continues to work during transition
+5. **Phase 5**: Once all activities are migrated, deprecate old provider implementations
+6. **Note**: YAML recipes remain unchanged - only internal implementation changes
