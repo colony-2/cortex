@@ -1,0 +1,203 @@
+package command
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"time"
+
+	"github.com/vibethis/server/activity/pkg/types"
+)
+
+// CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags
+type CommandExecutionConfig struct {
+	// Optional: working directory for command execution
+	WorkingDir string `json:"working_dir"`
+	// Optional: shell to use (bash, sh, powershell, cmd)
+	Shell string `json:"shell"`
+	// Optional: environment variables
+	Env map[string]string `json:"env"`
+}
+
+// CommandExecutionInput defines the input for command execution activities - ALL fields MUST have json tags
+type CommandExecutionInput struct {
+	Run              string            `json:"run"`                // Required: command to execute
+	WorkingDirectory string            `json:"working_directory"`  // Optional: override working directory
+	Shell            string            `json:"shell"`              // Optional: override shell
+	Env              map[string]string `json:"env"`                // Optional: additional env vars
+	ContinueOnError  bool              `json:"continue_on_error"`  // Optional: don't fail on non-zero exit
+	Timeout          string            `json:"timeout"`            // Optional: timeout duration (e.g., "30s")
+}
+
+// CommandExecutionOutput defines the output from command execution activities - ALL fields MUST have json tags
+type CommandExecutionOutput struct {
+	Stdout       string `json:"stdout"`        // Standard output
+	Stderr       string `json:"stderr"`        // Standard error
+	ExitCode     int    `json:"exit_code"`     // Process exit code
+	Success      bool   `json:"success"`       // Whether command succeeded
+	TimedOut     bool   `json:"timed_out"`     // Whether command timed out
+	ErrorMessage string `json:"error_message"` // Error message if failed
+}
+
+// CommandExecutionActivityWrapper implements the RegisterableActivity interface
+type CommandExecutionActivityWrapper struct{}
+
+// Ensure we implement the interface
+var _ types.RegisterableActivity[CommandExecutionConfig, CommandExecutionInput, CommandExecutionOutput] = (*CommandExecutionActivityWrapper)(nil)
+
+// NewCommandExecutionActivity creates a new command execution activity that implements RegisterableActivity
+func NewCommandExecutionActivity() types.RegisterableActivity[CommandExecutionConfig, CommandExecutionInput, CommandExecutionOutput] {
+	return &CommandExecutionActivityWrapper{}
+}
+
+// GetMetadata returns activity metadata for registration
+func (a *CommandExecutionActivityWrapper) GetMetadata() types.ActivityMetadata {
+	return types.ActivityMetadata{
+		Type:           "command_execution",
+		Name:           "Command Execution",
+		Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
+		Version:        "1.0.0",
+		DefaultTimeout: 5 * time.Minute,
+		RetryPolicy: &types.RetryPolicy{
+			MaximumAttempts:    1, // Default to no retries for command execution
+			InitialInterval:    5 * time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    60 * time.Second,
+			NonRetryableErrorTypes: []string{
+				"CommandNotFoundError",
+				"TimeoutError",
+			},
+		},
+	}
+}
+
+// Execute runs the activity with provided configuration and inputs
+func (a *CommandExecutionActivityWrapper) Execute(ctx context.Context, config CommandExecutionConfig, input CommandExecutionInput) (CommandExecutionOutput, error) {
+	// Validate inputs
+	if input.Run == "" {
+		return CommandExecutionOutput{}, fmt.Errorf("run command is required")
+	}
+
+	// Determine timeout
+	var timeout time.Duration
+	if input.Timeout != "" {
+		var err error
+		timeout, err = time.ParseDuration(input.Timeout)
+		if err != nil {
+			return CommandExecutionOutput{}, fmt.Errorf("invalid timeout format: %w", err)
+		}
+		// Create a new context with timeout
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	// Determine working directory
+	workingDir := config.WorkingDir
+	if input.WorkingDirectory != "" {
+		workingDir = input.WorkingDirectory
+	}
+	if workingDir == "" {
+		workingDir, _ = os.Getwd()
+	}
+
+	// Determine shell
+	shell := config.Shell
+	if input.Shell != "" {
+		shell = input.Shell
+	}
+	if shell == "" {
+		shell = getDefaultShell()
+	}
+
+	// Build command based on shell
+	var cmd *exec.Cmd
+	switch shell {
+	case "bash":
+		cmd = exec.CommandContext(ctx, "bash", "-c", input.Run)
+	case "sh":
+		cmd = exec.CommandContext(ctx, "sh", "-c", input.Run)
+	case "powershell":
+		cmd = exec.CommandContext(ctx, "powershell", "-Command", input.Run)
+	case "cmd":
+		cmd = exec.CommandContext(ctx, "cmd", "/C", input.Run)
+	default:
+		// Try to use the shell as-is
+		cmd = exec.CommandContext(ctx, shell, "-c", input.Run)
+	}
+
+	// Set working directory
+	cmd.Dir = workingDir
+
+	// Merge environment variables
+	env := os.Environ()
+	// Add config env vars
+	for k, v := range config.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	// Add/override with input env vars
+	for k, v := range input.Env {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd.Env = env
+
+	// Capture output
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Execute command
+	err := cmd.Run()
+
+	// Prepare output
+	output := CommandExecutionOutput{
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		ExitCode: 0,
+		Success:  true,
+		TimedOut: false,
+	}
+
+	// Check if context was cancelled due to timeout
+	if ctx.Err() == context.DeadlineExceeded {
+		output.TimedOut = true
+		output.Success = false
+		output.ErrorMessage = "command execution timed out"
+		if !input.ContinueOnError {
+			return output, fmt.Errorf("command execution timed out")
+		}
+		return output, nil
+	}
+
+	// Handle execution error
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			output.ExitCode = exitError.ExitCode()
+		} else {
+			output.ExitCode = -1
+		}
+		output.Success = false
+		output.ErrorMessage = err.Error()
+
+		if !input.ContinueOnError {
+			return output, fmt.Errorf("command execution failed: %w", err)
+		}
+	}
+
+	return output, nil
+}
+
+// getDefaultShell returns the default shell based on the operating system
+func getDefaultShell() string {
+	if runtime.GOOS == "windows" {
+		return "cmd"
+	}
+	// Check if bash is available
+	if _, err := exec.LookPath("bash"); err == nil {
+		return "bash"
+	}
+	return "sh"
+}

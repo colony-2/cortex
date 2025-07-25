@@ -68,14 +68,14 @@ func InitializeRegistry() error {
 		}
 	}
 	
-	// Register Bedrock adapter if region is specified
-	if region := os.Getenv("AWS_REGION"); region != "" {
-		adapter, err := llmadapters.NewBedrockAdapter(region)
+	// Register Gemini adapter if API key is available
+	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+		adapter, err := llmadapters.NewGeminiAdapter(apiKey)
 		if err != nil {
-			return fmt.Errorf("failed to create Bedrock adapter: %w", err)
+			return fmt.Errorf("failed to create Gemini adapter: %w", err)
 		}
-		if err := globalRegistry.Register("bedrock", adapter); err != nil {
-			return fmt.Errorf("failed to register Bedrock adapter: %w", err)
+		if err := globalRegistry.Register("gemini", adapter); err != nil {
+			return fmt.Errorf("failed to register Gemini adapter: %w", err)
 		}
 	}
 	
