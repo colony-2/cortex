@@ -1,12 +1,13 @@
 package worker
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
 
 	"github.com/vibethis/server/activity/pkg/activity"
-	"github.com/vibethis/server/activity/pkg/types"
 	worker "github.com/vibethis/server/recipe-worker"
 )
 
@@ -56,7 +57,10 @@ func CreateActivityProvider(activityType string) (worker.ActivityProvider, error
 
 	// Create a generic provider that handles type assertions internally
 	// This allows us to work with any RegisterableActivity without knowing its specific types
-	return NewGenericActivityProvider(registration.Activity, registration), nil
+	return &GenericActivityProvider{
+		activity:     registration.Activity,
+		registration: registration,
+	}, nil
 }
 
 // RegisterActivityProviders registers all activities as providers in the provider registry
