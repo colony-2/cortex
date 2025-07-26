@@ -11,29 +11,17 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 5000,
     rollupOptions: {
       output: {
+        // Simpler chunking strategy - put all vendors in one chunk to avoid load order issues
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'react-vendor';
-            }
-            if (id.includes('antd') || id.includes('@ant-design')) {
-              return 'antd';
-            }
+            // Monaco editor should be separate due to size
             if (id.includes('monaco-editor')) {
               return 'monaco';
             }
-            if (id.includes('@xyflow')) {
-              return 'xyflow';
-            }
-            if (id.includes('@rjsf')) {
-              return 'rjsf';
-            }
-            if (id.includes('js-yaml')) {
-              return 'yaml';
-            }
+            // Everything else in vendor chunk
             return 'vendor';
           }
         }
