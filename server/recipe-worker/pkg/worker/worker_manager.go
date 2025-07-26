@@ -10,10 +10,10 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	recipeworker "github.com/vibethis/server/recipe-worker"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
-	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 )
 
 // WorkerManager manages the lifecycle of workers for recipes

@@ -1,6 +1,6 @@
 package worker
 
-import recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+import recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 
 // WorkerManagerInterface defines the interface for managing workers
 type WorkerManagerInterface interface {

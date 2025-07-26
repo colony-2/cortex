@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
 )

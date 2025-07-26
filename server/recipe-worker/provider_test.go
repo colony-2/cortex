@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	worker "github.com/vibethis/server/recipe-worker"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // TestProviderRegistry tests the provider registry functionality

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
+	"github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 )
 
 func TestStartCommandSmoke(t *testing.T) {

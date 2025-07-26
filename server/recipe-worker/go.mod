@@ -1,13 +1,13 @@
-module github.com/vibethis/server/recipe-worker
+module github.com/divisive-ai/vibethis/server/recipe-worker
 
 go 1.24.1
 
 require (
+	github.com/divisive-ai/vibethis/server/activity v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/stretchr/testify v1.8.4
-	github.com/vibethis/server/activity v0.0.0-00010101000000-000000000000
-	github.com/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	go.temporal.io/sdk v1.25.1
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -21,7 +21,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/divisive-ai/server/llm v0.0.0-local // indirect
+	github.com/divisive-ai/vibethis/server/llm v0.0.0 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/gogo/googleapis v1.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -65,7 +65,7 @@ require (
 )
 
 replace (
-	github.com/divisive-ai/server/llm => ../llm
-	github.com/vibethis/server/activity => ../activity
-	github.com/vibethis/server/recipe-core => ../recipe-core
+	github.com/divisive-ai/vibethis/server/activity => ../activity
+	github.com/divisive-ai/vibethis/server/llm => ../llm
+	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 )

@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/activity"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	worker "github.com/vibethis/server/recipe-worker"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // ExecutorImplementation defines the interface for activity execution implementations

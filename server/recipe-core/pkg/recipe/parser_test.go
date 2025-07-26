@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestNewParser(t *testing.T) {

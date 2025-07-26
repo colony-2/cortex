@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
+	"github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 )

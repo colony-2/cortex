@@ -1,8 +1,8 @@
-module github.com/vibethis/server/activity
+module github.com/divisive-ai/vibethis/server/activity
 
 go 1.24.1
 
-require github.com/divisive-ai/server/llm v0.0.0-local
+require github.com/divisive-ai/vibethis/server/llm v0.0.0
 
 require (
 	cloud.google.com/go v0.116.0 // indirect
@@ -31,4 +31,4 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 )
 
-replace github.com/divisive-ai/server/llm => ../llm
+replace github.com/divisive-ai/vibethis/server/llm => ../llm

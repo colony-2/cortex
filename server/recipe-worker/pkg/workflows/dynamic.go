@@ -6,8 +6,8 @@ import (
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // WorkflowExecutor interface for executing workflow logic

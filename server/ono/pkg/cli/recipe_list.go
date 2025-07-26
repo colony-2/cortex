@@ -12,8 +12,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeListCommand creates the recipe list command

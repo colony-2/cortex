@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Parser parses recipe files from disk

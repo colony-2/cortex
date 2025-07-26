@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 )
 
 // TestWorkflowCompilerIntegration tests that the compiler correctly integrates with workflow creation

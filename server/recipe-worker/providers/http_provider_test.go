@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/server/recipe-worker/providers"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/providers"
 )
 
 func TestHTTPProvider(t *testing.T) {

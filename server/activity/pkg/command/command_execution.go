@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 
 // CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags

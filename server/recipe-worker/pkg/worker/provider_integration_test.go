@@ -13,12 +13,12 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap/zaptest"
 	
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
-	recipeworker "github.com/vibethis/server/recipe-worker"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
-	"github.com/vibethis/server/recipe-worker/pkg/worker"
-	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 )
 
 // ProviderIntegrationTestSuite tests the integration of custom providers with workflows

@@ -1,9 +1,9 @@
 package activity
 
 import (
-	"github.com/vibethis/server/activity/pkg/command"
-	"github.com/vibethis/server/activity/pkg/gitshallow"
-	"github.com/vibethis/server/activity/pkg/llm"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/command"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/gitshallow"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/llm"
 )
 
 // GetAll returns all activities available in this module

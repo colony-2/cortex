@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
+	"github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // StartWithRecipesCmd represents the start command with recipe support

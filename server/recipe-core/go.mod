@@ -1,4 +1,4 @@
-module github.com/vibethis/server/recipe-core
+module github.com/divisive-ai/vibethis/server/recipe-core
 
 go 1.24.1
 

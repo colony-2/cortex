@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	llmadapters "github.com/divisive-ai/server/llm/adapters"
+	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
 // mockAdapter implements llmadapters.Adapter for testing

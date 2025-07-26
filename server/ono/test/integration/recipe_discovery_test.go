@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 func TestRecipeDiscovery_FullLifecycle(t *testing.T) {

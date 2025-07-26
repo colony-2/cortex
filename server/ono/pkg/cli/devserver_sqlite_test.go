@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
+	"github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 	_ "modernc.org/sqlite"
 )
 

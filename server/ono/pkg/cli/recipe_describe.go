@@ -10,9 +10,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	formatpkg "github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeDescribeCommand creates the recipe describe command

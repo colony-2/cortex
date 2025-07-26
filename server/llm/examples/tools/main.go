@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"time"
 
-	adapters "github.com/divisive-ai/server/llm/adapters"
+	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
 func main() {

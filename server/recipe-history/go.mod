@@ -1,9 +1,9 @@
-module github.com/vibethis/server/recipe-history
+module github.com/divisive-ai/vibethis/server/recipe-history
 
 go 1.24.1
 
 require (
-	github.com/vibethis/server/recipe-core v0.0.0
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	go.temporal.io/api v1.50.0
 	go.temporal.io/sdk v1.34.0
 	go.uber.org/zap v1.27.0
@@ -35,4 +35,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/vibethis/server/recipe-core => ../recipe-core
+replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 
 // LLMConfig defines the configuration for LLM activities - ALL fields MUST have json tags

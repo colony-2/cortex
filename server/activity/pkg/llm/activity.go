@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	llmadapters "github.com/divisive-ai/server/llm/adapters"
+	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
 // LLMActivity represents the input for the Temporal activity wrapper

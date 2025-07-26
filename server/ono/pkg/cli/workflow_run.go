@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"go.temporal.io/sdk/client"
 )
 

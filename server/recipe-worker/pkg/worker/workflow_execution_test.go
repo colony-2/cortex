@@ -11,9 +11,9 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
-	recipeworkflows "github.com/vibethis/server/recipe-worker/pkg/workflows"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 )
 
 // WorkflowExecutionTestSuite tests actual workflow execution

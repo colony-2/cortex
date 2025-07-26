@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/divisive-ai/vibethis/server/ono/pkg/cli/format"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	history "github.com/vibethis/server/recipe-history/pkg/history"
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	history "github.com/divisive-ai/vibethis/server/recipe-history/pkg/history"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewJobDescribeCommand creates the job describe command

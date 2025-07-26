@@ -7,8 +7,8 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/vibethis/server/activity/pkg/activity"
-	worker "github.com/vibethis/server/recipe-worker"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/activity"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // globalActivityRegistry is the singleton registry for all activities

@@ -11,7 +11,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
 	
-	worker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // NewRecipeRunCommand creates the recipe run command

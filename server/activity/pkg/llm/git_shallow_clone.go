@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 
 // GitShallowCloneConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags

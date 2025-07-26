@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestGeminiIntegration(t *testing.T) {

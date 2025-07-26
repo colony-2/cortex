@@ -1,4 +1,4 @@
-module github.com/divisive-ai/server/llm
+module github.com/divisive-ai/vibethis/server/llm
 
 go 1.23
 

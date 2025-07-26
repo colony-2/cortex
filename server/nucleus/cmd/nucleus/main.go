@@ -8,7 +8,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/nucleus/internal/client"
 	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
-	recipeworker "github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

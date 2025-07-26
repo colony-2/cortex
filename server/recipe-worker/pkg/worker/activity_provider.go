@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/vibethis/server/activity/pkg/types"
-	worker "github.com/vibethis/server/recipe-worker"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // RegisterableActivityProvider wraps any RegisterableActivity for use in recipe-worker

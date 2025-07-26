@@ -1,4 +1,4 @@
-module github.com/vibethis/server/embeddedtemporal
+module github.com/divisive-ai/vibethis/server/embeddedtemporal
 
 go 1.24.1
 

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	
-	recipeworker "github.com/vibethis/server/recipe-worker"
-	"github.com/vibethis/server/recipe-worker/pkg/worker"
+	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
 // TestProviderRegistrationWithSchema tests that providers with schemas are registered in both registries

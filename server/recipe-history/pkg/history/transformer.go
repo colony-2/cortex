@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Transformer handles the transformation between Recipe/Job abstractions

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/ono/pkg/activities/llm"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func main() {

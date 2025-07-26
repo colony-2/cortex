@@ -13,8 +13,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
-	"github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Registry manages the discovery and tracking of recipes

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 
 func TestGitShallowActivityWrapper(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 	
-	recipeworker "github.com/vibethis/server/recipe-worker"
+	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // HTTPConfig defines the configuration for HTTP activities

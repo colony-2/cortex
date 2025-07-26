@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	llmadapters "github.com/divisive-ai/server/llm/adapters"
+	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
 // LLMTaskInput represents the input parameters for the LLMTask activity

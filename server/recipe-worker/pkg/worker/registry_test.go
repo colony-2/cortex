@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 func TestRegistry_NewRegistry(t *testing.T) {

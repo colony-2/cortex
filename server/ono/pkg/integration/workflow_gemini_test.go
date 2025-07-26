@@ -10,11 +10,11 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/ono/pkg/activities"
 	"github.com/divisive-ai/vibethis/server/ono/pkg/activities/llm"
-	"github.com/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipe "github.com/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/vibethis/server/recipe-core/pkg/yaml"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 func TestResearchProjectWithGemini(t *testing.T) {
