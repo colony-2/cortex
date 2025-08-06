@@ -24,7 +24,9 @@
       "Bash(moon task:*)",
       "WebFetch(domain:github.com)",
       "Bash(git commit:*)",
-      "Bash(make test-recipe-worker:*)"
+      "Bash(make test-recipe-worker:*)",
+      "Bash(moon :test)",
+      "Bash(npm install)"
     ],
     "deny": []
   }

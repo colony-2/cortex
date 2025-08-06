@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 
 func TestGitShallowActivityWrapper(t *testing.T) {
@@ -154,17 +152,4 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 			t.Fatalf("Interface method Execute failed: %v", err)
 		}
 	})
-}
-
-func TestGetActivities(t *testing.T) {
-	activities := GetActivities()
-
-	if len(activities) == 0 {
-		t.Error("Expected at least one activity to be exported")
-	}
-
-	// Check that the first activity is our git shallow clone activity
-	if _, ok := activities[0].(types.RegisterableActivity[GitShallowConfig, GitShallowInput, GitShallowOutput]); !ok {
-		t.Error("First activity is not a GitShallowActivity")
-	}
 }

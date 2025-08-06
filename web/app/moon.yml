@@ -21,7 +21,7 @@ tasks:
     options:
       runInCI: true
     deps:
-      - 'be-web:build-test-server'
+      - 'be-api:build-test-server'
   serve:
     command: vite
     args: [dev]
