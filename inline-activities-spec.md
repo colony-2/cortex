@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This specification proposes a fundamental change to how activities are defined in recipe YAML files, moving from a separate declaration model to an inline definition model inspired by GitHub Actions. This change reduces complexity, improves readability, and provides a more intuitive developer experience.
+This specification simplifies how activities are defined in recipe YAML files, treating all activities as registerable components that can be referenced directly or defined inline. State machines and recipes are simply types of activities, and personas can be defined inline using the LLM activity with shared configurations.
 
 ## Motivation
 
@@ -10,71 +10,110 @@ This specification proposes a fundamental change to how activities are defined i
 1. **Cognitive Overhead**: Developers must define activities in one section and reference them in another
 2. **Verbosity**: Simple one-off activities require full declarations
 3. **Navigation Complexity**: Understanding a workflow requires jumping between sections
-4. **Learning Curve**: Unlike familiar patterns (GitHub Actions), requiring additional documentation
+4. **Conceptual Confusion**: Too many different concepts (activities, recipes, state machines, personas)
 
 ### Proposed Benefits
-1. **Simplicity**: Activities defined where they're used
+1. **Simplicity**: Everything is just a registerable activity
 2. **Flexibility**: Mix inline and referenced activities as needed
-3. **Familiarity**: Follows GitHub Actions patterns that developers know
+3. **Consistency**: Uniform treatment of all activity types
 4. **Readability**: Linear flow, self-contained steps
 
 ## Specification
 
 ### Core Principles
 
-1. **Inline by Default**: Activities should be defined inline within workflow steps
-2. **Reference When Needed**: Support references for shared/complex activities
-3. **Type Prefixes**: Use consistent prefixes to indicate activity types
-4. **Backward Compatible**: Provide migration path from current approach
+1. **Everything is an Activity**: All executable components are registerable activities
+2. **Inline Configuration**: Activities can be configured inline where they're used
+3. **Shared Definitions**: Common configurations can be defined once and reused
+4. **Simple Prefixes**: Use `@` for recipes and `#` for state machines to indicate special activity types
 
-### Activity Types and Prefixes
+### Activity Types
+
+All activities are registerable components. Special types use prefixes for clarity:
 
 | Type | Prefix | Description | Example |
 |------|---------|-------------|---------|
-| Function | none | Default activity type | `handler: search.QuickSearch` |
-| Recipe | `@` | Invoke another recipe | `uses: @data-processor` |
-| State Machine | `#` | Execute state machine | `uses: #review-flow` |
-| HTTP | `http/` | HTTP request | `uses: http/post` |
-| Shell | `run:` | Shell commands | `run: echo "Hello"` |
+| Activity | none | Standard registerable activity | `uses: llm` or `uses: command_execution` |
+| Recipe | `@` | Recipe activity (invokes another recipe) | `uses: @data-processor` |
+| State Machine | `#` | State machine activity | `uses: #review-flow` |
 
 ### Syntax Patterns
 
-#### 1. Inline Function Activity
+#### 1. Standard Activity
 ```yaml
 steps:
   - id: validate
     name: Validate Input
-    handler: validators.ValidateDatasets
+    uses: validation_activity
+    config:
+      validation_type: "strict"
     inputs:
       datasets: "{{ .Inputs.dataset_ids }}"
     outputs:
       valid: ".validation_result"
 ```
 
-#### 2. Inline HTTP Activity
+#### 2. LLM Activity (Direct)
 ```yaml
 steps:
-  - id: fetch
-    name: Fetch External Data
-    uses: http/post
-    with:
-      url: "${API_URL}/search"
-      headers:
-        Authorization: "Bearer ${API_TOKEN}"
-      body:
-        query: "{{ .Inputs.query }}"
+  - id: analyze
+    name: Analyze Data
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.7
+      system_prompt: "You are a data analyst."
+    inputs:
+      prompt: "Analyze the following data: {{ .Steps.fetch.outputs.data }}"
     outputs:
-      data: ".response.results"
+      analysis: ".response"
 ```
 
-#### 3. Recipe Invocation
+#### 3. LLM Activity with Persona (Using Shared)
+```yaml
+# Define personas as shared LLM configurations
+shared:
+  analyst_persona:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.3
+      system_prompt: |
+        You are a senior data analyst with expertise in statistical analysis.
+        Provide detailed, technical analysis with actionable insights.
+  
+  reviewer_persona:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.5
+      system_prompt: |
+        You are a quality assurance specialist.
+        Focus on identifying issues, risks, and areas for improvement.
+
+# Use personas in workflow
+steps:
+  - id: analyze
+    name: Analyze Dataset
+    uses: shared/analyst_persona
+    inputs:
+      prompt: "Analyze this dataset: {{ .Inputs.data }}"
+  
+  - id: review
+    name: Review Analysis
+    uses: shared/reviewer_persona
+    inputs:
+      prompt: "Review this analysis for accuracy: {{ .Steps.analyze.outputs }}"
+```
+
+#### 4. Recipe Invocation
 ```yaml
 steps:
   - id: process
     name: Process Data
     uses: @data-processor
     version: "2.0.0"  # Optional
-    with:
+    inputs:
       data: "{{ .Steps.fetch.outputs.data }}"
       mode: "enhanced"
     config:
@@ -83,74 +122,90 @@ steps:
         max_attempts: 3
 ```
 
-#### 4. State Machine
+#### 5. State Machine
 ```yaml
 steps:
   - id: review
     name: Document Review
     uses: #document-review-flow
-    with:
+    inputs:
       document: "{{ .Steps.process.outputs.document }}"
       threshold: 80
 ```
 
-#### 5. Shell Commands
+#### 6. Command Execution Activity
 ```yaml
 steps:
-  - id: notify
-    name: Send Notification
-    run: |
-      echo "Processing dataset: {{ .Inputs.dataset_id }}"
-      curl -X POST ${WEBHOOK_URL} \
-        -H "Content-Type: application/json" \
-        -d '{"status": "complete", "id": "{{ .Inputs.dataset_id }}"}'
+  - id: build
+    name: Build Project
+    uses: command_execution
+    config:
+      shell: "/bin/bash"
+      working_directory: "./project"
+    inputs:
+      command: "npm run build"
+      environment:
+        NODE_ENV: "production"
 ```
 
-#### 6. AI Prompt Activity
-```yaml
-steps:
-  - id: summarize
-    name: Generate Summary
-    uses: ai/prompt
-    with:
-      model: "gpt-4"
-      temperature: 0.7
-      prompt: |
-        Summarize the following data:
-        {{ .Steps.analyze.outputs.results | json }}
-        
-        Format as bullet points.
-```
+### Shared Configurations
 
-### Shared Activities (Optional)
-
-For activities used multiple times or shared across recipes:
+Define reusable activity configurations, including personas:
 
 ```yaml
-# Define shared activities
+# Define shared configurations
 shared:
-  standard-validation:
-    handler: validators.StandardValidation
-    timeout: "30s"
-    retry:
-      max_attempts: 2
+  # Standard validation activity
+  standard_validation:
+    uses: validation_activity
+    config:
+      validation_type: "strict"
+      timeout: "30s"
   
-  quality-check:
+  # Persona: Technical Writer
+  technical_writer:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.4
+      system_prompt: |
+        You are a technical writer with expertise in creating clear,
+        concise documentation. Focus on accuracy and readability.
+  
+  # Persona: Code Reviewer
+  code_reviewer:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.2
+      system_prompt: |
+        You are a senior software engineer reviewing code.
+        Focus on best practices, security, and performance.
+  
+  # State machine configuration
+  quality_check:
     uses: #quality-check-flow
     config:
       threshold: 85
 
-# Use shared activities
+# Use shared configurations
 steps:
-  - id: validate_input
-    uses: shared/standard-validation
-    with:
+  - id: validate
+    uses: shared/standard_validation
+    inputs:
       data: "{{ .Inputs.data }}"
   
-  - id: validate_output
-    uses: shared/standard-validation
-    with:
-      data: "{{ .Steps.process.outputs }}"
+  - id: document
+    name: Generate Documentation
+    uses: shared/technical_writer
+    inputs:
+      prompt: "Document this API: {{ .Steps.validate.outputs }}"
+  
+  - id: review_code
+    name: Review Implementation
+    uses: shared/code_reviewer
+    inputs:
+      prompt: "Review this code for quality: {{ .Inputs.code }}"
 ```
 
 ### Complete Example
@@ -158,7 +213,7 @@ steps:
 ```yaml
 name: data-pipeline
 version: "1.0"
-description: End-to-end data processing pipeline
+description: End-to-end data processing pipeline with personas
 
 inputs:
   - name: dataset_ids
@@ -168,11 +223,42 @@ inputs:
     type: string
     default: "standard"
 
+# Define reusable configurations including personas
+shared:
+  # Data analyst persona for analysis tasks
+  data_analyst:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.3
+      system_prompt: |
+        You are a senior data analyst specializing in dataset quality assessment.
+        Provide detailed technical analysis with statistical insights.
+        Focus on data integrity, patterns, and anomalies.
+  
+  # Report writer persona for documentation
+  report_writer:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.5
+      system_prompt: |
+        You are an executive report writer.
+        Create clear, concise summaries for non-technical stakeholders.
+        Focus on business impact and actionable recommendations.
+  
+  # Standard validation configuration
+  dataset_validator:
+    uses: validation_activity
+    config:
+      validation_type: "dataset"
+      strict_mode: true
+
 steps:
-  # Inline validation
+  # Use shared validation
   - id: validate
     name: Validate Inputs
-    handler: validators.ValidateDatasets
+    uses: shared/dataset_validator
     inputs:
       datasets: "{{ .Inputs.dataset_ids }}"
       mode: "{{ .Inputs.processing_mode }}"
@@ -188,58 +274,78 @@ steps:
       steps:
         - id: process_single
           uses: @data-processor
-          with:
+          inputs:
             dataset_id: "{{ .dataset_id }}"
             mode: "{{ .Inputs.processing_mode }}"
   
-  # HTTP request
-  - id: fetch_metadata
-    uses: http/get
-    with:
-      url: "${METADATA_API}/datasets"
-      params:
-        ids: "{{ .Steps.validate.outputs.valid_ids | join:',' }}"
+  # Use data analyst persona for analysis
+  - id: analyze_results
+    name: Analyze Processed Data
+    uses: shared/data_analyst
+    inputs:
+      prompt: |
+        Analyze the following processed datasets for quality and completeness:
+        {{ .Steps.process_datasets.outputs | json }}
+        
+        Provide:
+        1. Statistical summary
+        2. Data quality assessment
+        3. Identified patterns or anomalies
+        4. Recommendations for improvement
   
-  # State machine for quality check
+  # State machine for quality review
   - id: quality_review
     uses: #quality-review-flow
-    with:
+    inputs:
       processed_data: "{{ .Steps.process_datasets.outputs }}"
-      metadata: "{{ .Steps.fetch_metadata.outputs }}"
+      analysis: "{{ .Steps.analyze_results.outputs }}"
   
-  # AI-powered summary
+  # Use report writer persona for executive summary
   - id: generate_report
-    uses: ai/prompt
-    with:
-      model: "gpt-4"
+    name: Generate Executive Report
+    uses: shared/report_writer
+    inputs:
       prompt: |
-        Generate an executive summary for the processed datasets.
+        Create an executive summary based on:
         
-        Processed Data: {{ .Steps.process_datasets.outputs | json }}
-        Quality Review: {{ .Steps.quality_review.outputs | json }}
+        Data Analysis: {{ .Steps.analyze_results.outputs }}
+        Quality Review: {{ .Steps.quality_review.outputs }}
+        
+        Include:
+        - Key findings
+        - Business impact
+        - Recommendations
+        - Next steps
   
-  # Shell notification
+  # Command execution for notification
   - id: notify
-    run: |
-      echo "Pipeline complete for {{ len .Inputs.dataset_ids }} datasets"
-      
-      # Send webhook notification
-      curl -X POST ${WEBHOOK_URL} \
-        -H "Content-Type: application/json" \
-        -d '{
-          "pipeline": "data-pipeline",
-          "status": "complete",
-          "datasets": {{ .Inputs.dataset_ids | json }},
-          "report_url": "{{ .Steps.generate_report.outputs.url }}"
-        }'
+    name: Send Notifications
+    uses: command_execution
+    config:
+      shell: "/bin/bash"
+    inputs:
+      command: |
+        echo "Pipeline complete for {{ len .Inputs.dataset_ids }} datasets"
+        
+        # Send webhook notification
+        curl -X POST ${WEBHOOK_URL} \
+          -H "Content-Type: application/json" \
+          -d '{
+            "pipeline": "data-pipeline",
+            "status": "complete",
+            "datasets": {{ .Inputs.dataset_ids | json }},
+            "report": "{{ .Steps.generate_report.outputs }}"
+          }'
 
 outputs:
   - name: processed_data
     value: "{{ .Steps.process_datasets.outputs }}"
+  - name: analysis
+    value: "{{ .Steps.analyze_results.outputs }}"
   - name: quality_report
     value: "{{ .Steps.quality_review.outputs }}"
   - name: executive_summary
-    value: "{{ .Steps.generate_report.outputs.summary }}"
+    value: "{{ .Steps.generate_report.outputs }}"
 ```
 
 ## Migration Strategy
@@ -311,34 +417,78 @@ steps:
 3. Presence of type-specific fields (`handler:` = function, `run:` = shell)
 4. Default to function type
 
-## Benefits Summary
+## Benefits of Unified Activity Model
 
-1. **Developer Experience**
-   - Familiar GitHub Actions-like syntax
+1. **Conceptual Simplicity**
+   - Everything is a registerable activity
+   - Personas are just LLM activity configurations
+   - State machines and recipes are special activity types
+   - No artificial distinctions between "functions", "HTTP", etc.
+
+2. **Developer Experience**
+   - Consistent pattern for all activities
    - Self-contained step definitions
-   - Less context switching
+   - Easy persona management through shared configs
 
-2. **Maintainability**
+3. **Maintainability**
    - Clearer intent in workflow definitions
-   - Easier to understand and modify
-   - Better for code reviews
+   - Reusable persona definitions
+   - Better separation of concerns
 
-3. **Flexibility**
-   - Mix inline and shared activities
-   - Progressive complexity (simple → complex)
+4. **Flexibility**
+   - Mix inline and shared configurations
+   - Define personas once, use everywhere
    - Natural composition patterns
 
-4. **Performance**
-   - No change to runtime execution
-   - Simplified parsing logic
-   - Reduced YAML file size for simple workflows
+## Implementation Notes
+
+### Personas as LLM Configurations
+
+Personas are not a separate concept but simply predefined LLM activity configurations:
+
+```yaml
+shared:
+  # Each persona is just an LLM activity with specific configuration
+  security_analyst:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.2
+      system_prompt: "You are a security analyst..."
+  
+  creative_writer:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.9
+      system_prompt: "You are a creative writer..."
+```
+
+### Activity Registration
+
+All activities must be registered with the system:
+
+```go
+// All activities implement the same interface
+type RegisterableActivity[TConfig any, TInput any, TOutput any] interface {
+    GetMetadata() ActivityMetadata
+    Execute(ctx context.Context, config TConfig, input TInput) (TOutput, error)
+}
+
+// Examples of registered activities:
+// - LLMActivity
+// - CommandExecutionActivity
+// - ValidationActivity
+// - RecipeActivity (uses: @recipe-name)
+// - StateMachineActivity (uses: #state-machine-name)
+```
 
 ## Open Questions
 
 1. Should we support YAML anchors for activity reuse within a file?
-2. How do we handle activity versioning for inline definitions?
-3. Should we allow mixing old and new syntax in the same file?
-4. What's the timeline for deprecating the old syntax?
+2. How do we handle activity versioning for shared configurations?
+3. Should personas have a special syntax or remain as shared LLM configs?
+4. What's the timeline for migrating existing workflows?
 
 ## Conclusion
 
