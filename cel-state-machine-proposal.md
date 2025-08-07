@@ -49,23 +49,23 @@ workflow:
       transitions:
         - to: completed
           when: |
-            outputs.review.grade in ["A", "B"] && 
-            outputs.review.score >= 80.0
+            .Outputs.review.grade in ["A", "B"] && 
+            .Outputs.review.score >= 80.0
         - to: improving
           when: |
-            outputs.review.grade in ["C", "D"] && 
-            state.attempts < 3
+            .Outputs.review.grade in ["C", "D"] && 
+            .State.attempts < 3
         - to: failed
           when: |
-            outputs.review.grade == "F" || 
-            state.attempts >= 3
+            .Outputs.review.grade == "F" || 
+            .State.attempts >= 3
 ```
 
-### 3. Mixing Workflow Types - State Groups
+### 3. Key Features of State Machine Activities
 
-To support multiple conditional behaviors within a single recipe, we introduce "state groups" that can be embedded within sequential or parallel workflows:
+State machine activities provide powerful control flow capabilities within the existing recipe framework:
 
-#### State Group as a Step Type
+#### State Group as a Step
 ```yaml
 workflow:
   type: sequential
@@ -77,30 +77,30 @@ workflow:
     
     # Embed a state machine within a sequential workflow
     - id: review_loop
-      type: state_group
-      initial_state: reviewing
-      states:
-        reviewing:
-          activity: critique_activity
-          transitions:
-            - to: approved
-              when: "outputs.score >= 80"
-            - to: revising
-              when: "outputs.score < 80 && state.attempts < 3"
-            - to: rejected
-              when: "state.attempts >= 3"
-        revising:
-          activity: improve_activity
-          transitions:
-            - to: reviewing
-              when: "outputs.improved == true"
-        approved:
-          type: terminal
-          outputs:
-            result: "outputs.final_result"
-        rejected:
-          type: terminal
-          error: "Failed review after {{ state.attempts }} attempts"
+      state_group:
+        initial_state: reviewing
+        states:
+          reviewing:
+            activity: critique_activity
+            transitions:
+              - to: approved
+                when: ".Outputs.score >= 80"
+              - to: revising
+                when: ".Outputs.score < 80 && .State.attempts < 3"
+              - to: rejected
+                when: ".State.attempts >= 3"
+          revising:
+            activity: improve_activity
+            transitions:
+              - to: reviewing
+                when: ".Outputs.improved == true"
+          approved:
+            terminal: true
+            outputs:
+              result: "{{ .Outputs.final_result }}"
+          rejected:
+            terminal: true
+            error: "Failed review after {{ .State.attempts }} attempts"
     
     - id: final_processing
       activity: publish_results
@@ -114,39 +114,39 @@ workflow:
   type: parallel
   steps:
     - id: path_a
-      type: state_group
-      initial_state: processing_a
-      states:
-        processing_a:
-          activity: process_type_a
-          transitions:
-            - to: complete_a
-              when: "outputs.valid == true"
-            - to: error_a
-              when: "outputs.valid == false"
-        complete_a:
-          type: terminal
-        error_a:
-          type: terminal
-          error: "Type A processing failed"
+      state_group:
+        initial_state: processing_a
+        states:
+          processing_a:
+            activity: process_type_a
+            transitions:
+              - to: complete_a
+                when: ".Outputs.valid == true"
+              - to: error_a
+                when: ".Outputs.valid == false"
+          complete_a:
+            terminal: true
+          error_a:
+            terminal: true
+            error: "Type A processing failed"
     
     - id: path_b
-      type: state_group
-      initial_state: processing_b
-      states:
-        processing_b:
-          activity: process_type_b
-          transitions:
-            - to: retry_b
-              when: "outputs.needs_retry == true && state.attempts < 3"
-            - to: complete_b
-              when: "outputs.success == true"
-        retry_b:
-          activity: retry_process_b
-          transitions:
-            - to: processing_b
-        complete_b:
-          type: terminal
+      state_group:
+        initial_state: processing_b
+        states:
+          processing_b:
+            activity: process_type_b
+            transitions:
+              - to: retry_b
+                when: ".Outputs.needs_retry == true && .State.attempts < 3"
+              - to: complete_b
+                when: ".Outputs.success == true"
+          retry_b:
+            activity: retry_process_b
+            transitions:
+              - to: processing_b
+          complete_b:
+            terminal: true
 ```
 
 #### Nested State Groups
@@ -193,16 +193,16 @@ states:
   compiling:
     activity: compile_code
     retry:
-      when: "outputs.errors.size() > 0"
+      when: ".Outputs.errors.size() > 0"
       max_attempts: 3
       backoff:
         initial: "1s"
         multiplier: 2
     transitions:
       - to: testing
-        when: "outputs.success == true"
+        when: ".Outputs.success == true"
       - to: manual_fix
-        when: "state.attempts >= 3"
+        when: ".State.attempts >= 3"
 ```
 
 #### Conditional Branching in Recipes
@@ -211,11 +211,11 @@ states:
   code_review:
     activity: analyze_changes
     branches:
-      - condition: "outputs.diff.lines_changed > 100"
+      - condition: ".Outputs.diff.lines_changed > 100"
         to: senior_review
       - condition: |
-          outputs.diff.lines_changed <= 100 && 
-          outputs.risk_score < 5
+          .Outputs.diff.lines_changed <= 100 && 
+          .Outputs.risk_score < 5
         to: auto_merge
       - default: standard_review
 ```
@@ -229,144 +229,176 @@ states:
     inputs:
       data: "states.extraction.outputs.raw_data"
     when: |
-      states.extraction.outputs.raw_data.size() > 0 &&
-      states.validation.outputs.is_valid == true
+      .States.extraction.outputs.raw_data.size() > 0 &&
+      .States.validation.outputs.is_valid == true
 ```
 
 ### 4. CEL Context Variables
 
-Available variables in CEL expressions aligned with current recipe system:
+CEL expressions in transitions have access to the full execution context, using the same dot notation as Go templates:
 
 ```yaml
-# State context
-state:
+# Current activity/state outputs
+.Outputs:
+  <field>: any              # Fields from current activity output
+  
+# State-specific context
+.State:
   name: string              # Current state name
   attempts: int             # Number of attempts in current state
   entered_at: timestamp     # When state was entered
   
-# Step/Activity outputs
-outputs:
-  <activity_output>: any    # Current activity outputs
-  result: any               # Activity result map
-
-# Previous states
-states:
+# Previous states in state machine
+.States:
   <state_name>:
-    outputs: any           # Outputs from previous states
+    outputs: any            # Outputs from previous states that have executed
+    
+# Workflow steps (for sequential/parallel workflows)
+.Steps:
+  <step_id>:
+    outputs: any            # Outputs from completed steps
     
 # Recipe inputs
-inputs:
-  <input_name>: any        # Original recipe inputs (from InputDefinition)
+.Inputs:
+  <input_name>: any         # Original recipe inputs (from InputDefinition)
 
 # Recipe context (from RecipeContext)
-context:
-  recipe:
-    name: string
-    version: string
-    execution_id: string
-    parent_execution_id: string
-  environment:
-    name: string
-    region: string
-    cluster: string
-  execution:
-    host: string
-    namespace: string
-    task_queue: string
-    started_at: timestamp
-    timeout: duration
-  auth:
-    identity: string
+.Context:
+  Recipe:
+    Name: string
+    Version: string
+    ExecutionID: string
+    ParentExecutionID: string
+  Environment:
+    Name: string
+    Region: string
+    Cluster: string
+  Execution:
+    Host: string
+    Namespace: string
+    TaskQueue: string
+    StartedAt: timestamp
+    Timeout: duration
+  Auth:
+    Identity: string
 
-# Metadata
-metadata:
-  recipe_id: string
-  job_id: string
-  total_transitions: int
+# Job metadata
+.Metadata:
+  RecipeID: string
+  JobID: string
+  TotalTransitions: int
 ```
 
-### 5. Implementation Requirements
+Note: CEL expressions use the same variable naming convention as Go templates for consistency. The dot prefix (`.`) indicates traversal of the context object, matching the existing template syntax.
+
+### 5. Implementation as RegisterableActivity
+
+The state machine functionality will be implemented as a new activity type that conforms to the existing `RegisterableActivity` interface, requiring no changes to the core recipe worker.
+
+#### Architecture Overview
+
+```go
+// StateMachineActivity implements RegisterableActivity interface
+type StateMachineActivity struct {
+    executor activities.ExecutorImplementation
+    celEnv   *cel.Env
+}
+
+// Implements: RegisterableActivity[StateMachineConfig, map[string]interface{}, map[string]interface{}]
+func (s *StateMachineActivity) Execute(ctx context.Context, 
+    config StateMachineConfig, 
+    inputs map[string]interface{}) (map[string]interface{}, error) {
+    // State machine execution logic here
+}
+```
+
+#### Activity Registration
+
+State machines are registered as a new activity implementation type:
+
+```yaml
+activities:
+  - name: document_review_flow
+    description: Reviews document with retry loop
+    implementation:
+      type: state_machine
+      config:
+        initial_state: reviewing
+        states:
+          reviewing:
+            activity: critique_activity
+            inputs:
+              document: "{{ .Inputs.document }}"
+            transitions:
+              - to: approved
+                when: ".Outputs.score >= 80"
+              - to: revision_needed
+                when: ".Outputs.score < 80 && .State.attempts < 3"
+          # ... more states
+```
 
 #### Go Dependencies
 ```go
 import (
     "github.com/google/cel-go/cel"
     "github.com/google/cel-go/checker/decls"
+    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
 )
 ```
 
-#### Recipe Engine Changes
-1. Extend `WorkflowSpec` to support `state_machine` type
-2. Add CEL evaluator to recipe execution engine
-3. Create context builder for CEL expressions
-4. Add validation for CEL expressions at recipe parse time
-5. Implement CEL-based transition evaluation
-6. Integrate with existing `RecipeActivity` for recipe-to-recipe calls
+#### Implementation Components
 
-#### Updated Type Definitions
+1. **StateMachineConfig**: Configuration structure for state machine definitions
+2. **CEL Expression Evaluator**: Evaluates transition conditions
+3. **State Executor**: Manages state transitions and activity execution
+4. **Context Builder**: Builds CEL context with current state, outputs, and inputs
+5. **Activity Orchestrator**: Executes nested activities within states
 
-Extend `server/recipe-core/pkg/yaml/types.go`:
+#### Type Definitions for State Machine Activity
 
 ```go
-// WorkflowSpec with state machine support
-type WorkflowSpec struct {
-    Type         string                 `yaml:"type"` // sequential, parallel, state_machine
-    RetryPolicy  RetryPolicy            `yaml:"retry_policy"`
-    Steps        []Step                 `yaml:"steps"`        // For sequential/parallel
-    States       map[string]StateSpec   `yaml:"states"`       // For state_machine
-    InitialState string                 `yaml:"initial_state"` // For state_machine
-    Outputs      map[string]string      `yaml:"outputs"`
+// StateMachineConfig defines the configuration for state machine activities
+type StateMachineConfig struct {
+    InitialState string                      `json:"initial_state"`
+    States       map[string]StateDefinition  `json:"states"`
+    Timeout      string                      `json:"timeout,omitempty"`
 }
 
-// Step enhanced to support state groups
-type Step struct {
-    ID           string                 `yaml:"id"`
-    Type         string                 `yaml:"type"`        // activity (default), state_group, parallel
-    Activity     string                 `yaml:"activity"`    // For activity type
-    Inputs       map[string]interface{} `yaml:"inputs"`
-    Outputs      map[string]string      `yaml:"outputs"`
-    Parallel     []Step                 `yaml:"parallel"`    // For parallel type
-    
-    // State group fields
-    InitialState string                 `yaml:"initial_state"` // For state_group type
-    States       map[string]StateSpec   `yaml:"states"`        // For state_group type
-}
-
-// StateSpec defines a state in a state machine recipe or state group
-type StateSpec struct {
-    Type         string                 `yaml:"type"`        // terminal, activity, recipe, state_group
-    Activity     string                 `yaml:"activity"`
-    Recipe       string                 `yaml:"recipe"`      // For recipe invocation
-    Inputs       map[string]interface{} `yaml:"inputs"`
-    Retry        StateRetryPolicy       `yaml:"retry"`
-    Transitions  []TransitionSpec       `yaml:"transitions"`
-    Branches     []BranchSpec           `yaml:"branches"`
-    
-    // For nested state groups
-    InitialState string                 `yaml:"initial_state"`
-    States       map[string]StateSpec   `yaml:"states"`
+// StateDefinition defines a single state in the state machine
+type StateDefinition struct {
+    Activity     string                 `json:"activity,omitempty"`     // Activity to execute
+    Recipe       string                 `json:"recipe,omitempty"`       // Recipe to invoke
+    Terminal     bool                   `json:"terminal,omitempty"`     // Terminal state flag
+    Error        string                 `json:"error,omitempty"`        // Error message for terminal states
+    Inputs       map[string]interface{} `json:"inputs,omitempty"`
+    Outputs      map[string]interface{} `json:"outputs,omitempty"`      // For terminal states
+    Retry        *StateRetryPolicy      `json:"retry,omitempty"`
+    Transitions  []TransitionSpec       `json:"transitions,omitempty"`
+    StateGroup   *StateMachineConfig    `json:"state_group,omitempty"`  // For nested state machines
 }
 
 // TransitionSpec defines state transitions with CEL conditions
 type TransitionSpec struct {
-    To   string `yaml:"to"`
-    When string `yaml:"when"` // CEL expression
-}
-
-// BranchSpec defines conditional branching
-type BranchSpec struct {
-    Condition string `yaml:"condition"` // CEL expression
-    To        string `yaml:"to"`
-    Default   bool   `yaml:"default"`
+    To   string `json:"to"`
+    When string `json:"when"` // CEL expression
 }
 
 // StateRetryPolicy with CEL conditions
 type StateRetryPolicy struct {
-    When               string        `yaml:"when"` // CEL expression
-    MaxAttempts        int           `yaml:"max_attempts"`
-    BackoffCoefficient float64       `yaml:"backoff_coefficient"`
-    InitialInterval    time.Duration `yaml:"initial_interval"`
-    MaximumInterval    time.Duration `yaml:"maximum_interval"`
+    When               string  `json:"when,omitempty"` // CEL expression
+    MaxAttempts        int     `json:"max_attempts"`
+    BackoffCoefficient float64 `json:"backoff_coefficient,omitempty"`
+    InitialInterval    string  `json:"initial_interval,omitempty"`
+    MaximumInterval    string  `json:"maximum_interval,omitempty"`
+}
+
+// StateContext maintains runtime state machine context
+type StateContext struct {
+    CurrentState string
+    Attempts     map[string]int
+    StateOutputs map[string]map[string]interface{}
+    Inputs       map[string]interface{}
+    StartTime    time.Time
 }
 ```
 
@@ -388,163 +420,104 @@ activities:
           review.score <= 100.0
 ```
 
-### 6. Example: Mixed Workflow Types in Single Recipe
+### 6. Example: State Machine as Activity
 
-This example shows a recipe that combines sequential processing with multiple state machine behaviors:
+This example shows how state machines are used as activities within recipes:
 
 ```yaml
+# First, define the state machine as an activity in activities.yaml
+activities:
+  - name: document_review_flow
+    description: Review document with automatic retry and improvement
+    implementation:
+      type: state_machine
+      config:
+        initial_state: reviewing
+        states:
+          reviewing:
+            activity: critique_activity
+            inputs:
+              document: "{{ .Inputs.document }}"
+            transitions:
+              - to: approved
+                when: ".Outputs.score >= .Inputs.min_score"
+              - to: improving
+                when: ".Outputs.score < .Inputs.min_score && .State.attempts < 3"
+              - to: rejected
+                when: ".State.attempts >= 3"
+          
+          improving:
+            activity: improve_document
+            inputs:
+              original: "{{ .States.reviewing.outputs.document }}"
+              critique: "{{ .States.reviewing.outputs.critique }}"
+            transitions:
+              - to: reviewing
+                when: ".Outputs.improved == true"
+          
+          approved:
+            terminal: true
+            outputs:
+              final_document: "{{ .States.reviewing.outputs.document }}"
+              score: "{{ .States.reviewing.outputs.score }}"
+          
+          rejected:
+            terminal: true
+            error: "Document failed review after {{ .State.attempts }} attempts"
+```
+
+```yaml
+# Then use it in workflow.yaml
 name: document_processing_pipeline
 version: "2.0"
-description: Process documents with validation loops and parallel quality checks
+description: Process documents using state machine activities
 
 inputs:
   - name: document_path
     type: string
     required: true
-  - name: quality_threshold
-    type: float
-    default: 0.85
 
 workflow:
   type: sequential
   steps:
-    # Step 1: Simple activity
-    - id: extract_text
-      activity: ocr_extraction
+    - id: extract
+      activity: extract_text
       inputs:
         path: "{{ .Inputs.document_path }}"
     
-    # Step 2: State machine for validation loop
-    - id: validation_loop
-      type: state_group
-      initial_state: validate
-      states:
-        validate:
-          activity: validate_document
-          inputs:
-            text: "{{ .Steps.extract_text.outputs.text }}"
-          transitions:
-            - to: accepted
-              when: "outputs.is_valid == true"
-            - to: fix_errors
-              when: "outputs.has_fixable_errors == true"
-            - to: rejected
-              when: "outputs.has_critical_errors == true"
-        
-        fix_errors:
-          activity: auto_correct
-          inputs:
-            text: "{{ state.previous.outputs.text }}"
-            errors: "{{ state.previous.outputs.errors }}"
-          transitions:
-            - to: validate
-              when: "state.attempts < 3"
-            - to: rejected
-              when: "state.attempts >= 3"
-        
-        accepted:
-          type: terminal
-          outputs:
-            validated_text: "outputs.text"
-        
-        rejected:
-          type: terminal
-          error: "Document validation failed"
-    
-    # Step 3: Parallel quality checks with different state machines
-    - id: quality_checks
-      type: parallel
-      parallel:
-        - id: grammar_check
-          type: state_group
-          initial_state: check_grammar
-          states:
-            check_grammar:
-              activity: grammar_checker
-              inputs:
-                text: "{{ .Steps.validation_loop.outputs.validated_text }}"
-              transitions:
-                - to: grammar_passed
-                  when: "outputs.score >= inputs.quality_threshold"
-                - to: improve_grammar
-                  when: "outputs.score < inputs.quality_threshold"
-            
-            improve_grammar:
-              activity: grammar_improver
-              transitions:
-                - to: check_grammar
-                  when: "state.attempts < 2"
-                - to: grammar_passed
-                  when: "state.attempts >= 2"
-            
-            grammar_passed:
-              type: terminal
-        
-        - id: style_check
-          type: state_group
-          initial_state: check_style
-          states:
-            check_style:
-              activity: style_analyzer
-              inputs:
-                text: "{{ .Steps.validation_loop.outputs.validated_text }}"
-              transitions:
-                - to: style_passed
-                  when: "outputs.consistency >= 0.8"
-                - to: style_failed
-                  when: "outputs.consistency < 0.8"
-            
-            style_passed:
-              type: terminal
-            
-            style_failed:
-              type: terminal
-              error: "Style check failed"
-    
-    # Step 4: Final processing
-    - id: generate_report
-      activity: create_final_report
+    - id: review_process
+      activity: document_review_flow  # Using the state machine activity
       inputs:
-        validated_text: "{{ .Steps.validation_loop.outputs.validated_text }}"
-        grammar_results: "{{ .Steps.quality_checks.grammar_check.outputs }}"
-        style_results: "{{ .Steps.quality_checks.style_check.outputs }}"
+        document: "{{ .Steps.extract.outputs.text }}"
+        min_score: 80
+    
+    - id: publish
+      activity: publish_document
+      inputs:
+        document: "{{ .Steps.review_process.outputs.final_document }}"
+        metadata:
+          score: "{{ .Steps.review_process.outputs.score }}"
 ```
 
-### 7. Example: Complete Recipe with State Machine and Critic
+### 7. Complex Example: Nested State Machines
 
 ```yaml
-name: research_report_with_review
-version: "2.0"
-description: Research report generation with iterative review
-
-inputs:
-  - name: topic
-    type: string
-    required: true
-  - name: min_grade
-    type: string
-    default: "B"
-
-outputs:
-  - name: final_report
-    type: string
-  - name: final_grade
-    type: string
-
-workflow:
-  type: state_machine
-  initial_state: researching
-  
-  states:
-    researching:
-      activity: research_activity
-      inputs:
-        topic: "inputs.topic"
-      transitions:
-        - to: analyzing
-          when: "outputs.research_data.sources.size() > 0"
-        - to: failed
-          when: "outputs.research_data.sources.size() == 0"
+# Define a complex state machine with nested state machines
+activities:
+  - name: research_with_review
+    implementation:
+      type: state_machine
+      config:
+        initial_state: research_phase
+        states:
+          research_phase:
+            # A state can invoke another state machine activity
+            activity: research_state_machine
+            inputs:
+              topic: "{{ .Inputs.topic }}"
+            transitions:
+              - to: review_phase
+                when: ".Outputs.sources.size() > 0"
           
     analyzing:
       activity: analyze_activity
@@ -611,18 +584,18 @@ states:
       file_path: "inputs.document_path"
     transitions:
       - to: data_validation
-        when: "outputs.result.extracted_text.size() > 0"
+        when: ".Outputs.result.extracted_text.size() > 0"
         
   data_validation:
     recipe: "validation/schema-checker"
     inputs:
       data: "states.data_extraction.outputs.result"
     retry:
-      when: "outputs.result.validation_errors.size() > 0"
+      when: ".Outputs.result.validation_errors.size() > 0"
       max_attempts: 2
     transitions:
       - to: processing
-        when: "outputs.result.is_valid == true"
+        when: ".Outputs.result.is_valid == true"
 ```
 
 ### 8. Benefits

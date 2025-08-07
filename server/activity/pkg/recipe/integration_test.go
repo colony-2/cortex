@@ -23,8 +23,8 @@ func TestRecipeToRecipeInvocation_Integration(t *testing.T) {
 
 	// Register activities and workflows
 	env.RegisterActivity(ExecuteRecipeActivity)
-	env.RegisterWorkflow(ParentRecipeWorkflow)
-	env.RegisterWorkflow(ChildRecipeWorkflow)
+	env.RegisterWorkflow(IntegrationParentRecipeWorkflow)
+	env.RegisterWorkflow(IntegrationChildRecipeWorkflow)
 
 	// Set up input for parent workflow
 	parentInput := map[string]interface{}{
@@ -33,7 +33,7 @@ func TestRecipeToRecipeInvocation_Integration(t *testing.T) {
 	}
 
 	// Execute parent workflow
-	env.ExecuteWorkflow(ParentRecipeWorkflow, parentInput)
+	env.ExecuteWorkflow(IntegrationParentRecipeWorkflow, parentInput)
 
 	// Verify workflow completed successfully
 	require.True(t, env.IsWorkflowCompleted())
@@ -50,8 +50,8 @@ func TestRecipeToRecipeInvocation_Integration(t *testing.T) {
 	assert.Equal(t, "processed", result["status"])
 }
 
-// ParentRecipeWorkflow is a test workflow that invokes a child recipe
-func ParentRecipeWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
+// IntegrationParentRecipeWorkflow is a test workflow that invokes a child recipe
+func IntegrationParentRecipeWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
 	// Set activity options
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
@@ -108,8 +108,8 @@ func ParentRecipeWorkflow(ctx workflow.Context, input map[string]interface{}) (m
 	return result, nil
 }
 
-// ChildRecipeWorkflow is a test child workflow
-func ChildRecipeWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
+// IntegrationChildRecipeWorkflow is a test child workflow
+func IntegrationChildRecipeWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
 	// Extract context if provided
 	var recipeContext *RecipeContext
 	if ctxData, ok := input["context"]; ok {
