@@ -1,43 +1,51 @@
-# Inline Activities Specification
+# Unified Activity Model Specification
 
 ## Executive Summary
 
-This specification simplifies how activities are defined in recipe YAML files, treating all activities as registerable components that can be referenced directly or defined inline. State machines and recipes are simply types of activities, and personas can be defined inline using the LLM activity with shared configurations.
+This specification defines a unified model where everything in a recipe workflow is a registerable activity. There are no special concepts - state machines, recipes, LLM personas, and standard activities all follow the same pattern. Activities can be defined inline with their configuration or referenced from shared definitions.
 
 ## Motivation
 
 ### Current Problems
 1. **Cognitive Overhead**: Developers must define activities in one section and reference them in another
-2. **Verbosity**: Simple one-off activities require full declarations
-3. **Navigation Complexity**: Understanding a workflow requires jumping between sections
-4. **Conceptual Confusion**: Too many different concepts (activities, recipes, state machines, personas)
+2. **Conceptual Proliferation**: Too many concepts (activities, recipes, state machines, personas, functions, HTTP calls)
+3. **Inconsistent Patterns**: Different syntax for different activity types
+4. **Navigation Complexity**: Understanding requires jumping between sections
 
 ### Proposed Benefits
-1. **Simplicity**: Everything is just a registerable activity
-2. **Flexibility**: Mix inline and referenced activities as needed
-3. **Consistency**: Uniform treatment of all activity types
-4. **Readability**: Linear flow, self-contained steps
+1. **One Pattern**: Everything uses `uses: activity_name` with optional `config:`
+2. **Conceptual Simplicity**: Everything is just a registerable activity
+3. **Inline Flexibility**: Define complex behaviors inline or extract to shared
+4. **No Special Syntax**: No prefixes, no special handling
 
 ## Specification
 
-### Core Principles
+### Core Principle: Everything is an Activity
 
-1. **Everything is an Activity**: All executable components are registerable activities
-2. **Inline Configuration**: Activities can be configured inline where they're used
-3. **Shared Definitions**: Common configurations can be defined once and reused
-4. **Simple Prefixes**: Use `@` for recipes and `#` for state machines to indicate special activity types
+All executable components in a workflow are registerable activities:
+- **Standard Activities**: validation_activity, command_execution, etc.
+- **Recipe Activities**: Activities that invoke other recipes (e.g., data-processor)
+- **State Machine Activities**: Activities that execute state machines
+- **LLM Activities**: Activities that interact with language models
+- **User Input Activities**: Activities that gather user input
 
-### Activity Types
+The implementation of each activity determines its behavior, not special syntax.
 
-All activities are registerable components. Special types use prefixes for clarity:
+### Syntax: One Pattern for Everything
 
-| Type | Prefix | Description | Example |
-|------|---------|-------------|---------|
-| Activity | none | Standard registerable activity | `uses: llm` or `uses: command_execution` |
-| Recipe | `@` | Recipe activity (invokes another recipe) | `uses: @data-processor` |
-| State Machine | `#` | State machine activity | `uses: #review-flow` |
+```yaml
+steps:
+  - id: step_name
+    uses: activity_name      # The registered activity to use
+    config:                  # Optional: activity-specific configuration
+      key: value
+    inputs:                  # Optional: runtime inputs
+      key: "{{ expression }}"
+    outputs:                 # Optional: output mapping
+      key: ".path.to.value"
+```
 
-### Syntax Patterns
+### Examples
 
 #### 1. Standard Activity
 ```yaml
@@ -49,72 +57,16 @@ steps:
       validation_type: "strict"
     inputs:
       datasets: "{{ .Inputs.dataset_ids }}"
-    outputs:
-      valid: ".validation_result"
 ```
 
-#### 2. LLM Activity (Direct)
-```yaml
-steps:
-  - id: analyze
-    name: Analyze Data
-    uses: llm
-    config:
-      model: "gpt-4"
-      temperature: 0.7
-      system_prompt: "You are a data analyst."
-    inputs:
-      prompt: "Analyze the following data: {{ .Steps.fetch.outputs.data }}"
-    outputs:
-      analysis: ".response"
-```
-
-#### 3. LLM Activity with Persona (Using Shared)
-```yaml
-# Define personas as shared LLM configurations
-shared:
-  analyst_persona:
-    uses: llm
-    config:
-      model: "gpt-4"
-      temperature: 0.3
-      system_prompt: |
-        You are a senior data analyst with expertise in statistical analysis.
-        Provide detailed, technical analysis with actionable insights.
-  
-  reviewer_persona:
-    uses: llm
-    config:
-      model: "gpt-4"
-      temperature: 0.5
-      system_prompt: |
-        You are a quality assurance specialist.
-        Focus on identifying issues, risks, and areas for improvement.
-
-# Use personas in workflow
-steps:
-  - id: analyze
-    name: Analyze Dataset
-    uses: shared/analyst_persona
-    inputs:
-      prompt: "Analyze this dataset: {{ .Inputs.data }}"
-  
-  - id: review
-    name: Review Analysis
-    uses: shared/reviewer_persona
-    inputs:
-      prompt: "Review this analysis for accuracy: {{ .Steps.analyze.outputs }}"
-```
-
-#### 4. Recipe Invocation
+#### 2. Recipe Invocation (Just Another Activity)
 ```yaml
 steps:
   - id: process
     name: Process Data
-    uses: @data-processor
-    version: "2.0.0"  # Optional
+    uses: data-processor        # This happens to be a recipe
     inputs:
-      data: "{{ .Steps.fetch.outputs.data }}"
+      data: "{{ .Steps.validate.outputs }}"
       mode: "enhanced"
     config:
       timeout: "10m"
@@ -122,90 +74,152 @@ steps:
         max_attempts: 3
 ```
 
-#### 5. State Machine
+#### 3. Inline State Machine
 ```yaml
 steps:
-  - id: review
-    name: Document Review
-    uses: #document-review-flow
+  - id: review_process
+    name: Document Review with Retry
+    uses: state_machine
+    config:
+      initial_state: reviewing
+      states:
+        reviewing:
+          uses: critique_activity
+          inputs:
+            document: "{{ .Inputs.document }}"
+          transitions:
+            - to: approved
+              when: ".Outputs.score >= 80"
+            - to: improving
+              when: ".Outputs.score < 80 && .State.attempts < 3"
+            - to: rejected
+              when: ".State.attempts >= 3"
+        
+        improving:
+          uses: llm
+          config:
+            model: "gpt-4"
+            system_prompt: "Improve this document for clarity."
+          inputs:
+            prompt: "Improve: {{ .State.document }}"
+          transitions:
+            - to: reviewing
+              when: ".Outputs.improved == true"
+        
+        approved:
+          terminal: true
+          outputs:
+            document: "{{ .State.final_document }}"
+        
+        rejected:
+          terminal: true
+          error: "Failed after {{ .State.attempts }} attempts"
     inputs:
-      document: "{{ .Steps.process.outputs.document }}"
+      document: "{{ .Inputs.document }}"
       threshold: 80
 ```
 
-#### 6. Command Execution Activity
+#### 4. LLM with Inline Persona
 ```yaml
 steps:
-  - id: build
-    name: Build Project
-    uses: command_execution
+  - id: analyze
+    name: Analyze Data
+    uses: llm
     config:
-      shell: "/bin/bash"
-      working_directory: "./project"
+      model: "gpt-4"
+      temperature: 0.3
+      system_prompt: |
+        You are a senior data analyst specializing in statistical analysis.
+        Provide detailed technical analysis with actionable insights.
     inputs:
-      command: "npm run build"
-      environment:
-        NODE_ENV: "production"
+      prompt: "Analyze this dataset: {{ .Steps.fetch.outputs }}"
+```
+
+#### 5. User Input Activity
+```yaml
+steps:
+  - id: approval
+    name: Get Approval
+    uses: user_input_form
+    config:
+      question: "Do you approve this deployment?"
+      type: "multiple_choice"
+      options:
+        - value: "approve"
+          label: "Approve"
+        - value: "reject"
+          label: "Reject"
+    inputs:
+      context:
+        artifacts: "{{ .Steps.build.outputs.artifacts }}"
 ```
 
 ### Shared Configurations
 
-Define reusable activity configurations, including personas:
+Extract complex or reusable configurations:
 
 ```yaml
-# Define shared configurations
 shared:
-  # Standard validation activity
-  standard_validation:
+  # Reusable validation
+  strict_validator:
     uses: validation_activity
     config:
       validation_type: "strict"
       timeout: "30s"
   
-  # Persona: Technical Writer
-  technical_writer:
+  # LLM Persona: Data Analyst
+  data_analyst:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.3
+      system_prompt: |
+        You are a senior data analyst with expertise in statistical analysis.
+        Provide detailed technical analysis with actionable insights.
+  
+  # LLM Persona: Technical Writer  
+  tech_writer:
     uses: llm
     config:
       model: "gpt-4"
       temperature: 0.4
       system_prompt: |
-        You are a technical writer with expertise in creating clear,
-        concise documentation. Focus on accuracy and readability.
+        You are a technical writer. Create clear, concise documentation.
   
-  # Persona: Code Reviewer
-  code_reviewer:
-    uses: llm
+  # Reusable State Machine
+  review_flow:
+    uses: state_machine
     config:
-      model: "gpt-4"
-      temperature: 0.2
-      system_prompt: |
-        You are a senior software engineer reviewing code.
-        Focus on best practices, security, and performance.
-  
-  # State machine configuration
-  quality_check:
-    uses: #quality-check-flow
-    config:
-      threshold: 85
+      initial_state: reviewing
+      states:
+        reviewing:
+          uses: critique_activity
+          transitions:
+            - to: approved
+              when: ".Outputs.score >= 80"
+            - to: rejected
+              when: ".Outputs.score < 80"
+        approved:
+          terminal: true
+        rejected:
+          terminal: true
 
 # Use shared configurations
 steps:
   - id: validate
-    uses: shared/standard_validation
+    uses: shared/strict_validator
     inputs:
       data: "{{ .Inputs.data }}"
   
-  - id: document
-    name: Generate Documentation
-    uses: shared/technical_writer
+  - id: analyze
+    uses: shared/data_analyst
     inputs:
-      prompt: "Document this API: {{ .Steps.validate.outputs }}"
+      prompt: "Analyze: {{ .Steps.validate.outputs }}"
   
-  - id: review_code
-    name: Review Implementation
-    uses: shared/code_reviewer
+  - id: review
+    uses: shared/review_flow
     inputs:
-      prompt: "Review this code for quality: {{ .Inputs.code }}"
+      document: "{{ .Steps.analyze.outputs }}"
 ```
 
 ### Complete Example
@@ -253,6 +267,30 @@ shared:
     config:
       validation_type: "dataset"
       strict_mode: true
+  
+  # Inline state machine for review process
+  quality_review_machine:
+    uses: state_machine
+    config:
+      initial_state: analyzing
+      states:
+        analyzing:
+          uses: quality_check_activity
+          transitions:
+            - to: passing
+              when: ".Outputs.quality_score >= 85"
+            - to: failing
+              when: ".Outputs.quality_score < 85"
+        passing:
+          terminal: true
+          outputs:
+            status: "approved"
+            score: "{{ .State.quality_score }}"
+        failing:
+          terminal: true
+          outputs:
+            status: "needs_improvement"
+            score: "{{ .State.quality_score }}"
 
 steps:
   # Use shared validation
@@ -265,7 +303,7 @@ steps:
     outputs:
       valid_ids: ".validated_ids"
   
-  # Parallel processing using recipes
+  # Parallel processing using recipe activities
   - id: process_datasets
     name: Process Each Dataset
     parallel:
@@ -273,7 +311,7 @@ steps:
       as: dataset_id
       steps:
         - id: process_single
-          uses: @data-processor
+          uses: data-processor     # This is a recipe activity
           inputs:
             dataset_id: "{{ .dataset_id }}"
             mode: "{{ .Inputs.processing_mode }}"
@@ -295,10 +333,31 @@ steps:
   
   # State machine for quality review
   - id: quality_review
-    uses: #quality-review-flow
+    uses: shared/quality_review_machine
     inputs:
-      processed_data: "{{ .Steps.process_datasets.outputs }}"
+      data: "{{ .Steps.process_datasets.outputs }}"
       analysis: "{{ .Steps.analyze_results.outputs }}"
+  
+  # User approval step
+  - id: get_approval
+    uses: user_input_form
+    config:
+      title: "Review Pipeline Results"
+      fields:
+        - id: "approval_decision"
+          type: "multiple_choice"
+          question: "Do you approve these results?"
+          options:
+            - value: "approve"
+              label: "Approve and Continue"
+            - value: "reject"
+              label: "Reject and Retry"
+        - id: "notes"
+          type: "paragraph_text"
+          question: "Additional notes (optional)"
+      context:
+        artifacts:
+          - path: "{{ .Steps.analyze_results.outputs.report_path }}"
   
   # Use report writer persona for executive summary
   - id: generate_report
@@ -310,6 +369,7 @@ steps:
         
         Data Analysis: {{ .Steps.analyze_results.outputs }}
         Quality Review: {{ .Steps.quality_review.outputs }}
+        User Decision: {{ .Steps.get_approval.outputs }}
         
         Include:
         - Key findings
@@ -342,8 +402,8 @@ outputs:
     value: "{{ .Steps.process_datasets.outputs }}"
   - name: analysis
     value: "{{ .Steps.analyze_results.outputs }}"
-  - name: quality_report
-    value: "{{ .Steps.quality_review.outputs }}"
+  - name: quality_status
+    value: "{{ .Steps.quality_review.outputs.status }}"
   - name: executive_summary
     value: "{{ .Steps.generate_report.outputs }}"
 ```
@@ -358,7 +418,7 @@ outputs:
 ### Phase 2: Migration Tools
 ```bash
 # Automatic migration tool
-vibethis migrate --inline-activities recipe.yaml
+vibethis migrate --unified-activities recipe.yaml
 
 # Validation
 vibethis validate --strict recipe.yaml
@@ -370,7 +430,7 @@ vibethis validate --strict recipe.yaml
 
 ### Migration Example
 
-**Before:**
+**Before (with prefixes and separate activities):**
 ```yaml
 workflow:
   steps:
@@ -378,6 +438,10 @@ workflow:
       activity: quick_search
       inputs:
         query: "{{ .Inputs.query }}"
+    - id: process
+      activity: recipe
+      config:
+        recipe: "data-processor"
 
 activities:
   - name: quick_search
@@ -387,60 +451,67 @@ activities:
         handler: search.QuickSearch
 ```
 
-**After:**
+**After (unified model):**
 ```yaml
 steps:
   - id: search
-    name: Quick Search
-    handler: search.QuickSearch
+    uses: quick_search_activity
     inputs:
       query: "{{ .Inputs.query }}"
+  
+  - id: process
+    uses: data-processor    # Recipe is just another activity
+    inputs:
+      data: "{{ .Steps.search.outputs }}"
 ```
-
-## Implementation Details
-
-### Parser Changes
-1. Extend step parser to recognize inline activity definitions
-2. Support `uses:` field for external references
-3. Implement prefix detection (`@`, `#`, `http/`, etc.)
-4. Maintain backward compatibility with `activity:` field
-
-### Validation Rules
-1. Steps must have either inline definition OR `uses:` reference
-2. Inline steps must specify activity type (via field or prefix)
-3. Referenced activities must exist in `shared:` or be valid external references
-4. Validate inputs/outputs match activity interface
-
-### Type Detection Priority
-1. Explicit `type:` field
-2. `uses:` prefix (`@`, `#`, `http/`)
-3. Presence of type-specific fields (`handler:` = function, `run:` = shell)
-4. Default to function type
 
 ## Benefits of Unified Activity Model
 
 1. **Conceptual Simplicity**
    - Everything is a registerable activity
+   - No special syntax or prefixes needed
+   - State machines and recipes are just activities with different implementations
    - Personas are just LLM activity configurations
-   - State machines and recipes are special activity types
-   - No artificial distinctions between "functions", "HTTP", etc.
 
 2. **Developer Experience**
-   - Consistent pattern for all activities
-   - Self-contained step definitions
-   - Easy persona management through shared configs
+   - One pattern to learn: `uses: activity_name`
+   - Inline complex behaviors (like state machines) when needed
+   - Extract to shared when reuse is needed
+   - Familiar to anyone who knows GitHub Actions
 
 3. **Maintainability**
-   - Clearer intent in workflow definitions
-   - Reusable persona definitions
-   - Better separation of concerns
+   - Clear intent in workflow definitions
+   - Reusable configurations through shared section
+   - No jumping between sections to understand flow
+   - Better for code reviews
 
 4. **Flexibility**
    - Mix inline and shared configurations
    - Define personas once, use everywhere
+   - Inline state machines for complex flows
    - Natural composition patterns
 
 ## Implementation Notes
+
+### Activity Registration
+
+All activities implement the same interface:
+
+```go
+// All activities implement the same interface
+type RegisterableActivity[TConfig any, TInput any, TOutput any] interface {
+    GetMetadata() ActivityMetadata
+    Execute(ctx context.Context, config TConfig, input TInput) (TOutput, error)
+}
+
+// The registry knows what each activity is
+registry.Register("data-processor", &RecipeActivity{})
+registry.Register("state_machine", &StateMachineActivity{})
+registry.Register("validation_activity", &ValidationActivity{})
+registry.Register("llm", &LLMActivity{})
+registry.Register("user_input_form", &UserInputActivity{})
+registry.Register("command_execution", &CommandExecutionActivity{})
+```
 
 ### Personas as LLM Configurations
 
@@ -464,32 +535,23 @@ shared:
       system_prompt: "You are a creative writer..."
 ```
 
-### Activity Registration
+### State Machines as Activities
 
-All activities must be registered with the system:
+State machines are activities that can be defined inline or extracted:
 
 ```go
-// All activities implement the same interface
-type RegisterableActivity[TConfig any, TInput any, TOutput any] interface {
-    GetMetadata() ActivityMetadata
-    Execute(ctx context.Context, config TConfig, input TInput) (TOutput, error)
+type StateMachineActivity struct {
+    // Implements RegisterableActivity
 }
 
-// Examples of registered activities:
-// - LLMActivity
-// - CommandExecutionActivity
-// - ValidationActivity
-// - RecipeActivity (uses: @recipe-name)
-// - StateMachineActivity (uses: #state-machine-name)
+func (s *StateMachineActivity) Execute(ctx context.Context, 
+    config StateMachineConfig, 
+    inputs map[string]interface{}) (map[string]interface{}, error) {
+    // Execute the state machine based on config
+    // States can reference other activities
+}
 ```
-
-## Open Questions
-
-1. Should we support YAML anchors for activity reuse within a file?
-2. How do we handle activity versioning for shared configurations?
-3. Should personas have a special syntax or remain as shared LLM configs?
-4. What's the timeline for migrating existing workflows?
 
 ## Conclusion
 
-This specification modernizes recipe definitions by adopting inline activity patterns, reducing complexity while maintaining flexibility. The approach aligns with industry standards (GitHub Actions) and provides a clear migration path from the current system.
+This specification unifies all workflow components under a single concept: registerable activities. By removing special syntax and treating recipes, state machines, and personas as regular activities with different implementations, we achieve maximum simplicity while maintaining full flexibility. The approach aligns with industry standards (GitHub Actions) and provides a clear migration path from the current system.

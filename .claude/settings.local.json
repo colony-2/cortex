@@ -76,7 +76,8 @@
       "Bash(# Start the server in background\n./build/cortex-test -n ../../ > /tmp/cortex-test.log 2>&1 &\nPID=$!\necho \"\"Started server with PID: $PID\"\"\nsleep 3\n\n# Send SIGTERM directly\necho \"\"Sending SIGTERM...\"\"\nkill -TERM $PID\nsleep 2\n\n# Check if it''s still running\nif kill -0 $PID 2>/dev/null; then\n    echo \"\"Server still running\"\"\n    kill -9 $PID\nelse\n    echo \"\"Server stopped successfully\"\"\nfi\n\n# Show the log\necho \"\"=== Server log ===\"\"\ncat /tmp/cortex-test.log)",
       "Bash(# Start the server in background\n./build/cortex-test -n ../../ > /tmp/cortex-test2.log 2>&1 &\nSERVER_PID=$!\necho \"\"Started server with PID: $SERVER_PID\"\"\nsleep 3\n\n# Send SIGTERM\necho \"\"Sending SIGTERM to $SERVER_PID...\"\"\nkill -TERM $SERVER_PID\nsleep 2\n\n# Check if it''s still running\nif ps -p $SERVER_PID > /dev/null 2>&1; then\n    echo \"\"Server still running\"\"\n    kill -9 $SERVER_PID\nelse\n    echo \"\"Server stopped successfully\"\"\nfi\n\n# Show the log\necho \"\"=== Server log ===\"\"\ncat /tmp/cortex-test2.log)",
       "Bash(./test-direct.sh)",
-      "Bash(# Start without redirection\n./build/cortex-test -n ../../ &\nSERVER_PID=$!\necho \"\"Started server with PID: $SERVER_PID\"\"\nsleep 3\nkill -TERM $SERVER_PID\nsleep 2\nps aux | grep $SERVER_PID | grep -v grep)"
+      "Bash(# Start without redirection\n./build/cortex-test -n ../../ &\nSERVER_PID=$!\necho \"\"Started server with PID: $SERVER_PID\"\"\nsleep 3\nkill -TERM $SERVER_PID\nsleep 2\nps aux | grep $SERVER_PID | grep -v grep)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }
