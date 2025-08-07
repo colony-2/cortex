@@ -13,7 +13,7 @@ vibethis is a react ui + golang backend that allows users to create and manage v
 - Always request guidance before switching implementation direction (main code AND tests)
 - must build & test after making changes to confirm they work.
 - You should commit your changes frequently
-- Always use Makefile to configure build and test commands.
+- Always use moon to configure build and test commands.
 
 
 
