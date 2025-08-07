@@ -2,14 +2,25 @@
 
 ## Overview
 
-This specification enhances the CEL state machine to support **fully composable conditional workflows** within states. The core goal is to enable complex conditional logic and dynamic execution paths through unlimited nesting of sequential, parallel, and conditional compositions. Any composition type can contain any other type, creating a powerful system for expressing complex business logic.
+This specification enhances recipe definition to support compsability of sequential, parallel and conditional steps. The core goal is to enable complex conditional logic and dynamic execution paths through unlimited nesting of sequential, parallel, and conditional compositions. Any composition type can contain any other type, creating a powerful system for expressing complex business logic. This includes enhancing and centralizing the current CEL state machine acitvity code (moving to core compiler/execution).
 
 Key changes:
-1. States can contain complete workflow compositions (not just single activities)
-2. All composition types (sequential, parallel, conditional) are fully nestable
+1. All composition types (sequential, parallel, conditional) are fully nestable
+2. States can contain complete workflow compositions (not just single activities)
 3. Simplified YAML structure with direct type declarations
 4. Clean reference syntax for accessing nested outputs
 5. State machine moves from activity implementation to core compiler
+6. Update existing examples and tests to work with new structure.
+
+## Directories to update
+server/recipe-core: holds the base yaml definitions for recipes
+server/activity: current location of cel state machine implementation (to be moved to other packages). after changes no state machine code will be in this directory.
+server/recipe-worker: the recipe compiler/executor. 
+
+## Commands to run to validate continued functioning
+
+- `moon :test` run all unit tests
+- `moon :integration` run all integration tests
 
 ## Design
 
@@ -18,7 +29,7 @@ Key changes:
 States maintain the existing structure but can now contain complete compositions. The composition type is declared directly without a wrapper:
 
 ```yaml
-states:
+conditional:
   # Simple activity state (backward compatible)
   simple_state:
     uses: my_activity
@@ -189,7 +200,7 @@ transitions:
 ### Complete Example: Advanced Document Processing Pipeline
 
 ```yaml
-activities:
+sequential:
   - name: intelligent_document_processor
     implementation:
       type: state_machine
@@ -807,13 +818,6 @@ states:
         when: ".Outputs.stream_a != null"
 ```
 
-## Migration Strategy
-
-1. **Phase 1**: Implement new types while maintaining backward compatibility
-2. **Phase 2**: Migrate existing state machines to use new composition features
-3. **Phase 3**: Move implementation from activity to compiler
-4. **Phase 4**: Deprecate old single-activity-only states
-
 ## Testing Requirements
 
 1. **Unit Tests**: 
@@ -825,9 +829,4 @@ states:
    - Complex multi-level compositions
    - State transitions with composed outputs
    - Error handling and retry logic in compositions
-   
-3. **Performance Tests**:
-   - Parallel execution efficiency
-   - Deep nesting performance
-   - Large state machine execution
-
+   - Integration tests should use temporal's WorkflowTestSuite framework to actually execute workflows in Temporal dev server.
