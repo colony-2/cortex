@@ -23,59 +23,75 @@ func TestParseExampleFiles(t *testing.T) {
 	tests := []struct {
 		name     string
 		filename string
-		validate func(t *testing.T, project *Project)
+		validate func(t *testing.T, recipe *RecipeDefinition)
 	}{
-		{
-			name:     "minimal_workflow",
-			filename: "minimal_workflow.yaml",
-			validate: func(t *testing.T, project *Project) {
-				require.NotNil(t, project.Workflow)
-				assert.Equal(t, "hello_world", project.Workflow.Name)
-				assert.Equal(t, "A minimal workflow that demonstrates basic structure", project.Workflow.Description)
-				assert.Equal(t, "1.0", project.Workflow.Version)
-				
-				// Check inputs
-				require.Len(t, project.Workflow.Inputs, 1)
-				assert.Equal(t, "name", project.Workflow.Inputs[0].Name)
-				assert.Equal(t, "string", project.Workflow.Inputs[0].Type)
-				assert.True(t, project.Workflow.Inputs[0].Required)
-				
-				// Check workflow steps
-				require.Len(t, project.Workflow.Workflow.Steps, 1)
-				assert.Equal(t, "greet", project.Workflow.Workflow.Steps[0].ID)
-				assert.Equal(t, "echo", project.Workflow.Workflow.Steps[0].Activity)
-				
-				// Check activities
-				require.Len(t, project.Activities, 1)
-				assert.Equal(t, "echo", project.Activities[0].Name)
-				assert.Equal(t, "Simple echo activity", project.Activities[0].Description)
-			},
-		},
 		{
 			name:     "simple_workflow",
 			filename: "simple_workflow.yaml",
-			validate: func(t *testing.T, project *Project) {
-				require.NotNil(t, project.Workflow)
-				assert.Equal(t, "simple_research", project.Workflow.Name)
-				assert.Equal(t, "A simple research workflow in a single file", project.Workflow.Description)
-				assert.Equal(t, "1.0", project.Workflow.Version)
+			validate: func(t *testing.T, recipe *RecipeDefinition) {
+				assert.Equal(t, "simple_research", recipe.Name)
+				assert.Equal(t, "A simple research workflow using unified activity model", recipe.Description)
+				assert.Equal(t, "1.0", recipe.Version)
 				
 				// Check inputs
-				require.Len(t, project.Workflow.Inputs, 1)
-				assert.Equal(t, "query", project.Workflow.Inputs[0].Name)
-				assert.Equal(t, "string", project.Workflow.Inputs[0].Type)
-				assert.True(t, project.Workflow.Inputs[0].Required)
+				require.Len(t, recipe.Inputs, 1)
+				assert.Equal(t, "query", recipe.Inputs[0].Name)
+				assert.Equal(t, "string", recipe.Inputs[0].Type)
+				assert.True(t, recipe.Inputs[0].Required)
 				
 				// Check workflow has two sequential steps
-				require.Len(t, project.Workflow.Workflow.Steps, 2)
-				assert.Equal(t, "search", project.Workflow.Workflow.Steps[0].ID)
-				assert.Equal(t, "summarize", project.Workflow.Workflow.Steps[1].ID)
+				require.Len(t, recipe.Steps, 2)
+				assert.Equal(t, "search", recipe.Steps[0].ID)
+				assert.Equal(t, "summarize", recipe.Steps[1].ID)
 				
-				// Check activities
-				require.Len(t, project.Activities, 2)
-				activityNames := []string{project.Activities[0].Name, project.Activities[1].Name}
-				assert.Contains(t, activityNames, "quick_search")
-				assert.Contains(t, activityNames, "summarize_results")
+				// Check steps use unified activity pattern
+				assert.Equal(t, "quick_search_activity", recipe.Steps[0].Uses)
+				assert.Equal(t, "summarize_activity", recipe.Steps[1].Uses)
+			},
+		},
+		{
+			name:     "unified_data_pipeline",
+			filename: "unified_data_pipeline.yaml",
+			validate: func(t *testing.T, recipe *RecipeDefinition) {
+				assert.Equal(t, "data-pipeline", recipe.Name)
+				assert.Equal(t, "1.0", recipe.Version)
+				
+				// Check has shared section
+				require.NotNil(t, recipe.Shared)
+				assert.Contains(t, recipe.Shared, "data_analyst")
+				assert.Contains(t, recipe.Shared, "report_writer")
+				assert.Contains(t, recipe.Shared, "quality_review_machine")
+				
+				// Check data analyst persona
+				dataAnalyst := recipe.Shared["data_analyst"]
+				assert.Equal(t, "llm", dataAnalyst.Uses)
+				assert.Equal(t, "gpt-4", dataAnalyst.Config["model"])
+				
+				// Check multiple steps with various activity types
+				require.GreaterOrEqual(t, len(recipe.Steps), 5)
+				
+				// Find specific steps by ID
+				var validateStep, processStep, analyzeStep *Step
+				for _, step := range recipe.Steps {
+					switch step.ID {
+					case "validate":
+						validateStep = &step
+					case "process_datasets":
+						processStep = &step
+					case "analyze_results":
+						analyzeStep = &step
+					}
+				}
+				
+				require.NotNil(t, validateStep)
+				assert.Equal(t, "shared/dataset_validator", validateStep.Uses)
+				
+				require.NotNil(t, processStep)
+				require.NotNil(t, processStep.Parallel)
+				assert.Equal(t, "{{ .Steps.validate.outputs.valid_ids }}", processStep.Parallel.ForEach)
+				
+				require.NotNil(t, analyzeStep)
+				assert.Equal(t, "shared/data_analyst", analyzeStep.Uses)
 			},
 		},
 	}
@@ -85,12 +101,12 @@ func TestParseExampleFiles(t *testing.T) {
 			filepath := filepath.Join(examplesDir, tt.filename)
 			
 			// Parse the file
-			project, err := parser.ParseProject(filepath)
+			recipe, err := parser.ParseRecipe(filepath)
 			require.NoError(t, err, "Failed to parse %s", tt.filename)
-			require.NotNil(t, project)
+			require.NotNil(t, recipe)
 			
 			// Run specific validations
-			tt.validate(t, project)
+			tt.validate(t, recipe)
 		})
 	}
 }
@@ -116,14 +132,19 @@ func TestParseExampleFilesValid(t *testing.T) {
 				filepath := filepath.Join(examplesDir, file.Name())
 				
 				// Parse the file
-				project, err := parser.ParseProject(filepath)
+				recipe, err := parser.ParseRecipe(filepath)
 				require.NoError(t, err, "Failed to parse %s", file.Name())
-				require.NotNil(t, project)
+				require.NotNil(t, recipe)
 				
-				// Basic validation - every example should have a workflow
-				require.NotNil(t, project.Workflow, "Example %s should have a workflow", file.Name())
-				assert.NotEmpty(t, project.Workflow.Name, "Workflow in %s should have a name", file.Name())
-				assert.NotEmpty(t, project.Workflow.Version, "Workflow in %s should have a version", file.Name())
+				// Basic validation - every example should have a recipe
+				assert.NotEmpty(t, recipe.Name, "Recipe in %s should have a name", file.Name())
+				assert.NotEmpty(t, recipe.Version, "Recipe in %s should have a version", file.Name())
+				assert.NotEmpty(t, recipe.Steps, "Recipe in %s should have steps", file.Name())
+				
+				// Validate that all steps have 'uses' field
+				for _, step := range recipe.Steps {
+					assert.NotEmpty(t, step.Uses, "Step %s in %s should have 'uses' field", step.ID, file.Name())
+				}
 			})
 		}
 	}

@@ -57,7 +57,7 @@ func TestStateMachineWorkflowSuite(t *testing.T) {
 		InitialState: "reviewing",
 		States: map[string]StateDefinition{
 			"reviewing": {
-				Activity: "critique_activity",
+				Uses: "critique_activity",
 				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "rejected", When: ".Outputs.score < 80"},
@@ -154,7 +154,7 @@ func TestStateMachineRetryWorkflow(t *testing.T) {
 		InitialState: "reviewing",
 		States: map[string]StateDefinition{
 			"reviewing": {
-				Activity: "flaky_activity",
+				Uses: "flaky_activity",
 				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "improving", When: ".Outputs.score < 80 && .State.Attempts < 3"},
@@ -162,7 +162,7 @@ func TestStateMachineRetryWorkflow(t *testing.T) {
 				},
 			},
 			"improving": {
-				Activity: "improve_activity",
+				Uses: "improve_activity",
 				Transitions: []TransitionSpec{
 					{To: "reviewing", When: ".Outputs.improved == true"},
 				},
@@ -217,7 +217,7 @@ func TestNestedStateMachineWorkflow(t *testing.T) {
 			InitialState: "validate",
 			States: map[string]StateDefinition{
 				"validate": {
-					Activity: "validate_activity",
+					Uses: "validate_activity",
 					Transitions: []TransitionSpec{
 						{To: "valid", When: ".Outputs.valid == true"},
 						{To: "invalid", When: ".Outputs.valid == false"},
@@ -258,7 +258,7 @@ func TestNestedStateMachineWorkflow(t *testing.T) {
 		InitialState: "phase1",
 		States: map[string]StateDefinition{
 			"phase1": {
-				Activity: "inner_state_machine",
+				Uses: "inner_state_machine",
 				Transitions: []TransitionSpec{
 					{To: "complete", When: ".Outputs.validation_status == \"passed\""},
 					{To: "failed", When: ".Outputs.validation_status == \"failed\""},

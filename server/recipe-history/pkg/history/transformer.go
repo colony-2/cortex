@@ -226,11 +226,22 @@ func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutio
 // extractActivityName extracts user-friendly activity name
 func (t *Transformer) extractActivityName(temporalName string, recipe *recipe.Recipe) string {
 	// If we have recipe metadata, try to map to original activity name
-	if recipe != nil {
-		for _, activity := range recipe.Activities {
-			// Check if Temporal name contains the activity name
-			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(activity.Name)) {
-				return activity.Name
+	if recipe != nil && recipe.Recipe != nil {
+		// Check steps for matching activity names
+		for _, step := range recipe.Recipe.Steps {
+			// Check if Temporal name contains the step uses or ID
+			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(step.Uses)) ||
+			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(step.ID)) {
+				return step.Uses
+			}
+		}
+		
+		// Check shared activities
+		for name, sharedActivity := range recipe.Recipe.Shared {
+			// Check if Temporal name contains the shared activity name or uses
+			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(name)) ||
+			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(sharedActivity.Uses)) {
+				return name
 			}
 		}
 	}

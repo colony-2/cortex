@@ -42,29 +42,9 @@ func (h *HashComputer) normalizeRecipe(recipe *Recipe) map[string]interface{} {
 	result["version"] = strings.TrimSpace(recipe.Version)
 	result["description"] = strings.TrimSpace(recipe.Description)
 	
-	// Normalize workflow
-	if recipe.Workflow != nil {
-		result["workflow"] = h.normalizeWorkflow(recipe.Workflow)
-	}
-	
-	// Normalize activities (sorted by name)
-	if len(recipe.Activities) > 0 {
-		// Use a map keyed by activity name for deterministic ordering
-		activitiesMap := make(map[string]interface{})
-		for _, activity := range recipe.Activities {
-			activitiesMap[activity.Name] = h.normalizeActivity(&activity)
-		}
-		result["activities"] = activitiesMap
-	}
-	
-	// Normalize agents (sorted by name)
-	if len(recipe.Agents) > 0 {
-		// Agents are already a map, just normalize each one
-		agentsMap := make(map[string]interface{})
-		for name, agent := range recipe.Agents {
-			agentsMap[name] = h.normalizeAgent(&agent)
-		}
-		result["agents"] = agentsMap
+	// Normalize unified recipe definition
+	if recipe.Recipe != nil {
+		result["recipe"] = h.normalizeWorkflow(recipe.Recipe)
 	}
 	
 	return result

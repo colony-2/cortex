@@ -20,38 +20,53 @@ outputs:
     type: array
     description: List of sources used
 
-workflow:
-  type: sequential
-  retry_policy:
-    initial_interval: 1s
-    maximum_attempts: 3
-    
-  steps:
-    - id: research
-      activity: research_activity
-      inputs:
-        topic: "{{ .Inputs.topic }}"
-        max_sources: "{{ .Inputs.max_sources }}"
-      outputs:
-        research_data: research_results
-        
-    - id: analyze
-      activity: analyze_activity
-      inputs:
-        data: "{{ .Steps.research.outputs.research_data }}"
-        topic: "{{ .Inputs.topic }}"
-      outputs:
-        analysis: analysis_results
-        
-    - id: write_report
-      activity: write_report_activity
-      inputs:
-        research: "{{ .Steps.research.outputs.research_data }}"
-        analysis: "{{ .Steps.analyze.outputs.analysis }}"
-        topic: "{{ .Inputs.topic }}"
-      outputs:
-        report: final_report
-        
-  outputs:
-    report: "{{ .Steps.write_report.outputs.report }}"
-    sources: "{{ .Steps.research.outputs.research_data.sources }}"
+steps:
+  - id: research
+    uses: research_activity
+    inputs:
+      topic: "{{ .Inputs.topic }}"
+      max_sources: "{{ .Inputs.max_sources }}"
+    outputs:
+      research_data: research_results
+      
+  - id: analyze
+    uses: analyze_activity
+    inputs:
+      data: "{{ .Steps.research.outputs.research_data }}"
+      topic: "{{ .Inputs.topic }}"
+    outputs:
+      analysis: analysis_results
+      
+  - id: write_report
+    uses: write_report_activity
+    inputs:
+      research: "{{ .Steps.research.outputs.research_data }}"
+      analysis: "{{ .Steps.analyze.outputs.analysis }}"
+      topic: "{{ .Inputs.topic }}"
+    outputs:
+      report: final_report
+
+shared:
+  research_activity:
+    uses: research_activity
+    config:
+      type: function
+      timeout: 5m
+      retry_policy:
+        initial_interval: 1s
+        maximum_attempts: 3
+      description: Research data from various sources
+      
+  analyze_activity:
+    uses: analyze_activity
+    config:
+      type: function
+      timeout: 3m
+      description: Analyze research data
+      
+  write_report_activity:
+    uses: write_report_activity
+    config:
+      type: function
+      timeout: 5m
+      description: Generate comprehensive report

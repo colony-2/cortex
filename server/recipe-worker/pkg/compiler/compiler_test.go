@@ -2,60 +2,42 @@ package compiler
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
-func TestCompileSimpleWorkflow(t *testing.T) {
-	// Create a simple workflow definition
-	workflowDef := &yamlpkg.WorkflowDefinition{
-		Name:        "test_workflow",
-		Description: "Test workflow",
+func TestCompileSimpleRecipe(t *testing.T) {
+	// Create a simple recipe definition using unified format
+	recipeDef := &yamlpkg.RecipeDefinition{
+		Name:        "test-recipe",
+		Description: "Test recipe",
 		Version:     "1.0",
-		Inputs: []yamlpkg.InputDefinition{
-			{Name: "input1", Type: "string", Required: true},
-		},
-		Outputs: []yamlpkg.OutputDefinition{
-			{Name: "output1", Type: "string"},
-		},
-		Workflow: yamlpkg.WorkflowSpec{
-			Type: "sequential",
-			RetryPolicy: yamlpkg.RetryPolicy{
-				InitialInterval: time.Second,
-				MaximumAttempts: 3,
-			},
-			Steps: []yamlpkg.Step{
-				{
-					ID:       "step1",
-					Activity: "test_activity",
-					Inputs: map[string]interface{}{
-						"param1": "{{ .Inputs.input1 }}",
-					},
-					Outputs: map[string]string{
-						"result": "activity_output",
-					},
+		Steps: []yamlpkg.Step{
+			{
+				ID:   "step1",
+				Uses: "test_activity",
+				Config: map[string]interface{}{
+					"type": "function",
 				},
-			},
-			Outputs: map[string]string{
-				"output1": "{{ .Steps.step1.outputs.result }}",
+				Inputs: map[string]interface{}{
+					"param1": "test_value",
+				},
+				Outputs: map[string]string{
+					"result": "activity_output",
+				},
 			},
 		},
 	}
 
 	// Create activity registry and register test activity
 	registry := NewActivityRegistry()
-	registry.RegisterActivity(&recipe.ActivityDefinition{
-		Name:    "test_activity",
-		Timeout: 5 * time.Minute,
-	})
+	registry.RegisterActivity("test_activity")
 
-	// Compile workflow
+	// Compile recipe
 	compiler := NewCompiler(registry)
-	workflowFunc, err := compiler.CompileWorkflow(workflowDef)
+	workflowFunc, err := compiler.CompileWorkflow(recipeDef)
 	require.NoError(t, err)
 	assert.NotNil(t, workflowFunc)
 }
@@ -114,26 +96,31 @@ func TestTemplateResolver(t *testing.T) {
 	}
 }
 
-func TestParallelWorkflowCompilation(t *testing.T) {
-	workflowDef := &yamlpkg.WorkflowDefinition{
-		Name:    "parallel_workflow",
+func TestParallelRecipeCompilation(t *testing.T) {
+	recipeDef := &yamlpkg.RecipeDefinition{
+		Name:    "parallel-recipe",
 		Version: "1.0",
-		Workflow: yamlpkg.WorkflowSpec{
-			Type: "sequential",
-			Steps: []yamlpkg.Step{
-				{
-					ID: "parallel_tasks",
-					Parallel: []yamlpkg.Step{
+		Steps: []yamlpkg.Step{
+			{
+				ID: "parallel_tasks",
+				Parallel: &yamlpkg.ParallelSpec{
+					Steps: []yamlpkg.Step{
 						{
-							ID:       "task_a",
-							Activity: "activity_a",
+							ID:   "task_a",
+							Uses: "activity_a",
+							Config: map[string]interface{}{
+								"type": "function",
+							},
 							Outputs: map[string]string{
 								"result": "output_a",
 							},
 						},
 						{
-							ID:       "task_b",
-							Activity: "activity_b",
+							ID:   "task_b",
+							Uses: "activity_b",
+							Config: map[string]interface{}{
+								"type": "function",
+							},
 							Outputs: map[string]string{
 								"result": "output_b",
 							},
@@ -145,11 +132,11 @@ func TestParallelWorkflowCompilation(t *testing.T) {
 	}
 
 	registry := NewActivityRegistry()
-	registry.RegisterActivity(&recipe.ActivityDefinition{Name: "activity_a", Timeout: time.Minute})
-	registry.RegisterActivity(&recipe.ActivityDefinition{Name: "activity_b", Timeout: time.Minute})
+	registry.RegisterActivity("activity_a")
+	registry.RegisterActivity("activity_b")
 
 	compiler := NewCompiler(registry)
-	workflowFunc, err := compiler.CompileWorkflow(workflowDef)
+	workflowFunc, err := compiler.CompileWorkflow(recipeDef)
 	require.NoError(t, err)
 	assert.NotNil(t, workflowFunc)
 }
@@ -157,21 +144,48 @@ func TestParallelWorkflowCompilation(t *testing.T) {
 func TestActivityRegistry(t *testing.T) {
 	registry := NewActivityRegistry()
 
-	// Register activity
-	activityDef := &recipe.ActivityDefinition{
-		Name:        "test_activity",
-		Description: "Test activity",
-		Timeout:     5 * time.Minute,
-	}
-	registry.RegisterActivity(activityDef)
+	// Register activity by name
+	registry.RegisterActivity("test_activity")
 
-	// Retrieve activity
-	retrieved := registry.GetActivity("test_activity")
-	assert.NotNil(t, retrieved)
-	assert.Equal(t, "test_activity", retrieved.Name)
-	assert.Equal(t, 5*time.Minute, retrieved.Timeout)
+	// Check if activity is registered
+	hasActivity := registry.HasActivity("test_activity")
+	assert.True(t, hasActivity)
 
 	// Non-existent activity
-	notFound := registry.GetActivity("non_existent")
-	assert.Nil(t, notFound)
+	notFound := registry.HasActivity("non_existent")
+	assert.False(t, notFound)
+}
+
+func TestRecipeWithSharedActivities(t *testing.T) {
+	recipeDef := &yamlpkg.RecipeDefinition{
+		Name:    "shared-recipe",
+		Version: "1.0",
+		Shared: map[string]yamlpkg.SharedActivity{
+			"my_llm": {
+				Uses: "llm",
+				Config: map[string]interface{}{
+					"type":  "ai_prompt",
+					"model": "gpt-4",
+				},
+			},
+		},
+		Steps: []yamlpkg.Step{
+			{
+				ID:   "analyze",
+				Uses: "shared/my_llm",
+				Inputs: map[string]interface{}{
+					"prompt": "Analyze this data",
+				},
+			},
+		},
+	}
+
+	registry := NewActivityRegistry()
+	registry.RegisterActivity("llm")
+	registry.RegisterActivity("shared/my_llm")
+
+	compiler := NewCompiler(registry)
+	workflowFunc, err := compiler.CompileWorkflow(recipeDef)
+	require.NoError(t, err)
+	assert.NotNil(t, workflowFunc)
 }

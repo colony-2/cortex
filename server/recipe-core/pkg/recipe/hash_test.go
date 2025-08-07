@@ -22,12 +22,11 @@ func TestHashComputer_ComputeRecipeHash(t *testing.T) {
 				Name:        "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
-				Workflow: &yamlpkg.WorkflowDefinition{
-					Name: "test-workflow",
-					Workflow: yamlpkg.WorkflowSpec{
-						Steps: []yamlpkg.Step{
-							{ID: "step1", Activity: "activity1"},
-						},
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+					Steps: []yamlpkg.Step{
+						{ID: "step1", Uses: "activity1"},
 					},
 				},
 			},
@@ -35,12 +34,11 @@ func TestHashComputer_ComputeRecipeHash(t *testing.T) {
 				Name:        "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
-				Workflow: &yamlpkg.WorkflowDefinition{
-					Name: "test-workflow",
-					Workflow: yamlpkg.WorkflowSpec{
-						Steps: []yamlpkg.Step{
-							{ID: "step1", Activity: "activity1"},
-						},
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+					Steps: []yamlpkg.Step{
+						{ID: "step1", Uses: "activity1"},
 					},
 				},
 			},
@@ -52,11 +50,19 @@ func TestHashComputer_ComputeRecipeHash(t *testing.T) {
 				Name:        "recipe1",
 				Version:     "1.0.0",
 				Description: "Test recipe",
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "recipe1",
+					Version: "1.0.0",
+				},
 			},
 			recipe2: &Recipe{
 				Name:        "recipe2",
 				Version:     "1.0.0",
 				Description: "Test recipe",
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "recipe2",
+					Version: "1.0.0",
+				},
 			},
 			shouldBeEqual: false,
 		},
@@ -66,33 +72,47 @@ func TestHashComputer_ComputeRecipeHash(t *testing.T) {
 				Name:        "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+				},
 			},
 			recipe2: &Recipe{
 				Name:        "test-recipe",
 				Version:     "2.0.0",
 				Description: "Test recipe",
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "2.0.0",
+				},
 			},
 			shouldBeEqual: false,
 		},
 		{
-			name: "different activity order produces same hash",
+			name: "different shared activities produce different hashes",
 			recipe1: &Recipe{
 				Name: "test-recipe",
 				Version: "1.0.0",
-				Activities: []yamlpkg.ActivityDefinition{
-					{Name: "activity1", Description: "First activity"},
-					{Name: "activity2", Description: "Second activity"},
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+					Shared: map[string]yamlpkg.SharedActivity{
+						"activity1": {Uses: "llm", Config: map[string]interface{}{"model": "gpt-4"}},
+					},
 				},
 			},
 			recipe2: &Recipe{
 				Name: "test-recipe",
 				Version: "1.0.0",
-				Activities: []yamlpkg.ActivityDefinition{
-					{Name: "activity2", Description: "Second activity"},
-					{Name: "activity1", Description: "First activity"},
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+					Shared: map[string]yamlpkg.SharedActivity{
+						"activity1": {Uses: "llm", Config: map[string]interface{}{"model": "gpt-3.5"}},
+					},
 				},
 			},
-			shouldBeEqual: true, // Activities are sorted by name
+			shouldBeEqual: false,
 		},
 		{
 			name: "whitespace differences don't affect hash",
@@ -100,11 +120,19 @@ func TestHashComputer_ComputeRecipeHash(t *testing.T) {
 				Name:        "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+				},
 			},
 			recipe2: &Recipe{
 				Name:        "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe   ", // Extra spaces
+				Recipe: &yamlpkg.RecipeDefinition{
+					Name:    "test-recipe",
+					Version: "1.0.0",
+				},
 			},
 			shouldBeEqual: true, // Whitespace is trimmed
 		},
@@ -141,10 +169,14 @@ func TestHashComputer_Deterministic(t *testing.T) {
 		Name:        "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
-		Activities: []yamlpkg.ActivityDefinition{
-			{Name: "activity1", Description: "First"},
-			{Name: "activity2", Description: "Second"},
-			{Name: "activity3", Description: "Third"},
+		Recipe: &yamlpkg.RecipeDefinition{
+			Name:    "test-recipe",
+			Version: "1.0.0",
+			Steps: []yamlpkg.Step{
+				{ID: "step1", Uses: "activity1"},
+				{ID: "step2", Uses: "activity2"},
+				{ID: "step3", Uses: "activity3"},
+			},
 		},
 	}
 

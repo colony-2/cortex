@@ -6,13 +6,12 @@ import (
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // WorkflowExecutor interface for executing workflow logic
 type WorkflowExecutor interface {
-	ExecuteWorkflow(ctx workflow.Context, workflowDef *yamlpkg.WorkflowDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteWorkflow(ctx workflow.Context, recipeDef *yamlpkg.RecipeDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
 // ActivityInvoker interface for invoking activities from workflows
@@ -20,11 +19,11 @@ type ActivityInvoker interface {
 	InvokeActivity(ctx workflow.Context, activityName string, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
-// CreateDynamicWorkflow creates a Temporal workflow function from a YAML workflow definition
-func CreateDynamicWorkflow(workflowDef *yamlpkg.WorkflowDefinition, project *yamlpkg.Project, executor WorkflowExecutor) interface{} {
+// CreateDynamicWorkflow creates a Temporal workflow function from a unified recipe definition
+func CreateDynamicWorkflow(recipeDef *yamlpkg.RecipeDefinition, executor WorkflowExecutor) interface{} {
 	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		if executor != nil {
-			return executor.ExecuteWorkflow(ctx, workflowDef, inputs)
+			return executor.ExecuteWorkflow(ctx, recipeDef, inputs)
 		}
 		
 		// Default implementation - placeholder
@@ -37,13 +36,13 @@ func CreateDynamicWorkflow(workflowDef *yamlpkg.WorkflowDefinition, project *yam
 		// Return placeholder result
 		return map[string]interface{}{
 			"status": "completed",
-			"workflow": workflowDef.Name,
+			"recipe": recipeDef.Name,
 		}, nil
 	}
 }
 
-// CreateDynamicActivity creates a Temporal activity function from a YAML activity definition
-func CreateDynamicActivity(activityDef *recipe.ActivityDefinition) interface{} {
+// CreateDynamicActivity creates a Temporal activity function from a step definition
+func CreateDynamicActivity(step *yamlpkg.Step) interface{} {
 	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		// Get activity info for logging
 		info := activity.GetInfo(ctx)
@@ -52,7 +51,8 @@ func CreateDynamicActivity(activityDef *recipe.ActivityDefinition) interface{} {
 		// Full implementation would execute the activity
 		return map[string]interface{}{
 			"status": "completed",
-			"activity": activityDef.Name,
+			"step": step.ID,
+			"uses": step.Uses,
 			"activityID": info.ActivityID,
 		}, nil
 	}

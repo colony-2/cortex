@@ -1,0 +1,109 @@
+# Unified data pipeline example - demonstrates the unified activity model
+name: unified_data_pipeline
+description: Data pipeline using unified activity model with shared activities
+version: "1.0"
+
+inputs:
+  - name: data_sources
+    type: array
+    required: true
+    description: List of data sources to process
+  - name: output_format
+    type: string
+    default: "json"
+    description: Output format (json, csv, xml)
+
+outputs:
+  - name: processed_data
+    type: object
+    description: Final processed data
+  - name: summary
+    type: object
+    description: Processing summary and statistics
+
+steps:
+  # Validate input sources
+  - id: validate
+    uses: shared/data-validator
+    inputs:
+      sources: "{{ .Inputs.data_sources }}"
+      format: "{{ .Inputs.output_format }}"
+    outputs:
+      validated_sources: sources
+      validation_report: report
+
+  # Process data sources in parallel  
+  - id: parallel_processing
+    parallel:
+      steps:
+        - id: process_batch_1
+          uses: shared/data-processor
+          inputs:
+            sources: "{{ slice .Steps.validate.outputs.validated_sources 0 (div (len .Steps.validate.outputs.validated_sources) 2) }}"
+            batch_id: "batch_1"
+          outputs:
+            processed: batch_1_data
+            
+        - id: process_batch_2
+          uses: shared/data-processor
+          inputs:
+            sources: "{{ slice .Steps.validate.outputs.validated_sources (div (len .Steps.validate.outputs.validated_sources) 2) (len .Steps.validate.outputs.validated_sources) }}"
+            batch_id: "batch_2"
+          outputs:
+            processed: batch_2_data
+  
+  # Combine results
+  - id: combine
+    uses: combine_results
+    inputs:
+      batch_1: "{{ .Steps.process_batch_1.outputs.processed }}"
+      batch_2: "{{ .Steps.process_batch_2.outputs.processed }}"
+      format: "{{ .Inputs.output_format }}"
+    outputs:
+      combined: final_data
+      
+  # Generate summary using LLM
+  - id: summarize
+    uses: shared/data-analyzer
+    inputs:
+      data: "{{ .Steps.combine.outputs.combined }}"
+      validation_report: "{{ .Steps.validate.outputs.validation_report }}"
+    outputs:
+      summary: analysis_summary
+
+shared:
+  data-validator:
+    uses: validate_sources
+    config:
+      type: function
+      timeout: 1m
+      description: Validate and prepare data sources
+      
+  data-processor:
+    uses: process_data
+    config:
+      type: function
+      timeout: 5m
+      parallel_enabled: true
+      description: Process data sources in parallel batches
+      
+  data-analyzer:
+    uses: llm
+    config:
+      type: ai_prompt
+      model: gpt-4
+      temperature: 0.3
+      timeout: 2m
+      prompt: |
+        Analyze the following data processing results and provide a summary:
+        
+        Data: {{ .data }}
+        Validation Report: {{ .validation_report }}
+        
+        Provide:
+        1. Data quality assessment
+        2. Key insights and patterns
+        3. Processing statistics
+        4. Recommendations for optimization
+        
+        Format as structured JSON.

@@ -20,11 +20,8 @@ type Recipe struct {
 	ActivitiesPath string
 	AgentsPath     string
 	
-	// Content
-	Project    *yaml.Project
-	Workflow   *yaml.WorkflowDefinition
-	Activities []yaml.ActivityDefinition
-	Agents     map[string]yaml.AgentDefinition
+	// Content  
+	Recipe     *yaml.RecipeDefinition
 	
 	// Metadata
 	Hash         string    // Canonical hash of recipe content

@@ -12,9 +12,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
-	"gopkg.in/yaml.v3"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Registry manages the discovery and tracking of recipes
@@ -141,27 +139,16 @@ func (r *Registry) discoverRecipes() error {
 			return nil
 		}
 
-		// Check for recipe.yaml in directories
-		if d.IsDir() && path != r.recipesDir {
-			recipePath := filepath.Join(path, "recipe.yaml")
-			if _, err := os.Stat(recipePath); err == nil {
-				recipe, err := r.loadMultiFileRecipe(path)
-				if err != nil {
-					r.logger.Error("Failed to load multi-file recipe", 
-						zap.String("path", path), 
-						zap.Error(err))
-					return nil
-				}
-				discovered[recipe.Name] = recipe
-			}
+		// Skip directories - unified format uses single files only
+		if d.IsDir() {
 			return nil
 		}
 
-		// Check for single-file recipes (*.yaml files)
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".yaml") && d.Name() != "recipe.yaml" {
-			recipe, err := r.loadSingleFileRecipe(path)
+		// Check for unified recipe files (*.yaml files)
+		if !d.IsDir() && strings.HasSuffix(d.Name(), ".yaml") {
+			recipe, err := r.loadUnifiedRecipe(path)
 			if err != nil {
-				r.logger.Error("Failed to load single-file recipe", 
+				r.logger.Error("Failed to load unified recipe", 
 					zap.String("path", path), 
 					zap.Error(err))
 				return nil
@@ -226,167 +213,21 @@ func (r *Registry) discoverRecipes() error {
 	return nil
 }
 
-// loadMultiFileRecipe loads a recipe from a directory with multiple files
-func (r *Registry) loadMultiFileRecipe(dir string) (*recipe.Recipe, error) {
-	manifestPath := filepath.Join(dir, "recipe.yaml")
-	
-	// Load recipe manifest
-	var manifest recipe.RecipeManifest
-	data, err := os.ReadFile(manifestPath)
+// loadUnifiedRecipe loads a recipe from a single unified YAML file
+func (r *Registry) loadUnifiedRecipe(path string) (*recipe.Recipe, error) {
+	// Use recipe parser to parse unified format
+	parser := recipe.NewParser(r.logger)
+	recipeData, err := parser.ParseRecipe(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read recipe manifest: %w", err)
-	}
-	
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse recipe manifest: %w", err)
-	}
-
-	recipe := &recipe.Recipe{
-		Name:         manifest.Recipe.Name,
-		Version:      manifest.Recipe.Version,
-		Description:  manifest.Recipe.Description,
-		BasePath:     dir,
-		ManifestPath: manifestPath,
-	}
-
-	// Load workflow
-	if manifest.Recipe.Files.Workflow != "" {
-		recipe.WorkflowPath = filepath.Join(dir, manifest.Recipe.Files.Workflow)
-		workflow, err := r.loadWorkflowFile(recipe.WorkflowPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load workflow: %w", err)
-		}
-		recipe.Workflow = workflow
-	}
-
-	// Load activities
-	if manifest.Recipe.Files.Activities != "" {
-		recipe.ActivitiesPath = filepath.Join(dir, manifest.Recipe.Files.Activities)
-		activities, err := r.loadActivitiesFile(recipe.ActivitiesPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load activities: %w", err)
-		}
-		recipe.Activities = activities
-	}
-
-	// Load agents
-	if manifest.Recipe.Files.Agents != "" {
-		recipe.AgentsPath = filepath.Join(dir, manifest.Recipe.Files.Agents)
-		agents, err := r.loadAgentsFile(recipe.AgentsPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load agents: %w", err)
-		}
-		recipe.Agents = agents
-	}
-
-	// Compute hash and metadata
-	recipe.Hash = r.hashComputer.ComputeRecipeHash(recipe)
-	info, _ := os.Stat(manifestPath)
-	if info != nil {
-		recipe.LastModified = info.ModTime()
-	}
-
-	return recipe, nil
-}
-
-// loadSingleFileRecipe loads a recipe from a single YAML file
-func (r *Registry) loadSingleFileRecipe(path string) (*recipe.Recipe, error) {
-	// Parse as project file
-	parser := yamlpkg.NewParser()
-	project, err := parser.ParseProject(path)
-	if err != nil {
-		// Not a valid project file, skip
+		// Not a valid recipe file, skip
 		return nil, nil
 	}
 
-	// Get name and version from manifest or workflow
-	name := ""
-	version := ""
-	description := ""
-	
-	if project.Manifest != nil {
-		name = project.Manifest.Name
-		version = project.Manifest.Version
-		description = project.Manifest.Description
-	} else if project.Workflow != nil {
-		name = project.Workflow.Name
-		version = project.Workflow.Version
-		description = project.Workflow.Description
-	}
-	
-	// Skip if no name found
-	if name == "" {
-		return nil, nil
-	}
-
-	recipe := &recipe.Recipe{
-		Name:         name,
-		Version:      version,
-		Description:  description,
-		BasePath:     filepath.Dir(path),
-		ManifestPath: path,
-		Project:      project,
-		Workflow:     project.Workflow,
-		Activities:   project.Activities,
-		Agents:       project.Agents,
-	}
-
-	// Compute hash and metadata
-	recipe.Hash = r.hashComputer.ComputeRecipeHash(recipe)
-	info, _ := os.Stat(path)
-	if info != nil {
-		recipe.LastModified = info.ModTime()
-	}
-
-	return recipe, nil
+	// Recipe parser already sets all metadata including hash
+	return recipeData, nil
 }
 
-// Helper methods to load individual files
-func (r *Registry) loadWorkflowFile(path string) (*yamlpkg.WorkflowDefinition, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
 
-	var workflow yamlpkg.WorkflowDefinition
-	if err := yaml.Unmarshal(data, &workflow); err != nil {
-		return nil, err
-	}
-
-	return &workflow, nil
-}
-
-func (r *Registry) loadActivitiesFile(path string) ([]recipe.ActivityDefinition, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var activities struct {
-		Activities []recipe.ActivityDefinition `yaml:"activities"`
-	}
-	if err := yaml.Unmarshal(data, &activities); err != nil {
-		return nil, err
-	}
-
-	return activities.Activities, nil
-}
-
-func (r *Registry) loadAgentsFile(path string) (map[string]yamlpkg.AgentDefinition, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var agents struct {
-		Agents map[string]yamlpkg.AgentDefinition `yaml:"agents"`
-	}
-	if err := yaml.Unmarshal(data, &agents); err != nil {
-		return nil, err
-	}
-
-	return agents.Agents, nil
-}
 
 // watchForChanges monitors the recipes directory for changes
 func (r *Registry) watchForChanges() {

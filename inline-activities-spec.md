@@ -140,7 +140,7 @@ steps:
 steps:
   - id: approval
     name: Get Approval
-    uses: user_input_form
+    uses: input
     config:
       question: "Do you approve this deployment?"
       type: "multiple_choice"

@@ -163,27 +163,34 @@ func (s *StateMachineActivity) Execute(ctx context.Context, config StateMachineC
 	return result, nil
 }
 
-// executeState executes a single state's activity or recipe
+// executeState executes a single state's activity
 func (s *StateMachineActivity) executeState(ctx context.Context, state StateDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
 	// Terminal states don't execute anything
 	if state.Terminal {
 		return state.Outputs, nil
 	}
 
-	// Prepare inputs for the activity/recipe
+	// Prepare inputs for the activity
 	inputs := state.Inputs
 	if inputs == nil {
 		inputs = stateCtx.Inputs
 	}
 
-	// Execute activity or recipe
-	if state.Activity != "" {
-		return s.executor.ExecuteActivity(ctx, state.Activity, inputs)
-	} else if state.Recipe != "" {
-		return s.executor.ExecuteRecipe(ctx, state.Recipe, inputs)
+	// Execute the activity specified by 'uses'
+	if state.Uses != "" {
+		// If config is provided, merge it with inputs
+		if state.Config != nil {
+			mergedInputs := make(map[string]interface{})
+			for k, v := range inputs {
+				mergedInputs[k] = v
+			}
+			mergedInputs["config"] = state.Config
+			inputs = mergedInputs
+		}
+		return s.executor.ExecuteActivity(ctx, state.Uses, inputs)
 	}
 
-	return nil, fmt.Errorf("state must specify either 'activity' or 'recipe'")
+	return nil, fmt.Errorf("state must specify 'uses' field with an activity name")
 }
 
 // evaluateTransitions evaluates CEL expressions to determine next state

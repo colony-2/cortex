@@ -77,31 +77,26 @@ func TestRegistryWorkerIntegration(t *testing.T) {
 	registry, err := NewRegistry(logger, tempDir, manager)
 	require.NoError(t, err)
 	
-	// Create a test recipe file - using correct nested structure
+	// Create a test recipe file - using unified format
 	recipeContent := `
-workflow:
-  name: integration-test
-  version: "1.0.0"
-  description: Integration test recipe
-  
-  workflow:
-    type: sequential
-    steps:
-      - id: step1
-        activity: process-data
-        inputs:
-          data: "test-data"
-        outputs:
-          result: processed
+name: integration-test
+version: "1.0.0"
+description: Integration test recipe
+
+steps:
+  - id: step1
+    uses: process-data
+    inputs:
+      data: "test-data"
     outputs:
-      final_result: "{{ .Steps.step1.outputs.result }}"
-      
-activities:
-  - name: process-data
-    description: Process data activity
-    timeout: 30s
-    implementation:
+      result: processed
+
+shared:
+  process-data:
+    uses: process-data
+    config:
       type: function
+      timeout: 30s
 `
 	
 	recipePath := filepath.Join(tempDir, "integration-test.yaml")
@@ -128,40 +123,35 @@ activities:
 	
 	// Test recipe update
 	updatedContent := `
-workflow:
-  name: integration-test  
-  version: "2.0.0"
-  description: Updated integration test recipe
-  
-  workflow:
-    type: sequential
-    steps:
-      - id: step1
-        activity: process-data
-        inputs:
-          data: "updated-test-data"
-        outputs:
-          result: processed
-      - id: step2
-        activity: transform-data
-        inputs:
-          input: "{{ .Steps.step1.outputs.result }}"
-        outputs:
-          result: transformed
+name: integration-test
+version: "2.0.0"
+description: Updated integration test recipe
+
+steps:
+  - id: step1
+    uses: process-data
+    inputs:
+      data: "updated-test-data"
     outputs:
-      final_result: "{{ .Steps.step2.outputs.result }}"
-      
-activities:
-  - name: process-data
-    description: Process data activity
-    timeout: 30s
-    implementation:
+      result: processed
+  - id: step2
+    uses: transform-data
+    inputs:
+      input: "{{ .Steps.step1.outputs.result }}"
+    outputs:
+      result: transformed
+
+shared:
+  process-data:
+    uses: process-data
+    config:
       type: function
-  - name: transform-data
-    description: Transform data activity
-    timeout: 30s
-    implementation:
+      timeout: 30s
+  transform-data:
+    uses: transform-data
+    config:
       type: function
+      timeout: 30s
 `
 	
 	err = os.WriteFile(recipePath, []byte(updatedContent), 0644)
@@ -215,7 +205,7 @@ func TestMultiFileRecipeWorkerCreation(t *testing.T) {
 	err = os.MkdirAll(recipeDir, 0755)
 	require.NoError(t, err)
 	
-	// Create recipe.yaml
+	// Create recipe.yaml with unified format reference
 	recipeManifest := `
 recipe:
   name: multi-file-test
@@ -228,44 +218,45 @@ recipe:
 	err = os.WriteFile(filepath.Join(recipeDir, "recipe.yaml"), []byte(recipeManifest), 0644)
 	require.NoError(t, err)
 	
-	// Create workflow.yaml
+	// Create workflow.yaml using unified format
 	workflowContent := `
-name: multi-workflow
+name: multi-file-test
 version: "1.0.0"
-workflow:
-  type: sequential
-  steps:
-    - id: prepare
-      activity: prepare-data
-      inputs:
-        source: "test"
-      outputs:
-        data: prepared
-    - id: process
-      activity: process-data
-      inputs:
-        data: "{{ .Steps.prepare.outputs.data }}"
-      outputs:
-        result: processed
-  outputs:
-    result: "{{ .Steps.process.outputs.result }}"
+description: Multi-file test recipe
+
+steps:
+  - id: prepare
+    uses: prepare-data
+    inputs:
+      source: "test"
+    outputs:
+      data: prepared
+  - id: process
+    uses: process-data
+    inputs:
+      data: "{{ .Steps.prepare.outputs.data }}"
+    outputs:
+      result: processed
+
+shared:
+  prepare-data:
+    uses: prepare-data
+    config:
+      type: function
+      timeout: 30s
+  process-data:
+    uses: process-data
+    config:
+      type: function
+      timeout: 1m
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
 	require.NoError(t, err)
 	
-	// Create activities.yaml
+	// Create activities.yaml (can be empty since shared activities are in workflow.yaml)
 	activitiesContent := `
-activities:
-  - name: prepare-data
-    description: Prepare data for processing
-    timeout: 30s
-    implementation:
-      type: function
-  - name: process-data
-    description: Process the prepared data
-    timeout: 1m
-    implementation:
-      type: function
+# Additional activities can be defined here if needed
+# The main activities are defined in workflow.yaml shared section
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "activities.yaml"), []byte(activitiesContent), 0644)
 	require.NoError(t, err)
@@ -283,8 +274,8 @@ activities:
 	require.NoError(t, err)
 	assert.Equal(t, "multi-file-test", foundRecipe.Name)
 	assert.Equal(t, "1.0.0", foundRecipe.Version)
-	assert.NotNil(t, foundRecipe.Workflow)
-	assert.Len(t, foundRecipe.Activities, 2)
+	assert.NotNil(t, foundRecipe.Recipe)
+	assert.NotEmpty(t, foundRecipe.Recipe.Steps)
 	
 	// Verify worker was started
 	status := manager.GetWorkerStatus("multi-file-test")
@@ -319,22 +310,20 @@ func TestConcurrentRecipeDiscovery(t *testing.T) {
 	for i := 0; i < recipeCount; i++ {
 		go func(index int) {
 			recipeContent := fmt.Sprintf(`
-workflow:
-  name: concurrent-test-%d
-  version: "1.0.0"
-  
-  workflow:
-    type: sequential
-    steps:
-      - id: step1
-        activity: activity-%d
-        
-activities:
-  - name: activity-%d
-    timeout: 30s
-    implementation:
+name: concurrent-test-%d
+version: "1.0.0"
+
+steps:
+  - id: step1
+    uses: activity-%d
+
+shared:
+  activity-%d:
+    uses: activity-%d
+    config:
       type: function
-`, index, index, index)
+      timeout: 30s
+`, index, index, index, index)
 			
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))
 			err := os.WriteFile(recipePath, []byte(recipeContent), 0644)

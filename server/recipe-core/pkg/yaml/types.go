@@ -4,14 +4,23 @@ import (
 	"time"
 )
 
-// WorkflowDefinition represents the complete workflow YAML structure
-type WorkflowDefinition struct {
-	Name        string             `yaml:"name"`
-	Description string             `yaml:"description"`
-	Version     string             `yaml:"version"`
-	Inputs      []InputDefinition  `yaml:"inputs"`
-	Outputs     []OutputDefinition `yaml:"outputs"`
-	Workflow    WorkflowSpec       `yaml:"workflow"`
+// RecipeDefinition represents the complete unified recipe YAML structure
+// Everything is an activity with a unified 'uses' pattern
+type RecipeDefinition struct {
+	Name        string                    `yaml:"name"`
+	Description string                    `yaml:"description"`
+	Version     string                    `yaml:"version"`
+	Inputs      []InputDefinition         `yaml:"inputs"`
+	Outputs     []OutputDefinition        `yaml:"outputs"`
+	Shared      map[string]SharedActivity `yaml:"shared"`   // Reusable activity configurations
+	Steps       []Step                    `yaml:"steps"`    // Workflow steps
+	Parallel    *ParallelSpec             `yaml:"parallel"` // For parallel workflows
+}
+
+// SharedActivity represents a reusable activity configuration in the shared section
+type SharedActivity struct {
+	Uses   string                 `yaml:"uses"`   // The activity to use
+	Config map[string]interface{} `yaml:"config"` // Activity-specific configuration
 }
 
 // InputDefinition defines workflow input parameters
@@ -26,84 +35,34 @@ type InputDefinition struct {
 // OutputDefinition defines workflow output parameters
 type OutputDefinition struct {
 	Name        string `yaml:"name"`
+	Value       string `yaml:"value"` // Expression to compute output value
 	Type        string `yaml:"type"`
 	Description string `yaml:"description"`
 }
 
-// WorkflowSpec defines the workflow execution structure
-type WorkflowSpec struct {
-	Type        string      `yaml:"type"` // sequential, parallel, state_machine
-	RetryPolicy RetryPolicy `yaml:"retry_policy"`
-	Steps       []Step      `yaml:"steps"`
-	Outputs     map[string]string `yaml:"outputs"`
+// Step represents a unified workflow step where everything uses an activity
+type Step struct {
+	ID       string                 `yaml:"id"`
+	Name     string                 `yaml:"name"`     // Human-readable name
+	Uses     string                 `yaml:"uses"`     // The activity to use (e.g., "validation_activity", "llm", "state_machine", "data-processor")
+	Config   map[string]interface{} `yaml:"config"`   // Activity-specific configuration
+	Inputs   map[string]interface{} `yaml:"inputs"`   // Runtime inputs
+	Outputs  map[string]string      `yaml:"outputs"`  // Output mapping
+	Parallel *ParallelSpec          `yaml:"parallel"` // For parallel steps
+}
+
+// ParallelSpec defines parallel execution
+type ParallelSpec struct {
+	ForEach string `yaml:"for_each"` // Expression to iterate over
+	As      string `yaml:"as"`       // Variable name for iteration
+	Steps   []Step `yaml:"steps"`    // Steps to execute in parallel
 }
 
 // RetryPolicy defines retry behavior
 type RetryPolicy struct {
-	InitialInterval  time.Duration `yaml:"initial_interval"`
-	MaximumAttempts  int          `yaml:"maximum_attempts"`
-	BackoffCoefficient float64    `yaml:"backoff_coefficient"`
+	InitialInterval    time.Duration `yaml:"initial_interval"`
+	MaximumAttempts    int           `yaml:"maximum_attempts"`
+	BackoffCoefficient float64       `yaml:"backoff_coefficient"`
+	MaximumInterval    time.Duration `yaml:"maximum_interval"`
 }
 
-// Step represents a workflow step
-type Step struct {
-	ID       string                 `yaml:"id"`
-	Activity string                 `yaml:"activity"`
-	Inputs   map[string]interface{} `yaml:"inputs"`
-	Outputs  map[string]string      `yaml:"outputs"`
-	Parallel []Step                 `yaml:"parallel"`
-}
-
-// ActivityDefinition represents an activity YAML structure
-type ActivityDefinition struct {
-	Name           string                 `yaml:"name"`
-	Description    string                 `yaml:"description"`
-	Timeout        time.Duration          `yaml:"timeout"`
-	Retry          ActivityRetryPolicy    `yaml:"retry"`
-	Inputs         []InputDefinition      `yaml:"inputs"`
-	Outputs        []OutputDefinition     `yaml:"outputs"`
-	Implementation ActivityImplementation `yaml:"implementation"`
-}
-
-// ActivityRetryPolicy defines activity-specific retry behavior
-type ActivityRetryPolicy struct {
-	MaximumAttempts    int      `yaml:"maximum_attempts"`
-	NonRetryableErrors []string `yaml:"non_retryable_errors"`
-}
-
-// ActivityImplementation defines how the activity is executed
-type ActivityImplementation struct {
-	Type   string                 `yaml:"type"` // http, grpc, script, function, ai_prompt
-	Config map[string]interface{} `yaml:"config"`
-}
-
-// ProjectManifest represents the project.yaml structure
-type ProjectManifest struct {
-	Name        string `yaml:"name"`
-	Version     string `yaml:"version"`
-	Description string `yaml:"description"`
-	Files       struct {
-		Workflow   string `yaml:"workflow"`
-		Activities string `yaml:"activities"`
-		Agents     string `yaml:"agents"`
-	} `yaml:"files"`
-	File string `yaml:"file"` // For single-file projects
-}
-
-// ActivitiesFile represents the activities.yaml structure
-type ActivitiesFile struct {
-	Activities []ActivityDefinition `yaml:"activities"`
-}
-
-// AgentDefinition represents an agent/role configuration
-type AgentDefinition struct {
-	Role         string   `yaml:"role"`
-	Capabilities []string `yaml:"capabilities"`
-	Goals        []string `yaml:"goals"`
-	Constraints  []string `yaml:"constraints"`
-}
-
-// AgentsFile represents the agents.yaml structure
-type AgentsFile struct {
-	Agents map[string]AgentDefinition `yaml:"agents"`
-}

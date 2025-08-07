@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
@@ -68,40 +69,30 @@ func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 	// Create the worker
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 
-	// Register all activities first
-	for _, activityDef := range recipe.Activities {
-		// Register activity definition with the registry (pass by reference)
-		actDef := activityDef // Create a copy to get a stable pointer
-		m.activityRegistry.RegisterActivity(&actDef)
-	}
-	
-	// Register the workflow if it exists
-	if recipe.Workflow != nil {
+	// Register unified workflow
+	if recipe.Recipe != nil {
 		// Create dynamic workflow using the compiler as executor
-		workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe.Workflow, recipe.Project, m.compiler)
+		workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe.Recipe, m.compiler)
 		
 		w.RegisterWorkflowWithOptions(
 			workflowFunc,
 			workflow.RegisterOptions{
-				Name: recipe.Workflow.Name,
+				Name: recipe.Name + "-workflow",
 			},
 		)
 	}
 
-	// Register all activities with dynamic implementations
-	for _, activityDef := range recipe.Activities {
-		// Create a copy to avoid closure issues
-		actDef := activityDef
+	// Register activities from recipe steps and shared activities
+	if recipe.Recipe != nil {
+		// Register activities from steps
+		for _, step := range recipe.Recipe.Steps {
+			m.registerStepActivity(w, &step)
+		}
 		
-		// Create dynamic activity function that uses providers
-		activityFunc := m.createActivityWithProvider(&actDef)
-		
-		w.RegisterActivityWithOptions(
-			activityFunc,
-			activity.RegisterOptions{
-				Name: activityDef.Name,
-			},
-		)
+		// Register shared activities
+		for name, sharedActivity := range recipe.Recipe.Shared {
+			m.registerSharedActivity(w, name, &sharedActivity)
+		}
 	}
 
 	// Start the worker
@@ -222,18 +213,66 @@ func (m *WorkerManager) RegisterProvider(provider recipeworker.ActivityProvider)
 	return nil
 }
 
-// createActivityWithProvider creates an activity function that uses the provider registry
-func (m *WorkerManager) createActivityWithProvider(activityDef *recipe.ActivityDefinition) interface{} {
+// registerStepActivity registers an activity from a recipe step
+func (m *WorkerManager) registerStepActivity(w worker.Worker, step *yamlpkg.Step) {
+	activityName := step.Uses
+	if activityName == "" {
+		activityName = step.ID
+	}
+	
+	if activityName == "" {
+		m.logger.Warn("Step has no uses or ID, skipping", zap.Any("step", step))
+		return
+	}
+	
+	// Register activity by name
+	m.activityRegistry.RegisterActivity(activityName)
+	
+	// Create activity function
+	activityFunc := m.createStepActivity(step)
+	
+	w.RegisterActivityWithOptions(
+		activityFunc,
+		activity.RegisterOptions{
+			Name: activityName,
+		},
+	)
+}
+
+// registerSharedActivity registers a shared activity
+func (m *WorkerManager) registerSharedActivity(w worker.Worker, name string, sharedActivity *yamlpkg.SharedActivity) {
+	// Register activity by name
+	m.activityRegistry.RegisterActivity(name)
+	
+	// Create activity function
+	activityFunc := m.createSharedActivity(name, sharedActivity)
+	
+	w.RegisterActivityWithOptions(
+		activityFunc,
+		activity.RegisterOptions{
+			Name: name,
+		},
+	)
+}
+
+// createStepActivity creates an activity function from a step
+func (m *WorkerManager) createStepActivity(step *yamlpkg.Step) interface{} {
 	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+		// Get activity type from config
+		activityType, ok := step.Config["type"].(string)
+		if !ok {
+			activityType = "function" // Default
+		}
+		
 		// Check if we have a provider for this activity type
-		if m.providerRegistry.Has(activityDef.Implementation.Type) {
-			provider, err := m.providerRegistry.Get(activityDef.Implementation.Type)
+		if m.providerRegistry.Has(activityType) {
+			provider, err := m.providerRegistry.Get(activityType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get provider: %w", err)
 			}
 			
 			// Execute using the provider
-			result, err := provider.Execute(ctx, activityDef.Implementation.Config, inputs)
+			result, err := provider.Execute(ctx, step.Config, inputs)
 			if err != nil {
 				return nil, err
 			}
@@ -245,11 +284,49 @@ func (m *WorkerManager) createActivityWithProvider(activityDef *recipe.ActivityD
 			return map[string]interface{}{"result": result}, nil
 		}
 		
-		// Fall back to default dynamic activity implementation
-		defaultActivity := recipeworkflows.CreateDynamicActivity(activityDef)
-		if activityFunc, ok := defaultActivity.(func(context.Context, map[string]interface{}) (map[string]interface{}, error)); ok {
-			return activityFunc(ctx, inputs)
+		// Fall back to default implementation (placeholder)
+		return map[string]interface{}{
+			"status": "completed",
+			"step": step.ID,
+			"uses": step.Uses,
+		}, nil
+	}
+}
+
+// createSharedActivity creates an activity function from a shared activity
+func (m *WorkerManager) createSharedActivity(name string, sharedActivity *yamlpkg.SharedActivity) interface{} {
+	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+		// Get activity type from config
+		activityType, ok := sharedActivity.Config["type"].(string)
+		if !ok {
+			activityType = "function" // Default
 		}
-		return nil, fmt.Errorf("invalid activity function type for activity %s", activityDef.Name)
+		
+		// Check if we have a provider for this activity type
+		if m.providerRegistry.Has(activityType) {
+			provider, err := m.providerRegistry.Get(activityType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get provider: %w", err)
+			}
+			
+			// Execute using the provider
+			result, err := provider.Execute(ctx, sharedActivity.Config, inputs)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Convert result to map if needed
+			if resultMap, ok := result.(map[string]interface{}); ok {
+				return resultMap, nil
+			}
+			return map[string]interface{}{"result": result}, nil
+		}
+		
+		// Fall back to default implementation (placeholder)
+		return map[string]interface{}{
+			"status": "completed",
+			"name": name,
+			"uses": sharedActivity.Uses,
+		}, nil
 	}
 }

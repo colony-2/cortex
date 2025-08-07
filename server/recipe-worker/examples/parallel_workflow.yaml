@@ -1,105 +1,84 @@
 # Parallel workflow example - demonstrates parallel execution capabilities
-workflow:
-  name: parallel_processing
-  description: Demonstrates parallel step execution
-  version: "1.0"
-  
-  inputs:
-    - name: data_sources
-      type: array
-      required: true
-      description: List of data sources to process
-  
-  outputs:
-    - name: aggregated_results
-      type: object
-      description: Combined results from all parallel operations
-  
-  workflow:
-    type: sequential
-    retry_policy:
-      initial_interval: 2s
-      maximum_attempts: 3
-    
-    steps:
-      # First, validate all sources
-      - id: validate
-        activity: validate_sources
-        inputs:
-          sources: "{{ .Inputs.data_sources }}"
-        outputs:
-          valid_sources: validated_list
-      
-      # Process sources in parallel
-      - id: parallel_process
-        parallel:
-          - id: process_source_1
-            activity: process_data
-            inputs:
-              source: "{{ index .Steps.validate.outputs.valid_sources 0 }}"
-            outputs:
-              data: result_1
-          
-          - id: process_source_2
-            activity: process_data
-            inputs:
-              source: "{{ index .Steps.validate.outputs.valid_sources 1 }}"
-            outputs:
-              data: result_2
-          
-          - id: process_source_3
-            activity: process_data
-            inputs:
-              source: "{{ index .Steps.validate.outputs.valid_sources 2 }}"
-            outputs:
-              data: result_3
-      
-      # Aggregate results
-      - id: aggregate
-        activity: combine_results
-        inputs:
-          results: |
-            {{- json (list 
-              .Steps.process_source_1.outputs.data
-              .Steps.process_source_2.outputs.data
-              .Steps.process_source_3.outputs.data
-            ) -}}
-        outputs:
-          combined: final_results
-    
-    outputs:
-      aggregated_results: "{{ .Steps.aggregate.outputs.combined }}"
+name: parallel_processing
+description: Demonstrates parallel step execution
+version: "1.0"
 
-activities:
-  - name: validate_sources
-    description: Validate data sources
-    timeout: 30s
+inputs:
+  - name: data_sources
+    type: array
+    required: true
+    description: List of data sources to process
+
+outputs:
+  - name: aggregated_results
+    type: object
+    description: Combined results from all parallel operations
+
+steps:
+  # First, validate all sources
+  - id: validate
+    uses: validate_sources
     inputs:
-      - name: sources
-        type: array
-        required: true
+      sources: "{{ .Inputs.data_sources }}"
     outputs:
-      - name: validated_list
-        type: array
+      valid_sources: validated_list
   
-  - name: process_data
-    description: Process a single data source
-    timeout: 2m
-    inputs:
-      - name: source
-        type: string
-        required: true
-    outputs:
-      - name: result
-        type: object
+  # Process sources in parallel
+  - id: parallel_process
+    parallel:
+      steps:
+        - id: process_source_1
+          uses: process_data
+          inputs:
+            source: "{{ index .Steps.validate.outputs.valid_sources 0 }}"
+          outputs:
+            data: result_1
+        
+        - id: process_source_2
+          uses: process_data
+          inputs:
+            source: "{{ index .Steps.validate.outputs.valid_sources 1 }}"
+          outputs:
+            data: result_2
+        
+        - id: process_source_3
+          uses: process_data
+          inputs:
+            source: "{{ index .Steps.validate.outputs.valid_sources 2 }}"
+          outputs:
+            data: result_3
   
-  - name: combine_results
-    description: Combine multiple results
-    timeout: 1m
+  # Aggregate results
+  - id: aggregate
+    uses: combine_results
     inputs:
-      - name: results
-        type: array
-        required: true
+      results: |
+        {{- json (list 
+          .Steps.process_source_1.outputs.data
+          .Steps.process_source_2.outputs.data
+          .Steps.process_source_3.outputs.data
+        ) -}}
     outputs:
-      - name: combined
-        type: object
+      combined: final_results
+
+shared:
+  validate_sources:
+    uses: validate_sources
+    config:
+      type: function
+      timeout: 30s
+      description: Validate data sources
+  
+  process_data:
+    uses: process_data
+    config:
+      type: function
+      timeout: 2m
+      description: Process a single data source
+  
+  combine_results:
+    uses: combine_results
+    config:
+      type: function
+      timeout: 1m
+      description: Combine multiple results

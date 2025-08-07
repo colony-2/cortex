@@ -55,7 +55,7 @@ func TestStateMachineActivity_SimpleTransition(t *testing.T) {
 		InitialState: "reviewing",
 		States: map[string]StateDefinition{
 			"reviewing": {
-				Activity: "critique_activity",
+				Uses: "critique_activity",
 				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "rejected", When: ".Outputs.score < 80"},
@@ -114,7 +114,7 @@ func TestStateMachineActivity_RetryLoop(t *testing.T) {
 		InitialState: "reviewing",
 		States: map[string]StateDefinition{
 			"reviewing": {
-				Activity: "critique_activity",
+				Uses: "critique_activity",
 				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "improving", When: ".Outputs.score < 80 && .State.Attempts < 3"},
@@ -122,7 +122,7 @@ func TestStateMachineActivity_RetryLoop(t *testing.T) {
 				},
 			},
 			"improving": {
-				Activity: "improve_activity",
+				Uses: "improve_activity",
 				Transitions: []TransitionSpec{
 					{To: "reviewing", When: ".Outputs.improved == true"},
 				},
@@ -152,8 +152,8 @@ func TestStateMachineActivity_RetryLoop(t *testing.T) {
 func TestStateMachineActivity_RecipeInvocation(t *testing.T) {
 	executor := NewMockExecutor()
 	
-	// Mock recipe execution
-	executor.recipes["child_recipe"] = func(inputs map[string]interface{}) (map[string]interface{}, error) {
+	// Mock recipe execution (now treated as an activity)
+	executor.activities["child_recipe"] = func(inputs map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{
 			"result": "success",
 			"data":   "processed",
@@ -167,7 +167,7 @@ func TestStateMachineActivity_RecipeInvocation(t *testing.T) {
 		InitialState: "process",
 		States: map[string]StateDefinition{
 			"process": {
-				Recipe: "child_recipe",
+				Uses: "child_recipe",
 				Transitions: []TransitionSpec{
 					{To: "complete", When: ".Outputs.result == \"success\""},
 				},
@@ -206,7 +206,7 @@ func TestStateMachineActivity_ComplexCELExpressions(t *testing.T) {
 		InitialState: "process",
 		States: map[string]StateDefinition{
 			"process": {
-				Activity: "process",
+				Uses: "process",
 				Transitions: []TransitionSpec{
 					{To: "many", When: ".Outputs.count > 3"},
 					{To: "few", When: ".Outputs.count <= 3"},
@@ -257,7 +257,7 @@ func TestStateMachineActivity_Timeout(t *testing.T) {
 		Timeout:      "100ms", // Very short timeout
 		States: map[string]StateDefinition{
 			"process": {
-				Activity: "slow_activity",
+				Uses: "slow_activity",
 				Transitions: []TransitionSpec{
 					{To: "done", When: ".Outputs.done == true"},
 				},
@@ -294,7 +294,7 @@ func TestStateMachineActivity_ErrorState(t *testing.T) {
 		InitialState: "validate",
 		States: map[string]StateDefinition{
 			"validate": {
-				Activity: "check",
+				Uses: "check",
 				Transitions: []TransitionSpec{
 					{To: "success", When: ".Outputs.valid == true"},
 					{To: "failure", When: ".Outputs.valid == false"},
@@ -348,19 +348,19 @@ func TestStateMachineActivity_StateOutputAccess(t *testing.T) {
 		InitialState: "step1",
 		States: map[string]StateDefinition{
 			"step1": {
-				Activity: "first",
+				Uses: "first",
 				Transitions: []TransitionSpec{
 					{To: "step2"},
 				},
 			},
 			"step2": {
-				Activity: "second",
+				Uses: "second",
 				Transitions: []TransitionSpec{
 					{To: "step3"},
 				},
 			},
 			"step3": {
-				Activity: "combine",
+				Uses: "combine",
 				Transitions: []TransitionSpec{
 					{To: "done", When: ".Outputs.total == 30"},
 				},

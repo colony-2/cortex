@@ -5,17 +5,17 @@ import (
 	"fmt"
 
 	"go.temporal.io/sdk/activity"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
 // ExecutorImplementation defines the interface for activity execution implementations
 type ExecutorImplementation interface {
-	ExecuteHTTPActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteGRPCActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteScriptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteFunctionActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteAIPromptActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteHTTPActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteGRPCActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteScriptActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteFunctionActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteAIPromptActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
 // Executor handles execution of activities based on their implementation type
@@ -40,23 +40,30 @@ func NewExecutorWithRegistry(impl ExecutorImplementation, registry *worker.Provi
 	}
 }
 
-// ExecuteActivity executes an activity based on its definition
-func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipe.ActivityDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+// ExecuteActivity executes an activity based on its step definition
+func (e *Executor) ExecuteActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Check if this is an activity context before using activity.GetLogger
 	if activity.IsActivity(ctx) {
 		logger := activity.GetLogger(ctx)
-		logger.Info("Executing activity", "name", activityDef.Name, "type", activityDef.Implementation.Type)
+		logger.Info("Executing activity", "step", step.ID, "uses", step.Uses)
+	}
+
+	// Get activity type from config or try to infer from uses
+	activityType, ok := step.Config["type"].(string)
+	if !ok {
+		// Default fallback based on uses field or try to infer
+		activityType = "function" // Default to function type
 	}
 
 	// First check if a provider is registered for this activity type
-	if e.providerRegistry.Has(activityDef.Implementation.Type) {
-		provider, err := e.providerRegistry.Get(activityDef.Implementation.Type)
+	if e.providerRegistry.Has(activityType) {
+		provider, err := e.providerRegistry.Get(activityType)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get provider for type %s: %w", activityDef.Implementation.Type, err)
+			return nil, fmt.Errorf("failed to get provider for type %s: %w", activityType, err)
 		}
 		
 		// Execute using the provider
-		result, err := provider.Execute(ctx, activityDef.Implementation.Config, inputs)
+		result, err := provider.Execute(ctx, step.Config, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -69,30 +76,35 @@ func (e *Executor) ExecuteActivity(ctx context.Context, activityDef *recipe.Acti
 	}
 	
 	// Fall back to built-in implementations
-	switch activityDef.Implementation.Type {
+	switch activityType {
 	case "http":
-		return e.implementation.ExecuteHTTPActivity(ctx, activityDef, inputs)
+		return e.implementation.ExecuteHTTPActivity(ctx, step, inputs)
 	case "grpc":
-		return e.implementation.ExecuteGRPCActivity(ctx, activityDef, inputs)
+		return e.implementation.ExecuteGRPCActivity(ctx, step, inputs)
 	case "script":
-		return e.implementation.ExecuteScriptActivity(ctx, activityDef, inputs)
+		return e.implementation.ExecuteScriptActivity(ctx, step, inputs)
 	case "function":
-		return e.implementation.ExecuteFunctionActivity(ctx, activityDef, inputs)
+		return e.implementation.ExecuteFunctionActivity(ctx, step, inputs)
 	case "ai_prompt":
-		return e.implementation.ExecuteAIPromptActivity(ctx, activityDef, inputs)
+		return e.implementation.ExecuteAIPromptActivity(ctx, step, inputs)
 	default:
-		return nil, fmt.Errorf("unsupported activity type: %s", activityDef.Implementation.Type)
+		return nil, fmt.Errorf("unsupported activity type: %s", activityType)
 	}
 }
 
-// RegisterActivities registers all activities with the Temporal worker
-func (e *Executor) RegisterActivities(activityDefs []recipe.ActivityDefinition) map[string]interface{} {
+// RegisterActivities registers activities for the given steps with the Temporal worker
+func (e *Executor) RegisterActivities(steps []yamlpkg.Step) map[string]interface{} {
 	activities := make(map[string]interface{})
 	
-	for _, def := range activityDefs {
-		def := def // capture loop variable
-		activities[def.Name] = func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-			return e.ExecuteActivity(ctx, &def, inputs)
+	for _, step := range steps {
+		step := step // capture loop variable
+		// Register activity by step ID or Uses name
+		activityName := step.ID
+		if activityName == "" {
+			activityName = step.Uses
+		}
+		activities[activityName] = func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+			return e.ExecuteActivity(ctx, &step, inputs)
 		}
 	}
 	

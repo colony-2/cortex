@@ -55,14 +55,15 @@ func TestRegistry_RecipeDiscovery(t *testing.T) {
 name: test-recipe
 version: "1.0.0"
 description: Test recipe
-workflow:
-  name: test-workflow
-  steps:
-    - id: step1
-      activity: test-activity
-activities:
-  - name: test-activity
-    implementation:
+
+steps:
+  - id: step1
+    uses: test-activity
+
+shared:
+  test-activity:
+    uses: test-activity
+    config:
       type: http
 `
 	
@@ -85,78 +86,16 @@ activities:
 	recipes, err := registry.ListRecipes(nil)
 	require.NoError(t, err)
 	assert.Len(t, recipes, 1)
-	// TODO: Fix single-file recipe parser to use top-level name/version fields
-	// Currently it uses the workflow name instead
-	assert.Equal(t, "test-workflow", recipes[0].Name)
-	assert.Equal(t, "", recipes[0].Version) // Version from workflow is empty
+	assert.Equal(t, "test-recipe", recipes[0].Name)
+	assert.Equal(t, "1.0.0", recipes[0].Version)
 	
 	// Test GetRecipe
-	recipe, err := registry.GetRecipe("test-workflow")
+	recipe, err := registry.GetRecipe("test-recipe")
 	require.NoError(t, err)
-	assert.Equal(t, "test-workflow", recipe.Name)
+	assert.Equal(t, "test-recipe", recipe.Name)
 }
 
-func TestRegistry_MultiFileRecipe(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	tempDir := t.TempDir()
-	
-	// Create a multi-file recipe structure
-	recipeDir := filepath.Join(tempDir, "multi-recipe")
-	err := os.MkdirAll(recipeDir, 0755)
-	require.NoError(t, err)
-	
-	// Create recipe.yaml
-	recipeManifest := `
-recipe:
-  name: multi-recipe
-  version: "2.0.0"
-  description: Multi-file recipe
-  files:
-    workflow: workflow.yaml
-    activities: activities.yaml
-`
-	err = os.WriteFile(filepath.Join(recipeDir, "recipe.yaml"), []byte(recipeManifest), 0644)
-	require.NoError(t, err)
-	
-	// Create workflow.yaml
-	workflowContent := `
-name: multi-workflow
-steps:
-  - id: step1
-    activity: activity1
-`
-	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
-	require.NoError(t, err)
-	
-	// Create activities.yaml
-	activitiesContent := `
-activities:
-  - name: activity1
-    implementation:
-      type: http
-`
-	err = os.WriteFile(filepath.Join(recipeDir, "activities.yaml"), []byte(activitiesContent), 0644)
-	require.NoError(t, err)
-	
-	// Create registry and start it
-	registry, err := NewRegistry(logger, tempDir, nil)
-	require.NoError(t, err)
-	
-	err = registry.Start()
-	require.NoError(t, err)
-	defer registry.Stop()
-	
-	// Give it time to discover
-	time.Sleep(200 * time.Millisecond)
-	
-	// Check if recipe was discovered
-	recipe, err := registry.GetRecipe("multi-recipe")
-	require.NoError(t, err)
-	assert.Equal(t, "multi-recipe", recipe.Name)
-	assert.Equal(t, "2.0.0", recipe.Version)
-	assert.NotNil(t, recipe.Workflow)
-	assert.Len(t, recipe.Activities, 1)
-}
+// TestRegistry_MultiFileRecipe removed - unified format doesn't support multi-file recipes
 
 func TestRegistry_RecipeNotFound(t *testing.T) {
 	logger := zaptest.NewLogger(t)
@@ -183,8 +122,10 @@ func TestRegistry_FileWatchingDebounce(t *testing.T) {
 	recipeContent := `
 name: watch-test
 version: "1.0.0"
-workflow:
-  name: test-workflow
+
+steps:
+  - id: step1
+    uses: test-activity
 `
 	recipePath := filepath.Join(tempDir, "watch-test.yaml")
 	err := os.WriteFile(recipePath, []byte(recipeContent), 0644)
@@ -202,18 +143,20 @@ workflow:
 	// Wait for initial discovery
 	time.Sleep(200 * time.Millisecond)
 	
-	// Verify initial recipe (uses workflow name)
-	recipe, err := registry.GetRecipe("test-workflow")
+	// Verify initial recipe (uses unified format name)
+	recipe, err := registry.GetRecipe("watch-test")
 	require.NoError(t, err)
-	assert.Equal(t, "", recipe.Version) // No version in workflow
+	assert.Equal(t, "1.0.0", recipe.Version)
 	
 	// Update recipe rapidly multiple times
 	for i := 0; i < 5; i++ {
 		updatedContent := `
 name: watch-test
 version: "1.0.` + string(rune('1'+i)) + `"
-workflow:
-  name: test-workflow
+
+steps:
+  - id: step1
+    uses: test-activity
 `
 		err = os.WriteFile(recipePath, []byte(updatedContent), 0644)
 		require.NoError(t, err)
@@ -223,10 +166,10 @@ workflow:
 	// Wait for debounce and processing
 	time.Sleep(1 * time.Second)
 	
-	// Check final version (still uses workflow name, no version)
-	recipe, err = registry.GetRecipe("test-workflow")
+	// Check final version (unified format)
+	recipe, err = registry.GetRecipe("watch-test")
 	require.NoError(t, err)
-	assert.Equal(t, "", recipe.Version) // Workflow has no version
+	assert.Equal(t, "1.0.5", recipe.Version) // Latest version
 }
 
 func TestRegistry_ListRecipesWithFilter(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
@@ -22,8 +21,8 @@ func NewCompiler(registry *ActivityRegistry) *Compiler {
 	}
 }
 
-// ExecuteWorkflow implements the WorkflowExecutor interface
-func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.WorkflowDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
+// ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes
+func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
 		// Create workflow state
 		state := &WorkflowState{
 			Inputs:  inputs,
@@ -31,43 +30,25 @@ func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.WorkflowDe
 			Outputs: make(map[string]interface{}),
 		}
 
-		// Configure retry policy
+		// Configure default retry policy
 		retryPolicy := &temporal.RetryPolicy{
-			InitialInterval:    def.Workflow.RetryPolicy.InitialInterval,
+			InitialInterval:    10 * time.Second,
 			MaximumInterval:    10 * time.Minute,
 			BackoffCoefficient: 2.0,
-			MaximumAttempts:    int32(def.Workflow.RetryPolicy.MaximumAttempts),
+			MaximumAttempts:    3,
 		}
 
-		// Execute steps based on workflow type
-		switch def.Workflow.Type {
-		case "sequential":
-			if err := c.executeSequentialSteps(ctx, def.Workflow.Steps, state, retryPolicy); err != nil {
-				return nil, err
-			}
-		case "parallel":
-			if err := c.executeParallelSteps(ctx, def.Workflow.Steps, state, retryPolicy); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, fmt.Errorf("unsupported workflow type: %s", def.Workflow.Type)
+		// Execute steps sequentially (can be extended for parallel execution)
+		if err := c.executeSequentialSteps(ctx, def.Steps, state, retryPolicy); err != nil {
+			return nil, err
 		}
 
-		// Process workflow outputs
-		outputResolver := NewTemplateResolver(state)
-		for key, template := range def.Workflow.Outputs {
-			value, err := outputResolver.Resolve(template)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve output %s: %w", key, err)
-			}
-			state.Outputs[key] = value
-		}
-
+		// Return final outputs - for now just return state outputs
 		return state.Outputs, nil
 }
 
-// CompileWorkflow compiles a YAML workflow definition into a Temporal workflow
-func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}, error) {
+// CompileWorkflow compiles a unified recipe definition into a Temporal workflow
+func (c *Compiler) CompileWorkflow(def *yamlpkg.RecipeDefinition) (interface{}, error) {
 	return func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		return c.ExecuteWorkflow(ctx, def, inputs)
 	}, nil
@@ -75,9 +56,9 @@ func (c *Compiler) CompileWorkflow(def *yamlpkg.WorkflowDefinition) (interface{}
 
 func (c *Compiler) executeSequentialSteps(ctx workflow.Context, steps []yamlpkg.Step, state *WorkflowState, retryPolicy *temporal.RetryPolicy) error {
 	for _, step := range steps {
-		if len(step.Parallel) > 0 {
+		if step.Parallel != nil && len(step.Parallel.Steps) > 0 {
 			// Execute parallel sub-steps
-			if err := c.executeParallelSteps(ctx, step.Parallel, state, retryPolicy); err != nil {
+			if err := c.executeParallelSteps(ctx, step.Parallel.Steps, state, retryPolicy); err != nil {
 				return fmt.Errorf("failed to execute parallel step %s: %w", step.ID, err)
 			}
 		} else {
@@ -164,23 +145,17 @@ func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *W
 		}
 	}
 	
-	// Get activity definition
-	activityDef := c.activityRegistry.GetActivity(step.Activity)
-	if activityDef == nil {
-		return fmt.Errorf("activity not found: %s", step.Activity)
-	}
-	
 	// Configure activity options
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: activityDef.Timeout,
+		StartToCloseTimeout: 5 * time.Minute, // Default timeout
 		RetryPolicy:        retryPolicy,
 	}
 	
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 	
-	// Execute activity
+	// Execute activity using the step's Uses field
 	var outputs map[string]interface{}
-	err := workflow.ExecuteActivity(ctx, step.Activity, inputs).Get(ctx, &outputs)
+	err := workflow.ExecuteActivity(ctx, step.Uses, inputs).Get(ctx, &outputs)
 	if err != nil {
 		return err
 	}
@@ -205,24 +180,24 @@ type StepResult struct {
 	Outputs map[string]interface{}
 }
 
-// ActivityRegistry manages activity definitions
+// ActivityRegistry manages activity registrations for unified model
 type ActivityRegistry struct {
-	activities map[string]*recipe.ActivityDefinition
+	activities map[string]bool // Just track which activities are registered
 }
 
 // NewActivityRegistry creates a new activity registry
 func NewActivityRegistry() *ActivityRegistry {
 	return &ActivityRegistry{
-		activities: make(map[string]*recipe.ActivityDefinition),
+		activities: make(map[string]bool),
 	}
 }
 
-// RegisterActivity registers an activity definition
-func (r *ActivityRegistry) RegisterActivity(def *recipe.ActivityDefinition) {
-	r.activities[def.Name] = def
+// RegisterActivity registers an activity by name
+func (r *ActivityRegistry) RegisterActivity(name string) {
+	r.activities[name] = true
 }
 
-// GetActivity retrieves an activity definition
-func (r *ActivityRegistry) GetActivity(name string) *recipe.ActivityDefinition {
+// HasActivity checks if an activity is registered
+func (r *ActivityRegistry) HasActivity(name string) bool {
 	return r.activities[name]
 }
