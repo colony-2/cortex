@@ -370,130 +370,33 @@ config:
          paths: ["requirements.txt"]
    ```
 
-#### Provider-Adaptive File Injection
+#### Clean Architecture Summary
 
-The LLM activity automatically selects the optimal file injection method based on the provider:
+The file handling system follows clean architecture principles:
 
-**OpenAI Models:**
-```json
-{
-  "model": "gpt-4-vision-preview",
-  "messages": [
-    {
-      "role": "system",
-      "content": "[Persona configuration if applicable]"
-    },
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "{input.prompt}"
-        },
-        {
-          "type": "image_url",
-          "image_url": {
-            "url": "data:image/png;base64,{base64_image_data}"
-          }
-        },
-        {
-          "type": "text",
-          "text": "File: src/main.go\n{file_content}"
-        }
-      ]
-    }
-  ]
-}
-```
+1. **Activity Layer (Central)**: 
+   - Resolves all file paths from configuration
+   - Reads file contents into memory
+   - Creates provider-agnostic `ResolvedFile` objects
+   - Handles deduplication and size limits
 
-**Anthropic Claude:**
-```json
-{
-  "model": "claude-3-opus",
-  "messages": [
-    {
-      "role": "system",
-      "content": "[Persona configuration if applicable]"
-    },
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "{input.prompt}"
-        },
-        {
-          "type": "image",
-          "source": {
-            "type": "base64",
-            "media_type": "image/png",
-            "data": "{base64_image_data}"
-          }
-        },
-        {
-          "type": "document",
-          "source": {
-            "type": "base64",
-            "media_type": "application/pdf",
-            "data": "{base64_pdf_data}"
-          }
-        }
-      ]
-    }
-  ]
-}
-```
+2. **Provider Facade (Interface)**:
+   - Clean `AddFileContext()` method for adding files
+   - Provider decides internally how to handle files
+   - Encapsulates all provider-specific logic
 
-**Google Gemini:**
-```json
-{
-  "model": "gemini-pro-vision",
-  "contents": [
-    {
-      "role": "user",
-      "parts": [
-        {
-          "text": "{input.prompt}"
-        },
-        {
-          "fileData": {
-            "mimeType": "image/png",
-            "fileUri": "gs://bucket/image.png"
-          }
-        },
-        {
-          "text": "File: src/main.go\n{file_content}"
-        }
-      ]
-    }
-  ],
-  "systemInstruction": {
-    "parts": [
-      {
-        "text": "[Persona configuration if applicable]"
-      }
-    ]
-  }
-}
-```
+3. **Provider Implementation (Internal)**:
+   - Each provider handles files according to its native capabilities
+   - OpenAI: Images via Vision API, text injection for documents
+   - Anthropic: Native image and PDF support
+   - Gemini: Upload to Files API for all types
+   - Fallback providers: Simple text injection
 
-**Fallback Text Injection (for unsupported providers):**
-```
-System: [Persona configuration if applicable]
-
-User: {input.prompt}
-
---- File Context ---
-File: src/main.go
-```
-{file_content}
-```
-
-File: README.md
-```
-{file_content}
-```
-```
+This design ensures:
+- **Single Responsibility**: File resolution is separate from provider-specific handling
+- **Open/Closed**: Easy to add new providers without changing core logic
+- **Interface Segregation**: Clean, minimal provider interface
+- **Dependency Inversion**: Activity depends on abstraction, not concrete providers
 
 #### Example Configurations
 
@@ -648,30 +551,52 @@ config:
 
 ⚠️ = Requires preprocessing/conversion
 
-#### Runtime File Resolution and Provider Adaptation
+#### Architecture: Separation of Concerns
+
+The file handling system follows a clean separation of concerns:
+
+1. **Activity Layer**: Resolves file paths and collects artifacts
+2. **Provider Facade**: Abstract interface for all LLM providers
+3. **Provider Implementation**: Provider-specific file handling logic
 
 ```go
-type FileHandler interface {
-    PrepareFiles(ctx context.Context, artifacts []Artifact, provider string) ([]PreparedFile, error)
-    SupportsNativeFiles(provider string) bool
-    GetSupportedTypes(provider string) []string
+// LLM Provider Facade - Clean interface for all providers
+type LLMProvider interface {
+    // Core methods
+    SendMessage(ctx context.Context, messages []Message, config Config) (Response, error)
+    
+    // File context methods
+    AddFileContext(ctx context.Context, files []ResolvedFile) error
+    AddDirectoryContext(ctx context.Context, path string, recursive bool) error
+    ClearContext() error
+    
+    // Capabilities
+    SupportsFileType(fileType string) bool
+    GetMaxFileSize() int64
+    GetSupportedMimeTypes() []string
 }
 
-type PreparedFile struct {
-    Original  Artifact
-    Type      FileType      // text, image, document, audio, video
-    Format    string        // How to send: base64, url, upload, text
-    Content   interface{}   // Prepared content based on format
-    Metadata  map[string]interface{}
+// Resolved file from activity layer - provider agnostic
+type ResolvedFile struct {
+    Path      string
+    Label     string  // Optional descriptive label
+    Content   []byte  // Raw file content
+    MimeType  string  // Detected MIME type
+    Size      int64
 }
 
-func (a *LLMActivity) resolveArtifacts(ctx context.Context, input ActivityInput) ([]Artifact, error) {
-    var artifacts []Artifact
+// Activity layer - centralizes all file resolution logic
+func (a *LLMActivity) resolveArtifacts(ctx context.Context, input ActivityInput) ([]ResolvedFile, error) {
+    paths := []string{}
+    labels := map[string]string{}
     config := a.Config.Context
     
     // Static artifacts
     for _, artifact := range config.Artifacts {
-        artifacts = append(artifacts, artifact)
+        paths = append(paths, artifact.Path)
+        if artifact.Label != "" {
+            labels[artifact.Path] = artifact.Label
+        }
     }
     
     // Get artifacts from previous activity output
@@ -680,11 +605,7 @@ func (a *LLMActivity) resolveArtifacts(ctx context.Context, input ActivityInput)
         if len(parts) == 2 {
             if output, ok := input.PreviousOutputs[parts[0]]; ok {
                 if files, ok := output[parts[1]].([]string); ok {
-                    for _, file := range files {
-                        artifacts = append(artifacts, Artifact{
-                            Path: file,
-                        })
-                    }
+                    paths = append(paths, files...)
                 }
             }
         }
@@ -703,205 +624,335 @@ func (a *LLMActivity) resolveArtifacts(ctx context.Context, input ActivityInput)
                 }
             }
             if !excluded {
-                artifacts = append(artifacts, Artifact{
-                    Path: match,
-                })
+                paths = append(paths, match)
             }
         }
     }
     
     // Directory listing
     if dir := config.ArtifactsDirectory; dir != nil {
-        // Walk directory and collect matching files
-        filepath.Walk(dir.Path, func(path string, info os.FileInfo, err error) error {
-            if err != nil {
-                return nil // Skip errors
-            }
-            if !dir.Recursive && filepath.Dir(path) != dir.Path {
-                return filepath.SkipDir
-            }
-            for _, ext := range dir.Extensions {
-                if strings.HasSuffix(path, ext) {
-                    artifacts = append(artifacts, Artifact{
-                        Path: path,
-                    })
-                    break
-                }
-            }
-            return nil
-        })
+        dirPaths, err := a.listDirectory(dir.Path, dir.Recursive, dir.Extensions)
+        if err == nil {
+            paths = append(paths, dirPaths...)
+        }
     }
     
     // Combined resolution
     if res := config.ArtifactsResolution; res != nil {
         for _, source := range res.Sources {
-            // Process each source type
-            // ... (similar to above methods)
+            sourcePaths := a.resolveSource(source, input)
+            paths = append(paths, sourcePaths...)
         }
     }
     
-    // Always deduplicate artifacts
-    artifacts = deduplicateArtifacts(artifacts)
+    // Deduplicate paths
+    paths = deduplicatePaths(paths)
     
-    // Apply file limits
-    artifacts = applyFileLimits(artifacts, config.FileLimits)
+    // Read files and create ResolvedFile objects
+    resolvedFiles := []ResolvedFile{}
+    for _, path := range paths {
+        content, err := os.ReadFile(path)
+        if err != nil {
+            continue // Skip files that can't be read
+        }
+        
+        mimeType := detectMimeType(path, content)
+        
+        resolved := ResolvedFile{
+            Path:     path,
+            Label:    labels[path],
+            Content:  content,
+            MimeType: mimeType,
+            Size:     int64(len(content)),
+        }
+        
+        // Apply size limits
+        if config.FileLimits != nil {
+            if resolved.Size > config.FileLimits.MaxFileSize {
+                if config.FileLimits.TruncateLargeFiles {
+                    resolved.Content = truncateContent(resolved.Content, config.FileLimits.MaxFileSize)
+                } else {
+                    continue // Skip file
+                }
+            }
+        }
+        
+        resolvedFiles = append(resolvedFiles, resolved)
+    }
     
-    return artifacts, nil
+    // Apply total limits
+    if config.FileLimits != nil {
+        resolvedFiles = applyTotalLimits(resolvedFiles, config.FileLimits)
+    }
+    
+    return resolvedFiles, nil
 }
 
-// Provider-specific message building
-func (a *LLMActivity) buildProviderMessage(prompt string, artifacts []Artifact, provider string) (interface{}, error) {
-    handler := a.getFileHandler(provider)
-    preparedFiles, err := handler.PrepareFiles(context.Background(), artifacts, provider)
+// Main activity execution
+func (a *LLMActivity) Execute(ctx context.Context, input ActivityInput) (ActivityOutput, error) {
+    // Step 1: Resolve all files centrally
+    resolvedFiles, err := a.resolveArtifacts(ctx, input)
+    if err != nil {
+        return nil, fmt.Errorf("failed to resolve artifacts: %w", err)
+    }
+    
+    // Step 2: Get the appropriate provider
+    provider := a.getProvider()
+    
+    // Step 3: Add file context to provider (provider handles internally)
+    if len(resolvedFiles) > 0 {
+        if err := provider.AddFileContext(ctx, resolvedFiles); err != nil {
+            // Log warning but continue - provider should handle gracefully
+            log.Printf("Warning: failed to add file context: %v", err)
+        }
+    }
+    
+    // Step 4: Build messages (persona or simple mode)
+    messages := a.buildMessages(input)
+    
+    // Step 5: Send to provider
+    response, err := provider.SendMessage(ctx, messages, a.Config)
     if err != nil {
         return nil, err
     }
     
-    switch provider {
-    case "openai":
-        return a.buildOpenAIMessage(prompt, preparedFiles)
-    case "anthropic":
-        return a.buildAnthropicMessage(prompt, preparedFiles)
-    case "google":
-        return a.buildGeminiMessage(prompt, preparedFiles)
+    // Step 6: Clear context if needed
+    defer provider.ClearContext()
+    
+    return ActivityOutput{
+        "response": response.Content,
+        "usage": response.Usage,
+    }, nil
+}
+
+// Provider Implementations - Each handles files internally
+
+// OpenAI Provider Implementation
+type OpenAIProvider struct {
+    client      *openai.Client
+    fileContext []ResolvedFile
+}
+
+func (p *OpenAIProvider) AddFileContext(ctx context.Context, files []ResolvedFile) error {
+    // Validate files are supported
+    for _, file := range files {
+        if !p.SupportsFileType(file.MimeType) {
+            // Convert or skip based on configuration
+            log.Printf("OpenAI: unsupported file type %s, will inject as text", file.MimeType)
+        }
+    }
+    p.fileContext = files
+    return nil
+}
+
+func (p *OpenAIProvider) SendMessage(ctx context.Context, messages []Message, config Config) (Response, error) {
+    // Build OpenAI-specific message format internally
+    openAIMessages := []openai.Message{}
+    
+    for _, msg := range messages {
+        if msg.Role == "user" && len(p.fileContext) > 0 {
+            // Add files using OpenAI's format
+            content := []interface{}{
+                map[string]string{"type": "text", "text": msg.Content},
+            }
+            
+            for _, file := range p.fileContext {
+                if strings.HasPrefix(file.MimeType, "image/") {
+                    // Use vision API for images
+                    content = append(content, map[string]interface{}{
+                        "type": "image_url",
+                        "image_url": map[string]string{
+                            "url": fmt.Sprintf("data:%s;base64,%s", 
+                                file.MimeType, 
+                                base64.StdEncoding.EncodeToString(file.Content)),
+                        },
+                    })
+                } else {
+                    // Inject text files directly
+                    label := file.Label
+                    if label == "" {
+                        label = file.Path
+                    }
+                    content = append(content, map[string]string{
+                        "type": "text",
+                        "text": fmt.Sprintf("\nFile: %s\n```\n%s\n```", label, string(file.Content)),
+                    })
+                }
+            }
+            
+            openAIMessages = append(openAIMessages, openai.Message{
+                Role:    msg.Role,
+                Content: content,
+            })
+        } else {
+            openAIMessages = append(openAIMessages, openai.Message{
+                Role:    msg.Role,
+                Content: msg.Content,
+            })
+        }
+    }
+    
+    // Send to OpenAI API
+    return p.client.Send(ctx, openAIMessages)
+}
+
+func (p *OpenAIProvider) SupportsFileType(mimeType string) bool {
+    return strings.HasPrefix(mimeType, "text/") || 
+           strings.HasPrefix(mimeType, "image/")
+}
+
+// Anthropic Provider Implementation
+type AnthropicProvider struct {
+    client      *anthropic.Client
+    fileContext []ResolvedFile
+}
+
+func (p *AnthropicProvider) AddFileContext(ctx context.Context, files []ResolvedFile) error {
+    p.fileContext = files
+    return nil
+}
+
+func (p *AnthropicProvider) SendMessage(ctx context.Context, messages []Message, config Config) (Response, error) {
+    // Build Anthropic-specific message format internally
+    anthropicMessages := []anthropic.Message{}
+    
+    for _, msg := range messages {
+        if msg.Role == "user" && len(p.fileContext) > 0 {
+            // Build content blocks for Anthropic
+            content := []interface{}{
+                map[string]string{"type": "text", "text": msg.Content},
+            }
+            
+            for _, file := range p.fileContext {
+                if strings.HasPrefix(file.MimeType, "image/") {
+                    content = append(content, map[string]interface{}{
+                        "type": "image",
+                        "source": map[string]interface{}{
+                            "type": "base64",
+                            "media_type": file.MimeType,
+                            "data": base64.StdEncoding.EncodeToString(file.Content),
+                        },
+                    })
+                } else if file.MimeType == "application/pdf" {
+                    // Claude native PDF support
+                    content = append(content, map[string]interface{}{
+                        "type": "document",
+                        "source": map[string]interface{}{
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64.StdEncoding.EncodeToString(file.Content),
+                        },
+                    })
+                } else {
+                    // Text injection
+                    label := file.Label
+                    if label == "" {
+                        label = file.Path
+                    }
+                    content = append(content, map[string]string{
+                        "type": "text",
+                        "text": fmt.Sprintf("\nFile: %s\n```\n%s\n```", label, string(file.Content)),
+                    })
+                }
+            }
+            
+            anthropicMessages = append(anthropicMessages, anthropic.Message{
+                Role:    msg.Role,
+                Content: content,
+            })
+        } else {
+            anthropicMessages = append(anthropicMessages, anthropic.Message{
+                Role:    msg.Role,
+                Content: msg.Content,
+            })
+        }
+    }
+    
+    // Send to Anthropic API
+    return p.client.Send(ctx, anthropicMessages)
+}
+
+func (p *AnthropicProvider) SupportsFileType(mimeType string) bool {
+    return strings.HasPrefix(mimeType, "text/") || 
+           strings.HasPrefix(mimeType, "image/") ||
+           mimeType == "application/pdf"
+}
+
+// Google Gemini Provider Implementation
+type GeminiProvider struct {
+    client      *gemini.Client
+    fileContext []ResolvedFile
+}
+
+func (p *GeminiProvider) AddFileContext(ctx context.Context, files []ResolvedFile) error {
+    // Upload files to Google's Files API
+    for i, file := range files {
+        uploadedURI, err := p.uploadFile(ctx, file)
+        if err != nil {
+            log.Printf("Gemini: failed to upload file %s: %v", file.Path, err)
+            continue
+        }
+        // Store URI for later use
+        files[i].Metadata = map[string]interface{}{
+            "uploaded_uri": uploadedURI,
+        }
+    }
+    p.fileContext = files
+    return nil
+}
+
+func (p *GeminiProvider) SendMessage(ctx context.Context, messages []Message, config Config) (Response, error) {
+    // Build Gemini-specific message format
+    parts := []interface{}{}
+    
+    for _, msg := range messages {
+        if msg.Role == "user" {
+            parts = append(parts, map[string]string{"text": msg.Content})
+            
+            // Add file parts if context exists
+            for _, file := range p.fileContext {
+                if uri, ok := file.Metadata["uploaded_uri"].(string); ok {
+                    parts = append(parts, map[string]interface{}{
+                        "fileData": map[string]string{
+                            "mimeType": file.MimeType,
+                            "fileUri": uri,
+                        },
+                    })
+                } else {
+                    // Fallback to text injection if upload failed
+                    label := file.Label
+                    if label == "" {
+                        label = file.Path
+                    }
+                    parts = append(parts, map[string]string{
+                        "text": fmt.Sprintf("\nFile: %s\n```\n%s\n```", label, string(file.Content)),
+                    })
+                }
+            }
+        }
+    }
+    
+    // Send to Gemini API
+    return p.client.Send(ctx, parts)
+}
+
+func (p *GeminiProvider) SupportsFileType(mimeType string) bool {
+    // Gemini supports many file types
+    return true
+}
+
+// Factory function to get appropriate provider
+func getProvider(model string) LLMProvider {
+    switch {
+    case strings.HasPrefix(model, "gpt"):
+        return &OpenAIProvider{client: openai.NewClient()}
+    case strings.HasPrefix(model, "claude"):
+        return &AnthropicProvider{client: anthropic.NewClient()}
+    case strings.HasPrefix(model, "gemini"):
+        return &GeminiProvider{client: gemini.NewClient()}
     default:
-        // Fallback to text injection
-        return a.buildTextFallbackMessage(prompt, artifacts)
+        return &TextFallbackProvider{}
     }
-}
-
-func (a *LLMActivity) buildOpenAIMessage(prompt string, files []PreparedFile) (interface{}, error) {
-    content := []interface{}{
-        map[string]string{"type": "text", "text": prompt},
-    }
-    
-    for _, file := range files {
-        switch file.Type {
-        case FileTypeImage:
-            content = append(content, map[string]interface{}{
-                "type": "image_url",
-                "image_url": map[string]string{
-                    "url": file.Content.(string), // base64 or URL
-                },
-            })
-        case FileTypeText, FileTypeDocument:
-            // OpenAI doesn't support native PDFs, extract text
-            content = append(content, map[string]string{
-                "type": "text",
-                "text": fmt.Sprintf("File: %s\n%s", file.Original.Path, file.Content),
-            })
-        }
-    }
-    
-    return map[string]interface{}{
-        "role": "user",
-        "content": content,
-    }, nil
-}
-
-func (a *LLMActivity) buildAnthropicMessage(prompt string, files []PreparedFile) (interface{}, error) {
-    content := []interface{}{
-        map[string]string{"type": "text", "text": prompt},
-    }
-    
-    for _, file := range files {
-        switch file.Type {
-        case FileTypeImage:
-            content = append(content, map[string]interface{}{
-                "type": "image",
-                "source": map[string]string{
-                    "type": "base64",
-                    "media_type": file.Metadata["mime_type"].(string),
-                    "data": file.Content.(string),
-                },
-            })
-        case FileTypeDocument:
-            // Claude supports native PDF parsing
-            if file.Metadata["mime_type"] == "application/pdf" {
-                content = append(content, map[string]interface{}{
-                    "type": "document",
-                    "source": map[string]string{
-                        "type": "base64",
-                        "media_type": "application/pdf",
-                        "data": file.Content.(string),
-                    },
-                })
-            } else {
-                // Fallback to text
-                content = append(content, map[string]string{
-                    "type": "text",
-                    "text": fmt.Sprintf("File: %s\n%s", file.Original.Path, file.Content),
-                })
-            }
-        case FileTypeText:
-            content = append(content, map[string]string{
-                "type": "text",
-                "text": fmt.Sprintf("File: %s\n%s", file.Original.Path, file.Content),
-            })
-        }
-    }
-    
-    return map[string]interface{}{
-        "role": "user",
-        "content": content,
-    }, nil
-}
-
-func (a *LLMActivity) buildGeminiMessage(prompt string, files []PreparedFile) (interface{}, error) {
-    parts := []interface{}{
-        map[string]string{"text": prompt},
-    }
-    
-    for _, file := range files {
-        switch file.Format {
-        case "upload":
-            // Gemini uses file URIs after upload
-            parts = append(parts, map[string]interface{}{
-                "fileData": map[string]string{
-                    "mimeType": file.Metadata["mime_type"].(string),
-                    "fileUri": file.Content.(string),
-                },
-            })
-        case "text":
-            parts = append(parts, map[string]string{
-                "text": fmt.Sprintf("File: %s\n%s", file.Original.Path, file.Content),
-            })
-        }
-    }
-    
-    return map[string]interface{}{
-        "role": "user",
-        "parts": parts,
-    }, nil
-}
-
-// Fallback for providers without native file support
-func (a *LLMActivity) buildTextFallbackMessage(prompt string, artifacts []Artifact) (string, error) {
-    var builder strings.Builder
-    builder.WriteString(prompt)
-    
-    if len(artifacts) > 0 {
-        builder.WriteString("\n\n--- File Context ---\n")
-        
-        for _, artifact := range artifacts {
-            content, err := a.readFileContent(artifact.Path)
-            if err != nil {
-                continue
-            }
-            
-            if artifact.Label != "" {
-                builder.WriteString(fmt.Sprintf("\nFile: %s (%s)\n", artifact.Path, artifact.Label))
-            } else {
-                builder.WriteString(fmt.Sprintf("\nFile: %s\n", artifact.Path))
-            }
-            
-            builder.WriteString("```\n")
-            builder.WriteString(content)
-            builder.WriteString("\n```\n")
-        }
-    }
-    
-    return builder.String(), nil
 }
 ```
 

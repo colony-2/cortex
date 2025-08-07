@@ -285,21 +285,10 @@ func BuildCELEnvironment(ctx *ExecutionContext) (*cel.Env, error) {
 
 ## Migration Strategy
 
-### Phase 1: Backward Compatibility Mode
-- Add support for new interface syntax
-- Detect legacy workflows without interfaces
-- Auto-generate interfaces based on usage analysis
-- Emit deprecation warnings
-
-### Phase 2: Strict Mode (Opt-in)
-- Add workflow-level flag: `strict_encapsulation: true`
-- Enforce all encapsulation rules
-- Fail on cross-context access attempts
-
 ### Phase 3: Default Strict Mode
-- Make strict mode the default
-- Require explicit `legacy_mode: true` for old behavior
-- Provide migration tooling
+- No migration supported. Only mode is removed as part of changes
+- All tests/examples should be updated to new pattern.
+- No migration tooling should be created
 
 ## State Machine Context Sharing
 
@@ -484,14 +473,6 @@ states:
           historical_data: "{{ .States.init.historical }}"
 ```
 
-## Benefits
-
-1. **Clarity**: Clear data flow and dependencies
-2. **Testability**: Nested compositions can be tested in isolation
-3. **Reusability**: Compositions with clear interfaces can be extracted and reused
-4. **Maintainability**: Changes to internal implementation don't affect consumers
-5. **Type Safety**: Potential for future type checking on interfaces
-6. **Debugging**: Easier to trace data flow and identify issues
 
 ## Testing Requirements
 
@@ -503,7 +484,6 @@ states:
 
 2. **Integration Tests**:
    - Complex nested workflows with proper encapsulation
-   - Migration from legacy to strict mode
    - Error handling for invalid access patterns
 
 3. **Validation Tests**:
@@ -511,9 +491,3 @@ states:
    - CEL expression scoping validation
    - Template resolution boundary checks
 
-## Open Questions
-
-1. Should we allow read-only access to parent context through explicit declaration?
-2. How should we handle context data like timestamps, request IDs that might be needed at all levels?
-3. Should parallel steps with dependencies have special access rules?
-4. What's the best way to handle error context propagation with strict boundaries?
