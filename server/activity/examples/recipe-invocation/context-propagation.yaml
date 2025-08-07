@@ -1,0 +1,165 @@
+# Context Propagation Example
+# This example shows how context is automatically propagated from parent to child recipes
+
+name: context_aware_pipeline
+version: "1.0"
+description: Demonstrates context propagation through recipe hierarchy
+
+inputs:
+  - name: request_id
+    type: string
+    required: true
+    description: Unique request identifier for tracking
+  - name: user_id
+    type: string
+    required: true
+    description: User initiating the request
+  - name: data_source
+    type: string
+    required: true
+    description: Source data to process
+
+# Context is automatically created and includes:
+# - Recipe metadata (name, version, execution ID)
+# - Environment info (name, region, cluster)
+# - Execution info (host, namespace, task queue, started time)
+# - Auth info (identity, token if available)
+# - Parent execution ID (when invoked as a child)
+
+workflow:
+  type: sequential
+  steps:
+    # Step 1: Initialize processing with context
+    - id: initialize
+      activity: context_logger
+      inputs:
+        message: "Starting context-aware pipeline"
+        request_id: "{{ .Inputs.request_id }}"
+        user_id: "{{ .Inputs.user_id }}"
+        # Context is automatically available
+        parent_execution_id: "{{ .Context.Recipe.ParentExecutionID }}"
+        environment: "{{ .Context.Environment.Name }}"
+        region: "{{ .Context.Environment.Region }}"
+      outputs:
+        initialization_id: ".init_id"
+
+    # Step 2: Invoke child recipe - context is automatically propagated
+    - id: process_with_context
+      activity: recipe
+      config:
+        recipe: "context-aware-processor"
+        timeout: "10m"
+        # Context propagation happens automatically!
+        # The child recipe will receive:
+        # - Its own execution context
+        # - Parent execution ID pointing to this recipe
+        # - Environment, auth, and other context from parent
+      inputs:
+        data_source: "{{ .Inputs.data_source }}"
+        request_id: "{{ .Inputs.request_id }}"
+        parent_init_id: "{{ .Steps.initialize.outputs.initialization_id }}"
+        # No need to manually pass context - it's automatic
+      outputs:
+        result: ".result"
+        child_execution_id: ".execution_id"
+        child_received_context: ".result.context_info"
+
+    # Step 3: Invoke another child that needs the first child's context
+    - id: secondary_processing
+      activity: recipe
+      config:
+        recipe: "context-validator"
+        timeout: "5m"
+      inputs:
+        # This child will know it's part of a recipe chain
+        previous_result: "{{ .Steps.process_with_context.outputs.result }}"
+        previous_child_id: "{{ .Steps.process_with_context.outputs.child_execution_id }}"
+        # The child can access context to understand the full chain:
+        # - Its parent (this recipe)
+        # - The environment it's running in
+        # - Auth context for permissions
+      outputs:
+        validation_result: ".result.validation"
+        context_chain: ".result.execution_chain"
+
+    # Step 4: Demonstrate nested child invocation
+    - id: nested_invocation
+      activity: recipe
+      config:
+        recipe: "nested-orchestrator"  # This child will invoke its own children
+        timeout: "15m"
+      inputs:
+        data: "{{ .Steps.process_with_context.outputs.result }}"
+        # The nested-orchestrator will:
+        # 1. Receive context from this parent
+        # 2. Pass its own context to its children
+        # 3. Children will have the full context chain
+      outputs:
+        nested_result: ".result"
+        # This will show the execution hierarchy
+        execution_tree: ".result.execution_hierarchy"
+
+    # Step 5: Audit trail using context
+    - id: create_audit_trail
+      activity: audit_logger
+      inputs:
+        request_id: "{{ .Inputs.request_id }}"
+        user_id: "{{ .Inputs.user_id }}"
+        # Use context to create complete audit trail
+        execution_chain:
+          parent_id: "{{ .Context.Recipe.ExecutionID }}"
+          children:
+            - id: "{{ .Steps.process_with_context.outputs.child_execution_id }}"
+              context: "{{ .Steps.process_with_context.outputs.child_received_context }}"
+            - id: "{{ .Steps.secondary_processing.outputs.context_chain }}"
+            - id: "{{ .Steps.nested_invocation.outputs.execution_tree }}"
+        environment:
+          name: "{{ .Context.Environment.Name }}"
+          region: "{{ .Context.Environment.Region }}"
+          cluster: "{{ .Context.Environment.Cluster }}"
+        auth:
+          identity: "{{ .Context.Auth.Identity }}"
+      outputs:
+        audit_id: ".audit_record_id"
+
+outputs:
+  - name: execution_hierarchy
+    value: "{{ .Steps.nested_invocation.outputs.execution_tree }}"
+  - name: audit_trail_id
+    value: "{{ .Steps.create_audit_trail.outputs.audit_id }}"
+  - name: processing_result
+    value: "{{ .Steps.process_with_context.outputs.result }}"
+  - name: context_info
+    value:
+      recipe_name: "{{ .Context.Recipe.Name }}"
+      recipe_version: "{{ .Context.Recipe.Version }}"
+      execution_id: "{{ .Context.Recipe.ExecutionID }}"
+      parent_execution_id: "{{ .Context.Recipe.ParentExecutionID }}"
+      environment: "{{ .Context.Environment.Name }}"
+      region: "{{ .Context.Environment.Region }}"
+      identity: "{{ .Context.Auth.Identity }}"
+
+# Important Context Propagation Notes:
+# 
+# 1. Automatic Propagation:
+#    - When a recipe invokes a child recipe via the "recipe" activity,
+#      context is automatically propagated
+#    - No manual configuration needed
+#
+# 2. Context Hierarchy:
+#    - Each recipe has its own execution context
+#    - ParentExecutionID links to the invoking recipe
+#    - Creates a traceable execution tree
+#
+# 3. Context Contents:
+#    - Recipe: name, version, execution ID, parent execution ID
+#    - Environment: name, region, cluster configuration
+#    - Execution: host, namespace, task queue, timing info
+#    - Auth: identity, tokens, permissions context
+#
+# 4. Use Cases:
+#    - Distributed tracing across recipe invocations
+#    - Security and audit logging
+#    - Environment-aware processing
+#    - Debugging recipe chains
+#    - Performance monitoring across hierarchy

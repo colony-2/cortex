@@ -1,0 +1,124 @@
+# Parallel Child Recipe Invocation Example
+# This example shows a parent recipe that invokes multiple child recipes in parallel
+
+name: parallel_analysis_pipeline
+version: "1.0"
+description: Parent recipe that runs multiple analysis recipes in parallel and aggregates results
+
+inputs:
+  - name: document_path
+    type: string
+    required: true
+    description: Path to the document to analyze
+  - name: analysis_depth
+    type: string
+    default: "standard"
+    description: Depth of analysis (quick, standard, deep)
+
+workflow:
+  type: sequential
+  steps:
+    # Step 1: Load and prepare document
+    - id: load_document
+      activity: document_loader
+      inputs:
+        path: "{{ .Inputs.document_path }}"
+      outputs:
+        content: ".text_content"
+        metadata: ".document_metadata"
+
+    # Step 2: Run multiple analysis recipes in parallel
+    - id: parallel_analysis
+      type: parallel
+      parallel:
+        # Sentiment analysis using child recipe
+        - id: sentiment_analysis
+          activity: recipe
+          config:
+            recipe: "sentiment-analyzer"
+            timeout: "5m"
+          inputs:
+            text: "{{ .Steps.load_document.outputs.content }}"
+            mode: "{{ .Inputs.analysis_depth }}"
+          outputs:
+            sentiment_score: ".result.sentiment_score"
+            emotions: ".result.emotions"
+
+        # Topic extraction using child recipe
+        - id: topic_extraction
+          activity: recipe
+          config:
+            recipe: "topic-extractor"
+            timeout: "5m"
+          inputs:
+            text: "{{ .Steps.load_document.outputs.content }}"
+            max_topics: 10
+          outputs:
+            topics: ".result.topics"
+            keywords: ".result.keywords"
+
+        # Entity recognition using child recipe
+        - id: entity_recognition
+          activity: recipe
+          config:
+            recipe: "entity-recognizer"
+            timeout: "5m"
+            retry_policy:
+              maximum_attempts: 2
+              initial_interval: "3s"
+          inputs:
+            text: "{{ .Steps.load_document.outputs.content }}"
+            entity_types: ["person", "organization", "location", "date"]
+          outputs:
+            entities: ".result.entities"
+            relationships: ".result.relationships"
+
+        # Language detection using child recipe
+        - id: language_detection
+          activity: recipe
+          config:
+            recipe: "language-detector"
+            timeout: "2m"
+          inputs:
+            text: "{{ .Steps.load_document.outputs.content }}"
+          outputs:
+            primary_language: ".result.language"
+            confidence: ".result.confidence"
+
+    # Step 3: Quality check on all results
+    - id: quality_check
+      activity: analysis_validator
+      inputs:
+        sentiment_data: "{{ .Steps.parallel_analysis.sentiment_analysis.outputs }}"
+        topic_data: "{{ .Steps.parallel_analysis.topic_extraction.outputs }}"
+        entity_data: "{{ .Steps.parallel_analysis.entity_recognition.outputs }}"
+        language_data: "{{ .Steps.parallel_analysis.language_detection.outputs }}"
+      outputs:
+        quality_score: ".overall_quality"
+        issues: ".validation_issues"
+
+    # Step 4: Generate comprehensive report
+    - id: generate_report
+      activity: report_generator
+      inputs:
+        document_metadata: "{{ .Steps.load_document.outputs.metadata }}"
+        sentiment: "{{ .Steps.parallel_analysis.sentiment_analysis.outputs.sentiment_score }}"
+        emotions: "{{ .Steps.parallel_analysis.sentiment_analysis.outputs.emotions }}"
+        topics: "{{ .Steps.parallel_analysis.topic_extraction.outputs.topics }}"
+        keywords: "{{ .Steps.parallel_analysis.topic_extraction.outputs.keywords }}"
+        entities: "{{ .Steps.parallel_analysis.entity_recognition.outputs.entities }}"
+        language: "{{ .Steps.parallel_analysis.language_detection.outputs.primary_language }}"
+        quality_score: "{{ .Steps.quality_check.outputs.quality_score }}"
+      outputs:
+        report: ".formatted_report"
+        summary: ".executive_summary"
+
+outputs:
+  - name: analysis_report
+    value: "{{ .Steps.generate_report.outputs.report }}"
+  - name: executive_summary
+    value: "{{ .Steps.generate_report.outputs.summary }}"
+  - name: quality_score
+    value: "{{ .Steps.quality_check.outputs.quality_score }}"
+  - name: detected_issues
+    value: "{{ .Steps.quality_check.outputs.issues }}"
