@@ -515,21 +515,7 @@ type PendingInput struct {
 
 ## UI Requirements
 1. Single SSE connection for all boxes
-2. Display pending input count/badge
-3. Show input panel with all pending inputs
+2. Display pending input count/badge on each box/cell in ui. 
+3. Add new tabs to cell information that shows the pending input(s). Clicking on the badge opens the tab.
 4. Fetch details and render form
-5. Submit response via API
-
-## Configuration
-```yaml
-temporal:
-  namespace: "default"
-  task_queue: "cortex"
-  
-cortex:
-  input:
-    default_timeout: 300
-  sse:
-    endpoint: "/api/user-inputs/stream"
-    heartbeat_interval: 30
-```
+5. Submit response via API that fires signal via management service.
