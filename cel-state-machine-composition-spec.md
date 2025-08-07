@@ -15,16 +15,18 @@ Key changes:
 
 ### Enhanced State Definition
 
-States can now contain either a single activity OR a complete composition. The composition type is declared directly without a wrapper:
+States maintain the existing structure but can now contain complete compositions. The composition type is declared directly without a wrapper:
 
 ```yaml
 states:
   # Simple activity state (backward compatible)
   simple_state:
     uses: my_activity
+    inputs:
+      data: "{{ .Inputs.raw_data }}"
     transitions:
       - to: next_state
-        when: "outputs.result == 'success'"
+        when: ".Outputs.result == 'success'"
   
   # Parallel composition state
   data_preparation:
@@ -32,24 +34,24 @@ states:
       - id: fetch_data
         uses: fetch_from_api
         inputs:
-          endpoint: "{{ inputs.api_url }}"
+          endpoint: "{{ .Inputs.api_url }}"
       
       - id: load_cache
         uses: load_from_cache
         inputs:
-          key: "{{ inputs.cache_key }}"
+          key: "{{ .Inputs.cache_key }}"
       
       - id: validate
         uses: validate_data
         inputs:
-          data: "{{ fetch_data.data }}"
+          data: "{{ .Steps.fetch_data.outputs.data }}"
         depends_on: [fetch_data]
     
     transitions:
       - to: processing
-        when: "validate.valid == true"
+        when: ".Outputs.validate.valid == true"
       - to: error
-        when: "validate.valid == false"
+        when: ".Outputs.validate.valid == false"
   
   # Sequential composition state
   processing:
@@ -57,50 +59,50 @@ states:
       - id: transform
         uses: data_transformer
         inputs:
-          data: "{{ states.data_preparation.fetch_data.data }}"
+          data: "{{ .States.data_preparation.outputs.fetch_data.data }}"
       
       - id: enrich
         uses: data_enricher
         inputs:
-          data: "{{ transform.result }}"
+          data: "{{ .Steps.transform.outputs.result }}"
       
       - id: save
         uses: data_saver
         inputs:
-          data: "{{ enrich.enriched_data }}"
+          data: "{{ .Steps.enrich.outputs.enriched_data }}"
     
     transitions:
       - to: complete
-        when: "save.success == true"
+        when: ".Outputs.save.success == true"
   
   # Conditional composition state
   decision_point:
     conditional:
-      - when: "inputs.data_size > 1000000"
+      - when: ".Inputs.data_size > 1000000"
         parallel:  # Nested parallel in conditional
           - id: split_1
             uses: batch_processor
             inputs:
-              batch: "{{ inputs.data[0:500000] }}"
+              batch: "{{ .Inputs.data[0:500000] }}"
           
           - id: split_2
             uses: batch_processor
             inputs:
-              batch: "{{ inputs.data[500000:] }}"
+              batch: "{{ .Inputs.data[500000:] }}"
       
-      - when: "inputs.priority == 'high'"
+      - when: ".Inputs.priority == 'high'"
         uses: fast_processor
         inputs:
-          data: "{{ inputs.data }}"
+          data: "{{ .Inputs.data }}"
       
       - default:
         uses: standard_processor
         inputs:
-          data: "{{ inputs.data }}"
+          data: "{{ .Inputs.data }}"
     
     transitions:
       - to: aggregation
-        when: "outputs != null"
+        when: ".Outputs != null"
 ```
 
 ### Full Composability
@@ -115,60 +117,73 @@ states:
         parallel:  # Parallel within sequential
           - id: clean
             uses: data_cleaner
+            inputs:
+              data: "{{ .Inputs.raw_data }}"
           
           - id: validate
             uses: data_validator
+            inputs:
+              data: "{{ .Inputs.raw_data }}"
       
       - id: process
         conditional:  # Conditional within sequential
-          - when: "prepare.validate.is_valid"
+          - when: ".Steps.prepare.outputs.validate.is_valid"
             sequential:  # Sequential within conditional within sequential
               - id: ml_process
                 uses: ml_pipeline
                 inputs:
-                  data: "{{ prepare.clean.data }}"
+                  data: "{{ .Steps.prepare.outputs.clean.data }}"
               
               - id: postprocess
                 conditional:  # Another conditional nested deeper
-                  - when: "ml_process.confidence > 0.9"
+                  - when: ".Steps.ml_process.outputs.confidence > 0.9"
                     uses: high_confidence_handler
+                    inputs:
+                      result: "{{ .Steps.ml_process.outputs }}"
                   - default:
                     uses: manual_review
+                    inputs:
+                      result: "{{ .Steps.ml_process.outputs }}"
           
           - default:
             uses: error_handler
-```
+            inputs:
+              error: "Validation failed"
+    
+    transitions:
+      - to: complete
+        when: ".Outputs.process != null"
 
 ### Reference Syntax
 
-Clean and intuitive reference syntax for accessing nested outputs:
+Reference syntax follows the existing CEL variable patterns:
 
 ```yaml
-# Within a state, reference outputs using simple dot notation:
+# Within a state, use standard template patterns:
 inputs:
-  # Direct step reference (same level)
-  data: "{{ transform.result }}"
+  # Step outputs within current state
+  data: "{{ .Steps.transform.outputs.result }}"
   
-  # Nested step reference (from composed steps)
-  cleaned: "{{ prepare.clean.data }}"
+  # Nested step outputs
+  cleaned: "{{ .Steps.prepare.outputs.clean.data }}"
   
   # State outputs from previous states
-  previous: "{{ states.preparation.extract_text.content }}"
+  previous: "{{ .States.preparation.outputs.extract_text.content }}"
   
   # Current state inputs
-  original: "{{ inputs.document }}"
+  original: "{{ .Inputs.document }}"
   
   # Recipe context
-  user: "{{ context.user_id }}"
+  user: "{{ .Context.user_id }}"
 
-# In transitions, outputs are directly accessible:
+# In CEL expressions (transitions, when conditions):
 transitions:
   - to: next_state
-    when: "validate.is_valid && process.score > 0.8"
+    when: ".Outputs.validate.is_valid && .Outputs.process.score > 0.8"
   
-  # For conditional compositions, the selected branch output is available
+  # For conditional compositions, the selected branch output is in .Outputs
   - to: success
-    when: "outputs.success == true"  # 'outputs' contains the selected branch result
+    when: ".Outputs.success == true"
 ```
 
 ### Complete Example: Advanced Document Processing Pipeline
@@ -183,44 +198,44 @@ activities:
         states:
           intake:
             conditional:
-              - when: "inputs.document_type == 'structured'"
+              - when: ".Inputs.document_type == 'structured'"
                 parallel:
                   - id: extract_fields
                     uses: field_extractor
                     inputs:
-                      doc: "{{ inputs.document }}"
+                      doc: "{{ .Inputs.document }}"
                   
                   - id: validate_schema
                     uses: schema_validator
                     inputs:
-                      doc: "{{ inputs.document }}"
+                      doc: "{{ .Inputs.document }}"
               
-              - when: "inputs.document_type == 'unstructured'"
+              - when: ".Inputs.document_type == 'unstructured'"
                 sequential:
                   - id: detect_language
                     uses: language_detector
                     inputs:
-                      doc: "{{ inputs.document }}"
+                      doc: "{{ .Inputs.document }}"
                   
                   - id: extract_content
                     conditional:
-                      - when: "detect_language.language == 'en'"
+                      - when: ".Steps.detect_language.outputs.language == 'en'"
                         uses: english_extractor
-                      - when: "detect_language.language == 'es'"
+                      - when: ".Steps.detect_language.outputs.language == 'es'"
                         uses: spanish_extractor
                       - default:
                         uses: universal_extractor
                     inputs:
-                      doc: "{{ inputs.document }}"
+                      doc: "{{ .Inputs.document }}"
               
               - default:
                 uses: auto_classifier
                 inputs:
-                  doc: "{{ inputs.document }}"
+                  doc: "{{ .Inputs.document }}"
             
             transitions:
               - to: processing
-                when: "outputs != null"
+                when: ".Outputs != null"
           
           processing:
             sequential:
@@ -229,56 +244,56 @@ activities:
                   - id: clean
                     uses: data_cleaner
                     inputs:
-                      data: "{{ states.intake.outputs }}"
+                      data: "{{ .States.intake.outputs }}"
                   
                   - id: normalize
                     uses: data_normalizer
                     inputs:
-                      data: "{{ states.intake.outputs }}"
+                      data: "{{ .States.intake.outputs }}"
                   
                   - id: enhance_metadata
                     sequential:
                       - id: extract_entities
                         uses: entity_extractor
                         inputs:
-                          data: "{{ states.intake.outputs }}"
+                          data: "{{ .States.intake.outputs }}"
                       
                       - id: link_entities
                         uses: entity_linker
                         inputs:
-                          entities: "{{ extract_entities.entities }}"
+                          entities: "{{ .Steps.extract_entities.outputs.entities }}"
               
               - id: analyze
                 conditional:
-                  - when: "inputs.analysis_depth == 'deep'"
+                  - when: ".Inputs.analysis_depth == 'deep'"
                     parallel:
                       - id: sentiment
                         uses: sentiment_analyzer
                         inputs:
-                          text: "{{ prepare_data.clean.text }}"
+                          text: "{{ .Steps.prepare_data.outputs.clean.text }}"
                       
                       - id: topics
                         uses: topic_modeler
                         inputs:
-                          text: "{{ prepare_data.clean.text }}"
+                          text: "{{ .Steps.prepare_data.outputs.clean.text }}"
                       
                       - id: ml_pipeline
                         sequential:
                           - id: feature_extract
                             uses: feature_extractor
                             inputs:
-                              data: "{{ prepare_data.normalize.data }}"
+                              data: "{{ .Steps.prepare_data.outputs.normalize.data }}"
                           
                           - id: classify
                             uses: ml_classifier
                             inputs:
-                              features: "{{ feature_extract.features }}"
+                              features: "{{ .Steps.feature_extract.outputs.features }}"
                           
                           - id: confidence_check
                             conditional:
-                              - when: "classify.confidence > 0.95"
+                              - when: ".Steps.classify.outputs.confidence > 0.95"
                                 uses: high_confidence_processor
-                              - when: "classify.confidence > 0.7"
+                              - when: ".Steps.classify.outputs.confidence > 0.7"
                                 uses: medium_confidence_processor
                               - default:
                                 parallel:
@@ -287,37 +302,37 @@ activities:
                                   - id: uncertainty_sampling
                                     uses: active_learning_sampler
                             inputs:
-                              classification: "{{ classify.result }}"
+                              classification: "{{ .Steps.classify.outputs.result }}"
                   
-                  - when: "inputs.analysis_depth == 'quick'"
+                  - when: ".Inputs.analysis_depth == 'quick'"
                     uses: fast_analyzer
                     inputs:
-                      data: "{{ prepare_data.clean.text }}"
+                      data: "{{ .Steps.prepare_data.outputs.clean.text }}"
                   
                   - default:
                     sequential:
                       - id: basic_analysis
                         uses: standard_analyzer
                         inputs:
-                          data: "{{ prepare_data.clean.text }}"
+                          data: "{{ .Steps.prepare_data.outputs.clean.text }}"
                       
                       - id: should_enhance
                         conditional:
-                          - when: "basic_analysis.complexity_score > 0.8"
+                          - when: ".Steps.basic_analysis.outputs.complexity_score > 0.8"
                             uses: enhanced_analyzer
                             inputs:
-                              data: "{{ prepare_data.clean.text }}"
-                              initial: "{{ basic_analysis.results }}"
+                              data: "{{ .Steps.prepare_data.outputs.clean.text }}"
+                              initial: "{{ .Steps.basic_analysis.outputs.results }}"
                           - default:
                             uses: finalize_basic
                             inputs:
-                              results: "{{ basic_analysis.results }}"
+                              results: "{{ .Steps.basic_analysis.outputs.results }}"
             
             transitions:
               - to: quality_assurance
-                when: "analyze.outputs != null"
+                when: ".Outputs.analyze != null"
               - to: error_handling
-                when: "analyze.error != null"
+                when: ".Outputs.analyze.error != null"
           
           quality_assurance:
             parallel:
@@ -388,23 +403,38 @@ activities:
 ### Type Updates
 
 ```go
-// StateDefinition now supports direct composition types
+// StateDefinition extends existing structure to support compositions
 type StateDefinition struct {
     // Single activity (backward compatible)
     Uses         string                 `json:"uses,omitempty"`
+    Config       map[string]interface{} `json:"config,omitempty"`
     
-    // Composition types (mutually exclusive)
+    // NEW: Composition types (mutually exclusive with Uses)
     Sequential   []Step                 `json:"sequential,omitempty"`
     Parallel     []Step                 `json:"parallel,omitempty"`
     Conditional  []ConditionalBranch    `json:"conditional,omitempty"`
     
-    // Common fields
+    // Existing fields (unchanged)
     Terminal     bool                   `json:"terminal,omitempty"`
     Error        string                 `json:"error,omitempty"`
     Inputs       map[string]interface{} `json:"inputs,omitempty"`
     Outputs      map[string]interface{} `json:"outputs,omitempty"`
     Retry        *StateRetryPolicy      `json:"retry,omitempty"`
     Transitions  []TransitionSpec       `json:"transitions,omitempty"`
+}
+
+// TransitionSpec remains unchanged
+type TransitionSpec struct {
+    To   string `json:"to"`
+    When string `json:"when"` // CEL expression
+}
+
+// StateRetryPolicy remains unchanged
+type StateRetryPolicy struct {
+    When               string  `json:"when,omitempty"`
+    MaxAttempts        int     `json:"max_attempts"`
+    BackoffCoefficient float64 `json:"backoff_coefficient,omitempty"`
+    InitialInterval    string  `json:"initial_interval,omitempty"`
 }
 
 // Step can itself be a composition or a simple activity
@@ -620,33 +650,33 @@ type CELContext struct {
 states:
   data_processing:
     conditional:
-      - when: "inputs.batch_count > 1"
+      - when: ".Inputs.batch_count > 1"
         parallel:
           - id: batch1
             uses: batch_processor
             inputs:
-              data: "{{ inputs.batches[0] }}"
+              data: "{{ .Inputs.batches[0] }}"
           
           - id: batch2
             uses: batch_processor
             inputs:
-              data: "{{ inputs.batches[1] }}"
-            when: "inputs.batch_count >= 2"
+              data: "{{ .Inputs.batches[1] }}"
+            when: ".Inputs.batch_count >= 2"
           
           - id: batch3
             uses: batch_processor
             inputs:
-              data: "{{ inputs.batches[2] }}"
-            when: "inputs.batch_count >= 3"
+              data: "{{ .Inputs.batches[2] }}"
+            when: ".Inputs.batch_count >= 3"
       
       - default:
         uses: single_processor
         inputs:
-          data: "{{ inputs.batches[0] }}"
+          data: "{{ .Inputs.batches[0] }}"
     
     transitions:
       - to: aggregation
-        when: "outputs != null"
+        when: ".Outputs != null"
 ```
 
 #### Conditional Processing with Nested Fallbacks
@@ -658,65 +688,65 @@ states:
       - id: analyze_input
         uses: input_analyzer
         inputs:
-          data: "{{ inputs.data }}"
+          data: "{{ .Inputs.data }}"
       
       - id: process
         conditional:
-          - when: "analyze_input.complexity == 'simple'"
+          - when: ".Steps.analyze_input.outputs.complexity == 'simple'"
             uses: fast_processor
             inputs:
-              data: "{{ inputs.data }}"
+              data: "{{ .Inputs.data }}"
           
-          - when: "analyze_input.complexity == 'medium'"
+          - when: ".Steps.analyze_input.outputs.complexity == 'medium'"
             sequential:
               - id: preprocess
                 uses: data_preprocessor
                 inputs:
-                  data: "{{ inputs.data }}"
+                  data: "{{ .Inputs.data }}"
               
               - id: main_process
                 uses: standard_processor
                 inputs:
-                  data: "{{ preprocess.cleaned_data }}"
+                  data: "{{ .Steps.preprocess.outputs.cleaned_data }}"
           
-          - when: "analyze_input.complexity == 'complex'"
+          - when: ".Steps.analyze_input.outputs.complexity == 'complex'"
             parallel:
               - id: decompose
                 uses: data_decomposer
                 inputs:
-                  data: "{{ inputs.data }}"
+                  data: "{{ .Inputs.data }}"
               
               - id: analyze_patterns
                 uses: pattern_analyzer
                 inputs:
-                  data: "{{ inputs.data }}"
+                  data: "{{ .Inputs.data }}"
               
               - id: ml_process
                 conditional:
-                  - when: "analyze_input.ml_suitable"
+                  - when: ".Steps.analyze_input.outputs.ml_suitable"
                     uses: ml_pipeline
                   - default:
                     uses: heuristic_processor
                 inputs:
-                  data: "{{ inputs.data }}"
+                  data: "{{ .Inputs.data }}"
           
           - default:
             uses: fallback_processor
             inputs:
-              data: "{{ inputs.data }}"
+              data: "{{ .Inputs.data }}"
       
       - id: validate
         uses: result_validator
         inputs:
-          result: "{{ process }}"
+          result: "{{ .Steps.process.outputs }}"
     
     transitions:
       - to: success
-        when: "validate.is_valid"
+        when: ".Outputs.validate.is_valid"
       - to: retry
-        when: "!validate.is_valid && validate.can_retry"
+        when: "!.Outputs.validate.is_valid && .Outputs.validate.can_retry"
       - to: failure
-        when: "!validate.is_valid && !validate.can_retry"
+        when: "!.Outputs.validate.is_valid && !.Outputs.validate.can_retry"
 ```
 
 #### Deep Nesting Example
@@ -730,13 +760,13 @@ states:
           - id: fetch
             uses: data_fetcher
             inputs:
-              source: "{{ inputs.source_a }}"
+              source: "{{ .Inputs.source_a }}"
           
           - id: transform
             conditional:
-              - when: "fetch.format == 'json'"
+              - when: ".Steps.fetch.outputs.format == 'json'"
                 uses: json_transformer
-              - when: "fetch.format == 'xml'"
+              - when: ".Steps.fetch.outputs.format == 'xml'"
                 uses: xml_transformer
               - default:
                 parallel:
@@ -745,16 +775,16 @@ states:
                   - id: parse_raw
                     uses: raw_parser
             inputs:
-              data: "{{ fetch.data }}"
+              data: "{{ .Steps.fetch.outputs.data }}"
       
       - id: stream_b
         conditional:
-          - when: "inputs.enable_stream_b"
+          - when: ".Inputs.enable_stream_b"
             sequential:
               - id: connect
                 uses: stream_connector
                 inputs:
-                  endpoint: "{{ inputs.endpoint_b }}"
+                  endpoint: "{{ .Inputs.endpoint_b }}"
               
               - id: process_stream
                 parallel:
@@ -767,14 +797,14 @@ states:
                       - id: batch_process
                         uses: batch_processor
                 inputs:
-                  stream: "{{ connect.stream }}"
+                  stream: "{{ .Steps.connect.outputs.stream }}"
           
           - default:
             uses: noop
     
     transitions:
       - to: merge_results
-        when: "stream_a != null"
+        when: ".Outputs.stream_a != null"
 ```
 
 ## Migration Strategy
