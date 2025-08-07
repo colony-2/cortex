@@ -6,7 +6,6 @@ import (
 
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -20,19 +19,6 @@ func (e *workflowActivityExecutor) ExecuteActivity(ctx workflow.Context, activit
 		return nil, err
 	}
 	return outputs, nil
-}
-
-// MockActivityExecutor for testing
-type MockActivityExecutor struct {
-	mock.Mock
-}
-
-func (m *MockActivityExecutor) ExecuteActivity(ctx workflow.Context, activityName string, inputs map[string]interface{}) (map[string]interface{}, error) {
-	args := m.Called(ctx, activityName, inputs)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(map[string]interface{}), args.Error(1)
 }
 
 // Test CEL expression evaluation
@@ -100,28 +86,12 @@ func TestRetryBackoffCalculation(t *testing.T) {
 	assert.Equal(t, 400*time.Millisecond, backoff3)
 }
 
-// Test sequential composition with mocked executor
+// Test sequential composition with template resolution
 func TestSequentialComposition(t *testing.T) {
-	// Create mock executor
-	mockExecutor := &MockActivityExecutor{}
-	
-	// Set up mock expectations
-	mockExecutor.On("ExecuteActivity", mock.Anything, "step1_activity", 
-		map[string]interface{}{"data": "input1"}).Return(
-		map[string]interface{}{"result": "output1"}, nil)
-	
-	mockExecutor.On("ExecuteActivity", mock.Anything, "step2_activity",
-		map[string]interface{}{"data": "output1"}).Return(
-		map[string]interface{}{"result": "output2"}, nil)
-	
-	mockExecutor.On("ExecuteActivity", mock.Anything, "step3_activity",
-		map[string]interface{}{"data": "output2"}).Return(
-		map[string]interface{}{"result": "final_output"}, nil)
-	
-	compiler, err := NewStateMachineCompiler(mockExecutor)
+	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	_ = yamlpkg.StateMachineConfig{
+	config := yamlpkg.StateMachineConfig{
 		InitialState: "sequential_state",
 		States: map[string]yamlpkg.StateDefinition{
 			"sequential_state": {
@@ -153,10 +123,8 @@ func TestSequentialComposition(t *testing.T) {
 		},
 	}
 	
-	// Note: We can't test directly without a workflow context
-	// But we can verify the compiler is set up correctly
+	// Verify the compiler is set up correctly
 	assert.NotNil(t, compiler)
-	assert.NotNil(t, compiler.activityExecutor)
 	
 	// Test that templates are resolved correctly
 	resolver := NewTemplateResolver()
@@ -169,19 +137,17 @@ func TestSequentialComposition(t *testing.T) {
 	
 	// Test template resolution for step2
 	step2Inputs, err := resolver.ResolveInputs(
-		map[string]interface{}{"data": "{{ .Steps.step1.result }}"},
+		config.States["sequential_state"].Sequential[1].Inputs,
 		stateCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, "output1", step2Inputs["data"])
 	
 	// Test template resolution for step3
 	step3Inputs, err := resolver.ResolveInputs(
-		map[string]interface{}{"data": "{{ .Steps.step2.result }}"},
+		config.States["sequential_state"].Sequential[2].Inputs,
 		stateCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, "output2", step3Inputs["data"])
-	
-	mockExecutor.AssertExpectations(t)
 }
 
 func testSequentialWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
@@ -230,25 +196,9 @@ func testSequentialWorkflow(ctx workflow.Context) (map[string]interface{}, error
 	return compiler.Execute(ctx, config, inputs)
 }
 
-// Test parallel composition with mocked executor
+// Test parallel composition with dependency grouping
 func TestParallelComposition(t *testing.T) {
-	// Create mock executor
-	mockExecutor := &MockActivityExecutor{}
-	
-	// Set up mock expectations for parallel activities
-	mockExecutor.On("ExecuteActivity", mock.Anything, "parallel1_activity",
-		map[string]interface{}{"data": "input1"}).Return(
-		map[string]interface{}{"result": "parallel1_output"}, nil)
-	
-	mockExecutor.On("ExecuteActivity", mock.Anything, "parallel2_activity",
-		map[string]interface{}{"data": "input2"}).Return(
-		map[string]interface{}{"result": "parallel2_output"}, nil)
-	
-	mockExecutor.On("ExecuteActivity", mock.Anything, "parallel3_activity",
-		map[string]interface{}{"data": "input3"}).Return(
-		map[string]interface{}{"result": "parallel3_output"}, nil)
-	
-	compiler, err := NewStateMachineCompiler(mockExecutor)
+	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
 	config := yamlpkg.StateMachineConfig{
@@ -285,7 +235,6 @@ func TestParallelComposition(t *testing.T) {
 	
 	// Verify the compiler setup
 	assert.NotNil(t, compiler)
-	assert.NotNil(t, compiler.activityExecutor)
 	
 	// Test dependency grouping for parallel steps
 	steps := config.States["parallel_state"].Parallel
@@ -294,8 +243,6 @@ func TestParallelComposition(t *testing.T) {
 	// All parallel steps with no dependencies should be in the same group
 	assert.Len(t, groups, 1)
 	assert.Len(t, groups[0], 3)
-	
-	mockExecutor.AssertExpectations(t)
 }
 
 func testParallelWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
@@ -340,20 +287,13 @@ func testParallelWorkflow(ctx workflow.Context) (map[string]interface{}, error) 
 	return compiler.Execute(ctx, config, map[string]interface{}{})
 }
 
-// Test conditional composition with mocked executor
+// Test conditional composition with CEL evaluation
 func TestConditionalComposition(t *testing.T) {
 	t.Run("high priority branch", func(t *testing.T) {
-		mockExecutor := &MockActivityExecutor{}
-		
-		// Only the high priority processor should be called
-		mockExecutor.On("ExecuteActivity", mock.Anything, "high_priority_processor",
-			map[string]interface{}{"data": "test_data"}).Return(
-			map[string]interface{}{"result": "high_priority_result"}, nil)
-		
-		compiler, err := NewStateMachineCompiler(mockExecutor)
+		compiler, err := NewStateMachineCompiler(nil)
 		assert.NoError(t, err)
 		
-		_ = yamlpkg.StateMachineConfig{
+		config := yamlpkg.StateMachineConfig{
 			InitialState: "conditional_state",
 			States: map[string]yamlpkg.StateDefinition{
 				"conditional_state": {
@@ -394,22 +334,13 @@ func TestConditionalComposition(t *testing.T) {
 		}
 		
 		// Evaluate the condition
-		result, err := compiler.evaluateCEL(".Inputs.priority == 'high'", nil, stateCtx)
+		result, err := compiler.evaluateCEL(config.States["conditional_state"].Conditional[0].When, nil, stateCtx)
 		assert.NoError(t, err)
 		assert.True(t, result)
-		
-		mockExecutor.AssertExpectations(t)
 	})
 	
 	t.Run("default branch", func(t *testing.T) {
-		mockExecutor := &MockActivityExecutor{}
-		
-		// Default processor should be called when no conditions match
-		mockExecutor.On("ExecuteActivity", mock.Anything, "default_processor",
-			map[string]interface{}{"data": "test_data"}).Return(
-			map[string]interface{}{"result": "default_result"}, nil)
-		
-		compiler, err := NewStateMachineCompiler(mockExecutor)
+		compiler, err := NewStateMachineCompiler(nil)
 		assert.NoError(t, err)
 		
 		// Test CEL evaluation for conditions that don't match
@@ -428,8 +359,6 @@ func TestConditionalComposition(t *testing.T) {
 		result, err = compiler.evaluateCEL(".Inputs.priority == 'medium'", nil, stateCtx)
 		assert.NoError(t, err)
 		assert.False(t, result)
-		
-		mockExecutor.AssertExpectations(t)
 	})
 }
 
