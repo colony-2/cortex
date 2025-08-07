@@ -204,72 +204,101 @@ config:
      sources: [...]
    ```
 
-### Response Data in Workflow Context
+### Response Data Access
 
-After a user responds, the data is available to subsequent activities in the workflow context:
+Responses are accessed using the standard recipe templating mechanism:
 
 #### Single Question Response
 ```yaml
-# For single question forms, response is directly accessible
-next_activity:
-  type: some_activity
-  config:
-    # Access the response directly
-    decision: "${input.response}"
-    
-# Example response in context:
-input:
-  response: "approve"  # Direct value for single question
-  metadata:
-    responded_by: "user_123"
-    responded_at: "2024-01-01T10:02:00Z"
-    time_to_complete: 120
+steps:
+  - name: approval_check
+    type: input
+    config:
+      question: "Do you approve this deployment?"
+      type: "multiple_choice"
+      options:
+        - value: "approve"
+        - value: "reject"
+  
+  - name: deploy
+    type: deployment
+    config:
+      # Access using standard template syntax
+      proceed: "{{ .Steps.approval_check.outputs.response }}"
+
+# Output structure for single question:
+# .Steps.approval_check.outputs:
+#   response: "approve"
+#   metadata:
+#     responded_by: "user_123"
+#     responded_at: "2024-01-01T10:02:00Z"
+#     time_to_complete: 120
 ```
 
 #### Multiple Question Response
 ```yaml
-# For multi-field forms, responses are in a fields map
-next_activity:
-  type: deployment_activity
-  config:
-    strategy: "${input.fields.deployment_strategy}"
-    urgency_level: "${input.fields.urgency}"
-    notes: "${input.fields.review_notes}"
+steps:
+  - name: deployment_review
+    type: input
+    config:
+      fields:
+        - id: "strategy"
+          type: "multiple_choice"
+          question: "Select deployment strategy"
+          options:
+            - value: "blue_green"
+            - value: "canary"
+        - id: "urgency"
+          type: "linear_scale"
+          question: "Urgency level"
+          scale:
+            min: 1
+            max: 5
+        - id: "notes"
+          type: "paragraph_text"
+          question: "Additional notes"
 
-# Example response in context:
-input:
-  fields:
-    deployment_strategy: "blue_green"
-    urgency: 4
-    review_notes: "Looks good, proceed with caution"
-    confirm_checks: ["tests_pass", "docs_updated", "stakeholders_notified"]
-  metadata:
-    responded_by: "user_456"
-    responded_at: "2024-01-01T10:05:00Z"
-    time_to_complete: 300
+  - name: deploy
+    type: deployment
+    config:
+      # Access fields using step reference and field ID
+      strategy: "{{ .Steps.deployment_review.outputs.fields.strategy }}"
+      urgency: "{{ .Steps.deployment_review.outputs.fields.urgency }}"
+      notes: "{{ .Steps.deployment_review.outputs.fields.notes }}"
+
+# Output structure for multiple fields:
+# .Steps.deployment_review.outputs:
+#   fields:
+#     strategy: "blue_green"
+#     urgency: 4
+#     notes: "Looks good"
+#   metadata:
+#     responded_by: "user_456"
+#     responded_at: "2024-01-01T10:05:00Z"
+#     time_to_complete: 300
 ```
 
 #### Conditional Logic Based on Responses
 ```yaml
-# Workflow can branch based on user input
-conditional_activity:
-  type: conditional
-  config:
-    condition: "${input.response == 'approve'}"
-    if_true:
-      type: deploy_activity
-    if_false:
-      type: rollback_activity
+steps:
+  - name: confidence_check
+    type: input
+    config:
+      question: "Confidence level?"
+      type: "linear_scale"
+      scale:
+        min: 1
+        max: 5
 
-# Or with multiple fields
-review_gate:
-  type: conditional
-  config:
-    condition: "${input.fields.confidence_level >= 4}"
-    if_true:
-      type: auto_deploy
-    if_false:
-      type: manual_deploy
+  - name: deployment_gate
+    type: conditional
+    config:
+      # Use standard step reference
+      condition: "{{ ge .Steps.confidence_check.outputs.response 4 }}"
+      if_true:
+        type: auto_deploy
+      if_false:
+        type: manual_deploy
 ```
 
 #### Option Label Behavior
