@@ -4,6 +4,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/activity/pkg/command"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/gitshallow"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/llm"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/recipe"
 )
 
 // GetAll returns all activities available in this module
@@ -19,5 +20,8 @@ func GetAll() []interface{} {
 		
 		// Command activities
 		command.NewCommandExecutionActivity(),
+		
+		// Recipe invocation activities
+		recipe.NewRecipeActivity(),
 	}
 }
