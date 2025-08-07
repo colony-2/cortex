@@ -13,9 +13,8 @@ type StateMachineConfig struct {
 
 // StateDefinition defines a single state in the state machine
 type StateDefinition struct {
-	Uses        string                 `json:"uses,omitempty"`        // The activity to use (single activity mode)
+	Uses        string                 `json:"uses,omitempty"`        // The activity to use (replaces activity/recipe fields)
 	Config      map[string]interface{} `json:"config,omitempty"`      // Activity-specific configuration
-	Workflow    *WorkflowDefinition    `json:"workflow,omitempty"`    // Workflow composition mode
 	Terminal    bool                   `json:"terminal,omitempty"`
 	Error       string                 `json:"error,omitempty"`
 	Inputs      map[string]interface{} `json:"inputs,omitempty"`
@@ -81,39 +80,6 @@ type ExecutionInfo struct {
 	Timeout   time.Duration `json:"timeout"`
 }
 
-// WorkflowDefinition defines a workflow within a state
-type WorkflowDefinition struct {
-	Type    WorkflowType   `json:"type"`              // sequential, parallel
-	Steps   []WorkflowStep `json:"steps"`
-	Timeout string         `json:"timeout,omitempty"`
-}
-
-// WorkflowType defines the execution type of a workflow
-type WorkflowType string
-
-const (
-	WorkflowTypeSequential WorkflowType = "sequential"
-	WorkflowTypeParallel   WorkflowType = "parallel"
-)
-
-// WorkflowStep defines a step within a workflow
-type WorkflowStep struct {
-	ID        string                 `json:"id"`
-	Uses      string                 `json:"uses"`                   // Activity to use
-	Config    map[string]interface{} `json:"config,omitempty"`       // Activity config
-	Inputs    map[string]interface{} `json:"inputs,omitempty"`       // Template inputs
-	DependsOn []string               `json:"depends_on,omitempty"`   // Step dependencies
-	When      string                 `json:"when,omitempty"`         // CEL condition
-	Retry     *StepRetryPolicy       `json:"retry,omitempty"`
-}
-
-// StepRetryPolicy defines retry behavior for workflow steps
-type StepRetryPolicy struct {
-	MaxAttempts        int     `json:"max_attempts"`
-	InitialInterval    string  `json:"initial_interval,omitempty"`
-	BackoffCoefficient float64 `json:"backoff_coefficient,omitempty"`
-}
-
 // CELVariables represents the variables available in CEL expressions
 type CELVariables struct {
 	Outputs map[string]interface{}            `json:"Outputs"`
@@ -121,5 +87,4 @@ type CELVariables struct {
 	States  map[string]map[string]interface{} `json:"States"`
 	Inputs  map[string]interface{}            `json:"Inputs"`
 	Context *RecipeContext                    `json:"Context"`
-	Steps   map[string]interface{}            `json:"Steps"` // For workflow steps
 }
