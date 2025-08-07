@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler/statemachine"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
@@ -11,13 +12,25 @@ import (
 
 // Compiler compiles YAML definitions into Temporal workflows
 type Compiler struct {
-	activityRegistry *ActivityRegistry
+	activityRegistry   *ActivityRegistry
+	stateMachineCompiler *statemachine.StateMachineCompiler
 }
 
 // NewCompiler creates a new workflow compiler
 func NewCompiler(registry *ActivityRegistry) *Compiler {
+	// Create activity executor wrapper
+	executor := &workflowActivityExecutor{}
+	
+	// Create state machine compiler
+	smCompiler, err := statemachine.NewStateMachineCompiler(executor)
+	if err != nil {
+		// Log error but continue - state machine support will be disabled
+		smCompiler = nil
+	}
+	
 	return &Compiler{
 		activityRegistry: registry,
+		stateMachineCompiler: smCompiler,
 	}
 }
 
@@ -145,6 +158,27 @@ func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *W
 		}
 	}
 	
+	// Check if this is a state machine step
+	if step.Uses == "state_machine" && c.stateMachineCompiler != nil {
+		// Extract state machine configuration from step config
+		if step.Config != nil {
+			if configData, ok := step.Config["config"]; ok {
+				// Convert config to StateMachineConfig
+				if smConfig, ok := configData.(yamlpkg.StateMachineConfig); ok {
+					outputs, err := c.stateMachineCompiler.Execute(ctx, smConfig, inputs)
+					if err != nil {
+						return fmt.Errorf("state machine execution failed: %w", err)
+					}
+					// Store step result
+					state.Steps[step.ID] = StepResult{
+						Outputs: outputs,
+					}
+					return nil
+				}
+			}
+		}
+	}
+	
 	// Configure activity options
 	activityOptions := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute, // Default timeout
@@ -200,4 +234,32 @@ func (r *ActivityRegistry) RegisterActivity(name string) {
 // HasActivity checks if an activity is registered
 func (r *ActivityRegistry) HasActivity(name string) bool {
 	return r.activities[name]
+}
+
+// workflowActivityExecutor wraps workflow.ExecuteActivity for use with state machine compiler
+type workflowActivityExecutor struct{}
+
+// ExecuteActivity implements the ActivityExecutor interface for state machine compiler
+func (e *workflowActivityExecutor) ExecuteActivity(ctx workflow.Context, activityName string, inputs map[string]interface{}) (map[string]interface{}, error) {
+	// Configure activity options
+	activityOptions := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Minute, // Default timeout
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    10 * time.Second,
+			MaximumInterval:    10 * time.Minute,
+			BackoffCoefficient: 2.0,
+			MaximumAttempts:    3,
+		},
+	}
+	
+	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+	
+	// Execute activity
+	var outputs map[string]interface{}
+	err := workflow.ExecuteActivity(ctx, activityName, inputs).Get(ctx, &outputs)
+	if err != nil {
+		return nil, err
+	}
+	
+	return outputs, nil
 }
