@@ -2,7 +2,7 @@
 
 ## Overview
 
-This specification defines enhancements to the recipe infrastructure to support sub-recipe invocation, enabling a parent recipe to invoke and monitor child recipes across distributed execution environments.
+This specification defines enhancements to the recipe infrastructure to support recipe-to-recipe invocation, enabling a parent recipe to invoke and monitor child recipes across distributed execution environments.
 
 ## Current State
 
@@ -14,40 +14,39 @@ The existing recipe infrastructure supports:
 
 ## Required Enhancements
 
-### 1. Sub-Recipe Invocation
+### 1. Recipe Invocation
 
-#### New Activity Type: `sub_recipe`
+#### New Activity Type: `recipe`
 
 A new activity implementation type that invokes other recipes as child processes:
 
 ```yaml
 implementation:
-  type: sub_recipe
-  config:
-    recipe: "{{ .RecipeName }}"              # Recipe to execute
-    timeout: "30m"                           # Execution timeout
-    retry_policy:
-      maximum_attempts: 3
-      initial_interval: "5s"
-      backoff_coefficient: 2.0
+  type: recipe
+  recipe: "data-processing/transform"      # Recipe to execute
+  timeout: "30m"                           # Execution timeout
+  retry_policy:
+    maximum_attempts: 3
+    initial_interval: "5s"
+    backoff_coefficient: 2.0
 ```
 
 #### Activity Definition Example
 
 ```yaml
 activities:
-  - name: invoke_sub_recipe
-    description: Invokes a child recipe
+  - name: process_data
+    description: Processes data using a child recipe
     timeout: 35m  # Slightly longer than recipe timeout
     inputs:
-      - name: recipe_name
+      - name: dataset_id
         type: string
         required: true
-        description: Name of the recipe to execute
-      - name: recipe_inputs
-        type: object
+        description: ID of the dataset to process
+      - name: format
+        type: string
         required: false
-        description: Input parameters for the recipe
+        description: Output format for processing
     outputs:
       - name: execution_id
         type: string
@@ -59,7 +58,8 @@ activities:
         type: string
         description: Final status of the recipe
     implementation:
-      type: sub_recipe
+      type: recipe
+      recipe: "data-processing/transform"
 
 ### 2. System Context Variables
 
@@ -99,13 +99,13 @@ context:
 activities:
   - name: log_context
     implementation:
-      type: sub_recipe
-      config:
-        recipe: "monitoring/log-execution"
-        # Context automatically available
-        inputs:
-          execution_id: "{{ .context.recipe.execution_id }}"
-          environment: "{{ .context.environment.name }}"
+      type: recipe
+      recipe: "monitoring/log-execution"
+    inputs:
+      - name: execution_id
+        value: "{{ .context.recipe.execution_id }}"
+      - name: environment
+        value: "{{ .context.environment.name }}"
 ```
 
 #### Implementation Requirements
@@ -144,27 +144,24 @@ outputs:
               type: integer
 ```
 
-### 4. Recipe Discovery Enhancement
+### 4. Recipe Versioning
 
-#### Dynamic Recipe Resolution
+#### Version Support
 
-The activity should support discovering available recipes:
+Recipes can optionally specify versions:
 
 ```yaml
-activities:
-  - name: list_available_recipes
-    description: Lists recipes available for execution
-    implementation:
-      type: sub_recipe
-      config:
-        operation: "list_recipes"
+implementation:
+  type: recipe
+  recipe: "data-processing/transform@v2.1.0"  # Optional version
+  timeout: "30m"
 ```
 
 ### 5. Monitoring and Observability
 
 #### Activity Execution Tracking
 
-Enhanced tracking for sub-recipe executions:
+Enhanced tracking for recipe-to-recipe executions:
 
 ```go
 type RecipeExecutionEvent struct {
@@ -182,7 +179,7 @@ type RecipeExecutionEvent struct {
 ## Implementation Plan
 
 ### Phase 1: Core Activity Implementation
-1. Create `sub_recipe` activity type
+1. Create `recipe` activity type
 2. Implement basic recipe invocation
 3. Add result polling and retrieval
 4. Populate system context variables automatically
@@ -213,11 +210,11 @@ type RecipeExecutionEvent struct {
 
 ## Backwards Compatibility
 
-All enhancements must maintain compatibility with existing recipe definitions. The new `sub_recipe` activity type is additive and doesn't affect existing activities.
+All enhancements must maintain compatibility with existing recipe definitions. The new `recipe` activity type is additive and doesn't affect existing activities.
 
 ## Convention Over Configuration
 
-The sub-recipe pattern emphasizes simplicity:
+The recipe invocation pattern emphasizes simplicity:
 - No manual configuration of execution hosts, namespaces, or task queues
 - Automatic context inheritance from parent recipes
 - System-managed authentication and connection details
