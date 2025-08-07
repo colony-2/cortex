@@ -61,7 +61,131 @@ workflow:
             state.attempts >= 3
 ```
 
-### 3. New Recipe Features
+### 3. Mixing Workflow Types - State Groups
+
+To support multiple conditional behaviors within a single recipe, we introduce "state groups" that can be embedded within sequential or parallel workflows:
+
+#### State Group as a Step Type
+```yaml
+workflow:
+  type: sequential
+  steps:
+    - id: initial_processing
+      activity: validate_input
+      inputs:
+        data: "{{ .Inputs.data }}"
+    
+    # Embed a state machine within a sequential workflow
+    - id: review_loop
+      type: state_group
+      initial_state: reviewing
+      states:
+        reviewing:
+          activity: critique_activity
+          transitions:
+            - to: approved
+              when: "outputs.score >= 80"
+            - to: revising
+              when: "outputs.score < 80 && state.attempts < 3"
+            - to: rejected
+              when: "state.attempts >= 3"
+        revising:
+          activity: improve_activity
+          transitions:
+            - to: reviewing
+              when: "outputs.improved == true"
+        approved:
+          type: terminal
+          outputs:
+            result: "outputs.final_result"
+        rejected:
+          type: terminal
+          error: "Failed review after {{ state.attempts }} attempts"
+    
+    - id: final_processing
+      activity: publish_results
+      inputs:
+        approved_data: "{{ .Steps.review_loop.outputs.result }}"
+```
+
+#### Parallel State Groups
+```yaml
+workflow:
+  type: parallel
+  steps:
+    - id: path_a
+      type: state_group
+      initial_state: processing_a
+      states:
+        processing_a:
+          activity: process_type_a
+          transitions:
+            - to: complete_a
+              when: "outputs.valid == true"
+            - to: error_a
+              when: "outputs.valid == false"
+        complete_a:
+          type: terminal
+        error_a:
+          type: terminal
+          error: "Type A processing failed"
+    
+    - id: path_b
+      type: state_group
+      initial_state: processing_b
+      states:
+        processing_b:
+          activity: process_type_b
+          transitions:
+            - to: retry_b
+              when: "outputs.needs_retry == true && state.attempts < 3"
+            - to: complete_b
+              when: "outputs.success == true"
+        retry_b:
+          activity: retry_process_b
+          transitions:
+            - to: processing_b
+        complete_b:
+          type: terminal
+```
+
+#### Nested State Groups
+```yaml
+workflow:
+  type: state_machine
+  initial_state: main_flow
+  states:
+    main_flow:
+      type: state_group  # A state can itself be a state group
+      initial_state: validate
+      states:
+        validate:
+          activity: validate_data
+          transitions:
+            - to: process
+              when: "outputs.valid == true"
+        process:
+          activity: process_data
+          transitions:
+            - to: complete
+              when: "outputs.done == true"
+        complete:
+          type: terminal
+      transitions:
+        - to: next_phase
+          when: "outputs.ready == true"
+    
+    next_phase:
+      activity: finalize
+      transitions:
+        - to: done
+          when: "outputs.finalized == true"
+    
+    done:
+      type: terminal
+```
+
+### 4. New Recipe Features
 
 #### Retry Loops with CEL
 ```yaml
@@ -194,15 +318,33 @@ type WorkflowSpec struct {
     Outputs      map[string]string      `yaml:"outputs"`
 }
 
-// StateSpec defines a state in a state machine recipe
+// Step enhanced to support state groups
+type Step struct {
+    ID           string                 `yaml:"id"`
+    Type         string                 `yaml:"type"`        // activity (default), state_group, parallel
+    Activity     string                 `yaml:"activity"`    // For activity type
+    Inputs       map[string]interface{} `yaml:"inputs"`
+    Outputs      map[string]string      `yaml:"outputs"`
+    Parallel     []Step                 `yaml:"parallel"`    // For parallel type
+    
+    // State group fields
+    InitialState string                 `yaml:"initial_state"` // For state_group type
+    States       map[string]StateSpec   `yaml:"states"`        // For state_group type
+}
+
+// StateSpec defines a state in a state machine recipe or state group
 type StateSpec struct {
+    Type         string                 `yaml:"type"`        // terminal, activity, recipe, state_group
     Activity     string                 `yaml:"activity"`
     Recipe       string                 `yaml:"recipe"`      // For recipe invocation
     Inputs       map[string]interface{} `yaml:"inputs"`
     Retry        StateRetryPolicy       `yaml:"retry"`
     Transitions  []TransitionSpec       `yaml:"transitions"`
     Branches     []BranchSpec           `yaml:"branches"`
-    Type         string                 `yaml:"type"`        // terminal, activity, recipe
+    
+    // For nested state groups
+    InitialState string                 `yaml:"initial_state"`
+    States       map[string]StateSpec   `yaml:"states"`
 }
 
 // TransitionSpec defines state transitions with CEL conditions
@@ -246,7 +388,129 @@ activities:
           review.score <= 100.0
 ```
 
-### 6. Example: Complete Recipe with State Machine and Critic
+### 6. Example: Mixed Workflow Types in Single Recipe
+
+This example shows a recipe that combines sequential processing with multiple state machine behaviors:
+
+```yaml
+name: document_processing_pipeline
+version: "2.0"
+description: Process documents with validation loops and parallel quality checks
+
+inputs:
+  - name: document_path
+    type: string
+    required: true
+  - name: quality_threshold
+    type: float
+    default: 0.85
+
+workflow:
+  type: sequential
+  steps:
+    # Step 1: Simple activity
+    - id: extract_text
+      activity: ocr_extraction
+      inputs:
+        path: "{{ .Inputs.document_path }}"
+    
+    # Step 2: State machine for validation loop
+    - id: validation_loop
+      type: state_group
+      initial_state: validate
+      states:
+        validate:
+          activity: validate_document
+          inputs:
+            text: "{{ .Steps.extract_text.outputs.text }}"
+          transitions:
+            - to: accepted
+              when: "outputs.is_valid == true"
+            - to: fix_errors
+              when: "outputs.has_fixable_errors == true"
+            - to: rejected
+              when: "outputs.has_critical_errors == true"
+        
+        fix_errors:
+          activity: auto_correct
+          inputs:
+            text: "{{ state.previous.outputs.text }}"
+            errors: "{{ state.previous.outputs.errors }}"
+          transitions:
+            - to: validate
+              when: "state.attempts < 3"
+            - to: rejected
+              when: "state.attempts >= 3"
+        
+        accepted:
+          type: terminal
+          outputs:
+            validated_text: "outputs.text"
+        
+        rejected:
+          type: terminal
+          error: "Document validation failed"
+    
+    # Step 3: Parallel quality checks with different state machines
+    - id: quality_checks
+      type: parallel
+      parallel:
+        - id: grammar_check
+          type: state_group
+          initial_state: check_grammar
+          states:
+            check_grammar:
+              activity: grammar_checker
+              inputs:
+                text: "{{ .Steps.validation_loop.outputs.validated_text }}"
+              transitions:
+                - to: grammar_passed
+                  when: "outputs.score >= inputs.quality_threshold"
+                - to: improve_grammar
+                  when: "outputs.score < inputs.quality_threshold"
+            
+            improve_grammar:
+              activity: grammar_improver
+              transitions:
+                - to: check_grammar
+                  when: "state.attempts < 2"
+                - to: grammar_passed
+                  when: "state.attempts >= 2"
+            
+            grammar_passed:
+              type: terminal
+        
+        - id: style_check
+          type: state_group
+          initial_state: check_style
+          states:
+            check_style:
+              activity: style_analyzer
+              inputs:
+                text: "{{ .Steps.validation_loop.outputs.validated_text }}"
+              transitions:
+                - to: style_passed
+                  when: "outputs.consistency >= 0.8"
+                - to: style_failed
+                  when: "outputs.consistency < 0.8"
+            
+            style_passed:
+              type: terminal
+            
+            style_failed:
+              type: terminal
+              error: "Style check failed"
+    
+    # Step 4: Final processing
+    - id: generate_report
+      activity: create_final_report
+      inputs:
+        validated_text: "{{ .Steps.validation_loop.outputs.validated_text }}"
+        grammar_results: "{{ .Steps.quality_checks.grammar_check.outputs }}"
+        style_results: "{{ .Steps.quality_checks.style_check.outputs }}"
+```
+
+### 7. Example: Complete Recipe with State Machine and Critic
 
 ```yaml
 name: research_report_with_review
@@ -370,6 +634,8 @@ states:
 5. **Well-documented**: Extensive documentation and community support
 6. **Golang-native**: Excellent Go support via google/cel-go
 7. **Recipe Composability**: Seamless integration with recipe-to-recipe invocation
+8. **Flexible Mixing**: State groups allow combining sequential, parallel, and state machine logic within a single recipe
+9. **Gradual Adoption**: Existing recipes continue to work; state machines can be added incrementally where needed
 
 ### 9. Migration Path
 

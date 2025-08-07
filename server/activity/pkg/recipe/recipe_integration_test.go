@@ -457,6 +457,236 @@ func WorkflowWithFailingRecipe(ctx workflow.Context, input map[string]interface{
 	}, nil
 }
 
+// TestParentOperatesOnChildOutputs tests that parent workflows can operate on child recipe outputs
+func TestParentOperatesOnChildOutputs(t *testing.T) {
+	testSuite := &testsuite.WorkflowTestSuite{}
+	env := testSuite.NewTestWorkflowEnvironment()
+
+	// Register workflows
+	env.RegisterWorkflow(DataAggregationParentWorkflow)
+	env.RegisterWorkflow(DataProcessingChildWorkflow)
+	
+	// Create the wrapper instance
+	recipeWrapper := &RecipeActivityWrapper{}
+	
+	// Register the Execute method as an activity
+	env.RegisterActivity(recipeWrapper.Execute)
+	
+	// Mock multiple child recipe executions
+	callCount := 0
+	env.OnActivity(recipeWrapper.Execute, mock.Anything, mock.AnythingOfType("RecipeConfig"), mock.AnythingOfType("RecipeInput")).Return(
+		func(ctx context.Context, config RecipeConfig, input RecipeInput) (RecipeOutput, error) {
+			callCount++
+			// Return different results for each child invocation
+			switch callCount {
+			case 1:
+				return RecipeOutput{
+					ExecutionID: "child-1",
+					Status:      "completed",
+					Result: map[string]interface{}{
+						"processed_count": 100,
+						"metrics": map[string]interface{}{
+							"avg_score": 75.5,
+							"max_score": 95,
+							"min_score": 45,
+						},
+					},
+				}, nil
+			case 2:
+				return RecipeOutput{
+					ExecutionID: "child-2",
+					Status:      "completed",
+					Result: map[string]interface{}{
+						"processed_count": 150,
+						"metrics": map[string]interface{}{
+							"avg_score": 82.3,
+							"max_score": 98,
+							"min_score": 55,
+						},
+					},
+				}, nil
+			case 3:
+				return RecipeOutput{
+					ExecutionID: "child-3",
+					Status:      "completed",
+					Result: map[string]interface{}{
+						"processed_count": 75,
+						"metrics": map[string]interface{}{
+							"avg_score": 68.7,
+							"max_score": 88,
+							"min_score": 40,
+						},
+					},
+				}, nil
+			default:
+				return RecipeOutput{}, nil
+			}
+		},
+	)
+
+	// Execute the parent workflow
+	input := map[string]interface{}{
+		"datasets": []string{"dataset-1", "dataset-2", "dataset-3"},
+		"threshold": 70.0,
+	}
+
+	env.ExecuteWorkflow(DataAggregationParentWorkflow, input)
+
+	// Verify workflow completed successfully
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	// Get and verify the result
+	var result map[string]interface{}
+	require.NoError(t, env.GetWorkflowResult(&result))
+
+	// Verify parent operated on child outputs
+	assert.Equal(t, "aggregation_complete", result["status"])
+	assert.Equal(t, float64(325), result["total_processed"]) // 100 + 150 + 75
+	assert.InDelta(t, 75.5, result["overall_avg_score"], 0.1) // (75.5 + 82.3 + 68.7) / 3
+	assert.Equal(t, float64(98), result["global_max_score"]) // max of all max scores
+	assert.Equal(t, float64(40), result["global_min_score"]) // min of all min scores
+	assert.Equal(t, float64(2), result["above_threshold_count"]) // 2 datasets above 70.0
+	assert.ElementsMatch(t, []string{"child-1", "child-2"}, result["above_threshold_datasets"])
+}
+
+// DataAggregationParentWorkflow demonstrates parent operating on child outputs
+func DataAggregationParentWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting data aggregation parent workflow", "input", input)
+
+	// Set activity options
+	ao := workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+	}
+	ctx = workflow.WithActivityOptions(ctx, ao)
+
+	// Extract inputs
+	var datasets []string
+	if d, ok := input["datasets"].([]string); ok {
+		datasets = d
+	} else if d, ok := input["datasets"].([]interface{}); ok {
+		for _, item := range d {
+			if s, ok := item.(string); ok {
+				datasets = append(datasets, s)
+			}
+		}
+	}
+	threshold := input["threshold"].(float64)
+
+	// Create the recipe wrapper
+	recipeWrapper := &RecipeActivityWrapper{}
+
+	// Process each dataset through child recipes
+	var childResults []RecipeOutput
+	totalProcessed := 0
+	sumAvgScores := 0.0
+	globalMaxScore := 0
+	globalMinScore := 100
+	aboveThresholdCount := 0
+	var aboveThresholdDatasets []string
+
+	for i, dataset := range datasets {
+		// Prepare configuration for each child
+		config := RecipeConfig{
+			Recipe:  "data-processing/analyze",
+			Timeout: "5m",
+		}
+
+		recipeInput := RecipeInput{
+			"dataset": dataset,
+			"index":   i,
+		}
+
+		// Execute the recipe activity
+		var recipeOutput RecipeOutput
+		err := workflow.ExecuteActivity(ctx, recipeWrapper.Execute, config, recipeInput).Get(ctx, &recipeOutput)
+		if err != nil {
+			logger.Error("Child recipe failed", "dataset", dataset, "error", err)
+			continue
+		}
+
+		childResults = append(childResults, recipeOutput)
+
+		// Process child outputs
+		if result := recipeOutput.Result; result != nil {
+			// Aggregate processed counts (handle both int and float64)
+			switch v := result["processed_count"].(type) {
+			case int:
+				totalProcessed += v
+			case float64:
+				totalProcessed += int(v)
+			}
+
+			// Process metrics
+			if metrics, ok := result["metrics"].(map[string]interface{}); ok {
+				// Aggregate average scores
+				if avgScore, ok := metrics["avg_score"].(float64); ok {
+					sumAvgScores += avgScore
+					
+					// Check if above threshold
+					if avgScore > threshold {
+						aboveThresholdCount++
+						aboveThresholdDatasets = append(aboveThresholdDatasets, recipeOutput.ExecutionID)
+					}
+				}
+
+				// Track max score (handle both int and float64)
+				switch v := metrics["max_score"].(type) {
+				case int:
+					if v > globalMaxScore {
+						globalMaxScore = v
+					}
+				case float64:
+					if int(v) > globalMaxScore {
+						globalMaxScore = int(v)
+					}
+				}
+
+				// Track min score (handle both int and float64)
+				switch v := metrics["min_score"].(type) {
+				case int:
+					if v < globalMinScore {
+						globalMinScore = v
+					}
+				case float64:
+					if int(v) < globalMinScore {
+						globalMinScore = int(v)
+					}
+				}
+			}
+		}
+	}
+
+	// Calculate final aggregations
+	overallAvgScore := sumAvgScores / float64(len(childResults))
+
+	// Return aggregated results
+	return map[string]interface{}{
+		"status":                  "aggregation_complete",
+		"total_processed":         totalProcessed,
+		"overall_avg_score":       overallAvgScore,
+		"global_max_score":        globalMaxScore,
+		"global_min_score":        globalMinScore,
+		"above_threshold_count":   aboveThresholdCount,
+		"above_threshold_datasets": aboveThresholdDatasets,
+		"child_execution_count":   len(childResults),
+	}, nil
+}
+
+// DataProcessingChildWorkflow simulates a child that processes data
+func DataProcessingChildWorkflow(ctx workflow.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	// Simulate processing and return metrics
+	return map[string]interface{}{
+		"processed_count": 100,
+		"metrics": map[string]interface{}{
+			"avg_score": 75.5,
+			"max_score": 95,
+			"min_score": 45,
+		},
+	}, nil
+}
+
 // TestRecipeActivityContextPropagation tests context propagation through recipe activity
 func TestRecipeActivityContextPropagation(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
