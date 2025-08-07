@@ -422,15 +422,48 @@ vibethis migrate --unified-activities recipe.yaml
 
 # Validation
 vibethis validate --strict recipe.yaml
+
+# Migrate all examples and tests
+vibethis migrate --unified-activities server/*/examples/**/*.yaml
+vibethis migrate --unified-activities server/*/testdata/**/*.yaml
 ```
 
-### Phase 3: Deprecation
+### Phase 3: Update All Examples and Tests
+
+All existing examples and tests must be rewritten to use the new unified pattern. Here are the files requiring updates:
+
+#### Example Files to Update
+```
+server/recipe-core/examples/simple_workflow.yaml
+server/recipe-core/examples/minimal_workflow.yaml
+server/recipe-worker/examples/gemini_workflow.yaml
+server/recipe-worker/examples/parallel_workflow.yaml
+server/recipe-worker/examples/template_features.yaml
+server/recipe-worker/examples/research_project/*.yaml
+server/ono/example/*.yaml
+server/activity/examples/recipe-invocation/*.yaml
+server/nucleus/cmd/nucleus/testdata/recipes/*.yaml
+```
+
+#### Test Files with Embedded YAML
+```
+server/recipe-worker/pkg/worker/registry_test.go
+server/recipe-worker/pkg/worker/registry_integration_test.go
+server/recipe-core/pkg/recipe/parser_test.go
+server/recipe-core/pkg/yaml/parser_test.go
+server/ono/test/integration/recipe_discovery_test.go
+```
+
+### Phase 4: Deprecation
 - Remove support for separate declarations in next major version
-- Provide comprehensive migration guide
+- Remove support for `activity:` field in favor of `uses:`
+- Remove support for `implementation:` blocks
 
-### Migration Example
+## Comprehensive Migration Examples
 
-**Before (with prefixes and separate activities):**
+### Example 1: Simple Workflow
+
+**Before:**
 ```yaml
 workflow:
   steps:
@@ -438,10 +471,10 @@ workflow:
       activity: quick_search
       inputs:
         query: "{{ .Inputs.query }}"
-    - id: process
-      activity: recipe
-      config:
-        recipe: "data-processor"
+    - id: summarize
+      activity: summarize_results
+      inputs:
+        data: "{{ .Steps.search.outputs.data }}"
 
 activities:
   - name: quick_search
@@ -449,9 +482,14 @@ activities:
       type: function
       config:
         handler: search.QuickSearch
+  - name: summarize_results
+    implementation:
+      type: function
+      config:
+        handler: summary.GenerateSummary
 ```
 
-**After (unified model):**
+**After:**
 ```yaml
 steps:
   - id: search
@@ -459,10 +497,261 @@ steps:
     inputs:
       query: "{{ .Inputs.query }}"
   
-  - id: process
-    uses: data-processor    # Recipe is just another activity
+  - id: summarize
+    uses: summarize_activity
     inputs:
-      data: "{{ .Steps.search.outputs }}"
+      data: "{{ .Steps.search.outputs.data }}"
+```
+
+### Example 2: Recipe with LLM Personas
+
+**Before:**
+```yaml
+workflow:
+  steps:
+    - id: analyze
+      activity: analyze_activity
+      inputs:
+        data: "{{ .Inputs.data }}"
+
+activities:
+  - name: analyze_activity
+    implementation:
+      type: ai_prompt
+      config:
+        model: gpt-4
+        temperature: 0.7
+        prompt: "Analyze this data: {{ .data }}"
+```
+
+**After:**
+```yaml
+shared:
+  analyst:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.7
+      system_prompt: "You are a data analyst."
+
+steps:
+  - id: analyze
+    uses: shared/analyst
+    inputs:
+      prompt: "Analyze this data: {{ .Inputs.data }}"
+```
+
+### Example 3: HTTP Activity Migration
+
+**Before:**
+```yaml
+activities:
+  - name: research_activity
+    implementation:
+      type: http
+      config:
+        method: POST
+        url: "${RESEARCH_API_URL}/search"
+        headers:
+          Authorization: "Bearer ${RESEARCH_API_KEY}"
+
+workflow:
+  steps:
+    - id: research
+      activity: research_activity
+      inputs:
+        topic: "{{ .Inputs.topic }}"
+```
+
+**After:**
+```yaml
+steps:
+  - id: research
+    uses: http_client
+    config:
+      method: POST
+      url: "${RESEARCH_API_URL}/search"
+      headers:
+        Authorization: "Bearer ${RESEARCH_API_KEY}"
+    inputs:
+      body:
+        query: "{{ .Inputs.topic }}"
+```
+
+### Example 4: Recipe Invocation
+
+**Before:**
+```yaml
+steps:
+  - id: process
+    activity: recipe
+    config:
+      recipe: "data-processor"
+      timeout: "10m"
+    inputs:
+      data: "{{ .Inputs.data }}"
+```
+
+**After:**
+```yaml
+steps:
+  - id: process
+    uses: data-processor  # Recipes are just activities
+    config:
+      timeout: "10m"
+    inputs:
+      data: "{{ .Inputs.data }}"
+```
+
+### Example 5: Test File Updates
+
+**Before (in Go test):**
+```go
+const testYAML = `
+workflow:
+  steps:
+    - id: test
+      activity: test_activity
+      inputs:
+        value: "test"
+activities:
+  - name: test_activity
+    implementation:
+      type: function
+      config:
+        handler: test.Handler
+`
+```
+
+**After (in Go test):**
+```go
+const testYAML = `
+steps:
+  - id: test
+    uses: test_activity
+    inputs:
+      value: "test"
+`
+```
+
+### Example 6: State Machine Migration
+
+**Before (CEL state machine proposal):**
+```yaml
+activities:
+  - name: document_review_flow
+    implementation:
+      type: state_machine
+      config:
+        initial_state: reviewing
+        states:
+          reviewing:
+            activity: critique_activity
+            transitions:
+              - to: approved
+                when: ".Outputs.score >= 80"
+```
+
+**After:**
+```yaml
+steps:
+  - id: review
+    uses: state_machine
+    config:
+      initial_state: reviewing
+      states:
+        reviewing:
+          uses: critique_activity
+          transitions:
+            - to: approved
+              when: ".Outputs.score >= 80"
+```
+
+### Example 7: Parallel Workflow Migration
+
+**Before:**
+```yaml
+workflow:
+  type: parallel
+  steps:
+    - id: task1
+      activity: process_task1
+    - id: task2
+      activity: process_task2
+```
+
+**After:**
+```yaml
+parallel:
+  steps:
+    - id: task1
+      uses: process_task1_activity
+    - id: task2
+      uses: process_task2_activity
+```
+
+### Example 8: Full Research Project Migration
+
+**Before (server/ono/example/research_project/activities.yaml):**
+```yaml
+activities:
+  - name: research_activity
+    implementation:
+      type: http
+      config:
+        method: POST
+        url: "${RESEARCH_API_URL}/search"
+  - name: analyze_activity
+    implementation:
+      type: function
+      config:
+        handler: analyzers.ProcessResearch
+  - name: write_report_activity
+    implementation:
+      type: ai_prompt
+      config:
+        model: gpt-4
+        prompt: "Generate report..."
+```
+
+**After (inline in workflow or shared section):**
+```yaml
+shared:
+  research_api:
+    uses: http_client
+    config:
+      method: POST
+      url: "${RESEARCH_API_URL}/search"
+      headers:
+        Authorization: "Bearer ${RESEARCH_API_KEY}"
+  
+  analyzer:
+    uses: analyze_activity
+  
+  report_writer:
+    uses: llm
+    config:
+      model: "gpt-4"
+      temperature: 0.7
+      system_prompt: "You are a report writer."
+
+steps:
+  - id: research
+    uses: shared/research_api
+    inputs:
+      body:
+        query: "{{ .Inputs.topic }}"
+        limit: "{{ .Inputs.max_sources }}"
+  
+  - id: analyze
+    uses: shared/analyzer
+    inputs:
+      data: "{{ .Steps.research.outputs }}"
+  
+  - id: write_report
+    uses: shared/report_writer
+    inputs:
+      prompt: "Generate report based on: {{ .Steps.analyze.outputs }}"
 ```
 
 ## Benefits of Unified Activity Model
