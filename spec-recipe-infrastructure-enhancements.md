@@ -4,6 +4,8 @@
 
 This specification defines enhancements to the recipe infrastructure to support recipe-to-recipe invocation, enabling a parent recipe to invoke and monitor child recipes across distributed execution environments.
 
+**Implementation Note**: All code changes described in this specification should be implemented in the `server/activity` directory, which contains the recipe activity system.
+
 ## Current State
 
 The existing recipe infrastructure supports:
@@ -176,24 +178,28 @@ type RecipeExecutionEvent struct {
 }
 ```
 
+## Implementation Location
+
+**All implementation changes should be made in the `server/activity` directory.** This is where the recipe activity system is implemented and where the new `recipe` activity type will be added.
+
 ## Implementation Plan
 
-### Phase 1: Core Activity Implementation
-1. Create `recipe` activity type
-2. Implement basic recipe invocation
+### Phase 1: Core Activity Implementation (server/activity)
+1. Create `recipe` activity type in server/activity
+2. Implement basic recipe invocation logic
 3. Add result polling and retrieval
 4. Populate system context variables automatically
 
-### Phase 2: Execution Management
-1. Implement connection pooling
-2. Add health checking
-3. Support secure communication
+### Phase 2: Execution Management (server/activity)
+1. Implement connection pooling in activity executor
+2. Add health checking to activity runtime
+3. Support secure communication between activities
 
-### Phase 3: Enhanced Features
-1. Add recipe discovery
-2. Implement advanced error handling
-3. Add monitoring/metrics
-4. Support recipe versioning
+### Phase 3: Enhanced Features (server/activity)
+1. Add recipe versioning support
+2. Implement advanced error handling in activity framework
+3. Add monitoring/metrics to activity execution
+4. Support dynamic recipe resolution
 
 ## Testing Requirements
 
