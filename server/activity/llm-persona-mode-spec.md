@@ -273,9 +273,6 @@ Different LLM providers support files in different ways:
    - Native multimodal support
    - Direct file URIs in prompts
 
-4. **Local/Custom Models**:
-   - Fallback to text injection
-   - Custom preprocessing as needed
 
 #### Configuration
 ```yaml
