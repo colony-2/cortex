@@ -2,164 +2,385 @@
 
 ## Overview
 
-This specification extends the CEL state machine implementation to support arbitrary composition within states. Instead of limiting each state to a single activity, states can now contain full workflow definitions with sequential, parallel, and nested step execution - mirroring the capabilities available at the top level of recipes.
+This specification enhances the CEL state machine to support **fully composable conditional workflows** within states. The core goal is to enable complex conditional logic and dynamic execution paths through unlimited nesting of sequential, parallel, and conditional compositions. Any composition type can contain any other type, creating a powerful system for expressing complex business logic.
 
-## Motivation
-
-Current limitations:
-- Each state can only execute a single activity or recipe
-- No support for parallel operations within a state
-- No ability to compose multiple activities before transitioning
-- Complex workflows require many states for what could be a single logical step
-
-Benefits of composition:
-- States represent logical workflow phases, not individual operations
-- Parallel execution within states for better performance
-- Reuse existing recipe workflow patterns
-- Simplified state machines with fewer states
+Key changes:
+1. States can contain complete workflow compositions (not just single activities)
+2. All composition types (sequential, parallel, conditional) are fully nestable
+3. Simplified YAML structure with direct type declarations
+4. Clean reference syntax for accessing nested outputs
+5. State machine moves from activity implementation to core compiler
 
 ## Design
 
 ### Enhanced State Definition
 
-States can now contain either a single activity/recipe (backward compatible) OR a complete workflow definition with steps:
+States can now contain either a single activity OR a complete composition. The composition type is declared directly without a wrapper:
 
 ```yaml
 states:
-  data_preparation:
-    # NEW: Workflow definition within a state
-    workflow:
-      type: parallel  # sequential, parallel, or conditional
-      steps:
-        - id: fetch_data
-          activity: fetch_from_api
-          inputs:
-            endpoint: "{{ .Inputs.api_url }}"
-        
-        - id: load_cache
-          activity: load_from_cache
-          inputs:
-            key: "{{ .Inputs.cache_key }}"
-        
-        - id: validate
-          activity: validate_data
-          inputs:
-            data: "{{ .Steps.fetch_data.outputs.data }}"
-          depends_on: ["fetch_data"]
-    
-    # Transitions evaluate against the combined workflow outputs
-    transitions:
-      - to: processing
-        when: ".Outputs.validate.valid == true"
-      - to: error
-        when: ".Outputs.validate.valid == false"
-```
-
-### Backward Compatibility
-
-Existing single-activity states continue to work:
-
-```yaml
-states:
+  # Simple activity state (backward compatible)
   simple_state:
-    activity: my_activity  # Still supported
+    uses: my_activity
     transitions:
       - to: next_state
-        when: ".Outputs.result == 'success'"
+        when: "outputs.result == 'success'"
+  
+  # Parallel composition state
+  data_preparation:
+    parallel:
+      - id: fetch_data
+        uses: fetch_from_api
+        inputs:
+          endpoint: "{{ inputs.api_url }}"
+      
+      - id: load_cache
+        uses: load_from_cache
+        inputs:
+          key: "{{ inputs.cache_key }}"
+      
+      - id: validate
+        uses: validate_data
+        inputs:
+          data: "{{ fetch_data.data }}"
+        depends_on: [fetch_data]
+    
+    transitions:
+      - to: processing
+        when: "validate.valid == true"
+      - to: error
+        when: "validate.valid == false"
+  
+  # Sequential composition state
+  processing:
+    sequential:
+      - id: transform
+        uses: data_transformer
+        inputs:
+          data: "{{ states.data_preparation.fetch_data.data }}"
+      
+      - id: enrich
+        uses: data_enricher
+        inputs:
+          data: "{{ transform.result }}"
+      
+      - id: save
+        uses: data_saver
+        inputs:
+          data: "{{ enrich.enriched_data }}"
+    
+    transitions:
+      - to: complete
+        when: "save.success == true"
+  
+  # Conditional composition state
+  decision_point:
+    conditional:
+      - when: "inputs.data_size > 1000000"
+        parallel:  # Nested parallel in conditional
+          - id: split_1
+            uses: batch_processor
+            inputs:
+              batch: "{{ inputs.data[0:500000] }}"
+          
+          - id: split_2
+            uses: batch_processor
+            inputs:
+              batch: "{{ inputs.data[500000:] }}"
+      
+      - when: "inputs.priority == 'high'"
+        uses: fast_processor
+        inputs:
+          data: "{{ inputs.data }}"
+      
+      - default:
+        uses: standard_processor
+        inputs:
+          data: "{{ inputs.data }}"
+    
+    transitions:
+      - to: aggregation
+        when: "outputs != null"
 ```
 
-### Complete Example
+### Full Composability
+
+Any composition type can contain any other type, enabling complex nested structures:
+
+```yaml
+states:
+  complex_processing:
+    sequential:
+      - id: prepare
+        parallel:  # Parallel within sequential
+          - id: clean
+            uses: data_cleaner
+          
+          - id: validate
+            uses: data_validator
+      
+      - id: process
+        conditional:  # Conditional within sequential
+          - when: "prepare.validate.is_valid"
+            sequential:  # Sequential within conditional within sequential
+              - id: ml_process
+                uses: ml_pipeline
+                inputs:
+                  data: "{{ prepare.clean.data }}"
+              
+              - id: postprocess
+                conditional:  # Another conditional nested deeper
+                  - when: "ml_process.confidence > 0.9"
+                    uses: high_confidence_handler
+                  - default:
+                    uses: manual_review
+          
+          - default:
+            uses: error_handler
+```
+
+### Reference Syntax
+
+Clean and intuitive reference syntax for accessing nested outputs:
+
+```yaml
+# Within a state, reference outputs using simple dot notation:
+inputs:
+  # Direct step reference (same level)
+  data: "{{ transform.result }}"
+  
+  # Nested step reference (from composed steps)
+  cleaned: "{{ prepare.clean.data }}"
+  
+  # State outputs from previous states
+  previous: "{{ states.preparation.extract_text.content }}"
+  
+  # Current state inputs
+  original: "{{ inputs.document }}"
+  
+  # Recipe context
+  user: "{{ context.user_id }}"
+
+# In transitions, outputs are directly accessible:
+transitions:
+  - to: next_state
+    when: "validate.is_valid && process.score > 0.8"
+  
+  # For conditional compositions, the selected branch output is available
+  - to: success
+    when: "outputs.success == true"  # 'outputs' contains the selected branch result
+```
+
+### Complete Example: Advanced Document Processing Pipeline
 
 ```yaml
 activities:
-  - name: document_processing_pipeline
+  - name: intelligent_document_processor
     implementation:
       type: state_machine
       config:
-        initial_state: preparation
+        initial_state: intake
         states:
-          preparation:
-            # Parallel data preparation within the state
-            workflow:
-              type: parallel
-              steps:
-                - id: extract_text
-                  activity: text_extractor
-                  inputs:
-                    document: "{{ .Inputs.document }}"
-                
-                - id: extract_metadata
-                  activity: metadata_extractor
-                  inputs:
-                    document: "{{ .Inputs.document }}"
-                
-                - id: extract_images
-                  activity: image_extractor
-                  inputs:
-                    document: "{{ .Inputs.document }}"
+          intake:
+            conditional:
+              - when: "inputs.document_type == 'structured'"
+                parallel:
+                  - id: extract_fields
+                    uses: field_extractor
+                    inputs:
+                      doc: "{{ inputs.document }}"
+                  
+                  - id: validate_schema
+                    uses: schema_validator
+                    inputs:
+                      doc: "{{ inputs.document }}"
+              
+              - when: "inputs.document_type == 'unstructured'"
+                sequential:
+                  - id: detect_language
+                    uses: language_detector
+                    inputs:
+                      doc: "{{ inputs.document }}"
+                  
+                  - id: extract_content
+                    conditional:
+                      - when: "detect_language.language == 'en'"
+                        uses: english_extractor
+                      - when: "detect_language.language == 'es'"
+                        uses: spanish_extractor
+                      - default:
+                        uses: universal_extractor
+                    inputs:
+                      doc: "{{ inputs.document }}"
+              
+              - default:
+                uses: auto_classifier
+                inputs:
+                  doc: "{{ inputs.document }}"
             
             transitions:
-              - to: enrichment
-                when: ".Outputs.extract_text.success == true"
-              - to: fallback_extraction
-                when: ".Outputs.extract_text.success == false"
+              - to: processing
+                when: "outputs != null"
           
-          enrichment:
-            # Sequential enrichment pipeline
-            workflow:
-              type: sequential
-              steps:
-                - id: classify
-                  activity: document_classifier
-                  inputs:
-                    text: "{{ .States.preparation.outputs.extract_text.text }}"
-                    metadata: "{{ .States.preparation.outputs.extract_metadata.metadata }}"
-                
-                - id: enrich
-                  activity: llm_enrichment
-                  inputs:
-                    text: "{{ .States.preparation.outputs.extract_text.text }}"
-                    classification: "{{ .Steps.classify.outputs.category }}"
-                
-                - id: generate_summary
-                  activity: summarizer
-                  inputs:
-                    enriched_text: "{{ .Steps.enrich.outputs.enriched_text }}"
+          processing:
+            sequential:
+              - id: prepare_data
+                parallel:
+                  - id: clean
+                    uses: data_cleaner
+                    inputs:
+                      data: "{{ states.intake.outputs }}"
+                  
+                  - id: normalize
+                    uses: data_normalizer
+                    inputs:
+                      data: "{{ states.intake.outputs }}"
+                  
+                  - id: enhance_metadata
+                    sequential:
+                      - id: extract_entities
+                        uses: entity_extractor
+                        inputs:
+                          data: "{{ states.intake.outputs }}"
+                      
+                      - id: link_entities
+                        uses: entity_linker
+                        inputs:
+                          entities: "{{ extract_entities.entities }}"
+              
+              - id: analyze
+                conditional:
+                  - when: "inputs.analysis_depth == 'deep'"
+                    parallel:
+                      - id: sentiment
+                        uses: sentiment_analyzer
+                        inputs:
+                          text: "{{ prepare_data.clean.text }}"
+                      
+                      - id: topics
+                        uses: topic_modeler
+                        inputs:
+                          text: "{{ prepare_data.clean.text }}"
+                      
+                      - id: ml_pipeline
+                        sequential:
+                          - id: feature_extract
+                            uses: feature_extractor
+                            inputs:
+                              data: "{{ prepare_data.normalize.data }}"
+                          
+                          - id: classify
+                            uses: ml_classifier
+                            inputs:
+                              features: "{{ feature_extract.features }}"
+                          
+                          - id: confidence_check
+                            conditional:
+                              - when: "classify.confidence > 0.95"
+                                uses: high_confidence_processor
+                              - when: "classify.confidence > 0.7"
+                                uses: medium_confidence_processor
+                              - default:
+                                parallel:
+                                  - id: human_review
+                                    uses: send_to_review_queue
+                                  - id: uncertainty_sampling
+                                    uses: active_learning_sampler
+                            inputs:
+                              classification: "{{ classify.result }}"
+                  
+                  - when: "inputs.analysis_depth == 'quick'"
+                    uses: fast_analyzer
+                    inputs:
+                      data: "{{ prepare_data.clean.text }}"
+                  
+                  - default:
+                    sequential:
+                      - id: basic_analysis
+                        uses: standard_analyzer
+                        inputs:
+                          data: "{{ prepare_data.clean.text }}"
+                      
+                      - id: should_enhance
+                        conditional:
+                          - when: "basic_analysis.complexity_score > 0.8"
+                            uses: enhanced_analyzer
+                            inputs:
+                              data: "{{ prepare_data.clean.text }}"
+                              initial: "{{ basic_analysis.results }}"
+                          - default:
+                            uses: finalize_basic
+                            inputs:
+                              results: "{{ basic_analysis.results }}"
             
             transitions:
-              - to: quality_check
-                when: ".Outputs.generate_summary.confidence >= 0.8"
+              - to: quality_assurance
+                when: "analyze.outputs != null"
+              - to: error_handling
+                when: "analyze.error != null"
+          
+          quality_assurance:
+            parallel:
+              - id: validate_results
+                sequential:
+                  - id: schema_check
+                    uses: result_schema_validator
+                    inputs:
+                      results: "{{ states.processing.analyze }}"
+                  
+                  - id: business_rules
+                    uses: business_rule_engine
+                    inputs:
+                      results: "{{ states.processing.analyze }}"
+                      rules: "{{ inputs.business_rules }}"
+              
+              - id: generate_outputs
+                conditional:
+                  - when: "inputs.output_format == 'report'"
+                    sequential:
+                      - id: generate_report
+                        uses: report_generator
+                        inputs:
+                          data: "{{ states.processing.analyze }}"
+                      
+                      - id: add_visualizations
+                        parallel:
+                          - id: charts
+                            uses: chart_generator
+                            inputs:
+                              data: "{{ states.processing.analyze }}"
+                          
+                          - id: tables
+                            uses: table_generator
+                            inputs:
+                              data: "{{ states.processing.analyze }}"
+                  
+                  - when: "inputs.output_format == 'api'"
+                    uses: api_formatter
+                    inputs:
+                      data: "{{ states.processing.analyze }}"
+                  
+                  - default:
+                    uses: json_formatter
+                    inputs:
+                      data: "{{ states.processing.analyze }}"
+            
+            transitions:
+              - to: delivery
+                when: "validate_results.business_rules.passed == true"
               - to: manual_review
-                when: ".Outputs.generate_summary.confidence < 0.8"
+                when: "validate_results.business_rules.requires_review == true"
+              - to: rejection
+                when: "validate_results.business_rules.failed == true"
           
-          quality_check:
-            # Nested state machine within a state
-            workflow:
-              type: sequential
-              steps:
-                - id: automated_checks
-                  activity: quality_validator
-                  inputs:
-                    document: "{{ .States.enrichment.outputs }}"
-                
-                - id: review_if_needed
-                  activity: conditional_review_state_machine  # Another state machine
-                  inputs:
-                    document: "{{ .States.enrichment.outputs }}"
-                    validation: "{{ .Steps.automated_checks.outputs }}"
-                  when: ".Steps.automated_checks.outputs.requires_review == true"
-            
-            transitions:
-              - to: publish
-                when: ".Outputs.automated_checks.passed == true"
-              - to: revision
-                when: ".Outputs.review_if_needed.approved == false"
-          
-          publish:
+          delivery:
             terminal: true
             outputs:
-              result: "{{ .States.enrichment.outputs }}"
-              metadata: "{{ .States.preparation.outputs.extract_metadata }}"
+              result: "{{ states.quality_assurance.generate_outputs }}"
+              metadata:
+                processing_time: "{{ context.elapsed_time }}"
+                confidence: "{{ states.processing.analyze.confidence }}"
+                validations: "{{ states.quality_assurance.validate_results }}"
 ```
 
 ## Implementation
@@ -167,16 +388,17 @@ activities:
 ### Type Updates
 
 ```go
-// StateDefinition extends to support workflow composition
+// StateDefinition now supports direct composition types
 type StateDefinition struct {
-    // Single activity/recipe (backward compatible)
-    Activity     string                 `json:"activity,omitempty"`
-    Recipe       string                 `json:"recipe,omitempty"`
+    // Single activity (backward compatible)
+    Uses         string                 `json:"uses,omitempty"`
     
-    // NEW: Workflow definition for composition
-    Workflow     *WorkflowDefinition    `json:"workflow,omitempty"`
+    // Composition types (mutually exclusive)
+    Sequential   []Step                 `json:"sequential,omitempty"`
+    Parallel     []Step                 `json:"parallel,omitempty"`
+    Conditional  []ConditionalBranch    `json:"conditional,omitempty"`
     
-    // Existing fields
+    // Common fields
     Terminal     bool                   `json:"terminal,omitempty"`
     Error        string                 `json:"error,omitempty"`
     Inputs       map[string]interface{} `json:"inputs,omitempty"`
@@ -185,265 +407,397 @@ type StateDefinition struct {
     Transitions  []TransitionSpec       `json:"transitions,omitempty"`
 }
 
-// WorkflowDefinition defines the workflow within a state
-type WorkflowDefinition struct {
-    Type    string         `json:"type"`    // sequential, parallel, conditional
-    Steps   []WorkflowStep `json:"steps"`
-    Timeout string         `json:"timeout,omitempty"`
+// Step can itself be a composition or a simple activity
+type Step struct {
+    ID           string                 `json:"id"`
+    
+    // Simple activity
+    Uses         string                 `json:"uses,omitempty"`
+    
+    // OR nested compositions (mutually exclusive)
+    Sequential   []Step                 `json:"sequential,omitempty"`
+    Parallel     []Step                 `json:"parallel,omitempty"`
+    Conditional  []ConditionalBranch    `json:"conditional,omitempty"`
+    
+    // Step configuration
+    Inputs       map[string]interface{} `json:"inputs,omitempty"`
+    DependsOn    []string               `json:"depends_on,omitempty"`
+    When         string                 `json:"when,omitempty"` // CEL condition for step execution
+    Retry        *RetryPolicy           `json:"retry,omitempty"`
 }
 
-// WorkflowStep defines a step within a state's workflow
-type WorkflowStep struct {
-    ID          string                 `json:"id"`
-    Activity    string                 `json:"activity,omitempty"`
-    Recipe      string                 `json:"recipe,omitempty"`
-    StateMachine string                `json:"state_machine,omitempty"`
-    Inputs      map[string]interface{} `json:"inputs,omitempty"`
-    DependsOn   []string               `json:"depends_on,omitempty"`
-    When        string                 `json:"when,omitempty"` // CEL condition
-    Retry       *RetryPolicy           `json:"retry,omitempty"`
+// ConditionalBranch represents a branch in conditional logic
+type ConditionalBranch struct {
+    When         string                 `json:"when,omitempty"` // CEL condition (omit for default)
+    Default      bool                   `json:"default,omitempty"` // Mark as default branch
+    
+    // Branch can be activity or composition
+    Uses         string                 `json:"uses,omitempty"`
+    Sequential   []Step                 `json:"sequential,omitempty"`
+    Parallel     []Step                 `json:"parallel,omitempty"`
+    Conditional  []ConditionalBranch    `json:"conditional,omitempty"`
+    
+    Inputs       map[string]interface{} `json:"inputs,omitempty"`
 }
 ```
 
 ### Execution Logic
 
 ```go
-func (s *StateMachineActivity) executeState(ctx context.Context, state StateDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
-    // Terminal states don't execute anything
+func (s *StateMachineCompiler) executeState(ctx context.Context, state StateDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
+    // Terminal states return configured outputs
     if state.Terminal {
         return state.Outputs, nil
     }
     
-    // Check for workflow definition (new composition feature)
-    if state.Workflow != nil {
-        return s.executeStateWorkflow(ctx, state.Workflow, stateCtx)
+    // Determine execution type and delegate
+    if state.Uses != "" {
+        // Simple activity execution
+        return s.executeActivity(ctx, state.Uses, prepareInputs(state.Inputs, stateCtx))
+    } else if state.Sequential != nil {
+        // Sequential composition
+        return s.executeSequential(ctx, state.Sequential, stateCtx)
+    } else if state.Parallel != nil {
+        // Parallel composition
+        return s.executeParallel(ctx, state.Parallel, stateCtx)
+    } else if state.Conditional != nil {
+        // Conditional composition
+        return s.executeConditional(ctx, state.Conditional, stateCtx)
     }
     
-    // Backward compatibility: single activity/recipe
-    if state.Activity != "" {
-        return s.executor.ExecuteActivity(ctx, state.Activity, prepareInputs(state, stateCtx))
-    } else if state.Recipe != "" {
-        return s.executor.ExecuteRecipe(ctx, state.Recipe, prepareInputs(state, stateCtx))
-    }
-    
-    return nil, fmt.Errorf("state must specify either 'activity', 'recipe', or 'workflow'")
+    return nil, fmt.Errorf("state must specify 'uses', 'sequential', 'parallel', or 'conditional'")
 }
 
-func (s *StateMachineActivity) executeStateWorkflow(ctx context.Context, workflow *WorkflowDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
-    switch workflow.Type {
-    case "sequential":
-        return s.executeSequentialWorkflow(ctx, workflow, stateCtx)
-    case "parallel":
-        return s.executeParallelWorkflow(ctx, workflow, stateCtx)
-    case "conditional":
-        return s.executeConditionalWorkflow(ctx, workflow, stateCtx)
-    default:
-        return nil, fmt.Errorf("unknown workflow type: %s", workflow.Type)
+func (s *StateMachineCompiler) executeStep(ctx context.Context, step Step, outputs map[string]interface{}, stateCtx *StateContext) (interface{}, error) {
+    // Check conditional execution
+    if step.When != "" && !s.evaluateCEL(step.When, outputs, stateCtx) {
+        return nil, nil // Skip this step
     }
+    
+    // Prepare step context with current outputs
+    stepCtx := s.createStepContext(step, outputs, stateCtx)
+    
+    // Execute based on step type
+    var result interface{}
+    var err error
+    
+    if step.Uses != "" {
+        // Simple activity
+        result, err = s.executeActivity(ctx, step.Uses, prepareInputs(step.Inputs, stepCtx))
+    } else if step.Sequential != nil {
+        // Nested sequential
+        result, err = s.executeSequential(ctx, step.Sequential, stepCtx)
+    } else if step.Parallel != nil {
+        // Nested parallel
+        result, err = s.executeParallel(ctx, step.Parallel, stepCtx)
+    } else if step.Conditional != nil {
+        // Nested conditional
+        result, err = s.executeConditional(ctx, step.Conditional, stepCtx)
+    }
+    
+    // Handle retry if needed
+    if err != nil && step.Retry != nil {
+        result, err = s.retryStep(ctx, step, outputs, stateCtx)
+    }
+    
+    return result, err
 }
 
-func (s *StateMachineActivity) executeSequentialWorkflow(ctx context.Context, workflow *WorkflowDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
-    stepOutputs := make(map[string]interface{})
+func (s *StateMachineCompiler) executeSequential(ctx context.Context, steps []Step, stateCtx *StateContext) (map[string]interface{}, error) {
+    outputs := make(map[string]interface{})
     
-    for _, step := range workflow.Steps {
-        // Check if step should be executed (CEL condition)
-        if step.When != "" && !s.evaluateCondition(step.When, stepOutputs, stateCtx) {
-            continue
-        }
-        
-        // Execute the step
-        output, err := s.executeWorkflowStep(ctx, step, stepOutputs, stateCtx)
+    for _, step := range steps {
+        result, err := s.executeStep(ctx, step, outputs, stateCtx)
         if err != nil {
-            if step.Retry != nil && s.shouldRetryStep(step.Retry, err) {
-                // Retry logic
-                output, err = s.retryStep(ctx, step, stepOutputs, stateCtx)
-            }
-            if err != nil {
-                return nil, fmt.Errorf("step '%s' failed: %w", step.ID, err)
-            }
+            return nil, fmt.Errorf("step '%s' failed: %w", step.ID, err)
         }
         
-        stepOutputs[step.ID] = output
+        if step.ID != "" && result != nil {
+            outputs[step.ID] = result
+        }
     }
     
-    return stepOutputs, nil
+    return outputs, nil
 }
 
-func (s *StateMachineActivity) executeParallelWorkflow(ctx context.Context, workflow *WorkflowDefinition, stateCtx *StateContext) (map[string]interface{}, error) {
-    // Group steps by dependencies
-    groups := s.groupStepsByDependencies(workflow.Steps)
-    stepOutputs := make(map[string]interface{})
+func (s *StateMachineCompiler) executeParallel(ctx context.Context, steps []Step, stateCtx *StateContext) (map[string]interface{}, error) {
+    // Group by dependencies
+    groups := s.groupByDependencies(steps)
+    outputs := make(map[string]interface{})
+    mu := &sync.Mutex{}
     
     for _, group := range groups {
-        // Execute steps in parallel within each group
-        results := make(chan stepResult, len(group))
+        var wg sync.WaitGroup
+        errors := make(chan error, len(group))
         
         for _, step := range group {
-            go func(step WorkflowStep) {
-                output, err := s.executeWorkflowStep(ctx, step, stepOutputs, stateCtx)
-                results <- stepResult{ID: step.ID, Output: output, Error: err}
+            wg.Add(1)
+            go func(step Step) {
+                defer wg.Done()
+                
+                // Check dependencies are met
+                if !s.dependenciesMet(step.DependsOn, outputs) {
+                    errors <- fmt.Errorf("dependencies not met for step '%s'", step.ID)
+                    return
+                }
+                
+                result, err := s.executeStep(ctx, step, outputs, stateCtx)
+                if err != nil {
+                    errors <- err
+                    return
+                }
+                
+                mu.Lock()
+                if step.ID != "" && result != nil {
+                    outputs[step.ID] = result
+                }
+                mu.Unlock()
             }(step)
         }
         
-        // Collect results
-        for range group {
-            result := <-results
-            if result.Error != nil {
-                return nil, fmt.Errorf("parallel step '%s' failed: %w", result.ID, result.Error)
+        wg.Wait()
+        close(errors)
+        
+        // Check for errors
+        for err := range errors {
+            if err != nil {
+                return nil, err
             }
-            stepOutputs[result.ID] = result.Output
         }
     }
     
-    return stepOutputs, nil
+    return outputs, nil
+}
+
+func (s *StateMachineCompiler) executeConditional(ctx context.Context, branches []ConditionalBranch, stateCtx *StateContext) (interface{}, error) {
+    for _, branch := range branches {
+        // Check condition (default branch has no condition)
+        if branch.Default || (branch.When != "" && s.evaluateCEL(branch.When, nil, stateCtx)) {
+            // Execute the selected branch
+            if branch.Uses != "" {
+                return s.executeActivity(ctx, branch.Uses, prepareInputs(branch.Inputs, stateCtx))
+            } else if branch.Sequential != nil {
+                return s.executeSequential(ctx, branch.Sequential, stateCtx)
+            } else if branch.Parallel != nil {
+                return s.executeParallel(ctx, branch.Parallel, stateCtx)
+            } else if branch.Conditional != nil {
+                return s.executeConditional(ctx, branch.Conditional, stateCtx)
+            }
+            
+            return nil, fmt.Errorf("conditional branch must specify execution type")
+        }
+    }
+    
+    return nil, fmt.Errorf("no conditional branch matched")
 }
 ```
 
 ### CEL Variable Access
 
-Within state workflows, CEL expressions have access to:
+CEL expressions use simplified dot notation for clean references:
 
-```yaml
-# In workflow steps within a state
-.Inputs:          # State inputs
-.Steps:           # Outputs from previous steps in current workflow
-  <step_id>:
-    outputs: any  # Step outputs
-.States:          # Outputs from previous states
-  <state_name>:
-    outputs: any  # State outputs
-.Context:         # Recipe context
+```go
+// Available variables in CEL expressions
+type CELContext struct {
+    // Direct access to current scope outputs
+    outputs     map[string]interface{}  // Current state/step outputs
+    
+    // Named references
+    inputs      interface{}             // Current inputs
+    states      map[string]interface{}  // Previous state outputs
+    context     map[string]interface{}  // Recipe context
+    
+    // Within compositions, step outputs by ID
+    // Accessed directly by step ID: stepId.field
+}
 ```
 
-### Transition Evaluation
+### Examples
 
-Transitions can now reference nested step outputs:
-
-```yaml
-transitions:
-  - to: next_state
-    when: ".Outputs.step1.result == 'success' && .Outputs.step2.score > 80"
-```
-
-## Benefits
-
-1. **Logical Grouping**: States represent complete logical phases, not individual operations
-2. **Performance**: Parallel execution within states reduces overall execution time
-3. **Reusability**: Leverage existing workflow patterns and activities
-4. **Flexibility**: Mix sequential, parallel, and conditional execution within states
-5. **Simplicity**: Fewer states needed for complex workflows
-6. **Composability**: States can contain other state machines for nested workflows
-
-## Migration Path
-
-### Phase 1: Backward Compatible Extension
-- Add workflow field to StateDefinition
-- Implement workflow execution within states
-- Existing single-activity states continue to work
-
-### Phase 2: Recipe Converter
-- Tool to convert complex multi-state machines to composed states
-- Identify patterns that can be consolidated
-
-### Phase 3: Best Practices
-- Guidelines for when to use composition vs separate states
-- Performance optimization patterns
-
-## Examples
-
-### Data Pipeline with Parallel Processing
+#### Data Pipeline with Conditional Parallel Processing
 
 ```yaml
 states:
   data_processing:
-    workflow:
-      type: parallel
-      steps:
-        - id: process_batch_1
-          activity: batch_processor
-          inputs:
-            batch: "{{ .Inputs.batches[0] }}"
-        
-        - id: process_batch_2
-          activity: batch_processor
-          inputs:
-            batch: "{{ .Inputs.batches[1] }}"
-        
-        - id: process_batch_3
-          activity: batch_processor
-          inputs:
-            batch: "{{ .Inputs.batches[2] }}"
+    conditional:
+      - when: "inputs.batch_count > 1"
+        parallel:
+          - id: batch1
+            uses: batch_processor
+            inputs:
+              data: "{{ inputs.batches[0] }}"
+          
+          - id: batch2
+            uses: batch_processor
+            inputs:
+              data: "{{ inputs.batches[1] }}"
+            when: "inputs.batch_count >= 2"
+          
+          - id: batch3
+            uses: batch_processor
+            inputs:
+              data: "{{ inputs.batches[2] }}"
+            when: "inputs.batch_count >= 3"
+      
+      - default:
+        uses: single_processor
+        inputs:
+          data: "{{ inputs.batches[0] }}"
     
     transitions:
       - to: aggregation
-        when: "true"  # Always transition after parallel completion
+        when: "outputs != null"
 ```
 
-### Conditional Processing with Fallbacks
+#### Conditional Processing with Nested Fallbacks
 
 ```yaml
 states:
-  processing:
-    workflow:
-      type: sequential
-      steps:
-        - id: try_fast_path
-          activity: fast_processor
-          inputs:
-            data: "{{ .Inputs.data }}"
-          retry:
-            max_attempts: 2
-            initial_interval: "1s"
-        
-        - id: fallback_slow_path
-          activity: slow_processor
-          inputs:
-            data: "{{ .Inputs.data }}"
-          when: ".Steps.try_fast_path.error != null"
-        
-        - id: final_validation
-          activity: validator
-          inputs:
-            result: "{{ .Steps.try_fast_path.outputs || .Steps.fallback_slow_path.outputs }}"
+  smart_processing:
+    sequential:
+      - id: analyze_input
+        uses: input_analyzer
+        inputs:
+          data: "{{ inputs.data }}"
+      
+      - id: process
+        conditional:
+          - when: "analyze_input.complexity == 'simple'"
+            uses: fast_processor
+            inputs:
+              data: "{{ inputs.data }}"
+          
+          - when: "analyze_input.complexity == 'medium'"
+            sequential:
+              - id: preprocess
+                uses: data_preprocessor
+                inputs:
+                  data: "{{ inputs.data }}"
+              
+              - id: main_process
+                uses: standard_processor
+                inputs:
+                  data: "{{ preprocess.cleaned_data }}"
+          
+          - when: "analyze_input.complexity == 'complex'"
+            parallel:
+              - id: decompose
+                uses: data_decomposer
+                inputs:
+                  data: "{{ inputs.data }}"
+              
+              - id: analyze_patterns
+                uses: pattern_analyzer
+                inputs:
+                  data: "{{ inputs.data }}"
+              
+              - id: ml_process
+                conditional:
+                  - when: "analyze_input.ml_suitable"
+                    uses: ml_pipeline
+                  - default:
+                    uses: heuristic_processor
+                inputs:
+                  data: "{{ inputs.data }}"
+          
+          - default:
+            uses: fallback_processor
+            inputs:
+              data: "{{ inputs.data }}"
+      
+      - id: validate
+        uses: result_validator
+        inputs:
+          result: "{{ process }}"
     
     transitions:
       - to: success
-        when: ".Outputs.final_validation.valid == true"
+        when: "validate.is_valid"
+      - to: retry
+        when: "!validate.is_valid && validate.can_retry"
+      - to: failure
+        when: "!validate.is_valid && !validate.can_retry"
 ```
 
-### Nested State Machines
+#### Deep Nesting Example
 
 ```yaml
 states:
-  complex_operation:
-    workflow:
-      type: sequential
-      steps:
-        - id: prepare
-          activity: data_prep
-        
-        - id: nested_processing
-          state_machine: specialized_state_machine
-          inputs:
-            data: "{{ .Steps.prepare.outputs.data }}"
-        
-        - id: finalize
-          activity: finalizer
-          inputs:
-            result: "{{ .Steps.nested_processing.outputs.result }}"
+  orchestration:
+    parallel:
+      - id: stream_a
+        sequential:
+          - id: fetch
+            uses: data_fetcher
+            inputs:
+              source: "{{ inputs.source_a }}"
+          
+          - id: transform
+            conditional:
+              - when: "fetch.format == 'json'"
+                uses: json_transformer
+              - when: "fetch.format == 'xml'"
+                uses: xml_transformer
+              - default:
+                parallel:
+                  - id: detect_format
+                    uses: format_detector
+                  - id: parse_raw
+                    uses: raw_parser
+            inputs:
+              data: "{{ fetch.data }}"
+      
+      - id: stream_b
+        conditional:
+          - when: "inputs.enable_stream_b"
+            sequential:
+              - id: connect
+                uses: stream_connector
+                inputs:
+                  endpoint: "{{ inputs.endpoint_b }}"
+              
+              - id: process_stream
+                parallel:
+                  - id: realtime
+                    uses: realtime_processor
+                  - id: batch
+                    sequential:
+                      - id: buffer
+                        uses: stream_buffer
+                      - id: batch_process
+                        uses: batch_processor
+                inputs:
+                  stream: "{{ connect.stream }}"
+          
+          - default:
+            uses: noop
+    
+    transitions:
+      - to: merge_results
+        when: "stream_a != null"
 ```
 
-## Testing Strategy
+## Migration Strategy
 
-1. **Unit Tests**: Test workflow execution within states
-2. **Integration Tests**: Test complex state compositions
-3. **Performance Tests**: Verify parallel execution benefits
-4. **Compatibility Tests**: Ensure backward compatibility
+1. **Phase 1**: Implement new types while maintaining backward compatibility
+2. **Phase 2**: Migrate existing state machines to use new composition features
+3. **Phase 3**: Move implementation from activity to compiler
+4. **Phase 4**: Deprecate old single-activity-only states
 
-## Future Enhancements
+## Testing Requirements
 
-1. **Dynamic Step Generation**: Generate steps based on input data
-2. **Step Templates**: Reusable step patterns
-3. **Distributed Execution**: Execute parallel steps across workers
-4. **Step Caching**: Cache step outputs for reuse
-5. **Visual Debugging**: Enhanced UI for debugging composed states
+1. **Unit Tests**: 
+   - Each composition type (sequential, parallel, conditional)
+   - Nested compositions at multiple levels
+   - CEL expression evaluation in all contexts
+   
+2. **Integration Tests**:
+   - Complex multi-level compositions
+   - State transitions with composed outputs
+   - Error handling and retry logic in compositions
+   
+3. **Performance Tests**:
+   - Parallel execution efficiency
+   - Deep nesting performance
+   - Large state machine execution
+

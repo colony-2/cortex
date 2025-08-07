@@ -2,7 +2,7 @@
 
 ## Overview
 
-This proposal outlines the integration of Google's Common Expression Language (CEL) into the recipe system to enable declarative, type-safe conditional logic for state transitions and branching behavior in recipes. State machines will be implemented as a new activity type using the existing `RegisterableActivity` interface.
+This proposal outlines the integration of Google's Common Expression Language (CEL) into the recipe system to enable declarative, type-safe conditional logic for state transitions and branching behavior in recipes. State machines will become a core execution type in the recipe system, alongside sequential and parallel workflows.
 
 ## Motivation
 
@@ -23,20 +23,17 @@ Use CEL as the standard expression language for:
 - Output validations
 - Recipe-to-recipe invocation conditions
 
-### 2. State Machine as RegisterableActivity
+### 2. State Machine as Core Execution Type
 
-State machines will be implemented as a new activity type that conforms to the existing `RegisterableActivity` interface, requiring no changes to the core recipe worker.
+State machines will be implemented as a first-class execution type in the core recipe system, enabling complex workflows with conditional branching and loops.
 
-#### Activity Definition
+#### Workflow Definition
 ```yaml
-activities:
-  - name: document_review_flow
-    description: Reviews document with retry loop
-    implementation:
-      type: state_machine
-      config:
-        initial_state: reviewing
-        states:
+workflow:
+  type: state_machine
+  config:
+    initial_state: reviewing
+    states:
           reviewing:
             activity: critique_activity
             inputs:

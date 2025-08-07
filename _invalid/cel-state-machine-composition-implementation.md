@@ -76,77 +76,12 @@ type StateMachineDefinition {
 - Update workflow execution endpoints to handle state machine steps
 - Remove state machine endpoints from activity namespace
 
-### 4. File Deletions
+### 4. File Changes
 
-The following files/directories will be deleted entirely:
-- `server/activity/pkg/statemachine/` - entire directory
-- `server/activity/examples/statemachine/` - example implementations
-- Any test files specifically for state machine activity
+- `server/activity/pkg/statemachine/` - delete entire directory
+- `server/activity/examples/statemachine/` - migrate to compiler examples
+- Move to test files specifically for state machine activity
 
-### 5. Migration Strategy
-
-#### 5.1 Data Migration Script
-```sql
--- Migrate state machine definitions from activities to core
-INSERT INTO state_machine_definitions (id, name, version, definition)
-SELECT 
-  activity_id,
-  activity_name,
-  '1.0.0',
-  configuration
-FROM activities
-WHERE type = 'STATE_MACHINE';
-
--- Update workflow references
-UPDATE workflow_steps
-SET 
-  type = 'STATE_MACHINE',
-  state_machine = activity,
-  activity = NULL
-WHERE activity IN (SELECT name FROM activities WHERE type = 'STATE_MACHINE');
-```
-
-#### 5.2 Code Migration Steps
-1. Implement core state machine executor
-2. Update all imports from `server/activity/pkg/statemachine` to new location
-3. Run migration script to move definitions
-4. Delete old state machine activity code
-5. Update all tests to use new API
-
-## Breaking Changes and Impact Analysis
-
-### Breaking Changes
-1. **Complete Removal of State Machine Activity**
-   - All workflows using `type: "STATE_MACHINE"` activities must be updated
-   - State machine definitions must be migrated to new format
-   - Activity-based state machine APIs will no longer exist
-
-2. **API Changes**
-   - `/api/v1/activities/state-machine/*` endpoints removed
-   - New `/api/v1/state-machines/*` endpoints required
-   - GraphQL schema changes for workflow steps
-
-3. **Configuration Format Changes**
-   - State machines no longer wrapped in activity configuration
-   - Direct state machine definitions in workflows
-   - New registry configuration required
-
-### Impact on Existing Systems
-
-#### Client Applications
-- Web UI must update to use new state machine APIs
-- CLI tools need new commands for state machine management
-- SDK updates required for all language bindings
-
-#### Running Workflows
-- In-flight workflows using state machine activities will fail
-- Requires planned downtime or blue-green deployment
-- Historical execution data needs migration
-
-#### Integration Points
-- Monitoring/metrics collection needs updates
-- Logging format changes for state machine executions
-- Webhook notifications may need schema updates
 
 ## Implementation Tasks
 
