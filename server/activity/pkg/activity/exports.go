@@ -5,16 +5,11 @@ import (
 	"github.com/divisive-ai/vibethis/server/activity/pkg/gitshallow"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/llm"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/statemachine"
 )
 
 // GetAll returns all activities available in this module
 // This provides a single entry point for consumers like recipe-worker to discover and register all activities
 func GetAll() []interface{} {
-	// Create a default executor for state machine
-	executor := statemachine.NewDefaultExecutor()
-	stateMachineActivity, _ := statemachine.NewStateMachineActivity(executor)
-	
 	return []interface{}{
 		// LLM activities
 		llm.NewLLMActivity(),
@@ -29,7 +24,7 @@ func GetAll() []interface{} {
 		// Recipe invocation activities
 		recipe.NewRecipeActivity(),
 		
-		// State machine activities
-		stateMachineActivity,
+		// Note: State machine is no longer an activity - it's now part of the core compiler
+		// See server/recipe-worker/pkg/compiler/statemachine for the new implementation
 	}
 }

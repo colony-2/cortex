@@ -1,0 +1,133 @@
+package statemachine
+
+import (
+	"testing"
+
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/stretchr/testify/assert"
+)
+
+// Test CEL expression evaluation without Temporal
+func TestCELEvaluation(t *testing.T) {
+	compiler, err := NewStateMachineCompiler(nil)
+	assert.NoError(t, err)
+
+	stateCtx := &yamlpkg.StateContext{
+		CurrentState: "test",
+		Inputs: map[string]interface{}{
+			"value": 100,
+			"flag":  true,
+		},
+		StateOutputs: map[string]map[string]interface{}{
+			"previous": {
+				"result": "success",
+			},
+		},
+		StepOutputs: map[string]interface{}{
+			"step1": map[string]interface{}{
+				"count": 5,
+			},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		expression string
+		expected   bool
+	}{
+		{"Simple comparison", ".Inputs.value > 50", true},
+		{"Boolean check", ".Inputs.flag == true", true},
+		{"State output access", ".States.previous.result == 'success'", true},
+		{"Step output access", ".Steps.step1.count > 3", true},
+		{"False condition", ".Inputs.value < 50", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := compiler.evaluateCEL(tt.expression, nil, stateCtx)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// Test template resolution
+func TestTemplateResolution(t *testing.T) {
+	resolver := NewTemplateResolver()
+	
+	stateCtx := &yamlpkg.StateContext{
+		Inputs: map[string]interface{}{
+			"name": "test",
+			"value": 42,
+		},
+		StepOutputs: map[string]interface{}{
+			"step1": map[string]interface{}{
+				"result": "success",
+			},
+		},
+		StateOutputs: map[string]map[string]interface{}{
+			"state1": {
+				"data": "processed",
+			},
+		},
+	}
+
+	inputs := map[string]interface{}{
+		"simple": "{{ .Inputs.name }}",
+		"nested": map[string]interface{}{
+			"step": "{{ .Steps.step1.result }}",
+			"state": "{{ .States.state1.data }}",
+		},
+		"static": "no template",
+	}
+
+	resolved, err := resolver.ResolveInputs(inputs, stateCtx)
+	assert.NoError(t, err)
+	
+	assert.Equal(t, "test", resolved["simple"])
+	assert.Equal(t, "no template", resolved["static"])
+	
+	nested := resolved["nested"].(map[string]interface{})
+	assert.Equal(t, "success", nested["step"])
+	assert.Equal(t, "processed", nested["state"])
+}
+
+// Test dependency grouping
+func TestDependencyGrouping(t *testing.T) {
+	compiler, err := NewStateMachineCompiler(nil)
+	assert.NoError(t, err)
+
+	steps := []yamlpkg.CompositionStep{
+		{ID: "a", DependsOn: []string{}},
+		{ID: "b", DependsOn: []string{}},
+		{ID: "c", DependsOn: []string{"a"}},
+		{ID: "d", DependsOn: []string{"b"}},
+		{ID: "e", DependsOn: []string{"c", "d"}},
+	}
+
+	groups := compiler.groupByDependencies(steps)
+	
+	// Should have 2 groups: [a, b] and [c, d, e]
+	assert.Len(t, groups, 2)
+	assert.Len(t, groups[0], 2) // a and b have no dependencies
+	assert.Len(t, groups[1], 3) // c, d, and e have dependencies
+}
+
+// Test state terminal check
+func TestIsTerminal(t *testing.T) {
+	compiler, err := NewStateMachineCompiler(nil)
+	assert.NoError(t, err)
+
+	states := map[string]yamlpkg.StateDefinition{
+		"active": {
+			Uses: "some_activity",
+		},
+		"terminal": {
+			Terminal: true,
+		},
+	}
+
+	assert.False(t, compiler.isTerminal("active", states))
+	assert.True(t, compiler.isTerminal("terminal", states))
+	assert.True(t, compiler.isTerminal("nonexistent", states)) // Nonexistent is terminal
+}
