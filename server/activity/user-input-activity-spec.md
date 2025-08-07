@@ -1,14 +1,14 @@
 # User Input Activity Specification
 
 ## Overview
-User Input Activities are interactive activities that pause workflow execution to gather user responses via Cortex LLM integration. These activities enable human-in-the-loop workflows where user feedback, decisions, or reviews are required.
+User Input Activities are interactive activities that pause workflow execution to gather user responses through the Cortex server (vibethis core server). These activities enable human-in-the-loop workflows where user feedback, decisions, or reviews are required. The activity server communicates with Cortex to coordinate user interactions and manage workflow state.
 
 ## Core Components
 
 ### Activity Types
 
 #### 1. Question Activity (`user_input_question`)
-Presents an LLM-generated question to the user and waits for their response.
+Presents a question to the user and waits for their response.
 
 ```yaml
 type: user_input_question
@@ -26,7 +26,6 @@ config:
     - value: "conservative"
       label: "Conservative optimization (safer)"
   timeout: 300 # seconds, optional
-  cortex_model: "gpt-4" # optional, defaults to configured model
 ```
 
 #### 2. Review Activity (`user_input_review`)
@@ -46,31 +45,29 @@ config:
     - reject
     - request_changes
   change_request_prompt: "What changes are needed?" # If request_changes selected
-  cortex_enhancement: true # Use Cortex to summarize/highlight key changes
+  display_mode: "diff" # How to display artifacts in UI
 ```
 
 #### 3. Decision Activity (`user_input_decision`)
-Presents a structured decision point with Cortex-analyzed options.
+Presents a structured decision point to the user.
 
 ```yaml
 type: user_input_decision
 config:
   decision_prompt: "Select deployment strategy"
-  cortex_analysis:
-    prompt: "Analyze the pros and cons of each deployment option"
-    context_artifacts:
-      - "metrics/current_state.json"
-      - "deployment/options.yaml"
+  context_artifacts:
+    - "metrics/current_state.json"
+    - "deployment/options.yaml"
   options:
     - id: "blue_green"
       description: "Blue-green deployment"
-      cortex_summary: true # Generate summary via Cortex
+      details: "Switch traffic all at once to new version"
     - id: "canary"
       description: "Canary deployment (10% initial)"
-      cortex_summary: true
+      details: "Gradually roll out to percentage of users"
     - id: "rolling"
       description: "Rolling update"
-      cortex_summary: true
+      details: "Update instances one by one"
   require_justification: true
 ```
 
@@ -91,7 +88,7 @@ type UserInputConfig struct {
     ResponseType   ResponseType
     Options        []Option
     Timeout        int
-    CortexModel    string
+    DisplayMode    string
 }
 
 type UserResponse struct {
@@ -103,20 +100,249 @@ type UserResponse struct {
 }
 ```
 
-### Cortex Integration
+## Signal-based Communication Architecture
+
+User input activities use signals for all communication between the Activity server and Cortex. This provides asynchronous, event-driven coordination that naturally fits with workflow pause/resume patterns.
+
+### Signal Definitions
+
+#### Activity → Cortex Signals
 ```go
-// server/activity/pkg/cortex/user_input.go
-type UserInputRequest struct {
-    SessionID      string
-    Prompt         string
-    Context        []byte // Serialized context
-    ResponseSchema *ResponseSchema
+// UserInputRequested - Activity requests user input
+type UserInputRequested struct {
+    ActivityID     string
+    WorkflowID     string
+    Type          UserInputType
+    Prompt        string
+    Context       map[string]interface{}
+    ResponseSchema ResponseSchema
+    Timeout       time.Duration
 }
 
-type UserInputResponse struct {
-    SessionID      string
-    FormattedPrompt string // Cortex-enhanced prompt
-    ResponseID     string  // For tracking
+// UserInputCancelled - Activity cancels pending input
+type UserInputCancelled struct {
+    ActivityID string
+    ResponseID string
+    Reason     string
+}
+```
+
+#### Cortex → Activity Signals
+```go
+// UserInputReady - Cortex has prepared the user input session
+type UserInputReady struct {
+    ActivityID  string
+    ResponseID  string
+    SessionID   string
+    DisplayURL  string
+    ExpiresAt   time.Time
+}
+
+// UserInputReceived - User has provided response
+type UserInputReceived struct {
+    ActivityID    string
+    ResponseID    string
+    Response      interface{}
+    Justification string
+    UserID        string
+    RespondedAt   time.Time
+}
+
+// UserInputTimeout - Input request has timed out
+type UserInputTimeout struct {
+    ActivityID string
+    ResponseID string
+    TimedOutAt time.Time
+}
+
+// UserInputError - Error processing user input
+type UserInputError struct {
+    ActivityID string
+    ResponseID string
+    Error      string
+    ErrorCode  string
+}
+```
+
+### Signal Flow
+1. Activity sends `UserInputRequested` signal to Cortex
+2. Cortex responds with `UserInputReady` signal containing session info
+3. Activity enters wait state, listening for response signals
+4. When user responds, Cortex sends `UserInputReceived` signal
+5. Activity processes response and continues workflow
+
+### Signal Implementation Details
+
+#### Signal Handler Registration
+```go
+// server/activity/pkg/activity/user_input_handler.go
+func RegisterUserInputHandlers(dispatcher *signals.Dispatcher) {
+    dispatcher.RegisterHandler("UserInputReady", HandleUserInputReady)
+    dispatcher.RegisterHandler("UserInputReceived", HandleUserInputReceived)
+    dispatcher.RegisterHandler("UserInputTimeout", HandleUserInputTimeout)
+    dispatcher.RegisterHandler("UserInputError", HandleUserInputError)
+}
+
+func HandleUserInputReceived(ctx context.Context, signal UserInputReceived) error {
+    // Resume activity with user response
+    activity := GetActivity(signal.ActivityID)
+    return activity.Resume(signal.Response, signal.Justification)
+}
+```
+
+#### Signal Retry and Reliability
+```go
+type SignalConfig struct {
+    MaxRetries     int
+    RetryBackoff   time.Duration
+    Timeout        time.Duration
+    PersistHistory bool
+}
+
+// Signals are persisted and retried automatically
+var UserInputSignalConfig = SignalConfig{
+    MaxRetries:     3,
+    RetryBackoff:   time.Second * 5,
+    Timeout:        time.Minute * 5,
+    PersistHistory: true,
+}
+```
+
+### Cortex Server Integration
+```go
+// server/cortex/pkg/activity/user_input.go
+type UserInputManager struct {
+    Store         UserInputStore
+    Notifier      UserNotifier
+    SignalClient  signals.Client
+    SignalHandler signals.Handler
+}
+
+// Initialize signal handlers on Cortex side
+func (m *UserInputManager) RegisterHandlers() {
+    m.SignalHandler.Register("UserInputRequested", m.HandleUserInputRequest)
+    m.SignalHandler.Register("UserInputCancelled", m.HandleUserInputCancelled)
+}
+
+func (m *UserInputManager) HandleUserInputRequest(ctx context.Context, signal signals.Signal) error {
+    req := signal.Payload.(UserInputRequested)
+    
+    // Store request with metadata
+    session := m.Store.CreateSession(SessionConfig{
+        ActivityID:     req.ActivityID,
+        WorkflowID:     req.WorkflowID,
+        Type:          req.Type,
+        Prompt:        req.Prompt,
+        Context:       req.Context,
+        ResponseSchema: req.ResponseSchema,
+        Timeout:       req.Timeout,
+    })
+    
+    // Notify user through available channels
+    m.Notifier.NotifyPendingInput(session)
+    
+    // Send ready signal back to activity
+    return m.SignalClient.Send(ctx, signals.Signal{
+        Type: "UserInputReady",
+        Payload: UserInputReady{
+            ActivityID:  req.ActivityID,
+            ResponseID:  session.ResponseID,
+            SessionID:   session.ID,
+            DisplayURL:  m.generateDisplayURL(session),
+            ExpiresAt:   session.ExpiresAt,
+        },
+    })
+}
+
+// Called when user submits response through UI
+func (m *UserInputManager) ProcessUserResponse(ctx context.Context, responseID string, response UserResponse) error {
+    session := m.Store.GetSessionByResponseID(responseID)
+    if session == nil {
+        return fmt.Errorf("session not found")
+    }
+    
+    // Validate response against schema
+    if err := m.validateResponse(response, session.ResponseSchema); err != nil {
+        return err
+    }
+    
+    // Send response signal to activity
+    return m.SignalClient.Send(ctx, signals.Signal{
+        Type: "UserInputReceived",
+        Payload: UserInputReceived{
+            ActivityID:    session.ActivityID,
+            ResponseID:    responseID,
+            Response:      response.Value,
+            Justification: response.Justification,
+            UserID:        response.UserID,
+            RespondedAt:   time.Now(),
+        },
+    })
+}
+```
+
+### Activity Server Integration
+```go
+// server/activity/pkg/activity/user_input_activity.go
+type UserInputActivity struct {
+    SignalClient  signals.Client
+    SignalWaiter  signals.Waiter
+    Config        UserInputConfig
+}
+
+func (a *UserInputActivity) Execute(ctx context.Context, input ActivityInput) (ActivityOutput, error) {
+    // Send signal to Cortex requesting user input
+    requestSignal := signals.Signal{
+        Type: "UserInputRequested",
+        Payload: UserInputRequested{
+            ActivityID:     a.ID,
+            WorkflowID:     a.WorkflowID,
+            Type:          a.Config.Type,
+            Prompt:        a.Config.Prompt,
+            Context:       a.prepareContext(input),
+            ResponseSchema: a.Config.ResponseSchema,
+            Timeout:       a.Config.Timeout,
+        },
+    }
+    
+    if err := a.SignalClient.Send(ctx, requestSignal); err != nil {
+        return nil, fmt.Errorf("failed to request user input: %w", err)
+    }
+    
+    // Wait for response signal
+    responseSignal, err := a.SignalWaiter.WaitFor(ctx, []string{
+        "UserInputReceived",
+        "UserInputTimeout",
+        "UserInputError",
+    }, a.Config.Timeout)
+    
+    if err != nil {
+        return nil, fmt.Errorf("failed waiting for user response: %w", err)
+    }
+    
+    // Handle response based on signal type
+    switch responseSignal.Type {
+    case "UserInputReceived":
+        received := responseSignal.Payload.(UserInputReceived)
+        return ActivityOutput{
+            "response": received.Response,
+            "justification": received.Justification,
+            "user_id": received.UserID,
+        }, nil
+        
+    case "UserInputTimeout":
+        if a.Config.DefaultOnTimeout != nil {
+            return ActivityOutput{"response": a.Config.DefaultOnTimeout}, nil
+        }
+        return nil, fmt.Errorf("user input timeout")
+        
+    case "UserInputError":
+        errorPayload := responseSignal.Payload.(UserInputError)
+        return nil, fmt.Errorf("user input error: %s", errorPayload.Error)
+        
+    default:
+        return nil, fmt.Errorf("unexpected signal type: %s", responseSignal.Type)
+    }
 }
 ```
 
@@ -124,13 +350,13 @@ type UserInputResponse struct {
 
 ### Execution Flow
 1. Activity executor encounters user input activity
-2. Prepares context and sends request to Cortex
-3. Cortex formats prompt with context and returns session info
-4. Activity pauses and stores state
-5. User receives notification (webhook/polling)
-6. User submits response via UI/API
-7. Response validated and stored
-8. Activity resumes with user response as output
+2. Activity sends `UserInputRequested` signal to Cortex
+3. Cortex prepares user session and sends `UserInputReady` signal back
+4. Activity enters wait state, listening for response signals
+5. User receives notification and accesses Cortex UI
+6. User submits response through Cortex UI
+7. Cortex validates response and sends `UserInputReceived` signal
+8. Activity receives signal and resumes with user response as output
 
 ### State Management
 ```yaml
@@ -143,36 +369,27 @@ state:
   context_hash: "abc123" # For resumption validation
 ```
 
-## API Endpoints
+## User Interface Integration
 
-### Get Pending User Inputs
-```
-GET /api/activities/user-inputs/pending
-Response:
-{
-  "pending": [
-    {
-      "activity_id": "act_123",
-      "type": "user_input_question",
-      "prompt": "Enhanced prompt from Cortex",
-      "context": {...},
-      "options": [...],
-      "created_at": "2024-01-01T10:00:00Z",
-      "timeout_at": "2024-01-01T10:05:00Z"
-    }
-  ]
-}
-```
+### Cortex UI Endpoints
+While the activity-to-Cortex communication uses signals, the Cortex server provides UI endpoints for users to interact with pending inputs:
 
-### Submit User Response
+#### View Pending User Input
 ```
-POST /api/activities/user-inputs/{activity_id}/respond
+GET /ui/user-inputs/{response_id}
+```
+Displays formatted prompt, context, and response options to the user.
+
+#### Submit User Response
+```
+POST /ui/user-inputs/{response_id}/respond
 Body:
 {
   "response": "approved" | {custom_object},
   "justification": "Optional justification"
 }
 ```
+Triggers `UserInputReceived` signal to activity server.
 
 ## Configuration
 
@@ -184,28 +401,44 @@ RegisterActivity("user_input_review", NewUserInputReviewHandler)
 RegisterActivity("user_input_decision", NewUserInputDecisionHandler)
 ```
 
-### Cortex Configuration
+### Signal Configuration
 ```yaml
+signals:
+  broker: "redis" # or "kafka", "rabbitmq"
+  endpoint: "redis://localhost:6379"
+  namespace: "vibethis"
+  user_input:
+    queue: "user_input_signals"
+    retry_policy:
+      max_attempts: 3
+      backoff_seconds: 5
+    timeout_seconds: 300
+    persist_history: true
+
+# Cortex server configuration for handling user inputs
 cortex:
-  endpoint: "http://cortex-service:8080"
-  default_model: "gpt-4"
+  signal_endpoint: "signals://cortex"
   user_input:
     max_context_size: 10000
-    response_timeout: 300
-    enable_streaming: false
+    default_timeout: 300
+    notification_channels:
+      - "ui"
+      - "email"
 ```
 
 ## Error Handling
 
 ### Timeout Behavior
-- Configurable timeout per activity
+- Configurable timeout per activity via signal metadata
 - Default timeout: 5 minutes
-- On timeout: Activity fails or uses default response (configurable)
+- On timeout: Cortex sends `UserInputTimeout` signal
+- Activity can handle timeout signal to fail, retry, or use default
 
-### Cortex Failures
-- Retry logic with exponential backoff
-- Fallback to simple prompt without enhancement
-- Activity can continue with degraded functionality
+### Signal Failures
+- Automatic retry with exponential backoff (configured in signal broker)
+- Dead letter queue for persistent failures
+- `UserInputError` signal sent for non-recoverable errors
+- Activity receives error signal and decides how to proceed
 
 ## Security Considerations
 
