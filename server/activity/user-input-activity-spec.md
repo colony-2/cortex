@@ -369,27 +369,400 @@ state:
   context_hash: "abc123" # For resumption validation
 ```
 
-## User Interface Integration
+## UI Integration
 
-### Cortex UI Endpoints
-While the activity-to-Cortex communication uses signals, the Cortex server provides UI endpoints for users to interact with pending inputs:
+### Overview
+The UI needs to display pending user input requests across all boxes and allow users to respond. This uses a single Server-Sent Events (SSE) endpoint for real-time updates across all boxes, avoiding the need to poll multiple endpoints.
 
-#### View Pending User Input
+### Cortex API Endpoints
+
+#### Server-Sent Events Stream (Comet Pattern)
 ```
-GET /ui/user-inputs/{response_id}
+GET /api/user-inputs/stream
+Headers:
+  Authorization: Bearer {token}
+  Accept: text/event-stream
+
+Event Stream Format:
+event: initial
+data: {
+  "pending_inputs": [
+    {
+      "response_id": "resp_456",
+      "box_id": "box_123",
+      "box_name": "Production Deploy",
+      "activity_id": "act_123",
+      "workflow_id": "wf_789",
+      "type": "question|review|decision",
+      "prompt": "Select deployment strategy",
+      "priority": "normal|high|urgent",
+      "created_at": "2024-01-01T10:00:00Z",
+      "expires_at": "2024-01-01T10:05:00Z"
+    }
+  ]
+}
+
+event: user_input_requested
+data: {
+  "response_id": "resp_789",
+  "box_id": "box_456",
+  "box_name": "Data Pipeline",
+  "type": "review",
+  "prompt": "Review data transformation",
+  "priority": "high",
+  "created_at": "2024-01-01T10:10:00Z"
+}
+
+event: user_input_completed
+data: {
+  "response_id": "resp_456",
+  "box_id": "box_123",
+  "responded_by": "user_123",
+  "response": "approved"
+}
+
+event: user_input_expired
+data: {
+  "response_id": "resp_456",
+  "box_id": "box_123"
+}
+
+event: heartbeat
+data: {"timestamp": "2024-01-01T10:15:00Z"}
 ```
-Displays formatted prompt, context, and response options to the user.
+
+#### List All Pending User Inputs (Fallback/Initial Load)
+```
+GET /api/user-inputs/pending
+Headers:
+  Authorization: Bearer {token}
+Query Parameters:
+  box_ids: comma-separated list of box IDs (optional, defaults to all user's boxes)
+  priority: normal|high|urgent (optional)
+  type: question|review|decision (optional)
+
+Response:
+{
+  "pending_inputs": [
+    {
+      "response_id": "resp_456",
+      "box_id": "box_123",
+      "box_name": "Production Deploy",
+      "activity_id": "act_123",
+      "workflow_id": "wf_789",
+      "type": "decision",
+      "prompt": "Select deployment strategy",
+      "context_summary": "3 artifacts available",
+      "priority": "high",
+      "created_at": "2024-01-01T10:00:00Z",
+      "expires_at": "2024-01-01T10:05:00Z"
+    },
+    {
+      "response_id": "resp_789",
+      "box_id": "box_456",
+      "box_name": "Data Pipeline",
+      "activity_id": "act_456",
+      "workflow_id": "wf_012",
+      "type": "review",
+      "prompt": "Review ETL configuration",
+      "context_summary": "2 artifacts available",
+      "priority": "normal",
+      "created_at": "2024-01-01T09:55:00Z",
+      "expires_at": "2024-01-01T10:10:00Z"
+    }
+  ],
+  "total": 2,
+  "by_box": {
+    "box_123": 1,
+    "box_456": 1
+  },
+  "by_priority": {
+    "high": 1,
+    "normal": 1
+  }
+}
+```
+
+#### Get Single User Input Details
+```
+GET /api/user-inputs/{response_id}
+Headers:
+  Authorization: Bearer {token}
+
+Response:
+{
+  "response_id": "resp_456",
+  "box_id": "box_123",
+  "box_name": "Production Deploy",
+  "activity_id": "act_123",
+  "workflow_id": "wf_789",
+  "type": "review",
+  "prompt": "Review generated configuration",
+  "context": {
+    "artifacts": [
+      {
+        "path": "config/generated.yaml",
+        "content": "...",
+        "diff": "...",
+        "highlights": []
+      }
+    ],
+    "metadata": {
+      "activity_name": "Config Review",
+      "created_by": "system"
+    }
+  },
+  "response_schema": {
+    "type": "choice",
+    "options": [
+      {"id": "approve", "label": "Approve"},
+      {"id": "reject", "label": "Reject"},
+      {"id": "request_changes", "label": "Request Changes"}
+    ],
+    "require_justification": true
+  },
+  "created_at": "2024-01-01T10:00:00Z",
+  "expires_at": "2024-01-01T10:05:00Z",
+  "status": "pending"
+}
+```
 
 #### Submit User Response
 ```
-POST /ui/user-inputs/{response_id}/respond
+POST /api/user-inputs/{response_id}/respond
+Headers:
+  Authorization: Bearer {token}
 Body:
 {
-  "response": "approved" | {custom_object},
-  "justification": "Optional justification"
+  "response": "approved" | "rejected" | {custom_value},
+  "justification": "Looks good, proceeding with blue-green",
+  "metadata": {
+    "reviewed_at": "2024-01-01T10:02:00Z",
+    "client": "web-ui"
+  }
+}
+
+Response:
+{
+  "success": true,
+  "box_id": "box_123",
+  "activity_id": "act_123",
+  "workflow_status": "resuming"
 }
 ```
-Triggers `UserInputReceived` signal to activity server.
+
+#### Cancel User Input Request
+```
+POST /api/user-inputs/{response_id}/cancel
+Headers:
+  Authorization: Bearer {token}
+Body:
+{
+  "reason": "Workflow cancelled by user"
+}
+
+Response:
+{
+  "success": true,
+  "box_id": "box_123",
+  "activity_id": "act_123"
+}
+```
+
+### UI Implementation
+
+#### SSE Connection Management
+```typescript
+// Single SSE connection for all user inputs across all boxes
+class UserInputStreamManager {
+  private eventSource: EventSource;
+  private reconnectTimeout: number = 5000;
+  
+  connect() {
+    this.eventSource = new EventSource('/api/user-inputs/stream', {
+      withCredentials: true
+    });
+    
+    this.eventSource.addEventListener('initial', (e) => {
+      const data = JSON.parse(e.data);
+      this.handleInitialLoad(data.pending_inputs);
+    });
+    
+    this.eventSource.addEventListener('user_input_requested', (e) => {
+      const input = JSON.parse(e.data);
+      this.notifyNewInput(input);
+    });
+    
+    this.eventSource.addEventListener('user_input_completed', (e) => {
+      const data = JSON.parse(e.data);
+      this.removeInput(data.response_id);
+    });
+    
+    this.eventSource.addEventListener('user_input_expired', (e) => {
+      const data = JSON.parse(e.data);
+      this.handleExpired(data.response_id);
+    });
+    
+    this.eventSource.onerror = () => {
+      this.reconnect();
+    };
+  }
+  
+  private reconnect() {
+    setTimeout(() => this.connect(), this.reconnectTimeout);
+  }
+}
+```
+
+#### Global Notification Component
+```typescript
+// Displays aggregated user inputs from all boxes
+interface GlobalUserInputIndicator {
+  totalPending: number;
+  byBox: Map<string, number>;
+  highPriority: number;
+  onClick: () => void; // Opens input panel
+}
+
+// Individual input in the panel
+interface UserInputItem {
+  responseId: string;
+  boxId: string;
+  boxName: string;
+  type: 'question' | 'review' | 'decision';
+  prompt: string;
+  priority: 'normal' | 'high' | 'urgent';
+  expiresIn: number;
+  onSelect: () => void;
+}
+```
+
+#### User Input Panel
+```typescript
+// Panel showing all pending inputs across boxes
+interface UserInputPanel {
+  inputs: UserInputItem[];
+  selectedInput?: {
+    responseId: string;
+    boxName: string;
+    prompt: string;
+    context: {
+      artifacts: ArtifactView[];
+      metadata: Record<string, any>;
+    };
+    responseSchema: {
+      type: 'choice' | 'text' | 'structured';
+      options?: Option[];
+      requireJustification?: boolean;
+    };
+  };
+  onSubmit: (responseId: string, response: any, justification?: string) => void;
+  onCancel: (responseId: string) => void;
+  onFilter: (boxId?: string, priority?: string) => void;
+}
+```
+
+### Signal Flow with UI
+
+1. Activity sends `UserInputRequested` signal to Cortex
+2. Cortex stores request and sends `UserInputReady` signal back to activity
+3. Cortex pushes SSE event to all connected UI clients for that user
+4. UI receives event and updates notification badge/counter
+5. User clicks notification to see all pending inputs
+6. UI fetches full details for selected input via REST API
+7. User submits response through UI
+8. Cortex sends `UserInputReceived` signal to activity
+9. Cortex pushes SSE event to update all UI clients
+10. Activity resumes with user response
+
+### Connection and Performance Considerations
+
+#### SSE Connection Management
+- Single persistent connection per user session
+- Automatic reconnection with exponential backoff
+- Heartbeat events every 30 seconds to detect stale connections
+- Initial event sends all pending inputs on connection
+
+#### Scalability
+- SSE connection handled by dedicated streaming service
+- Redis pub/sub for distributing events across server instances
+- Connection limit per user (prevent multiple tabs from overwhelming)
+- Graceful degradation to polling if SSE unavailable
+
+#### Caching Strategy
+```yaml
+cache:
+  pending_inputs:
+    ttl: 60 # seconds
+    invalidate_on:
+      - user_input_requested
+      - user_input_completed
+      - user_input_expired
+  input_details:
+    ttl: 300 # seconds
+    key_pattern: "user_input:{response_id}"
+```
+
+### Cortex Server SSE Implementation
+```go
+// server/cortex/pkg/api/user_input_stream.go
+type UserInputStreamer struct {
+    Store        UserInputStore
+    PubSub       pubsub.Client
+    Connections  map[string]*SSEConnection
+}
+
+func (s *UserInputStreamer) HandleStream(w http.ResponseWriter, r *http.Request) {
+    userID := getUserFromContext(r.Context())
+    
+    // Set SSE headers
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+    
+    // Create SSE connection
+    conn := &SSEConnection{
+        Writer:  w,
+        Flusher: w.(http.Flusher),
+        UserID:  userID,
+    }
+    
+    // Send initial state
+    pending := s.Store.GetPendingForUser(userID)
+    conn.SendEvent("initial", map[string]interface{}{
+        "pending_inputs": pending,
+    })
+    
+    // Subscribe to updates
+    sub := s.PubSub.Subscribe(fmt.Sprintf("user:%s:inputs", userID))
+    defer sub.Close()
+    
+    // Handle events
+    for {
+        select {
+        case msg := <-sub.Channel():
+            conn.SendEvent(msg.Type, msg.Data)
+        case <-r.Context().Done():
+            return
+        case <-time.After(30 * time.Second):
+            conn.SendEvent("heartbeat", map[string]interface{}{
+                "timestamp": time.Now(),
+            })
+        }
+    }
+}
+
+// Triggered when new user input is created
+func (s *UserInputStreamer) NotifyUserInputRequested(input UserInput) {
+    s.PubSub.Publish(
+        fmt.Sprintf("user:%s:inputs", input.UserID),
+        Message{
+            Type: "user_input_requested",
+            Data: input.ToSummary(),
+        },
+    )
+}
+```
 
 ## Configuration
 
@@ -422,8 +795,15 @@ cortex:
     max_context_size: 10000
     default_timeout: 300
     notification_channels:
-      - "ui"
-      - "email"
+      - "sse"  # Server-sent events to UI
+      - "email" # Email notifications for urgent inputs
+  sse:
+    endpoint: "/api/user-inputs/stream"
+    heartbeat_interval: 30
+    max_connections_per_user: 5
+    redis_pubsub:
+      endpoint: "redis://localhost:6379"
+      channel_prefix: "user_inputs"
 ```
 
 ## Error Handling
