@@ -178,28 +178,27 @@ type RecipeExecutionEvent struct {
 }
 ```
 
-## Implementation Location
+## Implementation 
 
 **All implementation changes should be made in the `server/activity` directory.** This is where the recipe activity system is implemented and where the new `recipe` activity type will be added.
 
-## Implementation Plan
+### Key Implementation Areas
 
-### Phase 1: Core Activity Implementation (server/activity)
-1. Create `recipe` activity type in server/activity
-2. Implement basic recipe invocation logic
-3. Add result polling and retrieval
-4. Populate system context variables automatically
+#### 1. New Recipe Activity Type
+- Create a new `recipe` activity type in server/activity
+- **Important**: Leverage existing Temporal workflow-to-workflow invocation patterns
+- Do not create new execution infrastructure - use Temporal's native child workflow capabilities
+- The activity should act as a thin wrapper around Temporal's ExecuteChildWorkflow functionality
 
-### Phase 2: Execution Management (server/activity)
-1. Implement connection pooling in activity executor
-2. Add health checking to activity runtime
-3. Support secure communication between activities
+#### 2. Context Passing
+- Automatically populate context variables from the parent workflow's context
+- Pass execution metadata (namespace, task queue, auth tokens) transparently
+- Ensure child recipes inherit parent's execution environment settings
 
-### Phase 3: Enhanced Features (server/activity)
-1. Add recipe versioning support
-2. Implement advanced error handling in activity framework
-3. Add monitoring/metrics to activity execution
-4. Support dynamic recipe resolution
+#### 3. End-to-End Testing
+- Create comprehensive E2E tests that validate parent-to-child recipe execution
+- Test context inheritance and variable passing
+- Verify error propagation and retry behaviors
 
 ## Testing Requirements
 
