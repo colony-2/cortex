@@ -2,32 +2,29 @@
 
 ## Overview
 
-This specification defines enhancements to the recipe infrastructure to support workflow-to-workflow invocation, enabling a parent workflow (running in Cortex) to submit and monitor child workflows in separate Temporal instances (Nucleus).
+This specification defines enhancements to the recipe infrastructure to support sub-recipe invocation, enabling a parent recipe to invoke and monitor child recipes across distributed execution environments.
 
 ## Current State
 
 The existing recipe infrastructure supports:
-- Workflow definitions in YAML
-- Activity execution within workflows
-- Single Temporal instance execution
-- Basic workflow inputs/outputs
+- Recipe definitions in YAML
+- Activity execution within recipes
+- Single execution environment
+- Basic recipe inputs/outputs
 
 ## Required Enhancements
 
-### 1. Cross-Temporal Workflow Invocation
+### 1. Sub-Recipe Invocation
 
-#### New Activity Type: `temporal_workflow`
+#### New Activity Type: `sub_recipe`
 
-A new activity implementation type that submits workflows to remote Temporal instances:
+A new activity implementation type that invokes other recipes as child processes:
 
 ```yaml
 implementation:
-  type: temporal_workflow
+  type: sub_recipe
   config:
-    temporal_host: "{{ .DynamicValue }}"     # Can be dynamically provided
-    temporal_namespace: "nucleus"            # Target namespace
-    task_queue: "recipe-worker"              # Target task queue
-    workflow_type: "{{ .WorkflowName }}"     # Workflow to execute
+    recipe: "{{ .RecipeName }}"              # Recipe to execute
     timeout: "30m"                           # Execution timeout
     retry_policy:
       maximum_attempts: 3
@@ -39,79 +36,86 @@ implementation:
 
 ```yaml
 activities:
-  - name: submit_nucleus_workflow
-    description: Submits a workflow to a Nucleus instance
-    timeout: 35m  # Slightly longer than workflow timeout
+  - name: invoke_sub_recipe
+    description: Invokes a child recipe
+    timeout: 35m  # Slightly longer than recipe timeout
     inputs:
-      - name: temporal_host
+      - name: recipe_name
         type: string
         required: true
-        description: Host:port of the Nucleus Temporal instance
-      - name: workflow_name
-        type: string
-        required: true
-        description: Name of the workflow to execute
-      - name: workflow_inputs
+        description: Name of the recipe to execute
+      - name: recipe_inputs
         type: object
         required: false
-        description: Input parameters for the workflow
-      - name: workflow_id
-        type: string
-        required: false
-        description: Optional workflow ID (generated if not provided)
+        description: Input parameters for the recipe
     outputs:
-      - name: workflow_id
+      - name: execution_id
         type: string
-        description: ID of the submitted workflow
-      - name: run_id
-        type: string
-        description: Run ID of the workflow execution
+        description: ID of the recipe execution
       - name: result
         type: object
-        description: Result from the workflow execution
+        description: Result from the recipe execution
       - name: status
         type: string
-        description: Final status of the workflow
+        description: Final status of the recipe
     implementation:
-      type: temporal_workflow
-      config:
-        temporal_namespace: "nucleus"
-        task_queue: "recipe-worker"
+      type: sub_recipe
+
+### 2. System Context Variables
+
+#### Automatic Context Population
+
+The recipe system automatically provides context variables similar to GitHub Actions:
+
+```yaml
+# Available in all recipe templates via {{ .context }}
+context:
+  recipe:
+    name: "current-recipe-name"
+    version: "1.0.0"
+    execution_id: "unique-execution-id"
+    parent_execution_id: "parent-id-if-sub-recipe"
+  
+  environment:
+    name: "production|staging|development"
+    region: "us-west-2"
+    cluster: "cluster-name"
+  
+  execution:
+    host: "execution-host"           # Automatically determined
+    namespace: "execution-namespace" # Inherited from parent
+    task_queue: "task-queue"        # Inherited from parent
+    started_at: "2024-01-01T00:00:00Z"
+    timeout: "30m"
+  
+  auth:
+    identity: "service-identity"
+    token: "auth-token"             # Securely managed
 ```
 
-### 2. Dynamic Temporal Connection Management
+#### Using Context Variables
 
-#### Connection Configuration
-
-Support for dynamic Temporal connection parameters:
-
-```go
-type TemporalWorkflowConfig struct {
-    Host            string        `yaml:"temporal_host"`
-    Namespace       string        `yaml:"temporal_namespace"`
-    TaskQueue       string        `yaml:"task_queue"`
-    WorkflowType    string        `yaml:"workflow_type"`
-    Timeout         time.Duration `yaml:"timeout"`
-    RetryPolicy     *RetryPolicy  `yaml:"retry_policy"`
-    TLS             *TLSConfig    `yaml:"tls"`
-    Identity        string        `yaml:"identity"`
-}
-
-type TLSConfig struct {
-    CertPath string `yaml:"cert_path"`
-    KeyPath  string `yaml:"key_path"`
-    CAPath   string `yaml:"ca_path"`
-}
+```yaml
+activities:
+  - name: log_context
+    implementation:
+      type: sub_recipe
+      config:
+        recipe: "monitoring/log-execution"
+        # Context automatically available
+        inputs:
+          execution_id: "{{ .context.recipe.execution_id }}"
+          environment: "{{ .context.environment.name }}"
 ```
 
 #### Implementation Requirements
 
-1. **Connection Pooling**: Reuse Temporal client connections when possible
-2. **Health Checking**: Verify Temporal instance availability before submission
+1. **Connection Pooling**: Reuse execution client connections when possible
+2. **Health Checking**: Verify execution environment availability
 3. **Timeout Handling**: Properly propagate context timeouts
-4. **Error Mapping**: Convert Temporal errors to recipe activity errors
+4. **Error Mapping**: Convert execution errors to recipe activity errors
 
-### 3. Workflow Result Handling
+### 3. Recipe Result Handling
 
 #### Enhanced Output Structure
 
@@ -122,9 +126,9 @@ outputs:
     schema:
       type: object
       properties:
-        workflow_outputs:
+        recipe_outputs:
           type: object
-          description: Outputs from the executed workflow
+          description: Outputs from the executed recipe
         execution_metadata:
           type: object
           properties:
@@ -140,36 +144,35 @@ outputs:
               type: integer
 ```
 
-### 4. Workflow Discovery Enhancement
+### 4. Recipe Discovery Enhancement
 
-#### Dynamic Workflow Resolution
+#### Dynamic Recipe Resolution
 
-The activity should support discovering available workflows in the target Temporal instance:
+The activity should support discovering available recipes:
 
 ```yaml
 activities:
-  - name: list_available_workflows
-    description: Lists workflows available in a Temporal instance
+  - name: list_available_recipes
+    description: Lists recipes available for execution
     implementation:
-      type: temporal_workflow
+      type: sub_recipe
       config:
-        operation: "list_workflows"
+        operation: "list_recipes"
 ```
 
 ### 5. Monitoring and Observability
 
 #### Activity Execution Tracking
 
-Enhanced tracking for cross-Temporal executions:
+Enhanced tracking for sub-recipe executions:
 
 ```go
-type WorkflowExecutionEvent struct {
-    ParentWorkflowID   string
-    ParentRunID        string
-    ChildWorkflowID    string
-    ChildRunID         string
-    ChildTemporalHost  string
-    ChildNamespace     string
+type RecipeExecutionEvent struct {
+    ParentExecutionID  string
+    ParentRecipe       string
+    ChildExecutionID   string
+    ChildRecipe        string
+    Environment        string
     Status             string
     StartTime          time.Time
     EndTime            *time.Time
@@ -179,33 +182,43 @@ type WorkflowExecutionEvent struct {
 ## Implementation Plan
 
 ### Phase 1: Core Activity Implementation
-1. Create `temporal_workflow` activity type
-2. Implement basic workflow submission
+1. Create `sub_recipe` activity type
+2. Implement basic recipe invocation
 3. Add result polling and retrieval
+4. Populate system context variables automatically
 
-### Phase 2: Connection Management
+### Phase 2: Execution Management
 1. Implement connection pooling
 2. Add health checking
-3. Support TLS configuration
+3. Support secure communication
 
 ### Phase 3: Enhanced Features
-1. Add workflow discovery
+1. Add recipe discovery
 2. Implement advanced error handling
 3. Add monitoring/metrics
+4. Support recipe versioning
 
 ## Testing Requirements
 
-1. **Unit Tests**: Mock Temporal client interactions
-2. **Integration Tests**: Test with embedded Temporal instances
-3. **E2E Tests**: Full Cortex-to-Nucleus workflow execution
+1. **Unit Tests**: Mock recipe execution interactions
+2. **Integration Tests**: Test with embedded execution environments
+3. **E2E Tests**: Full parent-to-child recipe execution chains
 
 ## Security Considerations
 
-1. **Authentication**: Support for Temporal authentication tokens
-2. **Authorization**: Validate workflow submission permissions
-3. **Network Security**: TLS support for cross-instance communication
-4. **Input Validation**: Sanitize workflow inputs
+1. **Authentication**: Automatic token propagation from parent context
+2. **Authorization**: Validate recipe execution permissions
+3. **Network Security**: Secure communication between execution environments
+4. **Input Validation**: Sanitize recipe inputs
 
 ## Backwards Compatibility
 
-All enhancements must maintain compatibility with existing recipe definitions. The new `temporal_workflow` activity type is additive and doesn't affect existing activities.
+All enhancements must maintain compatibility with existing recipe definitions. The new `sub_recipe` activity type is additive and doesn't affect existing activities.
+
+## Convention Over Configuration
+
+The sub-recipe pattern emphasizes simplicity:
+- No manual configuration of execution hosts, namespaces, or task queues
+- Automatic context inheritance from parent recipes
+- System-managed authentication and connection details
+- Focus on recipe logic rather than infrastructure concerns
