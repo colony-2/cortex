@@ -90,11 +90,18 @@ class InputActivityService extends EventEmitter {
   private formDetailsCache = new Map<string, InputFormDetails>();
 
   connect(): void {
-    if (this.eventSource?.readyState === EventSource.OPEN) {
+    // Check if already connected (readyState 1 = OPEN)
+    if (this.eventSource?.readyState === 1) {
       return;
     }
 
     this.disconnect();
+
+    // Check if EventSource is available (browser environment)
+    if (typeof EventSource === 'undefined') {
+      console.warn('EventSource not available, SSE connection disabled');
+      return;
+    }
 
     try {
       this.eventSource = new EventSource(`${API_BASE}/user-inputs/stream`);
@@ -283,9 +290,9 @@ class InputActivityService extends EventEmitter {
   getConnectionState(): 'connecting' | 'open' | 'closed' {
     if (!this.eventSource) return 'closed';
     switch (this.eventSource.readyState) {
-      case EventSource.CONNECTING:
+      case 0: // CONNECTING
         return 'connecting';
-      case EventSource.OPEN:
+      case 1: // OPEN
         return 'open';
       default:
         return 'closed';

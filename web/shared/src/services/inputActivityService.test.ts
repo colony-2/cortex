@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { inputActivityService } from './inputActivityService';
 
-// Mock EventSource
-(globalThis as any).EventSource = vi.fn(() => ({
+// Create mock EventSource instance
+const createMockEventSource = () => ({
   close: vi.fn(),
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
@@ -16,7 +16,14 @@ import { inputActivityService } from './inputActivityService';
   CONNECTING: 0,
   OPEN: 1,
   CLOSED: 2,
-})) as any;
+});
+
+// Mock EventSource constructor - need to define it as a class-like function
+const EventSourceMock = vi.fn(createMockEventSource);
+EventSourceMock.CONNECTING = 0;
+EventSourceMock.OPEN = 1;
+EventSourceMock.CLOSED = 2;
+(globalThis as any).EventSource = EventSourceMock;
 
 // Mock fetch
 (globalThis as any).fetch = vi.fn();
@@ -24,11 +31,16 @@ import { inputActivityService } from './inputActivityService';
 describe('InputActivityService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset EventSource mock
+    EventSourceMock.mockClear();
+    EventSourceMock.mockImplementation(createMockEventSource);
     // Reset the service state
     inputActivityService.disconnect();
     // Reset the cache
     (inputActivityService as any).pendingInputsCache.clear();
     (inputActivityService as any).formDetailsCache.clear();
+    // Reset reconnect attempts
+    (inputActivityService as any).reconnectAttempts = 0;
   });
 
   afterEach(() => {
@@ -38,19 +50,42 @@ describe('InputActivityService', () => {
   describe('SSE Connection', () => {
     it('should create an EventSource connection when connect is called', () => {
       inputActivityService.connect();
-      expect((globalThis as any).EventSource).toHaveBeenCalledWith(expect.stringContaining('/user-inputs/stream'));
+      expect(EventSourceMock).toHaveBeenCalledWith(expect.stringContaining('/user-inputs/stream'));
     });
 
     it('should not create duplicate connections', () => {
+      // Create a mock that simulates an open connection
+      const mockEventSource = {
+        close: vi.fn(),
+        readyState: 1, // OPEN - this prevents creating a duplicate
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        onopen: null,
+        onmessage: null,
+        onerror: null,
+        url: '',
+        withCredentials: false,
+        CONNECTING: 0,
+        OPEN: 1,
+        CLOSED: 2,
+      };
+      
+      // First call creates the connection
+      EventSourceMock.mockImplementationOnce(() => mockEventSource);
+      
       inputActivityService.connect();
+      expect(EventSourceMock).toHaveBeenCalledTimes(1);
+      
+      // Second call should not create a new connection because readyState is OPEN
       inputActivityService.connect();
-      expect((globalThis as any).EventSource).toHaveBeenCalledTimes(1);
+      expect(EventSourceMock).toHaveBeenCalledTimes(1);
     });
 
     it('should close connection when disconnect is called', () => {
-      const mockClose = vi.fn();
-      (globalThis as any).EventSource = vi.fn(() => ({
-        close: mockClose,
+      // Create a mock EventSource with a close method we can spy on
+      const mockEventSource = {
+        close: vi.fn(),
         readyState: 1, // OPEN
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
@@ -63,12 +98,19 @@ describe('InputActivityService', () => {
         CONNECTING: 0,
         OPEN: 1,
         CLOSED: 2,
-      })) as any;
+      };
+      
+      EventSourceMock.mockImplementation(() => mockEventSource);
 
       inputActivityService.connect();
+      
+      // Verify connection was created
+      expect(EventSourceMock).toHaveBeenCalled();
+      
       inputActivityService.disconnect();
       
-      expect(mockClose).toHaveBeenCalled();
+      // Verify close was called on the event source
+      expect(mockEventSource.close).toHaveBeenCalled();
     });
   });
 
@@ -266,7 +308,34 @@ describe('InputActivityService', () => {
     });
 
     it('should return correct state based on EventSource readyState', () => {
-      (globalThis as any).EventSource = vi.fn(() => ({
+      // Test CONNECTING state
+      const mockEventSourceConnecting = {
+        close: vi.fn(),
+        readyState: 0, // CONNECTING
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        onopen: null,
+        onmessage: null,
+        onerror: null,
+        url: '',
+        withCredentials: false,
+        CONNECTING: 0,
+        OPEN: 1,
+        CLOSED: 2,
+      };
+      
+      EventSourceMock.mockImplementation(() => mockEventSourceConnecting);
+      inputActivityService.connect();
+      
+      let state = inputActivityService.getConnectionState();
+      expect(state).toBe('connecting');
+      
+      // Clean up for next test
+      inputActivityService.disconnect();
+      
+      // Test OPEN state
+      const mockEventSourceOpen = {
         close: vi.fn(),
         readyState: 1, // OPEN
         addEventListener: vi.fn(),
@@ -280,18 +349,13 @@ describe('InputActivityService', () => {
         CONNECTING: 0,
         OPEN: 1,
         CLOSED: 2,
-      })) as any;
-
+      };
+      
+      EventSourceMock.mockImplementation(() => mockEventSourceOpen);
       inputActivityService.connect();
       
-      // Mock the internal eventSource to have OPEN state
-      const eventSource = (inputActivityService as any).eventSource;
-      if (eventSource) {
-        eventSource.readyState = 1;
-      }
-      
-      const state = inputActivityService.getConnectionState();
-      expect(['connecting', 'open']).toContain(state);
+      state = inputActivityService.getConnectionState();
+      expect(state).toBe('open');
     });
   });
 });
