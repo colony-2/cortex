@@ -3,6 +3,7 @@ package statemachine
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"text/template"
 
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
@@ -98,11 +99,12 @@ func (t *TemplateResolver) resolveValue(value interface{}, stateCtx *yamlpkg.Sta
 
 // executeTemplate executes a template expression
 func (t *TemplateResolver) executeTemplate(expr string, stateCtx *yamlpkg.StateContext) (interface{}, error) {
-	// Get or create template
+	// Get or create template with strict error handling
 	tmpl, exists := t.templates[expr]
 	if !exists {
 		var err error
-		tmpl, err = template.New(expr).Parse(expr)
+		// Use Option("missingkey=error") to fail on undefined variables
+		tmpl, err = template.New(expr).Option("missingkey=error").Parse(expr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse template: %w", err)
 		}
@@ -115,6 +117,11 @@ func (t *TemplateResolver) executeTemplate(expr string, stateCtx *yamlpkg.StateC
 	// Execute template
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
+		// Check if this is a missing key error
+		if strings.Contains(err.Error(), "map has no entry for key") {
+			// Return a placeholder to indicate the reference couldn't be resolved
+			return "<invalid-ref>", nil
+		}
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
 
@@ -164,13 +171,103 @@ func getContextValue(m map[string]interface{}, key string) interface{} {
 	return m[key]
 }
 
-// Update the prepareInputs and prepareOutputs methods in compiler.go to use this
-func (s *StateMachineCompiler) resolveTemplates(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext) map[string]interface{} {
-	resolver := NewTemplateResolver()
-	resolved, err := resolver.ResolveInputs(inputs, stateCtx)
-	if err != nil {
-		// Log error and return original inputs
-		return inputs
+// ScopedTemplateResolver handles template resolution with proper scoping
+type ScopedTemplateResolver struct {
+	templates map[string]*template.Template
+}
+
+// NewScopedTemplateResolver creates a new scoped template resolver
+func NewScopedTemplateResolver() *ScopedTemplateResolver {
+	return &ScopedTemplateResolver{
+		templates: make(map[string]*template.Template),
 	}
-	return resolved
+}
+
+// ResolveInputsScoped resolves template expressions in input values with scoped context
+func (t *ScopedTemplateResolver) ResolveInputsScoped(inputs map[string]interface{}, scope *ScopedContext) (map[string]interface{}, error) {
+	if inputs == nil {
+		return make(map[string]interface{}), nil
+	}
+
+	resolved := make(map[string]interface{})
+	for key, value := range inputs {
+		resolvedValue, err := t.resolveValueScoped(value, scope)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve input '%s': %w", key, err)
+		}
+		resolved[key] = resolvedValue
+	}
+
+	return resolved, nil
+}
+
+// resolveValueScoped resolves a single value which may contain template expressions
+func (t *ScopedTemplateResolver) resolveValueScoped(value interface{}, scope *ScopedContext) (interface{}, error) {
+	switch v := value.(type) {
+	case string:
+		// Check if it's a template expression
+		if isTemplateExpression(v) {
+			return t.executeTemplateScoped(v, scope)
+		}
+		return v, nil
+
+	case map[string]interface{}:
+		// Recursively resolve map values
+		resolved := make(map[string]interface{})
+		for k, val := range v {
+			resolvedVal, err := t.resolveValueScoped(val, scope)
+			if err != nil {
+				return nil, err
+			}
+			resolved[k] = resolvedVal
+		}
+		return resolved, nil
+
+	case []interface{}:
+		// Recursively resolve slice values
+		resolved := make([]interface{}, len(v))
+		for i, val := range v {
+			resolvedVal, err := t.resolveValueScoped(val, scope)
+			if err != nil {
+				return nil, err
+			}
+			resolved[i] = resolvedVal
+		}
+		return resolved, nil
+
+	default:
+		// Return non-string values as-is
+		return value, nil
+	}
+}
+
+// executeTemplateScoped executes a template expression with scoped context
+func (t *ScopedTemplateResolver) executeTemplateScoped(expr string, scope *ScopedContext) (interface{}, error) {
+	// Get or create template with strict error handling
+	tmpl, exists := t.templates[expr]
+	if !exists {
+		var err error
+		// Use Option("missingkey=error") to fail on undefined variables
+		tmpl, err = template.New(expr).Option("missingkey=error").Parse(expr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse template: %w", err)
+		}
+		t.templates[expr] = tmpl
+	}
+
+	// Prepare template data from scoped context
+	data := scope.GetTemplateData()
+
+	// Execute template
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		// Check if this is a missing key error
+		if strings.Contains(err.Error(), "map has no entry for key") {
+			// Return a placeholder to indicate the reference couldn't be resolved
+			return "<invalid-ref>", nil
+		}
+		return nil, fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return buf.String(), nil
 }

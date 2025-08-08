@@ -6,6 +6,7 @@ require (
 	github.com/divisive-ai/vibethis/server/activity v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.7.0
+	github.com/google/cel-go v0.26.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/stretchr/testify v1.10.0
 	go.temporal.io/sdk v1.35.0
@@ -28,7 +29,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
-	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect

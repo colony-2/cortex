@@ -110,3 +110,39 @@ func (s *StateMachineCompiler) prepareCELVariables(outputs map[string]interface{
 
 	return vars
 }
+
+// evaluateCELScoped evaluates a CEL expression with scoped context
+func (s *StateMachineCompiler) evaluateCELScoped(expression string, outputs map[string]interface{}, scope *ScopedContext) (bool, error) {
+	// Parse the expression
+	ast, issues := s.celEnv.Compile(expression)
+	if issues != nil && issues.Err() != nil {
+		return false, fmt.Errorf("failed to compile CEL expression '%s': %w", expression, issues.Err())
+	}
+
+	// Create the program
+	prg, err := s.celEnv.Program(ast)
+	if err != nil {
+		return false, fmt.Errorf("failed to create CEL program: %w", err)
+	}
+
+	// Prepare CEL variables with scoped context
+	celVars := scope.GetCELVariables(outputs)
+
+	// Evaluate the expression
+	out, _, err := prg.Eval(celVars)
+	if err != nil {
+		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
+	}
+
+	// Convert result to boolean
+	switch v := out.(type) {
+	case types.Bool:
+		return bool(v), nil
+	case ref.Val:
+		if boolVal, ok := v.Value().(bool); ok {
+			return boolVal, nil
+		}
+	}
+
+	return false, fmt.Errorf("CEL expression did not evaluate to boolean: got %T", out)
+}

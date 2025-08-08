@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(moon:*)"
+      "Bash(moon:*)",
+      "Bash(find:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
