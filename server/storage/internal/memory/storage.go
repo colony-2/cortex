@@ -28,7 +28,7 @@ func (s *Storage) SavePosition(ctx context.Context, pos core.Position) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.positions[pos.NodeID] = pos
+	s.positions[pos.CellID] = pos
 	return nil
 }
 
@@ -46,42 +46,42 @@ func (s *Storage) GetPositions(ctx context.Context) ([]core.Position, error) {
 }
 
 // DeletePosition removes a position from memory
-func (s *Storage) DeletePosition(ctx context.Context, nodeID string) error {
+func (s *Storage) DeletePosition(ctx context.Context, cellID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.positions, nodeID)
+	delete(s.positions, cellID)
 	return nil
 }
 
 // SaveContainerID saves a container ID in memory
-func (s *Storage) SaveContainerID(ctx context.Context, nodeID, containerID string) error {
+func (s *Storage) SaveContainerID(ctx context.Context, cellID, containerID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.containerIDs[nodeID] = containerID
+	s.containerIDs[cellID] = containerID
 	return nil
 }
 
 // GetContainerID retrieves a container ID from memory
-func (s *Storage) GetContainerID(ctx context.Context, nodeID string) (string, error) {
+func (s *Storage) GetContainerID(ctx context.Context, cellID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	containerID, exists := s.containerIDs[nodeID]
+	containerID, exists := s.containerIDs[cellID]
 	if !exists {
-		return "", fmt.Errorf("container ID not found for node %s", nodeID)
+		return "", fmt.Errorf("container ID not found for cell %s", cellID)
 	}
 
 	return containerID, nil
 }
 
 // DeleteContainerID removes a container ID from memory
-func (s *Storage) DeleteContainerID(ctx context.Context, nodeID string) error {
+func (s *Storage) DeleteContainerID(ctx context.Context, cellID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.containerIDs, nodeID)
+	delete(s.containerIDs, cellID)
 	return nil
 }
 

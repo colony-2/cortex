@@ -1,13 +1,13 @@
 # VIBETHIS Project Overview
 
-VibeThis is a comprehensive system for building, managing, and orchestrating modular components called "boxes". Each box is an independent unit that can have dependencies, be version controlled, and run in isolated development containers. This document provides a guide to all subprojects in the vibethis ecosystem.
+VibeThis is a comprehensive system for building, managing, and orchestrating modular components called "cells". Each cell is an independent unit that can have dependencies, be version controlled, and run in isolated development containers. This document provides a guide to all subprojects in the vibethis ecosystem.
 
 ## System Architecture
 
 The system consists of:
 - **Go Backend Server**: RESTful API serving graph data, file operations, Git integration, and container management
-- **React Frontend**: Interactive UI for visualizing dependencies and managing boxes
-- **Workflow Orchestration**: YAML-based workflow system with LLM integration (Ono)
+- **React Frontend**: Interactive UI for visualizing dependencies and managing cells
+- **Recipe Orchestration**: YAML-based recipe system with LLM integration (Ono)
 - **I/O Interception**: Process monitoring and control via LD_PRELOAD shims (rwshim)
 
 ## Core Components
@@ -17,7 +17,7 @@ The system consists of:
 #### server/core
 **Purpose**: Foundational domain models and interfaces  
 **Key Features**:
-- Defines core types: Node, Edge, Graph, Position
+- Defines core types: Cell, Edge, Graph, Position
 - Storage and GraphBuilder interfaces
 - Pure interface pattern with no implementations
 - Module boundary for all backend services
@@ -26,8 +26,8 @@ The system consists of:
 **Purpose**: HTTP REST API server  
 **Key Features**:
 - Graph management endpoints
-- File operations per node
-- Git operations per node  
+- File operations per cell
+- Git operations per cell  
 - Container lifecycle management
 - Single Page Application (SPA) hosting
 
@@ -36,21 +36,21 @@ The system consists of:
 **Key Features**:
 - BoltDB for production (file-based)
 - Memory storage for testing
-- Stores node positions and container IDs
+- Stores cell positions and container IDs
 - Thread-safe implementations
 
 #### server/graph
 **Purpose**: Dependency graph construction  
 **Key Features**:
 - Integrates with Moon build system
-- Discovers nodes and relationships
+- Discovers cells and relationships
 - Builds complete dependency graphs
 - Supports symlink resolution
 
 #### server/files
 **Purpose**: Secure file system operations  
 **Key Features**:
-- Directory browsing within node boundaries
+- Directory browsing within cell boundaries
 - Path validation and security
 - File type detection
 - Configurable size limits
@@ -92,7 +92,7 @@ The system consists of:
 **Purpose**: Interactive dependency graph visualization  
 **Key Features**:
 - React Flow-based graph rendering
-- Draggable nodes with position persistence
+- Draggable cells with position persistence
 - Visual relationship indicators
 - Real-time updates via events
 
@@ -149,24 +149,24 @@ The system consists of:
 **Purpose**: Core recipe data structures and parsing  
 **Key Features**:
 - Recipe schema definitions
-- YAML parsing for workflows, activities, agents
+- YAML parsing for recipes, ops, agents
 - Multi-file and single-file recipe support
 - Content hashing for change detection
 
 #### server/recipe-worker
 **Purpose**: Runtime engine for recipe execution  
 **Key Features**:
-- Dynamic workflow discovery and execution
+- Dynamic recipe discovery and execution
 - Live-reloading of recipe changes
 - Temporal worker management
-- Activity execution dispatch
+- Op execution dispatch
 
 #### server/recipe-history
 **Purpose**: Recipe execution history adapter  
 **Key Features**:
 - Transforms Temporal history to recipe model
 - Job listing and filtering
-- Activity execution reconstruction
+- Op execution reconstruction
 - Clean API abstraction
 
 #### server/embeddedtemporal
@@ -211,7 +211,7 @@ The system consists of:
 2. **Code Generation**: OpenAPI drives both backend and frontend type safety
 3. **Event-Driven Updates**: Frontend components communicate via custom window events
 4. **URL State Management**: Deep linking and navigation state in URLs
-5. **Dynamic Discovery**: Recipes and nodes discovered from filesystem
+5. **Dynamic Discovery**: Recipes and cells discovered from filesystem
 6. **Security by Design**: Path validation and boundary enforcement
 
 ## Development Workflow
@@ -226,7 +226,7 @@ The system consists of:
 - Backend modules use local Go module replace directives
 - Frontend modules published as npm packages
 - API contract shared via OpenAPI specification
-- Git repositories serve as box containers
+- Git repositories serve as cell containers
 - Docker provides isolated execution environments
 
 ## Future Placeholders
@@ -234,4 +234,4 @@ The system consists of:
 - **server/tempcrew**: Intended for temporary worker/crew functionality
 - **server/cortex**: Currently minimal, likely for AI/ML integration
 
-This modular architecture enables flexible development, clear separation of concerns, and easy extension of functionality while maintaining a cohesive system for managing and orchestrating boxes.
+This modular architecture enables flexible development, clear separation of concerns, and easy extension of functionality while maintaining a cohesive system for managing and orchestrating cells.

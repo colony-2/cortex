@@ -3,19 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Splitter } from 'antd';
 import { GraphFlow } from '@vibethis/flowchart';
 import SidePanel from './SidePanel';
-import type { DependencyNode } from '@vibethis/shared';
+import type { DependencyCell } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
 
 export default function MainView() {
-  const { boxId, tab } = useParams<{ boxId?: string; tab?: string; subtab?: string }>();
+  const { cellId, tab } = useParams<{ cellId?: string; tab?: string; subtab?: string }>();
   const navigate = useNavigate();
-  const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
+  const [selectedCell, setSelectedCell] = useState<DependencyCell | null>(null);
 
-  const handleNodeSelect = useCallback((node: DependencyNode | null) => {
-    setSelectedNode(node);
-    if (node) {
-      // Navigate to the box detail page
-      const path = navigateToPath({ boxId: node.id, tab: tab || 'files' });
+  const handleCellSelect = useCallback((cell: DependencyCell | null) => {
+    setSelectedCell(cell);
+    if (cell) {
+      // Navigate to the cell detail page
+      const path = navigateToPath({ cellId: cell.id, tab: tab || 'files' });
       navigate(path);
     }
   }, [navigate, tab]);
@@ -23,10 +23,10 @@ export default function MainView() {
   return (
     <Splitter style={{ height: '100vh' }}>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
-        <GraphFlow selectedNodeId={boxId} onNodeSelect={handleNodeSelect} />
+        <GraphFlow selectedCellId={cellId} onCellSelect={handleCellSelect} />
       </Splitter.Panel>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
-        <SidePanel selectedNode={selectedNode} />
+        <SidePanel selectedCell={selectedCell} />
       </Splitter.Panel>
     </Splitter>
   );

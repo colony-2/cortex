@@ -73,7 +73,7 @@ func (m *mockGitRepository) UnstageFiles(ctx context.Context, path string, files
 	return nil
 }
 
-func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
+func TestGetGitStatus_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockGit := &mockGitRepository{
 		statusReturn: &git.Status{
@@ -90,11 +90,11 @@ func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -107,8 +107,8 @@ func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request
-	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/status", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("GET", "/api/cells/test-node/git/status", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -119,27 +119,27 @@ func TestGetGitStatus_NodeIDToPathTranslation(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
 
-	// Verify the git repository was called with the actual path, not the node ID
+	// Verify the git repository was called with the actual path, not the cell ID
 	if !mockGit.getStatusCalled {
 		t.Error("GetStatus was not called")
 	}
-	if mockGit.receivedPath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockGit.receivedPath)
+	if mockGit.receivedPath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockGit.receivedPath)
 	}
 }
 
-func TestGetGitDiff_NodeIDToPathTranslation(t *testing.T) {
+func TestGetGitDiff_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockGit := &mockGitRepository{
 		diffReturn: "diff --git a/file.txt b/file.txt\n...",
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -152,8 +152,8 @@ func TestGetGitDiff_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request with staged=true
-	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/diff?staged=true", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("GET", "/api/cells/test-node/git/diff?staged=true", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -164,19 +164,19 @@ func TestGetGitDiff_NodeIDToPathTranslation(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
 
-	// Verify the git repository was called with the actual path, not the node ID
+	// Verify the git repository was called with the actual path, not the cell ID
 	if !mockGit.getDiffCalled {
 		t.Error("GetDiff was not called")
 	}
-	if mockGit.receivedPath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockGit.receivedPath)
+	if mockGit.receivedPath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockGit.receivedPath)
 	}
 	if !mockGit.receivedStaged {
 		t.Error("Expected staged=true")
 	}
 }
 
-func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
+func TestGetGitHistory_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockGit := &mockGitRepository{
 		historyReturn: []git.Commit{
@@ -185,11 +185,11 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -202,8 +202,8 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request with limit
-	req := httptest.NewRequest("GET", "/api/nodes/test-node/git/history?limit=10", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("GET", "/api/cells/test-node/git/history?limit=10", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -214,28 +214,28 @@ func TestGetGitHistory_NodeIDToPathTranslation(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
 
-	// Verify the git repository was called with the actual path, not the node ID
+	// Verify the git repository was called with the actual path, not the cell ID
 	if !mockGit.getHistoryCalled {
 		t.Error("GetHistory was not called")
 	}
-	if mockGit.receivedPath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockGit.receivedPath)
+	if mockGit.receivedPath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockGit.receivedPath)
 	}
 	if mockGit.receivedLimit != 10 {
 		t.Errorf("Expected limit 10, got %d", mockGit.receivedLimit)
 	}
 }
 
-func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
+func TestCreateGitCommit_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockGit := &mockGitRepository{}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -255,8 +255,8 @@ func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
 	bodyBytes, _ := json.Marshal(reqBody)
 
 	// Create request
-	req := httptest.NewRequest("POST", "/api/nodes/test-node/git/commit", bytes.NewReader(bodyBytes))
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("POST", "/api/cells/test-node/git/commit", bytes.NewReader(bodyBytes))
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -267,15 +267,15 @@ func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
 
-	// Verify the git repository was called with the actual path, not the node ID
+	// Verify the git repository was called with the actual path, not the cell ID
 	if !mockGit.stageFilesCalled {
 		t.Error("StageFiles was not called")
 	}
 	if !mockGit.createCommitCalled {
 		t.Error("CreateCommit was not called")
 	}
-	if mockGit.receivedPath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockGit.receivedPath)
+	if mockGit.receivedPath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockGit.receivedPath)
 	}
 	if mockGit.receivedMessage != "Test commit message" {
 		t.Errorf("Expected message 'Test commit message', got '%s'", mockGit.receivedMessage)
@@ -285,11 +285,11 @@ func TestCreateGitCommit_NodeIDToPathTranslation(t *testing.T) {
 	}
 }
 
-func TestGitHandlers_NodeNotFound(t *testing.T) {
-	// Create mocks with no nodes
+func TestGitHandlers_CellNotFound(t *testing.T) {
+	// Create mocks with no cells
 	mockGit := &mockGitRepository{}
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{},
+		cells: map[string]*core.Cell{},
 	}
 
 	// Create handlers
@@ -304,10 +304,10 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 		path   string
 		body   []byte
 	}{
-		{"GetGitStatus", "GET", "/api/nodes/nonexistent/git/status", nil},
-		{"GetGitDiff", "GET", "/api/nodes/nonexistent/git/diff", nil},
-		{"GetGitHistory", "GET", "/api/nodes/nonexistent/git/history", nil},
-		{"CreateGitCommit", "POST", "/api/nodes/nonexistent/git/commit", []byte(`{"message":"test"}`)},
+		{"GetGitStatus", "GET", "/api/cells/nonexistent/git/status", nil},
+		{"GetGitDiff", "GET", "/api/cells/nonexistent/git/diff", nil},
+		{"GetGitHistory", "GET", "/api/cells/nonexistent/git/history", nil},
+		{"CreateGitCommit", "POST", "/api/cells/nonexistent/git/commit", []byte(`{"message":"test"}`)},
 	}
 
 	for _, tt := range tests {
@@ -320,7 +320,7 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 				req = httptest.NewRequest(tt.method, tt.path, nil)
 			}
 
-			req = mux.SetURLVars(req, map[string]string{"nodeId": "nonexistent"})
+			req = mux.SetURLVars(req, map[string]string{"cellId": "nonexistent"})
 			w := httptest.NewRecorder()
 
 			// Call appropriate handler
@@ -339,8 +339,8 @@ func TestGitHandlers_NodeNotFound(t *testing.T) {
 			if w.Code != http.StatusNotFound {
 				t.Errorf("Expected status 404, got %d", w.Code)
 			}
-			if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Node not found")) {
-				t.Errorf("Expected 'Node not found' in response, got: %s", body)
+			if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Cell not found")) {
+				t.Errorf("Expected 'Cell not found' in response, got: %s", body)
 			}
 		})
 	}

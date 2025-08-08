@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Typography, List, Breadcrumb, Card, Spin, Empty, Tag, Space } from 'antd';
 import { FolderOutlined, FileOutlined, HomeOutlined } from '@ant-design/icons';
-import { fetchFiles, type DependencyNode } from '@vibethis/shared';
+import { fetchFiles, type DependencyCell } from '@vibethis/shared';
 
 const { Text } = Typography;
 
 export interface FileBrowserProps {
-  node: DependencyNode | null;
-  boxId?: string;
+  cell: DependencyCell | null;
+  cellId?: string;
 }
 
 interface FileItem {
@@ -21,15 +21,15 @@ interface FileItem {
   isDir: boolean;
 }
 
-export default function FileBrowser({ node, boxId }: FileBrowserProps) {
+export default function FileBrowser({ cell, cellId }: FileBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get the node ID from either the node prop or boxId parameter
-  const nodeId = node?.id || boxId;
-  const nodeName = node?.name || boxId || 'Loading...';
+  // Get the cell ID from either the cell prop or cellId parameter
+  const currentCellId = cell?.id || cellId;
+  const cellName = cell?.name || cellId || 'Loading...';
 
   const breadcrumbItems = useMemo(() => {
     const parts = currentPath.split('/').filter(Boolean);
@@ -56,14 +56,14 @@ export default function FileBrowser({ node, boxId }: FileBrowserProps) {
   }, [currentPath]);
 
   useEffect(() => {
-    if (!nodeId) return;
+    if (!currentCellId) return;
 
     const loadFiles = async () => {
       setLoading(true);
       setError(null);
       
       try {
-        const result = await fetchFiles(nodeId, currentPath);
+        const result = await fetchFiles(currentCellId, currentPath);
         
         // Transform files to our format
         const transformedData = result.files.map((file: any) => ({
@@ -88,7 +88,7 @@ export default function FileBrowser({ node, boxId }: FileBrowserProps) {
     };
 
     loadFiles();
-  }, [nodeId, currentPath]);
+  }, [currentCellId, currentPath]);
 
   const handleFileClick = (file: FileItem) => {
     if (file.isDir) {
@@ -111,7 +111,7 @@ export default function FileBrowser({ node, boxId }: FileBrowserProps) {
     return <FileOutlined style={{ fontSize: '24px', color: '#52c41a' }} />;
   };
 
-  if (!nodeId) {
+  if (!currentCellId) {
     return (
       <div style={{ padding: '16px' }}>
         <Spin size="large" tip="Loading..." style={{ display: 'block', margin: '40px auto' }} />
@@ -123,7 +123,7 @@ export default function FileBrowser({ node, boxId }: FileBrowserProps) {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '16px 16px 0', borderBottom: '1px solid #f0f0f0' }}>
         <Space direction="vertical" style={{ width: '100%' }} size={8}>
-          <Text strong style={{ fontSize: '16px' }}>{nodeName}</Text>
+          <Text strong style={{ fontSize: '16px' }}>{cellName}</Text>
           <Breadcrumb items={breadcrumbItems} />
         </Space>
       </div>

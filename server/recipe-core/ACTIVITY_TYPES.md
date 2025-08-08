@@ -1,28 +1,28 @@
-# Custom Activity Types in Recipe-Core
+# Custom Op Types in Recipe-Core
 
-The recipe parser now supports registering arbitrary activity types from external modules, with JSON schema validation for inputs, outputs, and configuration.
+The recipe parser now supports registering arbitrary op types from external modules, with JSON schema validation for inputs, outputs, and configuration.
 
 ## How It Works
 
-1. **Activity Type Registry**: The parser maintains a registry of known activity types
-2. **JSON Schema Validation**: Each activity type can define schemas for:
+1. **Op Type Registry**: The parser maintains a registry of known op types
+2. **JSON Schema Validation**: Each op type can define schemas for:
    - Configuration (required fields in the `config` section)
    - Inputs (expected input parameters)
    - Outputs (expected output structure)
 3. **Flexible Validation**: Support for both strict and loose validation modes
 
-## Registering Custom Activity Types
+## Registering Custom Op Types
 
-External modules can register new activity types with the parser:
+External modules can register new op types with the parser:
 
 ```go
 import "github.com/vibethis/server/recipe-core/pkg/recipe"
 
-func RegisterMyActivityTypes(parser *recipe.Parser) error {
-    registry := parser.GetActivityTypeRegistry()
+func RegisterMyOpTypes(parser *recipe.Parser) error {
+    registry := parser.GetOpTypeRegistry()
     
-    // Register a custom database activity
-    return registry.RegisterActivityType(&recipe.ActivityTypeDefinition{
+    // Register a custom database op
+    return registry.RegisterOpType(&recipe.OpTypeDefinition{
         Type:        "database",
         Description: "Execute database queries",
         ConfigSchema: recipe.JSONSchema{

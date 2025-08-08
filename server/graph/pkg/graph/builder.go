@@ -26,28 +26,28 @@ func (b *Builder) BuildGraph(ctx context.Context) (*core.Graph, error) {
 	return b.builder.Build(ctx)
 }
 
-// GetNode retrieves a single node by ID.
-func (b *Builder) GetNode(ctx context.Context, nodeID string) (*core.Node, error) {
+// GetCell retrieves a single cell by ID.
+func (b *Builder) GetCell(ctx context.Context, cellID string) (*core.Cell, error) {
 	graph, err := b.builder.Build(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, node := range graph.Nodes {
-		if node.ID == nodeID {
-			return &node, nil
+	for _, cell := range graph.Cells {
+		if cell.ID == cellID {
+			return &cell, nil
 		}
 	}
 
-	return nil, ErrNodeNotFound
+	return nil, ErrCellNotFound
 }
 
-// ErrNodeNotFound is returned when a requested node doesn't exist.
-var ErrNodeNotFound = &NodeNotFoundError{}
+// ErrCellNotFound is returned when a requested cell doesn't exist.
+var ErrCellNotFound = &CellNotFoundError{}
 
-// NodeNotFoundError indicates that a requested node was not found.
-type NodeNotFoundError struct{}
+// CellNotFoundError indicates that a requested cell was not found.
+type CellNotFoundError struct{}
 
-func (e *NodeNotFoundError) Error() string {
-	return "node not found"
+func (e *CellNotFoundError) Error() string {
+	return "cell not found"
 }

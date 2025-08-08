@@ -1,11 +1,11 @@
 package activity
 
 import (
-	"github.com/divisive-ai/vibethis/server/activity/pkg/command"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/gitshallow"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/input"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/llm"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/command"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/gitshallow"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 )
 
 // GetAll returns all activities available in this module

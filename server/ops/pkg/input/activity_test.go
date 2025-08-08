@@ -37,7 +37,7 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 				Timeout:  60,
 			},
 			input: Input{
-				BoxID:      "test-box",
+				BoxID:      "test-cell",
 				ActivityID: "test-activity",
 			},
 			validate: func(t *testing.T, output Output, err error) {
@@ -58,7 +58,7 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 				Timeout: 60,
 			},
 			input: Input{
-				BoxID:      "test-box",
+				BoxID:      "test-cell",
 				ActivityID: "test-activity",
 			},
 			validate: func(t *testing.T, output Output, err error) {
@@ -81,7 +81,7 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 				Timeout: 60,
 			},
 			input: Input{
-				BoxID:      "test-box",
+				BoxID:      "test-cell",
 				ActivityID: "test-activity",
 			},
 			validate: func(t *testing.T, output Output, err error) {
@@ -139,7 +139,7 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 	}
 	
 	input := Input{
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 		Context: map[string]interface{}{
 			"deployment_id": "deploy-123",
@@ -167,7 +167,7 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			Timeout:  60,
 		}
 		input := Input{
-			BoxID:      "test-box",
+			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
 		
@@ -196,7 +196,7 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			Timeout: 120,
 		}
 		input := Input{
-			BoxID:      "test-box",
+			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
 		
@@ -222,7 +222,7 @@ func TestInputActivity_DefaultOnTimeout(t *testing.T) {
 			Timeout:          1, // Very short timeout for testing
 		}
 		input := Input{
-			BoxID:      "test-box",
+			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
 		

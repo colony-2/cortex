@@ -5,19 +5,19 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Default route redirects to /boxes */}
-        <Route path="/" element={<Navigate to="/boxes" replace />} />
+        {/* Default route redirects to /cells */}
+        <Route path="/" element={<Navigate to="/cells" replace />} />
         
-        {/* Main boxes view */}
-        <Route path="/boxes" element={<MainView />} />
+        {/* Main cells view */}
+        <Route path="/cells" element={<MainView />} />
         
-        {/* Box detail routes */}
-        <Route path="/box/:boxId" element={<MainView />} />
-        <Route path="/box/:boxId/:tab" element={<MainView />} />
-        <Route path="/box/:boxId/:tab/:subtab" element={<MainView />} />
+        {/* Cell detail routes */}
+        <Route path="/cell/:cellId" element={<MainView />} />
+        <Route path="/cell/:cellId/:tab" element={<MainView />} />
+        <Route path="/cell/:cellId/:tab/:subtab" element={<MainView />} />
         
-        {/* Catch all - redirect to /boxes */}
-        <Route path="*" element={<Navigate to="/boxes" replace />} />
+        {/* Catch all - redirect to /cells */}
+        <Route path="*" element={<Navigate to="/cells" replace />} />
       </Routes>
     </BrowserRouter>
   );

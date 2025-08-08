@@ -26,7 +26,7 @@ func newMockStorage() *mockStorage {
 }
 
 func (m *mockStorage) SavePosition(ctx context.Context, pos core.Position) error {
-	m.positions[pos.NodeID] = pos
+	m.positions[pos.CellID] = pos
 	return nil
 }
 
@@ -38,26 +38,26 @@ func (m *mockStorage) GetPositions(ctx context.Context) ([]core.Position, error)
 	return positions, nil
 }
 
-func (m *mockStorage) DeletePosition(ctx context.Context, nodeID string) error {
-	delete(m.positions, nodeID)
+func (m *mockStorage) DeletePosition(ctx context.Context, cellID string) error {
+	delete(m.positions, cellID)
 	return nil
 }
 
-func (m *mockStorage) SaveContainerID(ctx context.Context, nodeID, containerID string) error {
-	m.containerIDs[nodeID] = containerID
+func (m *mockStorage) SaveContainerID(ctx context.Context, cellID, containerID string) error {
+	m.containerIDs[cellID] = containerID
 	return nil
 }
 
-func (m *mockStorage) GetContainerID(ctx context.Context, nodeID string) (string, error) {
-	id, exists := m.containerIDs[nodeID]
+func (m *mockStorage) GetContainerID(ctx context.Context, cellID string) (string, error) {
+	id, exists := m.containerIDs[cellID]
 	if !exists {
 		return "", ErrNotFound
 	}
 	return id, nil
 }
 
-func (m *mockStorage) DeleteContainerID(ctx context.Context, nodeID string) error {
-	delete(m.containerIDs, nodeID)
+func (m *mockStorage) DeleteContainerID(ctx context.Context, cellID string) error {
+	delete(m.containerIDs, cellID)
 	return nil
 }
 
@@ -97,8 +97,8 @@ func TestPositionHandlers(t *testing.T) {
 
 	// Test POST positions
 	testPositions := []core.Position{
-		{NodeID: "node1", X: 100.0, Y: 200.0},
-		{NodeID: "node2", X: 300.0, Y: 400.0},
+		{CellID: "cell1", X: 100.0, Y: 200.0},
+		{CellID: "cell2", X: 300.0, Y: 400.0},
 	}
 
 	body, err := json.Marshal(testPositions)
@@ -136,19 +136,19 @@ func TestPositionHandlers(t *testing.T) {
 	// Verify positions were saved correctly
 	posMap := make(map[string]core.Position)
 	for _, pos := range positions {
-		posMap[pos.NodeID] = pos
+		posMap[pos.CellID] = pos
 	}
 
 	for _, expected := range testPositions {
-		actual, exists := posMap[expected.NodeID]
+		actual, exists := posMap[expected.CellID]
 		if !exists {
-			t.Errorf("Position for node %s not found", expected.NodeID)
+			t.Errorf("Position for cell %s not found", expected.CellID)
 			continue
 		}
 
 		if actual.X != expected.X || actual.Y != expected.Y {
-			t.Errorf("Position mismatch for node %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
-				expected.NodeID, expected.X, expected.Y, actual.X, actual.Y)
+			t.Errorf("Position mismatch for cell %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
+				expected.CellID, expected.X, expected.Y, actual.X, actual.Y)
 		}
 	}
 

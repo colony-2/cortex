@@ -7,7 +7,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/divisive-ai/vibethis/server/activity/pkg/activity"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/activity"
 	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 

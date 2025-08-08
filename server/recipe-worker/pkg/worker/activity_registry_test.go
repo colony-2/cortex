@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // Test types with proper JSON tags

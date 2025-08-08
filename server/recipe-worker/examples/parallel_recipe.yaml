@@ -1,4 +1,4 @@
-# Parallel workflow example - demonstrates parallel execution capabilities
+# Parallel recipe example - demonstrates parallel execution capabilities
 name: parallel_processing
 description: Demonstrates parallel step execution
 version: "1.0"

@@ -1,9 +1,9 @@
 // URL state management utilities for path-based routing
 
 export interface URLState {
-  boxId?: string;     // Selected box ID
-  tab?: string;       // Active tab in side panel
-  subtab?: string;    // Active subtab (e.g., in changes tab)
+  cellId?: string;     // Selected cell ID
+  tab?: string;        // Active tab in side panel
+  subtab?: string;     // Active subtab (e.g., in changes tab)
 }
 
 // Parse the current URL path to extract state
@@ -13,9 +13,9 @@ export function getURLState(): URLState {
   
   const state: URLState = {};
   
-  // Parse /box/:boxId/:tab/:subtab
-  if (parts[0] === 'box' && parts[1]) {
-    state.boxId = parts[1];
+  // Parse /cell/:cellId/:tab/:subtab
+  if (parts[0] === 'cell' && parts[1]) {
+    state.cellId = parts[1];
     if (parts[2]) {
       state.tab = parts[2];
       if (parts[3]) {
@@ -32,10 +32,10 @@ export function navigateToPath(updates: Partial<URLState>) {
   const currentState = getURLState();
   const newState = { ...currentState, ...updates };
   
-  let path = '/boxes';
+  let path = '/cells';
   
-  if (newState.boxId) {
-    path = `/box/${newState.boxId}`;
+  if (newState.cellId) {
+    path = `/cell/${newState.cellId}`;
     
     if (newState.tab) {
       path += `/${newState.tab}`;
@@ -51,7 +51,7 @@ export function navigateToPath(updates: Partial<URLState>) {
   return path;
 }
 
-// Clear URL state by navigating to /boxes
+// Clear URL state by navigating to /cells
 export function clearURLState() {
-  return '/boxes';
+  return '/cells';
 }

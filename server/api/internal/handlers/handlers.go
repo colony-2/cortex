@@ -61,25 +61,25 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 	api.HandleFunc("/positions", h.GetPositions).Methods("GET")
 	api.HandleFunc("/positions", h.SavePositions).Methods("POST")
 
-	// Node endpoints
-	api.HandleFunc("/nodes/{nodeId}/files", h.GetFiles).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.GetFile).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/files/{filePath:.*}", h.PutFile).Methods("PUT")
+	// Cell endpoints
+	api.HandleFunc("/cells/{cellId}/files", h.GetFiles).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", h.GetFile).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", h.PutFile).Methods("PUT")
 
 	// Git endpoints
-	api.HandleFunc("/nodes/{nodeId}/git/status", h.GetGitStatus).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/git/diff", h.GetGitDiff).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/git/history", h.GetGitHistory).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/git/commit", h.CreateGitCommit).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/git/status", h.GetGitStatus).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/git/diff", h.GetGitDiff).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/git/history", h.GetGitHistory).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/git/commit", h.CreateGitCommit).Methods("POST")
 
 	// Container endpoints
-	api.HandleFunc("/nodes/{nodeId}/container/status", h.GetContainerStatus).Methods("GET")
-	api.HandleFunc("/nodes/{nodeId}/container/create", h.CreateContainer).Methods("POST")
-	api.HandleFunc("/nodes/{nodeId}/container/start", h.StartContainer).Methods("POST")
-	api.HandleFunc("/nodes/{nodeId}/container/stop", h.StopContainer).Methods("POST")
-	api.HandleFunc("/nodes/{nodeId}/container/restart", h.RestartContainer).Methods("POST")
-	api.HandleFunc("/nodes/{nodeId}/container/reset", h.ResetContainer).Methods("POST")
-	api.HandleFunc("/nodes/{nodeId}/container/devcontainer", h.UpdateDevcontainer).Methods("PUT")
+	api.HandleFunc("/cells/{cellId}/container/status", h.GetContainerStatus).Methods("GET")
+	api.HandleFunc("/cells/{cellId}/container/create", h.CreateContainer).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/container/start", h.StartContainer).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/container/stop", h.StopContainer).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/container/restart", h.RestartContainer).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/container/reset", h.ResetContainer).Methods("POST")
+	api.HandleFunc("/cells/{cellId}/container/devcontainer", h.UpdateDevcontainer).Methods("PUT")
 
 	// Add extension routes if provided
 	if extensions != nil {
@@ -109,7 +109,7 @@ func (h *Handlers) GetPositions(w http.ResponseWriter, r *http.Request) {
 	apiPositions := make([]openapi.Position, len(positions))
 	for i, pos := range positions {
 		apiPositions[i] = openapi.Position{
-			NodeId: pos.NodeID,
+			CellId: pos.CellID,
 			X:      pos.X,
 			Y:      pos.Y,
 		}
@@ -136,7 +136,7 @@ func (h *Handlers) SavePositions(w http.ResponseWriter, r *http.Request) {
 	// Convert openapi.Position to core.Position
 	for _, apiPos := range apiPositions {
 		corePos := core.Position{
-			NodeID: apiPos.NodeId,
+			CellID: apiPos.CellId,
 			X:      apiPos.X,
 			Y:      apiPos.Y,
 		}

@@ -5,7 +5,7 @@ import (
 	"reflect"
 
 	"github.com/invopop/jsonschema"
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // ActivityRegistration holds the activity and its generated schemas

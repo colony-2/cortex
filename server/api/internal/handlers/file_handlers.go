@@ -9,19 +9,19 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// GetFiles handles GET /api/nodes/{nodeId}/files
+// GetFiles handles GET /api/cells/{cellId}/files
 func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
-	files, err := h.files.ListFiles(r.Context(), node.Path)
+	files, err := h.files.ListFiles(r.Context(), cell.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -52,20 +52,20 @@ func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// GetFile handles GET /api/nodes/{nodeId}/files/{filePath}
+// GetFile handles GET /api/cells/{cellId}/files/{filePath}
 func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 	filePath := vars["filePath"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
-	content, err := h.files.ReadFile(r.Context(), node.Path, filePath)
+	content, err := h.files.ReadFile(r.Context(), cell.Path, filePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -75,16 +75,16 @@ func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
-// PutFile handles PUT /api/nodes/{nodeId}/files/{filePath}
+// PutFile handles PUT /api/cells/{cellId}/files/{filePath}
 func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 	filePath := vars["filePath"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
@@ -96,13 +96,13 @@ func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	// Parse JSON body
-	var fileContent openapi.WriteNodeFileJSONBody
+	var fileContent openapi.WriteCellFileJSONBody
 	if err := json.Unmarshal(body, &fileContent); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.files.WriteFile(r.Context(), node.Path, filePath, []byte(fileContent.Content)); err != nil {
+	if err := h.files.WriteFile(r.Context(), cell.Path, filePath, []byte(fileContent.Content)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

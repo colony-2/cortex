@@ -59,18 +59,18 @@ func (m *mockContainerManager) AttachWebSocket(ctx context.Context, containerID 
 	return nil, nil
 }
 
-func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
+func TestCreateContainer_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockContainer := &mockContainerManager{
 		containerIDRet: "test-container-123",
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -86,8 +86,8 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request
-	req := httptest.NewRequest("POST", "/api/nodes/test-node/container/create", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("POST", "/api/cells/test-node/container/create", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -102,8 +102,8 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	if !mockContainer.createCalled {
 		t.Error("Create was not called")
 	}
-	if mockContainer.receivedPath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockContainer.receivedPath)
+	if mockContainer.receivedPath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockContainer.receivedPath)
 	}
 
 	// Verify response contains container ID
@@ -116,7 +116,7 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Verify container ID was saved to storage
-	savedID, err := mockStorage.GetContainerID(context.Background(), "test-node")
+	savedID, err := mockStorage.GetContainerID(context.Background(), "test-cell")
 	if err != nil {
 		t.Errorf("Failed to get saved container ID: %v", err)
 	}
@@ -125,11 +125,11 @@ func TestCreateContainer_NodeIDToPathTranslation(t *testing.T) {
 	}
 }
 
-func TestCreateContainer_NodeNotFound(t *testing.T) {
-	// Create mocks with no nodes
+func TestCreateContainer_CellNotFound(t *testing.T) {
+	// Create mocks with no cells
 	mockContainer := &mockContainerManager{}
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{},
+		cells: map[string]*core.Cell{},
 	}
 	mockStorage := newMockStorage()
 
@@ -141,8 +141,8 @@ func TestCreateContainer_NodeNotFound(t *testing.T) {
 	}
 
 	// Create request
-	req := httptest.NewRequest("POST", "/api/nodes/nonexistent/container/create", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "nonexistent"})
+	req := httptest.NewRequest("POST", "/api/cells/nonexistent/container/create", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "nonexistent"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -152,8 +152,8 @@ func TestCreateContainer_NodeNotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Errorf("Expected status 404, got %d", w.Code)
 	}
-	if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Node not found")) {
-		t.Errorf("Expected 'Node not found' in response, got: %s", body)
+	if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Cell not found")) {
+		t.Errorf("Expected 'Cell not found' in response, got: %s", body)
 	}
 
 	// Verify container manager was not called

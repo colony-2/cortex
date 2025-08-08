@@ -9,19 +9,19 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// GetGitStatus handles GET /api/nodes/{nodeId}/git/status
+// GetGitStatus handles GET /api/cells/{cellId}/git/status
 func (h *Handlers) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
-	status, err := h.git.GetStatus(r.Context(), node.Path)
+	status, err := h.git.GetStatus(r.Context(), cell.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -49,20 +49,20 @@ func (h *Handlers) GetGitStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(apiStatus)
 }
 
-// GetGitDiff handles GET /api/nodes/{nodeId}/git/diff
+// GetGitDiff handles GET /api/cells/{cellId}/git/diff
 func (h *Handlers) GetGitDiff(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
 	staged := r.URL.Query().Get("staged") == "true"
-	diff, err := h.git.GetDiff(r.Context(), node.Path, staged)
+	diff, err := h.git.GetDiff(r.Context(), cell.Path, staged)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -72,15 +72,15 @@ func (h *Handlers) GetGitDiff(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(diff))
 }
 
-// GetGitHistory handles GET /api/nodes/{nodeId}/git/history
+// GetGitHistory handles GET /api/cells/{cellId}/git/history
 func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
@@ -91,7 +91,7 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	history, err := h.git.GetHistory(r.Context(), node.Path, limit)
+	history, err := h.git.GetHistory(r.Context(), cell.Path, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -113,15 +113,15 @@ func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(apiCommits)
 }
 
-// CreateGitCommit handles POST /api/nodes/{nodeId}/git/commit
+// CreateGitCommit handles POST /api/cells/{cellId}/git/commit
 func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	nodeID := vars["nodeId"]
+	cellID := vars["cellId"]
 
-	// Get the node to find its path
-	node, err := h.graph.GetNode(r.Context(), nodeID)
+	// Get the cell to find its path
+	cell, err := h.graph.GetCell(r.Context(), cellID)
 	if err != nil {
-		http.Error(w, "Node not found", http.StatusNotFound)
+		http.Error(w, "Cell not found", http.StatusNotFound)
 		return
 	}
 
@@ -139,14 +139,14 @@ func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request) {
 
 	// Stage files if specified
 	if body.Files != nil && len(*body.Files) > 0 {
-		if err := h.git.StageFiles(r.Context(), node.Path, *body.Files); err != nil {
+		if err := h.git.StageFiles(r.Context(), cell.Path, *body.Files); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	// Create commit
-	if err := h.git.CreateCommit(r.Context(), node.Path, body.Message); err != nil {
+	if err := h.git.CreateCommit(r.Context(), cell.Path, body.Message); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

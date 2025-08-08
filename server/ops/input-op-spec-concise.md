@@ -1,9 +1,9 @@
-# Input Activity Specification
+# Input Op Specification
 
 ## Overview
-Input activities use Temporal signals directly. Workflow context is available without configuration. Cortex monitors signals and manages UI interactions.
+Input ops use Temporal signals directly. Recipe context is available without configuration. Cortex monitors signals and manages UI interactions.
 
-## Activity Type: Input Form
+## Op Type: Input Form
 
 ### Single Question Format
 ```yaml

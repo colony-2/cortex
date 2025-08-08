@@ -2,4 +2,4 @@
 export { default as GraphFlow } from './GraphFlow';
 export type { GraphFlowProps } from './GraphFlow';
 
-export { default as ProFlowNode } from './ProFlowNode';
+export { default as ProFlowCell } from './ProFlowCell';

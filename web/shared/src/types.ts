@@ -1,4 +1,4 @@
-export interface DependencyNode {
+export interface DependencyCell {
   id: string;
   name: string;
   path: string;
@@ -12,19 +12,19 @@ export interface DependencyEdge {
   target: string;
 }
 
-export interface NodePosition {
-  nodeId: string;
+export interface CellPosition {
+  cellId: string;
   x: number;
   y: number;
 }
 
 export interface RelationshipGraph {
-  nodes: DependencyNode[];
+  cells: DependencyCell[];
   edges: DependencyEdge[];
 }
 
 export interface DependencyGraph {
-  nodes: DependencyNode[];
+  cells: DependencyCell[];
   edges: DependencyEdge[];
 }
 

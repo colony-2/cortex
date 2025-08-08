@@ -59,22 +59,22 @@ func (m *mockFilesBrowser) Delete(ctx context.Context, nodePath, path string) er
 
 // mockGraphBuilder implements core.GraphBuilder for testing
 type mockGraphBuilder struct {
-	nodes map[string]*core.Node
+	cells map[string]*core.Cell
 }
 
 func (m *mockGraphBuilder) BuildGraph(ctx context.Context) (*core.Graph, error) {
 	return nil, nil
 }
 
-func (m *mockGraphBuilder) GetNode(ctx context.Context, nodeID string) (*core.Node, error) {
-	node, ok := m.nodes[nodeID]
+func (m *mockGraphBuilder) GetCell(ctx context.Context, cellID string) (*core.Cell, error) {
+	cell, ok := m.cells[cellID]
 	if !ok {
-		return nil, context.DeadlineExceeded // simulating node not found
+		return nil, context.DeadlineExceeded // simulating cell not found
 	}
-	return node, nil
+	return cell, nil
 }
 
-func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
+func TestGetFiles_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockFiles := &mockFilesBrowser{
 		listFilesReturn: []files.FileInfo{
@@ -83,11 +83,11 @@ func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -100,8 +100,8 @@ func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request
-	req := httptest.NewRequest("GET", "/api/nodes/test-node/files", nil)
-	req = mux.SetURLVars(req, map[string]string{"nodeId": "test-node"})
+	req := httptest.NewRequest("GET", "/api/cells/test-node/files", nil)
+	req = mux.SetURLVars(req, map[string]string{"cellId": "test-cell"})
 	w := httptest.NewRecorder()
 
 	// Call handler
@@ -116,23 +116,23 @@ func TestGetFiles_NodeIDToPathTranslation(t *testing.T) {
 	if !mockFiles.listFilesCalled {
 		t.Error("ListFiles was not called")
 	}
-	if mockFiles.receivedNodePath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockFiles.receivedNodePath)
+	if mockFiles.receivedNodePath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockFiles.receivedNodePath)
 	}
 }
 
-func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
+func TestGetFile_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockFiles := &mockFilesBrowser{
 		readFileReturn: []byte("test content"),
 	}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -145,9 +145,9 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 	}
 
 	// Create request
-	req := httptest.NewRequest("GET", "/api/nodes/test-node/files/subdir/file.txt", nil)
+	req := httptest.NewRequest("GET", "/api/cells/test-node/files/subdir/file.txt", nil)
 	req = mux.SetURLVars(req, map[string]string{
-		"nodeId":   "test-node",
+		"cellId":   "test-cell",
 		"filePath": "subdir/file.txt",
 	})
 	w := httptest.NewRecorder()
@@ -164,24 +164,24 @@ func TestGetFile_NodeIDToPathTranslation(t *testing.T) {
 	if !mockFiles.readFileCalled {
 		t.Error("ReadFile was not called")
 	}
-	if mockFiles.receivedNodePath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockFiles.receivedNodePath)
+	if mockFiles.receivedNodePath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockFiles.receivedNodePath)
 	}
 	if mockFiles.receivedFilePath != "subdir/file.txt" {
 		t.Errorf("Expected file path 'subdir/file.txt', got '%s'", mockFiles.receivedFilePath)
 	}
 }
 
-func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
+func TestPutFile_CellIDToPathTranslation(t *testing.T) {
 	// Create mocks
 	mockFiles := &mockFilesBrowser{}
 
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{
-			"test-node": {
-				ID:   "test-node",
-				Name: "Test Node",
-				Path: "/actual/path/to/node",
+		cells: map[string]*core.Cell{
+			"test-cell": {
+				ID:   "test-cell",
+				Name: "Test Cell",
+				Path: "/actual/path/to/cell",
 				Type: "app",
 			},
 		},
@@ -200,9 +200,9 @@ func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 	bodyBytes, _ := json.Marshal(reqBody)
 
 	// Create request
-	req := httptest.NewRequest("PUT", "/api/nodes/test-node/files/newfile.txt", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequest("PUT", "/api/cells/test-node/files/newfile.txt", bytes.NewReader(bodyBytes))
 	req = mux.SetURLVars(req, map[string]string{
-		"nodeId":   "test-node",
+		"cellId":   "test-cell",
 		"filePath": "newfile.txt",
 	})
 	w := httptest.NewRecorder()
@@ -219,8 +219,8 @@ func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 	if !mockFiles.writeFileCalled {
 		t.Error("WriteFile was not called")
 	}
-	if mockFiles.receivedNodePath != "/actual/path/to/node" {
-		t.Errorf("Expected path '/actual/path/to/node', got '%s'", mockFiles.receivedNodePath)
+	if mockFiles.receivedNodePath != "/actual/path/to/cell" {
+		t.Errorf("Expected path '/actual/path/to/cell', got '%s'", mockFiles.receivedNodePath)
 	}
 	if mockFiles.receivedFilePath != "newfile.txt" {
 		t.Errorf("Expected file path 'newfile.txt', got '%s'", mockFiles.receivedFilePath)
@@ -230,11 +230,11 @@ func TestPutFile_NodeIDToPathTranslation(t *testing.T) {
 	}
 }
 
-func TestFileHandlers_NodeNotFound(t *testing.T) {
-	// Create mocks with no nodes
+func TestFileHandlers_CellNotFound(t *testing.T) {
+	// Create mocks with no cells
 	mockFiles := &mockFilesBrowser{}
 	mockGraph := &mockGraphBuilder{
-		nodes: map[string]*core.Node{},
+		cells: map[string]*core.Cell{},
 	}
 
 	// Create handlers
@@ -249,9 +249,9 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 		path   string
 		body   []byte
 	}{
-		{"GetFiles", "GET", "/api/nodes/nonexistent/files", nil},
-		{"GetFile", "GET", "/api/nodes/nonexistent/files/file.txt", nil},
-		{"PutFile", "PUT", "/api/nodes/nonexistent/files/file.txt", []byte(`{"content":"test"}`)},
+		{"GetFiles", "GET", "/api/cells/nonexistent/files", nil},
+		{"GetFile", "GET", "/api/cells/nonexistent/files/file.txt", nil},
+		{"PutFile", "PUT", "/api/cells/nonexistent/files/file.txt", []byte(`{"content":"test"}`)},
 	}
 
 	for _, tt := range tests {
@@ -265,7 +265,7 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 			}
 
 			// Set URL vars based on path
-			vars := map[string]string{"nodeId": "nonexistent"}
+			vars := map[string]string{"cellId": "nonexistent"}
 			if tt.name == "GetFile" || tt.name == "PutFile" {
 				vars["filePath"] = "file.txt"
 			}
@@ -287,8 +287,8 @@ func TestFileHandlers_NodeNotFound(t *testing.T) {
 			if w.Code != http.StatusNotFound {
 				t.Errorf("Expected status 404, got %d", w.Code)
 			}
-			if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Node not found")) {
-				t.Errorf("Expected 'Node not found' in response, got: %s", body)
+			if body := w.Body.String(); !bytes.Contains([]byte(body), []byte("Cell not found")) {
+				t.Errorf("Expected 'Cell not found' in response, got: %s", body)
 			}
 		})
 	}

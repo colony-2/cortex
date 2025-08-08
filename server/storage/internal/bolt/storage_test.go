@@ -26,9 +26,9 @@ func TestPositionStorage(t *testing.T) {
 
 	// Test data
 	positions := []core.Position{
-		{NodeID: "node1", X: 100.5, Y: 200.5},
-		{NodeID: "node2", X: 300.0, Y: 400.0},
-		{NodeID: "node3", X: 500.5, Y: 600.5},
+		{CellID: "cell1", X: 100.5, Y: 200.5},
+		{CellID: "cell2", X: 300.0, Y: 400.0},
+		{CellID: "cell3", X: 500.5, Y: 600.5},
 	}
 
 	// Test saving positions
@@ -53,24 +53,24 @@ func TestPositionStorage(t *testing.T) {
 	// Create a map for easy lookup
 	retrievedMap := make(map[string]core.Position)
 	for _, pos := range retrieved {
-		retrievedMap[pos.NodeID] = pos
+		retrievedMap[pos.CellID] = pos
 	}
 
 	for _, pos := range positions {
-		retrievedPos, exists := retrievedMap[pos.NodeID]
+		retrievedPos, exists := retrievedMap[pos.CellID]
 		if !exists {
-			t.Errorf("Position for node %s was not retrieved", pos.NodeID)
+			t.Errorf("Position for cell %s was not retrieved", pos.CellID)
 			continue
 		}
 
 		if retrievedPos.X != pos.X || retrievedPos.Y != pos.Y {
-			t.Errorf("Position mismatch for node %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
-				pos.NodeID, pos.X, pos.Y, retrievedPos.X, retrievedPos.Y)
+			t.Errorf("Position mismatch for cell %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
+				pos.CellID, pos.X, pos.Y, retrievedPos.X, retrievedPos.Y)
 		}
 	}
 
 	// Test updating a position
-	updatedPos := core.Position{NodeID: "node1", X: 150.0, Y: 250.0}
+	updatedPos := core.Position{CellID: "cell1", X: 150.0, Y: 250.0}
 	err = storage.SavePosition(ctx, updatedPos)
 	if err != nil {
 		t.Fatalf("Failed to update position: %v", err)
@@ -87,23 +87,23 @@ func TestPositionStorage(t *testing.T) {
 		t.Errorf("Expected %d positions after update, got %d", len(positions), len(retrieved))
 	}
 
-	// Check that node1 was updated
+	// Check that cell1 was updated
 	retrievedMap = make(map[string]core.Position)
 	for _, pos := range retrieved {
-		retrievedMap[pos.NodeID] = pos
+		retrievedMap[pos.CellID] = pos
 	}
 
-	if node1Pos, exists := retrievedMap["node1"]; exists {
-		if node1Pos.X != updatedPos.X || node1Pos.Y != updatedPos.Y {
+	if cell1Pos, exists := retrievedMap["cell1"]; exists {
+		if cell1Pos.X != updatedPos.X || cell1Pos.Y != updatedPos.Y {
 			t.Errorf("Updated position not saved correctly: expected (%.1f, %.1f), got (%.1f, %.1f)",
-				updatedPos.X, updatedPos.Y, node1Pos.X, node1Pos.Y)
+				updatedPos.X, updatedPos.Y, cell1Pos.X, cell1Pos.Y)
 		}
 	} else {
-		t.Error("Updated node1 position not found")
+		t.Error("Updated cell1 position not found")
 	}
 
 	// Test deleting a position
-	err = storage.DeletePosition(ctx, "node2")
+	err = storage.DeletePosition(ctx, "cell2")
 	if err != nil {
 		t.Fatalf("Failed to delete position: %v", err)
 	}
@@ -136,16 +136,16 @@ func TestContainerIDStorage(t *testing.T) {
 	ctx := context.Background()
 
 	// Test saving container ID
-	nodeID := "test-node"
+	cellID := "test-cell"
 	containerID := "abc123"
 
-	err = storage.SaveContainerID(ctx, nodeID, containerID)
+	err = storage.SaveContainerID(ctx, cellID, containerID)
 	if err != nil {
 		t.Fatalf("Failed to save container ID: %v", err)
 	}
 
 	// Test retrieving container ID
-	retrieved, err := storage.GetContainerID(ctx, nodeID)
+	retrieved, err := storage.GetContainerID(ctx, cellID)
 	if err != nil {
 		t.Fatalf("Failed to get container ID: %v", err)
 	}
@@ -161,13 +161,13 @@ func TestContainerIDStorage(t *testing.T) {
 	}
 
 	// Test deleting container ID
-	err = storage.DeleteContainerID(ctx, nodeID)
+	err = storage.DeleteContainerID(ctx, cellID)
 	if err != nil {
 		t.Fatalf("Failed to delete container ID: %v", err)
 	}
 
 	// Verify deletion
-	_, err = storage.GetContainerID(ctx, nodeID)
+	_, err = storage.GetContainerID(ctx, cellID)
 	if err == nil {
 		t.Error("Expected error when getting deleted container ID")
 	}

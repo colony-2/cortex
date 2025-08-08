@@ -3,7 +3,7 @@ module github.com/divisive-ai/vibethis/server/recipe-worker
 go 1.24.1
 
 require (
-	github.com/divisive-ai/vibethis/server/activity v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/cel-go v0.26.0
@@ -67,7 +67,7 @@ require (
 )
 
 replace (
-	github.com/divisive-ai/vibethis/server/activity => ../activity
 	github.com/divisive-ai/vibethis/server/llm => ../llm
+	github.com/divisive-ai/vibethis/server/ops => ../ops
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 )

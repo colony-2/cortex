@@ -1,17 +1,17 @@
-# Activity Provider System
+# Op Provider System
 
-The activity provider system allows you to extend recipe-worker with custom activity types that integrate seamlessly with the recipe-core activity type registry.
+The op provider system allows you to extend recipe-worker with custom op types that integrate seamlessly with the recipe-core op type registry.
 
 ## Overview
 
-Activity providers implement the logic for executing specific activity types. When a recipe-worker creates workers for recipes, it uses the provider registry to determine how to execute each activity based on its type.
+Op providers implement the logic for executing specific op types. When a recipe-worker creates workers for recipes, it uses the provider registry to determine how to execute each op based on its type.
 
-## Creating a Custom Activity Provider
+## Creating a Custom Op Provider
 
 ### 1. Basic Provider Interface
 
 ```go
-type ActivityProvider interface {
+type OpProvider interface {
     GetType() string
     Execute(ctx context.Context, args ...interface{}) (interface{}, error)
 }
@@ -27,13 +27,13 @@ func (p *CustomDatabaseProvider) GetType() string {
 }
 
 func (p *CustomDatabaseProvider) Execute(ctx context.Context, args ...interface{}) (interface{}, error) {
-    // args[0] is the activity config (from recipe definition)
-    // args[1] is the activity inputs (runtime values)
+    // args[0] is the op config (from recipe definition)
+    // args[1] is the op inputs (runtime values)
     
     config := args[0].(map[string]interface{})
     inputs := args[1].(map[string]interface{})
     
-    // Implement your activity logic here
+    // Implement your op logic here
     return map[string]interface{}{
         "success": true,
         "result": "data",

@@ -90,14 +90,14 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		return nil, fmt.Errorf("failed to parse moon graph output: %w", err)
 	}
 
-	// Debug: Log the number of nodes from moon
-	fmt.Printf("[DEBUG] Moon returned %d nodes\n", len(moonGraph.Graph.Nodes))
+	// Debug: Log the number of cells from moon
+	fmt.Printf("[DEBUG] Moon returned %d cells\n", len(moonGraph.Graph.Nodes))
 
-	nodes := []core.Node{}
+	cells := []core.Cell{}
 	edges := []core.Edge{}
-	nodeMap := make(map[string]bool)
+	cellMap := make(map[string]bool)
 
-	// Build nodes from moon graph
+	// Build cells from moon graph
 	// Handle symlinks in the root path
 	rootPathWithSymlinks := absRootPath
 	if evalPath, err := filepath.EvalSymlinks(absRootPath); err == nil {
@@ -110,10 +110,10 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	}
 
 	// Debug: Log the rootPath being used for filtering
-	fmt.Printf("[DEBUG] Filtering nodes with rootPath: %s\n", rootPathWithSymlinks)
+	fmt.Printf("[DEBUG] Filtering cells with rootPath: %s\n", rootPathWithSymlinks)
 
 	for _, moonNode := range moonGraph.Graph.Nodes {
-		// Check if this node's root path is within our rootPath
+		// Check if this cell's root path is within our rootPath
 		// Handle symlinks by evaluating them
 		nodeRoot := moonNode.Root
 		if evalPath, err := filepath.EvalSymlinks(nodeRoot); err == nil {
@@ -121,8 +121,8 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		}
 		absNodePath, _ := filepath.Abs(nodeRoot)
 
-		// Debug: Log each node being processed
-		fmt.Printf("[DEBUG] Processing node %s with path %s\n", moonNode.ID, absNodePath)
+		// Debug: Log each cell being processed
+		fmt.Printf("[DEBUG] Processing cell %s with path %s\n", moonNode.ID, absNodePath)
 
 		// Build dependencies list
 		dependencies := []string{}
@@ -130,26 +130,26 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 			dependencies = append(dependencies, dep.ID)
 		}
 
-		node := core.Node{
+		cell := core.Cell{
 			ID:           moonNode.ID,
 			Name:         moonNode.ID,
 			Path:         absNodePath,
-			Type:         "box",
+			Type:         "cell",
 			Dependencies: dependencies,
 		}
 
-		nodes = append(nodes, node)
-		nodeMap[moonNode.ID] = true
+		cells = append(cells, cell)
+		cellMap[moonNode.ID] = true
 	}
 
 	// Build edges from dependencies
-	for _, node := range nodes {
-		for _, dep := range node.Dependencies {
-			// Only create edge if target exists in our node set
-			if nodeMap[dep] {
+	for _, cell := range cells {
+		for _, dep := range cell.Dependencies {
+			// Only create edge if target exists in our cell set
+			if cellMap[dep] {
 				edge := core.Edge{
-					ID:     fmt.Sprintf("%s-%s", node.ID, dep),
-					Source: node.ID,
+					ID:     fmt.Sprintf("%s-%s", cell.ID, dep),
+					Source: cell.ID,
 					Target: dep,
 				}
 				edges = append(edges, edge)
@@ -158,10 +158,10 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 	}
 
 	// Debug: Log final result
-	fmt.Printf("[DEBUG] Final graph has %d nodes and %d edges\n", len(nodes), len(edges))
+	fmt.Printf("[DEBUG] Final graph has %d cells and %d edges\n", len(cells), len(edges))
 
 	return &core.Graph{
-		Nodes: nodes,
+		Cells: cells,
 		Edges: edges,
 	}, nil
 }

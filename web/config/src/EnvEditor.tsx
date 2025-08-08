@@ -11,14 +11,14 @@ import {
   FileAddOutlined
 } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
-import type { DependencyNode } from '@vibethis/shared';
+import type { DependencyCell } from '@vibethis/shared';
 
 
 export interface EnvEditorProps {
-  node: DependencyNode;
+  cell: DependencyCell;
 }
 
-export default function EnvEditor({ node }: EnvEditorProps) {
+export default function EnvEditor({ cell }: EnvEditorProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -80,12 +80,12 @@ export default function EnvEditor({ node }: EnvEditorProps) {
   // Load container status and devcontainer.json
   useEffect(() => {
     loadContainerStatus();
-  }, [node]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cell]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadContainerStatus = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/status`);
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/status`);
       if (response.ok) {
         const data = await response.json();
         setContainerStatus(data.status);
@@ -110,7 +110,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
 
   const createDevcontainerFile = () => {
     const defaultConfig = {
-      name: node.name || "Dev Container",
+      name: cell.name || "Dev Container",
       image: "mcr.microsoft.com/devcontainers/base:ubuntu",
       features: {},
       customizations: {
@@ -130,7 +130,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
   const saveDevcontainerFile = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/devcontainer`, {
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/devcontainer`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -168,7 +168,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
   const createContainer = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/create`, {
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/create`, {
         method: 'POST',
       });
 
@@ -194,7 +194,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/start`, {
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/start`, {
         method: 'POST',
       });
 
@@ -218,7 +218,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/restart`, {
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/restart`, {
         method: 'POST',
       });
 
@@ -242,7 +242,7 @@ export default function EnvEditor({ node }: EnvEditorProps) {
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/nodes/${encodeURIComponent(node.id)}/container/reset`, {
+      const response = await fetch(`/api/cells/${encodeURIComponent(cell.id)}/container/reset`, {
         method: 'POST',
       });
 

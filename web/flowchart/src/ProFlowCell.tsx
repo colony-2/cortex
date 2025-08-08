@@ -2,7 +2,7 @@ import type { FC } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Tag, Space } from 'antd';
 
-interface ProFlowNodeProps {
+interface ProFlowCellProps {
   data: {
     title: string;
     description?: string;
@@ -16,7 +16,7 @@ interface ProFlowNodeProps {
   id: string;
 }
 
-const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
+const ProFlowCell: FC<ProFlowCellProps> = ({ data, id }) => {
   const getDependencyColor = (count: number) => {
     if (count === 0) return 'green';
     if (count <= 2) return 'blue';
@@ -26,8 +26,8 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
 
   return (
     <div
-      className="graph-node"
-      data-node-id={id}
+      className="graph-cell"
+      data-cell-id={id}
       style={{
         width: 200,
         cursor: 'pointer',
@@ -38,8 +38,8 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
         transition: 'all 0.2s ease',
       }}
       onClick={() => {
-        // Dispatch global event for node selection
-        window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: id } }));
+        // Dispatch global event for cell selection
+        window.dispatchEvent(new CustomEvent('cellSelected', { detail: { cellId: id } }));
       }}
     >
       <Handle type="target" position={Position.Top} />
@@ -71,4 +71,4 @@ const ProFlowNode: FC<ProFlowNodeProps> = ({ data, id }) => {
   );
 };
 
-export default ProFlowNode;
+export default ProFlowCell;

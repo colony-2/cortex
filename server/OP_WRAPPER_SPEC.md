@@ -1,8 +1,8 @@
-# Activity Wrapper Specification for Recipe-Worker
+# Op Wrapper Specification for Recipe-Worker
 
 ## Overview
 
-This specification defines how activities in the `./activity` module expose themselves for consumption by `recipe-worker` through YAML definitions. The goal is to establish a standardized interface that allows any activity to be registered and executed within the recipe system using Go generics for type safety and automatic schema derivation.
+This specification defines how ops in the `./ops` module expose themselves for consumption by `recipe-worker` through YAML definitions. The goal is to establish a standardized interface that allows any op to be registered and executed within the recipe system using Go generics for type safety and automatic schema derivation.
 
 ## Architecture Overview
 
@@ -10,29 +10,29 @@ This specification defines how activities in the `./activity` module expose them
 
 ```
 ┌─────────────┐     ┌───────────────┐     ┌──────────────┐
-│   activity  │────▶│  recipe-core  │◀────│recipe-worker │
+│     ops     │────▶│  recipe-core  │◀────│recipe-worker │
 └─────────────┘     └───────────────┘     └──────────────┘
      defines              common              consumes
-  activities &           schemas           activities &
+     ops &              schemas              ops &
    interface                              implements logic
 ```
 
 **Key Principles:**
-- `activity` module defines the `RegisterableActivity` interface and activity implementations
-- `activity` module has NO dependency on `recipe-worker`
-- `recipe-worker` imports and consumes activities from the `activity` module
+- `ops` module defines the `RegisterableOp` interface and op implementations
+- `ops` module has NO dependency on `recipe-worker`
+- `recipe-worker` imports and consumes ops from the `ops` module
 - `recipe-core` contains only common types/schemas used by both
 - All registration, schema generation, and provider bridging logic lives in `recipe-worker`
 
 ## Architecture
 
-### 1. Core Interface Definition (activity module)
+### 1. Core Interface Definition (ops module)
 
-The generic interface will be defined in `./activity` that standardizes how activities expose themselves:
+The generic interface will be defined in `./ops` that standardizes how ops expose themselves:
 
 ```go
-// Package activity defines interfaces for activities that can be consumed by recipe-worker
-// Located in: ./activity/pkg/types/activity.go
+// Package ops defines interfaces for ops that can be consumed by recipe-worker
+// Located in: ./ops/pkg/types/ops.go
 package types
 
 import (
@@ -40,19 +40,19 @@ import (
     "time"
 )
 
-// RegisterableActivity defines the contract for activities that can be consumed
+// RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions
-type RegisterableActivity[TConfig any, TInput any, TOutput any] interface {
-    // GetMetadata returns activity metadata for registration
-    GetMetadata() ActivityMetadata
+type RegisterableOp[TConfig any, TInput any, TOutput any] interface {
+    // GetMetadata returns ops metadata for registration
+    GetMetadata() OpMetadata
     
-    // Execute runs the activity with provided configuration and inputs
+    // Execute runs the ops with provided configuration and inputs
     Execute(ctx context.Context, config TConfig, inputs TInput) (TOutput, error)
 }
 
-// ActivityMetadata describes the activity for registration and documentation
-type ActivityMetadata struct {
-    Type           string         // Unique identifier for the activity type
+// OpMetadata describes the ops for registration and documentation
+type OpMetadata struct {
+    Type           string         // Unique identifier for the ops type
     Name           string         // Human-readable name
     Description    string         // Detailed description
     Version        string         // Semantic version
@@ -70,21 +70,21 @@ type RetryPolicy struct {
 }
 ```
 
-### 2. Activity Implementation Pattern (activity module)
+### 2. Op Implementation Pattern (ops module)
 
-Activities in the `./activity` module implement `RegisterableActivity`:
+Activities in the `./ops` module implement `RegisterableOp`:
 
 ```go
-// Located in: ./activity/pkg/llm/wrapper.go
+// Located in: ./ops/pkg/llm/wrapper.go
 package llm
 
 import (
     "context"
     "time"
-    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
-// Define typed structs for LLM activity - ALL fields MUST have json tags
+// Define typed structs for LLM ops - ALL fields MUST have json tags
 type LLMConfig struct {
     Provider    string  `json:"provider"`    // Required by consumer
     Model       string  `json:"model"`       // Required by consumer
@@ -102,22 +102,22 @@ type LLMOutput struct {
     Usage    map[string]interface{} `json:"usage"`
 }
 
-// LLMActivity implements the RegisterableActivity interface
-type LLMActivity struct {
+// LLMOp implements the RegisterableOp interface
+type LLMOp struct {
     client *Client // Internal LLM client
 }
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] = (*LLMActivity)(nil)
+var _ types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] = (*LLMOp)(nil)
 
-func NewLLMActivity() types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] {
-    return &LLMActivity{
+func NewLLMOp() types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] {
+    return &LLMOp{
         client: NewClient(),
     }
 }
 
-func (a *LLMActivity) GetMetadata() types.ActivityMetadata {
-    return types.ActivityMetadata{
+func (a *LLMOp) GetMetadata() types.OpMetadata {
+    return types.OpMetadata{
         Type:           "llm_inference",
         Name:           "LLM Inference",
         Description:    "Executes LLM inference with various providers",
@@ -132,7 +132,7 @@ func (a *LLMActivity) GetMetadata() types.ActivityMetadata {
     }
 }
 
-func (a *LLMActivity) Execute(ctx context.Context, config LLMConfig, input LLMInput) (LLMOutput, error) {
+func (a *LLMOp) Execute(ctx context.Context, config LLMConfig, input LLMInput) (LLMOutput, error) {
     // Direct execution with typed parameters
     response, err := a.client.Complete(ctx, &CompletionRequest{
         Provider:    config.Provider,
@@ -159,7 +159,7 @@ func (a *LLMActivity) Execute(ctx context.Context, config LLMConfig, input LLMIn
 The registration system and all schema generation logic lives in `recipe-worker`:
 
 ```go
-// Located in: recipe-worker/pkg/worker/activity_registry.go
+// Located in: recipe-worker/pkg/worker/ops_registry.go
 package worker
 
 import (
@@ -167,21 +167,21 @@ import (
     "reflect"
     
     "github.com/invopop/jsonschema"
-    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
-// ActivityRegistration holds the activity and its generated schemas
-type ActivityRegistration struct {
-    Activity     interface{}         // The generic activity interface
+// OpRegistration holds the ops and its generated schemas
+type OpRegistration struct {
+    Op     interface{}         // The generic ops interface
     ConfigSchema *jsonschema.Schema
     InputSchema  *jsonschema.Schema
     OutputSchema *jsonschema.Schema
-    Metadata     types.ActivityMetadata
+    Metadata     types.OpMetadata
 }
 
-// ActivityRegistry manages all registered activities
-type ActivityRegistry struct {
-    activities map[string]ActivityRegistration
+// OpRegistry manages all registered ops
+type OpRegistry struct {
+    ops map[string]OpRegistration
     generator  SchemaGenerator
 }
 
@@ -192,15 +192,15 @@ type SchemaGenerator interface {
     ValidateStructTags(typ reflect.Type) error
 }
 
-// Register accepts any generic RegisterableActivity from the activity module
+// Register accepts any generic RegisterableOp from the ops module
 func Register[TConfig any, TInput any, TOutput any](
-    r *ActivityRegistry,
-    activity types.RegisterableActivity[TConfig, TInput, TOutput],
+    r *OpRegistry,
+    ops types.RegisterableOp[TConfig, TInput, TOutput],
 ) error {
-    metadata := activity.GetMetadata()
+    metadata := ops.GetMetadata()
     
-    if _, exists := r.activities[metadata.Type]; exists {
-        return fmt.Errorf("activity type %s already registered", metadata.Type)
+    if _, exists := r.ops[metadata.Type]; exists {
+        return fmt.Errorf("ops type %s already registered", metadata.Type)
     }
     
     // Generate schemas from types using reflection on the generic type parameters
@@ -234,8 +234,8 @@ func Register[TConfig any, TInput any, TOutput any](
         return fmt.Errorf("output schema generation failed: %w", err)
     }
     
-    r.activities[metadata.Type] = ActivityRegistration{
-        Activity:     activity,
+    r.ops[metadata.Type] = OpRegistration{
+        Op:     ops,
         ConfigSchema: configSchema,
         InputSchema:  inputSchema,
         OutputSchema: outputSchema,
@@ -321,10 +321,10 @@ func (g *DefaultSchemaGenerator) ValidateStructTags(typ reflect.Type) error {
 
 ### 4. Provider Bridge (recipe-worker)
 
-A generic provider in `recipe-worker` bridges between the existing provider system and activities from the `activity` module:
+A generic provider in `recipe-worker` bridges between the existing provider system and ops from the `ops` module:
 
 ```go
-// Located in: recipe-worker/pkg/worker/activity_provider.go
+// Located in: recipe-worker/pkg/worker/ops_provider.go
 package worker
 
 import (
@@ -332,30 +332,30 @@ import (
     "encoding/json"
     "fmt"
     
-    "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
-// RegisterableActivityProvider wraps any RegisterableActivity for use in recipe-worker
-type RegisterableActivityProvider[TConfig any, TInput any, TOutput any] struct {
-    activity     types.RegisterableActivity[TConfig, TInput, TOutput]
-    registration ActivityRegistration
+// RegisterableOpProvider wraps any RegisterableOp for use in recipe-worker
+type RegisterableOpProvider[TConfig any, TInput any, TOutput any] struct {
+    ops     types.RegisterableOp[TConfig, TInput, TOutput]
+    registration OpRegistration
 }
 
-func NewActivityProvider[TConfig any, TInput any, TOutput any](
-    activity types.RegisterableActivity[TConfig, TInput, TOutput],
-    registration ActivityRegistration,
-) *RegisterableActivityProvider[TConfig, TInput, TOutput] {
-    return &RegisterableActivityProvider[TConfig, TInput, TOutput]{
-        activity:     activity,
+func NewOpProvider[TConfig any, TInput any, TOutput any](
+    ops types.RegisterableOp[TConfig, TInput, TOutput],
+    registration OpRegistration,
+) *RegisterableOpProvider[TConfig, TInput, TOutput] {
+    return &RegisterableOpProvider[TConfig, TInput, TOutput]{
+        ops:     ops,
         registration: registration,
     }
 }
 
-func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) GetType() string {
-    return p.activity.GetMetadata().Type
+func (p *RegisterableOpProvider[TConfig, TInput, TOutput]) GetType() string {
+    return p.ops.GetMetadata().Type
 }
 
-func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) Execute(
+func (p *RegisterableOpProvider[TConfig, TInput, TOutput]) Execute(
     ctx context.Context,
     configMap, inputsMap map[string]interface{},
 ) (map[string]interface{}, error) {
@@ -382,7 +382,7 @@ func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) Execute(
     }
     
     // Execute with typed parameters
-    output, err := p.activity.Execute(ctx, config, inputs)
+    output, err := p.ops.Execute(ctx, config, inputs)
     if err != nil {
         return nil, err
     }
@@ -401,7 +401,7 @@ func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) Execute(
     return outputMap, nil
 }
 
-func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) GetSchemas() (config, input, output *jsonschema.Schema) {
+func (p *RegisterableOpProvider[TConfig, TInput, TOutput]) GetSchemas() (config, input, output *jsonschema.Schema) {
     return p.registration.ConfigSchema, p.registration.InputSchema, p.registration.OutputSchema
 }
 ```
@@ -411,7 +411,7 @@ func (p *RegisterableActivityProvider[TConfig, TInput, TOutput]) GetSchemas() (c
 Activities wrapped with this pattern can be used in YAML recipes:
 
 ```yaml
-activities:
+ops:
   - name: generate_summary
     type: llm_inference
     description: Generate a summary of the input text
@@ -436,7 +436,7 @@ The system uses [invopop/jsonschema](https://github.com/invopop/jsonschema) to a
 import "github.com/invopop/jsonschema"
 
 // Example struct with jsonschema tags - ALL fields MUST have json tags
-type CustomActivityConfig struct {
+type CustomOpConfig struct {
     URL         string   `json:"url" jsonschema:"title=Target URL,description=The endpoint URL,format=uri"`
     Method      string   `json:"method" jsonschema:"enum=GET,enum=POST,enum=PUT,enum=DELETE"`
     Headers     []Header `json:"headers,omitempty" jsonschema:"description=HTTP headers"`
@@ -454,7 +454,7 @@ reflector := &jsonschema.Reflector{
     RequiredFromJSONSchemaTags: true,
     AllowAdditionalProperties: false,
 }
-schema := reflector.Reflect(reflect.TypeOf(CustomActivityConfig{}))
+schema := reflector.Reflect(reflect.TypeOf(CustomOpConfig{}))
 
 // The generated schema will be:
 {
@@ -551,50 +551,50 @@ type ConfigWithIgnored struct {
 }
 ```
 
-### 7. Activity Registration in recipe-worker
+### 7. Op Registration in recipe-worker
 
-Recipe-worker is responsible for discovering and registering activities:
+Recipe-worker is responsible for discovering and registering ops:
 
 ```go
 // Located in: recipe-worker/cmd/worker/main.go or recipe-worker/pkg/worker/init.go
 package main
 
 import (
-    "github.com/divisive-ai/vibethis/server/activity/pkg/llm"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/llm"
     "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 )
 
-func initializeActivities(registry *worker.ActivityRegistry) {
-    // Import and register LLM activity
-    llmActivity := llm.NewLLMActivity()
-    worker.Register[llm.LLMConfig, llm.LLMInput, llm.LLMOutput](registry, llmActivity)
+func initializeActivities(registry *worker.OpRegistry) {
+    // Import and register LLM ops
+    llmOp := llm.NewLLMOp()
+    worker.Register[llm.LLMConfig, llm.LLMInput, llm.LLMOutput](registry, llmOp)
     
-    // Import and register other activities
-    // emailActivity := email.NewEmailActivity()
-    // worker.Register[email.Config, email.Input, email.Output](registry, emailActivity)
+    // Import and register other ops
+    // emailOp := email.NewEmailOp()
+    // worker.Register[email.Config, email.Input, email.Output](registry, emailOp)
 }
 
-// Alternative: Activity modules can export a registration function
-// Located in: activity/pkg/llm/exports.go
+// Alternative: Op modules can export a registration function
+// Located in: ops/pkg/llm/exports.go
 package llm
 
-import "github.com/divisive-ai/vibethis/server/activity/pkg/types"
+import "github.com/divisive-ai/vibethis/server/ops/pkg/types"
 
-// GetActivities returns all activities exported by this package
+// GetActivities returns all ops exported by this package
 func GetActivities() []interface{} {
     return []interface{}{
-        NewLLMActivity(),
-        // Add other activities from this package
+        NewLLMOp(),
+        // Add other ops from this package
     }
 }
 
 // Then in recipe-worker:
-func registerAllActivities(registry *worker.ActivityRegistry) {
-    // Register LLM activities
-    for _, activity := range llm.GetActivities() {
+func registerAllActivities(registry *worker.OpRegistry) {
+    // Register LLM ops
+    for _, ops := range llm.GetActivities() {
         // Use type assertion to register with proper types
-        switch a := activity.(type) {
-        case types.RegisterableActivity[llm.LLMConfig, llm.LLMInput, llm.LLMOutput]:
+        switch a := ops.(type) {
+        case types.RegisterableOp[llm.LLMConfig, llm.LLMInput, llm.LLMOutput]:
             worker.Register[llm.LLMConfig, llm.LLMInput, llm.LLMOutput](registry, a)
         }
     }
@@ -603,48 +603,48 @@ func registerAllActivities(registry *worker.ActivityRegistry) {
 
 ## Implementation Steps
 
-1. **Define Core Interface in activity module**:
-   - Create `RegisterableActivity` interface in `./activity/pkg/types/activity.go`
-   - Define `ActivityMetadata` and `RetryPolicy` types
+1. **Define Core Interface in ops module**:
+   - Create `RegisterableOp` interface in `./ops/pkg/types/ops.go`
+   - Define `OpMetadata` and `RetryPolicy` types
    - No dependencies on recipe-worker or recipe-core
 
-2. **Update existing activities**:
-   - Modify activities in `./activity` to implement `RegisterableActivity`
+2. **Update existing ops**:
+   - Modify ops in `./ops` to implement `RegisterableOp`
    - Ensure all config/input/output structs have explicit JSON tags on every field
    - Export type definitions for use by consumers
 
 3. **Add Dependencies to recipe-worker**: 
    - Add `github.com/invopop/jsonschema` to recipe-worker's go.mod
-   - Add dependency on `./activity` module
+   - Add dependency on `./ops` module
 
 4. **Implement Registry in recipe-worker**:
-   - Create activity registry in `recipe-worker/pkg/worker/activity_registry.go`
+   - Create ops registry in `recipe-worker/pkg/worker/ops_registry.go`
    - Implement schema generator using invopop/jsonschema with strict JSON tag validation
-   - Build generic provider to bridge registerable activities
+   - Build generic provider to bridge registerable ops
 
 5. **Update Worker initialization**:
-   - Modify worker to import activities from `./activity`
-   - Register activities during startup
-   - Use the registry for activity discovery
+   - Modify worker to import ops from `./ops`
+   - Register ops during startup
+   - Use the registry for ops discovery
 
 6. **Add Tests**:
    - Test registration with missing JSON tags (should fail)
    - Test schema generation
-   - Test activity execution through the provider bridge
+   - Test ops execution through the provider bridge
 
 7. **Documentation**:
    - Document the registration process
-   - Provide examples of creating new activities
-   - Show how recipe-worker consumes activities
+   - Provide examples of creating new ops
+   - Show how recipe-worker consumes ops
 
 ## Benefits
 
-1. **Clean Architecture**: Clear separation of concerns - activities don't depend on recipe-worker
+1. **Clean Architecture**: Clear separation of concerns - ops don't depend on recipe-worker
 2. **Type Safety**: Full compile-time type checking with generics instead of runtime map[string]interface{} conversions
 3. **Automatic Schema Generation**: JSON schemas derived automatically from Go structs with tags
 4. **Enforced Standards**: Registration fails if struct fields lack JSON tags, ensuring consistency
 5. **Discoverability**: Activities self-document through metadata and schemas
-6. **Extensibility**: Easy to add new activities by implementing the interface in the activity module
+6. **Extensibility**: Easy to add new ops by implementing the interface in the ops module
 7. **Backwards Compatibility**: Existing provider system in recipe-worker continues to work
 8. **YAML Support**: Activities automatically work with YAML definitions in recipe-core
 9. **Reduced Boilerplate**: No need to manually define schemas or type conversion code
@@ -653,7 +653,7 @@ func registerAllActivities(registry *worker.ActivityRegistry) {
 ## Example Usage
 
 ```go
-// Define a custom activity with typed structs
+// Define a custom ops with typed structs
 type EmailConfig struct {
     SMTPServer string `json:"smtp_server" jsonschema:"required,format=hostname"`
     Port       int    `json:"port" jsonschema:"required,minimum=1,maximum=65535"`
@@ -671,13 +671,13 @@ type EmailOutput struct {
     SentAt    string `json:"sent_at" jsonschema:"format=date-time"`
 }
 
-// Implement the activity
-type EmailActivityWrapper struct {
+// Implement the ops
+type EmailOpWrapper struct {
     emailService *email.Service
 }
 
-func (e *EmailActivityWrapper) GetMetadata() ActivityMetadata {
-    return ActivityMetadata{
+func (e *EmailOpWrapper) GetMetadata() OpMetadata {
+    return OpMetadata{
         Type:           "send_email",
         Name:           "Send Email",
         Description:    "Sends an email via SMTP",
@@ -686,7 +686,7 @@ func (e *EmailActivityWrapper) GetMetadata() ActivityMetadata {
     }
 }
 
-func (e *EmailActivityWrapper) Execute(ctx context.Context, config EmailConfig, input EmailInput) (EmailOutput, error) {
+func (e *EmailOpWrapper) Execute(ctx context.Context, config EmailConfig, input EmailInput) (EmailOutput, error) {
     // Type-safe execution
     messageID, err := e.emailService.Send(ctx, config, input)
     if err != nil {
@@ -699,16 +699,16 @@ func (e *EmailActivityWrapper) Execute(ctx context.Context, config EmailConfig, 
     }, nil
 }
 
-// Register the activity
+// Register the ops
 func init() {
-    registry := worker.GetGlobalActivityRegistry()
-    Register[EmailConfig, EmailInput, EmailOutput](registry, &EmailActivityWrapper{
+    registry := worker.GetGlobalOpRegistry()
+    Register[EmailConfig, EmailInput, EmailOutput](registry, &EmailOpWrapper{
         emailService: email.NewService(),
     })
 }
 
 // Use in YAML (schemas are automatically validated)
-activities:
+ops:
   - name: notify_user
     type: send_email
     config:
@@ -726,9 +726,9 @@ activities:
 
 ## Migration Path
 
-1. **Phase 1**: Define `RegisterableActivity` interface in `./activity`
-2. **Phase 2**: Update activities to implement the new interface while maintaining existing functionality
-3. **Phase 3**: Update recipe-worker to consume activities via the new interface
+1. **Phase 1**: Define `RegisterableOp` interface in `./ops`
+2. **Phase 2**: Update ops to implement the new interface while maintaining existing functionality
+3. **Phase 3**: Update recipe-worker to consume ops via the new interface
 4. **Phase 4**: Existing provider system continues to work during transition
-5. **Phase 5**: Once all activities are migrated, deprecate old provider implementations
+5. **Phase 5**: Once all ops are migrated, deprecate old provider implementations
 6. **Note**: YAML recipes remain unchanged - only internal implementation changes

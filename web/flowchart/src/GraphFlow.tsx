@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
-import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyNode, type NodePosition, type DependencyEdge } from '@vibethis/shared';
-import ProFlowNode from './ProFlowNode';
+import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyCell, type CellPosition, type DependencyEdge } from '@vibethis/shared';
+import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {
   id: string;
@@ -26,56 +26,56 @@ interface FlowEdge {
 }
 
 export interface GraphFlowProps {
-  selectedNodeId?: string;
-  onNodeSelect?: (node: DependencyNode | null) => void;
+  selectedCellId?: string;
+  onCellSelect?: (cell: DependencyCell | null) => void;
 }
 
-export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowProps) {
+export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowProps) {
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<DependencyNode | null>(null);
+  const [selectedCell, setSelectedCell] = useState<DependencyCell | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<RelationshipGraph | null>(null);
   const isInitialLoad = useRef(true);
 
-  const handleNodeClick = useCallback((nodeId: string) => {
-    const node = graphRef.current?.nodes.find((n: DependencyNode) => n.id === nodeId) || null;
-    setSelectedNode(node);
-    onNodeSelect?.(node);
-  }, [onNodeSelect]);
+  const handleCellClick = useCallback((cellId: string) => {
+    const cell = graphRef.current?.cells.find((c: DependencyCell) => c.id === cellId) || null;
+    setSelectedCell(cell);
+    onCellSelect?.(cell);
+  }, [onCellSelect]);
 
-  const layoutNodes = useCallback((graphData: RelationshipGraph, savedPositions: NodePosition[], selectedNodeId?: string) => {
-    // Handle null or undefined nodes
-    if (!graphData.nodes || !Array.isArray(graphData.nodes)) {
+  const layoutCells = useCallback((graphData: RelationshipGraph, savedPositions: CellPosition[], selectedCellId?: string) => {
+    // Handle null or undefined cells
+    if (!graphData.cells || !Array.isArray(graphData.cells)) {
       setNodes([]);
       setEdges([]);
       return;
     }
 
-    const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.nodeId, p]) : []);
+    const positionMap = new Map(Array.isArray(savedPositions) ? savedPositions.map(p => [p.cellId, p]) : []);
 
-    // Create Pro Flow nodes
-    const newNodes: FlowNode[] = graphData.nodes.map((node: DependencyNode, index: number) => {
-      const savedPosition = positionMap.get(node.id);
+    // Create Pro Flow cells
+    const newNodes: FlowNode[] = graphData.cells.map((cell: DependencyCell, index: number) => {
+      const savedPosition = positionMap.get(cell.id);
       
       // Calculate position if not saved
       const x = savedPosition?.x ?? (index % 4) * 250 + 100;
       const y = savedPosition?.y ?? Math.floor(index / 4) * 150 + 100;
       
       return {
-        id: node.id,
+        id: cell.id,
         type: 'custom',
         position: { x, y },
         selectable: true,
         data: {
-          title: node.name,
-          name: node.name,
-          type: node.type,
-          dependencies: node.dependencies,
+          title: cell.name,
+          name: cell.name,
+          type: cell.type,
+          dependencies: cell.dependencies,
           logo: '📦',
-          selected: selectedNodeId === node.id
+          selected: selectedCellId === cell.id
         },
       };
     });
@@ -108,7 +108,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
         
         saveTimeoutRef.current = setTimeout(async () => {
           const positions = updatedNodes.map(n => ({
-            nodeId: n.id,
+            cellId: n.id,
             x: n.position.x,
             y: n.position.y
           }));
@@ -117,7 +117,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
             await savePositions(positions);
           } catch (err) {
             console.error('Failed to save positions:', err);
-            message.error('Failed to save node positions');
+            message.error('Failed to save cell positions');
           }
         }, 500);
       }
@@ -127,9 +127,9 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
   }, []);
 
   useEffect(() => {
-    // Listen for node selection events (for tests and manual triggering)
-    const handleNodeSelection = (event: CustomEvent) => {
-      handleNodeClick(event.detail.nodeId);
+    // Listen for cell selection events (for tests and manual triggering)
+    const handleCellSelection = (event: CustomEvent) => {
+      handleCellClick(event.detail.cellId);
     };
     
     // Listen for dependency update events
@@ -141,14 +141,14 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
         ]);
         
         graphRef.current = graphData;
-        layoutNodes(graphData, positions, selectedNode?.id);
+        layoutCells(graphData, positions, selectedCell?.id);
         
-        // Update selectedNode with fresh data if one is selected
-        if (selectedNode) {
-          const updatedNode = graphData.nodes.find((n: DependencyNode) => n.id === selectedNode.id);
-          if (updatedNode && JSON.stringify(updatedNode) !== JSON.stringify(selectedNode)) {
-            setSelectedNode(updatedNode);
-            onNodeSelect?.(updatedNode);
+        // Update selectedCell with fresh data if one is selected
+        if (selectedCell) {
+          const updatedCell = graphData.cells.find((c: DependencyCell) => c.id === selectedCell.id);
+          if (updatedCell && JSON.stringify(updatedCell) !== JSON.stringify(selectedCell)) {
+            setSelectedCell(updatedCell);
+            onCellSelect?.(updatedCell);
           }
         }
         
@@ -159,14 +159,14 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
       }
     };
     
-    window.addEventListener('nodeSelected', handleNodeSelection as EventListener);
+    window.addEventListener('cellSelected', handleCellSelection as EventListener);
     window.addEventListener('relationshipsUpdated', handleDependencyUpdate as EventListener);
     
     return () => {
-      window.removeEventListener('nodeSelected', handleNodeSelection as EventListener);
+      window.removeEventListener('cellSelected', handleCellSelection as EventListener);
       window.removeEventListener('relationshipsUpdated', handleDependencyUpdate as EventListener);
     };
-  }, [handleNodeClick, layoutNodes, selectedNode?.id, onNodeSelect]);
+  }, [handleCellClick, layoutCells, selectedCell?.id, onCellSelect]);
 
   // Load data only on initial mount
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
         ]);
         
         graphRef.current = graphData;
-        layoutNodes(graphData, positions, selectedNodeId);
+        layoutCells(graphData, positions, selectedCellId);
         setLoading(false);
         isInitialLoad.current = false;
       } catch (err) {
@@ -195,23 +195,23 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
     loadData();
   }, []); // Empty dependency array - only load on mount
   
-  // Handle external node selection
+  // Handle external cell selection
   useEffect(() => {
-    if (selectedNodeId && graphRef.current?.nodes) {
-      const node = graphRef.current.nodes.find((n: DependencyNode) => n.id === selectedNodeId);
-      if (node && node.id !== selectedNode?.id) {
-        setSelectedNode(node);
-        // Update node visual selection state
+    if (selectedCellId && graphRef.current?.cells) {
+      const cell = graphRef.current.cells.find((c: DependencyCell) => c.id === selectedCellId);
+      if (cell && cell.id !== selectedCell?.id) {
+        setSelectedCell(cell);
+        // Update cell visual selection state
         setNodes(prevNodes => prevNodes.map(n => ({
           ...n,
           data: {
             ...n.data,
-            selected: n.id === selectedNodeId
+            selected: n.id === selectedCellId
           }
         })));
       }
-    } else if (!selectedNodeId && selectedNode) {
-      setSelectedNode(null);
+    } else if (!selectedCellId && selectedCell) {
+      setSelectedCell(null);
       // Clear visual selection state
       setNodes(prevNodes => prevNodes.map(n => ({
         ...n,
@@ -221,7 +221,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
         }
       })));
     }
-  }, [selectedNodeId, selectedNode?.id]); // Include selectedNode?.id to track changes
+  }, [selectedCellId, selectedCell?.id]); // Include selectedCell?.id to track changes
 
   if (loading) {
     return (
@@ -270,7 +270,7 @@ export default function GraphFlow({ selectedNodeId, onNodeSelect }: GraphFlowPro
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        nodeTypes={{ custom: ProFlowNode as any }}
+        nodeTypes={{ custom: ProFlowCell as any }}
         onNodesChange={onNodesChange}
         nodesDraggable={true}
         nodesConnectable={false}

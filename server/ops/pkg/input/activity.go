@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )

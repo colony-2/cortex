@@ -1,4 +1,4 @@
-name: research_report_workflow
+name: research_report_recipe
 description: Research a topic and generate a comprehensive report
 version: "1.0"
 
@@ -22,7 +22,7 @@ outputs:
 
 steps:
   - id: research
-    uses: research_activity
+    uses: research_op
     inputs:
       topic: "{{ .Inputs.topic }}"
       max_sources: "{{ .Inputs.max_sources }}"
@@ -30,7 +30,7 @@ steps:
       research_data: research_results
       
   - id: analyze
-    uses: analyze_activity
+    uses: analyze_op
     inputs:
       data: "{{ .Steps.research.outputs.research_data }}"
       topic: "{{ .Inputs.topic }}"
@@ -38,7 +38,7 @@ steps:
       analysis: analysis_results
       
   - id: write_report
-    uses: write_report_activity
+    uses: write_report_op
     inputs:
       research: "{{ .Steps.research.outputs.research_data }}"
       analysis: "{{ .Steps.analyze.outputs.analysis }}"
@@ -47,8 +47,8 @@ steps:
       report: final_report
 
 shared:
-  research_activity:
-    uses: research_activity
+  research_op:
+    uses: research_op
     config:
       type: function
       timeout: 5m
@@ -57,15 +57,15 @@ shared:
         maximum_attempts: 3
       description: Research data from various sources
       
-  analyze_activity:
-    uses: analyze_activity
+  analyze_op:
+    uses: analyze_op
     config:
       type: function
       timeout: 3m
       description: Analyze research data
       
-  write_report_activity:
-    uses: write_report_activity
+  write_report_op:
+    uses: write_report_op
     config:
       type: function
       timeout: 5m

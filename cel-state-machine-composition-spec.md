@@ -2,19 +2,19 @@
 
 ## Overview
 
-This specification enhances recipe definition to support compsability of sequential, parallel and conditional steps. The core goal is to enable complex conditional logic and dynamic execution paths through unlimited nesting of sequential, parallel, and conditional compositions. Any composition type can contain any other type, creating a powerful system for expressing complex business logic. This includes enhancing and centralizing the current CEL state machine acitvity code (moving to core compiler/execution).
+This specification enhances recipe definition to support compsability of sequential, parallel and conditional steps. The core goal is to enable complex conditional logic and dynamic execution paths through unlimited nesting of sequential, parallel, and conditional compositions. Any composition type can contain any other type, creating a powerful system for expressing complex business logic. This includes enhancing and centralizing the current CEL state machine op code (moving to core compiler/execution).
 
 Key changes:
 1. All composition types (sequential, parallel, conditional) are fully nestable
-2. States can contain complete workflow compositions (not just single activities)
+2. States can contain complete recipe compositions (not just single ops)
 3. Simplified YAML structure with direct type declarations
 4. Clean reference syntax for accessing nested outputs
-5. State machine moves from activity implementation to core compiler
+5. State machine moves from op implementation to core compiler
 6. Update existing examples and tests to work with new structure.
 
 ## Directories to update
 server/recipe-core: holds the base yaml definitions for recipes
-server/activity: current location of cel state machine implementation (to be moved to other packages). after changes no state machine code will be in this directory.
+server/ops: current location of cel state machine implementation (to be moved to other packages). after changes no state machine code will be in this directory.
 server/recipe-worker: the recipe compiler/executor. 
 
 ## Commands to run to validate continued functioning
@@ -30,9 +30,9 @@ States maintain the existing structure but can now contain complete compositions
 
 ```yaml
 conditional:
-  # Simple activity state (backward compatible)
+  # Simple op state (backward compatible)
   simple_state:
-    uses: my_activity
+    uses: my_op
     inputs:
       data: "{{ .Inputs.raw_data }}"
     transitions:
@@ -416,7 +416,7 @@ sequential:
 ```go
 // StateDefinition extends existing structure to support compositions
 type StateDefinition struct {
-    // Single activity (backward compatible)
+    // Single op (backward compatible)
     Uses         string                 `json:"uses,omitempty"`
     Config       map[string]interface{} `json:"config,omitempty"`
     
@@ -452,7 +452,7 @@ type StateRetryPolicy struct {
 type Step struct {
     ID           string                 `json:"id"`
     
-    // Simple activity
+    // Simple op
     Uses         string                 `json:"uses,omitempty"`
     
     // OR nested compositions (mutually exclusive)
@@ -493,7 +493,7 @@ func (s *StateMachineCompiler) executeState(ctx context.Context, state StateDefi
     
     // Determine execution type and delegate
     if state.Uses != "" {
-        // Simple activity execution
+        // Simple op execution
         return s.executeActivity(ctx, state.Uses, prepareInputs(state.Inputs, stateCtx))
     } else if state.Sequential != nil {
         // Sequential composition
@@ -523,7 +523,7 @@ func (s *StateMachineCompiler) executeStep(ctx context.Context, step Step, outpu
     var err error
     
     if step.Uses != "" {
-        // Simple activity
+        // Simple op
         result, err = s.executeActivity(ctx, step.Uses, prepareInputs(step.Inputs, stepCtx))
     } else if step.Sequential != nil {
         // Nested sequential

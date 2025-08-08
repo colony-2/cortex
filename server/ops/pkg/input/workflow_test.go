@@ -29,7 +29,7 @@ func TestInputCollectionWorkflow_Success(t *testing.T) {
 			Timeout: 5 * time.Minute,
 		},
 		Timeout:    5 * time.Minute,
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
 	
@@ -75,7 +75,7 @@ func TestInputCollectionWorkflow_Timeout(t *testing.T) {
 			Timeout: 1 * time.Second,
 		},
 		Timeout:    1 * time.Second,
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
 	
@@ -141,7 +141,7 @@ func TestInputCollectionWorkflow_MultipleFields(t *testing.T) {
 			Timeout: 5 * time.Minute,
 		},
 		Timeout:    5 * time.Minute,
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
 	

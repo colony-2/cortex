@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/activity
+module github.com/divisive-ai/vibethis/server/ops
 
 go 1.24.1
 

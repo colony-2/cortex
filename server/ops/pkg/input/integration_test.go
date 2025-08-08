@@ -127,7 +127,7 @@ func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface
 	}
 	
 	inputArgs := Input{
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "approval-activity",
 		Context: map[string]interface{}{
 			"recipe_id": recipeID,
@@ -216,7 +216,7 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 			Timeout: 5 * time.Minute,
 		},
 		Timeout:    5 * time.Minute,
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
 	
@@ -413,7 +413,7 @@ func TestEndToEndScenario(t *testing.T) {
 			}
 			
 			input := Input{
-				BoxID:      "deployment-box",
+				BoxID:      "deployment-cell",
 				ActivityID: "deploy-approval",
 			}
 			
@@ -480,7 +480,7 @@ func TestEndToEndScenario(t *testing.T) {
 				Timeout: 100 * time.Millisecond, // Very short timeout
 			},
 			Timeout:    100 * time.Millisecond,
-			BoxID:      "timeout-test",
+			BoxID:      "timeout-test-cell",
 			ActivityID: "timeout-activity",
 		}
 		
@@ -507,7 +507,7 @@ func TestActivityWithTemporalContext(t *testing.T) {
 	}
 	
 	input := Input{
-		BoxID:      "test-box",
+		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
 	
@@ -582,7 +582,7 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 		}
 		
 		input := Input{
-			BoxID:      "config-box",
+			BoxID:      "config-cell",
 			ActivityID: "config-activity",
 		}
 		
@@ -653,7 +653,7 @@ func BenchmarkInputActivityExecution(b *testing.B) {
 	}
 	
 	input := Input{
-		BoxID:      "bench-box",
+		BoxID:      "bench-cell",
 		ActivityID: "bench-activity",
 	}
 	

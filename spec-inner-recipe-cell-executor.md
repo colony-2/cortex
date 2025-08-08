@@ -2,11 +2,11 @@
 
 ## Overview
 
-This specification defines the inner workflow recipe that executes within a devcontainer environment managed by Nucleus. This workflow operates on a specific cell with read-write access while having read-only access to the entire source tree.
+This specification defines the inner recipe that executes within a devcontainer environment managed by Nucleus. This recipe operates on a specific cell with read-write access while having read-only access to the entire source tree.
 
 ## Purpose
 
-The cell executor workflow provides a standardized way to:
+The cell executor recipe provides a standardized way to:
 - Validate the devcontainer environment setup
 - Perform cell-specific operations
 - Demonstrate the isolation and mount configuration
@@ -17,7 +17,7 @@ The cell executor workflow provides a standardized way to:
 ### Location
 `recipes/nucleus/cell-executor.yaml`
 
-### Workflow Definition
+### Recipe Definition
 
 ```yaml
 name: cell-executor
@@ -54,14 +54,14 @@ outputs:
     type: object
     description: Summary of all operations performed
 
-workflow:
+recipe:
   type: sequential
   retry_policy:
     maximum_attempts: 1  # No retries for environment validation
   steps:
     # Environment validation
     - id: validate_environment
-      activity: shell
+      op: shell
       inputs:
         run: |
           echo "=== Environment Validation ==="
@@ -82,7 +82,7 @@ workflow:
 
     # Validate source mount
     - id: validate_source_mount
-      activity: shell
+      op: shell
       inputs:
         run: |
           SOURCE_DIR="{{ .Inputs.source_dir }}"
@@ -117,7 +117,7 @@ workflow:
 
     # Validate cell mount
     - id: validate_cell_mount
-      activity: shell
+      op: shell
       inputs:
         run: |
           CELL_PATH="{{ .Inputs.source_dir }}/{{ .Inputs.cell_name }}"
@@ -146,7 +146,7 @@ workflow:
 
     # List source directory
     - id: list_source_directory
-      activity: shell
+      op: shell
       inputs:
         run: |
           if [[ " {{ .Inputs.operations }} " =~ " list " ]]; then
@@ -163,7 +163,7 @@ workflow:
 
     # Get cell information
     - id: get_cell_info
-      activity: shell
+      op: shell
       inputs:
         run: |
           if [[ " {{ .Inputs.operations }} " =~ " info " ]]; then
@@ -198,7 +198,7 @@ workflow:
 
     # Check recipe mount
     - id: check_recipe_mount
-      activity: shell
+      op: shell
       inputs:
         run: |
           echo "=== Recipe Mount Check ==="
@@ -214,7 +214,7 @@ workflow:
 
     # Create execution summary
     - id: create_summary
-      activity: shell
+      op: shell
       inputs:
         run: |
           echo "=== Execution Summary ==="
@@ -240,11 +240,11 @@ workflow:
       success: true
 ```
 
-### Activities Definition
+### Ops Definition
 
 ```yaml
-# recipes/nucleus/activities.yaml
-activities:
+# recipes/nucleus/ops.yaml
+ops:
   - name: shell
     description: Execute shell commands in the container environment
     timeout: 5m
@@ -309,7 +309,7 @@ inputs:
 
 ## Extension Points
 
-This base workflow can be extended for:
+This base recipe can be extended for:
 
 1. **Build Operations**: Add steps to build the cell's code
 2. **Test Execution**: Run cell-specific tests
@@ -319,15 +319,15 @@ This base workflow can be extended for:
 
 ## Error Handling
 
-The workflow includes comprehensive error handling:
+The recipe includes comprehensive error handling:
 - Environment validation failures halt execution
-- Optional operations can fail without stopping the workflow
+- Optional operations can fail without stopping the recipe
 - All errors are captured in outputs for analysis
 
 ## Future Enhancements
 
 1. **Parameterized Operations**: Support custom operation definitions
 2. **Output Artifacts**: Store generated files or build artifacts
-3. **Progress Reporting**: Real-time progress updates via activities
+3. **Progress Reporting**: Real-time progress updates via ops
 4. **Resource Monitoring**: Track CPU/memory usage during execution
 5. **Cache Management**: Utilize container caches for dependencies

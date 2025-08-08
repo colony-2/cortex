@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Tabs, Button, Badge, Space, Typography, Empty, Spin, List, Tag, message } from 'antd';
 import { SyncOutlined, FileAddOutlined, EditOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons';
-import type { DependencyNode } from '@vibethis/shared';
+import type { DependencyCell } from '@vibethis/shared';
 
 const { Title, Text } = Typography;
 
 export interface GitChangesProps {
-  node: DependencyNode | null;
+  cell: DependencyCell | null;
   activeTab?: string;
   onTabChange?: (key: string) => void;
 }
@@ -39,15 +39,15 @@ interface GitDiff {
   files: GitFileDiff[];
 }
 
-export default function GitChanges({ node, activeTab = 'summary', onTabChange }: GitChangesProps) {
+export default function GitChanges({ cell, activeTab = 'summary', onTabChange }: GitChangesProps) {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [diff, setDiff] = useState<GitDiff | null>(null);
   const [history, setHistory] = useState<GitCommit[]>([]);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
 
-  // Get the node ID
-  const nodeId = node?.id;
+  // Get the cell ID
+  const cellId = cell?.id;
 
   const handleTabChange = (key: string) => {
     onTabChange?.(key);
@@ -55,9 +55,9 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
 
   // Fetch git status
   const fetchStatus = async () => {
-    if (!nodeId) return;
+    if (!cellId) return;
     try {
-      const response = await fetch(`/api/nodes/${nodeId}/git/status`);
+      const response = await fetch(`/api/cells/${cellId}/git/status`);
       if (response.ok) {
         const data = await response.json();
         // Transform the backend response to match the expected format
@@ -101,9 +101,9 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
 
   // Fetch git diff
   const fetchDiff = async () => {
-    if (!nodeId) return;
+    if (!cellId) return;
     try {
-      const response = await fetch(`/api/nodes/${nodeId}/git/diff`);
+      const response = await fetch(`/api/cells/${cellId}/git/diff`);
       if (response.ok) {
         const diffText = await response.text();
         // Parse the plain text diff into a structured format
@@ -174,9 +174,9 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
 
   // Fetch git history
   const fetchHistory = async () => {
-    if (!nodeId) return;
+    if (!cellId) return;
     try {
-      const response = await fetch(`/api/nodes/${nodeId}/git/history`);
+      const response = await fetch(`/api/cells/${cellId}/git/history`);
       if (response.ok) {
         const data = await response.json();
         setHistory(data);
@@ -205,13 +205,13 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
     };
 
     loadData();
-  }, [nodeId, activeTab]);
+  }, [cellId, activeTab]);
 
   // Handle commit
   const handleCommit = async () => {
     setCommitting(true);
     try {
-      const response = await fetch(`/api/nodes/${nodeId}/git/commit`, {
+      const response = await fetch(`/api/cells/${cellId}/git/commit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -384,7 +384,7 @@ export default function GitChanges({ node, activeTab = 'summary', onTabChange }:
     }
 
     if (history.length === 0) {
-      return <Empty description="No commits for this box" />;
+      return <Empty description="No commits for this cell" />;
     }
 
     return (

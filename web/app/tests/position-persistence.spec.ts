@@ -27,7 +27,7 @@ test.describe('Node Position Persistence', () => {
     expect(initialBox).toBeTruthy();
     
     // Use the inner draggable part of the node (the graph-node div)
-    const draggableNode = firstNode.locator('.graph-node').first();
+    const draggableNode = firstNode.locator('.graph-cell').first();
     const box = await draggableNode.boundingBox();
     if (!box) throw new Error('Could not get node bounding box');
     
@@ -90,7 +90,7 @@ test.describe('Node Position Persistence', () => {
     expect(initialBox).toBeTruthy();
     
     // Use the inner draggable part of the node
-    const draggableNode = firstNode.locator('.graph-node').first();
+    const draggableNode = firstNode.locator('.graph-cell').first();
     const box = await draggableNode.boundingBox();
     if (!box) throw new Error('Could not get node bounding box');
     
@@ -180,7 +180,7 @@ test.describe('Node Position Persistence', () => {
     );
     
     // Drag first node using the inner draggable part
-    const firstDraggable = firstNode.locator('.graph-node').first();
+    const firstDraggable = firstNode.locator('.graph-cell').first();
     const firstBox = await firstDraggable.boundingBox();
     if (!firstBox) throw new Error('Could not get first node bounding box');
     
@@ -202,7 +202,7 @@ test.describe('Node Position Persistence', () => {
     await page.waitForTimeout(700);
     
     // Drag second node in a different direction
-    const secondDraggable = secondNode.locator('.graph-node').first();
+    const secondDraggable = secondNode.locator('.graph-cell').first();
     const secondBox = await secondDraggable.boundingBox();
     if (!secondBox) throw new Error('Could not get second node bounding box');
     

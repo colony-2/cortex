@@ -66,7 +66,7 @@ func TestBuildGraphWithMoon(t *testing.T) {
 	for nodeName, nodeData := range nodes {
 		nodeDir := filepath.Join(tempDir, nodeName)
 		if err := os.MkdirAll(nodeDir, 0755); err != nil {
-			t.Fatalf("Failed to create node directory: %v", err)
+			t.Fatalf("Failed to create cell directory: %v", err)
 		}
 
 		// Create moon.yml content
@@ -146,23 +146,23 @@ vcs:
 		t.Fatalf("Failed to build graph: %v", err)
 	}
 
-	// Verify nodes
-	if len(graph.Nodes) != 4 {
-		t.Errorf("Expected 4 nodes, got %d", len(graph.Nodes))
+	// Verify cells
+	if len(graph.Cells) != 4 {
+		t.Errorf("Expected 4 cells, got %d", len(graph.Cells))
 	}
 
 	// Create a map for easier lookup
-	nodeMap := make(map[string]core.Node)
-	for _, node := range graph.Nodes {
-		nodeMap[node.ID] = node
+	cellMap := make(map[string]core.Cell)
+	for _, cell := range graph.Cells {
+		cellMap[cell.ID] = cell
 	}
 
-	// Verify each node exists (with prefix)
+	// Verify each cell exists (with prefix)
 	baseName := filepath.Base(tempDir)
-	for nodeName := range nodes {
-		fullNodeID := fmt.Sprintf("%s-%s", baseName, nodeName)
-		if _, exists := nodeMap[fullNodeID]; !exists {
-			t.Errorf("Expected node %s not found in graph", fullNodeID)
+	for cellName := range nodes {
+		fullCellID := fmt.Sprintf("%s-%s", baseName, cellName)
+		if _, exists := cellMap[fullCellID]; !exists {
+			t.Errorf("Expected cell %s not found in graph", fullCellID)
 		}
 	}
 
@@ -178,26 +178,26 @@ vcs:
 	}
 
 	for _, tc := range testCases {
-		node, exists := nodeMap[tc.nodeID]
+		cell, exists := cellMap[tc.nodeID]
 		if !exists {
-			t.Errorf("Node %s not found", tc.nodeID)
+			t.Errorf("Cell %s not found", tc.nodeID)
 			continue
 		}
 
-		if len(node.Dependencies) != len(tc.expected) {
-			t.Errorf("Node %s: expected %d dependencies, got %d", tc.nodeID, len(tc.expected), len(node.Dependencies))
+		if len(cell.Dependencies) != len(tc.expected) {
+			t.Errorf("Cell %s: expected %d dependencies, got %d", tc.nodeID, len(tc.expected), len(cell.Dependencies))
 			continue
 		}
 
 		// Check each dependency
 		depSet := make(map[string]bool)
-		for _, dep := range node.Dependencies {
+		for _, dep := range cell.Dependencies {
 			depSet[dep] = true
 		}
 
 		for _, expected := range tc.expected {
 			if !depSet[expected] {
-				t.Errorf("Node %s: missing expected dependency %s", tc.nodeID, expected)
+				t.Errorf("Cell %s: missing expected dependency %s", tc.nodeID, expected)
 			}
 		}
 	}
@@ -267,17 +267,17 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 	}
 
 	// Verify we got all 13 nodes from the example directory
-	expectedNodes := []string{
+	expectedCells := []string{
 		"example-api", "example-auth", "example-cache", "example-config", "example-database", "example-frontend",
 		"example-gateway", "example-logger", "example-monitoring", "example-service-a", "example-service-b",
 		"example-service-c", "example-shared-utils",
 	}
 
-	if len(graph.Nodes) != len(expectedNodes) {
-		t.Errorf("Expected %d nodes, got %d", len(expectedNodes), len(graph.Nodes))
-		t.Logf("Nodes found: %v", func() []string {
-			names := make([]string, len(graph.Nodes))
-			for i, n := range graph.Nodes {
+	if len(graph.Cells) != len(expectedCells) {
+		t.Errorf("Expected %d cells, got %d", len(expectedCells), len(graph.Cells))
+		t.Logf("Cells found: %v", func() []string {
+			names := make([]string, len(graph.Cells))
+			for i, n := range graph.Cells {
 				names[i] = n.ID
 			}
 			return names
@@ -285,34 +285,34 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 	}
 
 	// Create a map for easier lookup
-	nodeMap := make(map[string]core.Node)
-	for _, node := range graph.Nodes {
-		nodeMap[node.ID] = node
+	cellMap := make(map[string]core.Cell)
+	for _, cell := range graph.Cells {
+		cellMap[cell.ID] = cell
 	}
 
-	// Verify each expected node exists
-	for _, nodeName := range expectedNodes {
-		if _, exists := nodeMap[nodeName]; !exists {
-			t.Errorf("Expected node %s not found in graph", nodeName)
+	// Verify each expected cell exists
+	for _, cellName := range expectedCells {
+		if _, exists := cellMap[cellName]; !exists {
+			t.Errorf("Expected cell %s not found in graph", cellName)
 		}
 	}
 
 	// Verify specific dependencies from our moon.yml files
-	apiNode, exists := nodeMap["example-api"]
+	apiCell, exists := cellMap["example-api"]
 	if exists {
 		expectedDeps := []string{"example-service-a", "example-service-b", "example-service-c", "example-auth"}
-		if len(apiNode.Dependencies) != len(expectedDeps) {
-			t.Errorf("API node: expected %d dependencies, got %d", len(expectedDeps), len(apiNode.Dependencies))
+		if len(apiCell.Dependencies) != len(expectedDeps) {
+			t.Errorf("API cell: expected %d dependencies, got %d", len(expectedDeps), len(apiCell.Dependencies))
 		}
 
 		depSet := make(map[string]bool)
-		for _, dep := range apiNode.Dependencies {
+		for _, dep := range apiCell.Dependencies {
 			depSet[dep] = true
 		}
 
 		for _, expected := range expectedDeps {
 			if !depSet[expected] {
-				t.Errorf("API node: missing expected dependency %s", expected)
+				t.Errorf("API cell: missing expected dependency %s", expected)
 			}
 		}
 	}

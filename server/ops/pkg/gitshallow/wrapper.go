@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // GitShallowConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This specification defines the devcontainer management system for vibethis, including mount strategies, configuration handling, and the new `devcontainer_management` activity type that enables programmatic control of devcontainers from workflows.
+This specification defines the devcontainer management system for vibethis, including mount strategies, configuration handling, and the new `devcontainer_management` op type that enables programmatic control of devcontainers from recipes.
 
 ## Architecture
 
@@ -11,7 +11,7 @@ This specification defines the devcontainer management system for vibethis, incl
 1. **Devcontainer CLI Integration**: Wraps the VS Code devcontainer CLI
 2. **Mount Configuration**: Manages complex bind mount scenarios
 3. **Container Lifecycle**: Start, stop, and monitor containers
-4. **Activity Implementation**: Temporal activity for devcontainer operations
+4. **Op Implementation**: Temporal activity for devcontainer operations
 
 ## Mount Strategy
 
@@ -92,9 +92,9 @@ Cells can provide their own devcontainer.json to:
 - Configure environment variables
 - Set up databases or services
 
-## Activity Implementation
+## Op Implementation
 
-### Activity Type: devcontainer_management
+### Op Type: devcontainer_management
 
 ```go
 package devcontainer
@@ -138,7 +138,7 @@ type DevcontainerUpOutput struct {
 
 ### CLI Integration
 
-The activity wraps the devcontainer CLI with additional functionality:
+The op wraps the devcontainer CLI with additional functionality:
 
 ```bash
 # Start container with mounts
@@ -162,7 +162,7 @@ devcontainer down \
 ### Implementation Details
 
 ```go
-func (a *DevcontainerActivity) Execute(ctx context.Context, config DevcontainerManagementConfig, input DevcontainerUpInput) (DevcontainerUpOutput, error) {
+func (a *DevcontainerOp) Execute(ctx context.Context, config DevcontainerManagementConfig, input DevcontainerUpInput) (DevcontainerUpOutput, error) {
     switch config.Operation {
     case "up":
         return a.startContainer(ctx, input)
@@ -175,7 +175,7 @@ func (a *DevcontainerActivity) Execute(ctx context.Context, config DevcontainerM
     }
 }
 
-func (a *DevcontainerActivity) startContainer(ctx context.Context, input DevcontainerUpInput) (DevcontainerUpOutput, error) {
+func (a *DevcontainerOp) startContainer(ctx context.Context, input DevcontainerUpInput) (DevcontainerUpOutput, error) {
     args := []string{
         "up",
         "--workspace-folder", input.WorkspaceFolder,
@@ -326,7 +326,7 @@ type DevcontainerError struct {
 1. **Container Metrics**: CPU, memory, network, disk usage
 2. **Lifecycle Events**: Start, stop, error events
 3. **Mount Performance**: I/O statistics per mount
-4. **Activity Duration**: Time spent in each operation
+4. **Op Duration**: Time spent in each operation
 
 ### Logging
 

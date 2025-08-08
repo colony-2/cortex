@@ -114,7 +114,7 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 			
 			// Create the input for the activity
 			activityInput := Input{
-				BoxID:      recipeConfig["box_id"].(string),
+				BoxID:      recipeConfig["cell_id"].(string),
 				ActivityID: stepName,
 				Context:    result["outputs"].(map[string]interface{}),
 			}
@@ -184,7 +184,7 @@ func TestRecipeWithSingleInputActivity(t *testing.T) {
 	// Define a recipe configuration with an input step
 	recipeConfig := map[string]interface{}{
 		"id":     "deployment-recipe",
-		"box_id": "deployment-box",
+		"cell_id": "deployment-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
 				"name": "pre_check",
@@ -273,7 +273,7 @@ func TestRecipeWithMultiFieldInput(t *testing.T) {
 	
 	recipeConfig := map[string]interface{}{
 		"id":     "config-recipe",
-		"box_id": "config-box",
+		"cell_id": "config-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
 				"name": "get_config",
@@ -390,7 +390,7 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 	
 	recipeConfig := map[string]interface{}{
 		"id":     "conditional-recipe",
-		"box_id": "emergency-box",
+		"cell_id": "emergency-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
 				"name": "approval",
@@ -455,7 +455,7 @@ func TestRecipeWithInputTimeout(t *testing.T) {
 	
 	recipeConfig := map[string]interface{}{
 		"id":     "timeout-recipe",
-		"box_id": "timeout-box",
+		"cell_id": "timeout-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
 				"name": "quick_decision",
@@ -525,7 +525,7 @@ func TestRecipeWithMultipleInputSteps(t *testing.T) {
 	
 	recipeConfig := map[string]interface{}{
 		"id":     "multi-input-recipe",
-		"box_id": "multi-box",
+		"cell_id": "multi-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
 				"name": "initial_approval",

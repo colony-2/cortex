@@ -1,4 +1,4 @@
-import type { RelationshipGraph, NodePosition } from './types';
+import type { RelationshipGraph, CellPosition } from './types';
 
 // Use relative URLs in production, localhost in development
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
@@ -22,7 +22,7 @@ export async function fetchGraph(): Promise<RelationshipGraph> {
   }
 }
 
-export async function fetchPositions(): Promise<NodePosition[]> {
+export async function fetchPositions(): Promise<CellPosition[]> {
   try {
     const response = await fetch(`${API_BASE}/positions`);
     await handleResponse(response, 'Fetch positions');
@@ -35,7 +35,7 @@ export async function fetchPositions(): Promise<NodePosition[]> {
   }
 }
 
-export async function savePositions(positions: NodePosition[]): Promise<void> {
+export async function savePositions(positions: CellPosition[]): Promise<void> {
   try {
     const response = await fetch(`${API_BASE}/positions`, {
       method: 'POST',
@@ -51,9 +51,9 @@ export async function savePositions(positions: NodePosition[]): Promise<void> {
   }
 }
 
-export async function fetchFiles(nodeId: string, path: string = ''): Promise<{ files: any[], path: string }> {
+export async function fetchFiles(cellId: string, path: string = ''): Promise<{ files: any[], path: string }> {
   try {
-    const url = `${API_BASE}/nodes/${nodeId}/files?path=${encodeURIComponent(path)}`;
+    const url = `${API_BASE}/cells/${cellId}/files?path=${encodeURIComponent(path)}`;
     const response = await fetch(url);
     await handleResponse(response, 'Fetch files');
     return response.json();

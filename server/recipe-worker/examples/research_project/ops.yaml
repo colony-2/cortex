@@ -1,5 +1,5 @@
-activities:
-  - name: research_activity
+ops:
+  - name: research_op
     description: Research information about a given topic
     timeout: 5m
     retry:
@@ -31,7 +31,7 @@ activities:
           query: "{{ .topic }}"
           limit: "{{ .max_sources }}"
           
-  - name: analyze_activity
+  - name: analyze_op
     description: Analyze research data and extract insights
     timeout: 3m
     inputs:
@@ -48,7 +48,7 @@ activities:
         handler: analyzers.ProcessResearch
         runtime: go
         
-  - name: write_report_activity
+  - name: write_report_op
     description: Generate a comprehensive report
     timeout: 10m
     inputs:

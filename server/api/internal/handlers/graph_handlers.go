@@ -18,14 +18,14 @@ func (h *Handlers) GetGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Convert core.Graph to openapi.Graph
-	apiNodes := make([]openapi.Node, len(graph.Nodes))
-	for i, node := range graph.Nodes {
-		apiNodes[i] = openapi.Node{
-			Id:           node.ID,
-			Name:         node.Name,
-			Path:         node.Path,
-			Type:         node.Type,
-			Dependencies: node.Dependencies,
+	apiCells := make([]openapi.Cell, len(graph.Cells))
+	for i, cell := range graph.Cells {
+		apiCells[i] = openapi.Cell{
+			Id:           cell.ID,
+			Name:         cell.Name,
+			Path:         cell.Path,
+			Type:         cell.Type,
+			Dependencies: cell.Dependencies,
 		}
 	}
 
@@ -39,7 +39,7 @@ func (h *Handlers) GetGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiGraph := openapi.Graph{
-		Nodes: apiNodes,
+		Cells: apiCells,
 		Edges: apiEdges,
 	}
 

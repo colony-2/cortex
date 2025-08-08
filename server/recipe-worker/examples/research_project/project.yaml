@@ -1,8 +1,8 @@
 name: research_report_project
 version: "1.0"
-description: Research and report generation workflow
+description: Research and report generation recipe
 
 files:
-  workflow: ./workflow.yaml
-  activities: ./activities.yaml
+  recipe: ./recipe.yaml
+  ops: ./ops.yaml
   agents: ./agents.yaml

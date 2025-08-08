@@ -468,7 +468,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			Timeout:  60,
 		}
 		techInput := Input{
-			BoxID:      "review-box",
+			BoxID:      "review-cell",
 			ActivityID: "tech-approval",
 		}
 		
@@ -490,7 +490,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			Timeout:  60,
 		}
 		secInput := Input{
-			BoxID:      "review-box",
+			BoxID:      "review-cell",
 			ActivityID: "security-approval",
 		}
 		
@@ -513,7 +513,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 				Timeout:  60,
 			}
 			mgmtInput := Input{
-				BoxID:      "review-box",
+				BoxID:      "review-cell",
 				ActivityID: "management-approval",
 			}
 			
@@ -561,7 +561,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			Timeout:  60,
 		}
 		techInput := Input{
-			BoxID:      "review-box",
+			BoxID:      "review-cell",
 			ActivityID: "tech-approval",
 		}
 		
@@ -583,7 +583,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			Timeout:  60,
 		}
 		secInput := Input{
-			BoxID:      "review-box",
+			BoxID:      "review-cell",
 			ActivityID: "security-approval",
 		}
 		
@@ -606,7 +606,7 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 				Timeout:  60,
 			}
 			mgmtInput := Input{
-				BoxID:      "review-box",
+				BoxID:      "review-cell",
 				ActivityID: "management-approval",
 			}
 			

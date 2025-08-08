@@ -1,6 +1,6 @@
-# Workflow using Gemini 2.5-flash for report generation
-name: gemini_research_workflow
-description: Research workflow using Google Gemini AI
+# Recipe using Gemini 2.5-flash for report generation
+name: gemini_research_recipe
+description: Research recipe using Google Gemini AI
 version: "1.0"
 
 inputs:

@@ -45,9 +45,9 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 
 	// Test 2: Save some positions
 	testPositions := []core.Position{
-		{NodeID: "node1", X: 100.5, Y: 200.5},
-		{NodeID: "node2", X: 300.0, Y: 400.0},
-		{NodeID: "node3", X: 500.5, Y: 600.5},
+		{CellID: "cell1", X: 100.5, Y: 200.5},
+		{CellID: "cell2", X: 300.0, Y: 400.0},
+		{CellID: "cell3", X: 500.5, Y: 600.5},
 	}
 
 	body, err := json.Marshal(testPositions)
@@ -84,26 +84,26 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 	// Verify each position
 	posMap := make(map[string]core.Position)
 	for _, pos := range positions {
-		posMap[pos.NodeID] = pos
+		posMap[pos.CellID] = pos
 	}
 
 	for _, expected := range testPositions {
-		actual, exists := posMap[expected.NodeID]
+		actual, exists := posMap[expected.CellID]
 		if !exists {
-			t.Errorf("Position for node %s not found", expected.NodeID)
+			t.Errorf("Position for cell %s not found", expected.CellID)
 			continue
 		}
 
 		if actual.X != expected.X || actual.Y != expected.Y {
-			t.Errorf("Position mismatch for node %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
-				expected.NodeID, expected.X, expected.Y, actual.X, actual.Y)
+			t.Errorf("Position mismatch for cell %s: expected (%.1f, %.1f), got (%.1f, %.1f)",
+				expected.CellID, expected.X, expected.Y, actual.X, actual.Y)
 		}
 	}
 
 	// Test 4: Update positions (partial update)
 	updatedPositions := []core.Position{
-		{NodeID: "node1", X: 150.0, Y: 250.0}, // Updated
-		{NodeID: "node4", X: 700.0, Y: 800.0}, // New
+		{CellID: "cell1", X: 150.0, Y: 250.0}, // Updated
+		{CellID: "cell4", X: 700.0, Y: 800.0}, // New
 	}
 
 	body, err = json.Marshal(updatedPositions)
@@ -134,32 +134,32 @@ func TestIntegrationPositionPersistence(t *testing.T) {
 		t.Errorf("Expected 4 positions after update, got %d", len(positions))
 	}
 
-	// Verify node1 was updated
+	// Verify cell1 was updated
 	posMap = make(map[string]core.Position)
 	for _, pos := range positions {
-		posMap[pos.NodeID] = pos
+		posMap[pos.CellID] = pos
 	}
 
-	node1 := posMap["node1"]
-	if node1.X != 150.0 || node1.Y != 250.0 {
-		t.Errorf("node1 not updated correctly: expected (150.0, 250.0), got (%.1f, %.1f)",
-			node1.X, node1.Y)
+	cell1 := posMap["cell1"]
+	if cell1.X != 150.0 || cell1.Y != 250.0 {
+		t.Errorf("cell1 not updated correctly: expected (150.0, 250.0), got (%.1f, %.1f)",
+			cell1.X, cell1.Y)
 	}
 
-	// Verify node4 was added
-	if _, exists := posMap["node4"]; !exists {
-		t.Error("node4 was not added")
+	// Verify cell4 was added
+	if _, exists := posMap["cell4"]; !exists {
+		t.Error("cell4 was not added")
 	}
 
-	// Verify node2 and node3 remain unchanged
-	node2 := posMap["node2"]
-	if node2.X != 300.0 || node2.Y != 400.0 {
-		t.Error("node2 was unexpectedly modified")
+	// Verify cell2 and cell3 remain unchanged
+	cell2 := posMap["cell2"]
+	if cell2.X != 300.0 || cell2.Y != 400.0 {
+		t.Error("cell2 was unexpectedly modified")
 	}
 
-	node3 := posMap["node3"]
-	if node3.X != 500.5 || node3.Y != 600.5 {
-		t.Error("node3 was unexpectedly modified")
+	cell3 := posMap["cell3"]
+	if cell3.X != 500.5 || cell3.Y != 600.5 {
+		t.Error("cell3 was unexpectedly modified")
 	}
 }
 

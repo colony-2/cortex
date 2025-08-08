@@ -78,7 +78,7 @@ func (s *Storage) SavePosition(ctx context.Context, pos core.Position) error {
 			return fmt.Errorf("failed to marshal position: %w", err)
 		}
 
-		return b.Put([]byte(pos.NodeID), data)
+		return b.Put([]byte(pos.CellID), data)
 	})
 }
 
@@ -113,7 +113,7 @@ func (s *Storage) GetPositions(ctx context.Context) ([]core.Position, error) {
 }
 
 // DeletePosition removes a position from the database
-func (s *Storage) DeletePosition(ctx context.Context, nodeID string) error {
+func (s *Storage) DeletePosition(ctx context.Context, cellID string) error {
 	if s.readOnly {
 		return fmt.Errorf("storage is read-only")
 	}
@@ -127,12 +127,12 @@ func (s *Storage) DeletePosition(ctx context.Context, nodeID string) error {
 			return fmt.Errorf("positions bucket not found")
 		}
 
-		return b.Delete([]byte(nodeID))
+		return b.Delete([]byte(cellID))
 	})
 }
 
-// SaveContainerID saves a container ID for a node
-func (s *Storage) SaveContainerID(ctx context.Context, nodeID, containerID string) error {
+// SaveContainerID saves a container ID for a cell
+func (s *Storage) SaveContainerID(ctx context.Context, cellID, containerID string) error {
 	if s.readOnly {
 		return fmt.Errorf("storage is read-only")
 	}
@@ -146,12 +146,12 @@ func (s *Storage) SaveContainerID(ctx context.Context, nodeID, containerID strin
 			return fmt.Errorf("container ID bucket not found")
 		}
 
-		return b.Put([]byte(nodeID), []byte(containerID))
+		return b.Put([]byte(cellID), []byte(containerID))
 	})
 }
 
-// GetContainerID retrieves a container ID for a node
-func (s *Storage) GetContainerID(ctx context.Context, nodeID string) (string, error) {
+// GetContainerID retrieves a container ID for a cell
+func (s *Storage) GetContainerID(ctx context.Context, cellID string) (string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -163,9 +163,9 @@ func (s *Storage) GetContainerID(ctx context.Context, nodeID string) (string, er
 			return fmt.Errorf("container ID bucket not found")
 		}
 
-		data := b.Get([]byte(nodeID))
+		data := b.Get([]byte(cellID))
 		if data == nil {
-			return fmt.Errorf("container ID not found for node %s", nodeID)
+			return fmt.Errorf("container ID not found for cell %s", cellID)
 		}
 
 		containerID = string(data)
@@ -179,8 +179,8 @@ func (s *Storage) GetContainerID(ctx context.Context, nodeID string) (string, er
 	return containerID, nil
 }
 
-// DeleteContainerID removes a container ID for a node
-func (s *Storage) DeleteContainerID(ctx context.Context, nodeID string) error {
+// DeleteContainerID removes a container ID for a cell
+func (s *Storage) DeleteContainerID(ctx context.Context, cellID string) error {
 	if s.readOnly {
 		return fmt.Errorf("storage is read-only")
 	}
@@ -194,7 +194,7 @@ func (s *Storage) DeleteContainerID(ctx context.Context, nodeID string) error {
 			return fmt.Errorf("container ID bucket not found")
 		}
 
-		return b.Delete([]byte(nodeID))
+		return b.Delete([]byte(cellID))
 	})
 }
 

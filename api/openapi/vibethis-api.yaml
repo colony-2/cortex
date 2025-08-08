@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: VibeThis API
-  description: API for managing nodes (boxes), their files, git operations, and containers in the VibeThis application
+  description: API for managing cells (boxes), their files, git operations, and containers in the VibeThis application
   version: 1.0.0
   
 servers:
@@ -12,7 +12,7 @@ paths:
   /api/graph:
     get:
       summary: Get complete dependency graph
-      description: Retrieves the complete graph structure of all nodes and their dependencies
+      description: Retrieves the complete graph structure of all cells and their dependencies
       operationId: getGraph
       tags:
         - Graph
@@ -24,24 +24,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/Graph'
               example:
-                nodes:
-                  - id: "node1"
-                    name: "Example Node"
-                    path: "/path/to/node1"
+                cells:
+                  - id: "cell1"
+                    name: "Example Cell"
+                    path: "/path/to/cell1"
                     type: "module"
-                    dependencies: ["node2", "node3"]
-                  - id: "node2"
-                    name: "Another Node"
-                    path: "/path/to/node2"
+                    dependencies: ["cell2", "cell3"]
+                  - id: "cell2"
+                    name: "Another Cell"
+                    path: "/path/to/cell2"
                     type: "library"
                     dependencies: []
                 edges:
                   - id: "edge1"
-                    source: "node1"
-                    target: "node2"
+                    source: "cell1"
+                    target: "cell2"
                   - id: "edge2"
-                    source: "node1"
-                    target: "node3"
+                    source: "cell1"
+                    target: "cell3"
         '500':
           description: Failed to build graph
           content:
@@ -52,8 +52,8 @@ paths:
 
   /api/positions:
     get:
-      summary: Get node positions
-      description: Retrieves saved visual positions for all nodes in the graph UI
+      summary: Get cell positions
+      description: Retrieves saved visual positions for all cells in the graph UI
       operationId: getPositions
       tags:
         - Positions
@@ -67,10 +67,10 @@ paths:
                 items:
                   $ref: '#/components/schemas/Position'
               example:
-                - nodeId: "node1"
+                - cellId: "cell1"
                   x: 100.0
                   y: 200.0
-                - nodeId: "node2"
+                - cellId: "cell2"
                   x: 300.0
                   y: 400.0
         '500':
@@ -81,8 +81,8 @@ paths:
                 type: string
                 
     post:
-      summary: Save node positions
-      description: Saves or updates visual positions for nodes in the graph UI
+      summary: Save cell positions
+      description: Saves or updates visual positions for cells in the graph UI
       operationId: savePositions
       tags:
         - Positions
@@ -95,10 +95,10 @@ paths:
               items:
                 $ref: '#/components/schemas/Position'
             example:
-              - nodeId: "node1"
+              - cellId: "cell1"
                 x: 100.0
                 y: 200.0
-              - nodeId: "node2"
+              - cellId: "cell2"
                 x: 300.0
                 y: 400.0
       responses:
@@ -122,24 +122,24 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/files:
+  /api/cells/{cellId}/files:
     get:
-      summary: List files in node directory
-      description: Lists all files and directories within a node's directory
-      operationId: listNodeFiles
+      summary: List files in cell directory
+      description: Lists all files and directories within a cell's directory
+      operationId: listCellFiles
       tags:
         - Files
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
         - name: path
           in: query
           required: false
-          description: Subdirectory path within the node (optional)
+          description: Subdirectory path within the cell (optional)
           schema:
             type: string
       responses:
@@ -171,12 +171,12 @@ paths:
                     type: "directory"
                 path: ""
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Internal server error
           content:
@@ -184,24 +184,24 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/files/{filePath}:
+  /api/cells/{cellId}/files/{filePath}:
     get:
       summary: Read file content
-      description: Reads the content of a specific file within a node's directory
-      operationId: readNodeFile
+      description: Reads the content of a specific file within a cell's directory
+      operationId: readCellFile
       tags:
         - Files
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
         - name: filePath
           in: path
           required: true
-          description: Path to the file relative to node directory
+          description: Path to the file relative to cell directory
           schema:
             type: string
       responses:
@@ -215,12 +215,12 @@ paths:
                 # Example File Content
                 This is the content of the file.
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to read file
           content:
@@ -230,21 +230,21 @@ paths:
                 
     put:
       summary: Write file content
-      description: Updates or creates a file with new content within a node's directory
-      operationId: writeNodeFile
+      description: Updates or creates a file with new content within a cell's directory
+      operationId: writeCellFile
       tags:
         - Files
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
         - name: filePath
           in: path
           required: true
-          description: Path to the file relative to node directory
+          description: Path to the file relative to cell directory
           schema:
             type: string
       requestBody:
@@ -278,12 +278,12 @@ paths:
                 invalidJson:
                   value: "Invalid JSON body"
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to write file
           content:
@@ -291,18 +291,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/git/status:
+  /api/cells/{cellId}/git/status:
     get:
       summary: Get Git status
-      description: Retrieves the Git status for a node's directory
+      description: Retrieves the Git status for a cell's directory
       operationId: getGitStatus
       tags:
         - Git
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -324,12 +324,12 @@ paths:
                 behind: 0
                 hasRemote: true
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to get Git status
           content:
@@ -337,18 +337,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/git/diff:
+  /api/cells/{cellId}/git/diff:
     get:
       summary: Get Git diff
-      description: Retrieves the diff of uncommitted changes in a node's directory
+      description: Retrieves the diff of uncommitted changes in a cell's directory
       operationId: getGitDiff
       tags:
         - Git
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
         - name: staged
@@ -375,12 +375,12 @@ paths:
                 +New line
                  Unchanged line
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to get diff
           content:
@@ -388,18 +388,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/git/history:
+  /api/cells/{cellId}/git/history:
     get:
       summary: Get Git commit history
-      description: Retrieves the commit history for a node's directory
+      description: Retrieves the commit history for a cell's directory
       operationId: getGitHistory
       tags:
         - Git
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
         - name: limit
@@ -431,12 +431,12 @@ paths:
                   date: "2024-01-14T15:45:00Z"
                   message: "Fix bug in module"
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to get history
           content:
@@ -444,7 +444,7 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/git/commit:
+  /api/cells/{cellId}/git/commit:
     post:
       summary: Create Git commit
       description: Creates a new Git commit with optional file staging
@@ -452,10 +452,10 @@ paths:
       tags:
         - Git
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       requestBody:
@@ -495,12 +495,12 @@ paths:
                 missingMessage:
                   value: "Commit message is required"
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to create commit
           content:
@@ -508,18 +508,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/container/status:
+  /api/cells/{cellId}/container/status:
     get:
       summary: Get container status
-      description: Retrieves the status of a container associated with a node
+      description: Retrieves the status of a container associated with a cell
       operationId: getContainerStatus
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -556,18 +556,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/container/create:
+  /api/cells/{cellId}/container/create:
     post:
       summary: Create container
-      description: Creates a new devcontainer for the specified node
+      description: Creates a new devcontainer for the specified cell
       operationId: createContainer
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -584,12 +584,12 @@ paths:
               example:
                 containerId: "abc123def456"
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
                 type: string
-              example: "Node not found"
+              example: "Cell not found"
         '500':
           description: Failed to create container
           content:
@@ -602,7 +602,7 @@ paths:
                 saveError:
                   value: "Failed to save container ID"
 
-  /api/nodes/{nodeId}/container/start:
+  /api/cells/{cellId}/container/start:
     post:
       summary: Start container
       description: Starts an existing container
@@ -610,10 +610,10 @@ paths:
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -633,7 +633,7 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/container/stop:
+  /api/cells/{cellId}/container/stop:
     post:
       summary: Stop container
       description: Stops a running container
@@ -641,10 +641,10 @@ paths:
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -664,7 +664,7 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/container/restart:
+  /api/cells/{cellId}/container/restart:
     post:
       summary: Restart container
       description: Restarts a container
@@ -672,10 +672,10 @@ paths:
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -695,18 +695,18 @@ paths:
               schema:
                 type: string
 
-  /api/nodes/{nodeId}/container/reset:
+  /api/cells/{cellId}/container/reset:
     post:
       summary: Reset container
-      description: Removes a container and clears its association with the node
+      description: Removes a container and clears its association with the cell
       operationId: resetContainer
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       responses:
@@ -731,18 +731,18 @@ paths:
                 deleteError:
                   value: "Failed to delete container ID"
 
-  /api/nodes/{nodeId}/container/devcontainer:
+  /api/cells/{cellId}/container/devcontainer:
     put:
       summary: Update devcontainer configuration
-      description: Updates or creates the devcontainer.json file for a node
+      description: Updates or creates the devcontainer.json file for a cell
       operationId: updateDevcontainer
       tags:
         - Container
       parameters:
-        - name: nodeId
+        - name: cellId
           in: path
           required: true
-          description: ID of the node
+          description: ID of the cell
           schema:
             type: string
       requestBody:
@@ -767,7 +767,7 @@ paths:
               schema:
                 type: string
         '404':
-          description: Node not found
+          description: Cell not found
           content:
             text/plain:
               schema:
@@ -781,7 +781,7 @@ paths:
 
 components:
   schemas:
-    Node:
+    Cell:
       type: object
       required:
         - id
@@ -792,21 +792,21 @@ components:
       properties:
         id:
           type: string
-          description: Unique identifier for the node
+          description: Unique identifier for the cell
         name:
           type: string
-          description: Display name of the node
+          description: Display name of the cell
         path:
           type: string
-          description: File system path to the node directory
+          description: File system path to the cell directory
         type:
           type: string
-          description: Type of node (e.g., module, library)
+          description: Type of cell (e.g., module, library)
         dependencies:
           type: array
           items:
             type: string
-          description: List of node IDs this node depends on
+          description: List of cell IDs this cell depends on
 
     Edge:
       type: object
@@ -820,22 +820,22 @@ components:
           description: Unique identifier for the edge
         source:
           type: string
-          description: Node ID of the source (from)
+          description: Cell ID of the source (from)
         target:
           type: string
-          description: Node ID of the target (to)
+          description: Cell ID of the target (to)
 
     Graph:
       type: object
       required:
-        - nodes
+        - cells
         - edges
       properties:
-        nodes:
+        cells:
           type: array
           items:
-            $ref: '#/components/schemas/Node'
-          description: List of all nodes in the graph
+            $ref: '#/components/schemas/Cell'
+          description: List of all cells in the graph
         edges:
           type: array
           items:
@@ -845,13 +845,13 @@ components:
     Position:
       type: object
       required:
-        - nodeId
+        - cellId
         - x
         - y
       properties:
-        nodeId:
+        cellId:
           type: string
-          description: ID of the node this position belongs to
+          description: ID of the cell this position belongs to
         x:
           type: number
           format: double
@@ -875,7 +875,7 @@ components:
           description: File or directory name
         path:
           type: string
-          description: Relative path from node directory
+          description: Relative path from cell directory
         isDir:
           type: boolean
           description: Whether this is a directory
@@ -967,10 +967,10 @@ tags:
   - name: Graph
     description: Operations related to the dependency graph
   - name: Positions
-    description: Operations for managing node positions in the UI
+    description: Operations for managing cell positions in the UI
   - name: Files
-    description: File system operations within node directories
+    description: File system operations within cell directories
   - name: Git
-    description: Git repository operations for nodes
+    description: Git repository operations for cells
   - name: Container
     description: DevContainer lifecycle management

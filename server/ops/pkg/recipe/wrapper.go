@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/activity/pkg/types"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // RecipeConfig defines the configuration for recipe activities

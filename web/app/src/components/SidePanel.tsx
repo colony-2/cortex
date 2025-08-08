@@ -5,14 +5,14 @@ import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, Container
 import { FileBrowser } from '@vibethis/files';
 import { EnvEditor } from '@vibethis/config';
 import { GitChanges } from '@vibethis/changes';
-import type { DependencyNode } from '@vibethis/shared';
+import type { DependencyCell } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
 
 const { Title } = Typography;
 const { TextArea } = Input;
 
 interface SidePanelProps {
-  selectedNode: DependencyNode | null;
+  selectedCell: DependencyCell | null;
 }
 
 // Claude Code subtab content with section headers
@@ -118,13 +118,13 @@ const ConfigurationTabs = () => {
   );
 };
 
-// Config tabs for selected node
-const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
-  const { boxId, subtab } = useParams<{ boxId?: string; subtab?: string }>();
+// Config tabs for selected cell
+const CellConfigTabs = ({ cell }: { cell: DependencyCell | null }) => {
+  const { cellId, subtab } = useParams<{ cellId?: string; subtab?: string }>();
   const navigate = useNavigate();
   
-  // Use either the node ID or the boxId from URL
-  const nodeId = node?.id || boxId;
+  // Use either the cell ID or the cellId from URL
+  const currentCellId = cell?.id || cellId;
   const items = [
     {
       key: 'env',
@@ -134,7 +134,7 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
           Env
         </span>
       ),
-      children: node ? <EnvEditor node={node} /> : <div style={{ padding: '16px' }}>Loading...</div>,
+      children: cell ? <EnvEditor cell={cell} /> : <div style={{ padding: '16px' }}>Loading...</div>,
     },
     {
       key: 'claude',
@@ -152,8 +152,8 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
     <Tabs
       activeKey={subtab || 'env'}
       onChange={(key) => {
-        if (nodeId) {
-          const path = navigateToPath({ boxId: nodeId, tab: 'config', subtab: key });
+        if (currentCellId) {
+          const path = navigateToPath({ cellId: currentCellId, tab: 'config', subtab: key });
           navigate(path);
         }
       }}
@@ -164,15 +164,15 @@ const NodeConfigTabs = ({ node }: { node: DependencyNode | null }) => {
   );
 };
 
-export default function SidePanel({ selectedNode }: SidePanelProps) {
-  const { boxId, tab, subtab } = useParams<{ boxId?: string; tab?: string; subtab?: string }>();
+export default function SidePanel({ selectedCell }: SidePanelProps) {
+  const { cellId, tab, subtab } = useParams<{ cellId?: string; tab?: string; subtab?: string }>();
   const navigate = useNavigate();
   
-  // If we have a boxId in the URL, we should show node-specific tabs
-  const showNodeTabs = !!boxId;
+  // If we have a cellId in the URL, we should show cell-specific tabs
+  const showCellTabs = !!cellId;
   
-  // Initialize activeTab from URL or default based on whether we're showing node tabs
-  const defaultTab = showNodeTabs ? 'config' : 'config';
+  // Initialize activeTab from URL or default based on whether we're showing cell tabs
+  const defaultTab = showCellTabs ? 'config' : 'config';
   const [activeTab, setActiveTab] = useState<string>(tab || defaultTab);
 
   // Update active tab when URL changes
@@ -182,25 +182,25 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
     } else {
       setActiveTab('config');
     }
-  }, [tab, showNodeTabs]);
+  }, [tab, showCellTabs]);
 
   const handleTabChange = (key: string) => {
     setActiveTab(key);
-    if (boxId) {
-      const path = navigateToPath({ boxId, tab: key });
+    if (cellId) {
+      const path = navigateToPath({ cellId, tab: key });
       navigate(path);
     }
   };
 
   const handleGitTabChange = (gitTab: string) => {
-    if (boxId) {
-      const path = navigateToPath({ boxId, tab: 'changes', subtab: gitTab });
+    if (cellId) {
+      const path = navigateToPath({ cellId, tab: 'changes', subtab: gitTab });
       navigate(path);
     }
   };
   
-  // Show node-specific tabs if we have a boxId OR selectedNode
-  const items = (showNodeTabs || selectedNode) ? [
+  // Show cell-specific tabs if we have a cellId OR selectedCell
+  const items = (showCellTabs || selectedCell) ? [
     {
       key: 'files',
       label: (
@@ -209,7 +209,7 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
           Files
         </span>
       ),
-      children: <FileBrowser node={selectedNode} boxId={boxId} />,
+      children: <FileBrowser cell={selectedCell} cellId={cellId} />,
     },
     {
       key: 'config',
@@ -219,7 +219,7 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
           Config
         </span>
       ),
-      children: <NodeConfigTabs node={selectedNode} />,
+      children: <CellConfigTabs cell={selectedCell} />,
     },
     {
       key: 'changes',
@@ -229,7 +229,7 @@ export default function SidePanel({ selectedNode }: SidePanelProps) {
           Changes
         </span>
       ),
-      children: <GitChanges node={selectedNode} activeTab={subtab} onTabChange={handleGitTabChange} />,
+      children: <GitChanges cell={selectedCell} activeTab={subtab} onTabChange={handleGitTabChange} />,
     },
   ] : [
     {

@@ -9,10 +9,10 @@ The `server/core` directory defines the foundational domain models and interface
 ### Graph Data Structures
 The core module defines the fundamental graph-based data model used throughout vibethis:
 
-- **Node**: Represents entities in the dependency graph with ID, name, path, type, and dependencies
-- **Edge**: Defines directed relationships between nodes (source → target)
-- **Graph**: Aggregates nodes and edges into a complete dependency structure
-- **Position**: Tracks visual positioning of nodes in the UI (x, y coordinates)
+- **Cell**: Represents entities in the dependency graph with ID, name, path, type, and dependencies
+- **Edge**: Defines directed relationships between cells (source → target)
+- **Graph**: Aggregates cells and edges into a complete dependency structure
+- **Position**: Tracks visual positioning of cells in the UI (x, y coordinates)
 
 These types are JSON-serializable and form the primary data exchange format between backend and frontend.
 
@@ -20,14 +20,14 @@ These types are JSON-serializable and form the primary data exchange format betw
 
 ### Storage Interface
 Defines persistent storage operations contract:
-- Position management (save, get, delete node positions)
-- Container ID mapping (associate nodes with Docker containers)
+- Position management (save, get, delete cell positions)
+- Container ID mapping (associate cells with Docker containers)
 - Lifecycle management (close/cleanup)
 
 ### GraphBuilder Interface
 Defines graph construction contract:
 - Build complete dependency graphs from filesystem
-- Retrieve individual nodes by ID
+- Retrieve individual cells by ID
 
 ## Integration Patterns
 
@@ -40,7 +40,7 @@ The core module follows a pure interface pattern:
 - **storage**: Implements the Storage interface with BoltDB and memory backends
 - **graph**: Implements the GraphBuilder interface for filesystem analysis
 - **api**: Uses core types for HTTP request/response models
-- **container**: Uses node IDs from core for container management
+- **container**: Uses cell IDs from core for container management
 
 ## Design Decisions
 
