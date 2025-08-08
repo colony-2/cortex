@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Tabs, Empty, Typography, Input, List } from 'antd';
-import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { Tabs, Empty, Typography, Input, List, Badge } from 'antd';
+import { FileOutlined, CodeOutlined, SettingOutlined, HistoryOutlined, ContainerOutlined, EditOutlined, CheckSquareOutlined, AppstoreOutlined, FormOutlined } from '@ant-design/icons';
 import { FileBrowser } from '@vibethis/files';
 import { EnvEditor } from '@vibethis/config';
 import { GitChanges } from '@vibethis/changes';
 import type { DependencyCell } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
+import InputFormsTab from './InputFormsTab';
+import { inputActivityService } from '@vibethis/shared/src/services/inputActivityService';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -167,6 +169,7 @@ const CellConfigTabs = ({ cell }: { cell: DependencyCell | null }) => {
 export default function SidePanel({ selectedCell }: SidePanelProps) {
   const { cellId, tab, subtab } = useParams<{ cellId?: string; tab?: string; subtab?: string }>();
   const navigate = useNavigate();
+  const [pendingInputCount, setPendingInputCount] = useState(0);
   
   // If we have a cellId in the URL, we should show cell-specific tabs
   const showCellTabs = !!cellId;
@@ -174,6 +177,36 @@ export default function SidePanel({ selectedCell }: SidePanelProps) {
   // Initialize activeTab from URL or default based on whether we're showing cell tabs
   const defaultTab = showCellTabs ? 'config' : 'config';
   const [activeTab, setActiveTab] = useState<string>(tab || defaultTab);
+  
+  // Track pending inputs for the current cell
+  useEffect(() => {
+    const effectiveCellId = selectedCell?.id || cellId;
+    if (!effectiveCellId) {
+      setPendingInputCount(0);
+      return;
+    }
+    
+    // Load initial count
+    inputActivityService.getPendingInputs(effectiveCellId).then(inputs => {
+      const pending = inputs.filter(i => i.status === 'pending');
+      setPendingInputCount(pending.length);
+    }).catch(err => {
+      console.error('Failed to load pending inputs count:', err);
+    });
+    
+    // Subscribe to updates
+    const unsubscribe = inputActivityService.subscribe(effectiveCellId, (event) => {
+      // Reload count on any input event
+      inputActivityService.getPendingInputs(effectiveCellId).then(inputs => {
+        const pending = inputs.filter(i => i.status === 'pending');
+        setPendingInputCount(pending.length);
+      }).catch(err => {
+        console.error('Failed to update pending inputs count:', err);
+      });
+    });
+    
+    return unsubscribe;
+  }, [selectedCell?.id, cellId]);
 
   // Update active tab when URL changes
   useEffect(() => {
@@ -210,6 +243,22 @@ export default function SidePanel({ selectedCell }: SidePanelProps) {
         </span>
       ),
       children: <FileBrowser cell={selectedCell} cellId={cellId} />,
+    },
+    {
+      key: 'inputs',
+      label: (
+        <span>
+          <FormOutlined />
+          Inputs
+          {pendingInputCount > 0 && (
+            <Badge count={pendingInputCount} style={{ marginLeft: 8 }} />
+          )}
+        </span>
+      ),
+      children: <InputFormsTab 
+        cell={selectedCell} 
+        cellId={cellId}
+      />,
     },
     {
       key: 'config',

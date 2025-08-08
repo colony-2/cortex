@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Tag, Space } from 'antd';
+import InputBadge from './components/InputBadge';
 
 interface ProFlowCellProps {
   data: {
@@ -12,6 +13,8 @@ interface ProFlowCellProps {
     dependencies: string[];
     onClick?: () => void;
     selected?: boolean;
+    pendingInputCount?: number;
+    inputUrgency?: 'pending' | 'urgent' | 'overdue';
   };
   id: string;
 }
@@ -36,12 +39,21 @@ const ProFlowCell: FC<ProFlowCellProps> = ({ data, id }) => {
         borderRadius: '6px',
         boxShadow: data.selected ? '0 4px 12px rgba(24,144,255,0.15)' : '0 2px 8px rgba(0,0,0,0.06)',
         transition: 'all 0.2s ease',
+        position: 'relative',
       }}
       onClick={() => {
         // Dispatch global event for cell selection
         window.dispatchEvent(new CustomEvent('cellSelected', { detail: { cellId: id } }));
       }}
     >
+      {data.pendingInputCount && data.pendingInputCount > 0 && (
+        <InputBadge 
+          count={data.pendingInputCount}
+          status={data.inputUrgency}
+          cellId={id}
+          size="small"
+        />
+      )}
       <Handle type="target" position={Position.Top} />
       
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0' }}>

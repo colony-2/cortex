@@ -1,10 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { InputActivityProvider } from '@vibethis/shared/src/contexts/InputActivityContext';
 import MainView from './components/MainView';
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <InputActivityProvider>
+        <Routes>
         {/* Default route redirects to /cells */}
         <Route path="/" element={<Navigate to="/cells" replace />} />
         
@@ -18,7 +20,8 @@ function App() {
         
         {/* Catch all - redirect to /cells */}
         <Route path="*" element={<Navigate to="/cells" replace />} />
-      </Routes>
+        </Routes>
+      </InputActivityProvider>
     </BrowserRouter>
   );
 }

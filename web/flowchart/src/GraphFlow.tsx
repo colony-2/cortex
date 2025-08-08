@@ -3,6 +3,7 @@ import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyf
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
 import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyCell, type CellPosition, type DependencyEdge } from '@vibethis/shared';
+import { useInputActivity } from '@vibethis/shared/src/contexts/InputActivityContext';
 import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {
@@ -39,6 +40,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<RelationshipGraph | null>(null);
   const isInitialLoad = useRef(true);
+  const { pendingInputsByCellId } = useInputActivity();
 
   const handleCellClick = useCallback((cellId: string) => {
     const cell = graphRef.current?.cells.find((c: DependencyCell) => c.id === cellId) || null;
@@ -46,7 +48,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
     onCellSelect?.(cell);
   }, [onCellSelect]);
 
-  const layoutCells = useCallback((graphData: RelationshipGraph, savedPositions: CellPosition[], selectedCellId?: string) => {
+  const layoutCells = useCallback((graphData: RelationshipGraph, savedPositions: CellPosition[], selectedCellId?: string, pendingInputsByCellId?: Map<string, any[]>) => {
     // Handle null or undefined cells
     if (!graphData.cells || !Array.isArray(graphData.cells)) {
       setNodes([]);
@@ -64,6 +66,38 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
       const x = savedPosition?.x ?? (index % 4) * 250 + 100;
       const y = savedPosition?.y ?? Math.floor(index / 4) * 150 + 100;
       
+      // Get pending inputs for this cell
+      const cellInputs = pendingInputsByCellId?.get(cell.id) || [];
+      const pendingInputs = cellInputs.filter((i: any) => i.status === 'pending');
+      const pendingInputCount = pendingInputs.length;
+      
+      // Calculate urgency
+      let inputUrgency: 'pending' | 'urgent' | 'overdue' | undefined = undefined;
+      if (pendingInputCount > 0) {
+        const now = new Date().getTime();
+        let hasOverdue = false;
+        let hasUrgent = false;
+        
+        pendingInputs.forEach(input => {
+          const expiresAt = new Date(input.expiresAt).getTime();
+          const timeRemaining = expiresAt - now;
+          
+          if (timeRemaining <= 0) {
+            hasOverdue = true;
+          } else if (timeRemaining <= 5 * 60 * 1000) { // 5 minutes
+            hasUrgent = true;
+          }
+        });
+        
+        if (hasOverdue) {
+          inputUrgency = 'overdue';
+        } else if (hasUrgent) {
+          inputUrgency = 'urgent';
+        } else {
+          inputUrgency = 'pending';
+        }
+      }
+      
       return {
         id: cell.id,
         type: 'custom',
@@ -75,7 +109,9 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
           type: cell.type,
           dependencies: cell.dependencies,
           logo: '📦',
-          selected: selectedCellId === cell.id
+          selected: selectedCellId === cell.id,
+          pendingInputCount,
+          inputUrgency
         },
       };
     });
@@ -93,6 +129,21 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
     setNodes(newNodes);
     setEdges(newEdges);
   }, []); // No dependencies - pure function
+  
+  // Update nodes when input activity changes
+  useEffect(() => {
+    if (graphRef.current && !loading) {
+      // Get current positions from nodes
+      const currentPositions: CellPosition[] = nodes.map(node => ({
+        cellId: node.id,
+        x: node.position.x,
+        y: node.position.y
+      }));
+      
+      // Re-layout with updated input data
+      layoutCells(graphRef.current, currentPositions, selectedCellId, pendingInputsByCellId);
+    }
+  }, [pendingInputsByCellId, loading, nodes, selectedCellId, layoutCells]);
 
   const onNodesChange = useCallback((changes: any) => {
     setNodes((nds) => {
@@ -141,7 +192,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
         ]);
         
         graphRef.current = graphData;
-        layoutCells(graphData, positions, selectedCell?.id);
+        layoutCells(graphData, positions, selectedCell?.id, pendingInputsByCellId);
         
         // Update selectedCell with fresh data if one is selected
         if (selectedCell) {
@@ -180,7 +231,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
         ]);
         
         graphRef.current = graphData;
-        layoutCells(graphData, positions, selectedCellId);
+        layoutCells(graphData, positions, selectedCellId, pendingInputsByCellId);
         setLoading(false);
         isInitialLoad.current = false;
       } catch (err) {
