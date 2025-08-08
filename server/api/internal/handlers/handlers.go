@@ -15,6 +15,13 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// ExtensionRoute represents a route added by an external module
+type ExtensionRoute struct {
+	Method  string
+	Path    string
+	Handler http.HandlerFunc
+}
+
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	storage   core.Storage
@@ -37,6 +44,11 @@ func New(storage core.Storage, graph core.GraphBuilder, files files.Browser, git
 
 // SetupRoutes configures all HTTP routes
 func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
+	return h.SetupRoutesWithExtensions(staticHandler, nil)
+}
+
+// SetupRoutesWithExtensions configures all HTTP routes including extensions
+func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensions []ExtensionRoute) *mux.Router {
 	r := mux.NewRouter()
 
 	// API routes
@@ -68,6 +80,13 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 	api.HandleFunc("/nodes/{nodeId}/container/restart", h.RestartContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/reset", h.ResetContainer).Methods("POST")
 	api.HandleFunc("/nodes/{nodeId}/container/devcontainer", h.UpdateDevcontainer).Methods("PUT")
+
+	// Add extension routes if provided
+	if extensions != nil {
+		for _, ext := range extensions {
+			api.HandleFunc(ext.Path, ext.Handler).Methods(ext.Method)
+		}
+	}
 
 	// Static files and SPA routes (everything not under /api)
 	if staticHandler != nil {

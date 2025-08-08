@@ -3,6 +3,7 @@ package activity
 import (
 	"github.com/divisive-ai/vibethis/server/activity/pkg/command"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/gitshallow"
+	"github.com/divisive-ai/vibethis/server/activity/pkg/input"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/llm"
 	"github.com/divisive-ai/vibethis/server/activity/pkg/recipe"
 )
@@ -23,6 +24,9 @@ func GetAll() []interface{} {
 		
 		// Recipe invocation activities
 		recipe.NewRecipeActivity(),
+		
+		// Input collection activities
+		input.NewInputActivity(),
 		
 		// Note: State machine is no longer an activity - it's now part of the core compiler
 		// See server/recipe-worker/pkg/compiler/statemachine for the new implementation

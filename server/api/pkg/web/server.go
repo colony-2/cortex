@@ -42,6 +42,16 @@ type Dependencies struct {
 	Git       git.Repository
 	Container container.Manager
 	StaticFS  http.FileSystem // Optional: filesystem for static files
+	
+	// ExtensionRoutes allows external modules to add routes
+	ExtensionRoutes []ExtensionRoute
+}
+
+// ExtensionRoute represents a route added by an external module
+type ExtensionRoute struct {
+	Method  string
+	Path    string
+	Handler http.HandlerFunc
 }
 
 // Server represents the HTTP server.
@@ -68,7 +78,20 @@ func NewServer(config Config, deps Dependencies) *Server {
 		staticHandler = handlers.NewSPAHandler(config.StaticPath)
 	}
 
-	router := h.SetupRoutes(staticHandler)
+	// Convert ExtensionRoute to handlers.ExtensionRoute
+	var handlerExtensions []handlers.ExtensionRoute
+	if deps.ExtensionRoutes != nil {
+		handlerExtensions = make([]handlers.ExtensionRoute, len(deps.ExtensionRoutes))
+		for i, ext := range deps.ExtensionRoutes {
+			handlerExtensions[i] = handlers.ExtensionRoute{
+				Method:  ext.Method,
+				Path:    ext.Path,
+				Handler: ext.Handler,
+			}
+		}
+	}
+
+	router := h.SetupRoutesWithExtensions(staticHandler, handlerExtensions)
 
 	// Apply middleware
 	var handler http.Handler = router
