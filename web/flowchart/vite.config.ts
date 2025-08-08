@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts')
+    }
+  },
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
@@ -22,6 +27,8 @@ export default defineConfig({
     }
   },
   test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     exclude: ['tests/**', 'node_modules/**', 'dist/**', '.moon/**']
   }
 });
