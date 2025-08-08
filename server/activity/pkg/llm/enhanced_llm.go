@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -38,6 +37,9 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	if err != nil {
 		return nil, fmt.Errorf("failed to get adapter: %w", err)
 	}
+	
+	// Check if adapter supports file handling
+	fileAdapter, supportsFiles := adapter.(llmadapters.FileAdapter)
 
 	// Build base configuration
 	config := llmadapters.Config{
@@ -69,17 +71,24 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 		finalPrompt = input.Prompt
 	}
 
-	// Resolve and include files if context is provided
+	// Resolve files if context is provided
+	var files []llmadapters.File
 	if input.Context != nil {
 		resolvedFiles, err := resolveArtifacts(ctx, input.Context, previousOutputs)
 		if err != nil {
 			// Log warning but continue
 			fmt.Printf("Warning: failed to resolve artifacts: %v\n", err)
 		} else if len(resolvedFiles) > 0 {
-			// Add file context to the prompt
-			fileContext := buildFileContext(resolvedFiles, input.AdapterName)
-			if fileContext != "" {
-				finalPrompt = fmt.Sprintf("%s\n\n%s", finalPrompt, fileContext)
+			// Convert resolved files to adapter format
+			files = convertToAdapterFiles(resolvedFiles)
+			
+			// If adapter doesn't support files, fall back to text inclusion
+			if !supportsFiles && len(files) > 0 {
+				fileContext := buildFileContext(resolvedFiles, input.AdapterName)
+				if fileContext != "" {
+					finalPrompt = fmt.Sprintf("%s\n\n%s", finalPrompt, fileContext)
+				}
+				files = nil // Clear files since we're using text fallback
 			}
 		}
 	}
@@ -104,9 +113,19 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	}
 
 	// Generate response
-	response, err := adapter.Generate(ctx, finalPrompt, config)
-	if err != nil {
-		return nil, fmt.Errorf("generation failed: %w", err)
+	var response llmadapters.Response
+	if supportsFiles && len(files) > 0 {
+		// Use file-aware generation
+		response, err = fileAdapter.GenerateWithFiles(ctx, finalPrompt, files, config)
+		if err != nil {
+			return nil, fmt.Errorf("generation with files failed: %w", err)
+		}
+	} else {
+		// Use standard generation
+		response, err = adapter.Generate(ctx, finalPrompt, config)
+		if err != nil {
+			return nil, fmt.Errorf("generation failed: %w", err)
+		}
 	}
 
 	// Process response
@@ -438,41 +457,27 @@ type ProviderFacade interface {
 	ClearContext() error
 }
 
-// buildProviderSpecificContext builds provider-specific file context
-func buildProviderSpecificContext(files []ResolvedFile, adapterName string) interface{} {
-	// This would be implemented differently for each provider
-	// For now, return a simple structure that can be adapted
+// convertToAdapterFiles converts resolved files to adapter format
+func convertToAdapterFiles(resolvedFiles []ResolvedFile) []llmadapters.File {
+	files := make([]llmadapters.File, 0, len(resolvedFiles))
 	
-	type FileContent struct {
-		Type     string `json:"type"`
-		Path     string `json:"path,omitempty"`
-		Label    string `json:"label,omitempty"`
-		Content  string `json:"content,omitempty"`
-		MimeType string `json:"mime_type,omitempty"`
-		Base64   string `json:"base64,omitempty"`
-	}
-	
-	var contents []FileContent
-	
-	for _, file := range files {
-		fc := FileContent{
-			Path:     file.Path,
-			Label:    file.Label,
-			MimeType: file.MimeType,
+	for _, rf := range resolvedFiles {
+		file := llmadapters.File{
+			Path:     rf.Path,
+			Name:     rf.Label,
+			Content:  rf.Content,
+			MimeType: rf.MimeType,
+			Type:     llmadapters.GetFileType(rf.MimeType),
+			Metadata: rf.Metadata,
 		}
 		
-		if strings.HasPrefix(file.MimeType, "image/") || file.MimeType == "application/pdf" {
-			// Binary content - use base64
-			fc.Type = "binary"
-			fc.Base64 = base64.StdEncoding.EncodeToString(file.Content)
-		} else {
-			// Text content
-			fc.Type = "text"
-			fc.Content = string(file.Content)
+		// Use label as name if available
+		if file.Name == "" {
+			file.Name = filepath.Base(rf.Path)
 		}
 		
-		contents = append(contents, fc)
+		files = append(files, file)
 	}
 	
-	return contents
+	return files
 }
