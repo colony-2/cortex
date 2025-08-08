@@ -27,35 +27,35 @@ test.describe('Cortex Serve', () => {
     // Wait for the React Flow container to be visible
     await expect(page.locator('.react-flow')).toBeVisible({ timeout: 10000 });
 
-    // Check that API is working by waiting for nodes
+    // Check that API is working by waiting for cells
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
-    // Verify nodes are rendered
-    const nodes = page.locator('.react-flow__node');
-    const nodeCount = await nodes.count();
-    expect(nodeCount, 'Should have rendered nodes').toBeGreaterThan(0);
+    // Verify cells are rendered
+    const cells = page.locator('.react-flow__node');
+    const cellCount = await cells.count();
+    expect(cellCount, 'Should have rendered cells').toBeGreaterThan(0);
 
     // Check that the API endpoints are accessible
     const graphResponse = await page.request.get('http://localhost:8080/api/graph');
     expect(graphResponse.ok(), 'Graph API should return 200').toBe(true);
     
     const graphData = await graphResponse.json();
-    expect(graphData.nodes, 'Graph should have nodes').toBeDefined();
-    expect(graphData.nodes.length, 'Graph should have multiple nodes').toBeGreaterThan(0);
+    expect(graphData.cells, 'Graph should have cells').toBeDefined();
+    expect(graphData.cells.length, 'Graph should have multiple cells').toBeGreaterThan(0);
   });
 
-  test('should display nodes correctly', async ({ page }) => {
-    await page.goto('http://localhost:8080/boxes');
+  test('should display cells correctly', async ({ page }) => {
+    await page.goto('http://localhost:8080/cells');
     
-    // Wait for nodes to load
+    // Wait for cells to load
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
     
-    // Check that at least one node is visible
-    const firstNode = page.locator('.react-flow__node').first();
-    await expect(firstNode).toBeVisible();
+    // Check that at least one cell is visible
+    const firstCell = page.locator('.react-flow__node').first();
+    await expect(firstCell).toBeVisible();
     
-    // Check node contains expected elements
-    const nodeText = await firstNode.textContent();
-    expect(nodeText).toBeTruthy();
+    // Check cell contains expected elements
+    const cellText = await firstCell.textContent();
+    expect(cellText).toBeTruthy();
   });
 });
