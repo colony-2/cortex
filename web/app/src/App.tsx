@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { InputActivityProvider } from '@vibethis/shared/src/contexts/InputActivityContext';
+import { InputActivityProvider } from '@vibethis/shared';
 import MainView from './components/MainView';
 
 function App() {

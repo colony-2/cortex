@@ -8,7 +8,7 @@ import {
   type InputFormDetails,
   type InputEvent,
   type FormResponse 
-} from '@vibethis/shared/src/services/inputActivityService';
+} from '@vibethis/shared';
 import InputFormRenderer from './InputFormRenderer';
 
 const { Title, Text } = Typography;

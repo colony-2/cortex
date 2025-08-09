@@ -22,6 +22,9 @@ export default defineConfig({
     }
   },
   test: {
-    exclude: ['tests/**', 'node_modules/**', 'dist/**', '.moon/**']
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.moon/**', '**/tests/**'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx']
   }
 });

@@ -87,7 +87,7 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     try {
       const inputs = await inputActivityService.getPendingInputs(cellId);
       
-      setPendingInputsByCellId(prev => {
+      setPendingInputsByCellId((prev: Map<string, PendingInput[]>) => {
         const newMap = new Map(prev);
         if (inputs.length === 0) {
           newMap.delete(cellId);
@@ -123,7 +123,7 @@ export function useInputActivityForCell(cellId: string): {
 } {
   const { pendingInputsByCellId } = useInputActivity();
   const pendingInputs = pendingInputsByCellId.get(cellId) || [];
-  const pendingCount = pendingInputs.filter(i => i.status === 'pending').length;
+  const pendingCount = pendingInputs.filter((i: PendingInput) => i.status === 'pending').length;
   
   // Calculate urgency based on expiration times
   let urgency: 'pending' | 'urgent' | 'overdue' | null = null;

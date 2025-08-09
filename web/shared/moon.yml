@@ -47,8 +47,13 @@ tasks:
       runInCI: true
 
   test:
-    command: 'echo "No tests configured"'
+    command: 'npx'
+    args: ['vitest', 'run', 'src']
     platform: 'node'
+    inputs:
+      - 'src/**/*.test.ts'
+      - 'src/**/*.test.tsx'
+      - 'vite.config.ts'
 
   lint:
     command: 'eslint'

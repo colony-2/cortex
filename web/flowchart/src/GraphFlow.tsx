@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
-import { fetchGraph, fetchPositions, savePositions, type RelationshipGraph, type DependencyCell, type CellPosition, type DependencyEdge } from '@vibethis/shared';
-import { useInputActivity } from '@vibethis/shared/src/contexts/InputActivityContext';
+import { fetchGraph, fetchPositions, savePositions, useInputActivity, type RelationshipGraph, type DependencyCell, type CellPosition, type DependencyEdge } from '@vibethis/shared';
 import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {

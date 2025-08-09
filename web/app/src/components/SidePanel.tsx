@@ -8,7 +8,7 @@ import { GitChanges } from '@vibethis/changes';
 import type { DependencyCell } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
 import InputFormsTab from './InputFormsTab';
-import { inputActivityService } from '@vibethis/shared/src/services/inputActivityService';
+import { inputActivityService } from '@vibethis/shared';
 
 const { Title } = Typography;
 const { TextArea } = Input;

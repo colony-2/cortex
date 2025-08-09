@@ -22,7 +22,7 @@ import type {
   InputField, 
   FormContext, 
   FormResponse 
-} from '@vibethis/shared/src/services/inputActivityService';
+} from '@vibethis/shared';
 
 const { TextArea } = Input;
 
