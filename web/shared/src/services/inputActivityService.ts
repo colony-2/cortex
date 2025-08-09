@@ -103,6 +103,11 @@ class InputActivityService extends EventEmitter {
       return;
     }
 
+    // Directly attempt SSE connection
+    this.createEventSource();
+  }
+
+  private createEventSource(): void {
     try {
       this.eventSource = new EventSource(`${API_BASE}/user-inputs/stream`);
 
@@ -121,9 +126,19 @@ class InputActivityService extends EventEmitter {
         }
       };
 
-      this.eventSource.onerror = (error) => {
-        console.error('SSE connection error:', error);
-        this.handleConnectionError();
+      this.eventSource.onerror = () => {
+        // Check if the connection was immediately closed (likely 404)
+        if (this.eventSource?.readyState === 2 && this.reconnectAttempts === 0) {
+          // Connection closed immediately, likely endpoint doesn't exist
+          // Silently disable without logging error
+          this.disconnect();
+          return;
+        }
+        
+        // For subsequent errors, handle reconnection
+        if (this.eventSource?.readyState === 2) {
+          this.handleConnectionError();
+        }
       };
     } catch (error) {
       console.error('Failed to create SSE connection:', error);
@@ -169,7 +184,7 @@ class InputActivityService extends EventEmitter {
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
     this.reconnectTimeout = setTimeout(() => {
-      this.connect();
+      this.createEventSource();
     }, delay);
   }
 

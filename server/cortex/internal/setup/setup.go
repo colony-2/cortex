@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
@@ -12,6 +13,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 )
 
@@ -60,13 +62,34 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		fmt.Fprintf(os.Stderr, "Warning: Could not load static files: %v\n", err)
 	}
 
+	// Set up input management service routes
+	inputService := input.NewInputManagementService()
+	// Initialize with empty dependencies for now (no Temporal client)
+	inputService.Initialize(input.ServiceDependencies{})
+	
+	// Convert input service routes to extension routes
+	// Strip /api prefix since routes are added to the api subrouter
+	var extensionRoutes []web.ExtensionRoute
+	for _, route := range inputService.GetRoutes() {
+		path := route.Path
+		if strings.HasPrefix(path, "/api") {
+			path = strings.TrimPrefix(path, "/api")
+		}
+		extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
+			Method:  route.Method,
+			Path:    path,
+			Handler: route.Handler,
+		})
+	}
+
 	deps := web.Dependencies{
-		Storage:   storageImpl,
-		Graph:     graphBuilder,
-		Files:     fileBrowser,
-		Git:       gitRepo,
-		Container: containerMgr,
-		StaticFS:  staticFS,
+		Storage:         storageImpl,
+		Graph:           graphBuilder,
+		Files:           fileBrowser,
+		Git:             gitRepo,
+		Container:       containerMgr,
+		StaticFS:        staticFS,
+		ExtensionRoutes: extensionRoutes,
 	}
 
 	cleanupFunc := func() {

@@ -15,8 +15,8 @@ test.describe('Cortex Serve', () => {
       errors.push(err.message);
     });
 
-    // Navigate to cortex
-    await page.goto('http://localhost:8080/boxes', { waitUntil: 'networkidle' });
+    // Navigate to cortex - /boxes redirects to /cells
+    await page.goto('http://localhost:8080/cells', { waitUntil: 'networkidle' });
 
     // Check that there are no JavaScript errors
     if (errors.length > 0) {
@@ -27,10 +27,23 @@ test.describe('Cortex Serve', () => {
     // Wait for the React Flow container to be visible
     await expect(page.locator('.react-flow')).toBeVisible({ timeout: 10000 });
 
-    // Check that API is working by waiting for cells
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    // Wait for React Flow to initialize and render nodes
+    // The nodes might exist in DOM but not be visible until React Flow positions them
+    await page.waitForFunction(
+      () => {
+        const nodes = document.querySelectorAll('.react-flow__node');
+        if (nodes.length === 0) return false;
+        // Check if at least one node has non-zero dimensions
+        for (const node of nodes) {
+          const rect = (node as HTMLElement).getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) return true;
+        }
+        return false;
+      },
+      { timeout: 10000 }
+    );
     
-    // Verify cells are rendered
+    // Verify cells are rendered and visible
     const cells = page.locator('.react-flow__node');
     const cellCount = await cells.count();
     expect(cellCount, 'Should have rendered cells').toBeGreaterThan(0);
@@ -47,15 +60,32 @@ test.describe('Cortex Serve', () => {
   test('should display cells correctly', async ({ page }) => {
     await page.goto('http://localhost:8080/cells');
     
-    // Wait for cells to load
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    // Wait for React Flow to initialize and render nodes with proper dimensions
+    await page.waitForFunction(
+      () => {
+        const nodes = document.querySelectorAll('.react-flow__node');
+        if (nodes.length === 0) return false;
+        // Check if at least one node has non-zero dimensions
+        for (const node of nodes) {
+          const rect = (node as HTMLElement).getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) return true;
+        }
+        return false;
+      },
+      { timeout: 10000 }
+    );
     
-    // Check that at least one cell is visible
+    // Check that at least one cell is rendered with content
     const firstCell = page.locator('.react-flow__node').first();
-    await expect(firstCell).toBeVisible();
-    
-    // Check cell contains expected elements
     const cellText = await firstCell.textContent();
     expect(cellText).toBeTruthy();
+    
+    // Verify the cell has proper dimensions
+    const boundingBox = await firstCell.boundingBox();
+    expect(boundingBox).not.toBeNull();
+    if (boundingBox) {
+      expect(boundingBox.width).toBeGreaterThan(0);
+      expect(boundingBox.height).toBeGreaterThan(0);
+    }
   });
 });
