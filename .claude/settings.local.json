@@ -79,7 +79,10 @@
       "Bash(# Start without redirection\n./build/cortex-test -n ../../ &\nSERVER_PID=$!\necho \"\"Started server with PID: $SERVER_PID\"\"\nsleep 3\nkill -TERM $SERVER_PID\nsleep 2\nps aux | grep $SERVER_PID | grep -v grep)",
       "Bash(sed:*)",
       "Bash(git mv:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(./cortex schema:*)",
+      "Bash(./cortex validate --help)",
+      "Bash(./cortex:*)"
     ],
     "deny": []
   }

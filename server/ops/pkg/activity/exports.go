@@ -14,7 +14,6 @@ func GetAll() []interface{} {
 	return []interface{}{
 		// LLM activities
 		llm.NewLLMActivity(),
-		llm.NewGitShallowCloneActivity(),
 		
 		// Git activities
 		gitshallow.NewGitShallowActivity(),
