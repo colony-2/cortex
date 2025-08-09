@@ -140,9 +140,10 @@ func TestGenerateExamples(t *testing.T) {
 func TestConvertSchema(t *testing.T) {
 	// Test schema conversion
 	// Note: This would need a real jsonschema.Schema object
-	// For now, we just test the function exists and handles nil
+	// For now, we just test the function exists and handles nil gracefully
 	result := convertSchema(nil)
 	assert.NotNil(t, result)
+	assert.IsType(t, map[string]interface{}{}, result)
 }
 
 func TestConvertToOpenAPI(t *testing.T) {

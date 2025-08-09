@@ -286,27 +286,28 @@ func parseValidationError(err *jsonschema.ValidationError) []ValidationError {
 
 func getErrorType(err *jsonschema.ValidationError) string {
 	// Extract error type from the validation error
-	if strings.Contains(err.Message, "enum") {
+	msg := strings.ToLower(err.Message)
+	if strings.Contains(msg, "enum") {
 		return "enum"
-	} else if strings.Contains(err.Message, "type") {
+	} else if strings.Contains(msg, "type") {
 		return "type"
-	} else if strings.Contains(err.Message, "required") {
+	} else if strings.Contains(msg, "required") {
 		return "required"
-	} else if strings.Contains(err.Message, "minimum") {
+	} else if strings.Contains(msg, "minimum") {
 		return "minimum"
-	} else if strings.Contains(err.Message, "maximum") {
+	} else if strings.Contains(msg, "maximum") {
 		return "maximum"
-	} else if strings.Contains(err.Message, "pattern") {
+	} else if strings.Contains(msg, "pattern") {
 		return "pattern"
-	} else if strings.Contains(err.Message, "format") {
+	} else if strings.Contains(msg, "format") {
 		return "format"
-	} else if strings.Contains(err.Message, "minItems") {
+	} else if strings.Contains(msg, "minitems") {
 		return "minItems"
-	} else if strings.Contains(err.Message, "maxItems") {
+	} else if strings.Contains(msg, "maxitems") {
 		return "maxItems"
-	} else if strings.Contains(err.Message, "uniqueItems") {
+	} else if strings.Contains(msg, "unique") {
 		return "uniqueItems"
-	} else if strings.Contains(err.Message, "additionalProperties") {
+	} else if strings.Contains(msg, "additional") {
 		return "additionalProperties"
 	}
 	return "validation"
@@ -339,8 +340,8 @@ func validateTemplateVariables(content string, doc interface{}) []ValidationErro
 			}
 		} else if strings.HasPrefix(expr, ".Steps.") {
 			parts := strings.Split(expr, ".")
-			if len(parts) >= 4 && parts[2] == "outputs" {
-				stepID := parts[1]
+			if len(parts) >= 5 && parts[3] == "outputs" {
+				stepID := parts[2]
 				if !contains(availableSteps, stepID) {
 					errors = append(errors, ValidationError{
 						Field:       expr,

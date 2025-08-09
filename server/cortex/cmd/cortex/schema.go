@@ -274,6 +274,11 @@ func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity st
 }
 
 func convertSchema(schema *jsonschema.Schema) map[string]interface{} {
+	// Handle nil input
+	if schema == nil {
+		return make(map[string]interface{})
+	}
+	
 	// Convert jsonschema.Schema to map
 	result := make(map[string]interface{})
 	

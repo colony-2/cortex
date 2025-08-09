@@ -211,7 +211,7 @@ func TestValidateTemplateVariables(t *testing.T) {
 			errors := validateTemplateVariables(tt.content, doc)
 			if tt.expectError {
 				assert.NotEmpty(t, errors)
-				if tt.errorType != "" {
+				if tt.errorType != "" && len(errors) > 0 {
 					assert.Equal(t, tt.errorType, errors[0].ErrorType)
 				}
 			} else {

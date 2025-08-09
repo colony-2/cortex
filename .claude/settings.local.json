@@ -82,7 +82,8 @@
       "Bash(git merge:*)",
       "Bash(./cortex schema:*)",
       "Bash(./cortex validate --help)",
-      "Bash(./cortex:*)"
+      "Bash(./cortex:*)",
+      "Bash(./test.sh)"
     ],
     "deny": []
   }
