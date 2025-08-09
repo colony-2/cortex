@@ -7,6 +7,11 @@ project:
   description: 'Generated TypeScript client from OpenAPI specification'
 
 tasks:
+  # Override the global test task since this package has no tests
+  test:
+    command: 'true'
+    platform: system
+    
   build:
     script: |
       rm -rf src/generated dist
