@@ -35,7 +35,11 @@ export default defineConfig({
       '@vibethis/config': resolve(__dirname, '../config/src/index.ts'),
       '@vibethis/files': resolve(__dirname, '../files/src/index.ts'),
       '@vibethis/flowchart': resolve(__dirname, '../flowchart/src/index.ts')
-    }
+    },
+    dedupe: ['react', 'react-dom', '@ant-design/icons', 'antd']
+  },
+  optimizeDeps: {
+    include: ['@ant-design/icons', 'antd']
   },
   test: {
     environment: 'jsdom',
