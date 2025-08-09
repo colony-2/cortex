@@ -1,0 +1,79 @@
+#!/bin/bash
+set -e
+
+# Kill any existing cortex processes that might be holding the database lock
+echo "Cleaning up any existing cortex processes..."
+pkill -f "cortex-test" 2>/dev/null || true
+pkill -f "cortex -n" 2>/dev/null || true
+sleep 1
+
+# First run Go tests
+gotestsum -- -v ./...
+
+# Build the server first to avoid issues with go run
+echo "Building cortex server..."
+go build -o ./build/cortex-test ./cmd/cortex
+
+# Function to cleanup on exit
+cleanup() {
+  if [ ! -z "$SERVER_PID" ]; then
+    echo "Stopping cortex server (PID: $SERVER_PID)..."
+    # Send SIGTERM for graceful shutdown
+    kill -TERM $SERVER_PID 2>/dev/null || true
+    
+    # Wait for process to exit (up to 5 seconds)
+    for i in {1..5}; do
+      if ! ps -p $SERVER_PID > /dev/null 2>&1; then
+        echo "Server stopped gracefully"
+        return
+      fi
+      sleep 1
+    done
+    
+    # If still running after 5 seconds, something is wrong
+    echo "Warning: Server did not stop gracefully after 5 seconds"
+    # Don't use SIGKILL per user request
+  fi
+}
+
+# Set up trap to ensure cleanup on exit
+trap cleanup EXIT
+
+# Start cortex server in the background for integration tests
+echo "Starting cortex server for integration tests..."
+./build/cortex-test server -n ../../ &
+SERVER_PID=$!
+
+# Wait for server to be ready
+echo "Waiting for server to start (PID: $SERVER_PID)..."
+READY=false
+for i in {1..30}; do
+  if curl -s http://localhost:8080/api/graph >/dev/null 2>&1; then
+    echo "Server is ready!"
+    READY=true
+    break
+  fi
+  sleep 1
+done
+
+if [ "$READY" != "true" ]; then
+  echo "Server failed to start within 30 seconds"
+  # Check if process is still running
+  if ps -p $SERVER_PID > /dev/null 2>&1; then
+    echo "Process is running but not responding"
+  else
+    echo "Process exited unexpectedly"
+  fi
+  exit 1
+fi
+
+# Run Playwright integration tests
+echo "Running Playwright integration tests..."
+npm test
+TEST_RESULT=$?
+
+# Cleanup happens via trap
+echo "Tests completed with result: $TEST_RESULT"
+
+# Return the test result
+exit $TEST_RESULT
