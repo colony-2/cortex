@@ -278,11 +278,75 @@ The generated schema will follow this structure:
 }
 ```
 
+### 4. Nested Composition Schemas
+
+The schema includes definitions for nested compositions with encapsulation:
+
+```json
+{
+  "definitions": {
+    "compositions": {
+      "sequential": {
+        "type": "object",
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/inputDefinition" },
+            "description": "Explicit inputs from parent context (required for nested compositions)"
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Explicit outputs accessible to parent context"
+          },
+          "steps": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/step" }
+          }
+        },
+        "required": ["steps"]
+      },
+      "parallel": {
+        "type": "object",
+        "properties": {
+          "inputs": { "type": "array", "items": { "$ref": "#/definitions/inputDefinition" } },
+          "outputs": { "type": "object", "additionalProperties": { "type": "string" } },
+          "steps": { "type": "array", "items": { "$ref": "#/definitions/step" } }
+        },
+        "required": ["steps"]
+      },
+      "conditional": {
+        "type": "object",
+        "properties": {
+          "inputs": { "type": "array", "items": { "$ref": "#/definitions/inputDefinition" } },
+          "outputs": { "type": "object", "additionalProperties": { "type": "string" } },
+          "branches": { "type": "array", "items": { "$ref": "#/definitions/conditionalBranch" } }
+        },
+        "required": ["branches"]
+      }
+    },
+    "inputDefinition": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Internal name for the input" },
+        "from": { "type": "string", "description": "Template expression from parent context" },
+        "type": { 
+          "type": "string",
+          "enum": ["string", "number", "boolean", "object", "array", "steps", "states"],
+          "description": "Optional type hint for context passing"
+        }
+      },
+      "required": ["name", "from"]
+    }
+  }
+}
+```
+
 ## Runtime Type Discovery
 
 ### 1. Struct Tag Processing
 
-Activities use standard Go struct tags for schema generation:
+Ops use standard Go struct tags for schema generation:
 
 ```go
 type LLMConfig struct {
@@ -839,4 +903,17 @@ if [ $? -ne 0 ]; then
     echo "Recipe validation failed. Please fix errors before committing."
     exit 1
 fi
+
+## Implementation Status
+
+As of the latest update:
+
+- ✅ **Terminology standardization complete**: All references updated from "activities" to "ops"
+- ✅ **Op discovery system**: Implemented in `/server/ops/pkg/`
+- ✅ **Composition types**: Sequential, parallel, conditional fully supported
+- ✅ **Nested encapsulation**: Strict boundaries enforced as per nested-composition-encapsulation-spec.md
+- ✅ **Schema generation**: Using invopop/jsonschema in recipe-worker
+- ⏳ **Cortex commands**: Schema and validate commands pending implementation
+- ✅ **State machine support**: Full compiler in `/server/recipe-worker/pkg/compiler/statemachine/`
+- ✅ **CEL expressions**: Integrated for conditional logic
 ```
