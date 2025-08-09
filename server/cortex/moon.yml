@@ -16,6 +16,15 @@ tags:
   - 'app'
 
 tasks:
+  npm-install:
+    script: npm install
+    inputs:
+      - package.json
+      - package-lock.json
+    outputs:
+      - node_modules
+    platform: system
+
   # ─────────────────────────────────────────────────────────────
   # Build the Go binary *after* the front-end assets are copied.
   # ─────────────────────────────────────────────────────────────
@@ -154,6 +163,7 @@ tasks:
     deps:
       - '~:build-frontend-copy'
       - '^:build'
+      - '~:npm-install'
     inputs:
       - '**/*.go'
       - 'go.mod'
