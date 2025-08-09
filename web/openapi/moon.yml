@@ -21,3 +21,7 @@ tasks:
       - 'dist/**/*'
     deps:
       - 'api-openapi:build'
+    platform: node
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure

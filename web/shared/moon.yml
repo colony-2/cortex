@@ -19,6 +19,9 @@ tasks:
     deps:
       - '~:compile'
       - '~:bundle'
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
   
   compile:
     command: 'tsc'
@@ -32,6 +35,7 @@ tasks:
       NODE_ENV: 'production'
     options:
       runInCI: true
+      outputStyle: buffer-only-failure
       
   bundle:
     command: vite
@@ -45,9 +49,13 @@ tasks:
       - 'dist/**'
     options:
       runInCI: true
+      outputStyle: buffer-only-failure
 
   lint:
     command: 'eslint'
     args:
       - 'src'
     platform: 'node'
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure

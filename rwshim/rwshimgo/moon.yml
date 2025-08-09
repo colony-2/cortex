@@ -12,3 +12,5 @@ tasks:
   integration:
     command: './integration_test.sh'
     description: 'Run integration tests with C shim in Docker'
+    options:
+      outputStyle: buffer-only-failure

@@ -13,7 +13,7 @@ tasks:
       - "^:build"
     options:
       runInCI: true
-      outputStyle: stream
+      outputStyle: buffer-only-failure
 
   test:
     command: 'gotestsum -- -v ./...'
@@ -26,7 +26,7 @@ tasks:
     platform: 'system'
     options:
       runInCI: true
-      outputStyle: stream
+      outputStyle: buffer-only-failure
 
   lint:
     command: 'go vet ./...'
@@ -44,3 +44,6 @@ tasks:
       - 'go.mod'
       - 'go.sum'
     platform: 'system'
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure

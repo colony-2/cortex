@@ -15,7 +15,9 @@ tasks:
     platform: 'system'
     outputs:
       - build/nucleus
-
+    options:
+        runInCI: true
+        outputStyle: buffer-only-failure
 
   install:
     command: go install ./cmd/nucleus
@@ -24,3 +26,5 @@ tasks:
   integration:
     command: go test -v -tags=integration ./...
     description: Run all integration tests
+    options:
+        outputStyle: buffer-only-failure

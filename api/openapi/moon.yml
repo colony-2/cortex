@@ -20,3 +20,6 @@ tasks:
       - vibethis-api.yaml
     outputs:
       - 'vibethis-api.yaml'
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure

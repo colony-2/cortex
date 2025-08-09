@@ -10,7 +10,7 @@ tasks:
       - ui-files:build
       - ui-flowchart:build
       - shared:build
-  e2e:
+  integration:
     command: npx
     args: [playwright, test, --reporter=list]
     inputs:
@@ -20,6 +20,7 @@ tasks:
     platform: node
     options:
       runInCI: true
+      outputStyle: buffer-only-failure
     deps:
       - 'be-api:build-test-server'
   serve:

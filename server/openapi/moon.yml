@@ -17,3 +17,6 @@ tasks:
       - 'pkg/openapi/generated.go'
     deps:
       - 'api-openapi:build'
+    options:
+        runInCI: true
+        outputStyle: buffer-only-failure

@@ -29,7 +29,7 @@ tasks:
     platform: node
     options:
       runInCI: true
-
+      outputStyle: buffer-only-failure
   test:
     command: npx
     args: [vitest, run, --reporter=dot]
@@ -54,3 +54,4 @@ tasks:
     platform: node
     options:
       runInCI: true
+      outputStyle: buffer-only-failure

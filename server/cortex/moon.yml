@@ -24,6 +24,9 @@ tasks:
     outputs:
       - node_modules
     platform: system
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
 
   # ─────────────────────────────────────────────────────────────
   # Build the Go binary *after* the front-end assets are copied.
@@ -35,7 +38,10 @@ tasks:
     deps:
       - '~:build-frontend-copy'
     outputs:
-      - build/          # cache the compiled binary
+      - build/
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
 
   # ─────────────────────────────────────────────────────────────
   # Copy front-end bundle produced by ui-app:build
@@ -52,6 +58,9 @@ tasks:
     deps:
       - 'ui-app:build'
     platform: system
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
 
   # ─────────────────────────────────────────────────────────────
   # Local dev server
@@ -75,6 +84,9 @@ tasks:
       - '~:build'
       - '~:build-frontend-copy'
     platform: system
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
 
   # ─────────────────────────────────────────────────────────────
   # Test task that includes Go tests and Playwright integration tests
@@ -96,4 +108,4 @@ tasks:
     platform: 'system'
     options:
       runInCI: true
-      outputStyle: stream
+      outputStyle: buffer-only-failure

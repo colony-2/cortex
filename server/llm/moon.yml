@@ -7,3 +7,5 @@ tasks:
     env:
       # Optional: Set default timeout for integration tests
       TEST_TIMEOUT: '60s'
+    options:
+        outputStyle: buffer-only-failure
