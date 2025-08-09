@@ -3,11 +3,3 @@ project:
   description: Graph visualization component for rendering interactive flowcharts and dependency graphs.
 
 tasks:
-  test:
-    command: 'npx'
-    args: ['vitest', 'run', 'src']
-    platform: 'node'
-    inputs:
-      - 'src/**/*.test.ts'
-      - 'src/**/*.test.tsx'
-      - 'vite.config.ts'

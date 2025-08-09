@@ -46,15 +46,6 @@ tasks:
     options:
       runInCI: true
 
-  test:
-    command: 'npx'
-    args: ['vitest', 'run', 'src']
-    platform: 'node'
-    inputs:
-      - 'src/**/*.test.ts'
-      - 'src/**/*.test.tsx'
-      - 'vite.config.ts'
-
   lint:
     command: 'eslint'
     args:

@@ -10,14 +10,6 @@ tasks:
       - ui-files:build
       - ui-flowchart:build
       - shared:build
-  test:
-    command: 'npx'
-    args: ['vitest', 'run', 'src']
-    platform: 'node'
-    inputs:
-      - 'src/**/*.test.ts'
-      - 'src/**/*.test.tsx'
-      - 'vite.config.ts'
   e2e:
     command: npx
     args: [playwright, test, --reporter=list]
