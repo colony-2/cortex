@@ -41,7 +41,7 @@ trap cleanup EXIT
 
 # Start cortex server in the background for integration tests
 echo "Starting cortex server for integration tests..."
-./build/cortex-test server -n ../../ &
+./build/cortex-test -n ../../ &
 SERVER_PID=$!
 
 # Wait for server to be ready

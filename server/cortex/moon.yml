@@ -57,7 +57,7 @@ tasks:
   # Local dev server
   # ─────────────────────────────────────────────────────────────
   serve:
-    script: go run ./cmd/cortex/*.go server -n ../../
+    script: go run ./cmd/cortex/*.go -n ../../
     deps:
       - '~:build-frontend-copy'
     env:

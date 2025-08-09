@@ -40,15 +40,35 @@ func Execute() error {
 	var createNew bool
 
 	rootCmd := &cobra.Command{
-		Use:   "cortex",
+		Use:   "cortex [path]",
 		Short: "Cortex - Recipe management and visualization tool",
 		Long: `Cortex provides tools for managing recipes, visualizing project dependencies,
 and working with development containers. It includes both a web interface and
 CLI commands for recipe validation and schema generation.`,
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
+		Args:    cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// If no subcommand is provided, run the server (default behavior)
+			// Set path from positional argument
+			if len(args) > 0 {
+				cfg.RootPath = args[0]
+			} else {
+				cfg.RootPath = "."
+			}
+
+			// Handle --new flag
+			cfg.CreateNew = createNew
+
+			return run(cfg)
+		},
 	}
 
-	// Server command (original functionality)
+	// Define root flags (for default server behavior)
+	defaultPortInt, _ := strconv.Atoi(defaultPort)
+	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
+	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
+
+	// Server command (explicit subcommand)
 	serverCmd := &cobra.Command{
 		Use:   "server [path]",
 		Short: "Start the web server for visualization",
@@ -70,8 +90,7 @@ managing dependencies, and working with development containers.`,
 		},
 	}
 
-	// Define server flags
-	defaultPortInt, _ := strconv.Atoi(defaultPort)
+	// Define server-specific flags
 	serverCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
 	serverCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
