@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/spf13/cobra"
 )
@@ -114,6 +116,24 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	})
 	containerManager := container.NewManager(container.Config{})
 
+	// Create input management service
+	inputService := input.NewInputManagementService()
+	inputService.Initialize(input.ServiceDependencies{})
+
+	// Convert input service routes to extension routes
+	var extensionRoutes []web.ExtensionRoute
+	for _, route := range inputService.GetRoutes() {
+		path := route.Path
+		if strings.HasPrefix(path, "/api") {
+			path = strings.TrimPrefix(path, "/api")
+		}
+		extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
+			Method:  route.Method,
+			Path:    path,
+			Handler: route.Handler,
+		})
+	}
+
 	// Create server configuration
 	config := web.Config{
 		Port:            port,
@@ -125,11 +145,12 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	// Create dependencies
 	deps := web.Dependencies{
-		Storage:   store,
-		Graph:     graphBuilder,
-		Files:     fileBrowser,
-		Git:       gitRepo,
-		Container: containerManager,
+		Storage:         store,
+		Graph:           graphBuilder,
+		Files:           fileBrowser,
+		Git:             gitRepo,
+		Container:       containerManager,
+		ExtensionRoutes: extensionRoutes,
 	}
 
 	// If static path is set, configure static file serving

@@ -17,7 +17,7 @@ test.describe('Git Changes Tab', () => {
   }
 
   test('should display changes tab with subtabs', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Wait for subtabs to be visible
@@ -30,7 +30,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should show summary tab by default', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Wait for subtabs
@@ -50,7 +50,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Should show empty state
@@ -73,7 +73,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Wait for the content to load
@@ -122,7 +122,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Wait for the button to be visible and enabled
@@ -153,7 +153,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Click on Details tab
@@ -195,7 +195,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Click on History tab - use last() to get the nested tab
@@ -227,7 +227,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/cells');
     await navigateToChangesTab(page);
     
     // Wait for the component to load

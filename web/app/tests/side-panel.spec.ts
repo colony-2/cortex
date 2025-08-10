@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Side Panel', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/cells');
     
     // Wait for graph data to load
     await page.waitForResponse(response => 
