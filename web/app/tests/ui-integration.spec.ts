@@ -11,7 +11,7 @@ async function waitForFileList(page) {
 
 test.describe('UI Integration Tests', () => {
   test('should show file browser in side panel when clicking node', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for graph data to load
     await page.waitForResponse(response => 
@@ -53,7 +53,7 @@ test.describe('UI Integration Tests', () => {
   });
   
   test('should switch between nodes and update file browser', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for graph data to load
     await page.waitForResponse(response => 
@@ -106,7 +106,7 @@ test.describe('UI Integration Tests', () => {
   
   test('should maintain side panel state when switching tabs', async ({ page }) => {
     let folderItems = 0;
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for graph to load
     await page.waitForResponse(response => 
@@ -141,7 +141,7 @@ test.describe('UI Integration Tests', () => {
       
       // Set up response promise before clicking
       const responsePromise = page.waitForResponse(response => 
-        response.url().includes('/api/nodes/frontend/files?path=') && response.status() === 200
+        response.url().includes('/api/cells/frontend/files?path=') && response.status() === 200
       );
       
       await firstFolder.click();

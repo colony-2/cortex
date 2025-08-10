@@ -2,13 +2,13 @@ import { test, expect } from '@playwright/test';
 
 test.describe('EnvEditor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     await page.waitForSelector('.react-flow__node', { timeout: 10000 });
   });
 
   test('should show create button when devcontainer.json does not exist', async ({ page }) => {
     // Mock API response for container status with no devcontainer
-    await page.route('**/api/nodes/*/container/status', async route => {
+    await page.route('**/api/cells/*/container/status', async route => {
       await route.fulfill({ 
         status: 200,
         contentType: 'application/json',
@@ -61,7 +61,7 @@ test.describe('EnvEditor', () => {
     };
     
     // Mock API response for container status with existing devcontainer
-    await page.route('**/api/nodes/*/container/status', async route => {
+    await page.route('**/api/cells/*/container/status', async route => {
       await route.fulfill({ 
         status: 200,
         contentType: 'application/json',

@@ -17,7 +17,7 @@ test.describe('Git Changes Tab', () => {
   }
 
   test('should display changes tab with subtabs', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Wait for subtabs to be visible
@@ -30,7 +30,7 @@ test.describe('Git Changes Tab', () => {
   });
 
   test('should show summary tab by default', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Wait for subtabs
@@ -43,14 +43,14 @@ test.describe('Git Changes Tab', () => {
 
   test('should handle non-git repository gracefully', async ({ page }) => {
     // Mock the API response for non-git repo BEFORE navigation
-    await page.route('**/api/nodes/*/git/status', async route => {
+    await page.route('**/api/cells/*/git/status', async route => {
       await route.fulfill({
         status: 400,
         body: 'Not a git repository'
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Should show empty state
@@ -59,7 +59,7 @@ test.describe('Git Changes Tab', () => {
 
   test('should display git status in summary tab', async ({ page }) => {
     // Mock the API response BEFORE navigation
-    await page.route('**/api/nodes/*/git/status', async route => {
+    await page.route('**/api/cells/*/git/status', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -73,7 +73,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Wait for the content to load
@@ -96,7 +96,7 @@ test.describe('Git Changes Tab', () => {
 
   test('should handle commit action', async ({ page }) => {
     // Mock the git status API BEFORE navigation
-    await page.route('**/api/nodes/*/git/status', async route => {
+    await page.route('**/api/cells/*/git/status', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -111,7 +111,7 @@ test.describe('Git Changes Tab', () => {
     });
 
     // Mock the commit API
-    await page.route('**/api/nodes/*/git/commit', async route => {
+    await page.route('**/api/cells/*/git/commit', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -122,7 +122,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Wait for the button to be visible and enabled
@@ -137,7 +137,7 @@ test.describe('Git Changes Tab', () => {
 
   test('should display diff in details tab', async ({ page }) => {
     // Mock the diff API BEFORE navigation
-    await page.route('**/api/nodes/*/git/diff', async route => {
+    await page.route('**/api/cells/*/git/diff', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -153,7 +153,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Click on Details tab
@@ -172,7 +172,7 @@ test.describe('Git Changes Tab', () => {
 
   test('should display commit history in history tab', async ({ page }) => {
     // Mock the history API BEFORE navigation
-    await page.route('**/api/nodes/*/git/history', async route => {
+    await page.route('**/api/cells/*/git/history', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -195,7 +195,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Click on History tab - use last() to get the nested tab
@@ -213,7 +213,7 @@ test.describe('Git Changes Tab', () => {
 
   test('should show empty state when no changes', async ({ page }) => {
     // Mock empty status BEFORE navigation
-    await page.route('**/api/nodes/*/git/status', async route => {
+    await page.route('**/api/cells/*/git/status', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -227,7 +227,7 @@ test.describe('Git Changes Tab', () => {
       });
     });
 
-    await page.goto('/boxes');
+    await page.goto('/');
     await navigateToChangesTab(page);
     
     // Wait for the component to load

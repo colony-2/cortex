@@ -10,7 +10,7 @@ test.describe('Node Position Persistence', () => {
     });
   });
   test('should save node positions when dragged', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
@@ -76,7 +76,7 @@ test.describe('Node Position Persistence', () => {
   });
 
   test('should restore saved node positions on reload', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
@@ -154,7 +154,7 @@ test.describe('Node Position Persistence', () => {
   });
 
   test('should maintain relative positions when multiple nodes are moved', async ({ page }) => {
-    await page.goto('/boxes');
+    await page.goto('/');
     
     // Wait for the graph to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
