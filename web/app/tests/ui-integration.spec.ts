@@ -30,7 +30,7 @@ test.describe('UI Integration Tests', () => {
     });
     
     // Wait for navigation to complete
-    await page.waitForURL('**/box/api/files');
+    await page.waitForURL('**/cell/api/files');
     
     // Check that Files tab is active by default when a node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -69,7 +69,7 @@ test.describe('UI Integration Tests', () => {
     });
     
     // Wait for navigation to api node
-    await page.waitForURL('**/box/api/files');
+    await page.waitForURL('**/cell/api/files');
     
     // Files tab should be active by default when node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -89,7 +89,7 @@ test.describe('UI Integration Tests', () => {
     });
     
     // Wait for navigation to frontend node
-    await page.waitForURL('**/box/frontend/files');
+    await page.waitForURL('**/cell/frontend/files');
     
     // Files tab should remain active when switching nodes
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -123,7 +123,7 @@ test.describe('UI Integration Tests', () => {
     });
     
     // Wait for navigation to frontend node
-    await page.waitForURL('**/box/frontend/files');
+    await page.waitForURL('**/cell/frontend/files');
     
     // Files tab should be active by default when node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');

@@ -25,7 +25,7 @@ test.describe('Side Panel', () => {
 
   test('should show files tab when a node is selected', async ({ page }) => {
     // Navigate to a specific box URL to trigger node selection
-    await page.goto('/box/api');
+    await page.goto('/cell/api');
     
     // Wait for the page to stabilize and check that side panel is visible
     await page.waitForSelector('.ant-splitter-panel');
@@ -58,7 +58,7 @@ test.describe('Side Panel', () => {
 
   test('should show Config tab with Claude Code subtab when a node is selected', async ({ page }) => {
     // Navigate to a specific box URL to trigger node selection
-    await page.goto('/box/frontend/config');
+    await page.goto('/cell/frontend/config');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -85,7 +85,7 @@ test.describe('Side Panel', () => {
 
   test('should display files when node is selected', async ({ page }) => {
     // Navigate directly to files tab for a specific box
-    await page.goto('/box/api/files');
+    await page.goto('/cell/api/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -106,7 +106,7 @@ test.describe('Side Panel', () => {
 
   test('should navigate folders in file browser', async ({ page }) => {
     // Navigate directly to files tab for frontend box
-    await page.goto('/box/frontend/files');
+    await page.goto('/cell/frontend/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -130,7 +130,7 @@ test.describe('Side Panel', () => {
 
   test('should navigate using breadcrumb', async ({ page }) => {
     // Navigate directly to files tab for frontend box
-    await page.goto('/box/frontend/files');
+    await page.goto('/cell/frontend/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
