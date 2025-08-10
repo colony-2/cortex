@@ -9,7 +9,7 @@ test.describe('File Browser', () => {
       response.url().includes('/api/graph') && response.status() === 200
     );
     
-    await page.waitForSelector('.react-flow__node');
+    await page.waitForSelector('.react-flow__node', { state: 'attached' });
   });
 
   test('should show files tab when a node is selected', async ({ page }) => {

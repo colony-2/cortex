@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('EnvEditor', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/cells');
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
   });
 
   test('should show create button when devcontainer.json does not exist', async ({ page }) => {

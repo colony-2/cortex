@@ -16,7 +16,7 @@ test.describe('Node Position Persistence', () => {
     await page.waitForSelector('.react-flow', { timeout: 10000 });
     
     // Wait for nodes to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Get the first node
     const firstNode = page.locator('.react-flow__node').first();
@@ -82,7 +82,7 @@ test.describe('Node Position Persistence', () => {
     await page.waitForSelector('.react-flow', { timeout: 10000 });
     
     // Wait for nodes to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Get the first node and its position
     const firstNode = page.locator('.react-flow__node').first();
@@ -134,7 +134,7 @@ test.describe('Node Position Persistence', () => {
     await page.waitForTimeout(2000); // Wait for positions to be applied
     
     // Wait for nodes to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Get the first node position after reload
     const reloadedNode = page.locator('.react-flow__node').first();
@@ -161,7 +161,7 @@ test.describe('Node Position Persistence', () => {
     await page.waitForTimeout(1000); // Wait for graph to stabilize
     
     // Wait for nodes to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Get positions of first two nodes
     const firstNode = page.locator('.react-flow__node').nth(0);
@@ -233,7 +233,7 @@ test.describe('Node Position Persistence', () => {
     // Wait for everything to load
     await page.waitForSelector('.react-flow', { timeout: 10000 });
     await page.waitForTimeout(2000); // Wait for positions to be applied
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Get reloaded positions
     const firstReloaded = page.locator('.react-flow__node').nth(0);
