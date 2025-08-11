@@ -49,3 +49,5 @@ graph_positions.db
 server/vibethis/static/assets
 server/vibethis/vibethis
 /vibethis/
+**/playwright-report/*
+**/test-results/*

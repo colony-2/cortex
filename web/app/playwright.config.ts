@@ -35,7 +35,7 @@ export default defineConfig({
       cwd: '../..',
     },
     {
-      command: 'server/api/build/testserver -n .example -p 8080',
+      command: 'server/api/build/testserver -n .example -p 8080 --cors-origins http://localhost:5173',
       port: 8080,
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
