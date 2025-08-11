@@ -43,6 +43,7 @@ tasks:
     platform: node
     options:
       runInCI: true
+      outputStyle: buffer-only-failure
 
   lint:
     command: eslint
