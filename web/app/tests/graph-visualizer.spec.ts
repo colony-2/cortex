@@ -11,8 +11,8 @@ test.describe('Graph Visualizer', () => {
     // Wait for the React Flow container to be visible (Pro Flow uses React Flow internally)
     await expect(page.locator('.react-flow')).toBeVisible();
     
-    // Wait for cells to be rendered instead of waiting for API response
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    // Wait for cells to be rendered - use state: 'attached' to wait for elements in DOM
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Check that cells are rendered (should be 13 based on the error message)
     const nodes = page.locator('.react-flow__node');
@@ -20,8 +20,8 @@ test.describe('Graph Visualizer', () => {
   });
 
   test('should display cell information correctly', async ({ page }) => {
-    // Wait for cells to be rendered
-    await page.waitForSelector('.react-flow__node', { timeout: 10000 });
+    // Wait for cells to be rendered - use state: 'attached' to wait for elements in DOM
+    await page.waitForSelector('.react-flow__node', { state: 'attached', timeout: 10000 });
     
     // Check that a cell with auth exists
     const authCell = page.locator('.react-flow__node').filter({ hasText: 'auth' }).first();

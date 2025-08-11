@@ -9,7 +9,7 @@ test.describe('Side Panel', () => {
       response.url().includes('/api/graph') && response.status() === 200
     );
     
-    await page.waitForSelector('.react-flow__node');
+    await page.waitForSelector('.react-flow__node', { state: 'attached' });
   });
 
   test('should show configuration tab when no node is selected', async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('Side Panel', () => {
 
   test('should show files tab when a node is selected', async ({ page }) => {
     // Navigate to a specific box URL to trigger node selection
-    await page.goto('/cell/api');
+    await page.goto('/cell/example-api');
     
     // Wait for the page to stabilize and check that side panel is visible
     await page.waitForSelector('.ant-splitter-panel');
@@ -49,16 +49,16 @@ test.describe('Side Panel', () => {
     
     // Check that file browser is visible - node name is displayed above breadcrumb
     const fileBrowserHeader = page.locator('.ant-space-vertical').first();
-    await expect(fileBrowserHeader).toContainText('api');
+    await expect(fileBrowserHeader).toContainText('example-api');
     
-    // Check for specific file - api box should have dependencies.yaml or moon.yml
+    // Check for specific file - example-api box should have dependencies.yaml or moon.yml
     const fileItems = page.locator('.ant-list-item');
-    await expect(fileItems).toHaveCount(2, { timeout: 5000 }); // api folder should have 2 files
+    await expect(fileItems).toHaveCount(2, { timeout: 5000 }); // example-api folder should have 2 files
   });
 
   test('should show Config tab with Claude Code subtab when a node is selected', async ({ page }) => {
     // Navigate to a specific box URL to trigger node selection
-    await page.goto('/cell/frontend/config');
+    await page.goto('/cell/example-frontend/config');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -85,7 +85,7 @@ test.describe('Side Panel', () => {
 
   test('should display files when node is selected', async ({ page }) => {
     // Navigate directly to files tab for a specific box
-    await page.goto('/cell/api/files');
+    await page.goto('/cell/example-api/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -96,17 +96,17 @@ test.describe('Side Panel', () => {
     // Wait for file list to load
     await page.waitForSelector('.ant-list-item', { timeout: 5000 });
     
-    // Check that files are displayed (api folder should have 2 files)
+    // Check that files are displayed (example-api folder should have 2 files)
     const fileCount = await page.locator('.ant-list-item').count();
     expect(fileCount).toBe(2);
     
-    // Check for expected files in api folder
+    // Check for expected files in example-api folder
     await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 
   test('should navigate folders in file browser', async ({ page }) => {
     // Navigate directly to files tab for frontend box
-    await page.goto('/cell/frontend/files');
+    await page.goto('/cell/example-frontend/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');
@@ -130,7 +130,7 @@ test.describe('Side Panel', () => {
 
   test('should navigate using breadcrumb', async ({ page }) => {
     // Navigate directly to files tab for frontend box
-    await page.goto('/cell/frontend/files');
+    await page.goto('/cell/example-frontend/files');
     
     // Wait for the page to stabilize
     await page.waitForSelector('.ant-splitter-panel');

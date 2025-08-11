@@ -26,11 +26,11 @@ test.describe('UI Integration Tests', () => {
     
     // Trigger node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-api' } }));
     });
     
     // Wait for navigation to complete
-    await page.waitForURL('**/cell/api/files');
+    await page.waitForURL('**/cell/example-api/files');
     
     // Check that Files tab is active by default when a node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -65,11 +65,11 @@ test.describe('UI Integration Tests', () => {
     
     // Trigger api node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-api' } }));
     });
     
     // Wait for navigation to api node
-    await page.waitForURL('**/cell/api/files');
+    await page.waitForURL('**/cell/example-api/files');
     
     // Files tab should be active by default when node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -78,18 +78,18 @@ test.describe('UI Integration Tests', () => {
     await waitForFileList(page);
     
     // Check that api node name is shown
-    await expect(page.locator('text=api').first()).toBeVisible();
+    await expect(page.locator('text=example-api').first()).toBeVisible();
     // Verify files are loaded
     const apiFileItems = await page.locator('.ant-list-item').count();
     expect(apiFileItems).toBeGreaterThan(0);
     
     // Trigger frontend node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-frontend' } }));
     });
     
     // Wait for navigation to frontend node
-    await page.waitForURL('**/cell/frontend/files');
+    await page.waitForURL('**/cell/example-frontend/files');
     
     // Files tab should remain active when switching nodes
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -98,7 +98,7 @@ test.describe('UI Integration Tests', () => {
     await waitForFileList(page);
     
     // Check that frontend node name is shown
-    await expect(page.locator('text=frontend').first()).toBeVisible();
+    await expect(page.locator('text=example-frontend').first()).toBeVisible();
     // Verify files are loaded  
     const frontendFileItems = await page.locator('.ant-list-item').count();
     expect(frontendFileItems).toBeGreaterThan(0);
@@ -119,11 +119,11 @@ test.describe('UI Integration Tests', () => {
     
     // Trigger node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-frontend' } }));
     });
     
     // Wait for navigation to frontend node
-    await page.waitForURL('**/cell/frontend/files');
+    await page.waitForURL('**/cell/example-frontend/files');
     
     // Files tab should be active by default when node is selected
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
@@ -141,7 +141,7 @@ test.describe('UI Integration Tests', () => {
       
       // Set up response promise before clicking
       const responsePromise = page.waitForResponse(response => 
-        response.url().includes('/api/cells/frontend/files?path=') && response.status() === 200
+        response.url().includes('/api/cells/example-frontend/files?path=') && response.status() === 200
       );
       
       await firstFolder.click();

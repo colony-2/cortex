@@ -10,11 +10,11 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('.graph-cell', { timeout: 5000 });
     
     // Select a specific cell by data-cell-id to ensure consistency
-    // Use 'api' cell which is consistently available in test data
-    let graphCell = await page.locator('.graph-cell[data-cell-id="api"]').first();
-    let cellId = 'api';
+    // Use 'example-api' cell which is consistently available in test data
+    let graphCell = await page.locator('.graph-cell[data-cell-id="example-api"]').first();
+    let cellId = 'example-api';
     
-    // If api cell doesn't exist for some reason, use the first available cell
+    // If example-api cell doesn't exist for some reason, use the first available cell
     const count = await graphCell.count();
     if (count === 0) {
       graphCell = await page.locator('.graph-cell').first();
@@ -41,11 +41,11 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('.graph-cell', { timeout: 5000 });
     
     // Select a specific cell by data-cell-id to ensure consistency
-    // Use 'api' cell which is consistently available in test data
-    let graphCell = await page.locator('.graph-cell[data-cell-id="api"]').first();
-    let cellId = 'api';
+    // Use 'example-api' cell which is consistently available in test data
+    let graphCell = await page.locator('.graph-cell[data-cell-id="example-api"]').first();
+    let cellId = 'example-api';
     
-    // If api cell doesn't exist for some reason, use the first available cell
+    // If example-api cell doesn't exist for some reason, use the first available cell
     const count = await graphCell.count();
     if (count === 0) {
       graphCell = await page.locator('.graph-cell').first();
@@ -75,11 +75,11 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('.graph-cell', { timeout: 5000 });
     
     // Select a specific cell by data-cell-id to ensure consistency
-    // Use 'api' cell which is consistently available in test data
-    let graphCell = await page.locator('.graph-cell[data-cell-id="api"]').first();
-    let cellId = 'api';
+    // Use 'example-api' cell which is consistently available in test data
+    let graphCell = await page.locator('.graph-cell[data-cell-id="example-api"]').first();
+    let cellId = 'example-api';
     
-    // If api cell doesn't exist for some reason, use the first available cell
+    // If example-api cell doesn't exist for some reason, use the first available cell
     const count = await graphCell.count();
     if (count === 0) {
       graphCell = await page.locator('.graph-cell').first();
@@ -172,11 +172,11 @@ test.describe('URL State Management', () => {
     await page.waitForSelector('.graph-cell', { timeout: 5000 });
     
     // Select a specific cell by data-cell-id to ensure consistency
-    // Use 'api' cell which is consistently available in test data
-    let graphCell = await page.locator('.graph-cell[data-cell-id="api"]').first();
-    let cellId = 'api';
+    // Use 'example-api' cell which is consistently available in test data
+    let graphCell = await page.locator('.graph-cell[data-cell-id="example-api"]').first();
+    let cellId = 'example-api';
     
-    // If api cell doesn't exist for some reason, use the first available cell
+    // If example-api cell doesn't exist for some reason, use the first available cell
     const count = await graphCell.count();
     if (count === 0) {
       graphCell = await page.locator('.graph-cell').first();

@@ -15,7 +15,7 @@ test.describe('File Browser', () => {
   test('should show files tab when a node is selected', async ({ page }) => {
     // Trigger node selection manually using the global event
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-api' } }));
     });
     
     // Wait for state to update
@@ -31,20 +31,20 @@ test.describe('File Browser', () => {
     await expect(page.locator('.ant-tabs-tab-active').first()).toContainText('Files');
     
     // Wait for the Files tab panel to be visible and contain content
-    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('text=api') });
+    const filesTabPanel = page.locator('[role="tabpanel"]').filter({ has: page.locator('text=example-api') });
     await expect(filesTabPanel).toBeVisible();
     
     // Check that file browser is visible and contains the node name
-    await expect(filesTabPanel).toContainText('api');
+    await expect(filesTabPanel).toContainText('example-api');
     
-    // Check for actual files in the api directory
+    // Check for actual files in the example-api directory
     await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 
   test('should display files when node is selected', async ({ page }) => {
     // Trigger node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'api' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-api' } }));
     });
     
     // Wait for state to update
@@ -64,14 +64,14 @@ test.describe('File Browser', () => {
     const fileCount = await page.locator('.ant-list-item').count();
     expect(fileCount).toBeGreaterThan(0);
     
-    // Check for expected files in the api directory
+    // Check for expected files in the example-api directory
     await expect(page.locator('.ant-list-item').filter({ hasText: '.devcontainer' })).toBeVisible();
   });
 
   test('should navigate folders in file browser', async ({ page }) => {
     // Trigger node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-frontend' } }));
     });
     
     // Wait for state to update
@@ -100,7 +100,7 @@ test.describe('File Browser', () => {
   test('should navigate using breadcrumb', async ({ page }) => {
     // Trigger node selection manually
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'frontend' } }));
+      window.dispatchEvent(new CustomEvent('nodeSelected', { detail: { nodeId: 'example-frontend' } }));
     });
     
     // Wait for state to update
@@ -128,7 +128,7 @@ test.describe('File Browser', () => {
     // Wait for root directory to load by checking for foo folder again
     await expect(page.locator('.ant-list-item').filter({ hasText: 'foo' })).toBeVisible({ timeout: 10000 });
     
-    // Check we're back at root - frontend directory should have foo folder and moon.yml
+    // Check we're back at root - example-frontend directory should have foo folder and moon.yml
     await expect(page.locator('.ant-list-item').filter({ hasText: 'moon.yml' })).toBeVisible();
   });
 });

@@ -47,7 +47,7 @@ test.describe('Tab Restoration on Page Reload', () => {
 
   test('should restore Files tab when reloading /cell/<id>/files', async ({ page }) => {
     // Navigate directly to a specific box and tab
-    await page.goto('/cell/api/files');
+    await page.goto('/cell/example-api/files');
     
     // Wait for the page to load
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
@@ -64,7 +64,7 @@ test.describe('Tab Restoration on Page Reload', () => {
   });
 
   test('should restore Config tab when reloading /cell/<id>/config', async ({ page }) => {
-    await page.goto('/cell/api/config');
+    await page.goto('/cell/example-api/config');
     
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
@@ -75,7 +75,7 @@ test.describe('Tab Restoration on Page Reload', () => {
   });
 
   test('should restore Config tab with Env subtab when reloading /cell/<id>/config/env', async ({ page }) => {
-    await page.goto('/cell/api/config/env');
+    await page.goto('/cell/example-api/config/env');
     
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
@@ -93,7 +93,7 @@ test.describe('Tab Restoration on Page Reload', () => {
   });
 
   test('should restore Changes tab when reloading /cell/<id>/changes', async ({ page }) => {
-    await page.goto('/cell/api/changes');
+    await page.goto('/cell/example-api/changes');
     
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
@@ -104,7 +104,7 @@ test.describe('Tab Restoration on Page Reload', () => {
   });
 
   test('should restore Changes tab with History subtab when reloading /cell/<id>/changes/history', async ({ page }) => {
-    await page.goto('/cell/api/changes/history');
+    await page.goto('/cell/example-api/changes/history');
     
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
@@ -120,7 +120,7 @@ test.describe('Tab Restoration on Page Reload', () => {
   });
 
   test('should restore Changes tab with Details subtab when reloading /cell/<id>/changes/details', async ({ page }) => {
-    await page.goto('/cell/api/changes/details');
+    await page.goto('/cell/example-api/changes/details');
     
     await page.waitForSelector('[data-testid="react-flow-wrapper"]', { timeout: 10000 });
     await page.waitForSelector('.ant-tabs', { timeout: 5000 });
