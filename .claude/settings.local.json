@@ -83,7 +83,8 @@
       "Bash(./cortex schema:*)",
       "Bash(./cortex validate --help)",
       "Bash(./cortex:*)",
-      "Bash(./test.sh)"
+      "Bash(./test.sh)",
+      "Bash(gotestsum:*)"
     ],
     "deny": []
   }

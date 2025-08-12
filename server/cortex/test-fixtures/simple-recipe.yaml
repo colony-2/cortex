@@ -1,0 +1,29 @@
+name: simple-test
+description: Simple test recipe for integration testing
+version: "1.0"
+
+inputs:
+  - name: greeting
+    type: string
+    required: true
+    description: Greeting message
+  - name: name
+    type: string
+    default: "World"
+    description: Name to greet
+
+outputs:
+  - name: message
+    type: string
+    description: The final greeting message
+
+steps:
+  - id: format_greeting
+    uses: command_execution
+    config:
+      description: Format the greeting message
+    inputs:
+      command: echo
+      args: ["{{ .Inputs.greeting }}, {{ .Inputs.name }}!"]
+    outputs:
+      stdout: message

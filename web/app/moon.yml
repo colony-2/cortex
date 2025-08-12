@@ -10,7 +10,7 @@ tasks:
       - ui-files:build
       - ui-flowchart:build
       - shared:build
-  integration:
+  integration2:
     command: npx
     args: [playwright, test, --reporter=list]
     inputs:

@@ -1,0 +1,38 @@
+name: test-recipe
+description: Simple test recipe for execute command
+version: "1.0"
+
+inputs:
+  - name: message
+    type: string
+    required: true
+    description: Message to echo
+  - name: count
+    type: number
+    default: 1
+    description: Number of times to repeat
+
+outputs:
+  - name: result
+    type: string
+    description: The echoed message
+  - name: timestamp
+    type: string
+    description: Execution timestamp
+
+steps:
+  - id: echo_step
+    uses: command_execution
+    inputs:
+      command: echo
+      args: ["{{ .Inputs.message }}"]
+    outputs:
+      stdout: message_output
+      
+  - id: format_result
+    uses: command_execution
+    inputs:
+      command: echo
+      args: ["Result: {{ .Steps.echo_step.outputs.stdout }}"]
+    outputs:
+      stdout: final_result
