@@ -9,11 +9,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/activity"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/olekukonko/tablewriter"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -95,20 +96,15 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		
 		schema = compiler.MustCompile("schema.json")
 	} else {
-		// Generate schema from registered activities
-		registry := worker.NewActivityRegistry()
-		activities := activity.GetAll()
-		for _, act := range activities {
-			// Ignore duplicate registration errors
-			if err := registry.RegisterGeneric(act); err != nil {
-				// Skip duplicate registrations
-				if !strings.Contains(err.Error(), "already registered") {
-					return fmt.Errorf("failed to register activity: %w", err)
-				}
-			}
+		// Use shared registry manager and schema manager
+		logger := zap.NewNop()
+		rm, err := shared.NewRegistryManager(logger)
+		if err != nil {
+			return fmt.Errorf("failed to create registry manager: %w", err)
 		}
 		
-		schemaMap, err := generateCompleteSchema(registry, "", false, false)
+		sm := shared.NewSchemaManager(rm)
+		schemaMap, err := sm.GenerateCompleteSchema("", false, false)
 		if err != nil {
 			return fmt.Errorf("failed to generate schema: %w", err)
 		}
@@ -145,6 +141,11 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		}
 	}
 	
+	// Create validator for structure validation
+	logger := zap.NewNop()
+	rm, _ := shared.NewRegistryManager(logger)
+	validator := shared.NewRecipeValidator(rm)
+	
 	// Validate each file
 	summary := ValidationSummary{
 		Results:        []ValidationResult{},
@@ -152,7 +153,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	}
 	
 	for _, file := range files {
-		result := validateFile(file, schema, validateStrict)
+		result := validateFile(file, schema, validateStrict, validator)
 		summary.Results = append(summary.Results, result)
 		
 		if result.Valid {
@@ -178,7 +179,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func validateFile(filepath string, schema *jsonschema.Schema, strict bool) ValidationResult {
+func validateFile(filepath string, schema *jsonschema.Schema, strict bool, validator *shared.RecipeValidator) ValidationResult {
 	result := ValidationResult{
 		File:  filepath,
 		Valid: true,
@@ -196,7 +197,7 @@ func validateFile(filepath string, schema *jsonschema.Schema, strict bool) Valid
 		return result
 	}
 	
-	// Parse YAML
+	// Parse YAML for schema validation
 	var doc interface{}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		result.Valid = false
@@ -206,6 +207,20 @@ func validateFile(filepath string, schema *jsonschema.Schema, strict bool) Valid
 			ErrorType:   "parse_error",
 		})
 		return result
+	}
+	
+	// Also parse as RecipeDefinition for structure validation
+	var recipe yamlpkg.RecipeDefinition
+	if err := yaml.Unmarshal(data, &recipe); err == nil {
+		// Validate recipe structure using shared validator
+		if err := validator.ValidateRecipeStructure(&recipe); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, ValidationError{
+				Field:       "",
+				Description: fmt.Sprintf("Recipe structure validation failed: %v", err),
+				ErrorType:   "structure_error",
+			})
+		}
 	}
 	
 	// Convert YAML types to JSON-compatible types

@@ -80,12 +80,18 @@ func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 	// Add inputs
 	data["Inputs"] = r.state.Inputs
 	
-	// Add steps with nested structure
+	// Add steps - directly expose outputs at the step level
 	steps := make(map[string]interface{})
 	for stepID, stepResult := range r.state.Steps {
-		steps[stepID] = map[string]interface{}{
-			"outputs": stepResult.Outputs,
+		// Directly add outputs to the step for easier access
+		// This allows {{ .Steps.stepID.outputName }} syntax
+		stepData := make(map[string]interface{})
+		for k, v := range stepResult.Outputs {
+			stepData[k] = v
 		}
+		// Also keep outputs nested for backwards compatibility
+		stepData["outputs"] = stepResult.Outputs
+		steps[stepID] = stepData
 	}
 	data["Steps"] = steps
 	

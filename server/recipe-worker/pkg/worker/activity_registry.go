@@ -64,13 +64,15 @@ func (r *ActivityRegistry) RegisterGeneric(activity interface{}) error {
 		return fmt.Errorf("activity type %s already registered", metadata.Type)
 	}
 	
-	// Register with deferred schema generation
-	// Schemas will be generated when first accessed
-	r.activities[metadata.Type] = ActivityRegistration{
+	registration := ActivityRegistration{
 		Activity: activity,
 		Metadata: metadata,
-		// Schemas will be nil initially and generated on demand
 	}
+	
+	// Generate schemas immediately using reflection
+	r.generateSchemasForRegistration(&registration)
+	
+	r.activities[metadata.Type] = registration
 	
 	return nil
 }
@@ -151,4 +153,45 @@ func (r *ActivityRegistry) GetAll() map[string]ActivityRegistration {
 		result[k] = v
 	}
 	return result
+}
+
+// UpdateRegistration updates an existing activity registration
+// This is used by the schema manager to update schemas after generation
+func (r *ActivityRegistry) UpdateRegistration(activityType string, registration ActivityRegistration) {
+	r.activities[activityType] = registration
+}
+
+// generateSchemasForRegistration generates schemas for an activity using reflection
+func (r *ActivityRegistry) generateSchemasForRegistration(registration *ActivityRegistration) {
+	// Use reflection to extract types from Execute method
+	activityValue := reflect.ValueOf(registration.Activity)
+	executeMethod := activityValue.MethodByName("Execute")
+	
+	if !executeMethod.IsValid() {
+		return
+	}
+	
+	methodType := executeMethod.Type()
+	// Execute method signature: func(ctx context.Context, config TConfig, input TInput) (TOutput, error)
+	if methodType.NumIn() < 3 || methodType.NumOut() < 2 {
+		return
+	}
+	
+	// Config is the second parameter (after context)
+	configType := methodType.In(1)
+	if configType.Kind() != reflect.Interface {
+		registration.ConfigSchema, _ = r.generator.GenerateSchema(configType)
+	}
+	
+	// Input is the third parameter
+	inputType := methodType.In(2)
+	if inputType.Kind() != reflect.Interface {
+		registration.InputSchema, _ = r.generator.GenerateSchema(inputType)
+	}
+	
+	// Output is the first return value
+	outputType := methodType.Out(0)
+	if outputType.Kind() != reflect.Interface {
+		registration.OutputSchema, _ = r.generator.GenerateSchema(outputType)
+	}
 }

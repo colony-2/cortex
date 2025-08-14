@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/command"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
 	"go.uber.org/zap"
@@ -64,10 +65,11 @@ func TestReflectionBasedActivityExecution(t *testing.T) {
 		require.NoError(t, err)
 	}
 	
-	// Create the activity executor (simulating what createActivityExecutor does)
+	// Create the activity executor using the new executor package
 	activityType := "command_execution"
 	logger := createTestLogger()
-	executorFunc := createActivityExecutor(activityType, registry, logger)
+	activityExecutor := executor.NewActivityExecutor(registry, logger)
+	executorFunc := activityExecutor.CreateTemporalActivity(activityType)
 	
 	// Test inputs as a map (what comes from the workflow)
 	inputs := map[string]interface{}{

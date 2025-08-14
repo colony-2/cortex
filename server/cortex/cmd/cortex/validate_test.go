@@ -8,9 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 func TestValidateFile(t *testing.T) {
@@ -42,7 +44,12 @@ func TestValidateFile(t *testing.T) {
 	// Valid file
 	validFile := filepath.Join(tempDir, "valid.yaml")
 	validContent := `name: test-recipe
-version: "1.0"`
+version: "1.0"
+steps:
+  - id: step1
+    uses: command_execution
+    inputs:
+      run: "echo test"`
 	err = os.WriteFile(validFile, []byte(validContent), 0644)
 	require.NoError(t, err)
 	
@@ -52,13 +59,18 @@ version: "1.0"`
 	err = os.WriteFile(invalidFile, []byte(invalidContent), 0644)
 	require.NoError(t, err)
 	
+	// Create a validator for testing
+	logger := zap.NewNop()
+	rm, _ := shared.NewRegistryManager(logger)
+	validator := shared.NewRecipeValidator(rm)
+	
 	// Test valid file
-	result := validateFile(validFile, schema, false)
+	result := validateFile(validFile, schema, false, validator)
 	assert.True(t, result.Valid)
 	assert.Empty(t, result.Errors)
 	
 	// Test invalid file
-	result = validateFile(invalidFile, schema, false)
+	result = validateFile(invalidFile, schema, false, validator)
 	assert.False(t, result.Valid)
 	assert.NotEmpty(t, result.Errors)
 }

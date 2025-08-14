@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
@@ -40,8 +41,9 @@ func TestWorkflowTemplateExpansion(t *testing.T) {
 			
 			// Execute the real activity
 			logger := createTestLogger()
-			executor := createActivityExecutor("command_execution", registry, logger)
-			return executor.(func(context.Context, map[string]interface{}) (map[string]interface{}, error))(ctx, inputs)
+			activityExecutor := executor.NewActivityExecutor(registry, logger)
+			executorFunc := activityExecutor.CreateTemporalActivity("command_execution")
+			return executorFunc.(func(context.Context, map[string]interface{}) (map[string]interface{}, error))(ctx, inputs)
 		},
 		activity.RegisterOptions{
 			Name: "command_execution",
@@ -122,8 +124,9 @@ func TestWorkflowWithMultipleTemplates(t *testing.T) {
 			
 			// Execute the real activity
 			logger := createTestLogger()
-			executor := createActivityExecutor("command_execution", registry, logger)
-			return executor.(func(context.Context, map[string]interface{}) (map[string]interface{}, error))(ctx, inputs)
+			activityExecutor := executor.NewActivityExecutor(registry, logger)
+			executorFunc := activityExecutor.CreateTemporalActivity("command_execution")
+			return executorFunc.(func(context.Context, map[string]interface{}) (map[string]interface{}, error))(ctx, inputs)
 		},
 		activity.RegisterOptions{
 			Name: "command_execution",

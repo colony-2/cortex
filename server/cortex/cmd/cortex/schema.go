@@ -6,10 +6,10 @@ import (
 	"os"
 	"sort"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/activity"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
-	"github.com/invopop/jsonschema"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,23 +38,20 @@ func init() {
 }
 
 func runSchema(cmd *cobra.Command, args []string) error {
-	// Initialize the activity registry
-	registry := worker.NewActivityRegistry()
+	// Create logger
+	logger := zap.NewNop()
 	
-	// Get all activities from the centralized exports
-	activities := activity.GetAll()
-	
-	// Register each activity
-	for _, act := range activities {
-		if err := registry.RegisterGeneric(act); err != nil {
-			return fmt.Errorf("failed to register activity: %w", err)
-		}
+	// Use shared registry manager
+	rm, err := shared.NewRegistryManager(logger)
+	if err != nil {
+		return fmt.Errorf("failed to create registry manager: %w", err)
 	}
 	
-	// Generate the complete schema
-	schema, err := generateCompleteSchema(registry, schemaActivity, schemaVersion, schemaIncludeExamples)
+	// Use shared schema manager
+	sm := shared.NewSchemaManager(rm)
+	schema, err := sm.GenerateCompleteSchema(schemaActivity, schemaVersion, schemaIncludeExamples)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate schema: %w", err)
 	}
 	
 	// Convert to requested format
@@ -85,7 +82,9 @@ func runSchema(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity string, includeVersion bool, includeExamples bool) (map[string]interface{}, error) {
+// DEPRECATED: This function is kept for backward compatibility but is no longer used
+// The schema generation is now handled by shared.SchemaManager
+func generateCompleteSchemaLegacy(registry *worker.ActivityRegistry, filterActivity string, includeVersion bool, includeExamples bool) (map[string]interface{}, error) {
 	// Base schema structure
 	schema := map[string]interface{}{
 		"$schema": "http://json-schema.org/draft-07/schema#",
@@ -218,7 +217,7 @@ func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity st
 		// Add config schema if available
 		if registration.ConfigSchema != nil {
 			configKey := sanitizeKey(actType)
-			configDefs[configKey] = convertSchema(registration.ConfigSchema)
+			configDefs[configKey] = convertSchemaLegacy(registration.ConfigSchema)
 			activitySchema["properties"].(map[string]interface{})["config"] = map[string]interface{}{
 				"$ref": fmt.Sprintf("#/definitions/configs/%s", configKey),
 			}
@@ -227,7 +226,7 @@ func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity st
 		// Add input schema if available
 		if registration.InputSchema != nil {
 			inputKey := sanitizeKey(actType)
-			inputDefs[inputKey] = convertSchema(registration.InputSchema)
+			inputDefs[inputKey] = convertSchemaLegacy(registration.InputSchema)
 			activitySchema["properties"].(map[string]interface{})["inputs"] = map[string]interface{}{
 				"$ref": fmt.Sprintf("#/definitions/inputs/%s", inputKey),
 			}
@@ -236,7 +235,7 @@ func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity st
 		// Add output schema if available
 		if registration.OutputSchema != nil {
 			outputKey := sanitizeKey(actType)
-			outputDefs[outputKey] = convertSchema(registration.OutputSchema)
+			outputDefs[outputKey] = convertSchemaLegacy(registration.OutputSchema)
 			activitySchema["properties"].(map[string]interface{})["outputs"] = map[string]interface{}{
 				"$ref": fmt.Sprintf("#/definitions/outputs/%s", outputKey),
 			}
@@ -273,24 +272,9 @@ func generateCompleteSchema(registry *worker.ActivityRegistry, filterActivity st
 	return schema, nil
 }
 
-func convertSchema(schema *jsonschema.Schema) map[string]interface{} {
-	// Handle nil input
-	if schema == nil {
-		return make(map[string]interface{})
-	}
-	
-	// Convert jsonschema.Schema to map
-	result := make(map[string]interface{})
-	
-	// Marshal and unmarshal to convert
-	bytes, _ := json.Marshal(schema)
-	json.Unmarshal(bytes, &result)
-	
-	// Remove internal fields
-	delete(result, "$id")
-	delete(result, "$anchor")
-	
-	return result
+// DEPRECATED: Moved to shared package
+func convertSchemaLegacy(schema interface{}) map[string]interface{} {
+	return make(map[string]interface{})
 }
 
 func sanitizeKey(activityType string) string {

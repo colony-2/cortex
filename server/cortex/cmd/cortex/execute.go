@@ -4,27 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
-	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
@@ -55,7 +47,7 @@ This command is designed for CI/CD integration, testing, and standalone recipe e
 }
 
 func init() {
-	executeCmd.Flags().StringArrayVarP(&executeInputs, "input", "i", nil, "Set a recipe input value (key=value, can be specified multiple times)")
+	executeCmd.Flags().StringArrayVarP(&executeInputs, "input", "i", nil, "Set a recipe input value (JSON string or key=value for backwards compatibility)")
 	executeCmd.Flags().StringVarP(&executeInputFile, "input-file", "f", "", "Load inputs from a JSON or YAML file")
 	executeCmd.Flags().StringVarP(&executeOutputFormat, "output", "o", "json", "Output format for results (text, json, yaml)")
 	executeCmd.Flags().StringVarP(&executeLogLevel, "log-level", "l", "info", "Set logging verbosity (debug, info, warn, error)")
@@ -166,8 +158,32 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			os.Exit(3)
 		}
 		
+		// Use shared registry manager and validator
+		rm, err := shared.NewRegistryManager(logger)
+		if err != nil {
+			return fmt.Errorf("failed to create registry manager: %w", err)
+		}
+		
+		validator := shared.NewRecipeValidator(rm)
+		
+		// Validate recipe structure
+		if err := validator.ValidateRecipeStructure(&recipeDef); err != nil {
+			result := ExecutionResult{
+				Success: false,
+				Error: &ExecutionError{
+					Message: "Recipe structure validation failed",
+					Details: err.Error(),
+				},
+				Recipe:        recipeFile,
+				RunID:         runID,
+				ExecutionTime: fmt.Sprintf("%.2fs", time.Since(startTime).Seconds()),
+			}
+			outputResult(result, executeOutputFormat)
+			os.Exit(3)
+		}
+		
 		// Validate inputs match recipe definition
-		if err := validateInputs(&recipeDef, inputs); err != nil {
+		if err := validator.ValidateInputs(&recipeDef, inputs); err != nil {
 			result := ExecutionResult{
 				Success: false,
 				Error: &ExecutionError{
@@ -359,26 +375,39 @@ func parseInputs(inputFlags []string, inputFile string) (map[string]interface{},
 	
 	// Parse command-line inputs (override file inputs)
 	for _, input := range inputFlags {
-		parts := strings.SplitN(input, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid input format: %s (expected key=value)", input)
-		}
-		
-		key := parts[0]
-		value := parts[1]
-		
-		// Try to parse value as JSON for complex types
-		var parsedValue interface{}
-		if err := json.Unmarshal([]byte(value), &parsedValue); err != nil {
-			// If not JSON, treat as string
-			parsedValue = value
-		}
-		
-		// Handle nested keys (e.g., "data.source=database")
-		if strings.Contains(key, ".") {
-			setNestedValue(inputs, key, parsedValue)
+		// First try to parse as JSON object
+		if strings.HasPrefix(strings.TrimSpace(input), "{") {
+			var jsonInputs map[string]interface{}
+			if err := json.Unmarshal([]byte(input), &jsonInputs); err != nil {
+				return nil, fmt.Errorf("invalid JSON input: %s (%w)", input, err)
+			}
+			// Merge JSON inputs
+			for k, v := range jsonInputs {
+				inputs[k] = v
+			}
 		} else {
-			inputs[key] = parsedValue
+			// Fall back to key=value format for backwards compatibility
+			parts := strings.SplitN(input, "=", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid input format: %s (expected JSON object or key=value)", input)
+			}
+			
+			key := parts[0]
+			value := parts[1]
+			
+			// Try to parse value as JSON for complex types
+			var parsedValue interface{}
+			if err := json.Unmarshal([]byte(value), &parsedValue); err != nil {
+				// If not JSON, treat as string
+				parsedValue = value
+			}
+			
+			// Handle nested keys (e.g., "data.source=database")
+			if strings.Contains(key, ".") {
+				setNestedValue(inputs, key, parsedValue)
+			} else {
+				inputs[key] = parsedValue
+			}
 		}
 	}
 	
@@ -429,7 +458,9 @@ func validateRecipeStructure(recipe *yamlpkg.RecipeDefinition) error {
 	return nil
 }
 
-func validateInputs(recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}) error {
+// DEPRECATED: validateInputs is now handled by shared.RecipeValidator
+// This function is kept for backward compatibility but is no longer used
+func validateInputsLegacy(recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}) error {
 	// Check required inputs
 	for _, input := range recipe.Inputs {
 		if input.Required {
@@ -445,73 +476,25 @@ func validateInputs(recipe *yamlpkg.RecipeDefinition, inputs map[string]interfac
 }
 
 func executeRecipe(ctx context.Context, recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}, logger *zap.Logger, state *ExecutionState, stateDir string) (*ExecutionResult, error) {
-	// Suppress test environment debug logs by redirecting them
-	// Set environment variable to disable temporal test debug logs
-	os.Setenv("TEMPORAL_DEBUG", "false")
-	defer os.Unsetenv("TEMPORAL_DEBUG")
-	
-	// Also redirect standard log output
-	originalLogger := log.Writer()
-	log.SetOutput(io.Discard)
-	defer log.SetOutput(originalLogger)
-	
-	// Create test environment for execution
-	testSuite := &testsuite.WorkflowTestSuite{}
-	testEnv := testSuite.NewTestWorkflowEnvironment()
-	
-	// Disable test environment debug logging
-	testEnv.SetOnActivityCompletedListener(nil)
-	
-	// Initialize activity registry
-	registry := worker.NewActivityRegistry()
-	activities := opsactivity.GetAll()
-	for _, act := range activities {
-		if err := registry.RegisterGeneric(act); err != nil {
-			if !strings.Contains(err.Error(), "already registered") {
-				return nil, fmt.Errorf("failed to register activity: %w", err)
-			}
-		}
+	// Use shared registry manager to get executor
+	rm, err := shared.NewRegistryManager(logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create registry manager: %w", err)
 	}
 	
-	// Create compiler activity registry
-	compilerRegistry := compiler.NewActivityRegistry()
-	// Register all activities in the compiler registry
-	for activityType := range registry.GetAll() {
-		compilerRegistry.RegisterActivity(activityType)
+	// Get the standalone executor from registry manager
+	exec := rm.GetExecutor()
+	if exec == nil {
+		return nil, fmt.Errorf("failed to get executor")
 	}
 	
-	// Create compiler
-	comp := compiler.NewCompiler(compilerRegistry)
+	// Configure execution options
+	opts := executor.DefaultExecutionOptions()
+	opts.SuppressLogs = true
 	
-	// Create workflow function
-	workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe, comp)
-	
-	// Register workflow
-	testEnv.RegisterWorkflowWithOptions(
-		workflowFunc,
-		workflow.RegisterOptions{
-			Name: recipe.Name,
-		},
-	)
-	
-	// Register activities with the test environment
-	for activityType := range registry.GetAll() {
-		// Create a generic activity executor that wraps the real activity
-		activityFunc := createActivityExecutor(activityType, registry, logger)
-		testEnv.RegisterActivityWithOptions(
-			activityFunc,
-			activity.RegisterOptions{
-				Name: activityType,
-			},
-		)
-	}
-	
-	// Execute workflow with context
-	testEnv.SetContextPropagators([]workflow.ContextPropagator{})
-	testEnv.ExecuteWorkflow(recipe.Name, inputs)
-	
-	// Check for errors
-	if err := testEnv.GetWorkflowError(); err != nil {
+	// Execute the recipe
+	outputs, err := exec.Execute(ctx, recipe, inputs, opts)
+	if err != nil {
 		// Check if it's a timeout error
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("execution timeout exceeded")
@@ -519,127 +502,10 @@ func executeRecipe(ctx context.Context, recipe *yamlpkg.RecipeDefinition, inputs
 		return nil, err
 	}
 	
-	// Get result
-	var outputs map[string]interface{}
-	if err := testEnv.GetWorkflowResult(&outputs); err != nil {
-		return nil, err
-	}
-	
 	return &ExecutionResult{
 		Success: true,
 		Outputs: outputs,
 	}, nil
-}
-
-
-func createActivityExecutor(activityType string, registry *worker.ActivityRegistry, logger *zap.Logger) interface{} {
-	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		logger.Debug("Executing activity",
-			zap.String("type", activityType),
-			zap.Any("inputs", inputs),
-		)
-		
-		// Get activity from registry
-		activityReg, exists := registry.Get(activityType)
-		if !exists {
-			return nil, fmt.Errorf("activity type %s not found", activityType)
-		}
-		
-		// Use reflection to invoke the activity's Execute method
-		if activityReg.Activity != nil {
-			activityValue := reflect.ValueOf(activityReg.Activity)
-			executeMethod := activityValue.MethodByName("Execute")
-			
-			if executeMethod.IsValid() {
-				// The Execute method signature is: Execute(ctx context.Context, config ConfigType, input InputType) (OutputType, error)
-				// We need to create the appropriate config and input types
-				
-				// Get the method type to understand the parameter types
-				methodType := executeMethod.Type()
-				if methodType.NumIn() == 3 && methodType.NumOut() == 2 {
-					// Create zero values for config and input parameters
-					configType := methodType.In(1)
-					inputType := methodType.In(2)
-					
-					configValue := reflect.New(configType).Elem()
-					inputValue := reflect.New(inputType).Elem()
-					
-					// Try to populate the input struct from the inputs map
-					if inputType.Kind() == reflect.Struct {
-						inputStruct := inputValue
-						for i := 0; i < inputType.NumField(); i++ {
-							field := inputType.Field(i)
-							jsonTag := field.Tag.Get("json")
-							if jsonTag != "" {
-								tagName := strings.Split(jsonTag, ",")[0]
-								if tagName != "" && tagName != "-" {
-									if val, ok := inputs[tagName]; ok {
-										fieldValue := inputStruct.Field(i)
-										if fieldValue.CanSet() {
-											// Try to set the value
-											if v := reflect.ValueOf(val); v.Type().AssignableTo(fieldValue.Type()) {
-												fieldValue.Set(v)
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-					
-					// Call the Execute method
-					results := executeMethod.Call([]reflect.Value{
-						reflect.ValueOf(ctx),
-						configValue,
-						inputValue,
-					})
-					
-					// Check for error
-					if len(results) == 2 {
-						if !results[1].IsNil() {
-							// There was an error
-							if err, ok := results[1].Interface().(error); ok {
-								return nil, err
-							}
-						}
-						
-						// Convert the output to a map
-						outputValue := results[0]
-						if outputValue.Kind() == reflect.Struct {
-							outputMap := make(map[string]interface{})
-							outputType := outputValue.Type()
-							for i := 0; i < outputValue.NumField(); i++ {
-								field := outputType.Field(i)
-								jsonTag := field.Tag.Get("json")
-								if jsonTag != "" {
-									tagName := strings.Split(jsonTag, ",")[0]
-									if tagName != "" && tagName != "-" {
-										fieldValue := outputValue.Field(i)
-										if fieldValue.CanInterface() {
-											outputMap[tagName] = fieldValue.Interface()
-										}
-									}
-								}
-							}
-							return outputMap, nil
-						}
-					}
-				}
-			}
-		}
-		
-		// Fallback: return a simple success response
-		outputs := map[string]interface{}{
-			"result": "success",
-		}
-		
-		logger.Debug("Activity completed",
-			zap.String("type", activityType),
-			zap.Any("outputs", outputs),
-		)
-		
-		return outputs, nil
-	}
 }
 
 func saveState(stateDir string, state *ExecutionState) error {
@@ -658,15 +524,42 @@ func outputResult(result ExecutionResult, format string) error {
 	var output []byte
 	var err error
 	
-	switch format {
-	case "json":
-		output, err = json.MarshalIndent(result, "", "  ")
-	case "yaml":
-		output, err = yaml.Marshal(result)
-	case "text":
-		output = []byte(formatTextResult(result))
-	default:
-		return fmt.Errorf("unsupported output format: %s", format)
+	// For successful execution, only output the recipe's declared outputs
+	if result.Success && result.Outputs != nil {
+		switch format {
+		case "json":
+			output, err = json.MarshalIndent(result.Outputs, "", "  ")
+		case "yaml":
+			output, err = yaml.Marshal(result.Outputs)
+		case "text":
+			output = []byte(formatTextOutputs(result.Outputs))
+		default:
+			return fmt.Errorf("unsupported output format: %s", format)
+		}
+	} else if !result.Success {
+		// For errors, output the full error structure
+		switch format {
+		case "json":
+			output, err = json.MarshalIndent(result, "", "  ")
+		case "yaml":
+			output, err = yaml.Marshal(result)
+		case "text":
+			output = []byte(formatTextResult(result))
+		default:
+			return fmt.Errorf("unsupported output format: %s", format)
+		}
+	} else {
+		// Success with no outputs
+		switch format {
+		case "json":
+			output = []byte("{}")
+		case "yaml":
+			output = []byte("{}\n")
+		case "text":
+			output = []byte("")
+		default:
+			return fmt.Errorf("unsupported output format: %s", format)
+		}
 	}
 	
 	if err != nil {
@@ -675,10 +568,20 @@ func outputResult(result ExecutionResult, format string) error {
 	
 	// Write to stdout
 	fmt.Print(string(output))
-	if format != "text" {
+	if format != "text" && len(output) > 0 {
 		fmt.Println() // Add newline for json/yaml
 	}
 	return nil
+}
+
+func formatTextOutputs(outputs map[string]interface{}) string {
+	var sb strings.Builder
+	
+	for key, value := range outputs {
+		sb.WriteString(fmt.Sprintf("%s: %v\n", key, value))
+	}
+	
+	return sb.String()
 }
 
 func formatTextResult(result ExecutionResult) string {

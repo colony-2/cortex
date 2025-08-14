@@ -1,0 +1,41 @@
+name: echo_example
+description: Simple recipe that echoes an input string
+version: "1.0"
+
+inputs:
+  - name: message
+    type: string
+    required: true
+    description: The message to echo
+  - name: repeat_count
+    type: integer
+    required: false
+    default: 1
+    description: Number of times to repeat the message
+
+outputs:
+  - name: echo_result
+    value: "{{ .Steps.echo.outputs.stdout }}"
+    type: string
+    description: The echoed message
+  - name: timestamp
+    value: "{{ .Steps.get_timestamp.outputs.stdout }}"
+    type: string
+    description: When the echo was performed
+
+steps:
+  - id: echo
+    name: Echo Message  
+    uses: command_execution
+    inputs:
+      run: "for i in $(seq 1 {{ .Inputs.repeat_count }}); do echo '{{ .Inputs.message }}'; done"
+    outputs:
+      stdout: echoed_text
+      
+  - id: get_timestamp
+    name: Get Timestamp
+    uses: command_execution
+    inputs:
+      run: "date '+%Y-%m-%d %H:%M:%S'"
+    outputs:
+      stdout: echo_timestamp

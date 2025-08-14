@@ -84,7 +84,11 @@
       "Bash(./cortex validate --help)",
       "Bash(./cortex:*)",
       "Bash(./test.sh)",
-      "Bash(gotestsum:*)"
+      "Bash(gotestsum:*)",
+      "Bash(./build/cortex:*)",
+      "Bash(for f in *.yaml)",
+      "Bash(do if [ ! -f \"$f%.yaml.test.yaml\" ])",
+      "Bash(then echo \"$f needs test file\")"
     ],
     "deny": []
   }

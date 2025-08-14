@@ -16,7 +16,7 @@ func TestGenerateCompleteSchema(t *testing.T) {
 	registry := worker.NewActivityRegistry()
 	
 	// Generate schema
-	schema, err := generateCompleteSchema(registry, "", false, false)
+	schema, err := generateCompleteSchemaLegacy(registry, "", false, false)
 	require.NoError(t, err)
 	
 	// Verify basic structure
@@ -46,7 +46,7 @@ func TestGenerateCompleteSchema(t *testing.T) {
 func TestSchemaCommandJSON(t *testing.T) {
 	// Test JSON output format
 	registry := worker.NewActivityRegistry()
-	schema, err := generateCompleteSchema(registry, "", false, false)
+	schema, err := generateCompleteSchemaLegacy(registry, "", false, false)
 	require.NoError(t, err)
 	
 	// Ensure it can be marshaled to JSON
@@ -66,7 +66,7 @@ func TestSchemaFilterActivity(t *testing.T) {
 	
 	// Note: This test assumes no activities are registered in the test environment
 	// In a real test, you would register test activities first
-	schema, err := generateCompleteSchema(registry, "llm", false, false)
+	schema, err := generateCompleteSchemaLegacy(registry, "llm", false, false)
 	require.NoError(t, err)
 	assert.NotNil(t, schema)
 }
@@ -74,7 +74,7 @@ func TestSchemaFilterActivity(t *testing.T) {
 func TestSchemaWithVersion(t *testing.T) {
 	// Test schema with version included
 	registry := worker.NewActivityRegistry()
-	schema, err := generateCompleteSchema(registry, "", true, false)
+	schema, err := generateCompleteSchemaLegacy(registry, "", true, false)
 	require.NoError(t, err)
 	
 	// Check version field exists
@@ -85,7 +85,7 @@ func TestSchemaWithVersion(t *testing.T) {
 func TestSchemaWithExamples(t *testing.T) {
 	// Test schema with examples
 	registry := worker.NewActivityRegistry()
-	schema, err := generateCompleteSchema(registry, "", false, true)
+	schema, err := generateCompleteSchemaLegacy(registry, "", false, true)
 	require.NoError(t, err)
 	
 	// The schema should still be valid
@@ -141,7 +141,7 @@ func TestConvertSchema(t *testing.T) {
 	// Test schema conversion
 	// Note: This would need a real jsonschema.Schema object
 	// For now, we just test the function exists and handles nil gracefully
-	result := convertSchema(nil)
+	result := convertSchemaLegacy(nil)
 	assert.NotNil(t, result)
 	assert.IsType(t, map[string]interface{}{}, result)
 }

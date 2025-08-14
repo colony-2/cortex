@@ -335,7 +335,7 @@ func TestValidateInputs(t *testing.T) {
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateInputs(tt.recipe, tt.inputs)
+			err := validateInputsLegacy(tt.recipe, tt.inputs)
 			
 			if tt.expectError {
 				assert.Error(t, err)
@@ -550,10 +550,11 @@ func TestOutputResult(t *testing.T) {
 		n, _ := r.Read(buf[:])
 		output := string(buf[:n])
 		
-		var parsed ExecutionResult
+		// For successful results, only outputs are returned
+		var parsed map[string]interface{}
 		err = json.Unmarshal([]byte(output), &parsed)
 		assert.NoError(t, err)
-		assert.Equal(t, result.Success, parsed.Success)
+		assert.Equal(t, result.Outputs["message"], parsed["message"])
 	})
 	
 	t.Run("YAML format", func(t *testing.T) {
@@ -572,16 +573,52 @@ func TestOutputResult(t *testing.T) {
 		n, _ := r.Read(buf[:])
 		output := string(buf[:n])
 		
-		var parsed ExecutionResult
+		// For successful results, only outputs are returned
+		var parsed map[string]interface{}
 		err = yaml.Unmarshal([]byte(output), &parsed)
 		assert.NoError(t, err)
-		assert.Equal(t, result.Success, parsed.Success)
+		assert.Equal(t, result.Outputs["message"], parsed["message"])
 	})
 	
 	t.Run("unsupported format", func(t *testing.T) {
 		err := outputResult(result, "xml")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported output format")
+	})
+	
+	t.Run("error result outputs full structure", func(t *testing.T) {
+		errorResult := ExecutionResult{
+			Success:       false,
+			Recipe:        "test.yaml",
+			RunID:         "run-456",
+			ExecutionTime: "1.2s",
+			Error: &ExecutionError{
+				Message: "Test error",
+				Details: "Something went wrong",
+			},
+		}
+		
+		// Capture stdout
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+		
+		err := outputResult(errorResult, "json")
+		assert.NoError(t, err)
+		
+		w.Close()
+		os.Stdout = old
+		
+		var buf [1024]byte
+		n, _ := r.Read(buf[:])
+		output := string(buf[:n])
+		
+		// For error results, full structure is returned
+		var parsed ExecutionResult
+		err = json.Unmarshal([]byte(output), &parsed)
+		assert.NoError(t, err)
+		assert.Equal(t, errorResult.Success, parsed.Success)
+		assert.Equal(t, errorResult.Error.Message, parsed.Error.Message)
 	})
 }
 

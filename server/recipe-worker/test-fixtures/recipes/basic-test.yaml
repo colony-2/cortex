@@ -1,0 +1,13 @@
+name: basic-test
+description: Basic test recipe
+version: "1.0"
+
+inputs:
+  - name: message
+    type: string
+    required: true
+
+outputs:
+  - name: result
+    value: "{{ .Inputs.message }}"
+    type: string

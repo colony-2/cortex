@@ -1,0 +1,21 @@
+name: test-execute
+description: Test recipe for execution refactoring
+version: "1.0"
+
+inputs:
+  - name: message
+    type: string
+    required: true
+    description: Test message
+
+outputs:
+  - name: message
+    type: string
+    value: "{{ .Steps.echo_message.stdout }}"
+    description: Output message
+
+steps:
+  - id: echo_message
+    uses: command_execution
+    inputs:
+      run: "echo {{ .Inputs.message }}"

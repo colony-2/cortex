@@ -1,0 +1,338 @@
+name: error-handling-example
+description: Example recipe demonstrating different error type handling
+version: 1.0.0
+
+initialState: fetchData
+
+variables:
+  retryCount: 0
+  maxRetries: 3
+  lastErrorType: ""
+  data: null
+  processedData: null
+
+states:
+  - name: fetchData
+    activities:
+      - name: fetchExternalData
+        timeout: "30s"
+        input:
+          url: "${config.dataSourceUrl}"
+        output: data
+        retryPolicy:
+          maximumAttempts: 2
+          initialInterval: "1s"
+          backoffCoefficient: 2.0
+    transitions:
+      # Check for specific error types using CEL expressions
+      - condition: 'error != nil && error.contains("timeout")'
+        target: handleTimeout
+        actions:
+          - set: lastErrorType
+            value: '"timeout"'
+      
+      - condition: 'error != nil && error.contains("unauthorized")'
+        target: handleAuthError
+        actions:
+          - set: lastErrorType
+            value: '"unauthorized"'
+      
+      - condition: 'error != nil && error.contains("not found")'
+        target: handleNotFound
+        actions:
+          - set: lastErrorType
+            value: '"not_found"'
+      
+      - condition: 'error != nil && error.contains("rate limit")'
+        target: handleRateLimit
+        actions:
+          - set: lastErrorType
+            value: '"rate_limit"'
+      
+      # Generic error handler for unknown errors
+      - condition: 'error != nil'
+        target: handleGenericError
+        actions:
+          - set: lastErrorType
+            value: '"unknown"'
+      
+      # Success path
+      - condition: 'data != null'
+        target: processData
+
+  - name: handleTimeout
+    activities:
+      - name: logTimeout
+        input:
+          message: "Operation timed out, attempting with extended timeout"
+          severity: "warning"
+      - name: fetchExternalDataSlowPath
+        timeout: "2m"  # Extended timeout
+        input:
+          url: "${config.dataSourceUrl}"
+          slowMode: true
+        output: data
+    transitions:
+      - condition: 'error == nil && data != null'
+        target: processData
+      - condition: 'retryCount < maxRetries'
+        target: retryWithBackoff
+        actions:
+          - set: retryCount
+            value: 'retryCount + 1'
+      - condition: 'true'
+        target: criticalFailure
+
+  - name: handleAuthError
+    activities:
+      - name: refreshAuthToken
+        timeout: "10s"
+        input:
+          refreshToken: "${config.refreshToken}"
+        output: newToken
+      - name: updateCredentials
+        input:
+          token: "${newToken}"
+    transitions:
+      - condition: 'error == nil'
+        target: fetchData  # Retry with new credentials
+      - condition: 'true'
+        target: authFailure
+
+  - name: handleNotFound
+    activities:
+      - name: createDefaultData
+        input:
+          template: "default"
+        output: data
+      - name: logNotFound
+        input:
+          message: "Resource not found, using default data"
+          severity: "info"
+    transitions:
+      - condition: 'data != null'
+        target: processData
+      - condition: 'true'
+        target: criticalFailure
+
+  - name: handleRateLimit
+    activities:
+      - name: calculateBackoff
+        input:
+          retryCount: "${retryCount}"
+        output: waitDuration
+      - name: waitForRateLimit
+        timeout: "5m"
+        input:
+          duration: "${waitDuration}"
+      - name: logRateLimit
+        input:
+          message: "Rate limited, waiting ${waitDuration} before retry"
+          severity: "warning"
+    transitions:
+      - condition: 'retryCount < maxRetries'
+        target: fetchData
+        actions:
+          - set: retryCount
+            value: 'retryCount + 1'
+      - condition: 'true'
+        target: rateLimitExceeded
+
+  - name: handleGenericError
+    activities:
+      - name: logGenericError
+        input:
+          message: "Unexpected error occurred: ${error}"
+          severity: "error"
+      - name: captureErrorMetrics
+        input:
+          errorType: "generic"
+          error: "${error}"
+    transitions:
+      - condition: 'retryCount < maxRetries'
+        target: retryWithBackoff
+        actions:
+          - set: retryCount
+            value: 'retryCount + 1'
+      - condition: 'true'
+        target: criticalFailure
+
+  - name: retryWithBackoff
+    activities:
+      - name: exponentialBackoff
+        input:
+          attempt: "${retryCount}"
+          baseDelay: "2s"
+        output: delay
+      - name: wait
+        input:
+          duration: "${delay}"
+    transitions:
+      - condition: 'true'
+        target: fetchData
+
+  - name: processData
+    activities:
+      - name: validateData
+        input:
+          data: "${data}"
+        output: validationResult
+      - name: transformData
+        timeout: "1m"
+        input:
+          data: "${data}"
+          validationResult: "${validationResult}"
+        output: processedData
+    transitions:
+      - condition: 'error != nil && error.contains("validation")'
+        target: validationError
+      - condition: 'error != nil && error.contains("transform")'
+        target: transformError
+      - condition: 'processedData != null'
+        target: saveResults
+      - condition: 'true'
+        target: processingError
+
+  - name: validationError
+    activities:
+      - name: attemptDataRepair
+        input:
+          data: "${data}"
+        output: repairedData
+    transitions:
+      - condition: 'repairedData != null'
+        target: processData
+        actions:
+          - set: data
+            value: 'repairedData'
+      - condition: 'true'
+        target: validationFailure
+
+  - name: transformError
+    activities:
+      - name: fallbackTransform
+        input:
+          data: "${data}"
+          useSimpleTransform: true
+        output: processedData
+    transitions:
+      - condition: 'processedData != null'
+        target: saveResults
+      - condition: 'true'
+        target: processingError
+
+  - name: saveResults
+    activities:
+      - name: persistData
+        timeout: "30s"
+        input:
+          data: "${processedData}"
+        output: savedId
+        retryPolicy:
+          maximumAttempts: 3
+          initialInterval: "500ms"
+      - name: publishSuccess
+        input:
+          id: "${savedId}"
+          data: "${processedData}"
+    transitions:
+      - condition: 'error != nil && error.contains("database")'
+        target: databaseError
+      - condition: 'error != nil'
+        target: saveError
+      - condition: 'true'
+        target: success
+
+  - name: databaseError
+    activities:
+      - name: saveToBackupStorage
+        input:
+          data: "${processedData}"
+        output: backupId
+      - name: scheduleDataReconciliation
+        input:
+          backupId: "${backupId}"
+          primaryStorage: "database"
+    transitions:
+      - condition: 'backupId != null'
+        target: partialSuccess
+      - condition: 'true'
+        target: criticalFailure
+
+  - name: saveError
+    activities:
+      - name: logSaveError
+        input:
+          error: "${error}"
+          severity: "error"
+    transitions:
+      - condition: 'true'
+        target: criticalFailure
+
+  # Terminal states for different error scenarios
+  - name: authFailure
+    terminal: true
+    activities:
+      - name: notifyAuthFailure
+        input:
+          message: "Authentication failed after refresh attempt"
+          severity: "critical"
+
+  - name: rateLimitExceeded
+    terminal: true
+    activities:
+      - name: notifyRateLimitExceeded
+        input:
+          message: "Rate limit exceeded after ${maxRetries} retries"
+          severity: "error"
+
+  - name: validationFailure
+    terminal: true
+    activities:
+      - name: notifyValidationFailure
+        input:
+          message: "Data validation failed and could not be repaired"
+          data: "${data}"
+
+  - name: processingError
+    terminal: true
+    activities:
+      - name: notifyProcessingError
+        input:
+          message: "Data processing failed"
+          lastError: "${error}"
+
+  - name: criticalFailure
+    terminal: true
+    activities:
+      - name: notifyCriticalFailure
+        input:
+          message: "Critical failure in workflow"
+          lastErrorType: "${lastErrorType}"
+          error: "${error}"
+      - name: triggerAlert
+        input:
+          alertLevel: "critical"
+          workflow: "error-handling-example"
+
+  - name: partialSuccess
+    terminal: true
+    activities:
+      - name: notifyPartialSuccess
+        input:
+          message: "Data saved to backup storage, reconciliation scheduled"
+          backupId: "${backupId}"
+
+  - name: success
+    terminal: true
+    activities:
+      - name: notifySuccess
+        input:
+          message: "Workflow completed successfully"
+          savedId: "${savedId}"
+
+# Configuration parameters that would be provided at runtime
+config:
+  dataSourceUrl: "https://api.example.com/data"
+  refreshToken: "refresh_token_here"
+  alertWebhook: "https://alerts.example.com/webhook"

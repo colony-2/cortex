@@ -1,0 +1,24 @@
+name: simple_echo
+description: Very simple echo recipe for testing
+version: "1.0"
+
+inputs:
+  - name: text
+    type: string
+    required: true
+    description: Text to echo
+
+outputs:
+  - name: result
+    value: "{{ .Steps.echo.outputs.stdout }}"
+    type: string
+    description: The echoed text
+
+steps:
+  - id: echo
+    name: Echo Text
+    uses: command_execution
+    inputs:
+      run: "echo '{{ .Inputs.text }}'"
+    outputs:
+      stdout: output_text

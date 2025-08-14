@@ -56,7 +56,12 @@ func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefi
 			return nil, err
 		}
 
-		// Return final outputs - for now just return state outputs
+		// Process recipe outputs - resolve output templates and populate state.Outputs
+		if err := c.processOutputs(ctx, def, state); err != nil {
+			return nil, fmt.Errorf("failed to process outputs: %w", err)
+		}
+
+		// Return final outputs
 		return state.Outputs, nil
 }
 
@@ -197,6 +202,28 @@ func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *W
 	// Store step result
 	state.Steps[step.ID] = StepResult{
 		Outputs: outputs,
+	}
+	
+	return nil
+}
+
+// processOutputs processes the recipe's output declarations and populates state.Outputs
+func (c *Compiler) processOutputs(ctx workflow.Context, def *yamlpkg.RecipeDefinition, state *WorkflowState) error {
+	resolver := NewTemplateResolver(state)
+	
+	// Process each declared output
+	for _, output := range def.Outputs {
+		// Resolve the output value template
+		value, err := resolver.Resolve(output.Value)
+		if err != nil {
+			workflow.GetLogger(ctx).Error("Failed to resolve output", 
+				"output", output.Name, 
+				"error", err)
+			return fmt.Errorf("failed to resolve output %s: %w", output.Name, err)
+		}
+		
+		// Store in state outputs
+		state.Outputs[output.Name] = value
 	}
 	
 	return nil

@@ -1,0 +1,6 @@
+tests:
+  - name: "basic_execution"
+    description: "Test basic recipe execution"
+    inputs: {}
+    want: {}
+    wantErr: false
