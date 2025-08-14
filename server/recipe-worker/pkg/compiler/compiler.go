@@ -211,19 +211,30 @@ func (c *Compiler) executeStep(ctx workflow.Context, step yamlpkg.Step, state *W
 func (c *Compiler) processOutputs(ctx workflow.Context, def *yamlpkg.RecipeDefinition, state *WorkflowState) error {
 	resolver := NewTemplateResolver(state)
 	
-	// Process each declared output
-	for _, output := range def.Outputs {
+	// Process each declared output (new format - outputs is a map)
+	for name, outputExpr := range def.Outputs {
+		// Convert to string for template resolution
+		exprStr := ""
+		switch v := outputExpr.(type) {
+		case string:
+			exprStr = v
+		default:
+			// If not a string, use as-is
+			state.Outputs[name] = outputExpr
+			continue
+		}
+		
 		// Resolve the output value template
-		value, err := resolver.Resolve(output.Value)
+		value, err := resolver.Resolve(exprStr)
 		if err != nil {
 			workflow.GetLogger(ctx).Error("Failed to resolve output", 
-				"output", output.Name, 
+				"output", name, 
 				"error", err)
-			return fmt.Errorf("failed to resolve output %s: %w", output.Name, err)
+			return fmt.Errorf("failed to resolve output %s: %w", name, err)
 		}
 		
 		// Store in state outputs
-		state.Outputs[output.Name] = value
+		state.Outputs[name] = value
 	}
 	
 	return nil

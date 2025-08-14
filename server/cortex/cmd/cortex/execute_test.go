@@ -285,10 +285,10 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "all required inputs provided",
 			recipe: &yamlpkg.RecipeDefinition{
-				Inputs: []yamlpkg.InputDefinition{
-					{Name: "required1", Type: "string", Required: true},
-					{Name: "required2", Type: "number", Required: true},
-					{Name: "optional", Type: "string", Required: false},
+				InputSchema: map[string]yamlpkg.InputDef{
+					"required1": {Type: "string", Required: true},
+					"required2": {Type: "number", Required: true},
+					"optional":  {Type: "string", Required: false},
 				},
 			},
 			inputs: map[string]interface{}{
@@ -300,8 +300,8 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "missing required input",
 			recipe: &yamlpkg.RecipeDefinition{
-				Inputs: []yamlpkg.InputDefinition{
-					{Name: "required", Type: "string", Required: true},
+				InputSchema: map[string]yamlpkg.InputDef{
+					"required": {Type: "string", Required: true},
 				},
 			},
 			inputs:      map[string]interface{}{},
@@ -311,8 +311,8 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "optional input not required",
 			recipe: &yamlpkg.RecipeDefinition{
-				Inputs: []yamlpkg.InputDefinition{
-					{Name: "optional", Type: "string", Required: false},
+				InputSchema: map[string]yamlpkg.InputDef{
+					"optional": {Type: "string", Required: false},
 				},
 			},
 			inputs:      map[string]interface{}{},
@@ -321,8 +321,8 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "extra inputs allowed",
 			recipe: &yamlpkg.RecipeDefinition{
-				Inputs: []yamlpkg.InputDefinition{
-					{Name: "defined", Type: "string", Required: true},
+				InputSchema: map[string]yamlpkg.InputDef{
+					"defined": {Type: "string", Required: true},
 				},
 			},
 			inputs: map[string]interface{}{

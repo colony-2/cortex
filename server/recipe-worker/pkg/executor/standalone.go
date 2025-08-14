@@ -121,7 +121,8 @@ func (e *StandaloneExecutor) Execute(
 	}
 	
 	// Create workflow function
-	workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe, e.compiler)
+	// Use nil executor to use the default implementation that supports unified format
+	workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe, nil)
 	
 	// Register workflow
 	testEnv.RegisterWorkflowWithOptions(

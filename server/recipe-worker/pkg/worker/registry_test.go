@@ -56,15 +56,15 @@ name: test-recipe
 version: "1.0.0"
 description: Test recipe
 
-steps:
-  - id: step1
-    uses: test-activity
-
 shared:
   test-activity:
-    uses: test-activity
-    config:
+    op: test-activity
+    inputs:
       type: http
+
+sequence:
+  - id: step1
+    shared: test-activity
 `
 	
 	recipePath := filepath.Join(tempDir, "test-recipe.yaml")
@@ -123,9 +123,9 @@ func TestRegistry_FileWatchingDebounce(t *testing.T) {
 name: watch-test
 version: "1.0.0"
 
-steps:
+sequence:
   - id: step1
-    uses: test-activity
+    op: test-activity
 `
 	recipePath := filepath.Join(tempDir, "watch-test.yaml")
 	err := os.WriteFile(recipePath, []byte(recipeContent), 0644)
@@ -154,9 +154,9 @@ steps:
 name: watch-test
 version: "1.0.` + string(rune('1'+i)) + `"
 
-steps:
+sequence:
   - id: step1
-    uses: test-activity
+    op: test-activity
 `
 		err = os.WriteFile(recipePath, []byte(updatedContent), 0644)
 		require.NoError(t, err)

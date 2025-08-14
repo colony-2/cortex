@@ -2,13 +2,13 @@ name: test-missing-fields
 description: Test recipe with missing required fields
 version: "1.0"
 
-steps:
+sequence:
   - id: step1
     # Missing 'uses' or 'parallel' field
     inputs:
       data: "test"
       
   - # Missing 'id' field
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo test"

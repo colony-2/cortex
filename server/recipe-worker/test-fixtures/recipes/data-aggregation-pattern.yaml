@@ -27,12 +27,10 @@ inputs:
     default: 0.75
     description: Minimum quality score threshold
 
-workflow:
-  type: sequential
-  steps:
+sequence:
     # Step 1: Validate all datasets
     - id: validate_datasets
-      activity: batch_validator
+      op: batch_validator
       inputs:
         datasets: "{{ .Inputs.datasets }}"
       outputs:
@@ -43,10 +41,9 @@ workflow:
     # Note: In a real implementation, this would be a loop or map operation
     # For demonstration, we show processing of first 3 datasets
     - id: process_datasets
-      type: parallel
       parallel:
         - id: process_dataset_0
-          activity: recipe
+          op: recipe
           config:
             recipe: "dataset-processor"
             timeout: "20m"
@@ -56,7 +53,7 @@ workflow:
               backoff_coefficient: 2.0
               maximum_interval: "1m"
           inputs:
-            dataset: "{{ index .Steps.validate_datasets.outputs.valid_datasets 0 }}"
+            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 0 }}"
             processing_config:
               normalize: true
               remove_outliers: true
@@ -68,12 +65,12 @@ workflow:
             processing_time: ".execution_metadata.duration_ms"
 
         - id: process_dataset_1
-          activity: recipe
+          op: recipe
           config:
             recipe: "dataset-processor"
             timeout: "20m"
           inputs:
-            dataset: "{{ index .Steps.validate_datasets.outputs.valid_datasets 1 }}"
+            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 1 }}"
             processing_config:
               normalize: true
               remove_outliers: true
@@ -84,12 +81,12 @@ workflow:
             quality_score: ".result.quality_score"
 
         - id: process_dataset_2
-          activity: recipe
+          op: recipe
           config:
             recipe: "dataset-processor"
             timeout: "20m"
           inputs:
-            dataset: "{{ index .Steps.validate_datasets.outputs.valid_datasets 2 }}"
+            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 2 }}"
             processing_config:
               normalize: true
               remove_outliers: false
@@ -101,21 +98,21 @@ workflow:
 
     # Step 3: Filter results by quality threshold
     - id: filter_by_quality
-      activity: quality_filter
+      op: quality_filter
       inputs:
         results:
           - dataset_id: "{{ index .Inputs.datasets 0 'id' }}"
-            data: "{{ .Steps.process_datasets.process_dataset_0.outputs.processed_data }}"
-            quality: "{{ .Steps.process_datasets.process_dataset_0.outputs.quality_score }}"
-            metrics: "{{ .Steps.process_datasets.process_dataset_0.outputs.metrics }}"
+            data: "{{ .nodes.process_datasets.process_dataset_0.outputs.processed_data }}"
+            quality: "{{ .nodes.process_datasets.process_dataset_0.outputs.quality_score }}"
+            metrics: "{{ .nodes.process_datasets.process_dataset_0.outputs.metrics }}"
           - dataset_id: "{{ index .Inputs.datasets 1 'id' }}"
-            data: "{{ .Steps.process_datasets.process_dataset_1.outputs.processed_data }}"
-            quality: "{{ .Steps.process_datasets.process_dataset_1.outputs.quality_score }}"
-            metrics: "{{ .Steps.process_datasets.process_dataset_1.outputs.metrics }}"
+            data: "{{ .nodes.process_datasets.process_dataset_1.outputs.processed_data }}"
+            quality: "{{ .nodes.process_datasets.process_dataset_1.outputs.quality_score }}"
+            metrics: "{{ .nodes.process_datasets.process_dataset_1.outputs.metrics }}"
           - dataset_id: "{{ index .Inputs.datasets 2 'id' }}"
-            data: "{{ .Steps.process_datasets.process_dataset_2.outputs.processed_data }}"
-            quality: "{{ .Steps.process_datasets.process_dataset_2.outputs.quality_score }}"
-            metrics: "{{ .Steps.process_datasets.process_dataset_2.outputs.metrics }}"
+            data: "{{ .nodes.process_datasets.process_dataset_2.outputs.processed_data }}"
+            quality: "{{ .nodes.process_datasets.process_dataset_2.outputs.quality_score }}"
+            metrics: "{{ .nodes.process_datasets.process_dataset_2.outputs.metrics }}"
         threshold: "{{ .Inputs.quality_threshold }}"
       outputs:
         passing_datasets: ".datasets_above_threshold"
@@ -124,9 +121,9 @@ workflow:
 
     # Step 4: Aggregate the passing datasets
     - id: aggregate_data
-      activity: data_aggregator
+      op: data_aggregator
       inputs:
-        datasets: "{{ .Steps.filter_by_quality.outputs.passing_datasets }}"
+        datasets: "{{ .nodes.filter_by_quality.outputs.passing_datasets }}"
         method: "{{ .Inputs.aggregation_method }}"
         weights: "quality_score"  # Use quality scores as weights
       outputs:
@@ -135,15 +132,15 @@ workflow:
 
     # Step 5: Generate insights from aggregated data
     - id: generate_insights
-      activity: recipe
+      op: recipe
       config:
         recipe: "insight-generator"
         timeout: "10m"
       inputs:
-        aggregated_data: "{{ .Steps.aggregate_data.outputs.aggregated_data }}"
-        statistics: "{{ .Steps.aggregate_data.outputs.aggregation_stats }}"
+        aggregated_data: "{{ .nodes.aggregate_data.outputs.aggregated_data }}"
+        statistics: "{{ .nodes.aggregate_data.outputs.aggregation_stats }}"
         original_count: "{{ len .Inputs.datasets }}"
-        processed_count: "{{ .Steps.filter_by_quality.outputs.passing_count }}"
+        processed_count: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
       outputs:
         insights: ".result.insights"
         recommendations: ".result.recommendations"
@@ -151,17 +148,17 @@ workflow:
 
     # Step 6: Create final report
     - id: create_report
-      activity: report_builder
+      op: report_builder
       inputs:
-        validation_report: "{{ .Steps.validate_datasets.outputs.validation_report }}"
-        passing_datasets: "{{ .Steps.filter_by_quality.outputs.passing_datasets }}"
-        failing_datasets: "{{ .Steps.filter_by_quality.outputs.failing_datasets }}"
-        aggregated_data: "{{ .Steps.aggregate_data.outputs.aggregated_data }}"
-        insights: "{{ .Steps.generate_insights.outputs.insights }}"
-        recommendations: "{{ .Steps.generate_insights.outputs.recommendations }}"
+        validation_report: "{{ .nodes.validate_datasets.outputs.validation_report }}"
+        passing_datasets: "{{ .nodes.filter_by_quality.outputs.passing_datasets }}"
+        failing_datasets: "{{ .nodes.filter_by_quality.outputs.failing_datasets }}"
+        aggregated_data: "{{ .nodes.aggregate_data.outputs.aggregated_data }}"
+        insights: "{{ .nodes.generate_insights.outputs.insights }}"
+        recommendations: "{{ .nodes.generate_insights.outputs.recommendations }}"
         metadata:
           total_datasets: "{{ len .Inputs.datasets }}"
-          processed_successfully: "{{ .Steps.filter_by_quality.outputs.passing_count }}"
+          processed_successfully: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
           aggregation_method: "{{ .Inputs.aggregation_method }}"
           quality_threshold: "{{ .Inputs.quality_threshold }}"
       outputs:
@@ -170,14 +167,14 @@ workflow:
 
 outputs:
   - name: final_report
-    value: "{{ .Steps.create_report.outputs.report }}"
+    value: "{{ .nodes.create_report.outputs.report }}"
   - name: executive_summary
-    value: "{{ .Steps.create_report.outputs.summary }}"
+    value: "{{ .nodes.create_report.outputs.summary }}"
   - name: processed_count
-    value: "{{ .Steps.filter_by_quality.outputs.passing_count }}"
+    value: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
   - name: insights
-    value: "{{ .Steps.generate_insights.outputs.insights }}"
+    value: "{{ .nodes.generate_insights.outputs.insights }}"
   - name: confidence_score
-    value: "{{ .Steps.generate_insights.outputs.confidence_score }}"
+    value: "{{ .nodes.generate_insights.outputs.confidence_score }}"
   - name: aggregated_statistics
-    value: "{{ .Steps.aggregate_data.outputs.aggregation_stats }}"
+    value: "{{ .nodes.aggregate_data.outputs.aggregation_stats }}"

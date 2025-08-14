@@ -3,23 +3,8 @@ name: hello_world
 description: A minimal recipe that demonstrates basic structure
 version: "1.0"
 
+# Root is a single operation
+op: echo_activity
 inputs:
-  - name: name
-    type: string
-    required: true
-    description: Name to greet
-
-outputs:
-  - name: greeting
-    value: "{{ .Steps.greet.outputs.result }}"
-    type: string
-    description: The greeting message
-
-steps:
-  - id: greet
-    name: Generate Greeting
-    uses: echo_activity
-    inputs:
-      message: "Hello, {{ .Inputs.name }}!"
-    outputs:
-      result: ".greeting_message"
+  message: "Hello, {{ .inputs.name }}!"
+  name: "{{ .inputs.name }}"

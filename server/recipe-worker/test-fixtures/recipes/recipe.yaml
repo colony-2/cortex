@@ -2,71 +2,54 @@ name: research_report_recipe
 description: Research a topic and generate a comprehensive report
 version: "1.0"
 
-inputs:
-  - name: topic
-    type: string
-    required: true
-    description: The topic to research
-  - name: max_sources
-    type: int
-    default: 10
-    description: Maximum number of sources to research
-
-outputs:
-  - name: report
-    type: string
-    description: The final generated report
-  - name: sources
-    type: array
-    description: List of sources used
-
-steps:
-  - id: research
-    uses: research_op
-    inputs:
-      topic: "{{ .Inputs.topic }}"
-      max_sources: "{{ .Inputs.max_sources }}"
-    outputs:
-      research_data: research_results
-      
-  - id: analyze
-    uses: analyze_op
-    inputs:
-      data: "{{ .Steps.research.outputs.research_data }}"
-      topic: "{{ .Inputs.topic }}"
-    outputs:
-      analysis: analysis_results
-      
-  - id: write_report
-    uses: write_report_op
-    inputs:
-      research: "{{ .Steps.research.outputs.research_data }}"
-      analysis: "{{ .Steps.analyze.outputs.analysis }}"
-      topic: "{{ .Inputs.topic }}"
-    outputs:
-      report: final_report
-
+# Shared node definitions
 shared:
   research_op:
-    uses: research_op
-    config:
-      type: function
-      timeout: 5m
-      retry_policy:
-        initial_interval: 1s
-        maximum_attempts: 3
-      description: Research data from various sources
+    op: command_execution
+    timeout: "5m"
+    retry:
+      max_attempts: 3
+      initial_interval: "1s"
+    inputs:
+      run: "echo 'Researching topic'"
       
   analyze_op:
-    uses: analyze_op
-    config:
-      type: function
-      timeout: 3m
-      description: Analyze research data
+    op: command_execution
+    timeout: "3m"
+    inputs:
+      run: "echo 'Analyzing data'"
       
   write_report_op:
-    uses: write_report_op
-    config:
-      type: function
-      timeout: 5m
-      description: Generate comprehensive report
+    op: command_execution
+    timeout: "5m"
+    inputs:
+      run: "echo 'Writing report'"
+
+# Root is a sequence
+sequence:
+  - id: research
+    shared: research_op
+    inputs:
+      topic: "{{ .inputs.topic }}"
+      max_sources: "{{ .inputs.max_sources }}"
+      
+  - id: analyze
+    shared: analyze_op
+    inputs:
+      data: "{{ .nodes.research.stdout }}"
+      topic: "{{ .inputs.topic }}"
+      
+  - id: write_report
+    shared: write_report_op
+    inputs:
+      research: "{{ .nodes.research.stdout }}"
+      analysis: "{{ .nodes.analyze.stdout }}"
+      topic: "{{ .inputs.topic }}"
+
+# Root node properties
+inputs:
+  topic: "AI Research"
+  max_sources: 10
+outputs:
+  report: "{{ .nodes.write_report.stdout }}"
+  sources: "{{ .nodes.research.stdout }}"

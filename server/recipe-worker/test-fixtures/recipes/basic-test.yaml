@@ -2,12 +2,10 @@ name: basic-test
 description: Basic test recipe
 version: "1.0"
 
+# Root is a simple operation
+op: command_execution
 inputs:
-  - name: message
-    type: string
-    required: true
-
+  run: "echo '{{ .inputs.message }}'"
+  message: "{{ .inputs.message }}"
 outputs:
-  - name: result
-    value: "{{ .Inputs.message }}"
-    type: string
+  result: "{{ .stdout }}"

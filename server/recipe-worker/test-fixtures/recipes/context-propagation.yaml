@@ -26,12 +26,10 @@ inputs:
 # - Auth info (identity, token if available)
 # - Parent execution ID (when invoked as a child)
 
-workflow:
-  type: sequential
-  steps:
+sequence:
     # Step 1: Initialize processing with context
     - id: initialize
-      activity: context_logger
+      op: context_logger
       inputs:
         message: "Starting context-aware pipeline"
         request_id: "{{ .Inputs.request_id }}"
@@ -45,7 +43,7 @@ workflow:
 
     # Step 2: Invoke child recipe - context is automatically propagated
     - id: process_with_context
-      activity: recipe
+      op: recipe
       config:
         recipe: "context-aware-processor"
         timeout: "10m"
@@ -57,7 +55,7 @@ workflow:
       inputs:
         data_source: "{{ .Inputs.data_source }}"
         request_id: "{{ .Inputs.request_id }}"
-        parent_init_id: "{{ .Steps.initialize.outputs.initialization_id }}"
+        parent_init_id: "{{ .nodes.initialize.outputs.initialization_id }}"
         # No need to manually pass context - it's automatic
       outputs:
         result: ".result"
@@ -66,14 +64,14 @@ workflow:
 
     # Step 3: Invoke another child that needs the first child's context
     - id: secondary_processing
-      activity: recipe
+      op: recipe
       config:
         recipe: "context-validator"
         timeout: "5m"
       inputs:
         # This child will know it's part of a recipe chain
-        previous_result: "{{ .Steps.process_with_context.outputs.result }}"
-        previous_child_id: "{{ .Steps.process_with_context.outputs.child_execution_id }}"
+        previous_result: "{{ .nodes.process_with_context.outputs.result }}"
+        previous_child_id: "{{ .nodes.process_with_context.outputs.child_execution_id }}"
         # The child can access context to understand the full chain:
         # - Its parent (this recipe)
         # - The environment it's running in
@@ -84,12 +82,12 @@ workflow:
 
     # Step 4: Demonstrate nested child invocation
     - id: nested_invocation
-      activity: recipe
+      op: recipe
       config:
         recipe: "nested-orchestrator"  # This child will invoke its own children
         timeout: "15m"
       inputs:
-        data: "{{ .Steps.process_with_context.outputs.result }}"
+        data: "{{ .nodes.process_with_context.outputs.result }}"
         # The nested-orchestrator will:
         # 1. Receive context from this parent
         # 2. Pass its own context to its children
@@ -101,7 +99,7 @@ workflow:
 
     # Step 5: Audit trail using context
     - id: create_audit_trail
-      activity: audit_logger
+      op: audit_logger
       inputs:
         request_id: "{{ .Inputs.request_id }}"
         user_id: "{{ .Inputs.user_id }}"
@@ -109,10 +107,10 @@ workflow:
         execution_chain:
           parent_id: "{{ .Context.Recipe.ExecutionID }}"
           children:
-            - id: "{{ .Steps.process_with_context.outputs.child_execution_id }}"
-              context: "{{ .Steps.process_with_context.outputs.child_received_context }}"
-            - id: "{{ .Steps.secondary_processing.outputs.context_chain }}"
-            - id: "{{ .Steps.nested_invocation.outputs.execution_tree }}"
+            - id: "{{ .nodes.process_with_context.outputs.child_execution_id }}"
+              context: "{{ .nodes.process_with_context.outputs.child_received_context }}"
+            - id: "{{ .nodes.secondary_processing.outputs.context_chain }}"
+            - id: "{{ .nodes.nested_invocation.outputs.execution_tree }}"
         environment:
           name: "{{ .Context.Environment.Name }}"
           region: "{{ .Context.Environment.Region }}"
@@ -124,11 +122,11 @@ workflow:
 
 outputs:
   - name: execution_hierarchy
-    value: "{{ .Steps.nested_invocation.outputs.execution_tree }}"
+    value: "{{ .nodes.nested_invocation.outputs.execution_tree }}"
   - name: audit_trail_id
-    value: "{{ .Steps.create_audit_trail.outputs.audit_id }}"
+    value: "{{ .nodes.create_audit_trail.outputs.audit_id }}"
   - name: processing_result
-    value: "{{ .Steps.process_with_context.outputs.result }}"
+    value: "{{ .nodes.process_with_context.outputs.result }}"
   - name: context_info
     value:
       recipe_name: "{{ .Context.Recipe.Name }}"

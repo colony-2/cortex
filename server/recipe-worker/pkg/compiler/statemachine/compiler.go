@@ -574,7 +574,13 @@ func (s *StateMachineCompiler) shouldRetry(policy *yamlpkg.StateRetryPolicy, err
 }
 
 func (s *StateMachineCompiler) calculateBackoff(policy *yamlpkg.StepRetryPolicy, attempt int) time.Duration {
-	backoff := policy.InitialInterval
+	// Parse initial interval from string
+	backoff, err := time.ParseDuration(policy.InitialInterval)
+	if err != nil {
+		// Default to 1 second if parsing fails
+		backoff = time.Second
+	}
+	
 	for i := 1; i < attempt; i++ {
 		backoff = time.Duration(float64(backoff) * policy.BackoffCoefficient)
 	}

@@ -1,6 +1,6 @@
 name: nested_composition_demo
 description: Demonstrates deeply nested sequential, parallel, and conditional compositions
-version: 1.0.0
+version: "1.0.0"
 
 inputs:
   - name: data
@@ -10,14 +10,14 @@ inputs:
 
 outputs:
   - name: final_result
-    value: "{{ .Steps.processor.final_result }}"
+    value: "{{ .nodes.processor.final_result }}"
     type: object
     description: Final processed result
 
-steps:
+sequence:
   - id: processor
     name: Nested Composition Processor
-    uses: state_machine
+    op: state_machine
     config:
       initial_state: orchestration
       states:
@@ -29,12 +29,12 @@ steps:
               # Parallel within sequential
               parallel:
                 - id: clean
-                  uses: data_cleaner
+                  op: data_cleaner
                   inputs:
                     data: "{{ .Inputs.data }}"
                 
                 - id: validate
-                  uses: data_validator
+                  op: data_validator
                   inputs:
                     data: "{{ .Inputs.data }}"
                 
@@ -42,93 +42,93 @@ steps:
                   # Sequential within parallel within sequential
                   sequential:
                     - id: extract_meta
-                      uses: metadata_extractor
+                      op: metadata_extractor
                       inputs:
                         data: "{{ .Inputs.data }}"
                     
                     - id: enrich_meta
-                      uses: metadata_enricher
+                      op: metadata_enricher
                       inputs:
-                        metadata: "{{ .Steps.extract_meta.outputs }}"
+                        metadata: "{{ .nodes.extract_meta.outputs }}"
             
             - id: stage2
               name: Processing Stage
               # Conditional within sequential
               conditional:
-                - when: ".Steps.stage1.outputs.validate.is_valid == true"
+                - when: ".nodes.stage1.outputs.validate.is_valid == true"
                   # Sequential within conditional within sequential
                   sequential:
                     - id: transform
-                      uses: data_transformer
+                      op: data_transformer
                       inputs:
-                        clean_data: "{{ .Steps.stage1.outputs.clean.data }}"
-                        metadata: "{{ .Steps.stage1.outputs.metadata.enrich_meta }}"
+                        clean_data: "{{ .nodes.stage1.outputs.clean.data }}"
+                        metadata: "{{ .nodes.stage1.outputs.metadata.enrich_meta }}"
                     
                     - id: analyze
                       # Parallel within sequential within conditional within sequential
                       parallel:
                         - id: statistical
-                          uses: statistical_analyzer
+                          op: statistical_analyzer
                           inputs:
-                            data: "{{ .Steps.transform.outputs }}"
+                            data: "{{ .nodes.transform.outputs }}"
                         
                         - id: ml_analysis
                           # Conditional within parallel within sequential within conditional within sequential
                           conditional:
-                            - when: ".Steps.transform.outputs.data_quality > 0.8"
-                              uses: advanced_ml_analyzer
+                            - when: ".nodes.transform.outputs.data_quality > 0.8"
+                              op: advanced_ml_analyzer
                               inputs:
-                                data: "{{ .Steps.transform.outputs }}"
+                                data: "{{ .nodes.transform.outputs }}"
                             
                             - default: true
-                              uses: basic_ml_analyzer
+                              op: basic_ml_analyzer
                               inputs:
-                                data: "{{ .Steps.transform.outputs }}"
+                                data: "{{ .nodes.transform.outputs }}"
                         
                         - id: pattern
-                          uses: pattern_detector
+                          op: pattern_detector
                           inputs:
-                            data: "{{ .Steps.transform.outputs }}"
+                            data: "{{ .nodes.transform.outputs }}"
                     
                     - id: aggregate
-                      uses: result_aggregator
+                      op: result_aggregator
                       inputs:
-                        statistical: "{{ .Steps.analyze.outputs.statistical }}"
-                        ml: "{{ .Steps.analyze.outputs.ml_analysis }}"
-                        patterns: "{{ .Steps.analyze.outputs.pattern }}"
+                        statistical: "{{ .nodes.analyze.outputs.statistical }}"
+                        ml: "{{ .nodes.analyze.outputs.ml_analysis }}"
+                        patterns: "{{ .nodes.analyze.outputs.pattern }}"
                 
                 - default: true
-                  uses: error_handler
+                  op: error_handler
                   inputs:
-                    validation_errors: "{{ .Steps.stage1.outputs.validate.errors }}"
+                    validation_errors: "{{ .nodes.stage1.outputs.validate.errors }}"
             
             - id: stage3
               name: Finalization Stage
               # Another parallel within sequential
               parallel:
                 - id: format_output
-                  uses: output_formatter
+                  op: output_formatter
                   inputs:
-                    results: "{{ .Steps.stage2.outputs }}"
+                    results: "{{ .nodes.stage2.outputs }}"
                 
                 - id: generate_report
                   # Sequential within parallel within sequential
                   sequential:
                     - id: create_summary
-                      uses: summary_generator
+                      op: summary_generator
                       inputs:
-                        data: "{{ .Steps.stage2.outputs }}"
+                        data: "{{ .nodes.stage2.outputs }}"
                     
                     - id: add_charts
-                      uses: chart_generator
+                      op: chart_generator
                       inputs:
-                        summary: "{{ .Steps.create_summary.outputs }}"
-                        data: "{{ .Steps.stage2.outputs }}"
+                        summary: "{{ .nodes.create_summary.outputs }}"
+                        data: "{{ .nodes.stage2.outputs }}"
                 
                 - id: store_results
-                  uses: result_storage
+                  op: result_storage
                   inputs:
-                    data: "{{ .Steps.stage2.outputs }}"
+                    data: "{{ .nodes.stage2.outputs }}"
           
           transitions:
             - to: success

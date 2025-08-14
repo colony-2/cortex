@@ -125,10 +125,12 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		return outputError(err, "Failed to parse inputs", recipeFile, runID, startTime)
 	}
 	
-	// Apply default values for missing inputs
-	for _, inputDef := range recipeDef.Inputs {
-		if _, exists := inputs[inputDef.Name]; !exists && inputDef.Default != nil {
-			inputs[inputDef.Name] = inputDef.Default
+	// Apply default values for missing inputs using InputSchema
+	if recipeDef.InputSchema != nil {
+		for name, inputDef := range recipeDef.InputSchema {
+			if _, exists := inputs[name]; !exists && inputDef.Default != nil {
+				inputs[name] = inputDef.Default
+			}
 		}
 	}
 	
@@ -461,11 +463,13 @@ func validateRecipeStructure(recipe *yamlpkg.RecipeDefinition) error {
 // DEPRECATED: validateInputs is now handled by shared.RecipeValidator
 // This function is kept for backward compatibility but is no longer used
 func validateInputsLegacy(recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}) error {
-	// Check required inputs
-	for _, input := range recipe.Inputs {
-		if input.Required {
-			if _, exists := inputs[input.Name]; !exists {
-				return fmt.Errorf("required input '%s' not provided", input.Name)
+	// Check required inputs using InputSchema
+	if recipe.InputSchema != nil {
+		for name, inputDef := range recipe.InputSchema {
+			if inputDef.Required {
+				if _, exists := inputs[name]; !exists {
+					return fmt.Errorf("required input '%s' not provided", name)
+				}
 			}
 		}
 	}

@@ -38,10 +38,10 @@ func TestWorkflowExecution_Shared(t *testing.T) {
 	recipeDef := &yamlpkg.RecipeDefinition{
 		Name:    "shared-execution",
 		Version: "1.0",
-		Shared: map[string]yamlpkg.SharedActivity{
+		Shared: map[string]yamlpkg.Node{
 			"my_llm": {
-				Uses: "llm",
-				Config: map[string]interface{}{
+				Op: "llm",
+				Inputs: map[string]interface{}{
 					"type":  "ai_prompt",
 					"model": "gpt-4",
 				},
@@ -61,5 +61,5 @@ func TestWorkflowExecution_Shared(t *testing.T) {
 	assert.NotNil(t, recipeDef)
 	assert.Len(t, recipeDef.Shared, 1)
 	assert.Contains(t, recipeDef.Shared, "my_llm")
-	assert.Equal(t, "llm", recipeDef.Shared["my_llm"].Uses)
+	assert.Equal(t, "llm", recipeDef.Shared["my_llm"].Op)
 }

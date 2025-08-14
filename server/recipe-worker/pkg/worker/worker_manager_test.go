@@ -81,18 +81,18 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 		Recipe: &yamlpkg.RecipeDefinition{
 			Name:    "shared-test-recipe",
 			Version: "1.0.0",
-			Shared: map[string]yamlpkg.SharedActivity{
+			Shared: map[string]yamlpkg.Node{
 				"my_llm": {
-					Uses: "llm",
-					Config: map[string]interface{}{
+					Op: "llm",
+					Inputs: map[string]interface{}{
 						"type":  "ai_prompt",
 						"model": "gpt-4",
 						"timeout": "1m",
 					},
 				},
 				"my_http": {
-					Uses: "http",
-					Config: map[string]interface{}{
+					Op: "http",
+					Inputs: map[string]interface{}{
 						"type": "http",
 						"timeout": "30s",
 					},
@@ -141,13 +141,13 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 	
 	// Verify shared activity configurations
 	llmActivity := testRecipe.Recipe.Shared["my_llm"]
-	assert.Equal(t, "llm", llmActivity.Uses)
-	assert.Equal(t, "ai_prompt", llmActivity.Config["type"])
-	assert.Equal(t, "gpt-4", llmActivity.Config["model"])
+	assert.Equal(t, "llm", llmActivity.Op)
+	assert.Equal(t, "ai_prompt", llmActivity.Inputs["type"])
+	assert.Equal(t, "gpt-4", llmActivity.Inputs["model"])
 	
 	httpActivity := testRecipe.Recipe.Shared["my_http"] 
-	assert.Equal(t, "http", httpActivity.Uses)
-	assert.Equal(t, "http", httpActivity.Config["type"])
+	assert.Equal(t, "http", httpActivity.Op)
+	assert.Equal(t, "http", httpActivity.Inputs["type"])
 }
 
 func TestWorkerManager_ErrorHandling(t *testing.T) {

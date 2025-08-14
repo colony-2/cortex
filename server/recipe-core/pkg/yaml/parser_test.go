@@ -8,33 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseUnifiedRecipe(t *testing.T) {
+func TestParseSimpleOperation(t *testing.T) {
 	yamlContent := `
 name: test_recipe
-description: A test recipe using unified activity model
+description: A test recipe with single operation
 version: "1.0"
+
+# Root is a single operation
+op: research_activity
 inputs:
-  - name: topic
-    type: string
-    required: true
-    description: The topic to research
-  - name: max_sources
-    type: int
-    default: 10
-outputs:
-  - name: report
-    value: "{{ .Steps.research.outputs.data }}"
-    type: string
-    description: The final report
-steps:
-  - id: research
-    name: Research Topic
-    uses: research_activity
-    inputs:
-      topic: "{{ .Inputs.topic }}"
-      max_sources: "{{ .Inputs.max_sources }}"
-    outputs:
-      data: ".research_results"
+  topic: "Climate Change"
+  max_sources: 10
 `
 
 	parser := NewParser()
@@ -42,218 +26,311 @@ steps:
 	require.NoError(t, err)
 	
 	assert.Equal(t, "test_recipe", recipe.Name)
-	assert.Equal(t, "A test recipe using unified activity model", recipe.Description)
+	assert.Equal(t, "A test recipe with single operation", recipe.Description)
 	assert.Equal(t, "1.0", recipe.Version)
 	
-	// Check inputs
-	require.Len(t, recipe.Inputs, 2)
-	assert.Equal(t, "topic", recipe.Inputs[0].Name)
-	assert.Equal(t, "string", recipe.Inputs[0].Type)
-	assert.True(t, recipe.Inputs[0].Required)
-	
-	assert.Equal(t, "max_sources", recipe.Inputs[1].Name)
-	assert.Equal(t, "int", recipe.Inputs[1].Type)
-	assert.Equal(t, 10, recipe.Inputs[1].Default)
-	
-	// Check outputs
-	require.Len(t, recipe.Outputs, 1)
-	assert.Equal(t, "report", recipe.Outputs[0].Name)
-	assert.Equal(t, "{{ .Steps.research.outputs.data }}", recipe.Outputs[0].Value)
-	assert.Equal(t, "string", recipe.Outputs[0].Type)
-	
-	// Check steps
-	require.Len(t, recipe.Steps, 1)
-	step := recipe.Steps[0]
-	assert.Equal(t, "research", step.ID)
-	assert.Equal(t, "Research Topic", step.Name)
-	assert.Equal(t, "research_activity", step.Uses)
-	assert.Equal(t, "{{ .Inputs.topic }}", step.Inputs["topic"])
-	assert.Equal(t, ".research_results", step.Outputs["data"])
+	// Check root node
+	assert.Equal(t, "research_activity", recipe.Op)
+	assert.NotNil(t, recipe.Inputs)
+	assert.Equal(t, "Climate Change", recipe.Inputs["topic"])
+	assert.Equal(t, 10, recipe.Inputs["max_sources"])
 }
 
-func TestParseSharedActivities(t *testing.T) {
+func TestParseSequence(t *testing.T) {
 	yamlContent := `
-name: recipe_with_shared
+name: sequence_recipe
 version: "1.0"
-shared:
-  data_analyst:
-    uses: llm
-    config:
-      model: "gpt-4"
-      temperature: 0.3
-      system_prompt: "You are a data analyst."
-  
-  validator:
-    uses: validation_activity
-    config:
-      validation_type: "strict"
-      timeout: "30s"
 
-steps:
+# Root is a sequence
+sequence:
   - id: validate
-    uses: shared/validator
+    op: validation_activity
     inputs:
-      data: "{{ .Inputs.data }}"
+      data: "{{ .inputs.data }}"
   
   - id: analyze
-    uses: shared/data_analyst
+    op: llm
     inputs:
-      prompt: "Analyze: {{ .Steps.validate.outputs }}"
+      prompt: "Analyze: {{ .nodes.validate.outputs }}"
+      model: "gpt-4"
+
+inputs:
+  data: "test data"
+outputs:
+  result: "{{ .nodes.analyze.response }}"
 `
 
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
 	
-	// Check shared activities
-	require.NotNil(t, recipe.Shared)
-	require.Len(t, recipe.Shared, 2)
+	// Check sequence
+	require.NotNil(t, recipe.Sequence)
+	require.Len(t, recipe.Sequence, 2)
 	
-	// Check data analyst shared activity
-	dataAnalyst, exists := recipe.Shared["data_analyst"]
-	require.True(t, exists)
-	assert.Equal(t, "llm", dataAnalyst.Uses)
-	assert.Equal(t, "gpt-4", dataAnalyst.Config["model"])
-	assert.Equal(t, 0.3, dataAnalyst.Config["temperature"])
+	// First node
+	assert.Equal(t, "validate", recipe.Sequence[0].ID)
+	assert.Equal(t, "validation_activity", recipe.Sequence[0].Op)
+	assert.Equal(t, "{{ .inputs.data }}", recipe.Sequence[0].Inputs["data"])
 	
-	// Check validator shared activity
-	validator, exists := recipe.Shared["validator"]
-	require.True(t, exists)
-	assert.Equal(t, "validation_activity", validator.Uses)
-	assert.Equal(t, "strict", validator.Config["validation_type"])
-	
-	// Check steps reference shared activities
-	require.Len(t, recipe.Steps, 2)
-	assert.Equal(t, "shared/validator", recipe.Steps[0].Uses)
-	assert.Equal(t, "shared/data_analyst", recipe.Steps[1].Uses)
+	// Second node
+	assert.Equal(t, "analyze", recipe.Sequence[1].ID)
+	assert.Equal(t, "llm", recipe.Sequence[1].Op)
+	assert.Equal(t, "gpt-4", recipe.Sequence[1].Inputs["model"])
 }
 
-func TestParseParallelProcessing(t *testing.T) {
+func TestParseParallel(t *testing.T) {
 	yamlContent := `
-name: parallel_processing
+name: parallel_recipe
 version: "1.0"
-steps:
-  - id: process_items
-    name: Process Items in Parallel
-    parallel:
-      for_each: "{{ .Inputs.items }}"
-      as: item
-      steps:
-        - id: transform
-          uses: transform_activity
-          inputs:
-            data: "{{ .item }}"
-            mode: "enhanced"
-        - id: validate
-          uses: validation_activity
-          inputs:
-            data: "{{ .Steps.transform.outputs }}"
-  
-  - id: aggregate
-    uses: aggregation_activity
+
+# Root is parallel
+parallel:
+  - id: task1
+    op: command_execution
     inputs:
-      results: "{{ .Steps.process_items.outputs }}"
+      run: "echo task1"
+  
+  - id: task2
+    op: command_execution
+    inputs:
+      run: "echo task2"
 `
 
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
 	
-	require.Len(t, recipe.Steps, 2)
+	// Check parallel
+	require.NotNil(t, recipe.Parallel)
+	require.Len(t, recipe.Parallel, 2)
 	
-	// Check parallel step
-	parallelStep := recipe.Steps[0]
-	assert.Equal(t, "process_items", parallelStep.ID)
-	assert.Equal(t, "Process Items in Parallel", parallelStep.Name)
+	assert.Equal(t, "task1", recipe.Parallel[0].ID)
+	assert.Equal(t, "command_execution", recipe.Parallel[0].Op)
+	assert.Equal(t, "echo task1", recipe.Parallel[0].Inputs["run"])
 	
-	require.NotNil(t, parallelStep.Parallel)
-	assert.Equal(t, "{{ .Inputs.items }}", parallelStep.Parallel.ForEach)
-	assert.Equal(t, "item", parallelStep.Parallel.As)
-	
-	// Check parallel steps
-	require.Len(t, parallelStep.Parallel.Steps, 2)
-	assert.Equal(t, "transform", parallelStep.Parallel.Steps[0].ID)
-	assert.Equal(t, "transform_activity", parallelStep.Parallel.Steps[0].Uses)
-	assert.Equal(t, "{{ .item }}", parallelStep.Parallel.Steps[0].Inputs["data"])
-	
-	// Check aggregation step
-	aggStep := recipe.Steps[1]
-	assert.Equal(t, "aggregate", aggStep.ID)
-	assert.Equal(t, "aggregation_activity", aggStep.Uses)
-	assert.Equal(t, "{{ .Steps.process_items.outputs }}", aggStep.Inputs["results"])
+	assert.Equal(t, "task2", recipe.Parallel[1].ID)
+	assert.Equal(t, "command_execution", recipe.Parallel[1].Op)
+	assert.Equal(t, "echo task2", recipe.Parallel[1].Inputs["run"])
 }
 
-func TestParseInlineStateMachine(t *testing.T) {
+func TestParseStateMachine(t *testing.T) {
 	yamlContent := `
 name: state_machine_recipe
 version: "1.0"
-steps:
-  - id: review_process
-    name: Document Review Process
-    uses: state_machine
-    config:
-      initial_state: reviewing
-      states:
-        reviewing:
-          uses: critique_activity
-          inputs:
-            document: "{{ .Inputs.document }}"
-          transitions:
-            - to: approved
-              when: ".Outputs.score >= 80"
-            - to: improving
-              when: ".Outputs.score < 80"
-        
-        improving:
-          uses: llm
-          config:
-            model: "gpt-4"
-            system_prompt: "Improve this document for clarity."
-          inputs:
-            prompt: "Improve: {{ .State.document }}"
-          transitions:
-            - to: reviewing
-              when: ".Outputs.improved == true"
-        
-        approved:
-          terminal: true
-          outputs:
-            status: "approved"
-            final_document: "{{ .State.document }}"
+
+# Root is a state machine
+states:
+  initial: validate
+  
+  validate:
+    op: validation_activity
     inputs:
-      document: "{{ .Inputs.document }}"
+      data: "{{ .inputs.data }}"
+    transitions:
+      - to: process
+        when: ".outputs.valid == true"
+      - to: error
+  
+  process:
+    op: processor
+    transitions:
+      - to: complete
+  
+  complete:
+    op: command_execution
+    inputs:
+      run: "echo 'Done'"
+  
+  error:
+    error: "Validation failed"
+
+inputs:
+  data: "test"
 `
 
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
 	
-	require.Len(t, recipe.Steps, 1)
-	step := recipe.Steps[0]
+	// Check state machine
+	require.NotNil(t, recipe.States)
+	assert.Equal(t, "validate", recipe.States.Initial)
 	
-	assert.Equal(t, "review_process", step.ID)
-	assert.Equal(t, "state_machine", step.Uses)
+	// Check states
+	validateState, exists := recipe.States.States["validate"]
+	require.True(t, exists)
+	assert.Equal(t, "validation_activity", validateState.Op)
+	assert.Len(t, validateState.Transitions, 2)
+	assert.Equal(t, "process", validateState.Transitions[0].To)
+	assert.Equal(t, ".outputs.valid == true", validateState.Transitions[0].When)
 	
-	// Check state machine configuration
-	require.NotNil(t, step.Config)
-	assert.Equal(t, "reviewing", step.Config["initial_state"])
+	errorState, exists := recipe.States.States["error"]
+	require.True(t, exists)
+	assert.Equal(t, "Validation failed", errorState.Error)
+}
+
+func TestParseSharedNodes(t *testing.T) {
+	yamlContent := `
+name: recipe_with_shared
+version: "1.0"
+
+shared:
+  data_processor:
+    op: llm
+    inputs:
+      model: "gpt-4"
+      temperature: 0.3
+    timeout: "30s"
+  
+  validator:
+    sequence:
+      - id: check1
+        op: validation_activity
+        inputs:
+          type: "schema"
+      
+      - id: check2
+        op: validation_activity
+        inputs:
+          type: "business_rules"
+
+# Root is a sequence using shared nodes
+sequence:
+  - id: validate
+    shared: validator
+  
+  - id: process
+    shared: data_processor
+    inputs:
+      prompt: "Process this data"
+`
+
+	parser := NewParser()
+	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
+	require.NoError(t, err)
 	
-	states, ok := step.Config["states"].(map[string]interface{})
-	require.True(t, ok)
-	require.Len(t, states, 3)
+	// Check shared nodes
+	require.NotNil(t, recipe.Shared)
+	require.Len(t, recipe.Shared, 2)
 	
-	// Check reviewing state
-	reviewing, ok := states["reviewing"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "critique_activity", reviewing["uses"])
+	// Check data processor shared node
+	dataProcessor, exists := recipe.Shared["data_processor"]
+	require.True(t, exists)
+	assert.Equal(t, "llm", dataProcessor.Op)
+	assert.Equal(t, "gpt-4", dataProcessor.Inputs["model"])
+	assert.Equal(t, "30s", dataProcessor.Timeout)
 	
-	transitions, ok := reviewing["transitions"].([]interface{})
-	require.True(t, ok)
-	require.Len(t, transitions, 2)
+	// Check validator shared node (sequence)
+	validator, exists := recipe.Shared["validator"]
+	require.True(t, exists)
+	require.NotNil(t, validator.Sequence)
+	assert.Len(t, validator.Sequence, 2)
 	
-	// Check first transition
-	transition1, ok := transitions[0].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "approved", transition1["to"])
-	assert.Equal(t, ".Outputs.score >= 80", transition1["when"])
+	// Check root sequence references shared nodes
+	require.Len(t, recipe.Sequence, 2)
+	assert.Equal(t, "validator", recipe.Sequence[0].Shared)
+	assert.Equal(t, "data_processor", recipe.Sequence[1].Shared)
+}
+
+func TestParseNestedComposition(t *testing.T) {
+	yamlContent := `
+name: nested_composition
+version: "1.0"
+
+# Root sequence with nested parallel
+sequence:
+  - id: prepare
+    op: setup_activity
+  
+  - id: parallel_process
+    parallel:
+      - id: branch1
+        sequence:
+          - id: step1
+            op: processor
+            inputs:
+              id: 1
+          
+          - id: step2
+            op: validator
+      
+      - id: branch2
+        op: processor
+        inputs:
+          id: 2
+  
+  - id: aggregate
+    op: aggregator
+    inputs:
+      data: "{{ .nodes.parallel_process.nodes }}"
+`
+
+	parser := NewParser()
+	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
+	require.NoError(t, err)
+	
+	// Check root sequence
+	require.Len(t, recipe.Sequence, 3)
+	
+	// Check nested parallel
+	parallelNode := recipe.Sequence[1]
+	assert.Equal(t, "parallel_process", parallelNode.ID)
+	require.NotNil(t, parallelNode.Parallel)
+	assert.Len(t, parallelNode.Parallel, 2)
+	
+	// Check nested sequence in parallel
+	branch1 := parallelNode.Parallel[0]
+	assert.Equal(t, "branch1", branch1.ID)
+	require.NotNil(t, branch1.Sequence)
+	assert.Len(t, branch1.Sequence, 2)
+}
+
+func TestValidationErrors(t *testing.T) {
+	testCases := []struct {
+		name        string
+		yamlContent string
+		expectError string
+	}{
+		{
+			name: "no root node",
+			yamlContent: `
+name: invalid
+version: "1.0"
+`,
+			expectError: "recipe must have one of",
+		},
+		{
+			name: "multiple root nodes",
+			yamlContent: `
+name: invalid
+version: "1.0"
+op: some_op
+sequence:
+  - id: step1
+    op: another_op
+`,
+			expectError: "exactly one of",
+		},
+		{
+			name: "operation with outputs",
+			yamlContent: `
+name: invalid
+version: "1.0"
+op: some_op
+outputs:
+  result: "value"
+`,
+			expectError: "operation nodes cannot have outputs",
+		},
+	}
+	
+	parser := NewParser()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parser.ParseRecipeReader(strings.NewReader(tc.yamlContent))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectError)
+		})
+	}
 }

@@ -105,16 +105,13 @@ func TestRunFunctionWithEmbeddedTemporal(t *testing.T) {
 
 	// Write a test recipe
 	recipeContent := `name: integration-test-recipe
-version: 1.0.0
+version: "1.0.0"
 description: Recipe for integration testing
 
-workflow:
-  steps:
-    - name: test-step
-      activity:
-        type: function
-        config:
-          function: test-func
+# Root is a simple operation
+op: command_execution
+inputs:
+  run: "echo 'Integration test'"
 `
 	if err := os.WriteFile(filepath.Join(recipesDir, "test.yaml"), []byte(recipeContent), 0644); err != nil {
 		t.Fatalf("failed to write test recipe: %v", err)

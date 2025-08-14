@@ -1,20 +1,15 @@
 name: simple-test-recipe
-version: 1.0.0
+version: "1.0.0"
 description: A simple test recipe for integration testing
 
-workflow:
-  steps:
-    - name: step1
-      activity:
-        type: http
-        config:
-          url: https://httpbin.org/get
-          method: GET
+# Root is a sequence of operations
+sequence:
+  - id: step1
+    op: command_execution
+    inputs:
+      run: "curl -s https://httpbin.org/get"
     
-    - name: step2
-      activity:
-        type: function
-        config:
-          function: test-function
-          args:
-            message: "Hello from test"
+  - id: step2
+    op: command_execution
+    inputs:
+      run: "echo 'Hello from test'"

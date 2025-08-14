@@ -83,20 +83,20 @@ name: integration-test
 version: "1.0.0"
 description: Integration test recipe
 
-steps:
+shared:
+  process-data:
+    op: process-data
+    inputs:
+      type: function
+      timeout: 30s
+
+sequence:
   - id: step1
-    uses: process-data
+    shared: process-data
     inputs:
       data: "test-data"
     outputs:
       result: processed
-
-shared:
-  process-data:
-    uses: process-data
-    config:
-      type: function
-      timeout: 30s
 `
 	
 	recipePath := filepath.Join(tempDir, "integration-test.yaml")
@@ -127,31 +127,31 @@ name: integration-test
 version: "2.0.0"
 description: Updated integration test recipe
 
-steps:
+shared:
+  process-data:
+    op: process-data
+    inputs:
+      type: function
+      timeout: 30s
+  transform-data:
+    op: transform-data
+    inputs:
+      type: function
+      timeout: 30s
+
+sequence:
   - id: step1
-    uses: process-data
+    shared: process-data
     inputs:
       data: "updated-test-data"
     outputs:
       result: processed
   - id: step2
-    uses: transform-data
+    shared: transform-data
     inputs:
-      input: "{{ .Steps.step1.outputs.result }}"
+      input: "{{ .nodes.step1.result }}"
     outputs:
       result: transformed
-
-shared:
-  process-data:
-    uses: process-data
-    config:
-      type: function
-      timeout: 30s
-  transform-data:
-    uses: transform-data
-    config:
-      type: function
-      timeout: 30s
 `
 	
 	err = os.WriteFile(recipePath, []byte(updatedContent), 0644)
@@ -224,31 +224,31 @@ name: multi-file-test
 version: "1.0.0"
 description: Multi-file test recipe
 
-steps:
+shared:
+  prepare-data:
+    op: prepare-data
+    inputs:
+      type: function
+      timeout: 30s
+  process-data:
+    op: process-data
+    inputs:
+      type: function
+      timeout: 1m
+
+sequence:
   - id: prepare
-    uses: prepare-data
+    shared: prepare-data
     inputs:
       source: "test"
     outputs:
       data: prepared
   - id: process
-    uses: process-data
+    shared: process-data
     inputs:
-      data: "{{ .Steps.prepare.outputs.data }}"
+      data: "{{ .nodes.prepare.data }}"
     outputs:
       result: processed
-
-shared:
-  prepare-data:
-    uses: prepare-data
-    config:
-      type: function
-      timeout: 30s
-  process-data:
-    uses: process-data
-    config:
-      type: function
-      timeout: 1m
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
 	require.NoError(t, err)
@@ -275,7 +275,7 @@ shared:
 	assert.Equal(t, "multi-file-test", foundRecipe.Name)
 	assert.Equal(t, "1.0.0", foundRecipe.Version)
 	assert.NotNil(t, foundRecipe.Recipe)
-	assert.NotEmpty(t, foundRecipe.Recipe.Steps)
+	assert.NotEmpty(t, foundRecipe.Recipe.Sequence)
 	
 	// Verify worker was started
 	status := manager.GetWorkerStatus("multi-file-test")
@@ -313,16 +313,16 @@ func TestConcurrentRecipeDiscovery(t *testing.T) {
 name: concurrent-test-%d
 version: "1.0.0"
 
-steps:
-  - id: step1
-    uses: activity-%d
-
 shared:
   activity-%d:
-    uses: activity-%d
-    config:
+    op: activity-%d
+    inputs:
       type: function
       timeout: 30s
+
+sequence:
+  - id: step1
+    shared: activity-%d
 `, index, index, index, index)
 			
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))

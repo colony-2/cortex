@@ -1,0 +1,8 @@
+name: test-recipe
+version: "1.0.0"
+description: Test recipe for integration testing
+
+# Root is a simple operation
+op: command_execution
+inputs:
+  run: "echo 'Test recipe executed'"

@@ -31,16 +31,13 @@ func TestRecipeWatcherFullLifecycle(t *testing.T) {
 	
 	// Copy test recipe
 	testRecipe := `name: test-recipe
-version: 1.0.0
+version: "1.0.0"
 description: Test recipe for integration testing
 
-workflow:
-  steps:
-    - name: test-step
-      activity:
-        type: function
-        config:
-          function: test-function
+# Root is a simple operation
+op: command_execution
+inputs:
+  run: "echo 'Test executed'"
 `
 	if err := os.WriteFile(filepath.Join(recipesDir, "test.yaml"), []byte(testRecipe), 0644); err != nil {
 		t.Fatalf("failed to write test recipe: %v", err)

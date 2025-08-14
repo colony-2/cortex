@@ -14,10 +14,10 @@ outputs:
     type: object
     description: Combined results from all parallel operations
 
-steps:
+sequence:
   # First, validate all sources
   - id: validate
-    uses: validate_sources
+    op: validate_sources
     inputs:
       sources: "{{ .Inputs.data_sources }}"
     outputs:
@@ -26,58 +26,57 @@ steps:
   # Process sources in parallel
   - id: parallel_process
     parallel:
-      steps:
-        - id: process_source_1
-          uses: process_data
-          inputs:
-            source: "{{ index .Steps.validate.outputs.valid_sources 0 }}"
-          outputs:
-            data: result_1
-        
-        - id: process_source_2
-          uses: process_data
-          inputs:
-            source: "{{ index .Steps.validate.outputs.valid_sources 1 }}"
-          outputs:
-            data: result_2
-        
-        - id: process_source_3
-          uses: process_data
-          inputs:
-            source: "{{ index .Steps.validate.outputs.valid_sources 2 }}"
-          outputs:
-            data: result_3
+      - id: process_source_1
+        op: process_data
+        inputs:
+          source: "{{ index .nodes.validate.outputs.valid_sources 0 }}"
+        outputs:
+          data: result_1
+      
+      - id: process_source_2
+        op: process_data
+        inputs:
+          source: "{{ index .nodes.validate.outputs.valid_sources 1 }}"
+        outputs:
+          data: result_2
+      
+      - id: process_source_3
+        op: process_data
+        inputs:
+          source: "{{ index .nodes.validate.outputs.valid_sources 2 }}"
+        outputs:
+          data: result_3
   
   # Aggregate results
   - id: aggregate
-    uses: combine_results
+    op: combine_results
     inputs:
       results: |
         {{- json (list 
-          .Steps.process_source_1.outputs.data
-          .Steps.process_source_2.outputs.data
-          .Steps.process_source_3.outputs.data
+          .nodes.process_source_1.outputs.data
+          .nodes.process_source_2.outputs.data
+          .nodes.process_source_3.outputs.data
         ) -}}
     outputs:
       combined: final_results
 
 shared:
   validate_sources:
-    uses: validate_sources
+    op: validate_sources
     config:
       type: function
       timeout: 30s
       description: Validate data sources
   
   process_data:
-    uses: process_data
+    op: process_data
     config:
       type: function
       timeout: 2m
       description: Process a single data source
   
   combine_results:
-    uses: combine_results
+    op: combine_results
     config:
       type: function
       timeout: 1m

@@ -198,10 +198,10 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 		Name:        "shared-recipe",
 		Description: "Shared activity test recipe",
 		Version:     "1.0",
-		Shared: map[string]yamlpkg.SharedActivity{
+		Shared: map[string]yamlpkg.Node{
 			"my_processor": {
-				Uses: "process-data",
-				Config: map[string]interface{}{
+				Op: "process-data",
+				Inputs: map[string]interface{}{
 					"type":    "function",
 					"timeout": "30s",
 				},

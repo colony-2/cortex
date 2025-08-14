@@ -19,10 +19,10 @@ outputs:
     type: object
     description: Processing summary
 
-steps:
+sequence:
   # Demonstrate input references and default values
   - id: prepare
-    uses: prepare_data
+    op: prepare_data
     inputs:
       items: "{{ .Inputs.items }}"
       separator: "{{ .Inputs.separator }}"
@@ -31,7 +31,7 @@ steps:
   
   # Demonstrate join function
   - id: format
-    uses: format_text
+    op: format_text
     inputs:
       text: "Processing items: {{ join .Inputs.separator .Inputs.items }}"
       count: "{{ len .Inputs.items }}"
@@ -40,7 +40,7 @@ steps:
   
   # Demonstrate nested references
   - id: analyze
-    uses: analyze_data
+    op: analyze_data
     inputs:
       data: "{{ .Steps.prepare.outputs.prepared }}"
       metadata:
@@ -52,7 +52,7 @@ steps:
   
   # Demonstrate JSON serialization
   - id: summarize
-    uses: create_summary
+    op: create_summary
     inputs:
       results: |
         {{- json (dict
@@ -66,28 +66,28 @@ steps:
 
 shared:
   prepare_data:
-    uses: prepare_data
+    op: prepare_data
     config:
       type: function
       timeout: 30s
       description: Prepare data for processing
       
   format_text:
-    uses: format_text
+    op: format_text
     config:
       type: function
       timeout: 10s
       description: Format text with templates
       
   analyze_data:
-    uses: analyze_data
+    op: analyze_data
     config:
       type: function
       timeout: 1m
       description: Analyze prepared data
       
   create_summary:
-    uses: create_summary
+    op: create_summary
     config:
       type: function
       timeout: 30s

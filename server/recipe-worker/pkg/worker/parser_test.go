@@ -22,22 +22,21 @@ description: Test unified recipe
 
 shared:
   my_llm:
-    uses: llm
-    config:
+    op: llm
+    inputs:
       model: gpt-4
       type: ai_prompt
 
-steps:
+sequence:
   - id: step1
-    uses: test-activity
-    config:
-      type: function
+    op: test-activity
     inputs:
+      type: function
       data: "test"
     outputs:
       result: "processed_data"
   - id: step2
-    uses: shared/my_llm
+    shared: my_llm
     inputs:
       prompt: "Analyze the data"
 `

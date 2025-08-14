@@ -89,9 +89,14 @@ func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 			m.registerStepActivity(w, &step)
 		}
 		
-		// Register shared activities
-		for name, sharedActivity := range recipe.Recipe.Shared {
-			m.registerSharedActivity(w, name, &sharedActivity)
+		// Register shared activities (convert Node to SharedActivity for compatibility)
+		for name, sharedNode := range recipe.Recipe.Shared {
+			// Convert Node to SharedActivity
+			sharedActivity := &yamlpkg.SharedActivity{
+				Uses:   sharedNode.Op,
+				Config: sharedNode.Inputs,
+			}
+			m.registerSharedActivity(w, name, sharedActivity)
 		}
 	}
 

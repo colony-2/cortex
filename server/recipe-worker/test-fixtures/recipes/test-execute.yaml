@@ -11,11 +11,11 @@ inputs:
 outputs:
   - name: message
     type: string
-    value: "{{ .Steps.echo_message.stdout }}"
+    value: "{{ .nodes.echo_message.stdout }}"
     description: Output message
 
-steps:
+sequence:
   - id: echo_message
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo {{ .Inputs.message }}"

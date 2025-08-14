@@ -68,26 +68,29 @@ func (rv *RecipeValidator) ValidateRecipeStructure(recipe *yamlpkg.RecipeDefinit
 
 // ValidateInputs validates that required inputs are provided
 func (rv *RecipeValidator) ValidateInputs(recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}) error {
-	// Check required inputs
-	for _, input := range recipe.Inputs {
-		if input.Required {
-			if _, exists := inputs[input.Name]; !exists {
-				return fmt.Errorf("required input '%s' not provided", input.Name)
+	// Check required inputs using InputSchema
+	if recipe.InputSchema != nil {
+		for name, inputDef := range recipe.InputSchema {
+			if inputDef.Required {
+				if _, exists := inputs[name]; !exists {
+					return fmt.Errorf("required input '%s' not provided", name)
+				}
 			}
 		}
 	}
 	
-	// TODO: Add type validation when schema information is available
+	// TODO: Add type validation when needed
 	
 	return nil
 }
 
 // ValidateOutputs validates that outputs are properly defined
 func (rv *RecipeValidator) ValidateOutputs(recipe *yamlpkg.RecipeDefinition) error {
-	// Validate output references
-	for _, output := range recipe.Outputs {
-		if output.Value == "" {
-			return fmt.Errorf("output '%s': value is required", output.Name)
+	// With the new format, outputs are defined as map[string]interface{}
+	// Each output value should be a valid template expression
+	for name, value := range recipe.Outputs {
+		if value == nil || value == "" {
+			return fmt.Errorf("output '%s': value is required", name)
 		}
 		// TODO: Validate that output references valid step outputs
 	}

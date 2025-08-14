@@ -255,7 +255,7 @@ func TestRetryPolicyWorkflow(t *testing.T) {
 						Retry: &yamlpkg.StepRetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
-							InitialInterval:    100,
+							InitialInterval:    "100ms",
 						},
 					},
 				},
@@ -290,7 +290,7 @@ func testRetryWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 						Retry: &yamlpkg.StepRetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
-							InitialInterval:    100,
+							InitialInterval:    "100ms",
 						},
 					},
 				},

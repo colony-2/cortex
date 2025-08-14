@@ -71,7 +71,7 @@ func TestRetryBackoffCalculation(t *testing.T) {
 	assert.NoError(t, err)
 
 	policy := &yamlpkg.StepRetryPolicy{
-		InitialInterval:    100 * time.Millisecond,
+		InitialInterval:    "100ms",
 		BackoffCoefficient: 2.0,
 	}
 

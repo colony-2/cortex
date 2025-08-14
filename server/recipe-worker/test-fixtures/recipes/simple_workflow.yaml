@@ -11,14 +11,14 @@ inputs:
 
 outputs:
   - name: result
-    value: "{{ .Steps.summarize.outputs.summary }}"
+    value: "{{ .nodes.summarize.outputs.summary }}"
     type: string
     description: Research result
 
-steps:
+sequence:
   - id: search
     name: Quick Search
-    uses: quick_search_activity
+    op: quick_search_activity
     inputs:
       query: "{{ .Inputs.query }}"
     outputs:
@@ -26,8 +26,8 @@ steps:
   
   - id: summarize
     name: Summarize Results
-    uses: summarize_activity
+    op: summarize_activity
     inputs:
-      data: "{{ .Steps.search.outputs.data }}"
+      data: "{{ .nodes.search.outputs.data }}"
     outputs:
       summary: ".final_summary"

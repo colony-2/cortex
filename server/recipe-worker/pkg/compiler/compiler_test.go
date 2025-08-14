@@ -160,10 +160,10 @@ func TestRecipeWithSharedActivities(t *testing.T) {
 	recipeDef := &yamlpkg.RecipeDefinition{
 		Name:    "shared-recipe",
 		Version: "1.0",
-		Shared: map[string]yamlpkg.SharedActivity{
+		Shared: map[string]yamlpkg.Node{
 			"my_llm": {
-				Uses: "llm",
-				Config: map[string]interface{}{
+				Op: "llm",
+				Inputs: map[string]interface{}{
 					"type":  "ai_prompt",
 					"model": "gpt-4",
 				},

@@ -14,9 +14,9 @@ outputs:
     type: string
     description: The generated report
 
-steps:
+sequence:
   - id: generate_report
-    uses: gemini_report_activity
+    op: gemini_report_activity
     inputs:
       topic: "{{ .Inputs.topic }}"
     outputs:
@@ -24,7 +24,7 @@ steps:
 
 shared:
   gemini_report_activity:
-    uses: llm
+    op: llm
     config:
       type: ai_prompt
       provider: gemini

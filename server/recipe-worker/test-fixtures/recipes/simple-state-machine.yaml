@@ -1,82 +1,76 @@
 name: simple_data_pipeline
 description: Simple data pipeline demonstrating state machine composition features
-version: 1.0.0
+version: "1.0.0"
 
-inputs:
-  - name: data_size
-    type: integer
-    required: true
-    description: Size of data to process
-  - name: priority
-    type: string
-    required: false
-    default: normal
-    description: Processing priority
-
-outputs:
-  - name: result
-    value: "{{ .Steps.pipeline.result }}"
-    type: object
-    description: Processed data result
-
-steps:
-  - id: pipeline
-    name: Data Pipeline State Machine
-    uses: state_machine
-    config:
-      initial_state: validate
-      states:
-        # Simple validation state
-        validate:
-          uses: data_validator
-          inputs:
-            size: "{{ .Inputs.data_size }}"
-          transitions:
-            - to: process
-              when: ".Outputs.valid == true"
-            - to: error
-              when: ".Outputs.valid == false"
-        
-        # Process state with conditional logic
-        process:
-          conditional:
-            # Large data - process in parallel
-            - when: ".Inputs.data_size > 1000000"
-              parallel:
-                - id: batch1
-                  uses: batch_processor
-                  inputs:
-                    batch_id: 1
-                    size: 500000
-                
-                - id: batch2
-                  uses: batch_processor
-                  inputs:
-                    batch_id: 2
-                    size: 500000
-            
-            # High priority - use fast processor
-            - when: ".Inputs.priority == 'high'"
-              uses: fast_processor
-              inputs:
-                data_size: "{{ .Inputs.data_size }}"
-            
-            # Default - standard processing
-            - default: true
-              uses: standard_processor
-              inputs:
-                data_size: "{{ .Inputs.data_size }}"
+# Root is a state machine
+states:
+  initial: validate
+  
+  # Simple validation state
+  validate:
+    op: data_validator
+    inputs:
+      size: "{{ .inputs.data_size }}"
+    transitions:
+      - to: process
+        when: ".outputs.valid == true"
+      - to: error
+        when: ".outputs.valid == false"
+  
+  # Process state with conditional logic (using nested sequence with conditionals)
+  process:
+    sequence:
+      - id: check_size
+        op: command_execution
+        inputs:
+          run: "test {{ .inputs.data_size }} -gt 1000000"
+        when: "{{ .inputs.data_size }} > 1000000"
+      
+      - id: parallel_batch
+        parallel:
+          - id: batch1
+            op: batch_processor
+            inputs:
+              batch_id: 1
+              size: 500000
           
-          transitions:
-            - to: complete
-        
-        # Terminal states
-        complete:
-          terminal: true
-          outputs:
-            result: "{{ .States.process.outputs }}"
-            status: "success"
-        
-        error:
-          terminal: true
-          error: "Validation failed"
+          - id: batch2
+            op: batch_processor
+            inputs:
+              batch_id: 2
+              size: 500000
+        when: "{{ .nodes.check_size.exit_code }} == 0"
+      
+      - id: fast_process
+        op: fast_processor
+        inputs:
+          data_size: "{{ .inputs.data_size }}"
+        when: "{{ .inputs.priority }} == 'high' && {{ .nodes.check_size.exit_code }} != 0"
+      
+      - id: standard_process
+        op: standard_processor
+        inputs:
+          data_size: "{{ .inputs.data_size }}"
+        when: "{{ .inputs.priority }} != 'high' && {{ .nodes.check_size.exit_code }} != 0"
+    
+    transitions:
+      - to: complete
+  
+  # Terminal states
+  complete:
+    op: command_execution
+    inputs:
+      run: "echo 'Pipeline completed successfully'"
+    outputs:
+      result: "{{ .states.process.outputs }}"
+      status: "success"
+  
+  error:
+    error: "Validation failed"
+
+# Root node properties
+inputs:
+  data_size: 1000
+  priority: "normal"
+outputs:
+  result: "{{ .states.complete.outputs.result }}"

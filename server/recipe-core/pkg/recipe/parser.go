@@ -112,19 +112,26 @@ func (p *Parser) validateRecipe(recipe *Recipe) error {
 		return fmt.Errorf("recipe definition is required")
 	}
 
-	// Validate steps exist and have uses field
-	if len(recipe.Recipe.Steps) == 0 {
-		return fmt.Errorf("recipe must have at least one step")
+	// Validate that recipe has a root node
+	count := 0
+	if recipe.Recipe.Op != "" {
+		count++
 	}
-
-	for i, step := range recipe.Recipe.Steps {
-		if step.ID == "" {
-			return fmt.Errorf("step %d is missing required 'id' field", i)
-		}
-		// Step must have either 'uses' field or 'parallel' field
-		if step.Uses == "" && step.Parallel == nil {
-			return fmt.Errorf("step '%s' must have either 'uses' field or 'parallel' field", step.ID)
-		}
+	if len(recipe.Recipe.Sequence) > 0 {
+		count++
+	}
+	if len(recipe.Recipe.Parallel) > 0 {
+		count++
+	}
+	if recipe.Recipe.States != nil {
+		count++
+	}
+	
+	if count == 0 {
+		return fmt.Errorf("recipe must have one of: op, sequence, parallel, or states")
+	}
+	if count > 1 {
+		return fmt.Errorf("recipe must have exactly one of: op, sequence, parallel, or states")
 	}
 
 	return nil

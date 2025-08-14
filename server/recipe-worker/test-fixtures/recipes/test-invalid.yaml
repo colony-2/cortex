@@ -7,9 +7,9 @@ inputs:
     type: string
     required: true
 
-steps:
+sequence:
   - id: step1
-    uses: unknown_activity_type
+    op: unknown_activity_type
     inputs:
       data: "test"
   
@@ -19,6 +19,6 @@ steps:
       data: "test"
       
   - # Missing 'id' field
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo test"

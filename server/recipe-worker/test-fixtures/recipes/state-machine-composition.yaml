@@ -1,6 +1,6 @@
 name: advanced_document_processor
 description: Advanced document processing pipeline with state machine composition
-version: 1.0.0
+version: "1.0.0"
 
 inputs:
   - name: document
@@ -30,18 +30,18 @@ inputs:
 
 outputs:
   - name: result
-    value: "{{ .Steps.document_processor.result }}"
+    value: "{{ .nodes.document_processor.result }}"
     type: object
     description: Processed document result
   - name: metadata
-    value: "{{ .Steps.document_processor.metadata }}"
+    value: "{{ .nodes.document_processor.metadata }}"
     type: object
     description: Processing metadata
 
-steps:
+sequence:
   - id: document_processor
     name: Document Processing State Machine
-    uses: state_machine
+    op: state_machine
     config:
       initial_state: intake
       timeout: 30m
@@ -52,35 +52,35 @@ steps:
             - when: ".Inputs.document_type == 'structured'"
               parallel:
                 - id: extract_fields
-                  uses: field_extractor
+                  op: field_extractor
                   inputs:
                     doc: "{{ .Inputs.document }}"
                 
                 - id: validate_schema
-                  uses: schema_validator
+                  op: schema_validator
                   inputs:
                     doc: "{{ .Inputs.document }}"
             
             - when: ".Inputs.document_type == 'unstructured'"
               sequential:
                 - id: detect_language
-                  uses: language_detector
+                  op: language_detector
                   inputs:
                     doc: "{{ .Inputs.document }}"
                 
                 - id: extract_content
                   conditional:
-                    - when: ".Steps.detect_language.outputs.language == 'en'"
-                      uses: english_extractor
-                    - when: ".Steps.detect_language.outputs.language == 'es'"
-                      uses: spanish_extractor
+                    - when: ".nodes.detect_language.outputs.language == 'en'"
+                      op: english_extractor
+                    - when: ".nodes.detect_language.outputs.language == 'es'"
+                      op: spanish_extractor
                     - default: true
-                      uses: universal_extractor
+                      op: universal_extractor
                   inputs:
                     doc: "{{ .Inputs.document }}"
             
             - default: true
-              uses: auto_classifier
+              op: auto_classifier
               inputs:
                 doc: "{{ .Inputs.document }}"
           
@@ -94,91 +94,91 @@ steps:
             - id: prepare_data
               parallel:
                 - id: clean
-                  uses: data_cleaner
+                  op: data_cleaner
                   inputs:
                     data: "{{ .States.intake.outputs }}"
                 
                 - id: normalize
-                  uses: data_normalizer
+                  op: data_normalizer
                   inputs:
                     data: "{{ .States.intake.outputs }}"
                 
                 - id: enhance_metadata
                   sequential:
                     - id: extract_entities
-                      uses: entity_extractor
+                      op: entity_extractor
                       inputs:
                         data: "{{ .States.intake.outputs }}"
                     
                     - id: link_entities
-                      uses: entity_linker
+                      op: entity_linker
                       inputs:
-                        entities: "{{ .Steps.extract_entities.outputs.entities }}"
+                        entities: "{{ .nodes.extract_entities.outputs.entities }}"
             
             - id: analyze
               conditional:
                 - when: ".Inputs.analysis_depth == 'deep'"
                   parallel:
                     - id: sentiment
-                      uses: sentiment_analyzer
+                      op: sentiment_analyzer
                       inputs:
-                        text: "{{ .Steps.prepare_data.outputs.clean.text }}"
+                        text: "{{ .nodes.prepare_data.outputs.clean.text }}"
                     
                     - id: topics
-                      uses: topic_modeler
+                      op: topic_modeler
                       inputs:
-                        text: "{{ .Steps.prepare_data.outputs.clean.text }}"
+                        text: "{{ .nodes.prepare_data.outputs.clean.text }}"
                     
                     - id: ml_pipeline
                       sequential:
                         - id: feature_extract
-                          uses: feature_extractor
+                          op: feature_extractor
                           inputs:
-                            data: "{{ .Steps.prepare_data.outputs.normalize.data }}"
+                            data: "{{ .nodes.prepare_data.outputs.normalize.data }}"
                         
                         - id: classify
-                          uses: ml_classifier
+                          op: ml_classifier
                           inputs:
-                            features: "{{ .Steps.feature_extract.outputs.features }}"
+                            features: "{{ .nodes.feature_extract.outputs.features }}"
                         
                         - id: confidence_check
                           conditional:
-                            - when: ".Steps.classify.outputs.confidence > 0.95"
-                              uses: high_confidence_processor
-                            - when: ".Steps.classify.outputs.confidence > 0.7"
-                              uses: medium_confidence_processor
+                            - when: ".nodes.classify.outputs.confidence > 0.95"
+                              op: high_confidence_processor
+                            - when: ".nodes.classify.outputs.confidence > 0.7"
+                              op: medium_confidence_processor
                             - default: true
                               parallel:
                                 - id: human_review
-                                  uses: send_to_review_queue
+                                  op: send_to_review_queue
                                 - id: uncertainty_sampling
-                                  uses: active_learning_sampler
+                                  op: active_learning_sampler
                           inputs:
-                            classification: "{{ .Steps.classify.outputs.result }}"
+                            classification: "{{ .nodes.classify.outputs.result }}"
                 
                 - when: ".Inputs.analysis_depth == 'quick'"
-                  uses: fast_analyzer
+                  op: fast_analyzer
                   inputs:
-                    data: "{{ .Steps.prepare_data.outputs.clean.text }}"
+                    data: "{{ .nodes.prepare_data.outputs.clean.text }}"
                 
                 - default: true
                   sequential:
                     - id: basic_analysis
-                      uses: standard_analyzer
+                      op: standard_analyzer
                       inputs:
-                        data: "{{ .Steps.prepare_data.outputs.clean.text }}"
+                        data: "{{ .nodes.prepare_data.outputs.clean.text }}"
                     
                     - id: should_enhance
                       conditional:
-                        - when: ".Steps.basic_analysis.outputs.complexity_score > 0.8"
-                          uses: enhanced_analyzer
+                        - when: ".nodes.basic_analysis.outputs.complexity_score > 0.8"
+                          op: enhanced_analyzer
                           inputs:
-                            data: "{{ .Steps.prepare_data.outputs.clean.text }}"
-                            initial: "{{ .Steps.basic_analysis.outputs.results }}"
+                            data: "{{ .nodes.prepare_data.outputs.clean.text }}"
+                            initial: "{{ .nodes.basic_analysis.outputs.results }}"
                         - default: true
-                          uses: finalize_basic
+                          op: finalize_basic
                           inputs:
-                            results: "{{ .Steps.basic_analysis.outputs.results }}"
+                            results: "{{ .nodes.basic_analysis.outputs.results }}"
           
           transitions:
             - to: quality_assurance
@@ -192,12 +192,12 @@ steps:
             - id: validate_results
               sequential:
                 - id: schema_check
-                  uses: result_schema_validator
+                  op: result_schema_validator
                   inputs:
                     results: "{{ .States.processing.outputs.analyze }}"
                 
                 - id: business_rules
-                  uses: business_rule_engine
+                  op: business_rule_engine
                   inputs:
                     results: "{{ .States.processing.outputs.analyze }}"
                     rules: "{{ .Inputs.business_rules }}"
@@ -207,29 +207,29 @@ steps:
                 - when: ".Inputs.output_format == 'report'"
                   sequential:
                     - id: generate_report
-                      uses: report_generator
+                      op: report_generator
                       inputs:
                         data: "{{ .States.processing.outputs.analyze }}"
                     
                     - id: add_visualizations
                       parallel:
                         - id: charts
-                          uses: chart_generator
+                          op: chart_generator
                           inputs:
                             data: "{{ .States.processing.outputs.analyze }}"
                         
                         - id: tables
-                          uses: table_generator
+                          op: table_generator
                           inputs:
                             data: "{{ .States.processing.outputs.analyze }}"
                 
                 - when: ".Inputs.output_format == 'api'"
-                  uses: api_formatter
+                  op: api_formatter
                   inputs:
                     data: "{{ .States.processing.outputs.analyze }}"
                 
                 - default: true
-                  uses: json_formatter
+                  op: json_formatter
                   inputs:
                     data: "{{ .States.processing.outputs.analyze }}"
           
@@ -252,7 +252,7 @@ steps:
               validations: "{{ .States.quality_assurance.outputs.validate_results }}"
         
         manual_review:
-          uses: queue_for_review
+          op: queue_for_review
           inputs:
             data: "{{ .States.quality_assurance.outputs }}"
             reason: "{{ .States.quality_assurance.outputs.validate_results.business_rules.reason }}"

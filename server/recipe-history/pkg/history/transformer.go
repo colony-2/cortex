@@ -227,20 +227,28 @@ func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutio
 func (t *Transformer) extractActivityName(temporalName string, recipe *recipe.Recipe) string {
 	// If we have recipe metadata, try to map to original activity name
 	if recipe != nil && recipe.Recipe != nil {
-		// Check steps for matching activity names
-		for _, step := range recipe.Recipe.Steps {
-			// Check if Temporal name contains the step uses or ID
-			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(step.Uses)) ||
-			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(step.ID)) {
-				return step.Uses
+		// Check sequence nodes for matching activity names
+		for _, node := range recipe.Recipe.Sequence {
+			// Check if Temporal name contains the node op or ID
+			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.Op)) ||
+			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.ID)) {
+				return node.Op
 			}
 		}
 		
-		// Check shared activities
-		for name, sharedActivity := range recipe.Recipe.Shared {
-			// Check if Temporal name contains the shared activity name or uses
+		// Check parallel nodes
+		for _, node := range recipe.Recipe.Parallel {
+			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.Op)) ||
+			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.ID)) {
+				return node.Op
+			}
+		}
+		
+		// Check shared nodes
+		for name, sharedNode := range recipe.Recipe.Shared {
+			// Check if Temporal name contains the shared node name or op
 			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(name)) ||
-			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(sharedActivity.Uses)) {
+			   (sharedNode.Op != "" && strings.Contains(strings.ToLower(temporalName), strings.ToLower(sharedNode.Op))) {
 				return name
 			}
 		}
