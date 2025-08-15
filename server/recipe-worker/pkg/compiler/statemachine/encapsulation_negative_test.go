@@ -39,14 +39,14 @@ func TestInvalidScopeReferences(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test: Nested scope trying to access parent scope steps should fail
-		sequentialSteps := []yamlpkg.CompositionStep{
+		sequentialSteps := []CompositionStep{
 			{
 				ID:   "outer_step",
 				Uses: "activity1",
 			},
 			{
 				ID: "nested_block",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "inner_step",
 						Uses: "activity2",
@@ -137,10 +137,10 @@ func TestParallelBranchIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test: Parallel branches trying to reference each other should fail
-		parallelSteps := []yamlpkg.CompositionStep{
+		parallelSteps := []CompositionStep{
 			{
 				ID: "branch1",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "branch1_step1",
 						Uses: "activity",
@@ -159,7 +159,7 @@ func TestParallelBranchIsolation(t *testing.T) {
 			},
 			{
 				ID: "branch2",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "branch2_step1",
 						Uses: "activity",
@@ -243,7 +243,7 @@ func TestConditionalBranchIsolation(t *testing.T) {
 		rootScope.SetStepOutput("root_step", map[string]interface{}{"value": "should_not_be_accessible"})
 
 		// Test: Conditional branch trying to access parent scope step in CEL
-		conditionalBranches := []yamlpkg.ConditionalBranch{
+		conditionalBranches := []ConditionalBranch{
 			{
 				// This condition should fail because .Steps.root_step is not in nested scope
 				When: ".Steps.root_step.value == 'should_not_be_accessible'",
@@ -267,7 +267,7 @@ func TestConditionalBranchIsolation(t *testing.T) {
 		assert.Contains(t, err.Error(), "root_step", "Error should mention the missing step")
 		
 		// Now test with a valid condition that can be evaluated
-		validBranches := []yamlpkg.ConditionalBranch{
+		validBranches := []ConditionalBranch{
 			{
 				// This condition uses valid inputs
 				When: ".Inputs.condition == true",
@@ -388,21 +388,21 @@ func TestDeeplyNestedScopeIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Create a deeply nested structure where inner scopes try to access outer scopes
-		steps := []yamlpkg.CompositionStep{
+		steps := []CompositionStep{
 			{
 				ID:   "level1_step",
 				Uses: "activity",
 			},
 			{
 				ID: "level1_nested",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "level2_step",
 						Uses: "activity",
 					},
 					{
 						ID: "level2_nested",
-						Sequential: []yamlpkg.CompositionStep{
+						Sequential: []CompositionStep{
 							{
 								ID:   "level3_step",
 								Uses: "activity",

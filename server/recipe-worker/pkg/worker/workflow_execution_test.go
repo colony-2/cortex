@@ -13,24 +13,17 @@ func TestWorkflowExecution_Basic(t *testing.T) {
 		Name:        "test-execution",
 		Description: "Test execution recipe",
 		Version:     "1.0",
-		Steps: []yamlpkg.Step{
-			{
-				ID:   "step1",
-				Uses: "test-activity",
-				Config: map[string]interface{}{
-					"type": "function",
-				},
-				Inputs: map[string]interface{}{
-					"data": "test",
-				},
-			},
+		Op:          "test-activity",
+		Inputs: map[string]interface{}{
+			"type": "function",
+			"data": "test",
 		},
 	}
 
 	assert.NotNil(t, recipeDef)
 	assert.Equal(t, "test-execution", recipeDef.Name)
-	assert.Len(t, recipeDef.Steps, 1)
-	assert.Equal(t, "test-activity", recipeDef.Steps[0].Uses)
+	assert.Equal(t, "test-activity", recipeDef.Op)
+	assert.NotNil(t, recipeDef.Inputs)
 }
 
 func TestWorkflowExecution_Shared(t *testing.T) {
@@ -47,10 +40,10 @@ func TestWorkflowExecution_Shared(t *testing.T) {
 				},
 			},
 		},
-		Steps: []yamlpkg.Step{
+		Sequence: []yamlpkg.Node{
 			{
-				ID:   "analyze",
-				Uses: "shared/my_llm",
+				ID:     "analyze",
+				Shared: "my_llm",
 				Inputs: map[string]interface{}{
 					"prompt": "test",
 				},

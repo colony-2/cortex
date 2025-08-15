@@ -56,7 +56,16 @@ sequence:
 		t.Logf("Parse success!")
 		t.Logf("Recipe name: %s", recipeData.Name)
 		t.Logf("Recipe version: %s", recipeData.Version)
-		t.Logf("Steps: %d", len(recipeData.Recipe.Steps))
+		// Log which node type is being used
+		if recipeData.Recipe.Op != "" {
+			t.Logf("Operation: %s", recipeData.Recipe.Op)
+		} else if len(recipeData.Recipe.Sequence) > 0 {
+			t.Logf("Sequence nodes: %d", len(recipeData.Recipe.Sequence))
+		} else if len(recipeData.Recipe.Parallel) > 0 {
+			t.Logf("Parallel nodes: %d", len(recipeData.Recipe.Parallel))
+		} else if recipeData.Recipe.States != nil {
+			t.Logf("State machine with initial state: %s", recipeData.Recipe.States.Initial)
+		}
 		t.Logf("Shared activities: %d", len(recipeData.Recipe.Shared))
 	}
 	

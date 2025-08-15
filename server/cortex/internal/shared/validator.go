@@ -22,44 +22,32 @@ func (rv *RecipeValidator) ValidateRecipeStructure(recipe *yamlpkg.RecipeDefinit
 		return fmt.Errorf("recipe name is required")
 	}
 	
-	if len(recipe.Steps) == 0 {
-		return fmt.Errorf("recipe must have at least one step")
+	// Check that recipe defines at least one node type
+	if recipe.Op == "" && len(recipe.Sequence) == 0 && len(recipe.Parallel) == 0 && recipe.States == nil {
+		return fmt.Errorf("recipe must define one of: op, sequence, parallel, or states")
 	}
 	
-	// Validate each step has required fields
-	for i, step := range recipe.Steps {
-		if step.ID == "" {
-			return fmt.Errorf("step %d: id is required", i)
-		}
-		if step.Uses == "" && step.Parallel == nil {
-			return fmt.Errorf("step %s: must specify uses or parallel", step.ID)
+	// Validate sequence nodes if present
+	for i, node := range recipe.Sequence {
+		if node.ID == "" && (node.Op != "" || node.Shared != "") {
+			return fmt.Errorf("sequence node %d: id is recommended", i)
 		}
 		
-		// Validate activity exists
-		if step.Uses != "" {
-			registry := rv.registryManager.GetRegistry()
-			if _, exists := registry.Get(step.Uses); !exists {
-				return fmt.Errorf("step %s: unknown activity type %s", step.ID, step.Uses)
-			}
+		// Validate node has an operation defined
+		if node.Op == "" && node.Shared == "" && len(node.Sequence) == 0 && len(node.Parallel) == 0 && node.States == nil {
+			return fmt.Errorf("sequence node %d: must define op, shared, sequence, parallel, or states", i)
+		}
+	}
+	
+	// Validate parallel nodes if present  
+	for i, node := range recipe.Parallel {
+		if node.ID == "" && (node.Op != "" || node.Shared != "") {
+			return fmt.Errorf("parallel node %d: id is recommended", i)
 		}
 		
-		// Validate parallel steps recursively
-		if step.Parallel != nil {
-			for j, parallelStep := range step.Parallel.Steps {
-				if parallelStep.ID == "" {
-					return fmt.Errorf("step %s: parallel step %d: id is required", step.ID, j)
-				}
-				if parallelStep.Uses == "" {
-					return fmt.Errorf("step %s: parallel step %s: uses is required", step.ID, parallelStep.ID)
-				}
-				
-				// Validate parallel activity exists
-				registry := rv.registryManager.GetRegistry()
-				if _, exists := registry.Get(parallelStep.Uses); !exists {
-					return fmt.Errorf("step %s: parallel step %s: unknown activity type %s", 
-						step.ID, parallelStep.ID, parallelStep.Uses)
-				}
-			}
+		// Validate node has an operation defined
+		if node.Op == "" && node.Shared == "" && len(node.Sequence) == 0 && len(node.Parallel) == 0 && node.States == nil {
+			return fmt.Errorf("parallel node %d: must define op, shared, sequence, parallel, or states", i)
 		}
 	}
 	

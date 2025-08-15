@@ -58,7 +58,7 @@ func TestNestedScopeEncapsulation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test nested sequential with isolated scopes
-		sequentialSteps := []yamlpkg.CompositionStep{
+		sequentialSteps := []CompositionStep{
 			{
 				ID:   "step1",
 				Uses: "activity1",
@@ -68,7 +68,7 @@ func TestNestedScopeEncapsulation(t *testing.T) {
 			},
 			{
 				ID: "nested_seq",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "nested_step1",
 						Uses: "activity2",
@@ -137,10 +137,10 @@ func TestParallelScopeIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test parallel execution with nested compositions
-		parallelSteps := []yamlpkg.CompositionStep{
+		parallelSteps := []CompositionStep{
 			{
 				ID: "branch1",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "branch1_step1",
 						Uses: "parallel_activity1",
@@ -157,7 +157,7 @@ func TestParallelScopeIsolation(t *testing.T) {
 			},
 			{
 				ID: "branch2",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "branch2_step1",
 						Uses: "parallel_activity1",
@@ -226,10 +226,10 @@ func TestConditionalScopeEncapsulation(t *testing.T) {
 		rootScope.SetStepOutput("root_step", map[string]interface{}{"value": "root_value"})
 
 		// Test conditional with nested scope
-		conditionalBranches := []yamlpkg.ConditionalBranch{
+		conditionalBranches := []ConditionalBranch{
 			{
 				When: ".Inputs.condition_flag == true",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "cond_step1",
 						Uses: "cond_activity",
@@ -290,30 +290,30 @@ func TestDeeplyNestedScopes(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test deeply nested structure
-		steps := []yamlpkg.CompositionStep{
+		steps := []CompositionStep{
 			{
 				ID: "level1",
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "level1_step",
 						Uses: "activity",
 					},
 					{
 						ID: "level2",
-						Parallel: []yamlpkg.CompositionStep{
+						Parallel: []CompositionStep{
 							{
 								ID: "level2_branch1",
-								Sequential: []yamlpkg.CompositionStep{
+								Sequential: []CompositionStep{
 									{
 										ID:   "level3_step",
 										Uses: "activity",
 									},
 									{
 										ID: "level4",
-										Conditional: []yamlpkg.ConditionalBranch{
+										Conditional: []ConditionalBranch{
 											{
 												Default: true,
-												Sequential: []yamlpkg.CompositionStep{
+												Sequential: []CompositionStep{
 													{
 														ID:   "level5_step",
 														Uses: "activity",

@@ -26,12 +26,12 @@ func TestStateMachineSimpleTransition(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(executor)
 	require.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "reviewing",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"reviewing": {
 				Uses: "critique_activity",
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "rejected", When: ".Outputs.score < 80"},
 				},
@@ -94,18 +94,18 @@ func TestStateMachineRetryLoop(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(executor)
 	require.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "reviewing",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"reviewing": {
 				Uses: "critique_activity",
-				Retry: &yamlpkg.StateRetryPolicy{
+				Retry: &StateRetryPolicy{
 					When:               ".Outputs.score < 80",
 					MaxAttempts:        3,
 					BackoffCoefficient: 2.0,
 					InitialInterval:    "100ms",
 				},
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "approved", When: ".Outputs.score >= 80"},
 					{To: "improving", When: ".Outputs.score < 80 && .State.Attempts < 3"},
 					{To: "rejected", When: ".State.Attempts >= 3"},
@@ -113,7 +113,7 @@ func TestStateMachineRetryLoop(t *testing.T) {
 			},
 			"improving": {
 				Uses: "improve_activity",
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "reviewing", When: ".Outputs.improved == true"},
 				},
 			},
@@ -176,12 +176,12 @@ func TestNestedStateMachine(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Outer state machine config
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "phase1",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"phase1": {
 				Uses: "inner_state_machine",
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "complete", When: ".Outputs.validation_status == \"passed\""},
 					{To: "failed", When: ".Outputs.validation_status == \"failed\""},
 				},
@@ -232,7 +232,7 @@ func TestComplexTransitionConditions(t *testing.T) {
 		},
 	}
 	
-	transitions := []yamlpkg.TransitionSpec{
+	transitions := []TransitionSpec{
 		{
 			To:   "fast_track",
 			When: ".Inputs.priority == 'high' && .Outputs.score > 90",
@@ -272,7 +272,7 @@ func TestParallelStepsWithDependencies(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	steps := []yamlpkg.CompositionStep{
+	steps := []CompositionStep{
 		{ID: "a", DependsOn: []string{}},
 		{ID: "b", DependsOn: []string{}},
 		{ID: "c", DependsOn: []string{"a"}},
@@ -323,12 +323,12 @@ func TestErrorHandling(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(executor)
 	require.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "processing",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"processing": {
 				Uses: "failing_activity",
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "error_handling", When: ".Outputs.Error != ''"},
 					{To: "success"},
 				},
@@ -372,12 +372,12 @@ func TestTimeoutHandling(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "processing",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"processing": {
 				Uses: "slow_activity",
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{To: "timeout_handler", When: ".Outputs.TimedOut == true"},
 					{To: "success"},
 				},

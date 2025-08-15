@@ -17,26 +17,22 @@ func TestProviderIntegration_Basic(t *testing.T) {
 		Recipe: &yamlpkg.RecipeDefinition{
 			Name:    "provider-test",
 			Version: "1.0.0",
-			Steps: []yamlpkg.Step{
+			Sequence: []yamlpkg.Node{
 				{
-					ID:   "http_step",
-					Uses: "http-activity",
-					Config: map[string]interface{}{
+					ID: "http_step",
+					Op: "http-activity",
+					Inputs: map[string]interface{}{
 						"type": "http",
 						"url":  "https://api.example.com/test",
-					},
-					Inputs: map[string]interface{}{
 						"data": "test",
 					},
 				},
 				{
-					ID:   "grpc_step",
-					Uses: "grpc-activity",
-					Config: map[string]interface{}{
-						"type": "grpc",
-						"host": "localhost:9000",
-					},
+					ID: "grpc_step",
+					Op: "grpc-activity",
 					Inputs: map[string]interface{}{
+						"type":    "grpc",
+						"host":    "localhost:9000",
 						"request": "test",
 					},
 				},
@@ -46,14 +42,14 @@ func TestProviderIntegration_Basic(t *testing.T) {
 
 	assert.NotNil(t, testRecipe)
 	assert.NotNil(t, testRecipe.Recipe)
-	assert.Len(t, testRecipe.Recipe.Steps, 2)
+	assert.Len(t, testRecipe.Recipe.Sequence, 2)
 	
-	// Test the steps have the expected configuration
-	httpStep := testRecipe.Recipe.Steps[0]
-	assert.Equal(t, "http-activity", httpStep.Uses)
-	assert.Equal(t, "http", httpStep.Config["type"])
+	// Test the nodes have the expected configuration
+	httpNode := testRecipe.Recipe.Sequence[0]
+	assert.Equal(t, "http-activity", httpNode.Op)
+	assert.Equal(t, "http", httpNode.Inputs["type"])
 	
-	grpcStep := testRecipe.Recipe.Steps[1]
-	assert.Equal(t, "grpc-activity", grpcStep.Uses)
-	assert.Equal(t, "grpc", grpcStep.Config["type"])
+	grpcNode := testRecipe.Recipe.Sequence[1]
+	assert.Equal(t, "grpc-activity", grpcNode.Op)
+	assert.Equal(t, "grpc", grpcNode.Inputs["type"])
 }

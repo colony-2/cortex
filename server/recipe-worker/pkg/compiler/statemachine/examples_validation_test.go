@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -104,7 +103,7 @@ func isRecipeYAML(data map[string]interface{}) bool {
 // validateStateMachineYAML validates state machine specific configuration
 func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 	// Try to parse as state machine config
-	var config yamlpkg.StateMachineConfig
+	var config StateMachineConfig
 	err := yaml.Unmarshal(content, &config)
 	
 	// If it doesn't parse directly, it might be embedded
@@ -117,7 +116,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 				ID     string                     `yaml:"id"`
 				Name   string                     `yaml:"name"`
 				Uses   string                     `yaml:"uses"`
-				Config yamlpkg.StateMachineConfig `yaml:"config"`
+				Config StateMachineConfig `yaml:"config"`
 			} `yaml:"steps"`
 		}
 		err = yaml.Unmarshal(content, &workflowWrapper)
@@ -139,7 +138,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 		var activityWrapper struct {
 			Activity struct {
 				Type   string                     `yaml:"type"`
-				Config yamlpkg.StateMachineConfig `yaml:"config"`
+				Config StateMachineConfig `yaml:"config"`
 			} `yaml:"activity"`
 		}
 		err = yaml.Unmarshal(content, &activityWrapper)
@@ -151,7 +150,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 				Recipe struct {
 					Activities map[string]struct {
 						Type   string                     `yaml:"type"`
-						Config yamlpkg.StateMachineConfig `yaml:"config"`
+						Config StateMachineConfig `yaml:"config"`
 					} `yaml:"activities"`
 				} `yaml:"recipe"`
 			}
@@ -177,7 +176,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 }
 
 // validateStateMachineConfig validates the parsed state machine configuration
-func validateStateMachineConfig(t *testing.T, config yamlpkg.StateMachineConfig, path string) {
+func validateStateMachineConfig(t *testing.T, config StateMachineConfig, path string) {
 	// Validate required fields
 	assert.NotEmpty(t, config.InitialState, "State machine in %s must have initial_state", path)
 	assert.NotEmpty(t, config.States, "State machine in %s must have states", path)
@@ -216,7 +215,7 @@ func validateStateMachineConfig(t *testing.T, config yamlpkg.StateMachineConfig,
 			if !branch.Default {
 				assert.NotEmpty(t, branch.When, "Conditional branch %d in %s must have 'when' condition if not default", i, path)
 			}
-			validateCompositionStep(t, yamlpkg.CompositionStep{
+			validateCompositionStep(t, CompositionStep{
 				Uses:       branch.Uses,
 				Sequential: branch.Sequential,
 				Parallel:   branch.Parallel,
@@ -247,7 +246,7 @@ func validateStateMachineConfig(t *testing.T, config yamlpkg.StateMachineConfig,
 }
 
 // validateCompositionSteps validates a list of composition steps
-func validateCompositionSteps(t *testing.T, steps []yamlpkg.CompositionStep, path string, stepType string) {
+func validateCompositionSteps(t *testing.T, steps []CompositionStep, path string, stepType string) {
 	seenIDs := make(map[string]bool)
 	
 	for i, step := range steps {
@@ -268,7 +267,7 @@ func validateCompositionSteps(t *testing.T, steps []yamlpkg.CompositionStep, pat
 }
 
 // validateCompositionStep validates a single composition step
-func validateCompositionStep(t *testing.T, step yamlpkg.CompositionStep, path string, stepType string) {
+func validateCompositionStep(t *testing.T, step CompositionStep, path string, stepType string) {
 	// Check that step has some action
 	hasAction := step.Uses != "" || 
 		len(step.Sequential) > 0 || 
@@ -306,7 +305,7 @@ func validateRecipeYAML(t *testing.T, path string, content []byte) {
 }
 
 // findReachableStates finds all states reachable from the initial state
-func findReachableStates(config yamlpkg.StateMachineConfig) map[string]bool {
+func findReachableStates(config StateMachineConfig) map[string]bool {
 	reachable := make(map[string]bool)
 	visited := make(map[string]bool)
 	
@@ -360,14 +359,14 @@ func TestStateMachineExamplesCompile(t *testing.T) {
 			content, err := os.ReadFile(filePath)
 			require.NoError(t, err)
 			
-			var config yamlpkg.StateMachineConfig
+			var config StateMachineConfig
 			
 			// Try parsing as workflow with state machine steps first
 			var workflowWrapper struct {
 				Steps []struct {
 					ID     string                     `yaml:"id"`
 					Uses   string                     `yaml:"uses"`
-					Config yamlpkg.StateMachineConfig `yaml:"config"`
+					Config StateMachineConfig `yaml:"config"`
 				} `yaml:"steps"`
 			}
 			err = yaml.Unmarshal(content, &workflowWrapper)
@@ -390,7 +389,7 @@ func TestStateMachineExamplesCompile(t *testing.T) {
 					var wrapper struct {
 						Activity struct {
 							Type   string                     `yaml:"type"`
-							Config yamlpkg.StateMachineConfig `yaml:"config"`
+							Config StateMachineConfig `yaml:"config"`
 						} `yaml:"activity"`
 					}
 					err2 := yaml.Unmarshal(content, &wrapper)

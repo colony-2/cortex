@@ -1,31 +1,7 @@
-package yaml
+package statemachine
 
-// Legacy type aliases for state machine compiler compatibility
-// These map old types to new types since the structure is mostly the same
-
-// Step represents a legacy workflow step (for activities that haven't been migrated yet)
-type Step struct {
-	ID       string                 `yaml:"id"`
-	Name     string                 `yaml:"name"`
-	Uses     string                 `yaml:"uses"`
-	Config   map[string]interface{} `yaml:"config"`
-	Inputs   map[string]interface{} `yaml:"inputs"`
-	Outputs  map[string]string      `yaml:"outputs"`
-	Parallel *ParallelSpec          `yaml:"parallel"`
-}
-
-// ParallelSpec defines legacy parallel execution
-type ParallelSpec struct {
-	ForEach string `yaml:"for_each"`
-	As      string `yaml:"as"`
-	Steps   []Step `yaml:"steps"`
-}
-
-// SharedActivity represents a reusable activity configuration (legacy)
-type SharedActivity struct {
-	Uses   string                 `yaml:"uses"`
-	Config map[string]interface{} `yaml:"config"`
-}
+// Internal legacy types for state machine compiler
+// These are used internally for backward compatibility with existing state machine logic
 
 // StateMachineConfig represents the old state machine configuration
 type StateMachineConfig struct {
@@ -107,40 +83,4 @@ type StepRetryPolicy struct {
 	MaxAttempts        int     `yaml:"max_attempts" json:"max_attempts"`
 	BackoffCoefficient float64 `yaml:"backoff_coefficient,omitempty" json:"backoff_coefficient,omitempty"`
 	InitialInterval    string  `yaml:"initial_interval,omitempty" json:"initial_interval,omitempty"`
-}
-
-// Convert new StateMap to old StateMachineConfig for compatibility
-func StateMapToStateMachineConfig(sm *StateMap) StateMachineConfig {
-	config := StateMachineConfig{
-		InitialState: sm.Initial,
-		States:       make(map[string]StateDefinition),
-	}
-	
-	// Convert each State to StateDefinition
-	for name, state := range sm.States {
-		def := StateDefinition{
-			Uses:    state.Op,
-			Inputs:  state.Inputs,
-			Outputs: state.Outputs,
-			Error:   state.Error,
-		}
-		
-		// Convert transitions
-		if len(state.Transitions) > 0 {
-			def.Transitions = make([]TransitionSpec, len(state.Transitions))
-			for i, t := range state.Transitions {
-				def.Transitions[i] = TransitionSpec{
-					To:   t.To,
-					When: t.When,
-				}
-			}
-		}
-		
-		// Check if terminal (no transitions)
-		def.Terminal = len(state.Transitions) == 0
-		
-		config.States[name] = def
-	}
-	
-	return config
 }

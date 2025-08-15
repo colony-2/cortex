@@ -14,20 +14,13 @@ func TestCompileSimpleRecipe(t *testing.T) {
 		Name:        "test-recipe",
 		Description: "Test recipe",
 		Version:     "1.0",
-		Steps: []yamlpkg.Step{
-			{
-				ID:   "step1",
-				Uses: "test_activity",
-				Config: map[string]interface{}{
-					"type": "function",
-				},
-				Inputs: map[string]interface{}{
-					"param1": "test_value",
-				},
-				Outputs: map[string]string{
-					"result": "activity_output",
-				},
-			},
+		Op:          "test_activity",
+		Inputs: map[string]interface{}{
+			"type":   "function",
+			"param1": "test_value",
+		},
+		Outputs: map[string]interface{}{
+			"result": "activity_output",
 		},
 	}
 
@@ -100,32 +93,25 @@ func TestParallelRecipeCompilation(t *testing.T) {
 	recipeDef := &yamlpkg.RecipeDefinition{
 		Name:    "parallel-recipe",
 		Version: "1.0",
-		Steps: []yamlpkg.Step{
+		Parallel: []yamlpkg.Node{
 			{
-				ID: "parallel_tasks",
-				Parallel: &yamlpkg.ParallelSpec{
-					Steps: []yamlpkg.Step{
-						{
-							ID:   "task_a",
-							Uses: "activity_a",
-							Config: map[string]interface{}{
-								"type": "function",
-							},
-							Outputs: map[string]string{
-								"result": "output_a",
-							},
-						},
-						{
-							ID:   "task_b",
-							Uses: "activity_b",
-							Config: map[string]interface{}{
-								"type": "function",
-							},
-							Outputs: map[string]string{
-								"result": "output_b",
-							},
-						},
-					},
+				ID: "task_a",
+				Op: "activity_a",
+				Inputs: map[string]interface{}{
+					"type": "function",
+				},
+				Outputs: map[string]interface{}{
+					"result": "output_a",
+				},
+			},
+			{
+				ID: "task_b",
+				Op: "activity_b",
+				Inputs: map[string]interface{}{
+					"type": "function",
+				},
+				Outputs: map[string]interface{}{
+					"result": "output_b",
 				},
 			},
 		},
@@ -169,10 +155,10 @@ func TestRecipeWithSharedActivities(t *testing.T) {
 				},
 			},
 		},
-		Steps: []yamlpkg.Step{
+		Sequence: []yamlpkg.Node{
 			{
-				ID:   "analyze",
-				Uses: "shared/my_llm",
+				ID:     "analyze",
+				Shared: "my_llm",
 				Inputs: map[string]interface{}{
 					"prompt": "Analyze this data",
 				},

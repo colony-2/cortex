@@ -14,11 +14,11 @@ func TestNestedCompositionWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "nested_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"nested_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "prepare",
 						Uses: "prepare_activity",
@@ -28,7 +28,7 @@ func TestNestedCompositionWorkflow(t *testing.T) {
 					},
 					{
 						ID: "process",
-						Parallel: []yamlpkg.CompositionStep{
+						Parallel: []CompositionStep{
 							{
 								ID:   "process1",
 								Uses: "process1_activity",
@@ -72,11 +72,11 @@ func testNestedWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "nested_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"nested_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "prepare",
 						Uses: "prepare_activity",
@@ -86,7 +86,7 @@ func testNestedWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 					},
 					{
 						ID: "process",
-						Parallel: []yamlpkg.CompositionStep{
+						Parallel: []CompositionStep{
 							{
 								ID:   "process1",
 								Uses: "process1_activity",
@@ -126,15 +126,15 @@ func TestStateTransitionsWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "validation",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"validation": {
 				Uses: "validate_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{
 						To:   "processing",
 						When: ".Outputs.valid == true",
@@ -150,7 +150,7 @@ func TestStateTransitionsWorkflow(t *testing.T) {
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{
 						To: "complete",
 					},
@@ -192,15 +192,15 @@ func testTransitionsWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "validation",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"validation": {
 				Uses: "validate_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{
 						To:   "processing",
 						When: ".Outputs.valid == true",
@@ -216,7 +216,7 @@ func testTransitionsWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
-				Transitions: []yamlpkg.TransitionSpec{
+				Transitions: []TransitionSpec{
 					{
 						To: "complete",
 					},
@@ -244,15 +244,15 @@ func TestRetryPolicyWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "retry_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"retry_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "flaky_step",
 						Uses: "flaky_activity",
-						Retry: &yamlpkg.StepRetryPolicy{
+						Retry: &StepRetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
 							InitialInterval:    "100ms",
@@ -279,15 +279,15 @@ func testRetryWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "retry_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"retry_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "flaky_step",
 						Uses: "flaky_activity",
-						Retry: &yamlpkg.StepRetryPolicy{
+						Retry: &StepRetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
 							InitialInterval:    "100ms",

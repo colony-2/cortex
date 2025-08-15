@@ -10,12 +10,14 @@ import (
 )
 
 // ExecutorImplementation defines the interface for activity execution implementations
+// DEPRECATED: This interface uses the old Step type which has been removed.
+// Use the new compiler package instead.
 type ExecutorImplementation interface {
-	ExecuteHTTPActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteGRPCActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteScriptActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteFunctionActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
-	ExecuteAIPromptActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteHTTPActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteGRPCActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteScriptActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteFunctionActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error)
+	ExecuteAIPromptActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error)
 }
 
 // Executor handles execution of activities based on their implementation type
@@ -41,15 +43,15 @@ func NewExecutorWithRegistry(impl ExecutorImplementation, registry *worker.Provi
 }
 
 // ExecuteActivity executes an activity based on its step definition
-func (e *Executor) ExecuteActivity(ctx context.Context, step *yamlpkg.Step, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (e *Executor) ExecuteActivity(ctx context.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Check if this is an activity context before using activity.GetLogger
 	if activity.IsActivity(ctx) {
 		logger := activity.GetLogger(ctx)
-		logger.Info("Executing activity", "step", step.ID, "uses", step.Uses)
+		logger.Info("Executing activity", "node", node.ID, "op", node.Op)
 	}
 
-	// Get activity type from config or try to infer from uses
-	activityType, ok := step.Config["type"].(string)
+	// Get activity type from inputs or use op
+	activityType, ok := node.Inputs["type"].(string)
 	if !ok {
 		// Default fallback based on uses field or try to infer
 		activityType = "function" // Default to function type
@@ -63,7 +65,7 @@ func (e *Executor) ExecuteActivity(ctx context.Context, step *yamlpkg.Step, inpu
 		}
 		
 		// Execute using the provider
-		result, err := provider.Execute(ctx, step.Config, inputs)
+		result, err := provider.Execute(ctx, node.Inputs, inputs)
 		if err != nil {
 			return nil, err
 		}
@@ -78,33 +80,34 @@ func (e *Executor) ExecuteActivity(ctx context.Context, step *yamlpkg.Step, inpu
 	// Fall back to built-in implementations
 	switch activityType {
 	case "http":
-		return e.implementation.ExecuteHTTPActivity(ctx, step, inputs)
+		return e.implementation.ExecuteHTTPActivity(ctx, node, inputs)
 	case "grpc":
-		return e.implementation.ExecuteGRPCActivity(ctx, step, inputs)
+		return e.implementation.ExecuteGRPCActivity(ctx, node, inputs)
 	case "script":
-		return e.implementation.ExecuteScriptActivity(ctx, step, inputs)
+		return e.implementation.ExecuteScriptActivity(ctx, node, inputs)
 	case "function":
-		return e.implementation.ExecuteFunctionActivity(ctx, step, inputs)
+		return e.implementation.ExecuteFunctionActivity(ctx, node, inputs)
 	case "ai_prompt":
-		return e.implementation.ExecuteAIPromptActivity(ctx, step, inputs)
+		return e.implementation.ExecuteAIPromptActivity(ctx, node, inputs)
 	default:
 		return nil, fmt.Errorf("unsupported activity type: %s", activityType)
 	}
 }
 
-// RegisterActivities registers activities for the given steps with the Temporal worker
-func (e *Executor) RegisterActivities(steps []yamlpkg.Step) map[string]interface{} {
+// RegisterActivities registers activities for the given nodes with the Temporal worker
+// DEPRECATED: Use the new compiler package instead.
+func (e *Executor) RegisterActivities(nodes []yamlpkg.Node) map[string]interface{} {
 	activities := make(map[string]interface{})
 	
-	for _, step := range steps {
-		step := step // capture loop variable
-		// Register activity by step ID or Uses name
-		activityName := step.ID
+	for _, node := range nodes {
+		node := node // capture loop variable
+		// Register activity by node ID or Op name
+		activityName := node.ID
 		if activityName == "" {
-			activityName = step.Uses
+			activityName = node.Op
 		}
 		activities[activityName] = func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-			return e.ExecuteActivity(ctx, &step, inputs)
+			return e.ExecuteActivity(ctx, &node, inputs)
 		}
 	}
 	

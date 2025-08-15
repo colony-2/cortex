@@ -62,7 +62,7 @@ func TestSimpleStateTransition(t *testing.T) {
 	}
 	
 	// Test transition evaluation
-	transitions := []yamlpkg.TransitionSpec{
+	transitions := []TransitionSpec{
 		{To: "approved", When: ".Outputs.score >= 80"},
 		{To: "rejected", When: ".Outputs.score < 80"},
 	}
@@ -97,7 +97,7 @@ func TestRetryLoopLogic(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Test retry policy evaluation
-	policy := &yamlpkg.StateRetryPolicy{
+	policy := &StateRetryPolicy{
 		When:               ".Outputs.score < 80",
 		MaxAttempts:        3,
 		BackoffCoefficient: 1.0,
@@ -134,7 +134,7 @@ func TestStepDependencies(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	steps := []yamlpkg.CompositionStep{
+	steps := []CompositionStep{
 		{ID: "a", DependsOn: []string{}},
 		{ID: "b", DependsOn: []string{}},
 		{ID: "c", DependsOn: []string{"a"}},
@@ -166,7 +166,7 @@ func TestTerminalStateDetection(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	states := map[string]yamlpkg.StateDefinition{
+	states := map[string]StateDefinition{
 		"active": {
 			Uses: "some_activity",
 		},

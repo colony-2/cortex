@@ -41,17 +41,12 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 		Name:        "test-recipe",
 		Description: "Test recipe",
 		Version:     "1.0",
-		Steps: []yamlpkg.Step{
-			{
-				ID:   "echo",
-				Uses: "echo-activity",
-				Inputs: map[string]interface{}{
-					"text": "{{ .Inputs.message }}",
-				},
-				Outputs: map[string]string{
-					"echoed": "echo_result",
-				},
-			},
+		Op:          "echo-activity",
+		Inputs: map[string]interface{}{
+			"text": "{{ .Inputs.message }}",
+		},
+		Outputs: map[string]interface{}{
+			"echoed": "echo_result",
 		},
 	}
 
@@ -109,32 +104,25 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 	recipeDef := &yamlpkg.RecipeDefinition{
 		Name:    "parallel-recipe",
 		Version: "1.0",
-		Steps: []yamlpkg.Step{
+		Parallel: []yamlpkg.Node{
 			{
-				ID: "parallel-tasks",
-				Parallel: &yamlpkg.ParallelSpec{
-					Steps: []yamlpkg.Step{
-						{
-							ID:   "task1",
-							Uses: "process-activity",
-							Inputs: map[string]interface{}{
-								"data": "data1",
-							},
-							Outputs: map[string]string{
-								"result": "result1",
-							},
-						},
-						{
-							ID:   "task2",
-							Uses: "process-activity",
-							Inputs: map[string]interface{}{
-								"data": "data2",
-							},
-							Outputs: map[string]string{
-								"result": "result2",
-							},
-						},
-					},
+				ID: "task1",
+				Op: "process-activity",
+				Inputs: map[string]interface{}{
+					"data": "data1",
+				},
+				Outputs: map[string]interface{}{
+					"result": "result1",
+				},
+			},
+			{
+				ID: "task2",
+				Op: "process-activity",
+				Inputs: map[string]interface{}{
+					"data": "data2",
+				},
+				Outputs: map[string]interface{}{
+					"result": "result2",
 				},
 			},
 		},
@@ -207,10 +195,10 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 				},
 			},
 		},
-		Steps: []yamlpkg.Step{
+		Sequence: []yamlpkg.Node{
 			{
-				ID:   "analyze",
-				Uses: "shared/my_processor",
+				ID:     "analyze",
+				Shared: "my_processor",
 				Inputs: map[string]interface{}{
 					"input": "test data",
 				},
@@ -271,17 +259,12 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 	recipeDef := &yamlpkg.RecipeDefinition{
 		Name:    "retry-recipe",
 		Version: "1.0",
-		Steps: []yamlpkg.Step{
-			{
-				ID:   "flaky",
-				Uses: "flaky-activity",
-				Inputs: map[string]interface{}{
-					"attempt": "1",
-				},
-				Outputs: map[string]string{
-					"result": "output",
-				},
-			},
+		Op:      "flaky-activity",
+		Inputs: map[string]interface{}{
+			"attempt": "1",
+		},
+		Outputs: map[string]interface{}{
+			"result": "output",
 		},
 	}
 
@@ -352,14 +335,9 @@ func (s *WorkerIntegrationTestSuite) TestWorkerManagerWithMockClient() {
 		Recipe: &yamlpkg.RecipeDefinition{
 			Name:    "test-recipe",
 			Version: "1.0.0",
-			Steps: []yamlpkg.Step{
-				{
-					ID:   "step1",
-					Uses: "test-activity",
-					Inputs: map[string]interface{}{
-						"input": "test",
-					},
-				},
+			Op:      "test-activity",
+			Inputs: map[string]interface{}{
+				"input": "test",
 			},
 		},
 	}

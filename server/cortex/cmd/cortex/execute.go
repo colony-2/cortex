@@ -443,17 +443,22 @@ func validateRecipeStructure(recipe *yamlpkg.RecipeDefinition) error {
 		return fmt.Errorf("recipe name is required")
 	}
 	
-	if len(recipe.Steps) == 0 {
-		return fmt.Errorf("recipe must have at least one step")
+	// Check that recipe defines at least one node type
+	if recipe.Op == "" && len(recipe.Sequence) == 0 && len(recipe.Parallel) == 0 && recipe.States == nil {
+		return fmt.Errorf("recipe must define one of: op, sequence, parallel, or states")
 	}
 	
-	// Validate each step has required fields
-	for i, step := range recipe.Steps {
-		if step.ID == "" {
-			return fmt.Errorf("step %d: id is required", i)
+	// Validate sequence nodes if present
+	for i, node := range recipe.Sequence {
+		if node.ID == "" && (node.Op != "" || node.Shared != "") {
+			fmt.Printf("Warning: sequence node %d should have an ID\n", i)
 		}
-		if step.Uses == "" && step.Parallel == nil {
-			return fmt.Errorf("step %s: must specify uses or parallel", step.ID)
+	}
+	
+	// Validate parallel nodes if present  
+	for i, node := range recipe.Parallel {
+		if node.ID == "" && (node.Op != "" || node.Shared != "") {
+			fmt.Printf("Warning: parallel node %d should have an ID\n", i)
 		}
 	}
 	

@@ -70,7 +70,7 @@ func TestRetryBackoffCalculation(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 
-	policy := &yamlpkg.StepRetryPolicy{
+	policy := &StepRetryPolicy{
 		InitialInterval:    "100ms",
 		BackoffCoefficient: 2.0,
 	}
@@ -91,11 +91,11 @@ func TestSequentialComposition(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "sequential_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"sequential_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "step1",
 						Uses: "step1_activity",
@@ -157,11 +157,11 @@ func testSequentialWorkflow(ctx workflow.Context) (map[string]interface{}, error
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "sequential_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"sequential_state": {
-				Sequential: []yamlpkg.CompositionStep{
+				Sequential: []CompositionStep{
 					{
 						ID:   "step1",
 						Uses: "step1_activity",
@@ -201,11 +201,11 @@ func TestParallelComposition(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "parallel_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"parallel_state": {
-				Parallel: []yamlpkg.CompositionStep{
+				Parallel: []CompositionStep{
 					{
 						ID:   "parallel1",
 						Uses: "parallel1_activity",
@@ -252,11 +252,11 @@ func testParallelWorkflow(ctx workflow.Context) (map[string]interface{}, error) 
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "parallel_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"parallel_state": {
-				Parallel: []yamlpkg.CompositionStep{
+				Parallel: []CompositionStep{
 					{
 						ID:   "parallel1",
 						Uses: "parallel1_activity",
@@ -293,11 +293,11 @@ func TestConditionalComposition(t *testing.T) {
 		compiler, err := NewStateMachineCompiler(nil)
 		assert.NoError(t, err)
 		
-		config := yamlpkg.StateMachineConfig{
+		config := StateMachineConfig{
 			InitialState: "conditional_state",
-			States: map[string]yamlpkg.StateDefinition{
+			States: map[string]StateDefinition{
 				"conditional_state": {
-					Conditional: []yamlpkg.ConditionalBranch{
+					Conditional: []ConditionalBranch{
 						{
 							When: ".Inputs.priority == 'high'",
 							Uses: "high_priority_processor",
@@ -369,11 +369,11 @@ func testConditionalWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 		return nil, err
 	}
 	
-	config := yamlpkg.StateMachineConfig{
+	config := StateMachineConfig{
 		InitialState: "conditional_state",
-		States: map[string]yamlpkg.StateDefinition{
+		States: map[string]StateDefinition{
 			"conditional_state": {
-				Conditional: []yamlpkg.ConditionalBranch{
+				Conditional: []ConditionalBranch{
 					{
 						When: ".Inputs.priority == 'high'",
 						Uses: "high_priority_processor",

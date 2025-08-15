@@ -97,7 +97,7 @@ func TestDependencyGrouping(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 
-	steps := []yamlpkg.CompositionStep{
+	steps := []CompositionStep{
 		{ID: "a", DependsOn: []string{}},
 		{ID: "b", DependsOn: []string{}},
 		{ID: "c", DependsOn: []string{"a"}},
@@ -118,7 +118,7 @@ func TestIsTerminal(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 
-	states := map[string]yamlpkg.StateDefinition{
+	states := map[string]StateDefinition{
 		"active": {
 			Uses: "some_activity",
 		},

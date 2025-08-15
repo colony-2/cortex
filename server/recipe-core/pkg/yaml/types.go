@@ -33,9 +33,6 @@ type RecipeDefinition struct {
 	InputSchema map[string]InputDef    `yaml:"input_schema,omitempty"` // Optional schema for inputs
 	Timeout     string                 `yaml:"timeout,omitempty"`
 	Retry       *RetryPolicy           `yaml:"retry,omitempty"`
-	
-	// Legacy field - will be removed once all code is migrated
-	Steps []Step `yaml:"steps,omitempty"` // Legacy: use sequence or parallel instead
 }
 
 // Node represents the fundamental execution unit

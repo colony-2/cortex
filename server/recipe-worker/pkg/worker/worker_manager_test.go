@@ -24,14 +24,9 @@ func TestWorkerManager_Basic(t *testing.T) {
 		Recipe: &yamlpkg.RecipeDefinition{
 			Name:    "test-recipe",
 			Version: "1.0.0",
-			Steps: []yamlpkg.Step{
-				{
-					ID:   "step1",
-					Uses: "activity1",
-					Config: map[string]interface{}{
-						"type": "function",
-					},
-				},
+			Op:      "activity1",
+			Inputs: map[string]interface{}{
+				"type": "function",
 			},
 		},
 	}
@@ -98,17 +93,17 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 					},
 				},
 			},
-			Steps: []yamlpkg.Step{
+			Sequence: []yamlpkg.Node{
 				{
-					ID:   "step1",
-					Uses: "shared/my_llm",
+					ID:     "step1",
+					Shared: "my_llm",
 					Inputs: map[string]interface{}{
 						"prompt": "test",
 					},
 				},
 				{
-					ID:   "step2",
-					Uses: "shared/my_http", 
+					ID:     "step2",
+					Shared: "my_http",
 					Inputs: map[string]interface{}{
 						"url": "https://api.example.com",
 					},

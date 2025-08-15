@@ -82,21 +82,10 @@ func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 		)
 	}
 
-	// Register activities from recipe steps and shared activities
-	if recipe.Recipe != nil {
-		// Register activities from steps
-		for _, step := range recipe.Recipe.Steps {
-			m.registerStepActivity(w, &step)
-		}
-		
-		// Register shared activities (convert Node to SharedActivity for compatibility)
+	// Register shared activities directly from Node
+	if recipe.Recipe != nil && recipe.Recipe.Shared != nil {
 		for name, sharedNode := range recipe.Recipe.Shared {
-			// Convert Node to SharedActivity
-			sharedActivity := &yamlpkg.SharedActivity{
-				Uses:   sharedNode.Op,
-				Config: sharedNode.Inputs,
-			}
-			m.registerSharedActivity(w, name, sharedActivity)
+			m.registerSharedNode(w, name, &sharedNode)
 		}
 	}
 
@@ -218,39 +207,17 @@ func (m *WorkerManager) RegisterProvider(provider recipeworker.ActivityProvider)
 	return nil
 }
 
-// registerStepActivity registers an activity from a recipe step
-func (m *WorkerManager) registerStepActivity(w worker.Worker, step *yamlpkg.Step) {
-	activityName := step.Uses
-	if activityName == "" {
-		activityName = step.ID
-	}
-	
-	if activityName == "" {
-		m.logger.Warn("Step has no uses or ID, skipping", zap.Any("step", step))
-		return
-	}
-	
-	// Register activity by name
-	m.activityRegistry.RegisterActivity(activityName)
-	
-	// Create activity function
-	activityFunc := m.createStepActivity(step)
-	
-	w.RegisterActivityWithOptions(
-		activityFunc,
-		activity.RegisterOptions{
-			Name: activityName,
-		},
-	)
-}
+// Legacy step activity registration has been removed
 
-// registerSharedActivity registers a shared activity
-func (m *WorkerManager) registerSharedActivity(w worker.Worker, name string, sharedActivity *yamlpkg.SharedActivity) {
+// registerSharedNode registers a shared node directly
+func (m *WorkerManager) registerSharedNode(w worker.Worker, name string, node *yamlpkg.Node) {
 	// Register activity by name
 	m.activityRegistry.RegisterActivity(name)
+	// Also register with shared/ prefix for compatibility
+	m.activityRegistry.RegisterActivity("shared/" + name)
 	
 	// Create activity function
-	activityFunc := m.createSharedActivity(name, sharedActivity)
+	activityFunc := m.createNodeActivity(name, node)
 	
 	w.RegisterActivityWithOptions(
 		activityFunc,
@@ -258,15 +225,30 @@ func (m *WorkerManager) registerSharedActivity(w worker.Worker, name string, sha
 			Name: name,
 		},
 	)
+	
+	// Also register with shared/ prefix
+	w.RegisterActivityWithOptions(
+		activityFunc,
+		activity.RegisterOptions{
+			Name: "shared/" + name,
+		},
+	)
 }
 
-// createStepActivity creates an activity function from a step
-func (m *WorkerManager) createStepActivity(step *yamlpkg.Step) interface{} {
+// Legacy step activity creation has been removed
+
+// createNodeActivity creates an activity function from a Node
+func (m *WorkerManager) createNodeActivity(name string, node *yamlpkg.Node) interface{} {
 	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		// Get activity type from config
-		activityType, ok := step.Config["type"].(string)
-		if !ok {
-			activityType = "function" // Default
+		// Get activity type from node operation or inputs
+		activityType := node.Op
+		if activityType == "" {
+			// Check if type is specified in inputs for backward compatibility
+			if typeVal, ok := node.Inputs["type"].(string); ok {
+				activityType = typeVal
+			} else {
+				activityType = "function" // Default
+			}
 		}
 		
 		// Check if we have a provider for this activity type
@@ -276,46 +258,17 @@ func (m *WorkerManager) createStepActivity(step *yamlpkg.Step) interface{} {
 				return nil, fmt.Errorf("failed to get provider: %w", err)
 			}
 			
-			// Execute using the provider
-			result, err := provider.Execute(ctx, step.Config, inputs)
-			if err != nil {
-				return nil, err
+			// Merge node inputs with provided inputs
+			mergedInputs := make(map[string]interface{})
+			for k, v := range inputs {
+				mergedInputs[k] = v
 			}
-			
-			// Convert result to map if needed
-			if resultMap, ok := result.(map[string]interface{}); ok {
-				return resultMap, nil
-			}
-			return map[string]interface{}{"result": result}, nil
-		}
-		
-		// Fall back to default implementation (placeholder)
-		return map[string]interface{}{
-			"status": "completed",
-			"step": step.ID,
-			"uses": step.Uses,
-		}, nil
-	}
-}
-
-// createSharedActivity creates an activity function from a shared activity
-func (m *WorkerManager) createSharedActivity(name string, sharedActivity *yamlpkg.SharedActivity) interface{} {
-	return func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		// Get activity type from config
-		activityType, ok := sharedActivity.Config["type"].(string)
-		if !ok {
-			activityType = "function" // Default
-		}
-		
-		// Check if we have a provider for this activity type
-		if m.providerRegistry.Has(activityType) {
-			provider, err := m.providerRegistry.Get(activityType)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get provider: %w", err)
+			for k, v := range node.Inputs {
+				mergedInputs[k] = v
 			}
 			
 			// Execute using the provider
-			result, err := provider.Execute(ctx, sharedActivity.Config, inputs)
+			result, err := provider.Execute(ctx, node.Inputs, mergedInputs)
 			if err != nil {
 				return nil, err
 			}
@@ -331,7 +284,7 @@ func (m *WorkerManager) createSharedActivity(name string, sharedActivity *yamlpk
 		return map[string]interface{}{
 			"status": "completed",
 			"name": name,
-			"uses": sharedActivity.Uses,
+			"op": node.Op,
 		}, nil
 	}
 }

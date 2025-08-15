@@ -41,8 +41,126 @@ func NewStateMachineCompiler(executor ActivityExecutor) (*StateMachineCompiler, 
 	}, nil
 }
 
+// ExecuteStateMap runs the state machine with the new StateMap format
+func (s *StateMachineCompiler) ExecuteStateMap(ctx workflow.Context, stateMap *yamlpkg.StateMap, inputs map[string]interface{}) (map[string]interface{}, error) {
+	// Initialize state context
+	stateCtx := &yamlpkg.StateContext{
+		CurrentState: stateMap.Initial,
+		Inputs:       inputs,
+		StateOutputs: make(map[string]map[string]interface{}),
+		Attempts:     make(map[string]int),
+		StateInfo:    make(map[string]*yamlpkg.StateInfo),
+		StepOutputs:  make(map[string]interface{}),
+	}
+
+	// Extract recipe context from inputs if available
+	if ctxVal, ok := inputs["context"]; ok {
+		if recipeCtx, ok := ctxVal.(*yamlpkg.RecipeContext); ok {
+			stateCtx.RecipeContext = recipeCtx
+		}
+	}
+
+	// Execute state machine
+	for !s.isTerminalState(stateCtx.CurrentState, stateMap.States) {
+		// Check if workflow context is cancelled
+		if err := workflow.Sleep(ctx, 0); err != nil {
+			return nil, fmt.Errorf("state machine execution cancelled: %w", err)
+		}
+		
+		// Get current state definition
+		stateDef, exists := stateMap.States[stateCtx.CurrentState]
+		if !exists {
+			return nil, fmt.Errorf("state '%s' not found", stateCtx.CurrentState)
+		}
+
+		// Track state entry
+		stateCtx.StateInfo[stateCtx.CurrentState] = &yamlpkg.StateInfo{
+			Name:      stateCtx.CurrentState,
+			Attempts:  stateCtx.Attempts[stateCtx.CurrentState],
+			EnteredAt: workflow.Now(ctx),
+		}
+
+		// Execute state
+		outputs, err := s.executeStateNew(ctx, &stateDef, stateCtx)
+		if err != nil {
+			// Handle retry if configured
+			if stateDef.Retry != nil && s.shouldRetryNew(stateDef.Retry, err, stateCtx) {
+				stateCtx.Attempts[stateCtx.CurrentState]++
+				continue
+			}
+			return nil, fmt.Errorf("state '%s' execution failed: %w", stateCtx.CurrentState, err)
+		}
+
+		// Store state outputs
+		stateCtx.StateOutputs[stateCtx.CurrentState] = outputs
+
+		// Evaluate transitions
+		nextState := s.evaluateTransitionsNew(stateDef.Transitions, outputs, stateCtx)
+		if nextState == "" {
+			// No transition matched, state machine completes
+			break
+		}
+
+		stateCtx.CurrentState = nextState
+	}
+
+	// Return final outputs
+	finalState := stateMap.States[stateCtx.CurrentState]
+	if len(finalState.Transitions) == 0 && finalState.Outputs != nil {
+		return s.prepareOutputs(finalState.Outputs, stateCtx), nil
+	}
+
+	// Return the last state's outputs
+	if lastOutputs, ok := stateCtx.StateOutputs[stateCtx.CurrentState]; ok {
+		return lastOutputs, nil
+	}
+
+	// Return all state outputs as a single map
+	allOutputs := make(map[string]interface{})
+	for stateName, stateOutputs := range stateCtx.StateOutputs {
+		allOutputs[stateName] = stateOutputs
+	}
+	return allOutputs, nil
+}
+
+// convertStateMapToStateMachineConfig converts new StateMap to old StateMachineConfig for compatibility
+func (s *StateMachineCompiler) convertStateMapToStateMachineConfig(sm *yamlpkg.StateMap) StateMachineConfig {
+	config := StateMachineConfig{
+		InitialState: sm.Initial,
+		States:       make(map[string]StateDefinition),
+	}
+	
+	// Convert each State to StateDefinition
+	for name, state := range sm.States {
+		def := StateDefinition{
+			Uses:    state.Op,
+			Inputs:  state.Inputs,
+			Outputs: state.Outputs,
+			Error:   state.Error,
+		}
+		
+		// Convert transitions
+		if len(state.Transitions) > 0 {
+			def.Transitions = make([]TransitionSpec, len(state.Transitions))
+			for i, t := range state.Transitions {
+				def.Transitions[i] = TransitionSpec{
+					To:   t.To,
+					When: t.When,
+				}
+			}
+		}
+		
+		// Check if terminal (no transitions)
+		def.Terminal = len(state.Transitions) == 0
+		
+		config.States[name] = def
+	}
+	
+	return config
+}
+
 // Execute runs the state machine with provided configuration and inputs
-func (s *StateMachineCompiler) Execute(ctx workflow.Context, config yamlpkg.StateMachineConfig, inputs map[string]interface{}) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) Execute(ctx workflow.Context, config StateMachineConfig, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Initialize state context
 	stateCtx := &yamlpkg.StateContext{
 		CurrentState: config.InitialState,
@@ -145,7 +263,7 @@ func (s *StateMachineCompiler) Execute(ctx workflow.Context, config yamlpkg.Stat
 }
 
 // executeState executes a single state with composition support
-func (s *StateMachineCompiler) executeState(ctx workflow.Context, state yamlpkg.StateDefinition, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) executeState(ctx workflow.Context, state StateDefinition, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
 	// Terminal states return configured outputs
 	if state.Terminal {
 		if state.Error != "" {
@@ -188,7 +306,7 @@ func (s *StateMachineCompiler) executeState(ctx workflow.Context, state yamlpkg.
 }
 
 // executeStepScoped executes a single step within a composition with proper scoping
-func (s *StateMachineCompiler) executeStepScoped(ctx workflow.Context, step yamlpkg.CompositionStep, scope *ScopedContext) (interface{}, error) {
+func (s *StateMachineCompiler) executeStepScoped(ctx workflow.Context, step CompositionStep, scope *ScopedContext) (interface{}, error) {
 	// Check conditional execution
 	if step.When != "" {
 		shouldExecute, err := s.evaluateCELScoped(step.When, nil, scope)
@@ -257,7 +375,7 @@ func (s *StateMachineCompiler) executeStepScoped(ctx workflow.Context, step yaml
 }
 
 // executeStep executes a single step within a composition
-func (s *StateMachineCompiler) executeStep(ctx workflow.Context, step yamlpkg.CompositionStep, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (interface{}, error) {
+func (s *StateMachineCompiler) executeStep(ctx workflow.Context, step CompositionStep, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (interface{}, error) {
 	// Check conditional execution
 	if step.When != "" {
 		shouldExecute, err := s.evaluateCEL(step.When, outputs, stateCtx)
@@ -323,7 +441,7 @@ func (s *StateMachineCompiler) executeStep(ctx workflow.Context, step yamlpkg.Co
 }
 
 // executeSequentialScoped executes steps in sequence with proper scoping
-func (s *StateMachineCompiler) executeSequentialScoped(ctx workflow.Context, steps []yamlpkg.CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) executeSequentialScoped(ctx workflow.Context, steps []CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
 	for _, step := range steps {
 		result, err := s.executeStepScoped(ctx, step, scope)
 		if err != nil {
@@ -341,7 +459,7 @@ func (s *StateMachineCompiler) executeSequentialScoped(ctx workflow.Context, ste
 }
 
 // executeSequential executes steps in sequence (legacy method for backward compatibility)
-func (s *StateMachineCompiler) executeSequential(ctx workflow.Context, steps []yamlpkg.CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) executeSequential(ctx workflow.Context, steps []CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
 	outputs := make(map[string]interface{})
 
 	for _, step := range steps {
@@ -361,7 +479,7 @@ func (s *StateMachineCompiler) executeSequential(ctx workflow.Context, steps []y
 }
 
 // executeParallelScoped executes steps in parallel with proper scoping
-func (s *StateMachineCompiler) executeParallelScoped(ctx workflow.Context, steps []yamlpkg.CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) executeParallelScoped(ctx workflow.Context, steps []CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
 	// Group steps by dependencies
 	groups := s.groupByDependencies(steps)
 
@@ -413,7 +531,7 @@ func (s *StateMachineCompiler) executeParallelScoped(ctx workflow.Context, steps
 }
 
 // executeParallel executes steps in parallel with dependency support
-func (s *StateMachineCompiler) executeParallel(ctx workflow.Context, steps []yamlpkg.CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+func (s *StateMachineCompiler) executeParallel(ctx workflow.Context, steps []CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
 	// Group steps by dependencies
 	groups := s.groupByDependencies(steps)
 	outputs := make(map[string]interface{})
@@ -466,7 +584,7 @@ func (s *StateMachineCompiler) executeParallel(ctx workflow.Context, steps []yam
 }
 
 // executeConditionalScoped evaluates conditions and executes the matching branch with proper scoping
-func (s *StateMachineCompiler) executeConditionalScoped(ctx workflow.Context, branches []yamlpkg.ConditionalBranch, scope *ScopedContext) (interface{}, error) {
+func (s *StateMachineCompiler) executeConditionalScoped(ctx workflow.Context, branches []ConditionalBranch, scope *ScopedContext) (interface{}, error) {
 	for _, branch := range branches {
 		// Check condition (default branch has no condition)
 		shouldExecute := branch.Default
@@ -510,7 +628,7 @@ func (s *StateMachineCompiler) executeConditionalScoped(ctx workflow.Context, br
 }
 
 // executeConditional evaluates conditions and executes the matching branch
-func (s *StateMachineCompiler) executeConditional(ctx workflow.Context, branches []yamlpkg.ConditionalBranch, stateCtx *yamlpkg.StateContext) (interface{}, error) {
+func (s *StateMachineCompiler) executeConditional(ctx workflow.Context, branches []ConditionalBranch, stateCtx *yamlpkg.StateContext) (interface{}, error) {
 	for _, branch := range branches {
 		// Check condition (default branch has no condition)
 		shouldExecute := branch.Default
@@ -549,7 +667,7 @@ func (s *StateMachineCompiler) executeConditional(ctx workflow.Context, branches
 
 // Helper functions
 
-func (s *StateMachineCompiler) isTerminal(stateName string, states map[string]yamlpkg.StateDefinition) bool {
+func (s *StateMachineCompiler) isTerminal(stateName string, states map[string]StateDefinition) bool {
 	state, exists := states[stateName]
 	if !exists {
 		return true // Non-existent state is terminal
@@ -557,7 +675,7 @@ func (s *StateMachineCompiler) isTerminal(stateName string, states map[string]ya
 	return state.Terminal
 }
 
-func (s *StateMachineCompiler) shouldRetry(policy *yamlpkg.StateRetryPolicy, err error, stateCtx *yamlpkg.StateContext) bool {
+func (s *StateMachineCompiler) shouldRetry(policy *StateRetryPolicy, err error, stateCtx *yamlpkg.StateContext) bool {
 	attempts := stateCtx.Attempts[stateCtx.CurrentState]
 	if attempts >= policy.MaxAttempts {
 		return false
@@ -573,7 +691,7 @@ func (s *StateMachineCompiler) shouldRetry(policy *yamlpkg.StateRetryPolicy, err
 	return true
 }
 
-func (s *StateMachineCompiler) calculateBackoff(policy *yamlpkg.StepRetryPolicy, attempt int) time.Duration {
+func (s *StateMachineCompiler) calculateBackoff(policy *StepRetryPolicy, attempt int) time.Duration {
 	// Parse initial interval from string
 	backoff, err := time.ParseDuration(policy.InitialInterval)
 	if err != nil {
@@ -587,11 +705,11 @@ func (s *StateMachineCompiler) calculateBackoff(policy *yamlpkg.StepRetryPolicy,
 	return backoff
 }
 
-func (s *StateMachineCompiler) groupByDependencies(steps []yamlpkg.CompositionStep) [][]yamlpkg.CompositionStep {
+func (s *StateMachineCompiler) groupByDependencies(steps []CompositionStep) [][]CompositionStep {
 	// Simple grouping - steps with no dependencies go first
 	// This can be enhanced with proper topological sorting
-	var noDeps []yamlpkg.CompositionStep
-	var withDeps []yamlpkg.CompositionStep
+	var noDeps []CompositionStep
+	var withDeps []CompositionStep
 
 	for _, step := range steps {
 		if len(step.DependsOn) == 0 {
@@ -601,7 +719,7 @@ func (s *StateMachineCompiler) groupByDependencies(steps []yamlpkg.CompositionSt
 		}
 	}
 
-	groups := [][]yamlpkg.CompositionStep{}
+	groups := [][]CompositionStep{}
 	if len(noDeps) > 0 {
 		groups = append(groups, noDeps)
 	}
@@ -631,7 +749,7 @@ func (s *StateMachineCompiler) dependenciesMetScoped(deps []string, scope *Scope
 	return true
 }
 
-func (s *StateMachineCompiler) evaluateTransitions(transitions []yamlpkg.TransitionSpec, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) string {
+func (s *StateMachineCompiler) evaluateTransitions(transitions []TransitionSpec, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) string {
 	for _, transition := range transitions {
 		if transition.When == "" {
 			// Unconditional transition
