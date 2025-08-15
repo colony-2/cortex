@@ -1,24 +1,12 @@
 name: test-invalid
-description: Test recipe with invalid structure
+description: Test recipe with invalid activity type
 version: "1.0"
 
 inputs:
-  - name: message
-    type: string
-    required: true
+  message: "test"
 
 sequence:
   - id: step1
     op: unknown_activity_type
     inputs:
       data: "test"
-  
-  - id: step2
-    # Missing 'uses' field
-    inputs:
-      data: "test"
-      
-  - # Missing 'id' field
-    op: command_execution
-    inputs:
-      run: "echo test"

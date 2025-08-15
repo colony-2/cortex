@@ -1,0 +1,30 @@
+name: test-sequence-node
+description: Test recipe for sequence node with multiple operations
+version: "1.0"
+
+sequence:
+  - id: step1
+    op: command_execution
+    inputs:
+      run: "echo 'Step 1'"
+      working_directory: "/tmp"
+      working_dir: "/tmp"
+      shell: "bash"
+      env: {}
+      continue_on_error: false
+      timeout: "30s"
+  - id: step2
+    op: sleep
+    inputs:
+      duration: "2s"
+      default_duration: "5s"
+  - id: step3
+    op: command_execution
+    inputs:
+      run: "echo 'Step 3 complete'"
+      working_directory: "/tmp"
+      working_dir: "/tmp"
+      shell: "bash"
+      env: {}
+      continue_on_error: false
+      timeout: "30s"

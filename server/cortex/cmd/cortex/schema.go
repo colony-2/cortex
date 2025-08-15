@@ -81,12 +81,13 @@ func runSchema(cmd *cobra.Command, args []string) error {
 }
 
 func convertToOpenAPI(schema map[string]interface{}) map[string]interface{} {
-	// Convert JSON Schema to OpenAPI format
+	// Convert JSON Schema to OpenAPI 3.1 format (fully compatible with JSON Schema 2020-12)
 	openAPI := map[string]interface{}{
-		"openapi": "3.0.0",
+		"openapi": "3.1.0", // OpenAPI 3.1 is fully compatible with JSON Schema 2020-12
 		"info": map[string]interface{}{
-			"title":   "Recipe Schema API",
-			"version": "1.0.0",
+			"title":       "Vibethis Recipe Schema API",
+			"version":     "1.0.0",
+			"description": "OpenAPI 3.1 / JSON Schema 2020-12 compatible schema for Vibethis recipes",
 		},
 		"components": map[string]interface{}{
 			"schemas": map[string]interface{}{

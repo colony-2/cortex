@@ -1,0 +1,8 @@
+name: test-sleep-operation
+description: Test recipe for sleep operation with const discrimination
+version: "1.0"
+
+op: sleep
+inputs:
+  duration: "5s"
+  default_duration: "10s"

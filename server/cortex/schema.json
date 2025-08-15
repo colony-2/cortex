@@ -1,0 +1,1049 @@
+{
+  "$id": "https://vibethis.com/schemas/recipe.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "definitions": {
+    "CommandExecutionOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "continue_on_error": {
+              "description": "Optional: Whether to continue on error",
+              "type": "boolean"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Optional: Environment variables",
+              "type": "object"
+            },
+            "run": {
+              "description": "Shell command to execute",
+              "type": "string"
+            },
+            "shell": {
+              "description": "Optional: Shell to use (e.g., bash, sh)",
+              "type": "string"
+            },
+            "timeout": {
+              "description": "Optional: Command timeout duration",
+              "type": "string"
+            },
+            "working_dir": {
+              "description": "Optional: Working directory configuration",
+              "type": "string"
+            },
+            "working_directory": {
+              "description": "Optional: Directory to execute the command in",
+              "type": "string"
+            }
+          },
+          "required": [
+            "run"
+          ],
+          "type": "object"
+        },
+        "op": {
+          "const": "command_execution"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "error_message": {
+              "type": "string"
+            },
+            "exit_code": {
+              "type": "integer"
+            },
+            "stderr": {
+              "type": "string"
+            },
+            "stdout": {
+              "type": "string"
+            },
+            "success": {
+              "type": "boolean"
+            },
+            "timed_out": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "stdout",
+            "stderr",
+            "exit_code",
+            "success",
+            "timed_out",
+            "error_message"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "GitShallowCloneOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "commit_hash": {
+              "description": "Specific commit to clone",
+              "type": "string"
+            },
+            "source_dir": {
+              "description": "Source git repository directory",
+              "type": "string"
+            },
+            "target_dir": {
+              "description": "Target directory for the clone",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "op": {
+          "const": "git_shallow_clone"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "cloned_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "cloned_path"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "InputDef": {
+      "properties": {
+        "default": {
+          "description": "Default value if not provided"
+        },
+        "description": {
+          "description": "Description of the input",
+          "type": "string"
+        },
+        "required": {
+          "description": "Whether the input is required",
+          "type": "boolean"
+        },
+        "type": {
+          "description": "Type of the input (string, number, boolean, etc.)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InputOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "activity_id": {
+              "description": "Activity identifier",
+              "type": "string"
+            },
+            "box_id": {
+              "description": "Box identifier",
+              "type": "string"
+            },
+            "context": {
+              "description": "Additional context data",
+              "type": "object"
+            },
+            "default_on_timeout": {
+              "description": "Default value if input times out"
+            },
+            "fields": {
+              "description": "Form fields for multi-field forms",
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "items": {
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "placeholder": {
+                    "type": "string"
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "scale": {
+                    "properties": {
+                      "max": {
+                        "type": "integer"
+                      },
+                      "max_label": {
+                        "type": "string"
+                      },
+                      "min": {
+                        "type": "integer"
+                      },
+                      "min_label": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": {
+                    "enum": [
+                      "short_answer",
+                      "paragraph_text",
+                      "multiple_choice",
+                      "checkboxes",
+                      "dropdown",
+                      "linear_scale",
+                      "multiple_choice_grid",
+                      "checkbox_grid",
+                      "date",
+                      "time",
+                      "file_upload"
+                    ],
+                    "type": "string"
+                  },
+                  "validation": {
+                    "properties": {
+                      "max": {
+                        "type": "integer"
+                      },
+                      "max_length": {
+                        "type": "integer"
+                      },
+                      "min": {
+                        "type": "integer"
+                      },
+                      "min_length": {
+                        "type": "integer"
+                      },
+                      "pattern": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "question"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "question": {
+              "description": "Question to ask the user",
+              "type": "string"
+            },
+            "timeout": {
+              "default": 300,
+              "maximum": 3600,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": {
+              "description": "Form title",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "short_answer",
+                "paragraph_text",
+                "multiple_choice",
+                "checkboxes",
+                "dropdown",
+                "linear_scale",
+                "date",
+                "time"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "op": {
+          "const": "input"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "fields": {
+              "description": "User responses for multi-field form",
+              "type": "object"
+            },
+            "metadata": {
+              "description": "Additional metadata",
+              "type": "object"
+            },
+            "response": {
+              "description": "User response for single question"
+            },
+            "user_id": {
+              "description": "ID of user who responded",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "LLMInferenceOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "max_tokens": {
+              "type": "integer"
+            },
+            "model": {
+              "description": "Model identifier",
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "provider": {
+              "description": "LLM provider (OpenAI, Anthropic, Gemini)",
+              "type": "string"
+            },
+            "response_schema": {
+              "type": "object"
+            },
+            "stop_sequences": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "system_prompt": {
+              "type": "string"
+            },
+            "temperature": {
+              "type": "number"
+            },
+            "top_p": {
+              "type": "number"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "op": {
+          "const": "llm_inference"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "finish_reason": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "response": {
+              "type": "object"
+            },
+            "usage": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "response",
+            "model",
+            "finish_reason",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "Node": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/SleepOperation"
+        },
+        {
+          "$ref": "#/definitions/CommandExecutionOperation"
+        },
+        {
+          "$ref": "#/definitions/LLMInferenceOperation"
+        },
+        {
+          "$ref": "#/definitions/GitShallowCloneOperation"
+        },
+        {
+          "$ref": "#/definitions/RecipeOperation"
+        },
+        {
+          "$ref": "#/definitions/InputOperation"
+        },
+        {
+          "$ref": "#/definitions/SequenceNode"
+        },
+        {
+          "$ref": "#/definitions/ParallelNode"
+        },
+        {
+          "$ref": "#/definitions/StateNode"
+        },
+        {
+          "$ref": "#/definitions/SharedRefNode"
+        }
+      ]
+    },
+    "ParallelNode": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "outputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parallel": {
+          "items": {
+            "$ref": "#/definitions/Node"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "parallel"
+      ],
+      "type": "object"
+    },
+    "ParallelValue": {
+      "description": "Parallel execution of nodes",
+      "items": {
+        "$ref": "#/definitions/Node"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "RecipeOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "recipe": {
+              "description": "Name of the recipe to invoke",
+              "type": "string"
+            },
+            "retry_policy": {
+              "$ref": "#/definitions/RetryPolicy"
+            },
+            "timeout": {
+              "description": "Timeout for the recipe execution",
+              "type": "string"
+            },
+            "version": {
+              "description": "Version of the recipe",
+              "type": "string"
+            }
+          },
+          "required": [
+            "recipe"
+          ],
+          "type": "object"
+        },
+        "op": {
+          "const": "recipe"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "execution_id": {
+              "type": "string"
+            },
+            "execution_metadata": {
+              "properties": {
+                "attempt_count": {
+                  "type": "integer"
+                },
+                "duration_ms": {
+                  "type": "integer"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "recipe_outputs": {
+              "type": "object"
+            },
+            "result": {
+              "type": "object"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "execution_id",
+            "result",
+            "status",
+            "recipe_outputs",
+            "execution_metadata"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "RetryPolicy": {
+      "properties": {
+        "backoff_coefficient": {
+          "description": "Exponential backoff coefficient",
+          "minimum": 1,
+          "type": "number"
+        },
+        "initial_interval": {
+          "description": "Initial retry interval (e.g., '1s')",
+          "type": "string"
+        },
+        "max_attempts": {
+          "description": "Maximum number of retry attempts",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_interval": {
+          "description": "Maximum retry interval",
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_attempts",
+        "initial_interval"
+      ],
+      "type": "object"
+    },
+    "SequenceNode": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "outputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "sequence": {
+          "items": {
+            "$ref": "#/definitions/Node"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sequence"
+      ],
+      "type": "object"
+    },
+    "SequenceValue": {
+      "description": "Sequential execution of nodes",
+      "items": {
+        "$ref": "#/definitions/Node"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "SharedRefNode": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "outputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "shared": {
+          "description": "Reference to a shared node definition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "shared"
+      ],
+      "type": "object"
+    },
+    "SleepOperation": {
+      "properties": {
+        "desc": {
+          "description": "Human-readable description",
+          "type": "string"
+        },
+        "id": {
+          "description": "Unique identifier for the node",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "properties": {
+            "duration": {
+              "description": "Duration to sleep (e.g., '5s', '2m')",
+              "type": "string"
+            }
+          },
+          "required": [
+            "duration"
+          ],
+          "type": "object"
+        },
+        "op": {
+          "const": "sleep"
+        },
+        "outputs": {
+          "additionalProperties": false,
+          "properties": {
+            "actual_duration": {
+              "type": "string"
+            },
+            "completed": {
+              "type": "boolean"
+            },
+            "end_time": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "error_message": {
+              "type": "string"
+            },
+            "interrupted": {
+              "type": "boolean"
+            },
+            "start_time": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "start_time",
+            "end_time",
+            "actual_duration",
+            "completed",
+            "interrupted",
+            "error_message"
+          ],
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "timeout": {
+          "description": "Timeout duration",
+          "type": "string"
+        },
+        "when": {
+          "description": "CEL expression for conditional execution",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "State": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "op"
+          ]
+        },
+        {
+          "required": [
+            "sequence"
+          ]
+        },
+        {
+          "required": [
+            "parallel"
+          ]
+        },
+        {
+          "required": [
+            "states"
+          ]
+        },
+        {
+          "required": [
+            "shared"
+          ]
+        }
+      ],
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "error": {
+          "description": "Error message for terminal error states",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "op": {
+          "type": "string"
+        },
+        "outputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "parallel": {
+          "$ref": "#/definitions/ParallelValue"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "sequence": {
+          "$ref": "#/definitions/SequenceValue"
+        },
+        "shared": {
+          "type": "string"
+        },
+        "states": {
+          "$ref": "#/definitions/StateMap"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "transitions": {
+          "description": "State transitions",
+          "items": {
+            "properties": {
+              "to": {
+                "description": "Target state name",
+                "type": "string"
+              },
+              "when": {
+                "description": "CEL expression condition for transition",
+                "type": "string"
+              }
+            },
+            "required": [
+              "to"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StateMap": {
+      "additionalProperties": {
+        "$ref": "#/definitions/State"
+      },
+      "properties": {
+        "initial": {
+          "description": "Initial state to start execution",
+          "type": "string"
+        }
+      },
+      "required": [
+        "initial"
+      ],
+      "type": "object"
+    },
+    "StateNode": {
+      "additionalProperties": false,
+      "properties": {
+        "desc": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "outputs": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "retry": {
+          "$ref": "#/definitions/RetryPolicy"
+        },
+        "states": {
+          "$ref": "#/definitions/StateMap"
+        },
+        "timeout": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "states"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Schema for Vibethis recipe definitions",
+  "oneOf": [
+    {
+      "required": [
+        "op"
+      ]
+    },
+    {
+      "required": [
+        "sequence"
+      ]
+    },
+    {
+      "required": [
+        "parallel"
+      ]
+    },
+    {
+      "required": [
+        "states"
+      ]
+    }
+  ],
+  "properties": {
+    "desc": {
+      "description": "Human-readable description of the root node",
+      "type": "string"
+    },
+    "description": {
+      "description": "Human-readable description of what the recipe does",
+      "type": "string"
+    },
+    "id": {
+      "description": "Unique identifier for the root node",
+      "type": "string"
+    },
+    "input_schema": {
+      "additionalProperties": {
+        "$ref": "#/definitions/InputDef"
+      },
+      "description": "Schema definitions for recipe inputs",
+      "type": "object"
+    },
+    "inputs": {
+      "additionalProperties": true,
+      "description": "Node input values",
+      "type": "object"
+    },
+    "name": {
+      "description": "Name of the recipe",
+      "type": "string"
+    },
+    "op": {
+      "description": "Operation type",
+      "type": "string"
+    },
+    "outputs": {
+      "additionalProperties": true,
+      "description": "Node output mappings",
+      "type": "object"
+    },
+    "parallel": {
+      "$ref": "#/definitions/ParallelValue"
+    },
+    "retry": {
+      "$ref": "#/definitions/RetryPolicy"
+    },
+    "sequence": {
+      "$ref": "#/definitions/SequenceValue"
+    },
+    "shared": {
+      "additionalProperties": {
+        "$ref": "#/definitions/Node"
+      },
+      "description": "Shared node definitions that can be referenced",
+      "type": "object"
+    },
+    "states": {
+      "$ref": "#/definitions/StateMap"
+    },
+    "timeout": {
+      "description": "Timeout duration (e.g., '30s', '5m')",
+      "type": "string"
+    },
+    "version": {
+      "default": "1.0",
+      "description": "Version of the recipe",
+      "type": "string"
+    },
+    "when": {
+      "description": "CEL expression for conditional execution",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "version"
+  ],
+  "title": "Recipe Schema",
+  "type": "object"
+}

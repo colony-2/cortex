@@ -24,7 +24,7 @@ func TestGenerateCompleteSchema(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Verify basic structure
-	assert.Equal(t, "http://json-schema.org/draft-07/schema#", schema["$schema"])
+	assert.Equal(t, "https://json-schema.org/draft/2020-12/schema", schema["$schema"])
 	assert.Equal(t, "Recipe Schema", schema["title"])
 	assert.Equal(t, "object", schema["type"])
 	
@@ -45,10 +45,13 @@ func TestGenerateCompleteSchema(t *testing.T) {
 	require.True(t, ok)
 	// New format definitions
 	assert.Contains(t, defs, "Node")
-	assert.Contains(t, defs, "OpValue")
+	assert.Contains(t, defs, "SequenceNode")
+	assert.Contains(t, defs, "ParallelNode")
 	assert.Contains(t, defs, "RetryPolicy")
 	assert.Contains(t, defs, "StateMap")
-	assert.Contains(t, defs, "Activities")
+	// Check for operation definitions
+	assert.Contains(t, defs, "CommandExecutionOperation")
+	assert.Contains(t, defs, "SleepOperation")
 }
 
 func TestSchemaCommandJSON(t *testing.T) {
@@ -132,11 +135,11 @@ func TestConvertToOpenAPI(t *testing.T) {
 	openAPI := convertToOpenAPI(inputSchema)
 	
 	// Verify OpenAPI structure
-	assert.Equal(t, "3.0.0", openAPI["openapi"])
+	assert.Equal(t, "3.1.0", openAPI["openapi"])
 	
 	info, ok := openAPI["info"].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, "Recipe Schema API", info["title"])
+	assert.Equal(t, "Vibethis Recipe Schema API", info["title"])
 	assert.Equal(t, "1.0.0", info["version"])
 	
 	components, ok := openAPI["components"].(map[string]interface{})

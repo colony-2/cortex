@@ -1,0 +1,14 @@
+name: test-command-execution
+description: Test recipe for command execution operation with const discrimination
+version: "1.0"
+
+op: command_execution
+inputs:
+  run: "echo 'Testing command execution'"
+  working_directory: "/tmp"
+  working_dir: "/tmp"
+  shell: "bash"
+  env:
+    TEST_ENV: "value1"
+  continue_on_error: false
+  timeout: "30s"

@@ -115,9 +115,10 @@ func (sm *SchemaManager) buildCompleteSchema(registry *worker.ActivityRegistry, 
 		return sm.buildActivitySchema(registry, filterActivity, includeVersion, includeExamples)
 	}
 	
-	// Build the complete recipe schema
+	// Build the complete recipe schema - OpenAPI 3.1 / JSON Schema 2020-12 compatible
 	schema := map[string]interface{}{
-		"$schema":     "http://json-schema.org/draft-07/schema#",
+		"$schema":     "https://json-schema.org/draft/2020-12/schema",
+		"$id":         "https://vibethis.com/schemas/recipe.schema.json",
 		"title":       "Recipe Schema",
 		"type":        "object",
 		"description": "Schema for Vibethis recipe definitions",
@@ -128,39 +129,48 @@ func (sm *SchemaManager) buildCompleteSchema(registry *worker.ActivityRegistry, 
 		schema["version"] = "1.0.0"
 	}
 	
-	// Build recipe properties
-	properties := map[string]interface{}{
+	// Build the Recipe schema - strict typing with no unknown fields
+	recipeProperties := map[string]interface{}{
 		"name": map[string]interface{}{
 			"type":        "string",
 			"description": "Name of the recipe",
-		},
-		"description": map[string]interface{}{
-			"type":        "string",
-			"description": "Human-readable description of what the recipe does",
 		},
 		"version": map[string]interface{}{
 			"type":        "string",
 			"description": "Version of the recipe",
 			"default":     "1.0",
 		},
-		"shared": map[string]interface{}{
+		"description": map[string]interface{}{
+			"type":        "string",
+			"description": "Human-readable description of what the recipe does",
+		},
+		// inputs and outputs are maps for node input values
+		"inputs": map[string]interface{}{
 			"type":                 "object",
-			"description":          "Shared node definitions that can be referenced",
-			"additionalProperties": map[string]interface{}{"$ref": "#/definitions/Node"},
+			"description":          "Node input values",
+			"additionalProperties": true,
+		},
+		"outputs": map[string]interface{}{
+			"type":                 "object",
+			"description":          "Node output mappings",
+			"additionalProperties": true,
 		},
 		"input_schema": map[string]interface{}{
 			"type":                 "object",
 			"description":          "Schema definitions for recipe inputs",
 			"additionalProperties": map[string]interface{}{"$ref": "#/definitions/InputDef"},
 		},
-		
-		// Root node properties (exactly one of these)
-		"op":       map[string]interface{}{"$ref": "#/definitions/OpValue"},
+		"shared": map[string]interface{}{
+			"type":                 "object",
+			"description":          "Shared node definitions that can be referenced",
+			"additionalProperties": map[string]interface{}{"$ref": "#/definitions/Node"},
+		},
+		// Node properties - exactly one of these
+		"op":       map[string]interface{}{"type": "string", "description": "Operation type"},
 		"sequence": map[string]interface{}{"$ref": "#/definitions/SequenceValue"},
 		"parallel": map[string]interface{}{"$ref": "#/definitions/ParallelValue"},
 		"states":   map[string]interface{}{"$ref": "#/definitions/StateMap"},
-		
-		// Common node properties at root level
+		// Common node properties
 		"id": map[string]interface{}{
 			"type":        "string",
 			"description": "Unique identifier for the root node",
@@ -169,16 +179,6 @@ func (sm *SchemaManager) buildCompleteSchema(registry *worker.ActivityRegistry, 
 			"type":        "string",
 			"description": "Human-readable description of the root node",
 		},
-		"inputs": map[string]interface{}{
-			"type":                 "object",
-			"description":          "Input values or templates for the root node",
-			"additionalProperties": true,
-		},
-		"outputs": map[string]interface{}{
-			"type":                 "object",
-			"description":          "Output mappings for the root node",
-			"additionalProperties": true,
-		},
 		"timeout": map[string]interface{}{
 			"type":        "string",
 			"description": "Timeout duration (e.g., '30s', '5m')",
@@ -186,12 +186,18 @@ func (sm *SchemaManager) buildCompleteSchema(registry *worker.ActivityRegistry, 
 		"retry": map[string]interface{}{
 			"$ref": "#/definitions/RetryPolicy",
 		},
+		"when": map[string]interface{}{
+			"type":        "string",
+			"description": "CEL expression for conditional execution",
+		},
 	}
 	
-	schema["properties"] = properties
+	schema["type"] = "object"
+	schema["properties"] = recipeProperties
 	schema["required"] = []string{"name", "version"}
+	schema["additionalProperties"] = false  // Disallow unknown fields
 	
-	// Add oneOf constraint for root node type
+	// Add oneOf constraint for node type (op, sequence, parallel, or states)
 	schema["oneOf"] = []map[string]interface{}{
 		{"required": []string{"op"}},
 		{"required": []string{"sequence"}},
@@ -283,76 +289,51 @@ func (sm *SchemaManager) buildDefinitions(registry *worker.ActivityRegistry) map
 		},
 	}
 	
-	// Node schema
+	// Build operation schemas with const discrimination
+	operationRefs := []map[string]interface{}{}
+	
+	// Sleep Operation
+	definitions["SleepOperation"] = sm.buildSleepOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/SleepOperation"})
+	
+	// Command Execution Operation
+	definitions["CommandExecutionOperation"] = sm.buildCommandExecutionOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/CommandExecutionOperation"})
+	
+	// LLM Inference Operation
+	definitions["LLMInferenceOperation"] = sm.buildLLMInferenceOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/LLMInferenceOperation"})
+	
+	// Git Shallow Clone Operation
+	definitions["GitShallowCloneOperation"] = sm.buildGitShallowCloneOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/GitShallowCloneOperation"})
+	
+	// Recipe Operation
+	definitions["RecipeOperation"] = sm.buildRecipeOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/RecipeOperation"})
+	
+	// Input Operation
+	definitions["InputOperation"] = sm.buildInputOperation()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/InputOperation"})
+	
+	// Composite node types
+	definitions["SequenceNode"] = sm.buildSequenceNode()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/SequenceNode"})
+	
+	definitions["ParallelNode"] = sm.buildParallelNode()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/ParallelNode"})
+	
+	definitions["StateNode"] = sm.buildStateNode()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/StateNode"})
+	
+	definitions["SharedRefNode"] = sm.buildSharedRefNode()
+	operationRefs = append(operationRefs, map[string]interface{}{"$ref": "#/definitions/SharedRefNode"})
+	
+	// Node schema - uses oneOf with all operation and composite types
 	definitions["Node"] = map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"id": map[string]interface{}{
-				"type":        "string",
-				"description": "Unique identifier for the node",
-			},
-			"desc": map[string]interface{}{
-				"type":        "string",
-				"description": "Human-readable description",
-			},
-			"op":       map[string]interface{}{"$ref": "#/definitions/OpValue"},
-			"sequence": map[string]interface{}{"$ref": "#/definitions/SequenceValue"},
-			"parallel": map[string]interface{}{"$ref": "#/definitions/ParallelValue"},
-			"states":   map[string]interface{}{"$ref": "#/definitions/StateMap"},
-			"shared": map[string]interface{}{
-				"type":        "string",
-				"description": "Reference to a shared node definition",
-			},
-			"inputs": map[string]interface{}{
-				"type":                 "object",
-				"description":          "Input values or templates",
-				"additionalProperties": true,
-			},
-			"outputs": map[string]interface{}{
-				"type":                 "object",
-				"description":          "Output mappings (composite nodes only)",
-				"additionalProperties": true,
-			},
-			"timeout": map[string]interface{}{
-				"type":        "string",
-				"description": "Timeout duration",
-			},
-			"retry": map[string]interface{}{
-				"$ref": "#/definitions/RetryPolicy",
-			},
-			"when": map[string]interface{}{
-				"type":        "string",
-				"description": "CEL expression for conditional execution",
-			},
-		},
-		"oneOf": []map[string]interface{}{
-			{"required": []string{"op"}},
-			{"required": []string{"sequence"}},
-			{"required": []string{"parallel"}},
-			{"required": []string{"states"}},
-			{"required": []string{"shared"}},
-		},
+		"oneOf": operationRefs,
 	}
 	
-	// OpValue - operation types
-	opValuesMap := make(map[string]bool)
-	for activityType := range registry.GetAll() {
-		opValuesMap[activityType] = true
-	}
-	// Add built-in operations
-	opValuesMap["recipe"] = true
-	opValuesMap["sleep"] = true
-	
-	opValues := []string{}
-	for op := range opValuesMap {
-		opValues = append(opValues, op)
-	}
-	
-	definitions["OpValue"] = map[string]interface{}{
-		"type":        "string",
-		"description": "Operation type",
-		"enum":        opValues,
-	}
 	
 	// SequenceValue
 	definitions["SequenceValue"] = map[string]interface{}{
@@ -373,59 +354,66 @@ func (sm *SchemaManager) buildDefinitions(registry *worker.ActivityRegistry) map
 	// StateMap
 	definitions["StateMap"] = map[string]interface{}{
 		"type": "object",
+		"required": []string{"initial"},
+		"additionalProperties": map[string]interface{}{"$ref": "#/definitions/State"},
 		"properties": map[string]interface{}{
 			"initial": map[string]interface{}{
 				"type":        "string",
 				"description": "Initial state to start execution",
 			},
 		},
-		"required":             []string{"initial"},
-		"additionalProperties": map[string]interface{}{"$ref": "#/definitions/State"},
 	}
 	
-	// State
+	// State - A state can be any node type plus transitions
+	// We need to define it differently because states allow additional properties (transitions, error)
 	definitions["State"] = map[string]interface{}{
 		"type": "object",
+		"additionalProperties": false,
 		"properties": map[string]interface{}{
-			"op":       map[string]interface{}{"$ref": "#/definitions/OpValue"},
+			// Node properties
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"op": map[string]interface{}{"type": "string"},
 			"sequence": map[string]interface{}{"$ref": "#/definitions/SequenceValue"},
 			"parallel": map[string]interface{}{"$ref": "#/definitions/ParallelValue"},
-			"states":   map[string]interface{}{"$ref": "#/definitions/StateMap"},
-			"shared": map[string]interface{}{
-				"type":        "string",
-				"description": "Reference to a shared node definition",
-			},
-			"desc": map[string]interface{}{
-				"type":        "string",
-				"description": "Human-readable description",
-			},
+			"states": map[string]interface{}{"$ref": "#/definitions/StateMap"},
+			"shared": map[string]interface{}{"type": "string"},
 			"inputs": map[string]interface{}{
 				"type":                 "object",
-				"description":          "Input values or templates",
 				"additionalProperties": true,
 			},
 			"outputs": map[string]interface{}{
 				"type":                 "object",
-				"description":          "Output mappings",
 				"additionalProperties": true,
 			},
-			"timeout": map[string]interface{}{
-				"type":        "string",
-				"description": "Timeout duration",
-			},
-			"retry": map[string]interface{}{
-				"$ref": "#/definitions/RetryPolicy",
-			},
+			"timeout": map[string]interface{}{"type": "string"},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"when": map[string]interface{}{"type": "string"},
+			// State-specific properties
 			"transitions": map[string]interface{}{
 				"type":        "array",
 				"description": "State transitions",
-				"items":       map[string]interface{}{"$ref": "#/definitions/Transition"},
+				"items": map[string]interface{}{
+					"type": "object",
+					"required": []string{"to"},
+					"properties": map[string]interface{}{
+						"to": map[string]interface{}{
+							"type":        "string",
+							"description": "Target state name",
+						},
+						"when": map[string]interface{}{
+							"type":        "string",
+							"description": "CEL expression condition for transition",
+						},
+					},
+				},
 			},
 			"error": map[string]interface{}{
 				"type":        "string",
 				"description": "Error message for terminal error states",
 			},
 		},
+		// States must have one of these node types
 		"oneOf": []map[string]interface{}{
 			{"required": []string{"op"}},
 			{"required": []string{"sequence"}},
@@ -435,30 +423,15 @@ func (sm *SchemaManager) buildDefinitions(registry *worker.ActivityRegistry) map
 		},
 	}
 	
-	// Transition
-	definitions["Transition"] = map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"to": map[string]interface{}{
-				"type":        "string",
-				"description": "Target state name",
-			},
-			"when": map[string]interface{}{
-				"type":        "string",
-				"description": "CEL expression condition for transition",
-			},
-		},
-		"required": []string{"to"},
-	}
-	
 	// RetryPolicy
 	definitions["RetryPolicy"] = map[string]interface{}{
 		"type": "object",
+		"required": []string{"max_attempts", "initial_interval"},
 		"properties": map[string]interface{}{
 			"max_attempts": map[string]interface{}{
 				"type":        "integer",
-				"description": "Maximum number of retry attempts",
 				"minimum":     1,
+				"description": "Maximum number of retry attempts",
 			},
 			"initial_interval": map[string]interface{}{
 				"type":        "string",
@@ -466,47 +439,15 @@ func (sm *SchemaManager) buildDefinitions(registry *worker.ActivityRegistry) map
 			},
 			"backoff_coefficient": map[string]interface{}{
 				"type":        "number",
+				"minimum":     1,
 				"description": "Exponential backoff coefficient",
-				"minimum":     1.0,
 			},
 			"max_interval": map[string]interface{}{
 				"type":        "string",
 				"description": "Maximum retry interval",
 			},
 		},
-		"required": []string{"max_attempts", "initial_interval"},
 	}
-	
-	// Add activity schemas
-	activities := make(map[string]interface{})
-	for activityType, registration := range registry.GetAll() {
-		activitySchema := make(map[string]interface{})
-		activitySchema["type"] = "object"
-		activitySchema["description"] = registration.Metadata.Description
-		
-		// Build properties for the activity
-		props := make(map[string]interface{})
-		
-		// Add config schema if present
-		if registration.ConfigSchema != nil {
-			props["config"] = convertSchemaWithDetails(registration.ConfigSchema)
-		}
-		
-		// Add input schema if present  
-		if registration.InputSchema != nil {
-			props["inputs"] = convertSchemaWithDetails(registration.InputSchema)
-		}
-		
-		// Add output schema if present
-		if registration.OutputSchema != nil {
-			props["outputs"] = convertSchemaWithDetails(registration.OutputSchema)
-		}
-		
-		activitySchema["properties"] = props
-		activities[activityType] = activitySchema
-	}
-	
-	definitions["Activities"] = activities
 	
 	return definitions
 }
@@ -634,4 +575,531 @@ func (sm *SchemaManager) generateExamples(activityType string, registration work
 	}
 	
 	return []map[string]interface{}{example}
+}
+
+// buildSleepOperation builds the sleep operation schema with const discrimination
+func (sm *SchemaManager) buildSleepOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "sleep",
+			},
+			"id": map[string]interface{}{
+				"type":        "string",
+				"description": "Unique identifier for the node",
+			},
+			"desc": map[string]interface{}{
+				"type":        "string",
+				"description": "Human-readable description",
+			},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,  // Allow additional properties for templating
+				"required":             []string{"duration"},
+				"properties": map[string]interface{}{
+					"duration": map[string]interface{}{
+						"type":        "string",
+						"description": "Duration to sleep (e.g., '5s', '2m')",
+					},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"start_time", "end_time", "actual_duration", "completed", "interrupted", "error_message"},
+				"properties": map[string]interface{}{
+					"start_time": map[string]interface{}{
+						"type":   "string",
+						"format": "date-time",
+					},
+					"end_time": map[string]interface{}{
+						"type":   "string",
+						"format": "date-time",
+					},
+					"actual_duration": map[string]interface{}{
+						"type": "string",
+					},
+					"completed": map[string]interface{}{
+						"type": "boolean",
+					},
+					"interrupted": map[string]interface{}{
+						"type": "boolean",
+					},
+					"error_message": map[string]interface{}{
+						"type": "string",
+					},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{
+				"type":        "string",
+				"description": "Timeout duration",
+			},
+			"when": map[string]interface{}{
+				"type":        "string",
+				"description": "CEL expression for conditional execution",
+			},
+		},
+	}
+}
+
+// buildCommandExecutionOperation builds the command execution operation schema
+func (sm *SchemaManager) buildCommandExecutionOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "command_execution",
+			},
+			"id": map[string]interface{}{
+				"type": "string",
+			},
+			"desc": map[string]interface{}{
+				"type": "string",
+			},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,  // Allow additional properties for templating
+				"required":             []string{"run"},  // Only run is required
+				"properties": map[string]interface{}{
+					"run": map[string]interface{}{
+						"type":        "string",
+						"description": "Shell command to execute",
+					},
+					"working_directory": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional: Directory to execute the command in",
+					},
+					"working_dir": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional: Working directory configuration",
+					},
+					"shell": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional: Shell to use (e.g., bash, sh)",
+					},
+					"env": map[string]interface{}{
+						"type":                 "object",
+						"additionalProperties": map[string]interface{}{"type": "string"},
+						"description":          "Optional: Environment variables",
+					},
+					"continue_on_error": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Optional: Whether to continue on error",
+					},
+					"timeout": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional: Command timeout duration",
+					},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"stdout", "stderr", "exit_code", "success", "timed_out", "error_message"},
+				"properties": map[string]interface{}{
+					"stdout": map[string]interface{}{"type": "string"},
+					"stderr": map[string]interface{}{"type": "string"},
+					"exit_code": map[string]interface{}{"type": "integer"},
+					"success": map[string]interface{}{"type": "boolean"},
+					"timed_out": map[string]interface{}{"type": "boolean"},
+					"error_message": map[string]interface{}{"type": "string"},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{
+				"type": "string",
+			},
+			"when": map[string]interface{}{
+				"type": "string",
+			},
+		},
+	}
+}
+
+// buildLLMInferenceOperation builds the LLM inference operation schema
+func (sm *SchemaManager) buildLLMInferenceOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "llm_inference",
+			},
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,  // Allow additional properties for templating
+				"required":             []string{},  // All fields are optional with defaults
+				"properties": map[string]interface{}{
+					"prompt": map[string]interface{}{"type": "string"},
+					"system_prompt": map[string]interface{}{"type": "string"},
+					"temperature": map[string]interface{}{"type": "number"},
+					"max_tokens": map[string]interface{}{"type": "integer"},
+					"top_p": map[string]interface{}{"type": "number"},
+					"stop_sequences": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{"type": "string"},
+					},
+					"response_schema": map[string]interface{}{"type": "object"},
+					"provider": map[string]interface{}{
+						"type":        "string",
+						"description": "LLM provider (OpenAI, Anthropic, Gemini)",
+					},
+					"model": map[string]interface{}{
+						"type":        "string",
+						"description": "Model identifier",
+					},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"response", "model", "finish_reason", "usage"},
+				"properties": map[string]interface{}{
+					"response": map[string]interface{}{"type": "object"},
+					"model": map[string]interface{}{"type": "string"},
+					"finish_reason": map[string]interface{}{"type": "string"},
+					"usage": map[string]interface{}{"type": "object"},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildGitShallowCloneOperation builds the git shallow clone operation schema
+func (sm *SchemaManager) buildGitShallowCloneOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "git_shallow_clone",
+			},
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+				"required":             []string{},  // Check actual requirements
+				"properties": map[string]interface{}{
+					"source_dir": map[string]interface{}{
+						"type":        "string",
+						"description": "Source git repository directory",
+					},
+					"target_dir": map[string]interface{}{
+						"type":        "string",
+						"description": "Target directory for the clone",
+					},
+					"commit_hash": map[string]interface{}{
+						"type":        "string",
+						"description": "Specific commit to clone",
+					},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"cloned_path"},
+				"properties": map[string]interface{}{
+					"cloned_path": map[string]interface{}{"type": "string"},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildRecipeOperation builds the recipe operation schema
+func (sm *SchemaManager) buildRecipeOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "recipe",
+			},
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+				"required":             []string{"recipe"},  // Only recipe name is required
+				"properties": map[string]interface{}{
+					"recipe": map[string]interface{}{
+						"type":        "string",
+						"description": "Name of the recipe to invoke",
+					},
+					"version": map[string]interface{}{
+						"type":        "string",
+						"description": "Version of the recipe",
+					},
+					"timeout": map[string]interface{}{
+						"type":        "string",
+						"description": "Timeout for the recipe execution",
+					},
+					"retry_policy": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"execution_id", "result", "status", "recipe_outputs", "execution_metadata"},
+				"properties": map[string]interface{}{
+					"execution_id": map[string]interface{}{"type": "string"},
+					"result": map[string]interface{}{"type": "object"},
+					"status": map[string]interface{}{"type": "string"},
+					"recipe_outputs": map[string]interface{}{"type": "object"},
+					"execution_metadata": map[string]interface{}{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"start_time": map[string]interface{}{"type": "string"},
+							"end_time": map[string]interface{}{"type": "string"},
+							"duration_ms": map[string]interface{}{"type": "integer"},
+							"attempt_count": map[string]interface{}{"type": "integer"},
+						},
+					},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildInputOperation builds the input operation schema
+func (sm *SchemaManager) buildInputOperation() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"op"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"op": map[string]interface{}{
+				"const": "input",
+			},
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+				"required":             []string{},  // Check actual requirements
+				"properties": map[string]interface{}{
+					"box_id": map[string]interface{}{
+						"type":        "string",
+						"description": "Box identifier",
+					},
+					"activity_id": map[string]interface{}{
+						"type":        "string",
+						"description": "Activity identifier",
+					},
+					"context": map[string]interface{}{
+						"type":        "object",
+						"description": "Additional context data",
+					},
+					"title": map[string]interface{}{
+						"type":        "string",
+						"description": "Form title",
+					},
+					"question": map[string]interface{}{
+						"type":        "string",
+						"description": "Question to ask the user",
+					},
+					"type": map[string]interface{}{
+						"type": "string",
+						"enum": []string{"short_answer", "paragraph_text", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "date", "time"},
+					},
+					"fields": map[string]interface{}{
+						"type":        "array",
+						"description": "Form fields for multi-field forms",
+						"items": map[string]interface{}{
+							"type": "object",
+							"required": []string{"id", "type", "question"},
+							"properties": map[string]interface{}{
+								"id": map[string]interface{}{"type": "string"},
+								"type": map[string]interface{}{
+									"type": "string",
+									"enum": []string{"short_answer", "paragraph_text", "multiple_choice", "checkboxes", "dropdown", "linear_scale", "multiple_choice_grid", "checkbox_grid", "date", "time", "file_upload"},
+								},
+								"question": map[string]interface{}{"type": "string"},
+								"placeholder": map[string]interface{}{"type": "string"},
+								"required": map[string]interface{}{"type": "boolean"},
+								"options": map[string]interface{}{
+									"type": "array",
+									"items": map[string]interface{}{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"value": map[string]interface{}{"type": "string"},
+											"label": map[string]interface{}{"type": "string"},
+										},
+									},
+								},
+								"scale": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"min": map[string]interface{}{"type": "integer"},
+										"max": map[string]interface{}{"type": "integer"},
+										"min_label": map[string]interface{}{"type": "string"},
+										"max_label": map[string]interface{}{"type": "string"},
+									},
+								},
+								"validation": map[string]interface{}{
+									"type": "object",
+									"properties": map[string]interface{}{
+										"min": map[string]interface{}{"type": "integer"},
+										"max": map[string]interface{}{"type": "integer"},
+										"min_length": map[string]interface{}{"type": "integer"},
+										"max_length": map[string]interface{}{"type": "integer"},
+										"pattern": map[string]interface{}{"type": "string"},
+									},
+								},
+							},
+						},
+					},
+					"timeout": map[string]interface{}{
+						"type":    "integer",
+						"default": 300,
+						"minimum": 1,
+						"maximum": 3600,
+					},
+					"default_on_timeout": map[string]interface{}{
+						"description": "Default value if input times out",
+					},
+				},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]interface{}{
+					"response": map[string]interface{}{
+						"description": "User response for single question",
+					},
+					"fields": map[string]interface{}{
+						"type":        "object",
+						"description": "User responses for multi-field form",
+					},
+					"user_id": map[string]interface{}{
+						"type":        "string",
+						"description": "ID of user who responded",
+					},
+					"metadata": map[string]interface{}{
+						"type":        "object",
+						"description": "Additional metadata",
+					},
+				},
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildSequenceNode builds the sequence node schema
+func (sm *SchemaManager) buildSequenceNode() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"sequence"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"sequence": map[string]interface{}{
+				"type":     "array",
+				"minItems": 1,
+				"items":    map[string]interface{}{"$ref": "#/definitions/Node"},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildParallelNode builds the parallel node schema
+func (sm *SchemaManager) buildParallelNode() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"parallel"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"parallel": map[string]interface{}{
+				"type":     "array",
+				"minItems": 1,
+				"items":    map[string]interface{}{"$ref": "#/definitions/Node"},
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildStateNode builds the state node schema
+func (sm *SchemaManager) buildStateNode() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"states"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"states": map[string]interface{}{"$ref": "#/definitions/StateMap"},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+			"retry": map[string]interface{}{"$ref": "#/definitions/RetryPolicy"},
+			"timeout": map[string]interface{}{"type": "string"},
+			"when": map[string]interface{}{"type": "string"},
+		},
+	}
+}
+
+// buildSharedRefNode builds the shared reference node schema
+func (sm *SchemaManager) buildSharedRefNode() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "object",
+		"required": []string{"shared"},
+		"additionalProperties": false,
+		"properties": map[string]interface{}{
+			"shared": map[string]interface{}{
+				"type":        "string",
+				"description": "Reference to a shared node definition",
+			},
+			"id": map[string]interface{}{"type": "string"},
+			"desc": map[string]interface{}{"type": "string"},
+			"inputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+			"outputs": map[string]interface{}{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
+		},
+	}
 }

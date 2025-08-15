@@ -86,7 +86,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		}
 		
 		compiler := jsonschema.NewCompiler()
-		compiler.Draft = jsonschema.Draft7
+		compiler.Draft = jsonschema.Draft2020
 		
 		// Create a string reader for the schema
 		schemaReader := bytes.NewReader(schemaData)
@@ -116,7 +116,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		}
 		
 		compiler := jsonschema.NewCompiler()
-		compiler.Draft = jsonschema.Draft7
+		compiler.Draft = jsonschema.Draft2020
 		
 		schemaReader := bytes.NewReader(schemaBytes)
 		if err := compiler.AddResource("schema.json", schemaReader); err != nil {
