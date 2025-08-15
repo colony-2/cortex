@@ -81,10 +81,10 @@ func (s *StateMachineCompiler) ExecuteStateMap(ctx workflow.Context, stateMap *y
 		}
 
 		// Execute state
-		outputs, err := s.executeStateNew(ctx, &stateDef, stateCtx)
+		outputs, err := s.executeState(ctx, &stateDef, stateCtx)
 		if err != nil {
 			// Handle retry if configured
-			if stateDef.Retry != nil && s.shouldRetryNew(stateDef.Retry, err, stateCtx) {
+			if stateDef.Retry != nil && s.shouldRetry(stateDef.Retry, err, stateCtx) {
 				stateCtx.Attempts[stateCtx.CurrentState]++
 				continue
 			}
@@ -95,7 +95,7 @@ func (s *StateMachineCompiler) ExecuteStateMap(ctx workflow.Context, stateMap *y
 		stateCtx.StateOutputs[stateCtx.CurrentState] = outputs
 
 		// Evaluate transitions
-		nextState := s.evaluateTransitionsNew(stateDef.Transitions, outputs, stateCtx)
+		nextState := s.evaluateTransitions(stateDef.Transitions, outputs, stateCtx)
 		if nextState == "" {
 			// No transition matched, state machine completes
 			break
@@ -123,633 +123,184 @@ func (s *StateMachineCompiler) ExecuteStateMap(ctx workflow.Context, stateMap *y
 	return allOutputs, nil
 }
 
-// convertStateMapToStateMachineConfig converts new StateMap to old StateMachineConfig for compatibility
-func (s *StateMachineCompiler) convertStateMapToStateMachineConfig(sm *yamlpkg.StateMap) StateMachineConfig {
-	config := StateMachineConfig{
-		InitialState: sm.Initial,
-		States:       make(map[string]StateDefinition),
-	}
-	
-	// Convert each State to StateDefinition
-	for name, state := range sm.States {
-		def := StateDefinition{
-			Uses:    state.Op,
-			Inputs:  state.Inputs,
-			Outputs: state.Outputs,
-			Error:   state.Error,
-		}
-		
-		// Convert transitions
-		if len(state.Transitions) > 0 {
-			def.Transitions = make([]TransitionSpec, len(state.Transitions))
-			for i, t := range state.Transitions {
-				def.Transitions[i] = TransitionSpec{
-					To:   t.To,
-					When: t.When,
-				}
-			}
-		}
-		
-		// Check if terminal (no transitions)
-		def.Terminal = len(state.Transitions) == 0
-		
-		config.States[name] = def
-	}
-	
-	return config
-}
-
-// Execute runs the state machine with provided configuration and inputs
-func (s *StateMachineCompiler) Execute(ctx workflow.Context, config StateMachineConfig, inputs map[string]interface{}) (map[string]interface{}, error) {
-	// Initialize state context
-	stateCtx := &yamlpkg.StateContext{
-		CurrentState: config.InitialState,
-		Inputs:       inputs,
-		StateOutputs: make(map[string]map[string]interface{}),
-		Attempts:     make(map[string]int),
-		StateInfo:    make(map[string]*yamlpkg.StateInfo),
-		StepOutputs:  make(map[string]interface{}),
-	}
-
-	// Extract recipe context from inputs if available
-	if ctxVal, ok := inputs["context"]; ok {
-		if recipeCtx, ok := ctxVal.(*yamlpkg.RecipeContext); ok {
-			stateCtx.RecipeContext = recipeCtx
-		}
-	}
-
-	// Parse timeout if specified
-	var timeout time.Duration
-	if config.Timeout != "" {
-		parsed, err := time.ParseDuration(config.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid timeout: %w", err)
-		}
-		timeout = parsed
-	}
-
-	// Apply timeout to context if specified
-	if timeout > 0 {
-		var cancel workflow.CancelFunc
-		ctx, cancel = workflow.WithCancel(ctx)
-		defer cancel()
-		workflow.Go(ctx, func(ctx workflow.Context) {
-			_ = workflow.Sleep(ctx, timeout)
-			cancel()
-		})
-	}
-
-	// Execute state machine
-	for !s.isTerminal(stateCtx.CurrentState, config.States) {
-		// Check if workflow context is cancelled
-		if err := workflow.Sleep(ctx, 0); err != nil {
-			return nil, fmt.Errorf("state machine execution cancelled: %w", err)
-		}
-		
-		// Get current state definition
-		stateDef, exists := config.States[stateCtx.CurrentState]
-		if !exists {
-			return nil, fmt.Errorf("state '%s' not found", stateCtx.CurrentState)
-		}
-
-		// Track state entry
-		stateCtx.StateInfo[stateCtx.CurrentState] = &yamlpkg.StateInfo{
-			Name:      stateCtx.CurrentState,
-			Attempts:  stateCtx.Attempts[stateCtx.CurrentState],
-			EnteredAt: workflow.Now(ctx),
-		}
-
-		// Execute state
-		outputs, err := s.executeState(ctx, stateDef, stateCtx)
-		if err != nil {
-			// Handle retry if configured
-			if stateDef.Retry != nil && s.shouldRetry(stateDef.Retry, err, stateCtx) {
-				stateCtx.Attempts[stateCtx.CurrentState]++
-				continue
-			}
-			return nil, fmt.Errorf("state '%s' execution failed: %w", stateCtx.CurrentState, err)
-		}
-
-		// Store state outputs
-		stateCtx.StateOutputs[stateCtx.CurrentState] = outputs
-
-		// Evaluate transitions
-		nextState := s.evaluateTransitions(stateDef.Transitions, outputs, stateCtx)
-		if nextState == "" {
-			// No transition matched, state machine completes
-			break
-		}
-
-		stateCtx.CurrentState = nextState
-	}
-
-	// Return final outputs
-	finalState := config.States[stateCtx.CurrentState]
-	if finalState.Terminal && finalState.Outputs != nil {
-		return s.prepareOutputs(finalState.Outputs, stateCtx), nil
-	}
-
-	// Return the last state's outputs
-	if lastOutputs, ok := stateCtx.StateOutputs[stateCtx.CurrentState]; ok {
-		return lastOutputs, nil
-	}
-
-	// Return all state outputs as a single map
-	allOutputs := make(map[string]interface{})
-	for stateName, stateOutputs := range stateCtx.StateOutputs {
-		allOutputs[stateName] = stateOutputs
-	}
-	return allOutputs, nil
-}
-
-// executeState executes a single state with composition support
-func (s *StateMachineCompiler) executeState(ctx workflow.Context, state StateDefinition, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
-	// Terminal states return configured outputs
-	if state.Terminal {
+// executeState executes a single state using the new State type
+func (s *StateMachineCompiler) executeState(ctx workflow.Context, state *yamlpkg.State, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+	// Terminal states return configured outputs or error
+	if len(state.Transitions) == 0 {
 		if state.Error != "" {
 			return nil, fmt.Errorf("%s", state.Error)
 		}
 		return s.prepareOutputs(state.Outputs, stateCtx), nil
 	}
 
-	// Create a root scoped context for this state
-	rootScope := NewScopedContext(nil, stateCtx, "state:"+stateCtx.CurrentState)
-
 	// Prepare inputs for this state
-	preparedInputs := s.prepareInputsWithScope(state.Inputs, rootScope)
+	preparedInputs := s.prepareInputs(state.Inputs, stateCtx)
 
-	// Determine execution type and delegate
-	if state.Uses != "" {
+	// Execute based on state type
+	if state.Op != "" {
 		// Simple activity execution
-		return s.activityExecutor.ExecuteActivity(ctx, state.Uses, preparedInputs)
-	} else if state.Sequential != nil {
-		// Sequential composition
-		return s.executeSequentialScoped(ctx, state.Sequential, rootScope)
-	} else if state.Parallel != nil {
-		// Parallel composition
-		return s.executeParallelScoped(ctx, state.Parallel, rootScope)
-	} else if state.Conditional != nil {
-		// Conditional composition
-		result, err := s.executeConditionalScoped(ctx, state.Conditional, rootScope)
-		if err != nil {
-			return nil, err
-		}
-		// Convert interface{} to map[string]interface{}
-		if resultMap, ok := result.(map[string]interface{}); ok {
-			return resultMap, nil
-		}
-		// Wrap non-map result
-		return map[string]interface{}{"result": result}, nil
+		return s.activityExecutor.ExecuteActivity(ctx, state.Op, preparedInputs)
+	} else if len(state.Sequence) > 0 {
+		// Sequential execution
+		return s.executeSequenceNodes(ctx, state.Sequence, stateCtx)
+	} else if len(state.Parallel) > 0 {
+		// Parallel execution
+		return s.executeParallelNodes(ctx, state.Parallel, stateCtx)
+	} else if state.States != nil {
+		// Nested state machine
+		return s.ExecuteStateMap(ctx, state.States, preparedInputs)
+	} else if state.Shared != "" {
+		// Shared node reference
+		sharedActivityName := "shared/" + state.Shared
+		return s.activityExecutor.ExecuteActivity(ctx, sharedActivityName, preparedInputs)
 	}
 
-	return nil, fmt.Errorf("state must specify 'uses', 'sequential', 'parallel', or 'conditional'")
+	return nil, fmt.Errorf("state must specify one of: op, sequence, parallel, states, or shared")
 }
 
-// executeStepScoped executes a single step within a composition with proper scoping
-func (s *StateMachineCompiler) executeStepScoped(ctx workflow.Context, step CompositionStep, scope *ScopedContext) (interface{}, error) {
-	// Check conditional execution
-	if step.When != "" {
-		shouldExecute, err := s.evaluateCELScoped(step.When, nil, scope)
+// executeSequenceNodes executes nodes in sequence using the new Node type
+func (s *StateMachineCompiler) executeSequenceNodes(ctx workflow.Context, nodes []yamlpkg.Node, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+	allOutputs := make(map[string]interface{})
+	
+	for i, node := range nodes {
+		nodeOutputs, err := s.executeNode(ctx, &node, stateCtx.Inputs)
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate step condition: %w", err)
-		}
-		if !shouldExecute {
-			return nil, nil // Skip this step
-		}
-	}
-
-	// Prepare step inputs with current scope
-	preparedInputs := s.prepareInputsWithScope(step.Inputs, scope)
-
-	// Execute based on step type
-	var result interface{}
-	var err error
-
-	if step.Uses != "" {
-		// Simple activity
-		activityResult, actErr := s.activityExecutor.ExecuteActivity(ctx, step.Uses, preparedInputs)
-		result = activityResult
-		err = actErr
-	} else if step.Sequential != nil {
-		// Create nested scope for sequential composition
-		nestedScope := NewScopedContext(scope, scope.StateContext, "seq:"+step.ID)
-		result, err = s.executeSequentialScoped(ctx, step.Sequential, nestedScope)
-	} else if step.Parallel != nil {
-		// Create nested scope for parallel composition
-		nestedScope := NewScopedContext(scope, scope.StateContext, "par:"+step.ID)
-		result, err = s.executeParallelScoped(ctx, step.Parallel, nestedScope)
-	} else if step.Conditional != nil {
-		// Create nested scope for conditional composition
-		nestedScope := NewScopedContext(scope, scope.StateContext, "cond:"+step.ID)
-		result, err = s.executeConditionalScoped(ctx, step.Conditional, nestedScope)
-	} else {
-		return nil, fmt.Errorf("step '%s' must specify execution type", step.ID)
-	}
-
-	// Handle retry if needed
-	if err != nil && step.Retry != nil {
-		attempts := 1
-		for attempts < step.Retry.MaxAttempts {
-			// Wait with backoff
-			backoffDuration := s.calculateBackoff(step.Retry, attempts)
-			_ = workflow.Sleep(ctx, backoffDuration)
-
-			// Retry execution
-			if step.Uses != "" {
-				activityResult, retryErr := s.activityExecutor.ExecuteActivity(ctx, step.Uses, preparedInputs)
-				result = activityResult
-				err = retryErr
-			} else {
-				// Re-execute the composition
-				result, err = s.executeStepScoped(ctx, step, scope)
-			}
-
-			if err == nil {
-				break
-			}
-			attempts++
-		}
-	}
-
-	return result, err
-}
-
-// executeStep executes a single step within a composition
-func (s *StateMachineCompiler) executeStep(ctx workflow.Context, step CompositionStep, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (interface{}, error) {
-	// Check conditional execution
-	if step.When != "" {
-		shouldExecute, err := s.evaluateCEL(step.When, outputs, stateCtx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate step condition: %w", err)
-		}
-		if !shouldExecute {
-			return nil, nil // Skip this step
-		}
-	}
-
-	// Prepare step inputs
-	preparedInputs := s.prepareInputs(step.Inputs, stateCtx)
-
-	// Execute based on step type
-	var result interface{}
-	var err error
-
-	if step.Uses != "" {
-		// Simple activity
-		activityResult, actErr := s.activityExecutor.ExecuteActivity(ctx, step.Uses, preparedInputs)
-		result = activityResult
-		err = actErr
-	} else if step.Sequential != nil {
-		// Nested sequential
-		result, err = s.executeSequential(ctx, step.Sequential, stateCtx)
-	} else if step.Parallel != nil {
-		// Nested parallel
-		result, err = s.executeParallel(ctx, step.Parallel, stateCtx)
-	} else if step.Conditional != nil {
-		// Nested conditional
-		result, err = s.executeConditional(ctx, step.Conditional, stateCtx)
-	} else {
-		return nil, fmt.Errorf("step '%s' must specify execution type", step.ID)
-	}
-
-	// Handle retry if needed
-	if err != nil && step.Retry != nil {
-		attempts := 1
-		for attempts < step.Retry.MaxAttempts {
-			// Wait with backoff
-			backoffDuration := s.calculateBackoff(step.Retry, attempts)
-			_ = workflow.Sleep(ctx, backoffDuration)
-
-			// Retry execution
-			if step.Uses != "" {
-				activityResult, retryErr := s.activityExecutor.ExecuteActivity(ctx, step.Uses, preparedInputs)
-				result = activityResult
-				err = retryErr
-			} else {
-				// Re-execute the composition
-				result, err = s.executeStep(ctx, step, outputs, stateCtx)
-			}
-
-			if err == nil {
-				break
-			}
-			attempts++
-		}
-	}
-
-	return result, err
-}
-
-// executeSequentialScoped executes steps in sequence with proper scoping
-func (s *StateMachineCompiler) executeSequentialScoped(ctx workflow.Context, steps []CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
-	for _, step := range steps {
-		result, err := s.executeStepScoped(ctx, step, scope)
-		if err != nil {
-			return nil, fmt.Errorf("step '%s' failed: %w", step.ID, err)
-		}
-
-		if step.ID != "" && result != nil {
-			// Store in current scope only
-			scope.SetStepOutput(step.ID, result)
-		}
-	}
-
-	// Return merged outputs from this scope
-	return scope.MergeOutputs(), nil
-}
-
-// executeSequential executes steps in sequence (legacy method for backward compatibility)
-func (s *StateMachineCompiler) executeSequential(ctx workflow.Context, steps []CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
-	outputs := make(map[string]interface{})
-
-	for _, step := range steps {
-		result, err := s.executeStep(ctx, step, outputs, stateCtx)
-		if err != nil {
-			return nil, fmt.Errorf("step '%s' failed: %w", step.ID, err)
-		}
-
-		if step.ID != "" && result != nil {
-			outputs[step.ID] = result
-			// Also update state context step outputs
-			stateCtx.StepOutputs[step.ID] = result
-		}
-	}
-
-	return outputs, nil
-}
-
-// executeParallelScoped executes steps in parallel with proper scoping
-func (s *StateMachineCompiler) executeParallelScoped(ctx workflow.Context, steps []CompositionStep, scope *ScopedContext) (map[string]interface{}, error) {
-	// Group steps by dependencies
-	groups := s.groupByDependencies(steps)
-
-	for _, group := range groups {
-		// Use channels for parallel execution results
-		type stepResult struct {
-			id     string
-			result interface{}
-			err    error
+			return nil, fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
 		
-		resultsChan := workflow.NewChannel(ctx)
-		pendingCount := len(group)
+		// Store outputs with node ID if specified
+		if node.ID != "" {
+			allOutputs[node.ID] = nodeOutputs
+			stateCtx.StepOutputs[node.ID] = nodeOutputs
+		}
 		
-		for _, step := range group {
-			step := step // capture loop variable
+		// Pass outputs as inputs to next node
+		for k, v := range nodeOutputs {
+			stateCtx.Inputs[k] = v
+		}
+	}
+	
+	return allOutputs, nil
+}
 
-			// Check dependencies are met in current scope
-			if !s.dependenciesMetScoped(step.DependsOn, scope) {
-				return nil, fmt.Errorf("dependencies not met for step '%s'", step.ID)
-			}
-
-			workflow.Go(ctx, func(ctx workflow.Context) {
-				result, err := s.executeStepScoped(ctx, step, scope)
-				resultsChan.Send(ctx, stepResult{
-					id:     step.ID,
-					result: result,
-					err:    err,
-				})
+// executeParallelNodes executes nodes in parallel using the new Node type
+func (s *StateMachineCompiler) executeParallelNodes(ctx workflow.Context, nodes []yamlpkg.Node, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+	type nodeResult struct {
+		id      string
+		outputs map[string]interface{}
+		err     error
+	}
+	
+	resultChan := workflow.NewChannel(ctx)
+	
+	// Start all parallel nodes
+	for i, node := range nodes {
+		node := node // capture loop variable
+		nodeIndex := i
+		workflow.Go(ctx, func(ctx workflow.Context) {
+			outputs, err := s.executeNode(ctx, &node, stateCtx.Inputs)
+			resultChan.Send(ctx, nodeResult{
+				id:      fmt.Sprintf("%s_%d", node.ID, nodeIndex),
+				outputs: outputs,
+				err:     err,
 			})
+		})
+	}
+	
+	// Collect results
+	allOutputs := make(map[string]interface{})
+	for i := 0; i < len(nodes); i++ {
+		var result nodeResult
+		resultChan.Receive(ctx, &result)
+		
+		if result.err != nil {
+			return nil, fmt.Errorf("parallel node '%s' failed: %w", result.id, result.err)
 		}
-
-		// Collect results from all parallel executions
-		for i := 0; i < pendingCount; i++ {
-			var res stepResult
-			resultsChan.Receive(ctx, &res)
-			
-			if res.err != nil {
-				return nil, fmt.Errorf("parallel step '%s' failed: %w", res.id, res.err)
-			}
-			if res.id != "" && res.result != nil {
-				scope.SetStepOutput(res.id, res.result)
-			}
+		
+		// Store outputs with node ID
+		if nodes[i].ID != "" {
+			allOutputs[nodes[i].ID] = result.outputs
+			stateCtx.StepOutputs[nodes[i].ID] = result.outputs
 		}
 	}
-
-	// Return merged outputs from this scope
-	return scope.MergeOutputs(), nil
+	
+	return allOutputs, nil
 }
 
-// executeParallel executes steps in parallel with dependency support
-func (s *StateMachineCompiler) executeParallel(ctx workflow.Context, steps []CompositionStep, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
-	// Group steps by dependencies
-	groups := s.groupByDependencies(steps)
-	outputs := make(map[string]interface{})
-
-	for _, group := range groups {
-		// Use channels for parallel execution results
-		type stepResult struct {
-			id     string
-			result interface{}
-			err    error
+// executeNode executes a single node using the new Node type
+func (s *StateMachineCompiler) executeNode(ctx workflow.Context, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
+	// Check conditional execution
+	if node.When != "" {
+		shouldExecute, err := s.evaluateCEL(node.When, inputs, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate node condition: %w", err)
 		}
-		
-		resultsChan := workflow.NewChannel(ctx)
-		pendingCount := len(group)
-
-		for _, step := range group {
-			step := step // capture loop variable
-
-			// Check dependencies are met
-			if !s.dependenciesMet(step.DependsOn, outputs) {
-				return nil, fmt.Errorf("dependencies not met for step '%s'", step.ID)
-			}
-
-			workflow.Go(ctx, func(ctx workflow.Context) {
-				result, err := s.executeStep(ctx, step, outputs, stateCtx)
-				resultsChan.Send(ctx, stepResult{
-					id:     step.ID,
-					result: result,
-					err:    err,
-				})
-			})
-		}
-
-		// Collect results from all parallel executions
-		for i := 0; i < pendingCount; i++ {
-			var res stepResult
-			resultsChan.Receive(ctx, &res)
-			
-			if res.err != nil {
-				return nil, fmt.Errorf("parallel step '%s' failed: %w", res.id, res.err)
-			}
-			if res.id != "" && res.result != nil {
-				outputs[res.id] = res.result
-				stateCtx.StepOutputs[res.id] = res.result
-			}
-		}
-	}
-
-	return outputs, nil
-}
-
-// executeConditionalScoped evaluates conditions and executes the matching branch with proper scoping
-func (s *StateMachineCompiler) executeConditionalScoped(ctx workflow.Context, branches []ConditionalBranch, scope *ScopedContext) (interface{}, error) {
-	for _, branch := range branches {
-		// Check condition (default branch has no condition)
-		shouldExecute := branch.Default
-		
-		if !branch.Default && branch.When != "" {
-			// Evaluate the condition with current scope
-			evaluated, err := s.evaluateCELScoped(branch.When, nil, scope)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate condition: %w", err)
-			}
-			shouldExecute = evaluated
-		}
-		
 		if !shouldExecute {
-			continue
+			return make(map[string]interface{}), nil // Skip this node
 		}
-
-		// Execute the selected branch with current scope
-		preparedInputs := s.prepareInputsWithScope(branch.Inputs, scope)
-
-		if branch.Uses != "" {
-			return s.activityExecutor.ExecuteActivity(ctx, branch.Uses, preparedInputs)
-		} else if branch.Sequential != nil {
-			// Create nested scope for sequential
-			nestedScope := NewScopedContext(scope, scope.StateContext, "cond-seq")
-			return s.executeSequentialScoped(ctx, branch.Sequential, nestedScope)
-		} else if branch.Parallel != nil {
-			// Create nested scope for parallel
-			nestedScope := NewScopedContext(scope, scope.StateContext, "cond-par")
-			return s.executeParallelScoped(ctx, branch.Parallel, nestedScope)
-		} else if branch.Conditional != nil {
-			// Create nested scope for conditional
-			nestedScope := NewScopedContext(scope, scope.StateContext, "cond-cond")
-			return s.executeConditionalScoped(ctx, branch.Conditional, nestedScope)
-		}
-
-		return nil, fmt.Errorf("conditional branch must specify execution type")
 	}
-
-	return nil, fmt.Errorf("no conditional branch matched")
-}
-
-// executeConditional evaluates conditions and executes the matching branch
-func (s *StateMachineCompiler) executeConditional(ctx workflow.Context, branches []ConditionalBranch, stateCtx *yamlpkg.StateContext) (interface{}, error) {
-	for _, branch := range branches {
-		// Check condition (default branch has no condition)
-		shouldExecute := branch.Default
-		
-		if !branch.Default && branch.When != "" {
-			// Evaluate the condition
-			evaluated, err := s.evaluateCEL(branch.When, nil, stateCtx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to evaluate condition: %w", err)
-			}
-			shouldExecute = evaluated
-		}
-		
-		if !shouldExecute {
-			continue
-		}
-
-		// Execute the selected branch
-		preparedInputs := s.prepareInputs(branch.Inputs, stateCtx)
-
-		if branch.Uses != "" {
-			return s.activityExecutor.ExecuteActivity(ctx, branch.Uses, preparedInputs)
-		} else if branch.Sequential != nil {
-			return s.executeSequential(ctx, branch.Sequential, stateCtx)
-		} else if branch.Parallel != nil {
-			return s.executeParallel(ctx, branch.Parallel, stateCtx)
-		} else if branch.Conditional != nil {
-			return s.executeConditional(ctx, branch.Conditional, stateCtx)
-		}
-
-		return nil, fmt.Errorf("conditional branch must specify execution type")
+	
+	// Merge inputs
+	mergedInputs := make(map[string]interface{})
+	for k, v := range inputs {
+		mergedInputs[k] = v
 	}
-
-	return nil, fmt.Errorf("no conditional branch matched")
+	for k, v := range node.Inputs {
+		mergedInputs[k] = v
+	}
+	
+	// Execute based on node type
+	if node.Op != "" {
+		return s.activityExecutor.ExecuteActivity(ctx, node.Op, mergedInputs)
+	} else if len(node.Sequence) > 0 {
+		// Create a temporary state context for nested execution
+		nestedCtx := &yamlpkg.StateContext{
+			Inputs:      mergedInputs,
+			StepOutputs: make(map[string]interface{}),
+		}
+		return s.executeSequenceNodes(ctx, node.Sequence, nestedCtx)
+	} else if len(node.Parallel) > 0 {
+		// Create a temporary state context for nested execution
+		nestedCtx := &yamlpkg.StateContext{
+			Inputs:      mergedInputs,
+			StepOutputs: make(map[string]interface{}),
+		}
+		return s.executeParallelNodes(ctx, node.Parallel, nestedCtx)
+	} else if node.States != nil {
+		return s.ExecuteStateMap(ctx, node.States, mergedInputs)
+	} else if node.Shared != "" {
+		// Execute shared node reference
+		sharedActivityName := "shared/" + node.Shared
+		return s.activityExecutor.ExecuteActivity(ctx, sharedActivityName, mergedInputs)
+	}
+	
+	return nil, fmt.Errorf("node must define one of: op, sequence, parallel, states, or shared")
 }
 
 // Helper functions
 
-func (s *StateMachineCompiler) isTerminal(stateName string, states map[string]StateDefinition) bool {
+// isTerminalState checks if a state is terminal using the new State type
+func (s *StateMachineCompiler) isTerminalState(stateName string, states map[string]yamlpkg.State) bool {
 	state, exists := states[stateName]
 	if !exists {
 		return true // Non-existent state is terminal
 	}
-	return state.Terminal
+	return len(state.Transitions) == 0
 }
 
-func (s *StateMachineCompiler) shouldRetry(policy *StateRetryPolicy, err error, stateCtx *yamlpkg.StateContext) bool {
+// shouldRetry handles retry logic for the new RetryPolicy type
+func (s *StateMachineCompiler) shouldRetry(policy *yamlpkg.RetryPolicy, err error, stateCtx *yamlpkg.StateContext) bool {
 	attempts := stateCtx.Attempts[stateCtx.CurrentState]
 	if attempts >= policy.MaxAttempts {
 		return false
 	}
-
-	if policy.When != "" {
-		shouldRetry, evalErr := s.evaluateCEL(policy.When, nil, stateCtx)
-		if evalErr != nil || !shouldRetry {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (s *StateMachineCompiler) calculateBackoff(policy *StepRetryPolicy, attempt int) time.Duration {
-	// Parse initial interval from string
-	backoff, err := time.ParseDuration(policy.InitialInterval)
-	if err != nil {
-		// Default to 1 second if parsing fails
-		backoff = time.Second
-	}
 	
-	for i := 1; i < attempt; i++ {
-		backoff = time.Duration(float64(backoff) * policy.BackoffCoefficient)
-	}
-	return backoff
-}
-
-func (s *StateMachineCompiler) groupByDependencies(steps []CompositionStep) [][]CompositionStep {
-	// Simple grouping - steps with no dependencies go first
-	// This can be enhanced with proper topological sorting
-	var noDeps []CompositionStep
-	var withDeps []CompositionStep
-
-	for _, step := range steps {
-		if len(step.DependsOn) == 0 {
-			noDeps = append(noDeps, step)
-		} else {
-			withDeps = append(withDeps, step)
-		}
-	}
-
-	groups := [][]CompositionStep{}
-	if len(noDeps) > 0 {
-		groups = append(groups, noDeps)
-	}
-	if len(withDeps) > 0 {
-		groups = append(groups, withDeps)
-	}
-
-	return groups
-}
-
-func (s *StateMachineCompiler) dependenciesMet(deps []string, outputs map[string]interface{}) bool {
-	for _, dep := range deps {
-		if _, exists := outputs[dep]; !exists {
-			return false
-		}
-	}
+	// For now, just check max attempts. CEL evaluation can be added later
 	return true
 }
 
-// dependenciesMetScoped checks if dependencies are met within the current scope
-func (s *StateMachineCompiler) dependenciesMetScoped(deps []string, scope *ScopedContext) bool {
-	for _, dep := range deps {
-		if _, exists := scope.GetStepOutput(dep); !exists {
-			return false
-		}
-	}
-	return true
-}
-
-func (s *StateMachineCompiler) evaluateTransitions(transitions []TransitionSpec, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) string {
+// evaluateTransitions evaluates transitions using the new Transition type
+func (s *StateMachineCompiler) evaluateTransitions(transitions []yamlpkg.Transition, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) string {
 	for _, transition := range transitions {
 		if transition.When == "" {
 			// Unconditional transition
@@ -764,6 +315,8 @@ func (s *StateMachineCompiler) evaluateTransitions(transitions []TransitionSpec,
 	return ""
 }
 
+
+// prepareInputs prepares inputs by resolving templates
 func (s *StateMachineCompiler) prepareInputs(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext) map[string]interface{} {
 	if inputs == nil {
 		return make(map[string]interface{})
@@ -778,6 +331,7 @@ func (s *StateMachineCompiler) prepareInputs(inputs map[string]interface{}, stat
 	return resolved
 }
 
+// prepareOutputs prepares outputs by resolving templates
 func (s *StateMachineCompiler) prepareOutputs(outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) map[string]interface{} {
 	if outputs == nil {
 		return make(map[string]interface{})
@@ -792,17 +346,23 @@ func (s *StateMachineCompiler) prepareOutputs(outputs map[string]interface{}, st
 	return resolved
 }
 
-// prepareInputsWithScope prepares inputs with scoped template resolution
-func (s *StateMachineCompiler) prepareInputsWithScope(inputs map[string]interface{}, scope *ScopedContext) map[string]interface{} {
-	if inputs == nil {
-		return make(map[string]interface{})
-	}
-
-	resolver := NewScopedTemplateResolver()
-	resolved, err := resolver.ResolveInputsScoped(inputs, scope)
+// calculateBackoff calculates backoff duration for retry policy
+func (s *StateMachineCompiler) calculateBackoff(policy *yamlpkg.RetryPolicy, attempt int) (time.Duration, error) {
+	// Parse initial interval from string
+	backoff, err := time.ParseDuration(policy.InitialInterval)
 	if err != nil {
-		// Log error and return original inputs
-		return inputs
+		return time.Second, fmt.Errorf("invalid initial interval: %w", err)
 	}
-	return resolved
+	
+	// Apply backoff coefficient for each attempt
+	coefficient := policy.BackoffCoefficient
+	if coefficient == 0 {
+		coefficient = 2.0 // Default exponential backoff
+	}
+	
+	for i := 1; i < attempt; i++ {
+		backoff = time.Duration(float64(backoff) * coefficient)
+	}
+	
+	return backoff, nil
 }

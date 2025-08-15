@@ -45,9 +45,9 @@ func TestValidateFile(t *testing.T) {
 	validFile := filepath.Join(tempDir, "valid.yaml")
 	validContent := `name: test-recipe
 version: "1.0"
-steps:
+sequence:
   - id: step1
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo test"`
 	err = os.WriteFile(validFile, []byte(validContent), 0644)

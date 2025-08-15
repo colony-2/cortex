@@ -134,7 +134,7 @@ func TestStepDependencies(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	steps := []CompositionStep{
+	steps := []yamlpkg.Node{
 		{ID: "a", DependsOn: []string{}},
 		{ID: "b", DependsOn: []string{}},
 		{ID: "c", DependsOn: []string{"a"}},
@@ -166,15 +166,15 @@ func TestTerminalStateDetection(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	require.NoError(t, err)
 	
-	states := map[string]StateDefinition{
+	states := map[string]yamlpkg.State{
 		"active": {
-			Uses: "some_activity",
+			Op: "some_activity",
 		},
 		"terminal": {
-			Terminal: true,
+			Transitions: []yamlpkg.Transition{},
 		},
 		"error": {
-			Terminal: true,
+			Transitions: []yamlpkg.Transition{},
 			Error:    "An error occurred",
 		},
 	}

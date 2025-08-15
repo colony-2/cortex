@@ -5,3 +5,4 @@ build/cortex-test
 node_modules/
 test-results/
 playwright-report/
+cortex

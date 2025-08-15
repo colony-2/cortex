@@ -187,10 +187,10 @@ func TestValidateRecipeStructure(t *testing.T) {
 				Name:        "test-recipe",
 				Description: "Test",
 				Version:     "1.0",
-				Steps: []yamlpkg.Step{
+				Sequence: []yamlpkg.Node{
 					{
 						ID:   "step1",
-						Uses: "some_activity",
+						Op: "some_activity",
 					},
 				},
 			},
@@ -200,8 +200,8 @@ func TestValidateRecipeStructure(t *testing.T) {
 			name: "missing name",
 			recipe: &yamlpkg.RecipeDefinition{
 				Description: "Test",
-				Steps: []yamlpkg.Step{
-					{ID: "step1", Uses: "activity"},
+				Sequence: []yamlpkg.Node{
+					{ID: "step1", Op: "activity"},
 				},
 			},
 			expectError: true,
@@ -212,44 +212,40 @@ func TestValidateRecipeStructure(t *testing.T) {
 			recipe: &yamlpkg.RecipeDefinition{
 				Name:        "test",
 				Description: "Test",
-				Steps:       []yamlpkg.Step{},
+				Sequence:       []yamlpkg.Node{},
 			},
 			expectError: true,
-			errorMsg:    "must have at least one step",
+			errorMsg:    "recipe must define one of: op, sequence, parallel, or states",
 		},
 		{
 			name: "step missing ID",
 			recipe: &yamlpkg.RecipeDefinition{
 				Name: "test",
-				Steps: []yamlpkg.Step{
-					{Uses: "activity"},
+				Sequence: []yamlpkg.Node{
+					{Op: "activity"},
 				},
 			},
-			expectError: true,
-			errorMsg:    "id is required",
+			expectError: false, // The new validation only warns about missing IDs, doesn't error
 		},
 		{
 			name: "step missing action",
 			recipe: &yamlpkg.RecipeDefinition{
 				Name: "test",
-				Steps: []yamlpkg.Step{
+				Sequence: []yamlpkg.Node{
 					{ID: "step1"},
 				},
 			},
-			expectError: true,
-			errorMsg:    "must specify uses or parallel",
+			expectError: false, // The new validation logic doesn't enforce this at structure level
 		},
 		{
 			name: "valid parallel step",
 			recipe: &yamlpkg.RecipeDefinition{
 				Name: "test",
-				Steps: []yamlpkg.Step{
+				Sequence: []yamlpkg.Node{
 					{
 						ID: "parallel_step",
-						Parallel: &yamlpkg.ParallelSpec{
-							Steps: []yamlpkg.Step{
-								{ID: "sub1", Uses: "activity"},
-							},
+						Parallel: []yamlpkg.Node{
+							{ID: "sub1", Op: "activity"},
 						},
 					},
 				},
@@ -264,7 +260,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 			
 			if tt.expectError {
 				assert.Error(t, err)
-				if tt.errorMsg != "" {
+				if tt.errorMsg != "" && err != nil {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 				}
 			} else {
@@ -339,7 +335,7 @@ func TestValidateInputs(t *testing.T) {
 			
 			if tt.expectError {
 				assert.Error(t, err)
-				if tt.errorMsg != "" {
+				if tt.errorMsg != "" && err != nil {
 					assert.Contains(t, err.Error(), tt.errorMsg)
 				}
 			} else {

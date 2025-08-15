@@ -53,10 +53,10 @@ func TestWorkflowTemplateExpansion(t *testing.T) {
 	// Create a recipe with templates
 	recipe := &yamlpkg.RecipeDefinition{
 		Name: "test-workflow-templates",
-		Steps: []yamlpkg.Step{
+		Sequence: []yamlpkg.Node{
 			{
 				ID:   "step1",
-				Uses: "command_execution",
+				Op: "command_execution",
 				Inputs: map[string]interface{}{
 					"run": "echo {{ .Inputs.message }}",
 				},
@@ -136,20 +136,20 @@ func TestWorkflowWithMultipleTemplates(t *testing.T) {
 	// Create a recipe with multiple templates including step references
 	recipe := &yamlpkg.RecipeDefinition{
 		Name: "test-complex-templates",
-		Steps: []yamlpkg.Step{
+		Sequence: []yamlpkg.Node{
 			{
 				ID:   "step1",
-				Uses: "command_execution",
+				Op: "command_execution",
 				Inputs: map[string]interface{}{
 					"run": "echo {{ .Inputs.prefix }}: {{ .Inputs.message }}",
 				},
-				Outputs: map[string]string{
+				Outputs: map[string]interface{}{
 					"stdout": "step1_output",
 				},
 			},
 			{
 				ID:   "step2",
-				Uses: "command_execution",
+				Op: "command_execution",
 				Inputs: map[string]interface{}{
 					"run": "echo Received from step1",
 				},

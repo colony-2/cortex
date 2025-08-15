@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -103,7 +104,7 @@ func isRecipeYAML(data map[string]interface{}) bool {
 // validateStateMachineYAML validates state machine specific configuration
 func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 	// Try to parse as state machine config
-	var config StateMachineConfig
+	var config yamlpkg.StateMap
 	err := yaml.Unmarshal(content, &config)
 	
 	// If it doesn't parse directly, it might be embedded
@@ -116,7 +117,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 				ID     string                     `yaml:"id"`
 				Name   string                     `yaml:"name"`
 				Uses   string                     `yaml:"uses"`
-				Config StateMachineConfig `yaml:"config"`
+				Config yamlpkg.StateMap `yaml:"config"`
 			} `yaml:"steps"`
 		}
 		err = yaml.Unmarshal(content, &workflowWrapper)
@@ -125,7 +126,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 			for _, step := range workflowWrapper.Steps {
 				if step.Uses == "state_machine" && step.Config.InitialState != "" {
 					t.Logf("Found state machine step '%s' in workflow", step.ID)
-					validateStateMachineConfig(t, step.Config, path)
+					validateStateMap(t, step.Config, path)
 					foundStateMachine = true
 				}
 			}
@@ -138,7 +139,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 		var activityWrapper struct {
 			Activity struct {
 				Type   string                     `yaml:"type"`
-				Config StateMachineConfig `yaml:"config"`
+				Config yamlpkg.StateMap `yaml:"config"`
 			} `yaml:"activity"`
 		}
 		err = yaml.Unmarshal(content, &activityWrapper)
@@ -150,7 +151,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 				Recipe struct {
 					Activities map[string]struct {
 						Type   string                     `yaml:"type"`
-						Config StateMachineConfig `yaml:"config"`
+						Config yamlpkg.StateMap `yaml:"config"`
 					} `yaml:"activities"`
 				} `yaml:"recipe"`
 			}
@@ -160,7 +161,7 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 				for name, activity := range recipeWrapper.Recipe.Activities {
 					if activity.Type == "state_machine" {
 						t.Logf("Found state machine activity '%s' in recipe", name)
-						validateStateMachineConfig(t, activity.Config, path)
+						validateStateMap(t, activity.Config, path)
 					}
 				}
 				return
@@ -171,12 +172,12 @@ func validateStateMachineYAML(t *testing.T, path string, content []byte) {
 	}
 	
 	if config.InitialState != "" {
-		validateStateMachineConfig(t, config, path)
+		validateStateMap(t, config, path)
 	}
 }
 
-// validateStateMachineConfig validates the parsed state machine configuration
-func validateStateMachineConfig(t *testing.T, config StateMachineConfig, path string) {
+// validateStateMap validates the parsed state machine configuration
+func validateStateMap(t *testing.T, config yamlpkg.StateMap, path string) {
 	// Validate required fields
 	assert.NotEmpty(t, config.InitialState, "State machine in %s must have initial_state", path)
 	assert.NotEmpty(t, config.States, "State machine in %s must have states", path)
@@ -207,16 +208,16 @@ func validateStateMachineConfig(t *testing.T, config StateMachineConfig, path st
 		}
 		
 		// Validate composition steps
-		validateCompositionSteps(t, state.Sequential, path, "sequential")
-		validateCompositionSteps(t, state.Parallel, path, "parallel")
+		validateNodes(t, state.Sequential, path, "sequential")
+		validateNodes(t, state.Parallel, path, "parallel")
 		
 		// Validate conditional branches
 		for i, branch := range state.Conditional {
 			if !branch.Default {
 				assert.NotEmpty(t, branch.When, "Conditional branch %d in %s must have 'when' condition if not default", i, path)
 			}
-			validateCompositionStep(t, CompositionStep{
-				Uses:       branch.Uses,
+			validateNode(t, yamlpkg.Node{
+				Op:       branch.Uses,
 				Sequential: branch.Sequential,
 				Parallel:   branch.Parallel,
 				Inputs:     branch.Inputs,
@@ -245,8 +246,8 @@ func validateStateMachineConfig(t *testing.T, config StateMachineConfig, path st
 	t.Logf("✓ Valid state machine configuration in %s with %d states", path, len(config.States))
 }
 
-// validateCompositionSteps validates a list of composition steps
-func validateCompositionSteps(t *testing.T, steps []CompositionStep, path string, stepType string) {
+// validateNodes validates a list of composition steps
+func validateNodes(t *testing.T, steps []yamlpkg.Node, path string, stepType string) {
 	seenIDs := make(map[string]bool)
 	
 	for i, step := range steps {
@@ -262,12 +263,12 @@ func validateCompositionSteps(t *testing.T, steps []CompositionStep, path string
 			seenIDs[step.ID] = true
 		}
 		
-		validateCompositionStep(t, step, path, stepType)
+		validateNode(t, step, path, stepType)
 	}
 }
 
-// validateCompositionStep validates a single composition step
-func validateCompositionStep(t *testing.T, step CompositionStep, path string, stepType string) {
+// validateNode validates a single composition step
+func validateNode(t *testing.T, step yamlpkg.Node, path string, stepType string) {
 	// Check that step has some action
 	hasAction := step.Uses != "" || 
 		len(step.Sequential) > 0 || 
@@ -281,10 +282,10 @@ func validateCompositionStep(t *testing.T, step CompositionStep, path string, st
 	
 	// Validate nested compositions
 	if len(step.Sequential) > 0 {
-		validateCompositionSteps(t, step.Sequential, path, stepType+"/sequential")
+		validateNodes(t, step.Sequential, path, stepType+"/sequential")
 	}
 	if len(step.Parallel) > 0 {
-		validateCompositionSteps(t, step.Parallel, path, stepType+"/parallel")
+		validateNodes(t, step.Parallel, path, stepType+"/parallel")
 	}
 	
 	// Validate retry policy if present
@@ -305,7 +306,7 @@ func validateRecipeYAML(t *testing.T, path string, content []byte) {
 }
 
 // findReachableStates finds all states reachable from the initial state
-func findReachableStates(config StateMachineConfig) map[string]bool {
+func findReachableStates(config yamlpkg.StateMap) map[string]bool {
 	reachable := make(map[string]bool)
 	visited := make(map[string]bool)
 	
@@ -359,14 +360,14 @@ func TestStateMachineExamplesCompile(t *testing.T) {
 			content, err := os.ReadFile(filePath)
 			require.NoError(t, err)
 			
-			var config StateMachineConfig
+			var config yamlpkg.StateMap
 			
 			// Try parsing as workflow with state machine steps first
 			var workflowWrapper struct {
 				Steps []struct {
 					ID     string                     `yaml:"id"`
 					Uses   string                     `yaml:"uses"`
-					Config StateMachineConfig `yaml:"config"`
+					Config yamlpkg.StateMap `yaml:"config"`
 				} `yaml:"steps"`
 			}
 			err = yaml.Unmarshal(content, &workflowWrapper)
@@ -389,7 +390,7 @@ func TestStateMachineExamplesCompile(t *testing.T) {
 					var wrapper struct {
 						Activity struct {
 							Type   string                     `yaml:"type"`
-							Config StateMachineConfig `yaml:"config"`
+							Config yamlpkg.StateMap `yaml:"config"`
 						} `yaml:"activity"`
 					}
 					err2 := yaml.Unmarshal(content, &wrapper)

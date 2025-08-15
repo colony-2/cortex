@@ -58,20 +58,20 @@ func TestNestedScopeEncapsulation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test nested sequential with isolated scopes
-		sequentialSteps := []CompositionStep{
+		sequentialSteps := []yamlpkg.Node{
 			{
 				ID:   "step1",
-				Uses: "activity1",
+				Op: "activity1",
 				Inputs: map[string]interface{}{
 					"input": "{{ .Inputs.global_input }}",
 				},
 			},
 			{
 				ID: "nested_seq",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "nested_step1",
-						Uses: "activity2",
+						Op: "activity2",
 						Inputs: map[string]interface{}{
 							// This should NOT see step1 output
 							"input": "{{ .Steps.step1.result }}",
@@ -79,7 +79,7 @@ func TestNestedScopeEncapsulation(t *testing.T) {
 					},
 					{
 						ID:   "nested_step2",
-						Uses: "activity3",
+						Op: "activity3",
 						Inputs: map[string]interface{}{
 							// This SHOULD see nested_step1 output
 							"input": "{{ .Steps.nested_step1.result }}",
@@ -137,17 +137,17 @@ func TestParallelScopeIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test parallel execution with nested compositions
-		parallelSteps := []CompositionStep{
+		parallelSteps := []yamlpkg.Node{
 			{
 				ID: "branch1",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "branch1_step1",
-						Uses: "parallel_activity1",
+						Op: "parallel_activity1",
 					},
 					{
 						ID:   "branch1_step2",
-						Uses: "parallel_activity2",
+						Op: "parallel_activity2",
 						Inputs: map[string]interface{}{
 							// Should see branch1_step1 in same branch
 							"prev": "{{ .Steps.branch1_step1.count }}",
@@ -157,14 +157,14 @@ func TestParallelScopeIsolation(t *testing.T) {
 			},
 			{
 				ID: "branch2",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "branch2_step1",
-						Uses: "parallel_activity1",
+						Op: "parallel_activity1",
 					},
 					{
 						ID:   "branch2_step2",
-						Uses: "parallel_activity2",
+						Op: "parallel_activity2",
 						Inputs: map[string]interface{}{
 							// Should NOT see branch1_step1 from other branch
 							"own": "{{ .Steps.branch2_step1.count }}",
@@ -229,14 +229,14 @@ func TestConditionalScopeEncapsulation(t *testing.T) {
 		conditionalBranches := []ConditionalBranch{
 			{
 				When: ".Inputs.condition_flag == true",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "cond_step1",
-						Uses: "cond_activity",
+						Op: "cond_activity",
 					},
 					{
 						ID:   "cond_step2",
-						Uses: "cond_activity",
+						Op: "cond_activity",
 						Inputs: map[string]interface{}{
 							// Should see cond_step1 in same branch
 							"prev": "{{ .Steps.cond_step1.status }}",
@@ -248,7 +248,7 @@ func TestConditionalScopeEncapsulation(t *testing.T) {
 			},
 			{
 				Default: true,
-				Uses:    "cond_activity",
+				Op:    "cond_activity",
 			},
 		}
 
@@ -290,33 +290,33 @@ func TestDeeplyNestedScopes(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test deeply nested structure
-		steps := []CompositionStep{
+		steps := []yamlpkg.Node{
 			{
 				ID: "level1",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "level1_step",
-						Uses: "activity",
+						Op: "activity",
 					},
 					{
 						ID: "level2",
-						Parallel: []CompositionStep{
+						Parallel: []yamlpkg.Node{
 							{
 								ID: "level2_branch1",
-								Sequential: []CompositionStep{
+								Sequential: []yamlpkg.Node{
 									{
 										ID:   "level3_step",
-										Uses: "activity",
+										Op: "activity",
 									},
 									{
 										ID: "level4",
 										Conditional: []ConditionalBranch{
 											{
 												Default: true,
-												Sequential: []CompositionStep{
+												Sequential: []yamlpkg.Node{
 													{
 														ID:   "level5_step",
-														Uses: "activity",
+														Op: "activity",
 														Inputs: map[string]interface{}{
 															// Should only see level3_step from parent sequential
 															"sibling": "{{ .Steps.level3_step.output }}",

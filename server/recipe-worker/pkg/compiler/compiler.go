@@ -113,12 +113,30 @@ func (r *ActivityRegistry) HasActivity(name string) bool {
 
 // executeOperation executes a single operation node
 func (c *Compiler) executeOperation(ctx workflow.Context, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
-	// Merge workflow inputs with node inputs
+	// Create workflow state for template resolution
+	state := &WorkflowState{
+		Inputs:  workflowInputs,
+		Steps:   make(map[string]StepResult),
+		Outputs: make(map[string]interface{}),
+	}
+	
+	// Resolve templates in node inputs
+	resolver := NewTemplateResolver(state)
+	resolvedNodeInputs := make(map[string]interface{})
+	for k, v := range nodeInputs {
+		resolved, err := resolver.ResolveValue(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve template in input %s: %w", k, err)
+		}
+		resolvedNodeInputs[k] = resolved
+	}
+	
+	// Merge workflow inputs with resolved node inputs
 	inputs := make(map[string]interface{})
 	for k, v := range workflowInputs {
 		inputs[k] = v
 	}
-	for k, v := range nodeInputs {
+	for k, v := range resolvedNodeInputs {
 		inputs[k] = v
 	}
 	
@@ -277,3 +295,4 @@ func (e *workflowActivityExecutor) ExecuteActivity(ctx workflow.Context, activit
 	
 	return outputs, nil
 }
+

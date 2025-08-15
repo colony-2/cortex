@@ -14,31 +14,31 @@ func TestNestedCompositionWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := StateMachineConfig{
-		InitialState: "nested_state",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "nested_state",
+		States: map[string]yamlpkg.State{
 			"nested_state": {
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "prepare",
-						Uses: "prepare_activity",
+						Op: "prepare_activity",
 						Inputs: map[string]interface{}{
 							"data": "{{ .Inputs.data }}",
 						},
 					},
 					{
 						ID: "process",
-						Parallel: []CompositionStep{
+						Parallel: []yamlpkg.Node{
 							{
 								ID:   "process1",
-								Uses: "process1_activity",
+								Op: "process1_activity",
 								Inputs: map[string]interface{}{
 									"data": "{{ .Steps.prepare.prepared }}",
 								},
 							},
 							{
 								ID:   "process2",
-								Uses: "process2_activity",
+								Op: "process2_activity",
 								Inputs: map[string]interface{}{
 									"data": "{{ .Steps.prepare.prepared }}",
 								},
@@ -47,14 +47,14 @@ func TestNestedCompositionWorkflow(t *testing.T) {
 					},
 					{
 						ID:   "finalize",
-						Uses: "finalize_activity",
+						Op: "finalize_activity",
 						Inputs: map[string]interface{}{
 							"result1": "{{ .Steps.process.process1.result }}",
 							"result2": "{{ .Steps.process.process2.result }}",
 						},
 					},
 				},
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 			},
 		},
 	}
@@ -72,31 +72,31 @@ func testNestedWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 		return nil, err
 	}
 	
-	config := StateMachineConfig{
-		InitialState: "nested_state",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "nested_state",
+		States: map[string]yamlpkg.State{
 			"nested_state": {
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "prepare",
-						Uses: "prepare_activity",
+						Op: "prepare_activity",
 						Inputs: map[string]interface{}{
 							"data": "{{ .Inputs.data }}",
 						},
 					},
 					{
 						ID: "process",
-						Parallel: []CompositionStep{
+						Parallel: []yamlpkg.Node{
 							{
 								ID:   "process1",
-								Uses: "process1_activity",
+								Op: "process1_activity",
 								Inputs: map[string]interface{}{
 									"data": "{{ .Steps.prepare.prepared }}",
 								},
 							},
 							{
 								ID:   "process2",
-								Uses: "process2_activity",
+								Op: "process2_activity",
 								Inputs: map[string]interface{}{
 									"data": "{{ .Steps.prepare.prepared }}",
 								},
@@ -105,19 +105,19 @@ func testNestedWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 					},
 					{
 						ID:   "finalize",
-						Uses: "finalize_activity",
+						Op: "finalize_activity",
 						Inputs: map[string]interface{}{
 							"result1": "{{ .Steps.process.process1.result }}",
 							"result2": "{{ .Steps.process.process2.result }}",
 						},
 					},
 				},
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 			},
 		},
 	}
 
-	return compiler.Execute(ctx, config, map[string]interface{}{"data": "test_data"})
+	return compiler.ExecuteStateMap(ctx, &config, map[string]interface{}{"data": "test_data"})
 }
 
 // TestStateTransitionsWorkflow tests state machine transitions
@@ -126,11 +126,11 @@ func TestStateTransitionsWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := StateMachineConfig{
-		InitialState: "validation",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "validation",
+		States: map[string]yamlpkg.State{
 			"validation": {
-				Uses: "validate_activity",
+				Op: "validate_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
@@ -146,7 +146,7 @@ func TestStateTransitionsWorkflow(t *testing.T) {
 				},
 			},
 			"processing": {
-				Uses: "process_activity",
+				Op: "process_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
@@ -157,13 +157,13 @@ func TestStateTransitionsWorkflow(t *testing.T) {
 				},
 			},
 			"complete": {
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 				Outputs: map[string]interface{}{
 					"message": "Processing complete",
 				},
 			},
 			"error": {
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 				Error:    "Validation failed",
 			},
 		},
@@ -192,11 +192,11 @@ func testTransitionsWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 		return nil, err
 	}
 	
-	config := StateMachineConfig{
-		InitialState: "validation",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "validation",
+		States: map[string]yamlpkg.State{
 			"validation": {
-				Uses: "validate_activity",
+				Op: "validate_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
@@ -212,7 +212,7 @@ func testTransitionsWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 				},
 			},
 			"processing": {
-				Uses: "process_activity",
+				Op: "process_activity",
 				Inputs: map[string]interface{}{
 					"data": "{{ .Inputs.data }}",
 				},
@@ -223,19 +223,19 @@ func testTransitionsWorkflow(ctx workflow.Context) (map[string]interface{}, erro
 				},
 			},
 			"complete": {
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 				Outputs: map[string]interface{}{
 					"message": "Processing complete",
 				},
 			},
 			"error": {
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 				Error:    "Validation failed",
 			},
 		},
 	}
 
-	return compiler.Execute(ctx, config, map[string]interface{}{"data": "test_data"})
+	return compiler.ExecuteStateMap(ctx, &config, map[string]interface{}{"data": "test_data"})
 }
 
 // TestRetryPolicyWorkflow tests retry policy in state machine
@@ -244,22 +244,22 @@ func TestRetryPolicyWorkflow(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
 	
-	config := StateMachineConfig{
-		InitialState: "retry_state",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "retry_state",
+		States: map[string]yamlpkg.State{
 			"retry_state": {
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "flaky_step",
-						Uses: "flaky_activity",
-						Retry: &StepRetryPolicy{
+						Op: "flaky_activity",
+						Retry: &yamlpkg.RetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
 							InitialInterval:    "100ms",
 						},
 					},
 				},
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 			},
 		},
 	}
@@ -279,25 +279,25 @@ func testRetryWorkflow(ctx workflow.Context) (map[string]interface{}, error) {
 		return nil, err
 	}
 	
-	config := StateMachineConfig{
-		InitialState: "retry_state",
-		States: map[string]StateDefinition{
+	config := yamlpkg.StateMap{
+		Initial: "retry_state",
+		States: map[string]yamlpkg.State{
 			"retry_state": {
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "flaky_step",
-						Uses: "flaky_activity",
-						Retry: &StepRetryPolicy{
+						Op: "flaky_activity",
+						Retry: &yamlpkg.RetryPolicy{
 							MaxAttempts:        2,
 							BackoffCoefficient: 2.0,
 							InitialInterval:    "100ms",
 						},
 					},
 				},
-				Terminal: true,
+				Transitions: []yamlpkg.Transition{},
 			},
 		},
 	}
 
-	return compiler.Execute(ctx, config, map[string]interface{}{"data": "test_data"})
+	return compiler.ExecuteStateMap(ctx, &config, map[string]interface{}{"data": "test_data"})
 }

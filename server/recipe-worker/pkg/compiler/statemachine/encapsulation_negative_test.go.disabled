@@ -39,17 +39,17 @@ func TestInvalidScopeReferences(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test: Nested scope trying to access parent scope steps should fail
-		sequentialSteps := []CompositionStep{
+		sequentialSteps := []yamlpkg.Node{
 			{
 				ID:   "outer_step",
-				Uses: "activity1",
+				Op: "activity1",
 			},
 			{
 				ID: "nested_block",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "inner_step",
-						Uses: "activity2",
+						Op: "activity2",
 						Inputs: map[string]interface{}{
 							// This should fail - trying to access outer_step from nested scope
 							"invalid_ref": "{{ .Steps.outer_step.result }}",
@@ -137,17 +137,17 @@ func TestParallelBranchIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Test: Parallel branches trying to reference each other should fail
-		parallelSteps := []CompositionStep{
+		parallelSteps := []yamlpkg.Node{
 			{
 				ID: "branch1",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "branch1_step1",
-						Uses: "activity",
+						Op: "activity",
 					},
 					{
 						ID:   "branch1_step2",
-						Uses: "activity",
+						Op: "activity",
 						Inputs: map[string]interface{}{
 							// Valid: can see own branch's step
 							"valid_ref": "{{ .Steps.branch1_step1.output }}",
@@ -159,14 +159,14 @@ func TestParallelBranchIsolation(t *testing.T) {
 			},
 			{
 				ID: "branch2",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "branch2_step1",
-						Uses: "activity",
+						Op: "activity",
 					},
 					{
 						ID:   "branch2_step2",
-						Uses: "activity",
+						Op: "activity",
 						Inputs: map[string]interface{}{
 							// Invalid: cannot see other branch's step
 							"invalid_ref": "{{ .Steps.branch1_step1.output }}",
@@ -247,12 +247,12 @@ func TestConditionalBranchIsolation(t *testing.T) {
 			{
 				// This condition should fail because .Steps.root_step is not in nested scope
 				When: ".Steps.root_step.value == 'should_not_be_accessible'",
-				Uses: "activity1",
+				Op: "activity1",
 			},
 			{
 				// This should execute as fallback
 				Default: true,
-				Uses:    "activity2",
+				Op:    "activity2",
 			},
 		}
 
@@ -271,11 +271,11 @@ func TestConditionalBranchIsolation(t *testing.T) {
 			{
 				// This condition uses valid inputs
 				When: ".Inputs.condition == true",
-				Uses: "activity1",
+				Op: "activity1",
 			},
 			{
 				Default: true,
-				Uses:    "activity2",
+				Op:    "activity2",
 			},
 		}
 		
@@ -388,24 +388,24 @@ func TestDeeplyNestedScopeIsolation(t *testing.T) {
 		rootScope := NewScopedContext(nil, stateCtx, "root")
 
 		// Create a deeply nested structure where inner scopes try to access outer scopes
-		steps := []CompositionStep{
+		steps := []yamlpkg.Node{
 			{
 				ID:   "level1_step",
-				Uses: "activity",
+				Op: "activity",
 			},
 			{
 				ID: "level1_nested",
-				Sequential: []CompositionStep{
+				Sequential: []yamlpkg.Node{
 					{
 						ID:   "level2_step",
-						Uses: "activity",
+						Op: "activity",
 					},
 					{
 						ID: "level2_nested",
-						Sequential: []CompositionStep{
+						Sequential: []yamlpkg.Node{
 							{
 								ID:   "level3_step",
-								Uses: "activity",
+								Op: "activity",
 								Inputs: map[string]interface{}{
 									// Should NOT see level1_step (grandparent scope)
 									"invalid_grandparent": "{{ .Steps.level1_step.output }}",
