@@ -465,24 +465,6 @@ func validateRecipeStructure(recipe *yamlpkg.RecipeDefinition) error {
 	return nil
 }
 
-// DEPRECATED: validateInputs is now handled by shared.RecipeValidator
-// This function is kept for backward compatibility but is no longer used
-func validateInputsLegacy(recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}) error {
-	// Check required inputs using InputSchema
-	if recipe.InputSchema != nil {
-		for name, inputDef := range recipe.InputSchema {
-			if inputDef.Required {
-				if _, exists := inputs[name]; !exists {
-					return fmt.Errorf("required input '%s' not provided", name)
-				}
-			}
-		}
-	}
-	
-	// Type validation would go here but is complex for this implementation
-	
-	return nil
-}
 
 func executeRecipe(ctx context.Context, recipe *yamlpkg.RecipeDefinition, inputs map[string]interface{}, logger *zap.Logger, state *ExecutionState, stateDir string) (*ExecutionResult, error) {
 	// Use shared registry manager to get executor

@@ -2,37 +2,28 @@ name: test-recipe
 description: Simple test recipe for execute command
 version: "1.0"
 
-inputs:
-  - name: message
+input_schema:
+  message:
     type: string
     required: true
     description: Message to echo
-  - name: count
+  count:
     type: number
     default: 1
     description: Number of times to repeat
 
-outputs:
-  - name: result
-    type: string
-    description: The echoed message
-  - name: timestamp
-    type: string
-    description: Execution timestamp
-
-steps:
+# Root node is a sequence
+sequence:
   - id: echo_step
-    uses: command_execution
+    op: command_execution
     inputs:
-      command: echo
-      args: ["{{ .Inputs.message }}"]
-    outputs:
-      stdout: message_output
+      run: "echo '{{ .inputs.message }}'"
       
   - id: format_result
-    uses: command_execution
+    op: command_execution
     inputs:
-      command: echo
-      args: ["Result: {{ .Steps.echo_step.outputs.stdout }}"]
-    outputs:
-      stdout: final_result
+      run: "echo 'Result: {{ .nodes.echo_step.outputs.stdout }}'"
+
+outputs:
+  result: "{{ .nodes.format_result.outputs.stdout }}"
+  timestamp: "{{ .timestamp }}"

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -329,9 +330,13 @@ func TestValidateInputs(t *testing.T) {
 		},
 	}
 	
+	logger := zap.NewNop()
+	rm, _ := shared.NewRegistryManager(logger)
+	validator := shared.NewRecipeValidator(rm)
+	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateInputsLegacy(tt.recipe, tt.inputs)
+			err := validator.ValidateInputs(tt.recipe, tt.inputs)
 			
 			if tt.expectError {
 				assert.Error(t, err)
