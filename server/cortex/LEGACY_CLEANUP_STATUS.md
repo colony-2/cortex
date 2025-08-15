@@ -176,13 +176,6 @@ err := validateInputsLegacy(tt.recipe, tt.inputs)
 4. **🔴 Update test files** - Migrate `test-recipe.yaml` to new format and update test function calls
 5. **🟡 Implement missing features** - CEL evaluation and output template resolution for complete functionality
 
-### Priority Ranking:
-1. **CRITICAL**: Fix schema command (core infrastructure broken)
-2. **High**: Investigate/fix validate command (core infrastructure)
-3. **High**: Remove deprecated code and update tests (technical debt cleanup)
-4. **Medium**: Implement output template resolution (functionality gap)
-5. **Medium**: Implement CEL evaluation for conditional execution (functionality gap)
-6. **Low**: Enhanced validation features (nice-to-have improvements)
 
 ### Migration Status:
 - ✅ Core legacy removal completed
@@ -194,4 +187,77 @@ err := validateInputsLegacy(tt.recipe, tt.inputs)
 - 🟡 Some test files need format updates
 - 🟡 Two TODO features pending implementation
 
-The legacy removal implementation is functionally complete for workflow execution, but **critical command infrastructure (schema/validate) needs immediate attention** to support the new unified format.
+## Lost Test Coverage Analysis
+
+During the legacy removal refactoring, several test files were disabled that covered important functionality. While the refactoring maintained functionality, we need to restore critical test coverage:
+
+### 🔴 **CRITICAL: Missing Test Coverage**
+
+#### 1. Complex CEL Expression Testing
+**Lost from**: `core_logic_test.go.disabled:249-267`
+- **Missing**: Complex AND/OR conditions in CEL expressions
+- **Critical scenarios**: `data_size > 1000000 && priority == 'high'`, `score > 90 || valid == false`
+- **Current coverage**: Only basic CEL expressions tested
+- **Impact**: Complex conditional logic may break without detection
+
+#### 2. State Transition Logic Testing  
+**Lost from**: `core_logic_test.go.disabled:36-77`
+- **Missing**: State transition evaluation with CEL conditions
+- **Critical scenarios**: Transition evaluation based on state outputs
+- **Current coverage**: Basic state structure only
+- **Impact**: State machine transitions may fail silently
+
+#### 3. Retry Loop Logic Testing
+**Lost from**: `core_logic_test.go.disabled:79-130`
+- **Missing**: Retry policy evaluation with max attempts, backoff
+- **Critical scenarios**: Retry when conditions are met, stop at max attempts
+- **Current coverage**: Only backoff calculation tested
+- **Impact**: Retry mechanisms may not work correctly
+
+#### 4. Step Dependency Management Testing
+**Lost from**: `core_logic_test.go.disabled:133-162`
+- **Missing**: Dependency grouping and dependency satisfaction checking
+- **Critical scenarios**: `groupByDependencies()`, `dependenciesMet()` functions
+- **Current coverage**: No dependency logic tested
+- **Impact**: Dependent steps may execute out of order
+
+#### 5. Scoped Template Resolution Testing
+**Lost from**: `encapsulation_test.go.disabled` (entire file, 450+ lines)
+- **Missing**: Template resolution with nested scopes and encapsulation
+- **Critical scenarios**: Nested scopes, step visibility, scope isolation
+- **Current coverage**: Only basic template resolution tested  
+- **Impact**: Templates may access wrong scope data
+
+#### 6. Scoped CEL Evaluation Testing
+**Lost from**: `encapsulation_test.go.disabled:402-450`
+- **Missing**: CEL expressions with scoped contexts
+- **Critical scenarios**: Local vs parent scope variable access
+- **Current coverage**: No scoped CEL testing
+- **Impact**: CEL expressions may access incorrect scope data
+
+#### 7. Complex Nested Execution Testing
+**Lost from**: `encapsulation_test.go.disabled:271-358`
+- **Missing**: Deeply nested composition execution (5+ levels)
+- **Critical scenarios**: Sequential > Parallel > Conditional > Sequential nesting
+- **Current coverage**: Basic structure validation only
+- **Impact**: Complex nested workflows may fail
+
+### 🟡 **Functionality Still Missing Implementation**
+
+The disabled tests revealed functionality that appears to be missing entirely:
+
+1. **`groupByDependencies()` function** - Referenced in tests but not found in current code
+2. **`dependenciesMet()` function** - Referenced in tests but not found in current code  
+3. **`evaluateTransitions()` function** - Referenced in tests but not found in current code
+4. **`shouldRetry()` function** - Referenced in tests but not found in current code
+5. **Scoped execution methods** (`executeSequentialScoped`, `executeParallelScoped`, etc.)
+
+### 📋 **Required Actions for Test Coverage Recovery**
+
+1. **Restore core logic tests**: Re-enable and update core_logic_test.go with new types
+2. **Restore scoped execution tests**: Re-enable and update encapsulation_test.go  
+3. **Implement missing functions**: Add the dependency/transition/retry functions that tests expect
+4. **Add integration tests**: Restore integration test scenarios adapted to new architecture
+5. **Verify behavioral consistency**: Ensure refactored code maintains exact same behavior
+
+The legacy removal implementation is functionally complete for basic workflow execution, but **critical test coverage was lost** and **critical command infrastructure (schema/validate) needs immediate attention** to support the new unified format.
