@@ -2,7 +2,7 @@ package activity
 
 import (
 	"github.com/divisive-ai/vibethis/server/ops/pkg/command"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/gitshallow"
+	// "github.com/divisive-ai/vibethis/server/ops/pkg/gitshallow" // Moved to server/git module
 	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
@@ -16,8 +16,8 @@ func GetAll() []interface{} {
 		// LLM activities
 		llm.NewLLMActivity(),
 		
-		// Git activities
-		gitshallow.NewGitShallowActivity(),
+		// Git activities have been moved to server/git module
+		// gitshallow.NewGitShallowActivity(), // Moved to server/git/pkg/gitshallow
 		
 		// Command activities
 		command.NewCommandExecutionActivity(),

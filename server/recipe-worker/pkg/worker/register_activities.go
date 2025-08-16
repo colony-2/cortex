@@ -7,7 +7,8 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/activity"
+	gitactivity "github.com/divisive-ai/vibethis/server/git/pkg/activity"
+	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
 	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
@@ -22,15 +23,21 @@ func GetGlobalActivityRegistry() *ActivityRegistry {
 	return globalActivityRegistry
 }
 
-// RegisterAllActivities registers all available activities from the activity module
+// RegisterAllActivities registers all available activities from both ops and git modules
 func RegisterAllActivities() error {
 	registry := GetGlobalActivityRegistry()
 
-	// Get all activities from the centralized exports
-	activities := activity.GetAll()
+	// Get all activities from the ops module
+	opsActivities := opsactivity.GetAll()
+	
+	// Get all activities from the git module
+	gitActivities := gitactivity.GetAll()
+	
+	// Combine all activities
+	allActivities := append(opsActivities, gitActivities...)
 
 	// Register each activity using the generic registration method
-	for _, act := range activities {
+	for _, act := range allActivities {
 		if err := registry.RegisterGeneric(act); err != nil {
 			return fmt.Errorf("failed to register activity: %w", err)
 		}
