@@ -20,7 +20,7 @@ func TestGenerateCompleteSchema(t *testing.T) {
 	
 	// Generate schema using shared schema manager
 	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema("", false, false)
+	schema, err := sm.GenerateCompleteSchema("", false)
 	require.NoError(t, err)
 	
 	// Verify basic structure
@@ -61,7 +61,7 @@ func TestSchemaCommandJSON(t *testing.T) {
 	require.NoError(t, err)
 	
 	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema("", false, false)
+	schema, err := sm.GenerateCompleteSchema("", false)
 	require.NoError(t, err)
 	
 	// Ensure it can be marshaled to JSON
@@ -82,7 +82,7 @@ func TestSchemaFilterActivity(t *testing.T) {
 	require.NoError(t, err)
 	
 	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema("command_execution", false, false)
+	schema, err := sm.GenerateCompleteSchema("command_execution", false)
 	require.NoError(t, err)
 	assert.NotNil(t, schema)
 }
@@ -94,7 +94,7 @@ func TestSchemaWithVersion(t *testing.T) {
 	require.NoError(t, err)
 	
 	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema("", true, false)
+	schema, err := sm.GenerateCompleteSchema("", true)
 	require.NoError(t, err)
 	
 	// Check version field exists
@@ -102,24 +102,6 @@ func TestSchemaWithVersion(t *testing.T) {
 	assert.Equal(t, "1.0.0", schema["version"])
 }
 
-func TestSchemaWithExamples(t *testing.T) {
-	// Test schema with examples
-	logger := zap.NewNop()
-	rm, err := shared.NewRegistryManager(logger)
-	require.NoError(t, err)
-	
-	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema("", false, true)
-	require.NoError(t, err)
-	
-	// The schema should still be valid
-	assert.NotNil(t, schema)
-	
-	// Check that examples are included
-	if examples, ok := schema["examples"]; ok {
-		assert.NotNil(t, examples)
-	}
-}
 
 
 

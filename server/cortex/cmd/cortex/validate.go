@@ -104,7 +104,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		}
 		
 		sm := shared.NewSchemaManager(rm)
-		schemaMap, err := sm.GenerateCompleteSchema("", false, false)
+		schemaMap, err := sm.GenerateCompleteSchema("", false)
 		if err != nil {
 			return fmt.Errorf("failed to generate schema: %w", err)
 		}

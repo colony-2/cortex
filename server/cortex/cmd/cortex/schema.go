@@ -12,11 +12,10 @@ import (
 )
 
 var (
-	schemaFormat         string
-	schemaActivity       string
-	schemaVersion        bool
-	schemaOutput         string
-	schemaIncludeExamples bool
+	schemaFormat   string
+	schemaActivity string
+	schemaVersion  bool
+	schemaOutput   string
 )
 
 // schemaCmd generates JSON schema for recipes and activities
@@ -32,7 +31,6 @@ func init() {
 	schemaCmd.Flags().StringVarP(&schemaActivity, "activity", "a", "", "Filter to specific activity type")
 	schemaCmd.Flags().BoolVarP(&schemaVersion, "version", "v", false, "Include version information in schema")
 	schemaCmd.Flags().StringVarP(&schemaOutput, "output", "o", "", "Output file path (default: stdout)")
-	schemaCmd.Flags().BoolVar(&schemaIncludeExamples, "include-examples", false, "Include example configurations in the schema")
 }
 
 func runSchema(cmd *cobra.Command, args []string) error {
@@ -47,7 +45,7 @@ func runSchema(cmd *cobra.Command, args []string) error {
 	
 	// Use shared schema manager
 	sm := shared.NewSchemaManager(rm)
-	schema, err := sm.GenerateCompleteSchema(schemaActivity, schemaVersion, schemaIncludeExamples)
+	schema, err := sm.GenerateCompleteSchema(schemaActivity, schemaVersion)
 	if err != nil {
 		return fmt.Errorf("failed to generate schema: %w", err)
 	}
