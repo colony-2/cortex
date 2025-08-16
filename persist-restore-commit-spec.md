@@ -1,12 +1,142 @@
-# Git Persist and Restore Commit Recipe Operations
+# Git Persist and Restore Commit Operations
 
 ## Overview
-This specification defines two recipe operations for the `server/ops` package that manage Git commits with idempotent access using shallow clones and thin packs. These operations follow the established patterns for Temporal recipe activities.
+This specification defines new Git operations for the existing `server/git` module to provide Git-specific functionality for recipe workflows. The operations manage Git commits with idempotent access using shallow clones and thin packs, following the established patterns for Temporal recipe activities.
 
-## Package Location
-`server/ops/pkg/gitcommit/`
+## Module Structure
+
+### Existing Module Location
+```
+server/
+├── ops/           # Existing recipe operations
+├── git/           # Existing Git operations module
+│   ├── go.mod     # module github.com/divisive-ai/vibethis/server/git
+│   ├── go.sum
+│   ├── internal/
+│   │   └── commands/  # Internal Git command execution
+│   └── pkg/
+│       ├── git/       # Existing repository interface
+│       ├── gitcommit/ # NEW: Persist and restore operations
+│       ├── gitshallow/# Shallow clone operations (moved from ops)
+│       └── common/    # NEW: Shared Git utilities for recipe operations
+└── recipe-worker/ # Recipe worker that imports git module
+```
+
+### Enhancing Existing Module
+The existing `server/git` module already provides Git operations. We'll extend it with new packages for recipe-specific Git operations:
+
+```go
+// server/git/go.mod (existing, to be updated)
+module github.com/divisive-ai/vibethis/server/git
+
+go 1.23.0
+
+require (
+    go.temporal.io/sdk v1.24.0  // Add for Temporal activities
+    github.com/stretchr/testify v1.8.4
+    // existing dependencies
+)
+```
+
+### Integration with Recipe Worker
+```go
+// server/recipe-worker/main.go
+package main
+
+import (
+    "go.temporal.io/sdk/worker"
+    
+    // Import from existing Git module
+    "github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
+    "github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+    
+    // Import other recipe operations
+    "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/llm"
+)
+
+func main() {
+    w := worker.New(temporalClient, "recipe-task-queue", worker.Options{})
+    
+    // Register Git activities from git module
+    w.RegisterActivity(gitcommit.PersistCommit)
+    w.RegisterActivity(gitcommit.RestoreCommit)
+    w.RegisterActivity(gitshallow.GitShallowClone)
+    
+    // Register other recipe activities
+    w.RegisterActivity(recipe.RecipeActivity)
+    w.RegisterActivity(llm.ExecuteLLMTask)
+    
+    w.Run(worker.InterruptCh())
+}
+```
+
+## Package Structure: `server/git/pkg/`
 
 ## Recipe Operations
+
+### Common Git Utilities: `server/git/pkg/common/`
+
+```go
+// server/git/pkg/common/types.go
+package common
+
+import "time"
+
+// GitConfig contains common Git configuration
+type GitConfig struct {
+    Author    string `json:"author,omitempty"`
+    Email     string `json:"email,omitempty"`
+    Timeout   time.Duration `json:"timeout,omitempty"`
+}
+
+// ThinPackMetadata describes a thin pack file
+type ThinPackMetadata struct {
+    CommitHash   string    `json:"commit_hash"`
+    ParentHash   string    `json:"parent_hash"`
+    RootHash     string    `json:"root_hash"`
+    FilePath     string    `json:"file_path"`
+    Size         int64     `json:"size"`
+    CreatedAt    time.Time `json:"created_at"`
+}
+
+// server/git/pkg/common/utils.go
+package common
+
+import (
+    "fmt"
+    "os/exec"
+    "context"
+    "path/filepath"
+    "os"
+    
+    // Can leverage existing internal commands package
+    "github.com/divisive-ai/vibethis/server/git/internal/commands"
+)
+
+// ExecuteGitCommand runs a git command with context
+// This can potentially use the existing internal/commands package
+func ExecuteGitCommand(ctx context.Context, repoPath string, args ...string) ([]byte, error) {
+    cmd := exec.CommandContext(ctx, "git", args...)
+    cmd.Dir = repoPath
+    return cmd.Output()
+}
+
+// ValidateRepository checks if path is a valid Git repository
+func ValidateRepository(repoPath string) error {
+    _, err := os.Stat(filepath.Join(repoPath, ".git"))
+    if err != nil {
+        return fmt.Errorf("not a git repository: %w", err)
+    }
+    return nil
+}
+
+// ParseThinPackName extracts metadata from thin pack filename
+func ParseThinPackName(filename string) (*ThinPackMetadata, error) {
+    // Parse format: {commit_hash}-{parent_hash}-{root_hash}.pack
+    // Implementation here
+}
+```
 
 ### 1. PersistCommit Activity
 
@@ -15,11 +145,13 @@ Capture a Git commit and generate a portable thin pack for external storage. Thi
 
 #### Activity Definition
 ```go
+// server/git/pkg/gitcommit/types.go
 package gitcommit
 
 import (
     "context"
     "time"
+    "github.com/divisive-ai/vibethis/server/git/pkg/common"
 )
 
 // PersistCommitActivity defines the recipe operation for persisting Git commits
@@ -47,8 +179,22 @@ type PersistCommitOutput struct {
 
 #### Activity Function
 ```go
+// server/git/pkg/gitcommit/persist.go
+package gitcommit
+
+import (
+    "context"
+    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+)
+
 // PersistCommit performs the Git commit and thin pack generation
-func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCommitOutput, error)
+func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCommitOutput, error) {
+    // Implementation using common utilities
+    if err := common.ValidateRepository(input.RepoPath); err != nil {
+        return nil, err
+    }
+    // ... rest of implementation
+}
 ```
 
 #### Process
@@ -76,6 +222,8 @@ Restore a specific commit state, rebuilding from thin packs if necessary. This i
 
 #### Activity Definition
 ```go
+// server/git/pkg/gitcommit/types.go (continued)
+
 // RestoreCommitActivity defines the recipe operation for restoring Git commits
 type RestoreCommitActivity struct {
     // Required inputs
@@ -101,8 +249,22 @@ type RestoreCommitOutput struct {
 
 #### Activity Function
 ```go
+// server/git/pkg/gitcommit/restore.go
+package gitcommit
+
+import (
+    "context"
+    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+)
+
 // RestoreCommit restores repository to a specific commit state
-func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCommitOutput, error)
+func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCommitOutput, error) {
+    // Implementation using common utilities
+    if err := common.ValidateRepository(input.RepoPath); err != nil {
+        return nil, err
+    }
+    // ... rest of implementation
+}
 ```
 
 #### Process
@@ -147,18 +309,59 @@ a3f8b2c-d4e9f1a-b1c2d3e.pack
 
 ## Integration with Recipe System
 
-### Workflow Usage
+### Migrating GitShallow from ops to git module
 
-These activities can be used in Temporal workflows alongside other recipe operations:
+The existing `gitshallow` package should be moved from `server/ops/pkg/gitshallow/` to `server/git/pkg/gitshallow/` to consolidate all Git operations:
 
 ```go
+// server/git/pkg/gitshallow/gitshallow.go
+package gitshallow
+
+import (
+    "context"
+    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+)
+
+// GitShallowCloneInput (existing type, moved here)
+type GitShallowCloneInput struct {
+    SourceDir  string `json:"sourceDir"`
+    TargetDir  string `json:"targetDir"`
+    CommitHash string `json:"commitHash"`
+}
+
+// GitShallowCloneOutput (existing type, moved here)
+type GitShallowCloneOutput struct {
+    ClonedPath string `json:"clonedPath"`
+}
+
+// GitShallowClone performs a shallow clone (existing function, enhanced with common utils)
+func GitShallowClone(ctx context.Context, input GitShallowCloneInput) (*GitShallowCloneOutput, error) {
+    // Use common utilities
+    if err := common.ValidateRepository(input.SourceDir); err != nil {
+        return nil, err
+    }
+    // ... rest of existing implementation
+}
+```
+
+### Workflow Usage
+
+These ops can be used in Temporal workflows alongside other recipe operations:
+
+```go
+// server/ops/workflows/git_workflow.go
 package workflows
 
 import (
     "time"
     "go.temporal.io/sdk/workflow"
-    "github.com/vibethis/server/ops/pkg/gitcommit"
-    "github.com/vibethis/server/ops/pkg/gitshallow"
+    
+    // Import from git module
+    "github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
+    "github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+    
+    // Import other recipe operations
+    "github.com/divisive-ai/vibethis/server/ops/pkg/llm"
 )
 
 func ProcessCodeWorkflow(ctx workflow.Context, input WorkflowInput) error {
@@ -176,7 +379,7 @@ func ProcessCodeWorkflow(ctx workflow.Context, input WorkflowInput) error {
     }
     
     // 2. Perform code modifications...
-    // (other recipe operations)
+    // (other recipe operations from ops module)
     
     // 3. Persist the commit with thin pack
     persistInput := gitcommit.PersistCommitActivity{
@@ -207,32 +410,6 @@ func ProcessCodeWorkflow(ctx workflow.Context, input WorkflowInput) error {
 }
 ```
 
-### Activity Registration
-
-Register the activities with your Temporal worker:
-
-```go
-package main
-
-import (
-    "go.temporal.io/sdk/worker"
-    "github.com/vibethis/server/ops/pkg/gitcommit"
-)
-
-func main() {
-    // Create worker
-    w := worker.New(temporalClient, "recipe-task-queue", worker.Options{})
-    
-    // Register Git commit activities
-    w.RegisterActivity(gitcommit.PersistCommit)
-    w.RegisterActivity(gitcommit.RestoreCommit)
-    
-    // Register other recipe activities...
-    
-    w.Run(worker.InterruptCh())
-}
-```
-
 ---
 
 ## Implementation Details
@@ -251,7 +428,6 @@ storage_location/
 - Operations can be safely retried without side effects (Temporal activity retry compatible)
 
 ### Performance Optimizations
-- Cache thin pack metadata to avoid repeated filesystem scans
 - Use Git's built-in thin pack generation (`git pack-objects --thin`)
 - Implement parallel thin pack application where possible
 - Compatible with Temporal's activity heartbeating for long operations
@@ -264,11 +440,29 @@ storage_location/
 
 ---
 
+## Migration Plan
+
+### Phase 1: Extend existing git module
+1. Add Temporal SDK dependency to `server/git/go.mod`
+2. Create `server/git/pkg/common/` for shared utilities
+3. Implement PersistCommit and RestoreCommit in `server/git/pkg/gitcommit/`
+4. Leverage existing `server/git/internal/commands` where appropriate
+
+### Phase 2: Migrate gitshallow from ops
+1. Move `server/ops/pkg/gitshallow/` to `server/git/pkg/gitshallow/`
+2. Update imports in existing workflows and workers
+3. Update `server/recipe-worker` to import from git module
+
+### Phase 3: Test
+1. Verify all Git operations work through the git module
+
+---
+
 ## Testing
 
 ### Real Git Repository Tests
 
-These tests work with actual Git repositories and operations, not mocks. They should be placed in `server/ops/pkg/gitcommit/gitcommit_test.go`.
+These tests work with actual Git repositories and operations, not mocks. They should be placed in `server/git/pkg/gitcommit/gitcommit_test.go`.
 
 #### Test Setup Helper
 ```go
@@ -721,15 +915,6 @@ func TestGitCommitWorkflow_RealGit(t *testing.T) {
     assert.Greater(t, len(packFiles), 0, "Should have created thin packs")
 }
 ```
-
----
-
-## Security Considerations
-- Validate all commit hashes before operations
-- Ensure thin packs are not corrupted (use checksums)
-- Implement access controls on the storage location
-- Sanitize file paths to prevent directory traversal attacks
-- Follow Temporal security best practices for activity execution
 
 ---
 
