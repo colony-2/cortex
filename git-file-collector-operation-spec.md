@@ -8,8 +8,10 @@ Provide git-aware file collection that:
 - Respects version control boundaries (.gitignore)
 - Collects only relevant source files
 - Excludes build artifacts and dependencies
+- Excludes binary files (images, compiled binaries, etc.)
 - Supports staged and untracked files optionally
 - Formats files for LLM consumption
+- Leverages existing git functionality from server/git packages
 
 ## Operation Details
 
@@ -40,6 +42,7 @@ op: git_file_collector
       - "vendor/**"
     include_staged: true
     include_untracked: false
+    exclude_binary: true
 
 # With size limits
 - id: collect_with_limits
@@ -54,17 +57,18 @@ op: git_file_collector
 
 ### Activity Structure
 ```go
-// server/ops/pkg/git/git_file_collector.go
+// server/git/pkg/gitcollector/git_file_collector.go
 
-package git
+package gitcollector
 
 import (
     "context"
-    "os/exec"
     "path/filepath"
     "time"
-    "github.com/vibethis/server/ops/pkg/types"
+    "github.com/vibethis/server/recipe-worker/pkg/worker"
     "github.com/vibethis/server/llm/adapters"
+    "github.com/vibethis/server/git/pkg/common"
+    "github.com/vibethis/server/git/internal/commands"
 )
 
 // GitFileCollectorConfig provides configuration for the activity
@@ -77,6 +81,7 @@ type GitFileCollectorConfig struct {
     DefaultIncludeStaged    bool `yaml:"default_include_staged"`
     DefaultIncludeUntracked bool `yaml:"default_include_untracked"`
     DefaultUseGitignore     bool `yaml:"default_use_gitignore"`
+    DefaultExcludeBinary    bool `yaml:"default_exclude_binary"`
 }
 
 // GitFileCollectorInput defines the input parameters
@@ -96,6 +101,7 @@ type GitFileCollectorInput struct {
     IncludeStaged    bool `json:"include_staged,omitempty"`
     IncludeUntracked bool `json:"include_untracked,omitempty"`
     UseGitignore     bool `json:"use_gitignore,omitempty"`
+    ExcludeBinary    bool `json:"exclude_binary,omitempty"`
     
     // Processing options
     AutoDetectType  bool `json:"auto_detect_type,omitempty"`
@@ -137,27 +143,29 @@ type FileStatistics struct {
 type GitFileCollectorActivity struct {
     logger       Logger
     fileDetector FileTypeDetector
+    gitRepo      *commands.Repository
 }
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] = (*GitFileCollectorActivity)(nil)
+var _ worker.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] = (*GitFileCollectorActivity)(nil)
 
 // NewGitFileCollectorActivity creates a new activity instance
-func NewGitFileCollectorActivity() types.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] {
+func NewGitFileCollectorActivity() worker.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] {
     return &GitFileCollectorActivity{
         fileDetector: NewFileTypeDetector(),
+        gitRepo:      commands.New("", ""),
     }
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *GitFileCollectorActivity) GetMetadata() types.ActivityMetadata {
-    return types.ActivityMetadata{
+func (a *GitFileCollectorActivity) GetMetadata() worker.ActivityMetadata {
+    return worker.ActivityMetadata{
         Type:           "git_file_collector",
         Name:           "Git File Collector",
         Description:    "Collects files from a git repository with filtering and metadata",
         Version:        "1.0.0",
         DefaultTimeout: 30 * time.Second,
-        RetryPolicy: &types.RetryPolicy{
+        RetryPolicy: &worker.RetryPolicy{
             MaximumAttempts:    3,
             InitialInterval:    1 * time.Second,
             BackoffCoefficient: 2.0,
@@ -180,15 +188,33 @@ func (a *GitFileCollectorActivity) Execute(
         return GitFileCollectorOutput{}, err
     }
     
-    // Validate git repository
-    if err := a.validateGitRepo(input.ContextDir); err != nil {
+    // Validate git repository using common utils
+    if err := common.ValidateRepository(input.ContextDir); err != nil {
         return GitFileCollectorOutput{}, fmt.Errorf("not a git repository: %w", err)
     }
     
-    // Get repository information
-    repoInfo, err := a.getRepositoryInfo(ctx, input.ContextDir)
+    // Get repository information using git commands.Repository
+    status, err := a.gitRepo.GetStatus(ctx, input.ContextDir)
     if err != nil {
-        return GitFileCollectorOutput{}, fmt.Errorf("failed to get repository info: %w", err)
+        return GitFileCollectorOutput{}, fmt.Errorf("failed to get repository status: %w", err)
+    }
+    
+    // Get latest commit info
+    commits, err := a.gitRepo.GetHistory(ctx, input.ContextDir, 1)
+    if err != nil || len(commits) == 0 {
+        return GitFileCollectorOutput{}, fmt.Errorf("failed to get commit history: %w", err)
+    }
+    latestCommit := commits[0]
+    
+    // Build repository info from status and commit
+    repoInfo := GitRepositoryInfo{
+        Branch:        status.Branch,
+        CommitHash:    latestCommit.Hash,
+        CommitMessage: latestCommit.Message,
+        CommitTime:    latestCommit.Date,
+        Author:        latestCommit.Author,
+        IsDirty:       !status.Clean,
+        RemoteURL:     "", // Can be extracted if needed
     }
     
     // List files using git
@@ -221,10 +247,8 @@ func (a *GitFileCollectorActivity) Execute(
 func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput) ([]string, error) {
     var files []string
     
-    // Get tracked files
-    cmd := exec.CommandContext(ctx, "git", "ls-files")
-    cmd.Dir = input.ContextDir
-    output, err := cmd.Output()
+    // Get tracked files using common.ExecuteGitCommand
+    output, err := common.ExecuteGitCommand(ctx, input.ContextDir, "ls-files")
     if err != nil {
         return nil, fmt.Errorf("git ls-files failed: %w", err)
     }
@@ -237,9 +261,7 @@ func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFi
     
     // Get staged files if requested
     if input.IncludeStaged {
-        cmd = exec.CommandContext(ctx, "git", "diff", "--staged", "--name-only")
-        cmd.Dir = input.ContextDir
-        output, err = cmd.Output()
+        output, err = common.ExecuteGitCommand(ctx, input.ContextDir, "diff", "--staged", "--name-only")
         if err == nil && len(output) > 0 {
             for _, line := range strings.Split(string(output), "\n") {
                 if line != "" {
@@ -256,9 +278,7 @@ func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFi
             args = append(args, "--exclude-standard")
         }
         
-        cmd = exec.CommandContext(ctx, "git", args...)
-        cmd.Dir = input.ContextDir
-        output, err = cmd.Output()
+        output, err = common.ExecuteGitCommand(ctx, input.ContextDir, args...)
         if err == nil && len(output) > 0 {
             for _, line := range strings.Split(string(output), "\n") {
                 if line != "" {
@@ -316,6 +336,13 @@ func (a *GitFileCollectorActivity) collectFiles(
             continue
         }
         
+        // Check for binary files if exclusion is enabled
+        if input.ExcludeBinary && isBinaryFile(content, filePath) {
+            stats.SkippedFiles++
+            stats.SkippedReasons["binary_file"]++
+            continue
+        }
+        
         // Detect file type
         fileType := adapters.FileTypeText
         mimeType := "text/plain"
@@ -367,18 +394,18 @@ func (a *GitFileCollectorActivity) collectFiles(
 
 ### Auto-Registration
 ```go
-// server/ops/pkg/registry/git_activities.go
+// server/git/pkg/activity/registry.go
 
-package registry
+package activity
 
 import (
-    "github.com/vibethis/server/ops/pkg/git"
+    "github.com/vibethis/server/git/pkg/gitcollector"
 )
 
 // RegisterGitActivities registers all git-related activities
 func RegisterGitActivities() []RegisterableActivity {
     return []RegisterableActivity{
-        git.NewGitFileCollectorActivity(),
+        gitcollector.NewGitFileCollectorActivity(),
         // Future git operations can be added here
     }
 }
@@ -388,7 +415,7 @@ func RegisterGitActivities() []RegisterableActivity {
 
 ### Default Configuration
 ```yaml
-# server/ops/config/activities.yaml
+# server/git/config/activities.yaml
 
 git_file_collector:
   default_max_file_size: 100000      # 100KB
@@ -396,6 +423,7 @@ git_file_collector:
   default_include_staged: true
   default_include_untracked: false
   default_use_gitignore: true
+  default_exclude_binary: true
 ```
 
 ## Validation
@@ -443,18 +471,39 @@ func (a *GitFileCollectorActivity) validateInput(input GitFileCollectorInput) er
     return nil
 }
 
-func (a *GitFileCollectorActivity) validateGitRepo(dir string) error {
-    // Check for .git directory
-    gitDir := filepath.Join(dir, ".git")
-    if _, err := os.Stat(gitDir); err != nil {
-        // Could be a bare repo or submodule, try git command
-        cmd := exec.Command("git", "rev-parse", "--git-dir")
-        cmd.Dir = dir
-        if err := cmd.Run(); err != nil {
-            return fmt.Errorf("not a git repository")
+// isBinaryFile detects if a file is binary based on extension and content
+func isBinaryFile(content []byte, path string) bool {
+    // Check by extension first (similar to pre-commit config)
+    binaryExtensions := []string{
+        ".gif", ".png", ".jpg", ".jpeg", ".ico", ".pdf",
+        ".zip", ".tar", ".gz", ".bz2", ".7z", ".rar",
+        ".exe", ".dll", ".so", ".dylib", ".a", ".o",
+        ".pyc", ".pyo", ".class", ".jar", ".war",
+        ".woff", ".woff2", ".ttf", ".otf", ".eot",
+        ".mp3", ".mp4", ".avi", ".mov", ".wmv",
+        ".db", ".sqlite", ".rdb",
+    }
+    
+    ext := strings.ToLower(filepath.Ext(path))
+    for _, binExt := range binaryExtensions {
+        if ext == binExt {
+            return true
         }
     }
-    return nil
+    
+    // Check for null bytes in first 8192 bytes (common heuristic)
+    checkLen := len(content)
+    if checkLen > 8192 {
+        checkLen = 8192
+    }
+    
+    for i := 0; i < checkLen; i++ {
+        if content[i] == 0 {
+            return true
+        }
+    }
+    
+    return false
 }
 ```
 
@@ -462,9 +511,9 @@ func (a *GitFileCollectorActivity) validateGitRepo(dir string) error {
 
 ### Error Types
 ```go
-// server/ops/pkg/git/errors.go
+// server/git/pkg/gitcollector/errors.go
 
-package git
+package gitcollector
 
 type GitOperationError struct {
     Operation string
@@ -493,7 +542,7 @@ func (e *FileCollectionError) Error() string {
 
 ### Unit Tests
 ```go
-// server/ops/pkg/git/git_file_collector_test.go
+// server/git/pkg/gitcollector/git_file_collector_test.go
 
 func TestGitFileCollectorActivity(t *testing.T) {
     activity := NewGitFileCollectorActivity()
@@ -584,7 +633,7 @@ func TestGitFileCollectorIntegration(t *testing.T) {
 ## Metrics
 
 ```go
-// server/ops/pkg/metrics/git_metrics.go
+// server/git/pkg/metrics/git_metrics.go
 
 var (
     GitFilesCollected = prometheus.NewHistogramVec(
@@ -617,17 +666,20 @@ var (
 
 ## Security Considerations
 
-1. **Path Traversal Prevention**: All paths are validated to be within the context directory
-2. **Git Command Injection**: Use exec.CommandContext with separate arguments, never shell interpretation
+1. **Path Traversal Prevention**: All paths are validated to be within the context directory using common.ValidateRepository
+2. **Git Command Injection**: Use common.ExecuteGitCommand which safely executes git commands
 3. **Resource Limits**: Enforce file size and total size limits
-4. **Sensitive File Detection**: Option to exclude files matching sensitive patterns
-5. **Repository Access**: Respects git permissions and SSH keys
+4. **Binary File Exclusion**: Automatically detect and exclude binary files to prevent processing non-text content
+5. **Sensitive File Detection**: Option to exclude files matching sensitive patterns
+6. **Repository Access**: Respects git permissions and SSH keys
 
 ## Future Enhancements
 
 1. **Incremental Collection**: Only collect files changed since last collection
 2. **Branch Support**: Collect files from specific branches without switching
-3. **Diff Collection**: Include git diff information in metadata
+3. **Diff Collection**: Include git diff information in metadata using gitRepo.GetDiff
 4. **Submodule Support**: Optionally include submodule files
 5. **Performance Optimization**: Parallel file reading for large repositories
 6. **Caching**: Cache collected files with invalidation on git changes
+7. **Pre-commit Integration**: Apply pre-commit hooks to filter files
+8. **Language Detection**: Auto-detect programming languages for better filtering

@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitcollector"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
 )
@@ -9,6 +10,9 @@ import (
 // This provides a single entry point for consumers like recipe-worker to discover and register all Git activities
 func GetAll() []interface{} {
 	return []interface{}{
+		// Git file collector activity
+		gitcollector.NewGitFileCollectorActivity(),
+		
 		// Git shallow clone activity
 		gitshallow.NewGitShallowActivity(),
 		
