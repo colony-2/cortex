@@ -26,6 +26,16 @@ input_schema:
     required: true
     description: "Software development task description for the LLM"
   
+  storage_location:
+    type: string
+    default: "/tmp/thin-packs"
+    description: "Directory where git thin packs will be stored"
+  
+  root_hash:
+    type: string
+    required: false
+    description: "Base commit hash for the development session (auto-detected if not provided)"
+  
   max_iterations:
     type: number
     default: 5
@@ -34,7 +44,7 @@ input_schema:
 
 ## New Operations Required
 
-### 1. `git_file_collector` Operation
+### 1. `git_file_collector` Operation (from server/git/pkg/gitcollector)
 Collects all git-tracked files from a repository and formats them as File objects compatible with the FileAdapter interface. This is distinct from simple file pattern matching because it:
 - Only includes files tracked by git (respects .gitignore)
 - Excludes build artifacts and temporary files
@@ -42,27 +52,37 @@ Collects all git-tracked files from a repository and formats them as File object
 - Provides clean repository context
 
 ```yaml
-type GitFileCollectorOperation struct {
-    ContextDir       string   `json:"context_dir" required:"true"`
-    FilePatterns     []string `json:"file_patterns,omitempty"` // Optional glob patterns within git files
+# From server/git/pkg/gitcollector/git_file_collector.go
+type GitFileCollectorInput struct {
+    # Required
+    ContextDir       string   `json:"context_dir" validate:"required,dir"`
+    
+    # File filtering
+    FilePatterns     []string `json:"file_patterns,omitempty"` 
     ExcludePatterns  []string `json:"exclude_patterns,omitempty"`
-    MaxFileSize      int      `json:"max_file_size,omitempty" default:"100000"`
-    IncludeStaged    bool     `json:"include_staged,omitempty" default:"true"`
-    IncludeUntracked bool     `json:"include_untracked,omitempty" default:"false"`
-    AutoDetectType   bool     `json:"auto_detect_type,omitempty" default:"true"`
+    
+    # Size limits
+    MaxFileSize      int      `json:"max_file_size,omitempty"`
+    MaxTotalSize     int      `json:"max_total_size,omitempty"`
+    
+    # Git options
+    IncludeStaged    bool     `json:"include_staged,omitempty"`
+    IncludeUntracked bool     `json:"include_untracked,omitempty"`
+    UseGitignore     bool     `json:"use_gitignore,omitempty"`
+    ExcludeBinary    bool     `json:"exclude_binary,omitempty"`
+    
+    # Processing options
+    AutoDetectType   bool     `json:"auto_detect_type,omitempty"`
+    IncludeMetadata  bool     `json:"include_metadata,omitempty"`
 }
 
-// Outputs:
-// - files: []File (array of File objects compatible with FileAdapter)
+// Outputs (GitFileCollectorOutput):
+// - files: []llmadapters.File (array of File objects compatible with FileAdapter)
+// - file_count: int
+// - total_size: int64
+// - repository: GitRepositoryInfo (branch, commit info, etc.)
+// - statistics: FileStatistics (file type breakdown, etc.)
 ```
-
-Each File object contains:
-- Path: relative path from context_dir
-- Name: filename
-- Content: file bytes
-- MimeType: detected MIME type
-- Type: FileTypeText, FileTypeImage, etc.
-- Metadata: additional info (size, modified time, etc.)
 
 ### 2. Tool Execution Handler (Enhancement to llm_inference)
 The enhanced `llm_inference` operation needs to handle tool execution internally when `execute_tools: true`.
@@ -104,6 +124,31 @@ This leverages existing infrastructure:
 - Tool definitions following the JSON Schema format
 - Automatic tool execution with results passed back to the LLM
 
+### 4. `git_persist` Operation (from server/git/pkg/gitcommit)
+Stages and commits changes to git repository after successful file modifications, creating thin packs for efficient storage:
+
+```yaml
+# From server/git/pkg/gitcommit/types.go
+type PersistCommitActivity struct {
+    # Required inputs
+    RepoPath        string `json:"repo_path"`        # Path to the local Git repository
+    StorageLocation string `json:"storage_location"` # Directory path where thin packs will be stored
+    RootHash        string `json:"root_hash"`        # Base commit hash this set was built upon
+    
+    # Optional configuration
+    CommitMessage string        `json:"commit_message,omitempty"` # Message for the commit
+    Author        string        `json:"author,omitempty"`         # Author name and email
+    Timeout       time.Duration `json:"timeout,omitempty"`        # Operation timeout
+}
+
+// Outputs (PersistCommitOutput):
+// - commit_hash: string (SHA-1 hash of created commit)
+// - parent_hash: string (SHA-1 hash of parent commit)
+// - thin_pack_path: string (Full path to generated thin pack)
+// - thin_pack_size: int64 (Size of thin pack in bytes)
+// - created_at: time.Time (Timestamp of operation)
+```
+
 ## Recipe Workflow Structure
 
 ```yaml
@@ -120,6 +165,10 @@ states:
       context_dir: "{{ .inputs.context_directory }}"
       include_staged: true
       include_untracked: false  # Only include committed/staged files
+      use_gitignore: true
+      exclude_binary: true
+      auto_detect_type: true
+      include_metadata: true
     transitions:
       - to: generate_code
   
@@ -172,7 +221,35 @@ states:
     transitions:
       - when: "outputs.tool_execution_errors.size() > 0"
         to: handle_write_error
+      - when: "outputs.files_written.size() > 0 || outputs.files_deleted.size() > 0"
+        to: persist_changes
       - to: run_build
+  
+  persist_changes:
+    op: git_persist
+    inputs:
+      repo_path: "{{ .inputs.working_directory }}"
+      storage_location: "{{ .inputs.storage_location | default '/tmp/thin-packs' }}"
+      root_hash: "{{ .inputs.root_hash | default .collect_context.outputs.repository.commit_hash }}"
+      commit_message: "AI-generated changes: iteration {{ .iteration_count }}"
+      author: "AI Assistant <ai@example.com>"
+    transitions:
+      - to: refresh_context
+  
+  refresh_context:
+    op: git_file_collector
+    inputs:
+      context_dir: "{{ .inputs.context_directory }}"
+      include_staged: true
+      include_untracked: false  # Only include committed/staged files
+      use_gitignore: true
+      exclude_binary: true
+      auto_detect_type: true
+      include_metadata: true
+    transitions:
+      - to: run_build
+        with:
+          collect_context: "{{ .outputs }}"  # Update context for next iteration
   
   run_build:
     op: command_execution
@@ -185,9 +262,10 @@ states:
       - when: "outputs.exit_code == 0"
         to: run_tests
       - when: "outputs.exit_code != 0 && iteration_count < inputs.max_iterations"
-        to: generate_code
+        to: collect_context  # Re-collect context with any new files before next iteration
         with:
           build_errors: "{{ .outputs.stderr }}"
+          iteration_count: "{{ .iteration_count + 1 }}"
       - to: build_failed
   
   run_tests:
@@ -201,9 +279,10 @@ states:
       - when: "outputs.exit_code == 0"
         to: success
       - when: "outputs.exit_code != 0 && iteration_count < inputs.max_iterations"
-        to: generate_code
+        to: collect_context  # Re-collect context with any new files before next iteration
         with:
           test_errors: "{{ .outputs.stderr }}"
+          iteration_count: "{{ .iteration_count + 1 }}"
       - to: test_failed
   
   success:
@@ -226,9 +305,11 @@ states:
 
 ## Implementation Requirements
 
-### 1. New Op Implementations
-- `GitFileCollectorOperation`: Use git commands (`git ls-files`, `git diff --staged`) to list tracked files, read content
-- Enhanced LLM operation: Support for file inputs via FileAdapter and tool execution
+### 1. Existing Op Usage
+- `git_file_collector` (from server/git/pkg/gitcollector): Already implemented to collect git-tracked files with metadata
+- `git_persist` (from server/git/pkg/gitcommit): Already implemented to stage, commit, and create thin packs
+- `llm_inference` (from server/ops/pkg/llm): Needs enhancement to support file inputs via FileAdapter and tool execution
+- `command_execution` (from server/ops/pkg/command): Already available for running build/test commands
 
 ### 2. Safety Features
 - File write validation before applying changes
@@ -252,6 +333,8 @@ states:
 - Track iteration count across state transitions
 - Accumulate error history for LLM context
 - Maintain file change history for rollback
+- Refresh git context after each tool execution to include newly created files
+- Persist changes to git after each successful write operation
 
 ## Usage Example
 

@@ -45,6 +45,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da // indirect
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
 	github.com/divisive-ai/vibethis/server/llm v0.0.0 // indirect
 	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000 // indirect
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000 // indirect
@@ -181,6 +182,7 @@ require (
 
 replace (
 	github.com/divisive-ai/vibethis/server/embeddedtemporal => ../embeddedtemporal
+	github.com/divisive-ai/vibethis/server/git => ../git
 	github.com/divisive-ai/vibethis/server/llm => ../llm
 	github.com/divisive-ai/vibethis/server/ops => ../ops
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core

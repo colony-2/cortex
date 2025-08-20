@@ -7,7 +7,6 @@ projects:
   - "web/*/"
   - "api/*/"
   - "rwshim/*/"
-  - ".example/*/"
       
 # Runner configuration
 runner:
