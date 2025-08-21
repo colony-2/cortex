@@ -1,57 +1,118 @@
-# web/config
+# Web Config Module
 
-## Purpose
-This directory provides configuration management UI components for vibethis boxes, specifically focused on devcontainer configuration and management. It serves as a React component library that handles the editing and lifecycle management of development containers.
+## Overview
+React component library for devcontainer configuration management in the VibThis dependency graph visualization system. Provides CRUD operations for devcontainer.json files and Docker container lifecycle management.
 
-## Key Components
+## Architecture
+- **EnvEditor**: Primary React component handling devcontainer configuration and container operations
+- **Monaco Editor Integration**: JSON editing with schema validation for devcontainer.json
+- **API Layer**: RESTful endpoints for file operations and container management
+- **State Management**: React hooks managing edit modes, container status, and content synchronization
 
-### EnvEditor
-The primary component that provides:
-- **Devcontainer Configuration Management**: Read, create, edit, and save `devcontainer.json` files
-- **Dual Edit Modes**: 
-  - GUI mode: Form-based editing using React JSON Schema Form (RJSF) with Ant Design widgets
-  - IDE mode: Monaco Editor for direct JSON editing with schema validation
-- **Container Lifecycle Management**: Create, start, restart, stop, and reset development containers
-- **Real-time Status Monitoring**: Displays current container status (none, stopped, running)
+## Key Interfaces
 
-## Technical Architecture
+### EnvEditor Component
+```typescript
+interface EnvEditorProps {
+  cell: DependencyCell;
+}
 
-### Frontend Stack
-- React 18 with TypeScript
-- Ant Design for UI components
-- Monaco Editor for code editing
-- React JSON Schema Form (RJSF) for dynamic form generation
-- js-yaml for configuration parsing
+interface DependencyCell {
+  id: string;
+  name: string;
+  path: string;
+  type: string;
+  dependencies: string[];
+}
+```
 
-### API Integration
-Interfaces with backend endpoints:
-- `GET /api/nodes/{nodeId}/files/.devcontainer/devcontainer.json` - Load configuration
-- `PUT /api/nodes/{nodeId}/files/.devcontainer/devcontainer.json` - Save configuration
-- `GET /api/nodes/{nodeId}/container/status` - Check container status
-- `POST /api/nodes/{nodeId}/container/create` - Create container
-- `POST /api/nodes/{nodeId}/container/start` - Start container
-- `POST /api/nodes/{nodeId}/container/restart` - Restart container
-- `POST /api/nodes/{nodeId}/container/reset` - Reset/remove container
+### API Endpoints
+```typescript
+// Container Management
+GET    /api/cells/{cellId}/container/status
+POST   /api/cells/{cellId}/container/create
+POST   /api/cells/{cellId}/container/start
+POST   /api/cells/{cellId}/container/restart
+POST   /api/cells/{cellId}/container/reset
 
-### Key Features
-1. **Smart File Handling**: Detects missing devcontainer.json and provides creation UI
-2. **Schema Validation**: Uses official devcontainer schema for JSON validation
-3. **Error Handling**: Detailed error modals with collapsible technical details
-4. **State Management**: Tracks edit mode, original content, and container status
-5. **Form Schema**: Predefined JSON schema for common devcontainer properties
+// Configuration Management
+PUT    /api/cells/{cellId}/container/devcontainer
+```
 
-## Integration Points
-- Consumed by `@vibethis/app` in the SidePanel component
-- Uses `@vibethis/shared` for type definitions (DependencyNode)
-- Published as `@graph-visualizer/config` npm package
+### Component Methods
+```typescript
+loadContainerStatus(): Promise<void>
+createDevcontainerFile(): void
+saveDevcontainerFile(): Promise<void>
+createContainer(): Promise<void>
+startContainer(): Promise<void>
+restartContainer(): Promise<void>
+resetContainer(): Promise<void>
+```
 
-## Build Configuration
-- Vite-based library build
-- Outputs ES and CommonJS modules
-- External dependencies: React, ReactDOM, Ant Design, and shared packages
+## Usage Examples
 
-## Future Considerations
-- Current test coverage is minimal (placeholder test only)
-- Form schema could be extended for more devcontainer features
-- Container logs/output viewing could be added
-- Support for multiple container configurations per box
+### Basic Integration
+```tsx
+import { EnvEditor } from '@graph-visualizer/config';
+
+function SidePanel({ selectedCell }: { selectedCell: DependencyCell }) {
+  return (
+    <div>
+      <EnvEditor cell={selectedCell} />
+    </div>
+  );
+}
+```
+
+### Default Devcontainer Configuration
+```json
+{
+  "name": "Dev Container",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": []
+    }
+  },
+  "forwardPorts": [],
+  "postCreateCommand": ""
+}
+```
+
+### Error Handling Pattern
+```typescript
+const showError = (title: string, error: any) => {
+  Modal.error({
+    title: title,
+    content: extractErrorMessage(error),
+    width: 600
+  });
+};
+```
+
+## Configuration
+
+### Build Configuration (vite.config.ts)
+```typescript
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    lib: {
+      entry: 'src/index.ts',
+      name: '@vibethis/config',
+      formats: ['es', 'cjs']
+    },
+    rollupOptions: {
+      external: ['react', 'react-dom', 'antd', '@vibethis/shared']
+    }
+  }
+});
+```
+
+### Dependencies
+- Core: React 18, TypeScript, Ant Design 5.26+
+- Editor: Monaco Editor React 4.7+
+- Validation: Official devcontainer JSON schema
+- Build: Vite 5.4+ with library mode

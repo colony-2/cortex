@@ -1,110 +1,184 @@
 # server/api
 
-## Purpose
-The API server provides the HTTP REST API for the vibethis application. It serves as the primary interface between the React frontend and the backend services, handling graph visualization, file management, Git operations, and container orchestration for "boxes" (component directories).
+## Overview
+The server/api module provides the HTTP REST API server for the vibethis application. It serves as the primary interface between frontend clients and backend services, handling graph visualization, file management, Git operations, and container orchestration for component cells (directories with devcontainer support).
 
 ## Architecture
 
 ### Core Components
-- **Web Server** (`pkg/web/server.go`): Main HTTP server with configurable middleware
-- **Handlers** (`internal/handlers/`): Request handlers organized by domain
-- **Middleware** (`internal/middleware/`): Cross-cutting concerns (CORS, logging, recovery)
-- **Test Server** (`cmd/testserver/`): Standalone server for e2e testing
+- **Web Server** (`pkg/web/server.go`): HTTP server with configurable middleware and extensible routing
+- **Handlers** (`internal/handlers/`): Domain-specific request handlers for graph, files, git, and container operations
+- **Middleware** (`internal/middleware/`): Cross-cutting concerns including CORS, logging, and panic recovery
+- **Test Server** (`cmd/testserver/`): Standalone server binary for e2e testing with memory storage
 
 ### Dependencies
-The API server integrates with multiple internal packages:
-- `core`: Storage and graph building interfaces
-- `files`: File browsing capabilities
-- `git`: Git repository operations
-- `container`: Docker container management
-- `openapi`: Shared API types and contracts
+The API server integrates with internal service modules:
+- `core`: Storage interfaces and graph building abstractions
+- `files`: File browsing and manipulation capabilities
+- `git`: Git repository operations and version control
+- `container`: Docker container management for development environments
+- `openapi`: Shared API contracts and type definitions
 
-## API Endpoints
+### Request Flow
+1. HTTP requests pass through middleware stack (Recovery → Logging → CORS)
+2. Router dispatches to appropriate handlers based on path patterns
+3. Handlers resolve cell IDs to filesystem paths via graph builder
+4. Business logic delegates to service modules
+5. Responses converted from internal types to OpenAPI types
 
-### Graph Management
-- `GET /api/graph` - Retrieve the complete node graph with dependencies
-- `GET /api/positions` - Get saved node positions for UI layout
-- `POST /api/positions` - Save node positions
+## Key Interfaces
 
-### File Operations (per node)
-- `GET /api/nodes/{nodeId}/files` - List files in a node's directory
-- `GET /api/nodes/{nodeId}/files/{filePath}` - Read specific file content
-- `PUT /api/nodes/{nodeId}/files/{filePath}` - Update file content
+### Server Configuration
+```go
+type Config struct {
+    Port            int      // HTTP listen port
+    CORSOrigins     []string // Allowed CORS origins
+    StaticPath      string   // Static asset directory path
+    EnableWebSocket bool     // WebSocket support flag
+    MaxUploadSize   int64    // File upload size limit
+}
+```
 
-### Git Operations (per node)
-- `GET /api/nodes/{nodeId}/git/status` - Git status for node directory
-- `GET /api/nodes/{nodeId}/git/diff` - Git diff for changes
-- `GET /api/nodes/{nodeId}/git/history` - Commit history
-- `POST /api/nodes/{nodeId}/git/commit` - Create new commit
+### Server Dependencies
+```go
+type Dependencies struct {
+    Storage         core.Storage         // Position and container ID persistence
+    Graph           core.GraphBuilder    // Cell graph construction
+    Files           files.Browser        // File system operations
+    Git             git.Repository       // Git repository management
+    Container       container.Manager    // Docker container lifecycle
+    StaticFS        http.FileSystem      // Optional static file system
+    ExtensionRoutes []ExtensionRoute     // External module routes
+}
+```
 
-### Container Management (per node)
-- `GET /api/nodes/{nodeId}/container/status` - Container status
-- `POST /api/nodes/{nodeId}/container/create` - Create new container
-- `POST /api/nodes/{nodeId}/container/start` - Start container
-- `POST /api/nodes/{nodeId}/container/stop` - Stop container
-- `POST /api/nodes/{nodeId}/container/restart` - Restart container
-- `POST /api/nodes/{nodeId}/container/reset` - Reset container
+### Core Handler Functions
+```go
+// Graph Management
+func (h *Handlers) GetGraph(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) GetPositions(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) SavePositions(w http.ResponseWriter, r *http.Request)
 
-## Request/Response Patterns
+// File Operations
+func (h *Handlers) GetFiles(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) GetFile(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) PutFile(w http.ResponseWriter, r *http.Request)
 
-### Standard JSON Responses
-All API endpoints return JSON responses using types defined in the `openapi` package. Error responses follow HTTP status codes with descriptive error messages.
+// Git Operations
+func (h *Handlers) GetGitStatus(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) GetGitDiff(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) GetGitHistory(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) CreateGitCommit(w http.ResponseWriter, r *http.Request)
 
-### Node-Centric Design
-Most endpoints are scoped to a specific node ID, which maps to a directory containing a "box" component. The node ID is resolved to a filesystem path through the graph builder.
+// Container Operations
+func (h *Handlers) GetContainerStatus(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) CreateContainer(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) StartContainer(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) StopContainer(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) RestartContainer(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) ResetContainer(w http.ResponseWriter, r *http.Request)
+func (h *Handlers) UpdateDevcontainer(w http.ResponseWriter, r *http.Request)
+```
 
-### File Handling
-- File paths in URLs support nested directories
-- Maximum upload size is configurable (default: 10MB)
-- File browser respects filesystem boundaries
+## Usage Examples
 
-## Authentication & Authorization
-Currently, the API server does not implement authentication. The CORS middleware allows configurable origins, and the Authorization header is accepted for future auth implementation.
+### Creating and Starting Server
+```go
+import (
+    "github.com/divisive-ai/vibethis/server/api/pkg/web"
+    "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+    "github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+    // ... other imports
+)
 
-## Static File Serving
+// Configure server
+config := web.Config{
+    Port:            8080,
+    CORSOrigins:     []string{"http://localhost:3000"},
+    StaticPath:      "/path/to/static/files",
+    EnableWebSocket: false,
+    MaxUploadSize:   10 * 1024 * 1024, // 10MB
+}
 
-### SPA Support
-The server includes Single Page Application (SPA) support:
-- Serves static files from configurable directory or embedded filesystem
-- Falls back to `index.html` for client-side routing
-- Excludes `/api` paths from static handling
+// Initialize dependencies
+deps := web.Dependencies{
+    Storage:   storage.NewMemoryStorage(),
+    Graph:     graph.NewBuilder("/path/to/nodes"),
+    Files:     files.NewBrowser(files.Config{}),
+    Git:       git.NewRepository(git.Config{
+        DefaultAuthor: "User",
+        DefaultEmail:  "user@example.com",
+    }),
+    Container: container.NewManager(container.Config{}),
+}
 
-### Content Types
-Automatically detects and sets appropriate content types for common web assets (HTML, JS, CSS, images, fonts).
+// Create and start server
+server := web.NewServer(config, deps)
+if err := server.Start(); err != nil {
+    log.Fatal(err)
+}
+```
 
-## Server Configuration
+### Adding Extension Routes
+```go
+deps.ExtensionRoutes = []web.ExtensionRoute{
+    {
+        Method:  "GET",
+        Path:    "/custom/endpoint",
+        Handler: customHandler,
+    },
+}
+```
 
-### Configurable Options
-- `Port`: HTTP listen port
-- `CORSOrigins`: Allowed CORS origins
-- `StaticPath`: Directory for static assets
-- `EnableWebSocket`: WebSocket support flag
-- `MaxUploadSize`: File upload size limit
+### Client API Usage Examples
+```bash
+# Get complete cell graph
+curl http://localhost:8080/api/graph
 
-### Middleware Stack
-1. Recovery (panic handling)
-2. Logging (API requests only)
-3. CORS (if origins configured)
-4. Route handling
+# List files in a cell
+curl http://localhost:8080/api/cells/my-cell/files
 
-## Integration Points
+# Read specific file
+curl http://localhost:8080/api/cells/my-cell/files/README.md
 
-### Storage
-Uses pluggable storage interface for:
-- Node position persistence
-- Container ID mapping
+# Update file content
+curl -X PUT http://localhost:8080/api/cells/my-cell/files/config.json \
+  -H "Content-Type: application/json" \
+  -d '{"content": "new content"}'
 
-### Graph Builder
-Dynamically builds node dependency graphs from filesystem structure.
+# Get git status
+curl http://localhost:8080/api/cells/my-cell/git/status
 
-### Container Manager
-Abstracts Docker operations for node-specific containers.
+# Create git commit
+curl -X POST http://localhost:8080/api/cells/my-cell/git/commit \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Update configuration", "files": ["config.json"]}'
 
-## Testing
-Includes a test server binary (`testserver`) that can be run standalone with example data for e2e testing. Supports memory storage and configurable node directories.
+# Get container status
+curl http://localhost:8080/api/cells/my-cell/container/status
 
-## Usage Notes
-- All file paths must be absolute internally
-- API paths are prefixed with `/api`
-- Non-API routes serve the SPA
-- Graceful shutdown supported with signal handling
+# Create and start container
+curl -X POST http://localhost:8080/api/cells/my-cell/container/create
+curl -X POST http://localhost:8080/api/cells/my-cell/container/start
+```
+
+## Configuration
+
+### Environment Variables
+- `PORT`: HTTP server port (default: 8080)
+- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
+- `STATIC_PATH`: Directory path for static file serving
+
+### File Upload Limits
+- Maximum upload size configurable via `MaxUploadSize` (default: 10MB)
+- File paths must be within cell boundaries for security
+
+### Static File Serving
+- SPA support with fallback to `index.html` for client-side routing
+- Automatic content type detection for web assets
+- API paths (`/api/*`) excluded from static handling
+
+### Container Integration
+- Automatic devcontainer.json detection and parsing
+- Container ID persistence via storage interface
+- Docker lifecycle management (create, start, stop, restart, reset)

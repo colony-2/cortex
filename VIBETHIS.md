@@ -1,237 +1,142 @@
-# VIBETHIS Project Overview
+# VibeThis - Dependency Graph Orchestration Platform
 
-VibeThis is a comprehensive system for building, managing, and orchestrating modular components called "cells". Each cell is an independent unit that can have dependencies, be version controlled, and run in isolated development containers. This document provides a guide to all subprojects in the vibethis ecosystem.
+## Overview
+VibeThis is a monorepo platform for managing and visualizing project dependencies, executing recipes through workflow orchestration, and providing containerized development environments. The system integrates Moon build system for dependency analysis, Temporal for workflow execution, Docker for containerization, and provides comprehensive web interfaces for visualization and control.
 
-## System Architecture
+## Architecture
 
-The system consists of:
-- **Go Backend Server**: RESTful API serving graph data, file operations, Git integration, and container management
-- **React Frontend**: Interactive UI for visualizing dependencies and managing cells
-- **Recipe Orchestration**: YAML-based recipe system with LLM integration (Ono)
-- **I/O Interception**: Process monitoring and control via LD_PRELOAD shims (rwshim)
+### Core Layers
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Web Frontend Layer                       │
+│  ui-app, ui-changes, ui-config, ui-files, ui-flowchart      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                      API Gateway Layer                       │
+│               be-api, api-openapi, fe-openapi               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                    Core Services Layer                       │
+│  be-graph, be-files, be-git, be-container, be-storage      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                 Workflow Orchestration Layer                 │
+│  recipe-core, recipe-worker, recipe-history, be-activity    │
+│              embeddedtemporal, nucleus                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                      │
+│           cortex, llm, rwshim-clib, rwshim-go              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Core Components
+## Projects Summary
 
-### Backend Services (Go)
+### API Layer
+- **api/openapi**: OpenAPI 3.0.3 specification defining REST endpoints for graph, file, git, and container operations
+- **server/api**: HTTP REST API server with handlers for graph visualization, file management, git operations, and container lifecycle
+- **web/openapi**: TypeScript client library generated from OpenAPI spec for type-safe React frontend integration
+- **server/openapi**: Go code generation from OpenAPI specifications using oapi-codegen
 
-#### server/core
-**Purpose**: Foundational domain models and interfaces  
-**Key Features**:
-- Defines core types: Cell, Edge, Graph, Position
-- Storage and GraphBuilder interfaces
-- Pure interface pattern with no implementations
-- Module boundary for all backend services
+### Core Services
+- **server/core**: Foundational domain types and interfaces (Cell, Edge, Graph, Position, Storage, GraphBuilder)
+- **server/graph**: Moon build system integration for dependency discovery and project analysis
+- **server/files**: Secure file system operations with type detection and validation for node directories
+- **server/git**: Comprehensive Git integration with repository operations and workflow activities
+- **server/container**: Docker container orchestration with DevContainer specification support
+- **server/storage**: Persistent (BoltDB) and in-memory storage implementations for positions and container mappings
 
-#### server/api
-**Purpose**: HTTP REST API server  
-**Key Features**:
-- Graph management endpoints
-- File operations per cell
-- Git operations per cell  
-- Container lifecycle management
-- Single Page Application (SPA) hosting
+### Workflow Orchestration
+- **server/recipe-core**: Unified recipe definitions with YAML parsing, validation, and activity type registry
+- **server/recipe-worker**: Temporal-based workflow execution engine with hot-reloading and dynamic recipe discovery
+- **server/recipe-history**: Abstraction layer between Temporal workflow history and recipe-core data model
+- **server/ops**: Workflow activities for LLM inference, command execution, user input, and recipe invocation
+- **server/embeddedtemporal**: Self-contained Temporal server with SQLite backend for development and testing
+- **server/nucleus**: CLI wrapper for recipe-worker providing managed workflow execution
 
-#### server/storage
-**Purpose**: Persistence layer implementations  
-**Key Features**:
-- BoltDB for production (file-based)
-- Memory storage for testing
-- Stores cell positions and container IDs
-- Thread-safe implementations
+### Web Frontend
+- **web/app**: Main React application with graph visualization, dynamic tabs, and workflow input management
+- **web/flowchart**: Interactive React Flow-based dependency graph visualization with position persistence
+- **web/changes**: Git change visualization with status tracking, diff viewing, and commit management
+- **web/config**: DevContainer configuration editor with Monaco integration and container lifecycle control
+- **web/files**: File browser component with hierarchical navigation and metadata display
+- **web/shared**: Common TypeScript library with types, API client, SSE-based input service, and React contexts
 
-#### server/graph
-**Purpose**: Dependency graph construction  
-**Key Features**:
-- Integrates with Moon build system
-- Discovers cells and relationships
-- Builds complete dependency graphs
-- Supports symlink resolution
+### Infrastructure
+- **server/cortex**: CLI tool for recipe management with schema generation, validation, and execution commands
+- **server/llm**: Multi-provider LLM integration supporting OpenAI, Anthropic, and Gemini with unified interface
+- **rwshim/clib**: C-based LD_PRELOAD library for read/write system call interception
+- **rwshim/rwshimgo**: Go library for I/O interception control via Unix socket monitoring
 
-#### server/files
-**Purpose**: Secure file system operations  
-**Key Features**:
-- Directory browsing within cell boundaries
-- Path validation and security
-- File type detection
-- Configurable size limits
+### Placeholder Projects
+- **server/rucc**: Placeholder module (minimal implementation pending)
 
-#### server/git
-**Purpose**: Git version control integration  
-**Key Features**:
-- Read-only Git operations
-- Status tracking and diff generation
-- Commit history and file staging
-- No automatic repository initialization
+## Key Technologies
 
-#### server/container
-**Purpose**: Development container orchestration  
-**Key Features**:
-- Full container lifecycle management
-- Devcontainer.json parsing and support
-- Multi-platform Docker integration
-- WebSocket terminal attachment
+### Backend
+- **Go 1.24**: Primary backend language
+- **Temporal.io**: Workflow orchestration engine
+- **BoltDB**: Embedded key-value database
+- **Docker SDK**: Container management
+- **Moon**: Build system and dependency analysis
 
-#### server/openapi
-**Purpose**: OpenAPI code generation  
-**Key Features**:
-- Generates Go types from OpenAPI spec
-- Type-safe HTTP client
-- Embedded spec validation
+### Frontend
+- **React 18**: UI framework
+- **TypeScript**: Type-safe JavaScript
+- **Ant Design**: Component library
+- **React Flow**: Graph visualization
+- **Monaco Editor**: Code editing
+- **Vite**: Build tooling
 
-### Frontend Components (React/TypeScript)
+### Infrastructure
+- **Unix Sockets**: IPC communication
+- **Server-Sent Events**: Real-time updates
+- **OpenAPI 3.0**: API specification
+- **CEL**: Expression evaluation
 
-#### web/app
-**Purpose**: Main React application  
-**Key Features**:
-- Routes and orchestrates all UI components
-- Split-panel interface with graph and details
-- URL-based state management
-- Deep linking support
+## Configuration
 
-#### web/flowchart
-**Purpose**: Interactive dependency graph visualization  
-**Key Features**:
-- React Flow-based graph rendering
-- Draggable cells with position persistence
-- Visual relationship indicators
-- Real-time updates via events
+### Environment Variables
+- `OPENAI_API_KEY`: OpenAI API access
+- `ANTHROPIC_API_KEY`: Anthropic Claude access
+- `GEMINI_API_KEY`: Google Gemini access
+- `VIBETHIS_API_BASE_URL`: API server endpoint
 
-#### web/files
-**Purpose**: File browser component  
-**Key Features**:
-- Hierarchical file exploration
-- Breadcrumb navigation
-- File type indicators
-- Integration with backend file API
+### Build System
+```bash
+# List all projects
+moon query projects
 
-#### web/config
-**Purpose**: Configuration management UI  
-**Key Features**:
-- Devcontainer.json editing (GUI and Monaco)
-- Container lifecycle controls
-- JSON Schema validation
-- Real-time status monitoring
+# Build all projects  
+moon run :build
 
-#### web/changes
-**Purpose**: Git change tracking component  
-**Key Features**:
-- Git status visualization
-- Diff display with syntax highlighting
-- Commit history view
-- Direct commit functionality
+# Run tests
+moon test
+```
 
-#### web/shared
-**Purpose**: Shared utilities and types  
-**Key Features**:
-- Common TypeScript types
-- API client functions
-- URL state management utilities
+### Development
+```bash
+# Start API server
+cd server/api && go run cmd/main.go
 
-#### web/openapi
-**Purpose**: TypeScript API client generation  
-**Key Features**:
-- Auto-generated from OpenAPI spec
-- Type-safe service classes
-- Axios-based HTTP client
+# Start web frontend
+cd web/app && npm run dev
 
-### Workflow Orchestration (Ono)
+# Run Cortex CLI
+cd server/cortex && go run cmd/cortex/main.go
+```
 
-#### server/ono
-**Purpose**: YAML-based workflow orchestration with LLM integration  
-**Key Features**:
-- Recipe-based workflow definitions
-- Native LLM support (OpenAI, Anthropic, Gemini)
-- Structured output schemas
-- Built on Temporal for reliability
-- Automatic retries and error handling
+## Project Documentation
 
-#### server/recipe-core
-**Purpose**: Core recipe data structures and parsing  
-**Key Features**:
-- Recipe schema definitions
-- YAML parsing for recipes, ops, agents
-- Multi-file and single-file recipe support
-- Content hashing for change detection
+Each project contains a `VIBETHIS.md` file with:
+1. Overview - Concise functionality description
+2. Architecture - Key components and relationships
+3. Key Interfaces - Main APIs with signatures
+4. Usage Examples - Practical code examples
+5. Configuration - Settings and requirements
 
-#### server/recipe-worker
-**Purpose**: Runtime engine for recipe execution  
-**Key Features**:
-- Dynamic recipe discovery and execution
-- Live-reloading of recipe changes
-- Temporal worker management
-- Op execution dispatch
-
-#### server/recipe-history
-**Purpose**: Recipe execution history adapter  
-**Key Features**:
-- Transforms Temporal history to recipe model
-- Job listing and filtering
-- Op execution reconstruction
-- Clean API abstraction
-
-#### server/embeddedtemporal
-**Purpose**: Self-contained Temporal server  
-**Key Features**:
-- Embedded Temporal with SQLite
-- Zero-configuration startup
-- Dynamic port allocation
-- Automatic schema management
-
-### Process Monitoring (rwshim)
-
-#### rwshim/clib
-**Purpose**: C-based I/O interception library  
-**Key Features**:
-- LD_PRELOAD/DYLD_INSERT_LIBRARIES support
-- Read/write system call interception
-- Unix socket communication protocol
-- Policy-based I/O control
-
-#### rwshim/rwshimgo
-**Purpose**: Go library for process I/O control  
-**Key Features**:
-- High-level API for monitor creation
-- Policy builder pattern
-- Process launching with shim injection
-- Cross-platform support (Linux/macOS)
-
-### API Specifications
-
-#### api/openapi
-**Purpose**: OpenAPI 3.0.3 REST API specification  
-**Key Features**:
-- Complete API documentation
-- Request/response schemas
-- Five main endpoint categories
-- Source of truth for API contract
-
-## Key Design Patterns
-
-1. **Module Independence**: Each module has clear boundaries with interface-based communication
-2. **Code Generation**: OpenAPI drives both backend and frontend type safety
-3. **Event-Driven Updates**: Frontend components communicate via custom window events
-4. **URL State Management**: Deep linking and navigation state in URLs
-5. **Dynamic Discovery**: Recipes and cells discovered from filesystem
-6. **Security by Design**: Path validation and boundary enforcement
-
-## Development Workflow
-
-1. **Moon Build System**: Orchestrates builds across all modules
-2. **Local Development**: Frontend on port 5173, backend on port 8080
-3. **Testing**: Unit tests, integration tests, and E2E tests with Playwright
-4. **Production Build**: Single Go binary with embedded React frontend
-
-## Integration Points
-
-- Backend modules use local Go module replace directives
-- Frontend modules published as npm packages
-- API contract shared via OpenAPI specification
-- Git repositories serve as cell containers
-- Docker provides isolated execution environments
-
-## Future Placeholders
-
-- **server/tempcrew**: Intended for temporary worker/crew functionality
-- **server/cortex**: Currently minimal, likely for AI/ML integration
-
-This modular architecture enables flexible development, clear separation of concerns, and easy extension of functionality while maintaining a cohesive system for managing and orchestrating cells.
+Refer to individual project directories for detailed documentation.

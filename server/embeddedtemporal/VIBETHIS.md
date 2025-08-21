@@ -1,104 +1,138 @@
 # VIBETHIS
 
-## Project: `embeddedtemporal`
+## Overview
+Self-contained embedded Temporal server for Go applications using SQLite persistence. Eliminates need for separate Temporal service in development, testing, and simple deployment scenarios.
 
-**Description:**
+## Architecture
 
-This project, `embeddedtemporal`, provides a self-contained, embedded Temporal server for Go applications. It is designed to simplify local development, testing, and single-node deployments by removing the need to run a separate Temporal service. The server is backed by a single SQLite file for persistence, making it extremely easy to set up, run, and tear down.
+### Core Components
+- **Server**: Main embedded Temporal server (`pkg/temporal/server.go`)
+- **Client Factory**: Helper functions for creating configured clients (`pkg/temporal/client.go`)  
+- **Utilities**: Port management and network utilities (`pkg/temporal/utils.go`)
 
-**Key Features:**
+### Service Structure
+- **Frontend Service**: gRPC API endpoint (configurable port)
+- **History Service**: Workflow execution state management (dynamic port)
+- **Matching Service**: Task queue management (dynamic port)
+- **Worker Service**: Internal system workflows (dynamic port)
+- **SQLite Backend**: Single-file persistence with WAL mode
 
-*   **Embedded Server:** Runs a complete Temporal server (frontend, history, matching, worker) within a single Go process.
-*   **SQLite Persistence:** Uses a single SQLite database file for all persistence, which is created automatically.
-*   **Zero-Configuration Startup:** Can be started with zero or minimal configuration.
-*   **Dynamic Port Allocation:** Capable of automatically finding free ports for its services, preventing port conflicts.
-*   **Automatic Schema Management:** Initializes the required database schema on the first run.
-*   **Configurable Namespaces:** Allows for the programmatic creation of namespaces on startup.
-*   **Optional Web UI:** Can optionally run the Temporal Web UI on a specified port.
+## Key Interfaces
 
-**Core APIs:**
-
-The primary interface to this library is the `pkg/temporal` Go package.
-
-*   **`NewServer(opts Options) (*Server, error)`**: Creates a new instance of the embedded Temporal server. The `Options` struct allows for configuration of:
-    *   `FrontendIP` and `FrontendPort`
-    *   `UIPort` for the Web UI
-    *   A list of `Namespaces` to create on startup
-    *   The `DatabaseFile` path
-    *   `LogLevel`
-    *   And other advanced options.
-
-*   **`(*Server) Start() error`**: Starts the embedded server. This is a blocking call that will run until the server is stopped.
-
-*   **`(*Server) StartAsync() error`**: Starts the embedded server in a separate goroutine.
-
-*   **`(*Server) Stop()`**: Gracefully shuts down the embedded server and its services.
-
-*   **`(*Server) FrontendHostPort() string`**: Returns the address of the frontend service (e.g., "127.0.0.1:7233"), which is used by Temporal clients to connect to the server.
-
-*   **`NewClient(server *Server, namespace string) (client.Client, error)`**: A convenience function for creating a Temporal `client.Client` that is pre-configured to connect to the embedded server instance.
-
-**How it Works:**
-
-1.  The `NewServer` function initializes the server configuration, including setting up the necessary service listeners on free ports if not specified.
-2.  The `Start` method sets up the persistence layer using the SQLite driver.
-3.  It then boots up the full Temporal server stack using `go.temporal.io/server`.
-4.  If enabled, it also starts the Temporal Web UI.
-5.  The server then runs until `Stop` is called.
-
-**Use Cases:**
-
-*   **Local Development:** Developers can run a full Temporal server directly in their Go application, without needing Docker or a separate server process.
-*   **Integration Testing:** Go tests can spin up an embedded server for each test or test suite, providing a clean, isolated environment for testing Temporal workflows and activities.
-*   **Simple Deployments:** For small-scale applications, the embedded server can be used as the production Temporal instance, simplifying the deployment architecture.
-
-**Example Usage:**
-
+### Server Management
 ```go
-package main
+// Create embedded server
+func NewServer(opts Options) (*Server, error)
 
-import (
-	"log"
-	"time"
+// Start server (blocking)
+func (s *Server) Start() error
 
-	"github.com/vibethis/server/embeddedtemporal/pkg/temporal"
-	"go.temporal.io/sdk/client"
-)
+// Stop server gracefully
+func (s *Server) Stop() error
 
-func main() {
-	// Configure the embedded server
-	opts := temporal.Options{
-		FrontendPort: 7233,
-		DatabaseFile: "temporal_test.db",
-		LogLevel:     "info",
-		Namespaces:   []string{"default"},
-	}
+// Get frontend address for clients
+func (s *Server) GetFrontendAddress() string
+```
 
-	// Create and start the server
-	server, err := temporal.NewServer(opts)
-	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
-	}
-	if err := server.StartAsync(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-	defer server.Stop()
-
-	log.Printf("Server started at: %s", server.FrontendHostPort())
-
-	// Create a client connected to the server
-	c, err := temporal.NewClient(server, "default")
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
-	defer c.Close()
-
-	log.Println("Client connected successfully.")
-
-	// Your application logic here...
-	// e.g., start a workflow execution
-	// c.ExecuteWorkflow(...)
-
-	time.Sleep(5 * time.Second) // Keep the server running for a bit
+### Configuration Options
+```go
+type Options struct {
+    FrontendIP    string            // Default: 127.0.0.1
+    FrontendPort  int               // Frontend service port
+    DatabaseFile  string            // SQLite database file path
+    LogLevel      string            // debug, info, error
+    Namespaces    []string          // Auto-create namespaces
+    SQLitePragmas map[string]string // Custom SQLite settings
+    EnableUI      bool              // Enable web UI
 }
 ```
+
+### Client Creation
+```go
+// Create workflow client
+func NewClient(opts ClientOptions) (client.Client, error)
+
+// Create namespace management client
+func NewNamespaceClient(hostPort string) (client.NamespaceClient, error)
+```
+
+### Utility Functions
+```go
+// Check port availability
+func IsPortAvailable(host string, port int) bool
+
+// Find available port
+func FindFreePort() int
+```
+
+## Usage Examples
+
+### Basic Server Setup
+```go
+server, err := temporal.NewServer(temporal.Options{
+    FrontendPort: 7233,
+    DatabaseFile: "/tmp/temporal.db",
+    LogLevel:     "info",
+    Namespaces:   []string{"default", "testing"},
+})
+if err != nil {
+    return err
+}
+
+// Start server
+if err := server.Start(); err != nil {
+    return err
+}
+defer server.Stop()
+```
+
+### Client Connection
+```go
+// Create client for workflow operations
+client, err := temporal.NewClient(temporal.ClientOptions{
+    HostPort:  server.GetFrontendAddress(),
+    Namespace: "default",
+})
+if err != nil {
+    return err
+}
+defer client.Close()
+```
+
+### Testing Pattern
+```go
+func TestWorkflow(t *testing.T) {
+    server, err := temporal.NewServer(temporal.Options{
+        FrontendPort: temporal.FindFreePort(),
+        DatabaseFile: filepath.Join(t.TempDir(), "test.db"),
+        LogLevel:     "error",
+        Namespaces:   []string{"test"},
+    })
+    require.NoError(t, err)
+    
+    require.NoError(t, server.Start())
+    defer server.Stop()
+    
+    // Run tests using server.GetFrontendAddress()
+}
+```
+
+## Configuration
+
+### SQLite Optimization
+```go
+opts := temporal.Options{
+    DatabaseFile: "temporal.db",
+    SQLitePragmas: map[string]string{
+        "cache_size":      "-64000",    // 64MB cache
+        "mmap_size":       "268435456", // 256MB mmap
+        "busy_timeout":    "30000",     // 30s timeout
+    },
+}
+```
+
+### Default Pragmas
+- `journal_mode=WAL`: Write-ahead logging for concurrency
+- `synchronous=NORMAL`: Balanced durability/performance
+- `foreign_keys=ON`: Referential integrity
+- `busy_timeout=10000`: 10-second lock timeout

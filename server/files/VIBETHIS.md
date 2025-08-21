@@ -1,27 +1,25 @@
-# server/files
+# Files Module
 
-## Purpose
-The files module provides secure file system operations for managing files within vibethis box nodes. It acts as a controlled gateway for file browsing, reading, writing, and manipulation while enforcing security boundaries to prevent unauthorized access outside of designated node directories.
+## Overview
+The files module provides secure file system operations for vibethis node directories. It enables controlled file browsing, reading, writing, and manipulation while enforcing security boundaries to prevent unauthorized access outside designated node paths.
 
-## Core Capabilities
+## Architecture
+The module follows a layered architecture with clear separation of concerns:
 
-### File Operations
-- **List Files**: Browse directory contents within a node, with optional file type filtering
-- **Read Files**: Read file contents with configurable size limits
-- **Write Files**: Create or update files within node boundaries
-- **Create Directories**: Create nested directory structures
-- **Delete**: Remove files or directories
+- **Public API Layer** (`pkg/files/`): Exposes the main `Browser` interface and configuration types
+- **Internal Browser** (`internal/browser/`): Core file operation implementation with file type detection
+- **Security Layer** (`internal/security/`): Path validation and security enforcement
+- **Adapter Pattern**: The public interface wraps internal implementation for type consistency
 
-### Security Model
-- **Path Validation**: All operations validate that paths remain within the node's directory boundary
-- **Directory Traversal Protection**: Prevents "../" attacks and path escaping
-- **Size Limits**: Configurable maximum file size for read/write operations
-- **Extension Filtering**: Optional whitelist of allowed file extensions
+Key relationships:
+- `Browser` interface defines all file operations (ListFiles, ReadFile, WriteFile, CreateDirectory, Delete)
+- `browserAdapter` implements the interface by delegating to internal browser
+- Security validation occurs before every file operation
+- File type detection automatically categorizes files by extension
 
 ## Key Interfaces
 
 ### Browser Interface
-The main public interface (`pkg/files/browser.go`) provides:
 ```go
 type Browser interface {
     ListFiles(ctx context.Context, nodePath string) ([]FileInfo, error)
@@ -32,53 +30,91 @@ type Browser interface {
 }
 ```
 
-### Configuration
+### FileInfo Structure
 ```go
-type Config struct {
-    AllowedExtensions []string  // File extension whitelist (empty = all allowed)
-    MaxFileSize       int64     // Maximum file size in bytes (0 = no limit)
+type FileInfo struct {
+    Name  string `json:"name"`   // File/directory name
+    Path  string `json:"path"`   // Relative path within node
+    IsDir bool   `json:"isDir"`  // Whether item is directory
+    Size  int64  `json:"size"`   // File size in bytes
+    Type  string `json:"type"`   // Detected file type
 }
 ```
 
-## Architecture
-
-### Internal Structure
-- `internal/browser/`: Core file browsing implementation
-- `internal/security/`: Path validation and security enforcement
-- `pkg/files/`: Public API and interface definitions
-
-### File Type Detection
-The browser automatically detects and categorizes files by extension:
-- Programming languages (go, js, python, rust, etc.)
-- Config files (yaml, json, toml, etc.)
-- Documentation (markdown, rst, tex)
-- Media files (images, video, audio)
-- Archives and binaries
-
-## Integration Notes
-
-### Node Path Context
-All operations require a `nodePath` parameter - the absolute path to a box's node directory. The module ensures all file operations remain within this boundary.
-
-### No-Op Validator
-Currently uses a no-op validator since security is enforced by requiring the full node path for each operation. The validator still checks for obvious security issues like directory traversal patterns.
-
-### Usage Example
+### Configuration
 ```go
-browser := files.NewBrowser(files.Config{
-    AllowedExtensions: []string{".go", ".yaml", ".json"},
-    MaxFileSize:       10 * 1024 * 1024, // 10MB
-})
-
-// List files in a node
-files, err := browser.ListFiles(ctx, "/path/to/node")
-
-// Read a specific file
-content, err := browser.ReadFile(ctx, "/path/to/node", "config.yaml")
+type Config struct {
+    AllowedExtensions []string // File extension whitelist (empty = all allowed)
+    MaxFileSize       int64    // Maximum file size in bytes (0 = no limit)
+}
 ```
 
-## Important Considerations
-- All paths must be absolute when passed to the module
-- File operations are synchronous and may block on large files
-- The module does not implement file watching or change notifications
-- No built-in versioning or backup functionality
+### Factory Function
+```go
+func NewBrowser(config Config) Browser
+```
+
+## Usage Examples
+
+### Basic File Operations
+```go
+// Create browser with configuration
+browser := files.NewBrowser(files.Config{
+    AllowedExtensions: []string{".go", ".yaml", ".json"},
+    MaxFileSize:       10 * 1024 * 1024, // 10MB limit
+})
+
+// List files in node directory
+files, err := browser.ListFiles(ctx, "/path/to/node")
+if err != nil {
+    return err
+}
+
+// Read specific file
+content, err := browser.ReadFile(ctx, "/path/to/node", "config.yaml")
+if err != nil {
+    return err
+}
+
+// Write file with automatic directory creation
+err = browser.WriteFile(ctx, "/path/to/node", "output/result.json", jsonData)
+if err != nil {
+    return err
+}
+```
+
+### File Type Detection
+```go
+// The module automatically detects file types:
+// - Programming languages: .go -> "go", .js -> "javascript", .py -> "python"
+// - Config files: .yaml -> "yaml", .json -> "json", .toml -> "toml"
+// - Documentation: .md -> "markdown", .rst -> "restructuredtext"
+// - Special files: "Dockerfile" -> "dockerfile", "Makefile" -> "makefile"
+// - Media: .png -> "image", .mp4 -> "video", .mp3 -> "audio"
+```
+
+### Directory Operations
+```go
+// Create nested directory structure
+err := browser.CreateDirectory(ctx, "/path/to/node", "src/components")
+
+// Delete file or entire directory tree
+err = browser.Delete(ctx, "/path/to/node", "old_file.txt")
+err = browser.Delete(ctx, "/path/to/node", "old_directory")
+```
+
+## Configuration
+
+### Security Configuration
+- **No-Op Validator**: Currently uses minimal validation (only prevents obvious directory traversal)
+- **Node Path Scoping**: All operations require absolute node path, ensuring containment
+- **Path Validation**: Rejects paths containing ".." patterns
+
+### Size Limits
+- **MaxFileSize**: Enforced on both read and write operations
+- **Zero Value**: No size limit when set to 0
+
+### Extension Filtering
+- **AllowedExtensions**: Whitelist of permitted file extensions for listing
+- **Empty List**: All file types allowed when no extensions specified
+- **Directory Exemption**: Directories always shown regardless of extension filters

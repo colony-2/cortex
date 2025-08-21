@@ -1,0 +1,61 @@
+name: doccell
+input_schema:
+  directory:
+    type: string
+    required: true
+    description: "Path to the cell directory to document"
+
+sequence:
+  # Step 1: Collect source files using git file collector
+  - id: file_collector
+    op: git_file_collector
+    inputs:
+      context_dir: "{{ .Inputs.directory }}"
+      include_untracked: true
+      use_gitignore: true
+      max_file_size: 100000
+      exclude_patterns: ["*.test.go", "*_test.go", "*.md", "*.yaml", "*.json"]
+
+  # Step 2: Generate VIBETHIS.md using LLM
+  - id: generate_doc  
+    op: llm_inference
+    inputs:
+      provider: "Gemini"
+      model: "gemini-2.0-flash-exp"
+      files: "{{ .Steps.file_collector.outputs.files }}"
+      system_prompt: |
+        You are a technical documentation expert creating VIBETHIS.md documentation for LLM consumption.
+        Analyze the provided source files and generate clear, concise documentation.
+        
+        Focus on:
+        - Clear functionality description
+        - Key interfaces and APIs
+        - Usage examples
+        - No repetition or unnecessary text
+        - Direct, actionable information
+      prompt: |
+        Analyze the provided source files and generate a VIBETHIS.md documentation file.
+        
+        Create documentation with these sections:
+        # Overview
+        Brief 2-3 sentence description of what this code does.
+        
+        ## Architecture
+        Key components and their relationships.
+        
+        ## Key Interfaces
+        Main APIs/functions with their actual signatures and types.
+        
+        ## Usage Examples
+        Practical code examples showing how to use this code.
+        
+        ## Configuration
+        Any configuration options if applicable.
+        
+        Focus on what an LLM needs to know to use this code effectively.
+        Be concise but complete. Include actual function signatures and type definitions.
+
+outputs:
+  documentation: "{{ .Steps.generate_doc.outputs.response }}"
+  file_count: "{{ .Steps.file_collector.outputs.file_count }}"
+  total_size: "{{ .Steps.file_collector.outputs.total_size }}"

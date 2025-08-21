@@ -1,99 +1,153 @@
-# rwshim/clib Directory
+# VIBETHIS.md - Read/Write Intercept Shim (C Library)
 
-## Purpose
-This directory contains a C-based read/write interception shim that uses dynamic library preloading (`LD_PRELOAD` on Linux, `DYLD_INSERT_LIBRARIES` on macOS) to intercept and control file I/O operations at the system call level. It provides a foundation for monitoring and controlling process I/O behavior.
+## Overview
 
-## Architecture Overview
-The shim operates by:
-1. Intercepting `read()` and `write()` system calls via dynamic library injection
-2. Communicating with a monitor process over Unix domain socket
-3. Allowing or denying I/O operations based on monitor policy decisions
+The rwshim/clib is a C-based interception library that uses LD_PRELOAD to monitor and control read/write system calls in target applications. It provides policy-based access control by communicating with external monitoring processes via Unix domain sockets.
 
-## Key Components
+## Architecture
 
-### Core Shim Library
-- **intercept.c**: Main interception library that overrides read/write syscalls
-  - Uses `dlsym(RTLD_NEXT)` to get original function pointers
-  - Connects to monitor socket at `/tmp/vibethis-rwshim.sock`
-  - Resolves file descriptors to filenames via `/proc/self/fd/` (Linux)
-  - Returns EPERM when operations are denied
+### Core Components
 
-### Monitor Implementation
-- **mock_monitor.c**: Reference implementation of monitoring service
-  - Creates Unix domain socket server
-  - Supports multiple policy modes:
-    - `POLICY_ALLOW_ALL`: Permits all operations (default)
-    - `POLICY_DENY_ALL`: Denies all operations
-    - `POLICY_DENY_WRITES`: Denies only write operations
-    - `POLICY_DENY_READS`: Denies only read operations
-  - Handles cleanup via signal handlers
+- **intercept.c**: LD_PRELOAD shim that intercepts read()/write() calls and queries monitor for permission
+- **mock_monitor.c**: Reference monitoring server implementation with configurable access policies  
+- **test_app.c**: Test application that performs various I/O operations for validation
 
-### Testing Infrastructure
-- **test_app.c**: Simple test application performing various I/O operations
-  - Tests stdout writes, file creation/writing, and file reading
-  - Used to verify shim behavior under different policies
-- **run_tests_docker.sh**: Runs tests in Docker container (Linux)
-- **run_tests_macos.sh**: Runs tests natively on macOS
-- **test_runner_linux.sh**: Core test script for Linux environment
+### Communication Flow
 
-## Protocol Specification
+```
+Target App → intercept.so → Unix Socket → Monitor Process → Policy Decision → Allow/Deny
+```
 
-### Request Format
+The shim connects to `/tmp/vibethis-rwshim.sock` for each intercepted operation, sends operation details, and waits for ALLOW/DENY response.
+
+### Policy Engine
+
+Monitor supports four policy modes:
+- `POLICY_ALLOW_ALL`: Permits all operations (default)
+- `POLICY_DENY_ALL`: Blocks all operations
+- `POLICY_DENY_WRITES`: Blocks write operations only
+- `POLICY_DENY_READS`: Blocks read operations only
+
+## Key Interfaces
+
+### Intercept Shim API
+
+```c
+// Intercepted system calls
+ssize_t write(int fd, const void *buf, size_t count);
+ssize_t read(int fd, void *buf, size_t count);
+
+// Internal functions
+static void init_syms(void);                          // Initialize real syscall pointers
+static int ask_ok(const char *op, int fd, size_t cnt); // Query monitor for permission
+```
+
+### Monitor Socket Protocol
+
+Request format (ASCII):
 ```
 <OPERATION> <FD> <SIZE> <FILENAME>\n
 ```
-- OPERATION: "READ" or "WRITE"
-- FD: File descriptor number
-- SIZE: Byte count for operation
-- FILENAME: Resolved file path or special name (stdin/stdout/stderr)
 
-### Response Format
-- `ALLOW\n`: Operation permitted
-- `DENY\n`: Operation denied
+Response format:
+```
+ALLOW\n   // Operation permitted
+DENY\n    // Operation denied
+```
 
-### Socket Path
-Fixed location: `/tmp/vibethis-rwshim.sock`
+### Monitor Server Interface
 
-## Build System
+```c
+// Policy types
+typedef enum {
+    POLICY_ALLOW_ALL,
+    POLICY_DENY_ALL, 
+    POLICY_DENY_WRITES,
+    POLICY_DENY_READS
+} policy_t;
 
-### Docker Build
-- **Dockerfile**: Multi-stage build for Linux shared library
-  - Stage 1: Ubuntu 24.04 with build-essential
-  - Stage 2: Minimal runtime with just the .so file
-- Builds `intercept.so` with position-independent code (`-fPIC`)
+// Core functions
+void handle_request(int client_fd);     // Process incoming requests
+void cleanup(int sig);                  // Signal handler for cleanup
+int main(int argc, char *argv[]);       // Server entry point
+```
 
-### Moon Integration
-- **moon.yml**: Defines project tasks
-  - `build`: Creates Docker image `rwshim:latest`
-  - `test`: Executes Docker-based test suite
+## Usage Examples
 
-### Platform Differences
-- Linux: Produces `intercept.so`, uses `LD_PRELOAD`
-- macOS: Produces `intercept.dylib`, uses `DYLD_INSERT_LIBRARIES`
-- Both platforms share the same source code and protocol
+### Basic Interception
 
-## Usage Example
 ```bash
-# Start monitor with specific policy
-./mock_monitor deny-writes
+# Build the shim
+gcc -shared -fPIC -o intercept.so intercept.c -ldl
 
-# Run application with shim
+# Start monitor with allow-all policy
+./mock_monitor &
+
+# Run target application with interception
 LD_PRELOAD=./intercept.so ./target_app
 ```
 
-## Integration Points
-- Provides C library foundation for higher-level rwshim components
-- Protocol designed for easy implementation in other languages (e.g., Go)
-- Monitor can be replaced with more sophisticated policy engines
+### Policy-Based Control
 
-## Security Considerations
-- Shim defaults to ALLOW when monitor unavailable (fail-open)
-- No authentication between shim and monitor
-- Socket permissions rely on filesystem security
-- Cannot intercept statically linked binaries or direct syscalls
+```bash
+# Deny all operations
+./mock_monitor deny-all &
+LD_PRELOAD=./intercept.so ./app  # All I/O will fail with EPERM
 
-## Limitations
-- Filename resolution requires `/proc` filesystem (Linux-specific)
-- Performance overhead per I/O operation due to socket communication
-- Thread-safe but creates new connection per operation
-- Some applications may detect and bypass the preload mechanism
+# Deny only writes
+./mock_monitor deny-writes &
+LD_PRELOAD=./intercept.so ./app  # Reads allowed, writes denied
+```
+
+### Docker-Based Testing
+
+```bash
+# Build and test in isolated environment
+docker build -t rwshim:latest .
+./run_tests_docker.sh
+```
+
+### Cross-Platform Build
+
+```bash
+# Linux
+gcc -shared -fPIC -o intercept.so intercept.c -ldl
+
+# macOS  
+gcc -dynamiclib -o intercept.dylib intercept.c
+export DYLD_INSERT_LIBRARIES=./intercept.dylib
+```
+
+## Configuration
+
+### Environment Variables
+
+- `LD_PRELOAD`: Path to intercept.so (Linux)
+- `DYLD_INSERT_LIBRARIES`: Path to intercept.dylib (macOS)
+
+### Socket Configuration
+
+- Socket path: `/tmp/vibethis-rwshim.sock` (hardcoded)
+- Protocol: Unix domain socket, SOCK_STREAM
+- Timeout: None (blocking operations)
+
+### Build Configuration
+
+Moon.js task configuration:
+```yaml
+tasks:
+  build:
+    command: "docker"
+    args: ["build", "-t", "rwshim:latest", "."]
+  test:
+    command: "./run_tests_docker.sh"
+    options:
+      outputStyle: buffer-only-failure
+```
+
+### Default Behavior
+
+- If monitor unavailable: Allow all operations
+- On connection failure: Allow operation (fail-open)
+- Thread safety: pthread_once initialization
+- Error handling: Returns EPERM for denied operations

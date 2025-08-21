@@ -1,98 +1,168 @@
-# api/openapi Directory
+# VibeThis OpenAPI Directory
 
-## Purpose
-This directory contains the OpenAPI 3.0.3 specification for the VibeThis REST API. It serves as the single source of truth for API documentation, client generation, and API contract validation.
+## Overview
+OpenAPI 3.0.3 specification for the VibeThis REST API, providing comprehensive documentation for cell-based dependency graph management, file operations, git integration, and DevContainer lifecycle management. This specification serves as the single source of truth for API contracts and enables client code generation across multiple languages.
 
-## Key Files
+## Architecture
 
-### vibethis-api.yaml
-The complete OpenAPI specification defining all API endpoints, request/response schemas, and error handling. This is the primary API contract file.
+### Core Components
+- **vibethis-api.yaml**: Complete OpenAPI specification with all endpoints, schemas, and examples
+- **moon.yml**: Build system configuration defining the api-openapi project type
+- **API Structure**: Five main endpoint categories organized by functional domain
 
-### moon.yml
-Moon build system configuration for this module. Defines this as an 'api-openapi' project with file groups for specs (*.yaml, *.yml) and docs (*.md).
+### Component Relationships
+```
+OpenAPI Spec (vibethis-api.yaml)
+├── Graph Operations (/api/graph)
+├── Position Management (/api/positions) 
+├── File Operations (/api/cells/{cellId}/files)
+├── Git Integration (/api/cells/{cellId}/git/*)
+└── Container Management (/api/cells/{cellId}/container/*)
+```
 
-## API Endpoints Overview
+### Data Model Hierarchy
+- **Graph**: Contains Cells and Edges
+- **Cell**: Core entity with id, name, path, type, dependencies
+- **Position**: UI layout coordinates for cells
+- **FileInfo**: File metadata with type detection
+- **GitStatus/GitCommit**: Git repository state and history
+- **ContainerStatus**: DevContainer lifecycle states
 
-The API is organized into five main categories:
+## Key Interfaces
 
-### 1. Graph Operations (`/api/graph`)
-- **GET /api/graph**: Retrieves the complete dependency graph of all nodes (boxes) and their relationships
-- Returns nodes with their IDs, names, paths, types, and dependencies
-- Returns edges representing dependency connections between nodes
+### Graph Operations
+```yaml
+GET /api/graph
+Returns: Graph { cells: Cell[], edges: Edge[] }
+```
 
-### 2. Position Management (`/api/positions`)
-- **GET /api/positions**: Retrieves saved visual positions for nodes in the UI
-- **POST /api/positions**: Saves or updates node positions (x, y coordinates)
-- Used for persisting the visual layout of the dependency graph
+### Position Management
+```yaml
+GET /api/positions
+Returns: Position[]
 
-### 3. File Operations (`/api/nodes/{nodeId}/files`)
-- **GET /api/nodes/{nodeId}/files**: Lists files and directories within a node
-- **GET /api/nodes/{nodeId}/files/{filePath}**: Reads file content
-- **PUT /api/nodes/{nodeId}/files/{filePath}**: Writes/updates file content
-- Supports subdirectory navigation and file type detection
+POST /api/positions
+Body: Position[]
+```
 
-### 4. Git Integration (`/api/nodes/{nodeId}/git/*`)
-- **GET /git/status**: Returns branch, clean state, modified files, ahead/behind counts
-- **GET /git/diff**: Shows uncommitted changes (with optional staged filter)
-- **GET /git/history**: Retrieves commit history with configurable limit
-- **POST /git/commit**: Creates commits with optional file staging
+### File Operations
+```yaml
+GET /api/cells/{cellId}/files?path={optional}
+Returns: { files: FileInfo[], path: string }
 
-### 5. Container Management (`/api/nodes/{nodeId}/container/*`)
-- **GET /container/status**: Returns container status (none/stopped/running/error)
-- **POST /container/create**: Creates a new DevContainer for the node
-- **POST /container/start**: Starts an existing container
-- **POST /container/stop**: Stops a running container
-- **POST /container/restart**: Restarts a container
-- **POST /container/reset**: Removes container and clears associations
+GET /api/cells/{cellId}/files/{filePath}
+Returns: string (file content)
 
-## Data Models
+PUT /api/cells/{cellId}/files/{filePath}
+Body: { content: string }
+```
 
-### Core Models
-- **Node**: Represents a box with id, name, path, type, and dependencies
-- **Edge**: Represents a dependency connection between nodes
-- **Graph**: Container for nodes and edges
+### Git Integration
+```yaml
+GET /api/cells/{cellId}/git/status
+Returns: GitStatus
 
-### Supporting Models
-- **Position**: Stores x,y coordinates for UI layout
-- **FileInfo**: File metadata including name, path, isDir, size, and type
-- **GitStatus**: Complete git repository state
-- **GitCommit**: Commit metadata with hash, author, date, and message
-- **ContainerStatus**: Enumeration of container states
+GET /api/cells/{cellId}/git/diff?staged={boolean}
+Returns: string (diff output)
 
-## Integration Points
+GET /api/cells/{cellId}/git/history?limit={integer}
+Returns: GitCommit[]
 
-1. **Frontend (React)**: The web UI consumes these endpoints to:
-   - Display and manipulate the dependency graph
-   - Browse and edit files within nodes
-   - Perform git operations
-   - Manage DevContainers
+POST /api/cells/{cellId}/git/commit
+Body: { message: string, files?: string[] }
+```
 
-2. **Backend (Golang server)**: Implements these endpoints in the server directory
-   - Handles file system operations
-   - Executes git commands
-   - Manages Docker containers
-   - Maintains graph structure
+### Container Management
+```yaml
+GET /api/cells/{cellId}/container/status
+Returns: { status: ContainerStatus, containerId?: string, hasDevcontainer: boolean }
 
-3. **Node System**: Each "box" is a directory that can:
-   - Contain files and subdirectories
-   - Be a git repository
-   - Have an associated DevContainer
-   - Declare dependencies on other nodes
+POST /api/cells/{cellId}/container/{create|start|stop|restart|reset}
+Returns: { containerId?: string } | success
 
-## Usage Notes
+PUT /api/cells/{cellId}/container/devcontainer
+Body: { content: string }
+```
 
-- All node operations require a valid `nodeId` parameter
-- File paths are relative to the node's directory
-- Git operations assume the node directory is a git repository
-- Container operations integrate with Docker/DevContainers
-- The API uses standard HTTP status codes for error handling
-- JSON is the primary content type for requests/responses
-- File content operations use plain text format
+## Usage Examples
 
-## API Validation
+### Retrieve Complete Dependency Graph
+```typescript
+const response = await fetch('/api/graph');
+const graph = await response.json();
+// graph.cells contains all nodes with dependencies
+// graph.edges contains dependency relationships
+```
 
-The specification can be validated using standard OpenAPI tools:
-- openapi-generator-cli
-- swagger-cli
-- Can be imported into Swagger UI, ReDoc, Postman, or Insomnia
-- Supports client code generation for multiple languages
+### Save Node Positions
+```typescript
+const positions = [
+  { cellId: "cell1", x: 100.0, y: 200.0 },
+  { cellId: "cell2", x: 300.0, y: 400.0 }
+];
+await fetch('/api/positions', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(positions)
+});
+```
+
+### Read File Content
+```typescript
+const response = await fetch('/api/cells/myCell/files/README.md');
+const content = await response.text();
+```
+
+### Create Git Commit
+```typescript
+await fetch('/api/cells/myCell/git/commit', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    message: "Update configuration",
+    files: ["config.json", "settings.yaml"]
+  })
+});
+```
+
+### Manage DevContainer
+```typescript
+// Check status
+const status = await fetch('/api/cells/myCell/container/status')
+  .then(r => r.json());
+
+// Create container
+await fetch('/api/cells/myCell/container/create', { method: 'POST' });
+
+// Start container
+await fetch('/api/cells/myCell/container/start', { method: 'POST' });
+```
+
+## Configuration
+
+### Server Configuration
+```yaml
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+```
+
+### Moon Build System
+```yaml
+id: 'api-openapi'
+type: 'unknown'
+fileGroups:
+  specs: ['**/*.yaml', '**/*.yml']
+  docs: ['**/*.md']
+tasks:
+  build:
+    command: 'echo'
+    args: ['OpenAPI spec is ready']
+    inputs: [vibethis-api.yaml]
+```
+
+### API Validation Tools
+- openapi-generator-cli: `openapi-generator-cli validate -i vibethis-api.yaml`
+- swagger-cli: `swagger-cli validate vibethis-api.yaml`
+- Import into Swagger UI, ReDoc, Postman, or Insomnia for interactive documentation
+- Use OpenAPI Generator for client code generation in multiple languages

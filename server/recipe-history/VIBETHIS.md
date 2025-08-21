@@ -1,86 +1,147 @@
 # VIBETHIS
 
-## Project: `recipe-history`
+## Overview
+Recipe-history provides a Go library that serves as an adapter between Temporal.io's workflow execution service and the recipe-core data model. It transforms low-level Temporal workflow events into user-friendly job execution history, abstracting away Temporal's event-sourcing complexity to present recipe executions in an intuitive format.
 
-**Description:**
+## Architecture
 
-This project, `recipe-history`, is a Go library that serves as an adapter between the Temporal.io history service and the data model defined in `recipe-core`. Its primary function is to provide a "recipe-centric" view of execution history, abstracting away the low-level details of Temporal's event-based history and presenting it in a more user-friendly and understandable format.
+### Key Components
+- **Client**: Entry point providing recipe-centric history querying interface
+- **Transformer**: Core component converting Temporal data structures to recipe abstractions
+- **JobFilter**: Configuration for filtering and limiting job queries
 
-**Key Components:**
+### Component Relationships
+```
+Client → Temporal.io SDK → Temporal Service
+   ↓
+Transformer → recipe-core types (Job, ActivityExecution)
+```
 
-*   **`pkg/history`**: This is the main package containing all the logic for the library.
-    *   `Client`: The entry point for interacting with the library. It takes a Temporal client as input and provides methods for querying the history of recipe executions.
-    *   `Transformer`: This is the core of the library's logic. It is responsible for the complex task of transforming Temporal's native data structures (like `WorkflowExecutionInfo` and `HistoryEvent`) into the more abstract `recipe.Job` and `recipe.ActivityExecution` structs defined in `recipe-core`.
+The Client orchestrates history retrieval from Temporal and delegates transformation to the Transformer, which maps Temporal's workflow concepts to recipe-core's job abstractions.
 
-**Functionality:**
+## Key Interfaces
 
-1.  **List Jobs**: The `Client` can list all the execution "jobs" for a specific recipe. It does this by querying Temporal for workflow executions on the task queue associated with that recipe. It supports filtering by status (e.g., "running", "completed", "failed").
-2.  **Get Job Details**: It can retrieve the detailed information for a single job (a specific workflow execution). This includes the job's status, start and end times, inputs, outputs, and any errors.
-3.  **Reconstruct Activity History**: A key feature of the `Transformer` is its ability to parse the full event history of a workflow and reconstruct the sequence of activity executions. It can determine the status, duration, and result of each activity that was part of the job.
-4.  **Data Abstraction**: The library provides a clean, high-level API for accessing recipe history, hiding the underlying complexity of the Temporal API and its event-sourcing model.
+### Client Interface
+```go
+func NewClient(temporal client.Client, getRecipe GetRecipeFunc, logger *zap.Logger) *Client
 
-**How it Works:**
+func (c *Client) ListJobs(ctx context.Context, recipeName string, filter *JobFilter) ([]*recipe.Job, error)
 
-1.  A `history.Client` is instantiated with a `client.Client` from the Temporal SDK.
-2.  To list jobs for a recipe (e.g., "my-recipe"), the `ListJobs` method queries Temporal for workflow executions on the "ono-recipes-my-recipe" task queue.
-3.  The `Transformer` takes the list of `WorkflowExecutionInfo` objects from Temporal and converts each one into a `recipe.Job` object.
-4.  To get the details of a specific job, the `GetJob` method first describes the workflow execution to get the basic information.
-5.  If full activity details are requested, it then fetches the complete event history for that workflow execution.
-6.  The `Transformer.HistoryToActivityExecutions` method processes the stream of history events, tracking the state of each activity (scheduled, started, completed, failed) to build a list of `recipe.ActivityExecution` objects.
+func (c *Client) GetJob(ctx context.Context, recipeName, jobID string, includeActivities bool) (*recipe.Job, error)
+```
 
-**Use Cases:**
+### Transformer Interface
+```go
+func NewTransformer(getRecipe GetRecipeFunc) *Transformer
 
-This library is an essential component for any part of the system that needs to display historical information about recipe executions. This could include:
+func (t *Transformer) WorkflowExecutionsToJobs(executions []*workflow.WorkflowExecutionInfo, recipeName string) ([]*recipe.Job, error)
 
-*   A web UI that shows a list of past and present jobs for a recipe.
-*   An API endpoint for retrieving the details of a specific job.
-*   A monitoring or alerting system that needs to check the status of recent jobs.
+func (t *Transformer) HistoryToActivityExecutions(history *history.History, recipeName string) ([]*recipe.ActivityExecution, error)
+```
 
-**Example Usage (Conceptual):**
+### Types
+```go
+type GetRecipeFunc func(name string) (*recipe.Recipe, error)
 
+type JobFilter struct {
+    Status string  // "running", "completed", "failed", "all"
+    Limit  int     // Maximum number of jobs to return
+}
+```
+
+## Usage Examples
+
+### Basic Job Listing
 ```go
 package main
 
 import (
     "context"
-    "fmt"
     "log"
-
+    
     "go.temporal.io/sdk/client"
     "go.uber.org/zap"
-    "github.com/vibethis/server/recipe-history/pkg/history"
-    "github.com/vibethis/server/recipe-core/pkg/recipe"
+    "github.com/divisive-ai/vibethis/server/recipe-history/pkg/history"
 )
 
-// A function to get a recipe definition (would be implemented by a recipe registry)
 func getRecipe(name string) (*recipe.Recipe, error) {
-    // ... implementation to fetch recipe from a store ...
-    return nil, fmt.Errorf("not implemented")
+    // Implementation to fetch recipe from registry
+    return recipeRegistry.Get(name)
 }
 
 func main() {
     logger, _ := zap.NewProduction()
-    defer logger.Sync()
-
-    // Create a Temporal client
+    
     temporalClient, err := client.Dial(client.Options{})
     if err != nil {
-        log.Fatalf("Failed to create Temporal client: %v", err)
+        log.Fatal(err)
     }
     defer temporalClient.Close()
-
-    // Create a history client
+    
     historyClient := history.NewClient(temporalClient, getRecipe, logger)
-
-    // List completed jobs for a recipe
-    jobs, err := historyClient.ListJobs(context.Background(), "my-data-pipeline", &history.JobFilter{Status: "completed"})
+    
+    // List completed jobs with limit
+    jobs, err := historyClient.ListJobs(context.Background(), "data-pipeline", 
+        &history.JobFilter{Status: "completed", Limit: 10})
     if err != nil {
-        log.Fatalf("Failed to list jobs: %v", err)
+        log.Fatal(err)
     }
-
-    fmt.Printf("Found %d completed jobs for 'my-data-pipeline'\n", len(jobs))
+    
     for _, job := range jobs {
-        fmt.Printf("- Job ID: %s, Status: %s\n", job.ID, job.Status)
+        log.Printf("Job %s: %s (started: %v)", job.ID, job.Status, job.StartTime)
     }
 }
 ```
+
+### Detailed Job Analysis
+```go
+func analyzeJob(client *history.Client, recipeName, jobID string) {
+    job, err := client.GetJob(context.Background(), recipeName, jobID, true)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    log.Printf("Job %s status: %s", job.ID, job.Status)
+    if job.Duration != nil {
+        log.Printf("Duration: %v", *job.Duration)
+    }
+    
+    for _, activity := range job.Activities {
+        log.Printf("Activity %s: %s", activity.Name, activity.Status)
+        if activity.Error != "" {
+            log.Printf("  Error: %s", activity.Error)
+        }
+    }
+}
+```
+
+### Filtering Jobs by Status
+```go
+func monitorFailedJobs(client *history.Client, recipeName string) {
+    failedJobs, err := client.ListJobs(context.Background(), recipeName,
+        &history.JobFilter{Status: "failed", Limit: 20})
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    for _, job := range failedJobs {
+        log.Printf("Failed job %s: %s", job.ID, job.Error)
+    }
+}
+```
+
+## Configuration
+
+### Dependencies
+- `go.temporal.io/sdk v1.34.0`: Temporal Go SDK for workflow interactions
+- `go.temporal.io/api v1.50.0`: Temporal API types and protobuf definitions
+- `go.uber.org/zap v1.27.0`: Structured logging
+- `github.com/divisive-ai/vibethis/server/recipe-core`: Core recipe types and interfaces
+
+### Environment Requirements
+- Temporal server connection (configured via client.Options)
+- Recipe registry implementation for GetRecipeFunc
+- Go 1.24.1+
+
+### Task Queue Naming Convention
+Jobs are queried using task queue format: `ono-recipes-{recipeName}`

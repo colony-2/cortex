@@ -1,65 +1,145 @@
 # server/core
 
-## Directory Purpose
+## Overview
 
-The `server/core` directory defines the foundational domain models and interfaces that form the backbone of the vibethis system. It serves as the shared contract layer between all server modules, ensuring consistent data structures and behavioral interfaces across the entire backend architecture.
+The core module provides foundational domain types and interfaces for the vibethis dependency graph system. It defines shared contracts for graph representation, storage operations, and data structures used across all server modules.
 
-## Key Domain Models
+## Architecture
 
-### Graph Data Structures
-The core module defines the fundamental graph-based data model used throughout vibethis:
+### Core Components
+- **Domain Types**: `Cell`, `Edge`, `Graph`, `Position` - fundamental data structures for dependency graph representation
+- **Storage Interface**: Contract for persistent storage operations (positions, container mappings)
+- **GraphBuilder Interface**: Contract for constructing dependency graphs from filesystem analysis
 
-- **Cell**: Represents entities in the dependency graph with ID, name, path, type, and dependencies
-- **Edge**: Defines directed relationships between cells (source → target)
-- **Graph**: Aggregates cells and edges into a complete dependency structure
-- **Position**: Tracks visual positioning of cells in the UI (x, y coordinates)
+### Module Relationships
+- **Pure Interface Layer**: No implementations, only type definitions and contracts
+- **Dependency Root**: All other server modules depend on core, core depends on nothing
+- **Consumer Modules**: storage (implements Storage), graph (implements GraphBuilder), api (uses types), container (uses cell IDs)
 
-These types are JSON-serializable and form the primary data exchange format between backend and frontend.
-
-## Core Interfaces
+## Key Interfaces
 
 ### Storage Interface
-Defines persistent storage operations contract:
-- Position management (save, get, delete cell positions)
-- Container ID mapping (associate cells with Docker containers)
-- Lifecycle management (close/cleanup)
+```go
+type Storage interface {
+    SavePosition(ctx context.Context, pos Position) error
+    GetPositions(ctx context.Context) ([]Position, error)
+    DeletePosition(ctx context.Context, cellID string) error
+    SaveContainerID(ctx context.Context, cellID, containerID string) error
+    GetContainerID(ctx context.Context, cellID string) (string, error)
+    DeleteContainerID(ctx context.Context, cellID string) error
+    Close() error
+}
+```
 
 ### GraphBuilder Interface
-Defines graph construction contract:
-- Build complete dependency graphs from filesystem
-- Retrieve individual cells by ID
+```go
+type GraphBuilder interface {
+    BuildGraph(ctx context.Context) (*Graph, error)
+    GetCell(ctx context.Context, cellID string) (*Cell, error)
+}
+```
 
-## Integration Patterns
+### Core Types
+```go
+type Cell struct {
+    ID           string   `json:"id"`
+    Name         string   `json:"name"`
+    Path         string   `json:"path"`
+    Type         string   `json:"type"`
+    Dependencies []string `json:"dependencies"`
+}
 
-The core module follows a pure interface pattern:
-- **No implementations**: Only type definitions and interfaces
-- **Module boundary**: All other modules depend on core, but core depends on nothing
-- **Replace directives**: Other modules use local replace directives in go.mod to reference core
+type Graph struct {
+    Cells []Cell `json:"cells"`
+    Edges []Edge `json:"edges"`
+}
 
-### Consumer Modules
-- **storage**: Implements the Storage interface with BoltDB and memory backends
-- **graph**: Implements the GraphBuilder interface for filesystem analysis
-- **api**: Uses core types for HTTP request/response models
-- **container**: Uses cell IDs from core for container management
+type Position struct {
+    CellID string  `json:"cellId"`
+    X      float64 `json:"x"`
+    Y      float64 `json:"y"`
+}
+```
 
-## Design Decisions
+## Usage Examples
 
-1. **Interface Segregation**: Storage and GraphBuilder are separate interfaces to allow independent evolution
-2. **Context-First**: All interface methods accept context.Context for cancellation and timeout support
-3. **Error Handling**: All operations return explicit errors rather than panics
-4. **JSON Tags**: All types include JSON tags for direct API serialization
-5. **ID-Based References**: Relationships use string IDs rather than object pointers for flexibility
+### GraphBuilder Implementation
+```go
+// Implementing GraphBuilder interface
+type Builder struct {
+    rootPath string
+}
 
-## Module Configuration
+func (b *Builder) BuildGraph(ctx context.Context) (*core.Graph, error) {
+    // Scan filesystem and build dependency graph
+    cells := []core.Cell{}
+    // ... build logic
+    return &core.Graph{Cells: cells, Edges: edges}, nil
+}
 
-- **Module ID**: `be-core` (moon.yml)
-- **Go Module**: `vibethis/core`
-- **Type**: Library module (no executable)
-- **Go Version**: 1.21
+func (b *Builder) GetCell(ctx context.Context, cellID string) (*core.Cell, error) {
+    graph, err := b.BuildGraph(ctx)
+    if err != nil {
+        return nil, err
+    }
+    // Find cell by ID in graph
+    for _, cell := range graph.Cells {
+        if cell.ID == cellID {
+            return &cell, nil
+        }
+    }
+    return nil, ErrCellNotFound
+}
+```
 
-## Important Notes
+### Storage Implementation
+```go
+// Creating storage instances
+func NewBoltStorage(config Config) (core.Storage, error) {
+    return bolt.New(config.DatabasePath, config.ReadOnly)
+}
 
-- This module must remain dependency-free to prevent circular dependencies
-- All changes to interfaces are breaking changes for consuming modules
-- Types should remain simple and serializable for API compatibility
-- The module serves as the "vocabulary" for inter-module communication
+func NewMemoryStorage() core.Storage {
+    return memory.New()
+}
+
+// Using storage interface
+func savePosition(storage core.Storage, cellID string, x, y float64) error {
+    pos := core.Position{CellID: cellID, X: x, Y: y}
+    return storage.SavePosition(context.Background(), pos)
+}
+```
+
+### API Integration
+```go
+// Using core types in HTTP handlers
+func graphHandler(graphBuilder core.GraphBuilder) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        graph, err := graphBuilder.BuildGraph(r.Context())
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusInternalServerError)
+            return
+        }
+        json.NewEncoder(w).Encode(graph)
+    }
+}
+```
+
+## Configuration
+
+Module configuration in go.mod:
+```
+module github.com/divisive-ai/vibethis/server/core
+go 1.24
+```
+
+Moon.yml module configuration:
+```yaml
+type: library
+language: go
+```
+
+Consumer modules use local replace directives:
+```
+replace github.com/divisive-ai/vibethis/server/core => ../core
+```

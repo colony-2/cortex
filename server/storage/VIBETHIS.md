@@ -1,58 +1,131 @@
 # Storage Module
 
-## Purpose
-The storage module provides persistence layer implementations for the vibethis system, specifically managing the storage of box positions and container IDs. It offers pluggable storage backends with a common interface defined by `core.Storage`.
+## Overview
 
-## Storage Implementations
+The storage module provides persistent and in-memory storage implementations for the vibethis system. It manages cell positions and container ID mappings with support for both BoltDB-backed persistence and memory-based storage for testing.
 
-### BoltDB (`internal/bolt`)
-- **Primary production storage**: Uses BoltDB, an embedded key-value database
-- **File location**: Creates `.vibethis.db` file in specified directory path
-- **Features**:
-  - ACID transactions
-  - Read-only mode support
-  - Thread-safe with mutex protection
-  - Two buckets: `positions` and `container_ids`
-- **Data format**: JSON serialization for positions
+## Architecture
 
-### Memory (`internal/memory`)
-- **Testing and development storage**: Pure in-memory implementation
-- **Features**:
-  - Thread-safe with RWMutex
-  - Zero persistence (data lost on restart)
-  - No external dependencies
-  - Primarily for unit tests and local development
+The module implements a factory pattern with two concrete storage backends:
 
-## Data Model
+- **BoltDB Storage** (`internal/bolt`): Persistent storage using embedded BoltDB with thread-safe operations and read-only mode support
+- **Memory Storage** (`internal/memory`): In-memory storage using Go maps with thread-safe operations for testing
 
-### Positions
-- **Purpose**: Stores UI positions of boxes/nodes
-- **Structure**: `core.Position` with NodeID, X, Y coordinates
-- **Operations**: Save, GetAll, Delete by NodeID
+Both implementations satisfy the `core.Storage` interface and provide identical APIs for position and container ID management.
 
-### Container IDs
-- **Purpose**: Maps node IDs to container IDs
-- **Structure**: Simple key-value mapping (nodeID -> containerID)
-- **Operations**: Save, Get, Delete by NodeID
+## Key Interfaces
 
-## Integration Points
+### Storage Interface
+```go
+type Storage interface {
+    // Position operations
+    SavePosition(ctx context.Context, pos Position) error
+    GetPositions(ctx context.Context) ([]Position, error)  
+    DeletePosition(ctx context.Context, cellID string) error
+    
+    // Container ID operations
+    SaveContainerID(ctx context.Context, cellID, containerID string) error
+    GetContainerID(ctx context.Context, cellID string) (string, error)
+    DeleteContainerID(ctx context.Context, cellID string) error
+    
+    Close() error
+}
+```
 
-- **Core dependency**: Implements `core.Storage` interface
-- **Factory functions**: 
-  - `NewBoltStorage(config)` - Creates persistent storage
-  - `NewMemoryStorage()` - Creates in-memory storage
-- **Configuration**: Via `Config` struct with `DatabasePath` and `ReadOnly` options
+### Configuration
+```go
+type Config struct {
+    DatabasePath string // Path to database file (BoltDB only)
+    ReadOnly     bool   // Read-only mode flag
+}
+```
 
-## Performance Considerations
+### Position Type
+```go
+type Position struct {
+    CellID string  `json:"cellId"`
+    X      float64 `json:"x"`
+    Y      float64 `json:"y"`
+}
+```
 
-- **BoltDB**: File-based with memory-mapped files, suitable for moderate workloads
-- **Locking strategy**: RWMutex for concurrent read access
-- **Transaction batching**: Single operations wrapped in BoltDB transactions
-- **No connection pooling**: Single DB handle per instance
+### Factory Functions
+```go
+func NewBoltStorage(config Config) (core.Storage, error)
+func NewMemoryStorage() core.Storage
+```
 
-## Usage Notes
+## Usage Examples
 
-- Always call `Close()` to properly shutdown BoltDB
-- Read-only mode prevents all write operations (useful for debugging/inspection)
-- BoltDB file grows but doesn't shrink automatically
-- Memory storage ideal for integration tests requiring clean state
+### BoltDB Storage
+```go
+import "github.com/divisive-ai/vibethis/server/storage"
+
+// Create persistent storage
+config := storage.Config{
+    DatabasePath: "/path/to/data",
+    ReadOnly:     false,
+}
+store, err := storage.NewBoltStorage(config)
+if err != nil {
+    log.Fatal(err)
+}
+defer store.Close()
+
+// Save position
+pos := core.Position{CellID: "cell1", X: 100.5, Y: 200.5}
+err = store.SavePosition(ctx, pos)
+
+// Get all positions
+positions, err := store.GetPositions(ctx)
+
+// Save container mapping
+err = store.SaveContainerID(ctx, "cell1", "container123")
+
+// Retrieve container ID
+containerID, err := store.GetContainerID(ctx, "cell1")
+```
+
+### Memory Storage
+```go
+// Create in-memory storage for testing
+store := storage.NewMemoryStorage()
+
+// Same API as BoltDB storage
+pos := core.Position{CellID: "test", X: 50.0, Y: 75.0}
+err := store.SavePosition(ctx, pos)
+```
+
+### Read-Only Mode
+```go
+// Open in read-only mode
+config := storage.Config{
+    DatabasePath: "/path/to/data",
+    ReadOnly:     true,
+}
+store, err := storage.NewBoltStorage(config)
+
+// Read operations work normally
+positions, err := store.GetPositions(ctx)
+
+// Write operations return errors
+err = store.SavePosition(ctx, pos) // Returns "storage is read-only" error
+```
+
+## Configuration
+
+### BoltDB Configuration
+- `DatabasePath`: Directory where `.vibethis.db` file will be created
+- `ReadOnly`: Set to `true` to prevent write operations
+- Database uses two buckets: `positions` and `container_ids`
+- File permissions: 0600 (owner read/write only)
+
+### Dependencies
+- `github.com/boltdb/bolt`: Embedded key-value database
+- `github.com/divisive-ai/vibethis/server/core`: Core types and interfaces
+
+### Error Handling
+- Thread-safe operations with mutex protection
+- Proper resource cleanup with Close() method
+- Detailed error messages with context
+- Read-only mode validation for write operations

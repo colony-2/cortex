@@ -1,83 +1,120 @@
 # server/graph
 
-This module provides dependency graph construction and management for the vibethis system. It integrates with the Moon build system to discover and analyze project dependencies.
-
-## Purpose
-
-The graph module is responsible for:
-- Building dependency graphs from Moon project configurations
-- Discovering nodes (boxes) and their relationships
-- Providing a clean API for graph traversal and node lookup
-- Supporting visualization of project architecture
+The graph module builds and manages dependency graphs for the vibethis system by integrating with the Moon build system. It discovers project structure, analyzes dependencies, and provides APIs for graph visualization and traversal.
 
 ## Architecture
 
-### Key Components
+### Core Components
+- **Internal Builder** (`internal/builder/builder.go`): Executes Moon CLI commands, parses JSON output, constructs core.Graph structures
+- **Public API** (`pkg/graph/builder.go`): Implements GraphBuilder interface, provides clean public methods for graph operations
+- **Core Types** (`core.Graph`, `core.Cell`, `core.Edge`): Domain objects representing dependency relationships
 
-1. **Internal Builder** (`internal/builder/builder.go`)
-   - Executes `moon project-graph --json` to extract project structure
-   - Parses Moon's dependency information
-   - Constructs `core.Graph` structures with nodes and edges
-   - Handles symlinks and path resolution
+### Component Relationships
+Builder → Moon CLI → JSON Parser → Graph Constructor → core.Graph
 
-2. **Public API** (`pkg/graph/builder.go`)
-   - Provides `GraphBuilder` interface implementation
-   - Wraps internal builder with clean public methods
-   - Supports node lookup by ID
-   - Returns `ErrNodeNotFound` for missing nodes
+The internal builder executes `moon project-graph --json`, parses the structured output into MoonGraph intermediary types, then transforms these into core domain objects with proper path resolution and dependency mapping.
 
-### Data Flow
+## Key Interfaces
 
-1. Builder receives a root path for analysis
-2. Executes Moon CLI to get project graph JSON
-3. Parses Moon's output into internal structures
-4. Transforms Moon nodes into `core.Node` objects
-5. Creates `core.Edge` objects from dependency relationships
-6. Returns complete `core.Graph` with all nodes and edges
-
-## Moon Integration
-
-The module relies on Moon's project discovery:
-- Reads `moon.yml` files from each directory
-- Extracts project IDs, descriptions, and dependencies
-- Respects Moon's workspace configuration
-- Requires Git repository initialization for Moon to function
-
-### Moon Data Structure
+### GraphBuilder Interface
 ```go
-type MoonNode struct {
-    ID       string
-    Source   string
-    Root     string
-    Language string
-    Config   struct {
-        DependsOn json.RawMessage // Can be string array or complex objects
-    }
-    Dependencies []MoonDependency
+type GraphBuilder interface {
+    BuildGraph(ctx context.Context) (*Graph, error)
+    GetCell(ctx context.Context, cellID string) (*Cell, error)
 }
 ```
 
-## Testing
-
-The module includes comprehensive tests that:
-- Create temporary Moon workspace structures
-- Test with real Moon CLI execution
-- Verify node discovery and dependency resolution
-- Support mock data for Moon-less environments
-
-## Usage Example
-
+### Public Builder API
 ```go
-builder := graph.NewBuilder("/path/to/project")
-g, err := builder.BuildGraph(ctx)
-// g.Nodes contains all discovered boxes
-// g.Edges contains dependency relationships
+func NewBuilder(rootPath string) *Builder
+func (b *Builder) BuildGraph(ctx context.Context) (*core.Graph, error)  
+func (b *Builder) GetCell(ctx context.Context, cellID string) (*core.Cell, error)
 ```
 
-## Important Notes
+### Core Domain Types
+```go
+type Graph struct {
+    Cells []Cell `json:"cells"`
+    Edges []Edge `json:"edges"`
+}
 
-- Requires Moon CLI to be installed and available in PATH
-- All paths are resolved to absolute paths for consistency
-- Debug logging is enabled to trace Moon execution
-- Supports filtering nodes based on root path
-- Each node represents a "box" in the vibethis system
+type Cell struct {
+    ID           string   `json:"id"`
+    Name         string   `json:"name"`
+    Path         string   `json:"path"`
+    Type         string   `json:"type"`
+    Dependencies []string `json:"dependencies"`
+}
+
+type Edge struct {
+    ID     string `json:"id"`
+    Source string `json:"source"`
+    Target string `json:"target"`
+}
+```
+
+## Usage Examples
+
+### Basic Graph Building
+```go
+import "github.com/divisive-ai/vibethis/server/graph"
+
+builder := graph.NewBuilder("/path/to/workspace")
+graph, err := builder.BuildGraph(context.Background())
+if err != nil {
+    return fmt.Errorf("failed to build graph: %w", err)
+}
+
+// Access discovered cells and their dependencies
+for _, cell := range graph.Cells {
+    fmt.Printf("Cell %s has %d dependencies\n", cell.ID, len(cell.Dependencies))
+}
+```
+
+### Single Cell Lookup
+```go
+cell, err := builder.GetCell(context.Background(), "example-api")
+if err != nil {
+    if errors.Is(err, graph.ErrCellNotFound) {
+        return fmt.Errorf("cell not found")
+    }
+    return err
+}
+
+fmt.Printf("Found cell: %s at path %s\n", cell.Name, cell.Path)
+```
+
+### Graph Traversal
+```go
+graph, _ := builder.BuildGraph(ctx)
+
+// Find all cells that depend on a specific cell
+targetCell := "database"
+dependents := []string{}
+for _, edge := range graph.Edges {
+    if edge.Target == targetCell {
+        dependents = append(dependents, edge.Source)
+    }
+}
+```
+
+## Configuration
+
+The graph module requires:
+- **Moon CLI**: Must be installed and available in PATH
+- **Git Repository**: Moon requires git initialization in the workspace
+- **Moon Workspace**: Workspace must contain `.moon/workspace.yml` configuration
+- **Moon Projects**: Each cell directory must contain `moon.yml` with project configuration
+
+### Moon Project Configuration Example
+```yaml
+id: 'example-api'
+language: 'go'
+project:
+  description: 'API service'
+dependsOn:
+  - 'example-database'
+  - 'example-cache'
+```
+
+The builder automatically resolves symlinks, handles absolute path conversion, and filters cells based on the specified root path during graph construction.

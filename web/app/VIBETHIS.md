@@ -1,75 +1,204 @@
-# web/app Directory
+# VibethisUI Main Application
 
-## Purpose
-Main React application orchestrating the vibethis graph visualization interface. This is the primary UI entry point that integrates all visualization and configuration modules.
+## Overview
+React-based graph visualization application that provides an interactive interface for exploring dependency graphs, managing file systems, and handling workflow inputs. Built with Ant Design components and integrates multiple specialized modules for a comprehensive development workflow experience.
 
-## Architecture Overview
+## Architecture
 
 ### Core Application Structure
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite
-- **Router**: React Router v6 for SPA navigation
-- **UI Library**: Ant Design (antd)
-- **Testing**: Playwright for E2E tests
+**Framework**: React 18 with TypeScript, Vite build system
+**UI Library**: Ant Design (antd) with @ant-design/icons
+**Routing**: React Router v6 for SPA navigation and deep linking
+**State**: URL-based state management with component-level useState hooks
 
-### Main Components
+### Component Hierarchy
+```
+App (BrowserRouter + InputActivityProvider)
+├── MainView (Split layout)
+│   ├── GraphFlow (Left panel - from @vibethis/flowchart)
+│   └── SidePanel (Right panel - contextual tabs)
+│       ├── InputFormsTab (Workflow input management)
+│       ├── FileBrowser (from @vibethis/files)
+│       ├── EnvEditor (from @vibethis/config)
+│       └── GitChanges (from @vibethis/changes)
+└── InputFormRenderer (Dynamic form generation)
+```
 
-#### App.tsx
-- Root component handling routing configuration
-- Default route redirects to `/boxes`
-- Nested routing structure:
-  - `/boxes` - Main boxes view
-  - `/box/:boxId` - Box detail view
-  - `/box/:boxId/:tab` - Tab navigation within box
-  - `/box/:boxId/:tab/:subtab` - Nested tab navigation
+### Module Dependencies
+- `@vibethis/shared`: Core types, API layer, and utilities
+- `@vibethis/flowchart`: Graph visualization with ReactFlow
+- `@vibethis/files`: File browser component
+- `@vibethis/config`: Environment configuration editor
+- `@vibethis/changes`: Git change tracking and visualization
 
-#### MainView.tsx
-- Primary layout component using Ant Design Splitter
-- Left panel: GraphFlow visualization from `@vibethis/flowchart`
-- Right panel: SidePanel with contextual information
-- Handles node selection and URL navigation synchronization
+## Key Interfaces
 
-#### SidePanel.tsx
-- Dynamic panel showing different content based on selection:
-  - **When no box selected**: Global configuration tabs
-  - **When box selected**: Box-specific tabs (Files, Config, Changes)
-- Integrates multiple modules:
-  - `@vibethis/files` - FileBrowser component
-  - `@vibethis/config` - EnvEditor component
-  - `@vibethis/changes` - GitChanges component
-- Nested tab structure for configuration options
+### Core Types (from @vibethis/shared)
+```typescript
+interface DependencyCell {
+  id: string;
+  name: string;
+  path: string;
+  type: string;
+  dependencies: string[];
+}
 
-## State Management
-- URL-based state using React Router params
-- Component-level state with useState hooks
-- Navigation state synchronized with URL for deep linking
-- No global state management library (Redux/MobX)
+interface RelationshipGraph {
+  cells: DependencyCell[];
+  edges: DependencyEdge[];
+}
 
-## Module Integration
-The app serves as the orchestration layer for visualization modules:
-- **@vibethis/flowchart**: Graph visualization component
-- **@vibethis/files**: File browser for box contents
-- **@vibethis/config**: Environment configuration editor
-- **@vibethis/changes**: Git change tracking
-- **@vibethis/shared**: Common types and utilities
+interface PendingInput {
+  workflowId: string;
+  formTitle: string;
+  status: 'pending' | 'completed';
+  createdAt: string;
+  expiresAt: string;
+}
+```
 
-## Testing Strategy
-- E2E tests using Playwright covering:
-  - UI integration flows
-  - Tab navigation persistence
-  - Node selection and file browser updates
-  - URL state management
-  - Position persistence
-  - Git changes visualization
+### Main Component Props
+```typescript
+// MainView.tsx
+interface MainViewProps {
+  // Uses URL params: cellId, tab, subtab
+  // Manages selectedCell state and navigation
+}
 
-## Development Commands
-- `moon run ui-app:serve` - Start development server on port 5173
-- `moon run ui-app:e2e` - Run Playwright E2E tests
-- Build output goes to `dist/` directory
+// SidePanel.tsx
+interface SidePanelProps {
+  selectedCell: DependencyCell | null;
+}
 
-## Key Features
-1. Split-panel interface with resizable panels
-2. Deep linking support for all views
-3. Contextual side panel adapting to selection
-4. Integration with backend API for graph data
-5. Responsive navigation with URL synchronization
+// InputFormRenderer.tsx
+interface InputFormRendererProps {
+  form: InputForm;
+  context?: FormContext;
+  onSubmit: (response: FormResponse) => void;
+  onCancel?: () => void;
+  loading?: boolean;
+}
+```
+
+### API Layer
+```typescript
+// API functions in @vibethis/shared
+async function fetchGraph(): Promise<RelationshipGraph>
+async function fetchPositions(): Promise<CellPosition[]>
+async function savePositions(positions: CellPosition[]): Promise<void>
+async function fetchFiles(cellId: string, path?: string): Promise<{files: any[], path: string}>
+```
+
+## Usage Examples
+
+### Basic Application Setup
+```typescript
+// App.tsx - Main routing configuration
+function App() {
+  return (
+    <BrowserRouter>
+      <InputActivityProvider>
+        <Routes>
+          <Route path="/cells" element={<MainView />} />
+          <Route path="/cell/:cellId" element={<MainView />} />
+          <Route path="/cell/:cellId/:tab" element={<MainView />} />
+          <Route path="/cell/:cellId/:tab/:subtab" element={<MainView />} />
+        </Routes>
+      </InputActivityProvider>
+    </BrowserRouter>
+  );
+}
+```
+
+### Cell Selection and Navigation
+```typescript
+// MainView.tsx - Handle cell selection
+const handleCellSelect = useCallback((cell: DependencyCell | null) => {
+  setSelectedCell(cell);
+  if (cell) {
+    const path = navigateToPath({ cellId: cell.id, tab: tab || 'files' });
+    navigate(path);
+  }
+}, [navigate, tab]);
+```
+
+### Dynamic Tab Configuration
+```typescript
+// SidePanel.tsx - Conditional tab rendering
+const items = showCellTabs ? [
+  { key: 'files', label: 'Files', children: <FileBrowser cell={selectedCell} /> },
+  { key: 'inputs', label: 'Inputs', children: <InputFormsTab cell={selectedCell} /> },
+  { key: 'config', label: 'Config', children: <CellConfigTabs /> },
+  { key: 'changes', label: 'Changes', children: <GitChanges /> }
+] : [
+  { key: 'config', label: 'Configuration', children: <ConfigurationTabs /> }
+];
+```
+
+### Form Rendering with Validation
+```typescript
+// InputFormRenderer.tsx - Dynamic form field generation
+const renderField = (field: InputField) => {
+  switch (field.type) {
+    case 'short_answer':
+      return <Input placeholder={field.placeholder} />;
+    case 'multiple_choice':
+      return (
+        <Radio.Group>
+          {field.options?.map(option => 
+            <Radio key={option} value={option}>{option}</Radio>
+          )}
+        </Radio.Group>
+      );
+    // Additional field types: paragraph_text, checkboxes, dropdown, 
+    // linear_scale, date, time, file_upload
+  }
+};
+```
+
+## Configuration
+
+### Development Server
+```bash
+# Start development server
+npm run dev  # or moon run ui-app:serve
+# Runs on http://localhost:5173
+```
+
+### Build Configuration (vite.config.ts)
+```typescript
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@vibethis/flowchart': resolve(__dirname, '../flowchart/src/index.ts'),
+      // Other module aliases
+    }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'antd'],
+          'monaco': ['@monaco-editor/react']
+        }
+      }
+    }
+  }
+});
+```
+
+### API Configuration
+```typescript
+// Environment-based API configuration
+const API_BASE = import.meta.env.DEV 
+  ? 'http://localhost:8080/api' 
+  : '/api';
+```
+
+### Testing Setup
+- **E2E Testing**: Playwright with headless mode
+- **Unit Testing**: Vitest with jsdom environment  
+- **Test Commands**: `npm run test` (unit), `npm run test:e2e` (playwright)
+- **Coverage**: Source maps enabled for debugging
