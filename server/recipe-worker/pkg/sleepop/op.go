@@ -1,11 +1,10 @@
-package sleep
+package sleepop
 
 import (
 	"context"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // SleepConfig defines the configuration for sleep activities - ALL fields MUST have json tags
@@ -29,20 +28,8 @@ type SleepOutput struct {
 	ErrorMessage   string    `json:"error_message"`   // Error message if interrupted
 }
 
-// SleepActivityWrapper implements the RegisterableActivity interface
-type SleepActivityWrapper struct{}
-
-// Ensure we implement the interface
-var _ types.RegisterableActivity[SleepConfig, SleepInput, SleepOutput] = (*SleepActivityWrapper)(nil)
-
-// NewSleepActivity creates a new sleep activity that implements RegisterableActivity
-func NewSleepActivity() types.RegisterableActivity[SleepConfig, SleepInput, SleepOutput] {
-	return &SleepActivityWrapper{}
-}
-
-// GetMetadata returns activity metadata for registration
-func (a *SleepActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func GetOp() types.RegisterableOp {
+	return types.NewRegisterableOp(types.OpMetadata{
 		Type:           "sleep",
 		Name:           "Sleep/Delay",
 		Description:    "Pauses execution for a specified duration",
@@ -58,11 +45,11 @@ func (a *SleepActivityWrapper) GetMetadata() types.ActivityMetadata {
 				"CancelledError",
 			},
 		},
-	}
+	}, executeSleep)
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *SleepActivityWrapper) Execute(ctx context.Context, config SleepConfig, input SleepInput) (SleepOutput, error) {
+func executeSleep(ctx context.Context, config SleepConfig, input SleepInput) (SleepOutput, error) {
 	// Determine duration to use
 	durationStr := input.Duration
 	if durationStr == "" && config.DefaultDuration != "" {
@@ -91,7 +78,7 @@ func (a *SleepActivityWrapper) Execute(ctx context.Context, config SleepConfig, 
 		// Sleep completed normally
 		endTime := time.Now()
 		actualDuration := endTime.Sub(startTime)
-		
+
 		return SleepOutput{
 			StartTime:      startTime,
 			EndTime:        endTime,
@@ -99,12 +86,12 @@ func (a *SleepActivityWrapper) Execute(ctx context.Context, config SleepConfig, 
 			Completed:      true,
 			Interrupted:    false,
 		}, nil
-		
+
 	case <-ctx.Done():
 		// Context cancelled (timeout or interruption)
 		endTime := time.Now()
 		actualDuration := endTime.Sub(startTime)
-		
+
 		output := SleepOutput{
 			StartTime:      startTime,
 			EndTime:        endTime,
@@ -113,7 +100,7 @@ func (a *SleepActivityWrapper) Execute(ctx context.Context, config SleepConfig, 
 			Interrupted:    true,
 			ErrorMessage:   ctx.Err().Error(),
 		}
-		
+
 		// Return the output with the error
 		// The error will cause the activity to fail, but the output still contains useful info
 		return output, ctx.Err()

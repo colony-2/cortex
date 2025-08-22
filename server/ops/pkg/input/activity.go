@@ -3,9 +3,9 @@ package input
 import (
 	"context"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -13,17 +13,17 @@ import (
 // Config represents the configuration for the input activity
 type Config struct {
 	// Single question format
-	Question string    `json:"question,omitempty" jsonschema:"description=Question to ask the user"`
-	Type     FieldType `json:"type,omitempty" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Input field type"`
-	Options  []Option  `json:"options,omitempty" jsonschema:"description=Options for choice fields"`
+	Question string       `json:"question,omitempty" jsonschema:"description=Question to ask the user"`
+	Type     FieldType    `json:"type,omitempty" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Input field type"`
+	Options  []Option     `json:"options,omitempty" jsonschema:"description=Options for choice fields"`
 	Scale    *LinearScale `json:"scale,omitempty" jsonschema:"description=Configuration for linear scale fields"`
-	
+
 	// Multi-field format
-	Title   string        `json:"title,omitempty" jsonschema:"description=Form title"`
-	Fields  []FormField   `json:"fields,omitempty" jsonschema:"description=Form fields"`
-	Context FormContext   `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
-	Timeout int           `json:"timeout,omitempty" jsonschema:"default=300,minimum=1,maximum=3600,description=Timeout in seconds"`
-	
+	Title   string      `json:"title,omitempty" jsonschema:"description=Form title"`
+	Fields  []FormField `json:"fields,omitempty" jsonschema:"description=Form fields"`
+	Context FormContext `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
+	Timeout int         `json:"timeout,omitempty" jsonschema:"default=300,minimum=1,maximum=3600,description=Timeout in seconds"`
+
 	// Default value on timeout
 	DefaultOnTimeout interface{} `json:"default_on_timeout,omitempty" jsonschema:"description=Default value to return if input times out"`
 }
@@ -43,7 +43,7 @@ type Output struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" jsonschema:"description=Additional metadata"`
 }
 
-// InputActivity is a RegisterableActivity that collects user input via forms
+// InputActivity is a RegisterableOp that collects user input via forms
 type InputActivity struct {
 	// This will be injected by the framework when running in a workflow context
 	temporalContext workflow.Context
@@ -59,8 +59,8 @@ func NewInputActivity() *InputActivity {
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *InputActivity) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *InputActivity) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "input",
 		Name:           "User Input Collection",
 		Description:    "Collects user input through interactive forms with support for various field types",
@@ -83,19 +83,19 @@ func (a *InputActivity) GetMetadata() types.ActivityMetadata {
 func (a *InputActivity) Execute(ctx context.Context, config Config, input Input) (Output, error) {
 	// Build the form from config
 	form := a.buildForm(config, input)
-	
+
 	// Set default timeout if not specified
 	timeout := time.Duration(config.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = 5 * time.Minute
 	}
-	
+
 	// If we have a temporal context (running in workflow), use child workflow
 	// Otherwise, we're in standalone mode for testing
 	if a.temporalContext != nil {
 		return a.executeWithWorkflow(form, timeout, config, input)
 	}
-	
+
 	// Standalone mode - just return a mock response for testing
 	return a.executeMockResponse(config)
 }
@@ -117,7 +117,7 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 	form := InputForm{
 		Timeout: time.Duration(config.Timeout) * time.Second,
 	}
-	
+
 	// Check if it's a single question or multi-field form
 	if config.Question != "" {
 		// Single question format
@@ -130,16 +130,16 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 		form.Title = config.Title
 		form.Fields = config.Fields
 	}
-	
+
 	// Add context
 	form.Context = config.Context
-	
+
 	// Process artifacts from input context if needed
 	if form.Context.ArtifactsFromOutput != "" {
 		// This would resolve artifacts from previous activity outputs
 		// For now, we'll leave this as a placeholder
 	}
-	
+
 	return form
 }
 
@@ -147,7 +147,7 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duration, config Config, input Input) (Output, error) {
 	// Generate unique workflow ID
 	childID := fmt.Sprintf("input-%s-%d", workflow.GetInfo(a.temporalContext).WorkflowExecution.ID, time.Now().Unix())
-	
+
 	// Configure child workflow options
 	childOptions := workflow.ChildWorkflowOptions{
 		WorkflowID: childID,
@@ -158,9 +158,9 @@ func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duratio
 			"InputStatus":       "pending",
 		},
 	}
-	
+
 	wfCtx := workflow.WithChildOptions(a.temporalContext, childOptions)
-	
+
 	// Prepare workflow parameters
 	inputParams := InputWorkflowParams{
 		Form:       form,
@@ -168,11 +168,11 @@ func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duratio
 		BoxID:      input.BoxID,
 		ActivityID: input.ActivityID,
 	}
-	
+
 	// Execute child workflow and wait for result
 	var result InputWorkflowResult
 	err := workflow.ExecuteChildWorkflow(wfCtx, "InputCollectionWorkflow", inputParams).Get(wfCtx, &result)
-	
+
 	if err != nil {
 		// Handle timeout with default value if configured
 		if config.DefaultOnTimeout != nil && temporal.IsTimeoutError(err) {
@@ -187,13 +187,13 @@ func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duratio
 		}
 		return Output{}, err
 	}
-	
+
 	// Convert workflow result to activity output
 	output := Output{
 		UserID:   result.UserID,
 		Metadata: result.Metadata,
 	}
-	
+
 	// Determine if it's single question or multi-field response
 	if config.Question != "" {
 		// Single question - extract single response value
@@ -204,7 +204,7 @@ func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duratio
 		// Multi-field - return all fields
 		output.Fields = result.FormResponse
 	}
-	
+
 	return output, nil
 }
 
@@ -216,7 +216,7 @@ func (a *InputActivity) executeMockResponse(config Config) (Output, error) {
 			"test": true,
 		},
 	}
-	
+
 	if config.Question != "" {
 		// Single question mock response
 		switch config.Type {
@@ -249,6 +249,6 @@ func (a *InputActivity) executeMockResponse(config Config) (Output, error) {
 			}
 		}
 	}
-	
+
 	return output, nil
 }

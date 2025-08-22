@@ -4,11 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"reflect"
 
-	gitactivity "github.com/divisive-ai/vibethis/server/git/pkg/activity"
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
 	worker "github.com/divisive-ai/vibethis/server/recipe-worker"
 )
 
@@ -23,40 +20,11 @@ func GetGlobalActivityRegistry() *ActivityRegistry {
 	return globalActivityRegistry
 }
 
-// RegisterAllActivities registers all available activities from both ops and git modules
-func RegisterAllActivities() error {
-	registry := GetGlobalActivityRegistry()
-
-	// Get all activities from the ops module
-	opsActivities := opsactivity.GetAll()
-	
-	// Get all activities from the git module
-	gitActivities := gitactivity.GetAll()
-	
-	// Combine all activities
-	allActivities := append(opsActivities, gitActivities...)
-
-	// Register each activity using the generic registration method
-	for _, act := range allActivities {
-		if err := registry.RegisterGeneric(act); err != nil {
-			return fmt.Errorf("failed to register activity: %w", err)
-		}
-	}
-
-	log.Printf("Successfully registered %d activities", len(registry.List()))
-	for _, activityType := range registry.List() {
-		log.Printf("  - %s", activityType)
-	}
-
-	return nil
-}
-
-
 // CreateActivityProvider creates a provider for a registered activity
 // This is used to bridge RegisterableActivity to the existing provider system
 func CreateActivityProvider(activityType string) (worker.ActivityProvider, error) {
 	registry := GetGlobalActivityRegistry()
-	
+
 	registration, exists := registry.Get(activityType)
 	if !exists {
 		return nil, fmt.Errorf("activity type %s not registered", activityType)
@@ -73,18 +41,18 @@ func CreateActivityProvider(activityType string) (worker.ActivityProvider, error
 // RegisterActivityProviders registers all activities as providers in the provider registry
 func RegisterActivityProviders(providerRegistry *worker.ProviderRegistry) error {
 	activityRegistry := GetGlobalActivityRegistry()
-	
+
 	for activityType := range activityRegistry.GetAll() {
 		provider, err := CreateActivityProvider(activityType)
 		if err != nil {
 			return fmt.Errorf("failed to create provider for %s: %w", activityType, err)
 		}
-		
+
 		if err := providerRegistry.Register(provider); err != nil {
 			return fmt.Errorf("failed to register provider for %s: %w", activityType, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -179,22 +147,22 @@ func (p *GenericActivityProvider) Execute(ctx context.Context, args ...interface
 func (p *GenericActivityProvider) GetSchemas() (configSchema, inputSchema, outputSchema map[string]interface{}) {
 	// Convert jsonschema.Schema to map[string]interface{}
 	var config, input, output map[string]interface{}
-	
+
 	if p.registration.ConfigSchema != nil {
 		configBytes, _ := json.Marshal(p.registration.ConfigSchema)
 		json.Unmarshal(configBytes, &config)
 	}
-	
+
 	if p.registration.InputSchema != nil {
 		inputBytes, _ := json.Marshal(p.registration.InputSchema)
 		json.Unmarshal(inputBytes, &input)
 	}
-	
+
 	if p.registration.OutputSchema != nil {
 		outputBytes, _ := json.Marshal(p.registration.OutputSchema)
 		json.Unmarshal(outputBytes, &output)
 	}
-	
+
 	return config, input, output
 }
 

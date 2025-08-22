@@ -1,15 +1,14 @@
-package command
+package commandop
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"os"
 	"os/exec"
 	"runtime"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags
@@ -24,12 +23,12 @@ type CommandExecutionConfig struct {
 
 // CommandExecutionInput defines the input for command execution activities - ALL fields MUST have json tags
 type CommandExecutionInput struct {
-	Run              string            `json:"run"`                // Required: command to execute
-	WorkingDirectory string            `json:"working_directory"`  // Optional: override working directory
-	Shell            string            `json:"shell"`              // Optional: override shell
-	Env              map[string]string `json:"env"`                // Optional: additional env vars
-	ContinueOnError  bool              `json:"continue_on_error"`  // Optional: don't fail on non-zero exit
-	Timeout          string            `json:"timeout"`            // Optional: timeout duration (e.g., "30s")
+	Run              string            `json:"run"`               // Required: command to execute
+	WorkingDirectory string            `json:"working_directory"` // Optional: override working directory
+	Shell            string            `json:"shell"`             // Optional: override shell
+	Env              map[string]string `json:"env"`               // Optional: additional env vars
+	ContinueOnError  bool              `json:"continue_on_error"` // Optional: don't fail on non-zero exit
+	Timeout          string            `json:"timeout"`           // Optional: timeout duration (e.g., "30s")
 }
 
 // CommandExecutionOutput defines the output from command execution activities - ALL fields MUST have json tags
@@ -42,40 +41,36 @@ type CommandExecutionOutput struct {
 	ErrorMessage string `json:"error_message"` // Error message if failed
 }
 
-// CommandExecutionActivityWrapper implements the RegisterableActivity interface
-type CommandExecutionActivityWrapper struct{}
-
-// Ensure we implement the interface
-var _ types.RegisterableActivity[CommandExecutionConfig, CommandExecutionInput, CommandExecutionOutput] = (*CommandExecutionActivityWrapper)(nil)
-
-// NewCommandExecutionActivity creates a new command execution activity that implements RegisterableActivity
-func NewCommandExecutionActivity() types.RegisterableActivity[CommandExecutionConfig, CommandExecutionInput, CommandExecutionOutput] {
-	return &CommandExecutionActivityWrapper{}
+// Deprecated: CommandExecutionActivity is now a RegisterableOp
+func newCommandExecutionActivity() types.RegisterableOp {
+	// Create a new command execution activity that implements RegisterableOp
+	return GetOp()
 }
 
-// GetMetadata returns activity metadata for registration
-func (a *CommandExecutionActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
-		Type:           "command_execution",
-		Name:           "Command Execution",
-		Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
-		Version:        "1.0.0",
-		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
-			MaximumAttempts:    1, // Default to no retries for command execution
-			InitialInterval:    5 * time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    60 * time.Second,
-			NonRetryableErrorTypes: []string{
-				"CommandNotFoundError",
-				"TimeoutError",
+// NewCommandExecutionActivity creates a new command execution activity that implements RegisterableOp
+func GetOp() types.RegisterableOp {
+	return types.NewRegisterableOp(
+		types.OpMetadata{
+			Type:           "command_execution",
+			Name:           "Command Execution",
+			Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
+			Version:        "1.0.0",
+			DefaultTimeout: 5 * time.Minute,
+			RetryPolicy: &types.RetryPolicy{
+				MaximumAttempts:    1, // Default to no retries for command execution
+				InitialInterval:    5 * time.Second,
+				BackoffCoefficient: 2.0,
+				MaximumInterval:    60 * time.Second,
+				NonRetryableErrorTypes: []string{
+					"CommandNotFoundError",
+					"TimeoutError",
+				},
 			},
-		},
-	}
+		}, execute)
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *CommandExecutionActivityWrapper) Execute(ctx context.Context, config CommandExecutionConfig, input CommandExecutionInput) (CommandExecutionOutput, error) {
+func execute(ctx context.Context, config CommandExecutionConfig, input CommandExecutionInput) (CommandExecutionOutput, error) {
 	// Validate inputs
 	if input.Run == "" {
 		return CommandExecutionOutput{}, fmt.Errorf("run command is required")

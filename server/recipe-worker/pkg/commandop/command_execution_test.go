@@ -1,4 +1,4 @@
-package command
+package commandop
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestCommandExecutionActivity_GetMetadata(t *testing.T) {
-	activity := NewCommandExecutionActivity()
+	activity := GetOp()
 	metadata := activity.GetMetadata()
 
 	if metadata.Type != "command_execution" {
@@ -27,7 +27,6 @@ func TestCommandExecutionActivity_GetMetadata(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_SimpleCommand(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -35,7 +34,7 @@ func TestCommandExecutionActivity_Execute_SimpleCommand(t *testing.T) {
 		Run: "echo 'Hello, World!'",
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -56,7 +55,6 @@ func TestCommandExecutionActivity_Execute_SimpleCommand(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_WithEnvironmentVariables(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{
@@ -71,7 +69,7 @@ func TestCommandExecutionActivity_Execute_WithEnvironmentVariables(t *testing.T)
 		},
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -86,7 +84,6 @@ func TestCommandExecutionActivity_Execute_WithEnvironmentVariables(t *testing.T)
 }
 
 func TestCommandExecutionActivity_Execute_WithWorkingDirectory(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	// Use temp directory for testing
@@ -98,11 +95,10 @@ func TestCommandExecutionActivity_Execute_WithWorkingDirectory(t *testing.T) {
 		WorkingDirectory: tempDir,
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-
 	if !output.Success {
 		t.Errorf("Expected success=true, got false")
 	}
@@ -112,7 +108,6 @@ func TestCommandExecutionActivity_Execute_WithWorkingDirectory(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_FailedCommand(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -120,7 +115,7 @@ func TestCommandExecutionActivity_Execute_FailedCommand(t *testing.T) {
 		Run: "exit 1",
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err == nil {
 		t.Error("Expected error for failed command")
 	}
@@ -134,7 +129,6 @@ func TestCommandExecutionActivity_Execute_FailedCommand(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_ContinueOnError(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -143,7 +137,7 @@ func TestCommandExecutionActivity_Execute_ContinueOnError(t *testing.T) {
 		ContinueOnError: true,
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err != nil {
 		t.Errorf("Expected no error with continue_on_error=true, got: %v", err)
 	}
@@ -162,7 +156,6 @@ func TestCommandExecutionActivity_Execute_Timeout(t *testing.T) {
 		t.Skip("Skipping timeout test on Windows")
 	}
 
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -171,7 +164,7 @@ func TestCommandExecutionActivity_Execute_Timeout(t *testing.T) {
 		Timeout: "100ms",
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err == nil {
 		t.Error("Expected timeout error")
 	}
@@ -185,7 +178,6 @@ func TestCommandExecutionActivity_Execute_Timeout(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_MissingCommand(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -193,7 +185,7 @@ func TestCommandExecutionActivity_Execute_MissingCommand(t *testing.T) {
 		Run: "",
 	}
 
-	_, err := activity.Execute(ctx, config, input)
+	_, err := execute(ctx, config, input)
 	if err == nil {
 		t.Error("Expected error for missing command")
 	}
@@ -203,7 +195,6 @@ func TestCommandExecutionActivity_Execute_MissingCommand(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_InvalidTimeout(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	config := CommandExecutionConfig{}
@@ -212,7 +203,7 @@ func TestCommandExecutionActivity_Execute_InvalidTimeout(t *testing.T) {
 		Timeout: "invalid",
 	}
 
-	_, err := activity.Execute(ctx, config, input)
+	_, err := execute(ctx, config, input)
 	if err == nil {
 		t.Error("Expected error for invalid timeout")
 	}
@@ -222,7 +213,6 @@ func TestCommandExecutionActivity_Execute_InvalidTimeout(t *testing.T) {
 }
 
 func TestCommandExecutionActivity_Execute_ShellOverride(t *testing.T) {
-	activity := NewCommandExecutionActivity()
 	ctx := context.Background()
 
 	// Test with bash if available
@@ -234,7 +224,7 @@ func TestCommandExecutionActivity_Execute_ShellOverride(t *testing.T) {
 		Shell: "bash", // Override with bash if available
 	}
 
-	output, err := activity.Execute(ctx, config, input)
+	output, err := execute(ctx, config, input)
 	if err != nil {
 		// If bash is not available, skip this test
 		if strings.Contains(err.Error(), "bash") {

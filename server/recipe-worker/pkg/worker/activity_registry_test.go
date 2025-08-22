@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // Test types with proper JSON tags
@@ -39,20 +39,17 @@ type BadInput struct {
 	Size int    // Missing json tag
 }
 
-// TestActivity implements RegisterableActivity for testing
-type TestActivity struct{}
-
-func (a *TestActivity) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+// TestActivity implements RegisterableOp for testing
+var testActivity = types.NewRegisterableOp(
+	types.OpMetadata{
 		Type:           "test_activity",
 		Name:           "Test Activity",
 		Description:    "A test activity for unit testing",
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
-	}
-}
+	}, testExecute)
 
-func (a *TestActivity) Execute(ctx context.Context, config TestConfig, input TestInput) (TestOutput, error) {
+func testExecute(ctx context.Context, config TestConfig, input TestInput) (TestOutput, error) {
 	return TestOutput{
 		Result:  input.Data + " processed",
 		Success: true,
@@ -63,8 +60,7 @@ func TestActivityRegistration(t *testing.T) {
 	registry := NewActivityRegistry()
 
 	t.Run("successful registration", func(t *testing.T) {
-		activity := &TestActivity{}
-		err := Register[TestConfig, TestInput, TestOutput](registry, activity)
+		err := Register[TestConfig, TestInput, TestOutput](registry, testActivity)
 		assert.NoError(t, err)
 
 		// Verify activity was registered
@@ -78,8 +74,7 @@ func TestActivityRegistration(t *testing.T) {
 	})
 
 	t.Run("duplicate registration fails", func(t *testing.T) {
-		activity := &TestActivity{}
-		err := Register[TestConfig, TestInput, TestOutput](registry, activity)
+		err := Register[TestConfig, TestInput, TestOutput](registry, testActivity)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "already registered")
 	})
@@ -93,8 +88,8 @@ func TestActivityRegistration(t *testing.T) {
 // BadActivity for testing validation failures
 type BadActivity struct{}
 
-func (a *BadActivity) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *BadActivity) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "bad_activity",
 		Name:           "Bad Activity",
 		Description:    "Test activity with bad types",
@@ -129,9 +124,9 @@ func TestJSONTagValidation(t *testing.T) {
 		type NestedBad struct {
 			Field string // Missing json tag
 		}
-		
+
 		type ConfigWithNested struct {
-			Name   string     `json:"name"`
+			Name   string    `json:"name"`
 			Nested NestedBad `json:"nested"`
 		}
 
@@ -154,10 +149,10 @@ func TestJSONTagValidation(t *testing.T) {
 	t.Run("all fields with tags pass", func(t *testing.T) {
 		err := generator.ValidateStructTags(reflect.TypeOf(TestConfig{}))
 		assert.NoError(t, err)
-		
+
 		err = generator.ValidateStructTags(reflect.TypeOf(TestInput{}))
 		assert.NoError(t, err)
-		
+
 		err = generator.ValidateStructTags(reflect.TypeOf(TestOutput{}))
 		assert.NoError(t, err)
 	})
@@ -165,9 +160,8 @@ func TestJSONTagValidation(t *testing.T) {
 
 func TestSchemaGeneration(t *testing.T) {
 	registry := NewActivityRegistry()
-	activity := &TestActivity{}
-	
-	err := Register[TestConfig, TestInput, TestOutput](registry, activity)
+
+	err := Register[TestConfig, TestInput, TestOutput](registry, testActivity)
 	require.NoError(t, err)
 
 	registration, exists := registry.Get("test_activity")
@@ -176,15 +170,15 @@ func TestSchemaGeneration(t *testing.T) {
 	t.Run("config schema", func(t *testing.T) {
 		schema := registration.ConfigSchema
 		assert.NotNil(t, schema)
-		
+
 		// Convert to JSON and verify structure
 		schemaJSON, err := json.Marshal(schema)
 		require.NoError(t, err)
-		
+
 		var schemaMap map[string]interface{}
 		err = json.Unmarshal(schemaJSON, &schemaMap)
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, "object", schemaMap["type"])
 		properties, ok := schemaMap["properties"].(map[string]interface{})
 		assert.True(t, ok)
@@ -195,14 +189,14 @@ func TestSchemaGeneration(t *testing.T) {
 	t.Run("input schema", func(t *testing.T) {
 		schema := registration.InputSchema
 		assert.NotNil(t, schema)
-		
+
 		schemaJSON, err := json.Marshal(schema)
 		require.NoError(t, err)
-		
+
 		var schemaMap map[string]interface{}
 		err = json.Unmarshal(schemaJSON, &schemaMap)
 		require.NoError(t, err)
-		
+
 		properties, ok := schemaMap["properties"].(map[string]interface{})
 		assert.True(t, ok)
 		assert.Contains(t, properties, "data")
@@ -212,13 +206,12 @@ func TestSchemaGeneration(t *testing.T) {
 
 func TestActivityProvider(t *testing.T) {
 	registry := NewActivityRegistry()
-	activity := &TestActivity{}
-	
-	err := Register[TestConfig, TestInput, TestOutput](registry, activity)
+
+	err := Register[TestConfig, TestInput, TestOutput](registry, testActivity)
 	require.NoError(t, err)
 
 	registration, _ := registry.Get("test_activity")
-	provider := NewActivityProvider[TestConfig, TestInput, TestOutput](activity, registration)
+	provider := NewActivityProvider(testActivity, registration)
 
 	t.Run("provider metadata", func(t *testing.T) {
 		assert.Equal(t, "test_activity", provider.GetType())
@@ -227,20 +220,20 @@ func TestActivityProvider(t *testing.T) {
 
 	t.Run("provider execution", func(t *testing.T) {
 		ctx := context.Background()
-		
+
 		config := map[string]interface{}{
 			"url":     "https://example.com",
 			"timeout": 30,
 		}
-		
+
 		input := map[string]interface{}{
 			"data": "test data",
 			"size": 100,
 		}
-		
+
 		result, err := provider.Execute(ctx, config, input)
 		assert.NoError(t, err)
-		
+
 		output, ok := result.(map[string]interface{})
 		assert.True(t, ok)
 		assert.Equal(t, "test data processed", output["result"])

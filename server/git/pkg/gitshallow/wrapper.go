@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // GitShallowConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags
@@ -24,20 +24,20 @@ type GitShallowOutput struct {
 	ClonedPath string `json:"cloned_path"` // Path to the cloned repository
 }
 
-// GitShallowActivityWrapper implements the RegisterableActivity interface
+// GitShallowActivityWrapper implements the RegisterableOp interface
 type GitShallowActivityWrapper struct{}
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[GitShallowConfig, GitShallowInput, GitShallowOutput] = (*GitShallowActivityWrapper)(nil)
+var _ types.RegisterableOp[GitShallowConfig, GitShallowInput, GitShallowOutput] = (*GitShallowActivityWrapper)(nil)
 
-// NewGitShallowActivity creates a new git shallow clone activity that implements RegisterableActivity
-func NewGitShallowActivity() types.RegisterableActivity[GitShallowConfig, GitShallowInput, GitShallowOutput] {
+// NewGitShallowActivity creates a new git shallow clone activity that implements RegisterableOp
+func NewGitShallowActivity() types.RegisterableOp[GitShallowConfig, GitShallowInput, GitShallowOutput] {
 	return &GitShallowActivityWrapper{}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *GitShallowActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *GitShallowActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "git_shallow_clone",
 		Name:           "Git Shallow Clone",
 		Description:    "Performs a shallow clone of a local git repository to another directory at a specific commit",

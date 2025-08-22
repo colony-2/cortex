@@ -3,9 +3,8 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // LLMConfig defines the configuration for LLM activities - ALL fields MUST have json tags
@@ -33,20 +32,20 @@ type LLMOutput struct {
 	Usage        map[string]interface{} `json:"usage"`         // Token usage statistics
 }
 
-// LLMActivityWrapper implements the RegisterableActivity interface
+// LLMActivityWrapper implements the RegisterableOp interface
 type LLMActivityWrapper struct{}
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] = (*LLMActivityWrapper)(nil)
+var _ types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] = (*LLMActivityWrapper)(nil)
 
-// NewLLMActivity creates a new LLM activity that implements RegisterableActivity
-func NewLLMActivity() types.RegisterableActivity[LLMConfig, LLMInput, LLMOutput] {
+// NewLLMActivity creates a new LLM activity that implements RegisterableOp
+func NewLLMActivity() types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] {
 	return &LLMActivityWrapper{}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *LLMActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *LLMActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "llm_inference",
 		Name:           "LLM Inference",
 		Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",

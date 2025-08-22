@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.10.0
 	go.temporal.io/api v1.49.1
@@ -52,3 +53,5 @@ require (
 )
 
 replace github.com/divisive-ai/vibethis/server/llm => ../llm
+
+replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core

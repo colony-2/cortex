@@ -19,6 +19,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
@@ -65,5 +66,6 @@ replace (
 	github.com/divisive-ai/vibethis/server/graph => ../graph
 	github.com/divisive-ai/vibethis/server/openapi => ../openapi
 	github.com/divisive-ai/vibethis/server/ops => ../ops
+	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 	github.com/divisive-ai/vibethis/server/storage => ../storage
 )

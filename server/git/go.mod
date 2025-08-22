@@ -4,13 +4,15 @@ go 1.24.1
 
 replace github.com/divisive-ai/vibethis/server/core => ../core
 
+replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
+
 replace github.com/divisive-ai/vibethis/server/llm => ../llm
 
 replace github.com/divisive-ai/vibethis/server/ops => ../ops
 
 require (
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
-	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.10.0
 )
 

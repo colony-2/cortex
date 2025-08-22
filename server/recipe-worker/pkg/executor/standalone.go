@@ -3,20 +3,17 @@ package executor
 import (
 	"context"
 	"fmt"
-	"io"
-	"log"
-	"os"
-	"strings"
-
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap"
+	"io"
+	"log"
+	"os"
 )
 
 // StandaloneExecutor executes recipes without a Temporal server
@@ -28,33 +25,21 @@ type StandaloneExecutor struct {
 }
 
 // NewStandaloneExecutor creates a new standalone recipe executor
-func NewStandaloneExecutor(logger *zap.Logger) (*StandaloneExecutor, error) {
-	// Initialize activity registry
-	registry := worker.NewActivityRegistry()
-	
-	// Register all available activities
-	activities := opsactivity.GetAll()
-	for _, act := range activities {
-		if err := registry.RegisterGeneric(act); err != nil {
-			if !strings.Contains(err.Error(), "already registered") {
-				return nil, fmt.Errorf("failed to register activity: %w", err)
-			}
-		}
-	}
-	
+func NewStandaloneExecutor(registry *worker.ActivityRegistry, logger *zap.Logger) (*StandaloneExecutor, error) {
+
 	// Create compiler activity registry
 	compilerRegistry := compiler.NewActivityRegistry()
 	// Register all activities in the compiler registry
 	for activityType := range registry.GetAll() {
 		compilerRegistry.RegisterActivity(activityType)
 	}
-	
+
 	// Create compiler
 	comp := compiler.NewCompiler(compilerRegistry)
-	
+
 	// Create activity executor
 	activityExecutor := NewActivityExecutor(registry, logger)
-	
+
 	return &StandaloneExecutor{
 		registry:         registry,
 		compiler:         comp,
@@ -74,7 +59,7 @@ type ExecutionOptions struct {
 // DefaultExecutionOptions returns default execution options
 func DefaultExecutionOptions() ExecutionOptions {
 	return ExecutionOptions{
-		SuppressLogs:        true,
+		SuppressLogs:       true,
 		ContextPropagators: []workflow.ContextPropagator{},
 	}
 }
@@ -91,7 +76,7 @@ func (e *StandaloneExecutor) Execute(
 	if len(opts) > 0 {
 		options = opts[0]
 	}
-	
+
 	// Suppress test environment debug logs if requested
 	var originalLogger io.Writer
 	var originalStdout *os.File
@@ -99,31 +84,31 @@ func (e *StandaloneExecutor) Execute(
 		// Set environment variable to disable temporal test debug logs
 		os.Setenv("TEMPORAL_DEBUG", "false")
 		defer os.Unsetenv("TEMPORAL_DEBUG")
-		
+
 		// Redirect standard log output to discard
 		originalLogger = log.Writer()
 		log.SetOutput(io.Discard)
 		defer log.SetOutput(originalLogger)
-		
+
 		// Also suppress standard output temporarily
 		originalStdout = os.Stdout
 		os.Stdout, _ = os.Open(os.DevNull)
 		defer func() { os.Stdout = originalStdout }()
 	}
-	
+
 	// Create test environment for execution
 	testSuite := &testsuite.WorkflowTestSuite{}
 	testEnv := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Disable test environment debug logging
 	if options.SuppressLogs {
 		testEnv.SetOnActivityCompletedListener(nil)
 	}
-	
+
 	// Create workflow function
 	// Use nil executor to use the default implementation that supports unified format
 	workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe, nil)
-	
+
 	// Register workflow
 	testEnv.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -131,7 +116,7 @@ func (e *StandaloneExecutor) Execute(
 			Name: recipe.Name,
 		},
 	)
-	
+
 	// Register activities with the test environment
 	for activityType := range e.registry.GetAll() {
 		// Create a generic activity executor that wraps the real activity
@@ -143,13 +128,13 @@ func (e *StandaloneExecutor) Execute(
 			},
 		)
 	}
-	
+
 	// Set context propagators
 	testEnv.SetContextPropagators(options.ContextPropagators)
-	
+
 	// Execute workflow
 	testEnv.ExecuteWorkflow(recipe.Name, inputs)
-	
+
 	// Check for errors
 	if err := testEnv.GetWorkflowError(); err != nil {
 		// Check if it's a timeout error
@@ -158,13 +143,13 @@ func (e *StandaloneExecutor) Execute(
 		}
 		return nil, err
 	}
-	
+
 	// Get result
 	var outputs map[string]interface{}
 	if err := testEnv.GetWorkflowResult(&outputs); err != nil {
 		return nil, err
 	}
-	
+
 	return outputs, nil
 }
 

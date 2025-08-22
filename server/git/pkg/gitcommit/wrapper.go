@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // PersistCommitConfig defines the configuration for persist commit activities - ALL fields MUST have json tags
@@ -14,28 +14,28 @@ type PersistCommitConfig struct {
 
 // PersistCommitInput defines the input for persist commit activities - ALL fields MUST have json tags
 type PersistCommitInput struct {
-	RepoPath        string        `json:"repo_path"`                  // Required: path to the local Git repository
-	StorageLocation string        `json:"storage_location"`           // Required: directory path where thin packs will be stored
-	RootHash        string        `json:"root_hash"`                  // Required: base commit hash this set was built upon
-	CommitMessage   string        `json:"commit_message,omitempty"`   // Optional: message for the commit
-	Author          string        `json:"author,omitempty"`           // Optional: author name and email
-	Timeout         time.Duration `json:"timeout,omitempty"`          // Optional: operation timeout
+	RepoPath        string        `json:"repo_path"`                // Required: path to the local Git repository
+	StorageLocation string        `json:"storage_location"`         // Required: directory path where thin packs will be stored
+	RootHash        string        `json:"root_hash"`                // Required: base commit hash this set was built upon
+	CommitMessage   string        `json:"commit_message,omitempty"` // Optional: message for the commit
+	Author          string        `json:"author,omitempty"`         // Optional: author name and email
+	Timeout         time.Duration `json:"timeout,omitempty"`        // Optional: operation timeout
 }
 
-// PersistCommitActivityWrapper implements the RegisterableActivity interface
+// PersistCommitActivityWrapper implements the RegisterableOp interface
 type PersistCommitActivityWrapper struct{}
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] = (*PersistCommitActivityWrapper)(nil)
+var _ types.RegisterableOp[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] = (*PersistCommitActivityWrapper)(nil)
 
-// NewPersistCommitActivity creates a new persist commit activity that implements RegisterableActivity
-func NewPersistCommitActivity() types.RegisterableActivity[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] {
+// NewPersistCommitActivity creates a new persist commit activity that implements RegisterableOp
+func NewPersistCommitActivity() types.RegisterableOp[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] {
 	return &PersistCommitActivityWrapper{}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *PersistCommitActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *PersistCommitActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "git_persist_commit",
 		Name:           "Git Persist Commit",
 		Description:    "Capture a Git commit and generate a portable thin pack for external storage",
@@ -82,28 +82,28 @@ type RestoreCommitConfig struct {
 
 // RestoreCommitInput defines the input for restore commit activities - ALL fields MUST have json tags
 type RestoreCommitInput struct {
-	RepoPath        string        `json:"repo_path"`                  // Required: path to the local Git repository
-	TargetCommit    string        `json:"target_commit"`              // Required: commit hash to restore to
-	RootHash        string        `json:"root_hash"`                  // Required: root commit hash for this set
-	StorageLocation string        `json:"storage_location"`           // Required: directory containing thin packs
-	Force           bool          `json:"force,omitempty"`            // Optional: force checkout even with uncommitted changes
-	Timeout         time.Duration `json:"timeout,omitempty"`          // Optional: operation timeout
+	RepoPath        string        `json:"repo_path"`         // Required: path to the local Git repository
+	TargetCommit    string        `json:"target_commit"`     // Required: commit hash to restore to
+	RootHash        string        `json:"root_hash"`         // Required: root commit hash for this set
+	StorageLocation string        `json:"storage_location"`  // Required: directory containing thin packs
+	Force           bool          `json:"force,omitempty"`   // Optional: force checkout even with uncommitted changes
+	Timeout         time.Duration `json:"timeout,omitempty"` // Optional: operation timeout
 }
 
-// RestoreCommitActivityWrapper implements the RegisterableActivity interface
+// RestoreCommitActivityWrapper implements the RegisterableOp interface
 type RestoreCommitActivityWrapper struct{}
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] = (*RestoreCommitActivityWrapper)(nil)
+var _ types.RegisterableOp[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] = (*RestoreCommitActivityWrapper)(nil)
 
-// NewRestoreCommitActivity creates a new restore commit activity that implements RegisterableActivity
-func NewRestoreCommitActivity() types.RegisterableActivity[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] {
+// NewRestoreCommitActivity creates a new restore commit activity that implements RegisterableOp
+func NewRestoreCommitActivity() types.RegisterableOp[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] {
 	return &RestoreCommitActivityWrapper{}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *RestoreCommitActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *RestoreCommitActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "git_restore_commit",
 		Name:           "Git Restore Commit",
 		Description:    "Restore a specific commit state, rebuilding from thin packs if necessary",

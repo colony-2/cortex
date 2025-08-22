@@ -12,7 +12,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/internal/commands"
 	"github.com/divisive-ai/vibethis/server/git/pkg/common"
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // GitFileCollectorConfig provides configuration for the activity
@@ -83,24 +83,24 @@ type FileStatistics struct {
 	TotalSize        int64          `json:"total_size"`
 }
 
-// GitFileCollectorActivity implements RegisterableActivity
+// GitFileCollectorActivity implements RegisterableOp
 type GitFileCollectorActivity struct {
 	gitRepo *commands.Repository
 }
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] = (*GitFileCollectorActivity)(nil)
+var _ types.RegisterableOp[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] = (*GitFileCollectorActivity)(nil)
 
 // NewGitFileCollectorActivity creates a new activity instance
-func NewGitFileCollectorActivity() types.RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] {
+func NewGitFileCollectorActivity() types.RegisterableOp[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] {
 	return &GitFileCollectorActivity{
 		gitRepo: commands.New("", ""),
 	}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *GitFileCollectorActivity) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *GitFileCollectorActivity) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "git_file_collector",
 		Name:           "Git File Collector",
 		Description:    "Collects files from a git repository with filtering and metadata",
@@ -134,14 +134,20 @@ func (a *GitFileCollectorActivity) Execute(
 		return GitFileCollectorOutput{}, fmt.Errorf("not a git repository: %w", err)
 	}
 
-	// Get repository information using git commands.Repository
-	status, err := a.gitRepo.GetStatus(ctx, input.ContextDir)
+	// Find the git root directory
+	gitRoot, err := common.FindGitRoot(input.ContextDir)
+	if err != nil {
+		return GitFileCollectorOutput{}, fmt.Errorf("failed to find git root: %w", err)
+	}
+
+	// Get repository information using git commands.Repository from the git root
+	status, err := a.gitRepo.GetStatus(ctx, gitRoot)
 	if err != nil {
 		return GitFileCollectorOutput{}, fmt.Errorf("failed to get repository status: %w", err)
 	}
 
-	// Get latest commit info
-	commits, err := a.gitRepo.GetHistory(ctx, input.ContextDir, 1)
+	// Get latest commit info from git root
+	commits, err := a.gitRepo.GetHistory(ctx, gitRoot, 1)
 	if err != nil || len(commits) == 0 {
 		return GitFileCollectorOutput{}, fmt.Errorf("failed to get commit history: %w", err)
 	}
@@ -158,8 +164,8 @@ func (a *GitFileCollectorActivity) Execute(
 		RemoteURL:     "", // Can be extracted if needed
 	}
 
-	// List files using git
-	filePaths, err := a.listGitFiles(ctx, input)
+	// List files using git from the git root
+	filePaths, err := a.listGitFiles(ctx, input, gitRoot)
 	if err != nil {
 		return GitFileCollectorOutput{}, fmt.Errorf("failed to list files: %w", err)
 	}
@@ -167,8 +173,8 @@ func (a *GitFileCollectorActivity) Execute(
 	// Apply pattern filters
 	filePaths = a.applyPatternFilters(filePaths, input)
 
-	// Collect file contents
-	files, stats, err := a.collectFiles(ctx, input.ContextDir, filePaths, input)
+	// Collect file contents from git root
+	files, stats, err := a.collectFiles(ctx, gitRoot, filePaths, input)
 	if err != nil {
 		return GitFileCollectorOutput{}, fmt.Errorf("failed to collect files: %w", err)
 	}
@@ -246,28 +252,43 @@ func (a *GitFileCollectorActivity) validateInput(input GitFileCollectorInput) er
 }
 
 // listGitFiles lists files from the git repository
-func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput) ([]string, error) {
+func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput, gitRoot string) ([]string, error) {
 	var files []string
 
-	// Get tracked files using common.ExecuteGitCommand
-	output, err := common.ExecuteGitCommand(ctx, input.ContextDir, "ls-files")
+	// Calculate relative path from git root to context directory
+	relPath, err := filepath.Rel(gitRoot, input.ContextDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get relative path: %w", err)
+	}
+
+	// If we're at the git root, relPath will be "."
+	// Otherwise, we want to filter files to those under relPath
+
+	// Get tracked files using common.ExecuteGitCommand from git root
+	output, err := common.ExecuteGitCommand(ctx, gitRoot, "ls-files")
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files failed: %w", err)
 	}
 
 	for _, line := range strings.Split(string(output), "\n") {
 		if line != "" {
-			files = append(files, line)
+			// Filter files to those under the context directory
+			if relPath == "." || strings.HasPrefix(line, relPath+"/") {
+				files = append(files, line)
+			}
 		}
 	}
 
 	// Get staged files if requested
 	if input.IncludeStaged {
-		output, err = common.ExecuteGitCommand(ctx, input.ContextDir, "diff", "--staged", "--name-only")
+		output, err = common.ExecuteGitCommand(ctx, gitRoot, "diff", "--staged", "--name-only")
 		if err == nil && len(output) > 0 {
 			for _, line := range strings.Split(string(output), "\n") {
 				if line != "" {
-					files = append(files, line)
+					// Filter to context directory
+					if relPath == "." || strings.HasPrefix(line, relPath+"/") {
+						files = append(files, line)
+					}
 				}
 			}
 		}
@@ -280,11 +301,14 @@ func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFi
 			args = append(args, "--exclude-standard")
 		}
 
-		output, err = common.ExecuteGitCommand(ctx, input.ContextDir, args...)
+		output, err = common.ExecuteGitCommand(ctx, gitRoot, args...)
 		if err == nil && len(output) > 0 {
 			for _, line := range strings.Split(string(output), "\n") {
 				if line != "" {
-					files = append(files, line)
+					// Filter to context directory
+					if relPath == "." || strings.HasPrefix(line, relPath+"/") {
+						files = append(files, line)
+					}
 				}
 			}
 		}

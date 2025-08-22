@@ -2,10 +2,12 @@ package shared
 
 import (
 	"fmt"
-	"strings"
-
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
+	gitactivity "github.com/divisive-ai/vibethis/server/git/pkg/activity"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
+	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"go.uber.org/zap"
 )
@@ -19,23 +21,27 @@ type RegistryManager struct {
 
 // NewRegistryManager creates a new registry manager with all activities registered
 func NewRegistryManager(logger *zap.Logger) (*RegistryManager, error) {
-	registry := worker.NewActivityRegistry()
-	activities := opsactivity.GetAll()
-	
-	for _, act := range activities {
-		if err := registry.RegisterGeneric(act); err != nil {
-			if !strings.Contains(err.Error(), "already registered") {
-				return nil, fmt.Errorf("failed to register activity: %w", err)
-			}
-		}
+	// Initialize LLM registry for adapters
+	if err := llm.InitializeRegistry(); err != nil {
+		logger.Warn("Failed to initialize LLM registry", zap.Error(err))
+		// Continue anyway - some activities might still work
 	}
-	
+
+	registry := worker.NewActivityRegistry()
+	err := registry.RegisterAll(
+		sleepop.NewSleepActivity(),
+		commandop.NewCommandExecutionActivity(),
+		append(gitactivity.GetAll(), opsactivity.GetAll()...))
+	if err != nil {
+		return nil, fmt.Errorf("failed to register Git activities: %w", err)
+	}
+
 	// Create standalone executor if needed
-	exec, err := executor.NewStandaloneExecutor(logger)
+	exec, err := executor.NewStandaloneExecutor(registry, logger)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &RegistryManager{
 		registry: registry,
 		executor: exec,

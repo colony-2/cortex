@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"github.com/invopop/jsonschema"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // ActivityRegistration holds the activity and its generated schemas
 type ActivityRegistration struct {
-	Activity     interface{}        // The generic activity interface
+	Activity     types.RegisterableOp // The generic activity interface
 	ConfigSchema *jsonschema.Schema
 	InputSchema  *jsonschema.Schema
 	OutputSchema *jsonschema.Schema
-	Metadata     types.ActivityMetadata
+	Metadata     types.OpMetadata
 }
 
 // ActivityRegistry manages all registered activities
@@ -38,50 +38,34 @@ func NewActivityRegistry() *ActivityRegistry {
 	}
 }
 
+func (r *ActivityRegistry) RegisterAll(ops ...types.RegisterableOp) error {
+	// Register all provided operations
+	for _, op := range ops {
+		if err := r.Register(op); err != nil {
+			// Log error but continue - some activities might still work
+			return fmt.Errorf("failed to register activity %T: %w", op, err)
+		}
+	}
+	return nil
+}
+
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
-func (r *ActivityRegistry) RegisterGeneric(activity interface{}) error {
-	// Use reflection to get metadata
-	activityValue := reflect.ValueOf(activity)
-	metadataMethod := activityValue.MethodByName("GetMetadata")
-	if !metadataMethod.IsValid() {
-		return fmt.Errorf("activity does not have GetMetadata method")
-	}
-	
-	// Call GetMetadata
-	results := metadataMethod.Call(nil)
-	if len(results) == 0 {
-		return fmt.Errorf("GetMetadata returned no results")
-	}
-	
-	metadata, ok := results[0].Interface().(types.ActivityMetadata)
-	if !ok {
-		return fmt.Errorf("GetMetadata did not return ActivityMetadata")
-	}
-	
-	// Check if already registered
-	if _, exists := r.activities[metadata.Type]; exists {
-		return fmt.Errorf("activity type %s already registered", metadata.Type)
-	}
-	
+func (r *ActivityRegistry) Register(activity types.RegisterableOp) error {
+	metadata := activity.GetMetadata()
 	registration := ActivityRegistration{
 		Activity: activity,
 		Metadata: metadata,
 	}
-	
+
 	// Generate schemas immediately using reflection
 	r.generateSchemasForRegistration(&registration)
-	
 	r.activities[metadata.Type] = registration
-	
 	return nil
 }
 
-// Register accepts any generic RegisterableActivity from the activity module
-func Register[TConfig any, TInput any, TOutput any](
-	r *ActivityRegistry,
-	activity types.RegisterableActivity[TConfig, TInput, TOutput],
-) error {
+// Register accepts any generic RegisterableOp from the activity module
+func Register[TConfig any, TInput any, TOutput any](r *ActivityRegistry, activity types.RegisterableOp) error {
 	metadata := activity.GetMetadata()
 
 	if _, exists := r.activities[metadata.Type]; exists {
@@ -164,31 +148,25 @@ func (r *ActivityRegistry) UpdateRegistration(activityType string, registration 
 // generateSchemasForRegistration generates schemas for an activity using reflection
 func (r *ActivityRegistry) generateSchemasForRegistration(registration *ActivityRegistration) {
 	// Use reflection to extract types from Execute method
-	activityValue := reflect.ValueOf(registration.Activity)
-	executeMethod := activityValue.MethodByName("Execute")
-	
-	if !executeMethod.IsValid() {
-		return
-	}
-	
-	methodType := executeMethod.Type()
+	methodType := registration.Activity.GetHandlerType()
+
 	// Execute method signature: func(ctx context.Context, config TConfig, input TInput) (TOutput, error)
 	if methodType.NumIn() < 3 || methodType.NumOut() < 2 {
 		return
 	}
-	
+
 	// Config is the second parameter (after context)
 	configType := methodType.In(1)
 	if configType.Kind() != reflect.Interface {
 		registration.ConfigSchema, _ = r.generator.GenerateSchema(configType)
 	}
-	
+
 	// Input is the third parameter
 	inputType := methodType.In(2)
 	if inputType.Kind() != reflect.Interface {
 		registration.InputSchema, _ = r.generator.GenerateSchema(inputType)
 	}
-	
+
 	// Output is the first return value
 	outputType := methodType.Out(0)
 	if outputType.Kind() != reflect.Interface {

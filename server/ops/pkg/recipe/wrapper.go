@@ -4,28 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // RecipeConfig defines the configuration for recipe activities
 type RecipeConfig struct {
-	Recipe       string                 `json:"recipe"`        // Required: Recipe path (e.g., "data-processing/transform")
-	Version      string                 `json:"version"`       // Optional: Recipe version (e.g., "v2.1.0")
-	Timeout      string                 `json:"timeout"`       // Optional: Execution timeout (e.g., "30m")
-	RetryPolicy  *RetryPolicyConfig     `json:"retry_policy"`  // Optional: Retry configuration
+	Recipe      string             `json:"recipe"`       // Required: Recipe path (e.g., "data-processing/transform")
+	Version     string             `json:"version"`      // Optional: Recipe version (e.g., "v2.1.0")
+	Timeout     string             `json:"timeout"`      // Optional: Execution timeout (e.g., "30m")
+	RetryPolicy *RetryPolicyConfig `json:"retry_policy"` // Optional: Retry configuration
 }
 
 // RetryPolicyConfig defines retry configuration in JSON format
 type RetryPolicyConfig struct {
 	MaximumAttempts    int32   `json:"maximum_attempts"`
-	InitialInterval    string  `json:"initial_interval"`     // Duration string (e.g., "5s")
+	InitialInterval    string  `json:"initial_interval"` // Duration string (e.g., "5s")
 	BackoffCoefficient float64 `json:"backoff_coefficient"`
-	MaximumInterval    string  `json:"maximum_interval"`     // Duration string (e.g., "1m")
+	MaximumInterval    string  `json:"maximum_interval"` // Duration string (e.g., "1m")
 }
 
 // RecipeInput defines the input for recipe activities
@@ -33,42 +32,42 @@ type RecipeInput map[string]interface{}
 
 // RecipeOutput defines the output from recipe activities
 type RecipeOutput struct {
-	ExecutionID    string                 `json:"execution_id"`     // ID of the recipe execution
-	Result         map[string]interface{} `json:"result"`           // Outputs from the executed recipe
-	Status         string                 `json:"status"`           // Final status of the recipe
-	RecipeOutputs  map[string]interface{} `json:"recipe_outputs"`   // Direct outputs from the recipe
-	Metadata       RecipeMetadata         `json:"execution_metadata"` // Execution metadata
+	ExecutionID   string                 `json:"execution_id"`       // ID of the recipe execution
+	Result        map[string]interface{} `json:"result"`             // Outputs from the executed recipe
+	Status        string                 `json:"status"`             // Final status of the recipe
+	RecipeOutputs map[string]interface{} `json:"recipe_outputs"`     // Direct outputs from the recipe
+	Metadata      RecipeMetadata         `json:"execution_metadata"` // Execution metadata
 }
 
 // RecipeMetadata contains execution metadata
 type RecipeMetadata struct {
-	StartTime      string `json:"start_time"`      // RFC3339 formatted time
-	EndTime        string `json:"end_time"`        // RFC3339 formatted time
-	DurationMs     int64  `json:"duration_ms"`     // Duration in milliseconds
-	AttemptCount   int    `json:"attempt_count"`   // Number of attempts
+	StartTime    string `json:"start_time"`    // RFC3339 formatted time
+	EndTime      string `json:"end_time"`      // RFC3339 formatted time
+	DurationMs   int64  `json:"duration_ms"`   // Duration in milliseconds
+	AttemptCount int    `json:"attempt_count"` // Number of attempts
 }
 
-// RecipeActivityWrapper implements the RegisterableActivity interface
+// RecipeActivityWrapper implements the RegisterableOp interface
 type RecipeActivityWrapper struct {
 	isWorkflowContext bool // Indicates if running in workflow context
 }
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[RecipeConfig, RecipeInput, RecipeOutput] = (*RecipeActivityWrapper)(nil)
+var _ types.RegisterableOp[RecipeConfig, RecipeInput, RecipeOutput] = (*RecipeActivityWrapper)(nil)
 
-// NewRecipeActivity creates a new recipe activity that implements RegisterableActivity
-func NewRecipeActivity() types.RegisterableActivity[RecipeConfig, RecipeInput, RecipeOutput] {
+// NewRecipeActivity creates a new recipe activity that implements RegisterableOp
+func NewRecipeActivity() types.RegisterableOp[RecipeConfig, RecipeInput, RecipeOutput] {
 	return &RecipeActivityWrapper{isWorkflowContext: false}
 }
 
 // NewRecipeWorkflowActivity creates a recipe activity for use within workflows
-func NewRecipeWorkflowActivity() types.RegisterableActivity[RecipeConfig, RecipeInput, RecipeOutput] {
+func NewRecipeWorkflowActivity() types.RegisterableOp[RecipeConfig, RecipeInput, RecipeOutput] {
 	return &RecipeActivityWrapper{isWorkflowContext: true}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *RecipeActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *RecipeActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "recipe",
 		Name:           "Recipe Invocation",
 		Description:    "Invokes another recipe as a child workflow with automatic context propagation",
@@ -112,7 +111,7 @@ func (a *RecipeActivityWrapper) Execute(ctx context.Context, config RecipeConfig
 			MaximumAttempts:    config.RetryPolicy.MaximumAttempts,
 			BackoffCoefficient: config.RetryPolicy.BackoffCoefficient,
 		}
-		
+
 		if config.RetryPolicy.InitialInterval != "" {
 			d, err := time.ParseDuration(config.RetryPolicy.InitialInterval)
 			if err != nil {
@@ -120,7 +119,7 @@ func (a *RecipeActivityWrapper) Execute(ctx context.Context, config RecipeConfig
 			}
 			retryPolicy.InitialInterval = d
 		}
-		
+
 		if config.RetryPolicy.MaximumInterval != "" {
 			d, err := time.ParseDuration(config.RetryPolicy.MaximumInterval)
 			if err != nil {
@@ -146,13 +145,13 @@ func (a *RecipeActivityWrapper) Execute(ctx context.Context, config RecipeConfig
 	// Execute based on context type
 	var output *RecipeActivityOutput
 	var err error
-	
+
 	// Since workflow.Context and context.Context are different types,
 	// we need to handle this differently. The isWorkflowContext flag
 	// indicates the intended usage, but we'll use the regular activity
 	// execution for now since we're in an activity context
 	output, err = ExecuteRecipeActivity(ctx, activityInput)
-	
+
 	if err != nil {
 		return RecipeOutput{}, err
 	}
@@ -302,8 +301,8 @@ func GetConfigSchema() map[string]interface{} {
 // GetInputSchema returns the JSON schema for recipe inputs
 func GetInputSchema() map[string]interface{} {
 	return map[string]interface{}{
-		"type":        "object",
-		"description": "Input parameters for the recipe",
+		"type":                 "object",
+		"description":          "Input parameters for the recipe",
 		"additionalProperties": true,
 	}
 }

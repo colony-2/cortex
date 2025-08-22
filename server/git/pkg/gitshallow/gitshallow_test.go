@@ -108,13 +108,13 @@ func TestClone(t *testing.T) {
 
 	t.Run("successful clone", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-repo")
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  sourceDir,
 			TargetDir:  targetDir,
 			CommitHash: commitHash,
 		}
 
-		output, err := Clone(ctx, input)
+		output, err := GitShallowClone(ctx, input)
 		if err != nil {
 			t.Fatalf("Clone failed: %v", err)
 		}
@@ -150,7 +150,7 @@ func TestClone(t *testing.T) {
 			t.Fatalf("Failed to get commit count: %v", err)
 		}
 		depth := string(depthBytes[:len(depthBytes)-1])
-		
+
 		if depth != "1" {
 			t.Errorf("Expected shallow clone with depth 1, got depth %s", depth)
 		}
@@ -162,7 +162,7 @@ func TestClone(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get git log: %v", err)
 		}
-		
+
 		logLines := string(logOutput)
 		// Should only contain one commit (the one we checked out)
 		if strings.Count(logLines, "\n") > 1 {
@@ -176,13 +176,13 @@ func TestClone(t *testing.T) {
 			t.Fatalf("Failed to create existing target dir: %v", err)
 		}
 
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  sourceDir,
 			TargetDir:  targetDir,
 			CommitHash: commitHash,
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error when target directory exists, got nil")
 		}
@@ -193,13 +193,13 @@ func TestClone(t *testing.T) {
 
 	t.Run("empty source directory", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-empty-source")
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  "",
 			TargetDir:  targetDir,
 			CommitHash: commitHash,
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error for empty source directory, got nil")
 		}
@@ -209,13 +209,13 @@ func TestClone(t *testing.T) {
 	})
 
 	t.Run("empty target directory", func(t *testing.T) {
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  sourceDir,
 			TargetDir:  "",
 			CommitHash: commitHash,
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error for empty target directory, got nil")
 		}
@@ -226,13 +226,13 @@ func TestClone(t *testing.T) {
 
 	t.Run("empty commit hash", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-empty-hash")
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  sourceDir,
 			TargetDir:  targetDir,
 			CommitHash: "",
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error for empty commit hash, got nil")
 		}
@@ -243,13 +243,13 @@ func TestClone(t *testing.T) {
 
 	t.Run("non-existent source directory", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-nonexistent-source")
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  filepath.Join(tempDir, "nonexistent"),
 			TargetDir:  targetDir,
 			CommitHash: commitHash,
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error for non-existent source directory, got nil")
 		}
@@ -262,13 +262,13 @@ func TestClone(t *testing.T) {
 		}
 
 		targetDir := filepath.Join(tempDir, "target-not-git")
-		input := CloneInput{
+		input := GitShallowCloneInput{
 			SourceDir:  nonGitDir,
 			TargetDir:  targetDir,
 			CommitHash: commitHash,
 		}
 
-		_, err := Clone(ctx, input)
+		_, err := GitShallowClone(ctx, input)
 		if err == nil {
 			t.Error("Expected error for non-git source directory, got nil")
 		}

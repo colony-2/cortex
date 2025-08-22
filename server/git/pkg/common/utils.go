@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -20,20 +19,38 @@ func ExecuteGitCommand(ctx context.Context, repoPath string, args ...string) ([]
 	return output, nil
 }
 
-// ValidateRepository checks if path is a valid Git repository
+// ValidateRepository checks if path is within a valid Git repository
 func ValidateRepository(repoPath string) error {
 	if repoPath == "" {
 		return fmt.Errorf("repository path cannot be empty")
 	}
 
-	gitDir := filepath.Join(repoPath, ".git")
-	if _, err := os.Stat(gitDir); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("not a git repository (or any of the parent directories): %s", repoPath)
-		}
-		return fmt.Errorf("error checking git repository: %w", err)
+	// Use git rev-parse to find the git directory
+	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd.Dir = repoPath
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("not a git repository (or any of the parent directories): %s", repoPath)
 	}
+	
+	// Verify we got a valid response
+	gitDir := strings.TrimSpace(string(output))
+	if gitDir == "" {
+		return fmt.Errorf("could not determine git directory for: %s", repoPath)
+	}
+	
 	return nil
+}
+
+// FindGitRoot returns the root directory of the git repository
+func FindGitRoot(path string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = path
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("not in a git repository: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 // ParseThinPackName extracts metadata from thin pack filename

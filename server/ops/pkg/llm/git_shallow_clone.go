@@ -3,12 +3,11 @@ package llm
 import (
 	"context"
 	"fmt"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"github.com/divisive-ai/vibethis/server/ops/pkg/types"
 )
 
 // GitShallowCloneConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags
@@ -29,27 +28,27 @@ type GitShallowCloneInput struct {
 
 // GitShallowCloneOutput defines the output from git shallow clone activities - ALL fields MUST have json tags
 type GitShallowCloneOutput struct {
-	ClonePath    string `json:"clone_path"`    // The absolute path where the repository was cloned
-	CommitHash   string `json:"commit_hash"`   // The commit hash of the cloned repository
-	Branch       string `json:"branch"`        // The branch that was cloned
-	CloneDepth   int    `json:"clone_depth"`   // The actual depth of the clone
+	ClonePath     string `json:"clone_path"`     // The absolute path where the repository was cloned
+	CommitHash    string `json:"commit_hash"`    // The commit hash of the cloned repository
+	Branch        string `json:"branch"`         // The branch that was cloned
+	CloneDepth    int    `json:"clone_depth"`    // The actual depth of the clone
 	RepositoryURL string `json:"repository_url"` // The repository URL that was cloned
 }
 
-// GitShallowCloneActivityWrapper implements the RegisterableActivity interface
+// GitShallowCloneActivityWrapper implements the RegisterableOp interface
 type GitShallowCloneActivityWrapper struct{}
 
 // Ensure we implement the interface
-var _ types.RegisterableActivity[GitShallowCloneConfig, GitShallowCloneInput, GitShallowCloneOutput] = (*GitShallowCloneActivityWrapper)(nil)
+var _ types.RegisterableOp[GitShallowCloneConfig, GitShallowCloneInput, GitShallowCloneOutput] = (*GitShallowCloneActivityWrapper)(nil)
 
-// NewGitShallowCloneActivity creates a new git shallow clone activity that implements RegisterableActivity
-func NewGitShallowCloneActivity() types.RegisterableActivity[GitShallowCloneConfig, GitShallowCloneInput, GitShallowCloneOutput] {
+// NewGitShallowCloneActivity creates a new git shallow clone activity that implements RegisterableOp
+func NewGitShallowCloneActivity() types.RegisterableOp[GitShallowCloneConfig, GitShallowCloneInput, GitShallowCloneOutput] {
 	return &GitShallowCloneActivityWrapper{}
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *GitShallowCloneActivityWrapper) GetMetadata() types.ActivityMetadata {
-	return types.ActivityMetadata{
+func (a *GitShallowCloneActivityWrapper) GetMetadata() types.OpMetadata {
+	return types.OpMetadata{
 		Type:           "git_shallow_clone",
 		Name:           "Git Shallow Clone",
 		Description:    "Performs a shallow clone of a git repository with specified depth",
@@ -100,7 +99,7 @@ func (a *GitShallowCloneActivityWrapper) Execute(ctx context.Context, config Git
 
 	// Build git command
 	args := []string{"clone", "--depth", fmt.Sprintf("%d", input.Depth)}
-	
+
 	// Add branch if specified
 	if input.Branch != "" {
 		args = append(args, "--branch", input.Branch)
