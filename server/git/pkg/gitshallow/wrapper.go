@@ -27,12 +27,14 @@ type GitShallowOutput struct {
 // GitShallowActivityWrapper implements the RegisterableOp interface
 type GitShallowActivityWrapper struct{}
 
-// Ensure we implement the interface
-var _ types.RegisterableOp[GitShallowConfig, GitShallowInput, GitShallowOutput] = (*GitShallowActivityWrapper)(nil)
-
 // NewGitShallowActivity creates a new git shallow clone activity that implements RegisterableOp
-func NewGitShallowActivity() types.RegisterableOp[GitShallowConfig, GitShallowInput, GitShallowOutput] {
+func NewGitShallowActivity() *GitShallowActivityWrapper {
 	return &GitShallowActivityWrapper{}
+}
+
+func GetOp() types.RegisterableOp {
+	a := NewGitShallowActivity()
+	return types.NewRegisterableOp(a.GetMetadata(), a.Execute)
 }
 
 // GetMetadata returns activity metadata for registration

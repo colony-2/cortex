@@ -1,0 +1,26 @@
+tests:
+  - name: "state_machine_flow"
+    description: "Test basic state machine execution flow"
+    inputs: {}
+    want:
+      final_state: "completed"
+      transitions_executed: 3
+    wantErr: false
+
+  - name: "state_machine_error_handling"
+    description: "Test state machine error transition"
+    inputs:
+      trigger_error: true
+    want:
+      final_state: "error"
+      error_message: "State machine error occurred"
+    wantErr: false
+
+  - name: "state_machine_conditional"
+    description: "Test conditional state transitions"
+    inputs:
+      condition: "branch_a"
+    want:
+      final_state: "completed_a"
+      path_taken: "start -> branch_a -> completed_a"
+    wantErr: false

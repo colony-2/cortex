@@ -1,4 +1,4 @@
-package worker
+package ops
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -211,7 +212,7 @@ func TestActivityProvider(t *testing.T) {
 	require.NoError(t, err)
 
 	registration, _ := registry.Get("test_activity")
-	provider := NewActivityProvider(testActivity, registration)
+	provider := worker.NewActivityProvider(testActivity, registration)
 
 	t.Run("provider metadata", func(t *testing.T) {
 		assert.Equal(t, "test_activity", provider.GetType())

@@ -1,0 +1,11 @@
+tests:
+  - name: "project_definition"
+    description: "Test project file structure and references"
+    inputs: {}
+    want:
+      project_name: "research_report_project"
+      references:
+        - "recipe.yaml"
+        - "ops.yaml"
+    wantErr: false
+    skipExecution: true

@@ -1,0 +1,31 @@
+tests:
+  - name: "basic_greeting"
+    description: "Test basic greeting message"
+    inputs:
+      name: "World"
+    want:
+      output: "Hello, World!\n"
+    wantErr: false
+
+  - name: "custom_name"
+    description: "Test greeting with custom name"
+    inputs:
+      name: "Alice"
+    want:
+      output: "Hello, Alice!\n"
+    wantErr: false
+
+  - name: "empty_name"
+    description: "Test greeting with empty name"
+    inputs:
+      name: ""
+    want:
+      output: "Hello, !\n"
+    wantErr: false
+
+  - name: "missing_name"
+    description: "Test greeting with missing name"
+    inputs: {}
+    want:
+      output: "Hello, <no value>!\n"
+    wantErr: false

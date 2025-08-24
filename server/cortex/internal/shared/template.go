@@ -6,21 +6,23 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
 )
 
 // TemplateResolver handles template resolution for inputs and outputs
 type TemplateResolver struct {
 	funcMap template.FuncMap
-	celEval *CELEvaluator
+	celEval *cel.CELEvaluator
 }
 
 // NewTemplateResolver creates a new template resolver
 func NewTemplateResolver() (*TemplateResolver, error) {
-	celEval, err := NewCELEvaluator()
+	celEval, err := cel.NewCELEvaluator()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &TemplateResolver{
 		funcMap: createFuncMap(),
 		celEval: celEval,
@@ -32,15 +34,15 @@ func (tr *TemplateResolver) ResolveOutputTemplate(outputTemplate map[string]inte
 	if outputTemplate == nil {
 		return nil, nil
 	}
-	
+
 	resolved := make(map[string]interface{})
-	
+
 	// Prepare template data
 	data := map[string]interface{}{
 		"nodes":  nodeOutputs,
 		"inputs": inputs,
 	}
-	
+
 	// Resolve each output field
 	for key, value := range outputTemplate {
 		resolvedValue, err := tr.resolveValue(value, data)
@@ -49,7 +51,7 @@ func (tr *TemplateResolver) ResolveOutputTemplate(outputTemplate map[string]inte
 		}
 		resolved[key] = resolvedValue
 	}
-	
+
 	return resolved, nil
 }
 
@@ -58,9 +60,9 @@ func (tr *TemplateResolver) ResolveInputTemplate(inputTemplate map[string]interf
 	if inputTemplate == nil {
 		return nil, nil
 	}
-	
+
 	resolved := make(map[string]interface{})
-	
+
 	// Resolve each input field
 	for key, value := range inputTemplate {
 		resolvedValue, err := tr.resolveValue(value, context)
@@ -69,7 +71,7 @@ func (tr *TemplateResolver) ResolveInputTemplate(inputTemplate map[string]interf
 		}
 		resolved[key] = resolvedValue
 	}
-	
+
 	return resolved, nil
 }
 
@@ -82,7 +84,7 @@ func (tr *TemplateResolver) resolveValue(value interface{}, data map[string]inte
 			return tr.resolveTemplate(v, data)
 		}
 		return v, nil
-		
+
 	case map[string]interface{}:
 		// Recursively resolve map values
 		resolved := make(map[string]interface{})
@@ -94,7 +96,7 @@ func (tr *TemplateResolver) resolveValue(value interface{}, data map[string]inte
 			resolved[key] = resolvedVal
 		}
 		return resolved, nil
-		
+
 	case []interface{}:
 		// Recursively resolve array values
 		resolved := make([]interface{}, len(v))
@@ -106,7 +108,7 @@ func (tr *TemplateResolver) resolveValue(value interface{}, data map[string]inte
 			resolved[i] = resolvedVal
 		}
 		return resolved, nil
-		
+
 	default:
 		// Return non-template values as-is
 		return v, nil
@@ -116,17 +118,17 @@ func (tr *TemplateResolver) resolveValue(value interface{}, data map[string]inte
 // resolveTemplate resolves a template string
 func (tr *TemplateResolver) resolveTemplate(templateStr string, data map[string]interface{}) (interface{}, error) {
 	// Handle different template formats
-	
+
 	// 1. Simple variable reference: {{ .nodes.X.outputs.Y }}
 	if isSimpleReference(templateStr) {
 		return tr.resolveReference(templateStr, data)
 	}
-	
+
 	// 2. CEL expression: {{ cel: expression }}
 	if isCELExpression(templateStr) {
 		return tr.resolveCEL(templateStr, data)
 	}
-	
+
 	// 3. Go template: complex template with logic
 	return tr.resolveGoTemplate(templateStr, data)
 }
@@ -138,22 +140,22 @@ func (tr *TemplateResolver) resolveReference(ref string, data map[string]interfa
 	ref = strings.TrimPrefix(ref, "{{")
 	ref = strings.TrimSuffix(ref, "}}")
 	ref = strings.TrimSpace(ref)
-	
+
 	// Remove leading dot
 	if strings.HasPrefix(ref, ".") {
 		ref = ref[1:]
 	}
-	
+
 	// Split path into parts
 	parts := strings.Split(ref, ".")
-	
+
 	// Navigate through the data structure
 	current := data
 	for i, part := range parts {
 		if part == "" {
 			continue
 		}
-		
+
 		// Check if current is a map
 		if currentMap, ok := current[part]; ok {
 			if i == len(parts)-1 {
@@ -178,7 +180,7 @@ func (tr *TemplateResolver) resolveReference(ref string, data map[string]interfa
 			return nil, fmt.Errorf("field '%s' not found in path '%s'", part, ref)
 		}
 	}
-	
+
 	return current, nil
 }
 
@@ -189,7 +191,7 @@ func (tr *TemplateResolver) resolveCEL(templateStr string, data map[string]inter
 	if expr == "" {
 		return nil, fmt.Errorf("invalid CEL expression template: %s", templateStr)
 	}
-	
+
 	// Evaluate CEL expression
 	return tr.celEval.Evaluate(expr, data)
 }
@@ -201,15 +203,15 @@ func (tr *TemplateResolver) resolveGoTemplate(templateStr string, data map[strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %w", err)
 	}
-	
+
 	// Execute template
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
-	
+
 	result := buf.String()
-	
+
 	// Try to preserve type if possible
 	if result == "true" {
 		return true, nil
@@ -217,7 +219,7 @@ func (tr *TemplateResolver) resolveGoTemplate(templateStr string, data map[strin
 	if result == "false" {
 		return false, nil
 	}
-	
+
 	// Check if it's a number
 	var num float64
 	if _, err := fmt.Sscanf(result, "%f", &num); err == nil {
@@ -227,7 +229,7 @@ func (tr *TemplateResolver) resolveGoTemplate(templateStr string, data map[strin
 		}
 		return num, nil
 	}
-	
+
 	return result, nil
 }
 
@@ -242,7 +244,7 @@ func isSimpleReference(s string) bool {
 	if !strings.HasPrefix(s, "{{") || !strings.HasSuffix(s, "}}") {
 		return false
 	}
-	
+
 	inner := strings.TrimSpace(s[2 : len(s)-2])
 	// Simple reference starts with . and doesn't contain spaces (except in strings)
 	return strings.HasPrefix(inner, ".") && !strings.Contains(inner, " ")
@@ -254,7 +256,7 @@ func isCELExpression(s string) bool {
 	if !strings.HasPrefix(s, "{{") || !strings.HasSuffix(s, "}}") {
 		return false
 	}
-	
+
 	inner := strings.TrimSpace(s[2 : len(s)-2])
 	return strings.HasPrefix(inner, "cel:") || strings.HasPrefix(inner, "CEL:")
 }
@@ -281,7 +283,7 @@ func createFuncMap() template.FuncMap {
 		"contains":  strings.Contains,
 		"hasPrefix": strings.HasPrefix,
 		"hasSuffix": strings.HasSuffix,
-		
+
 		// Type conversion
 		"toString": func(v interface{}) string {
 			return fmt.Sprintf("%v", v)
@@ -300,13 +302,13 @@ func createFuncMap() template.FuncMap {
 				return 0
 			}
 		},
-		
+
 		// JSON functions
 		"toJSON": func(v interface{}) string {
 			// Simplified - real implementation would use json.Marshal
 			return fmt.Sprintf("%v", v)
 		},
-		
+
 		// List functions
 		"first": func(list []interface{}) interface{} {
 			if len(list) > 0 {
@@ -327,7 +329,7 @@ func createFuncMap() template.FuncMap {
 			}
 			return strings.Join(strs, sep)
 		},
-		
+
 		// Map functions
 		"get": func(m map[string]interface{}, key string) interface{} {
 			return m[key]
@@ -347,7 +349,7 @@ func (tr *TemplateResolver) ValidateTemplate(templateStr string) error {
 		// Not a template, valid as plain string
 		return nil
 	}
-	
+
 	// Try to parse as different template types
 	if isSimpleReference(templateStr) {
 		// Validate reference format
@@ -357,13 +359,13 @@ func (tr *TemplateResolver) ValidateTemplate(templateStr string) error {
 		}
 		return nil
 	}
-	
+
 	if isCELExpression(templateStr) {
 		// Validate CEL expression
 		expr := extractCELExpression(templateStr)
 		return tr.celEval.ValidateExpression(expr)
 	}
-	
+
 	// Validate as Go template
 	_, err := template.New("validate").Funcs(tr.funcMap).Parse(templateStr)
 	return err
@@ -373,11 +375,11 @@ func (tr *TemplateResolver) ValidateTemplate(templateStr string) error {
 func ExtractTemplateVariables(templateStr string) []string {
 	vars := []string{}
 	seen := make(map[string]bool)
-	
+
 	// Pattern to match variable references
 	pattern := regexp.MustCompile(`\{\{\s*\.([a-zA-Z_][a-zA-Z0-9_\.]*)\s*\}\}`)
 	matches := pattern.FindAllStringSubmatch(templateStr, -1)
-	
+
 	for _, match := range matches {
 		if len(match) > 1 {
 			varPath := match[1]
@@ -389,6 +391,6 @@ func ExtractTemplateVariables(templateStr string) []string {
 			}
 		}
 	}
-	
+
 	return vars
 }

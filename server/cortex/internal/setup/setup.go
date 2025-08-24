@@ -63,10 +63,10 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	}
 
 	// Set up input management service routes
-	inputService := input.NewInputManagementService()
+	inputService := input.newInputManagementService()
 	// Initialize with empty dependencies for now (no Temporal client)
 	inputService.Initialize(input.ServiceDependencies{})
-	
+
 	// Convert input service routes to extension routes
 	// Strip /api prefix since routes are added to the api subrouter
 	var extensionRoutes []web.ExtensionRoute

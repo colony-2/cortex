@@ -9,22 +9,22 @@ import (
 // Recipe represents a discovered recipe with its metadata
 type Recipe struct {
 	// Core identity
-	Name        string
+	ID          string
 	Version     string
 	Description string
-	
+
 	// File paths
 	BasePath       string // Directory containing the recipe
 	ManifestPath   string // Path to recipe.yaml or single-file recipe
 	WorkflowPath   string
 	ActivitiesPath string
 	AgentsPath     string
-	
-	// Content  
-	Recipe     *yaml.RecipeDefinition
-	
+
+	// Content
+	Recipe *yaml.RecipeDefinition
+
 	// Metadata
-	Hash         string    // Canonical hash of recipe content
+	Hash         string // Canonical hash of recipe content
 	LastModified time.Time
 	WorkerStatus WorkerStatus
 }
@@ -33,35 +33,35 @@ type Recipe struct {
 type WorkerStatus string
 
 const (
-	WorkerStatusRunning WorkerStatus = "running"
-	WorkerStatusStopped WorkerStatus = "stopped"
-	WorkerStatusFailed  WorkerStatus = "failed"
+	WorkerStatusRunning  WorkerStatus = "running"
+	WorkerStatusStopped  WorkerStatus = "stopped"
+	WorkerStatusFailed   WorkerStatus = "failed"
 	WorkerStatusStarting WorkerStatus = "starting"
 )
 
 // Job represents an execution instance of a recipe
 type Job struct {
-	ID          string
-	RecipeName  string
+	ID            string
+	RecipeName    string
 	RecipeVersion string
-	Status      JobStatus
-	StartTime   time.Time
-	EndTime     *time.Time
-	UpdateTime  time.Time
-	Input       map[string]interface{}
-	Output      map[string]interface{}
-	Error       string
-	
+	Status        JobStatus
+	StartTime     time.Time
+	EndTime       *time.Time
+	UpdateTime    time.Time
+	Input         map[string]interface{}
+	Output        map[string]interface{}
+	Error         string
+
 	// Optional fields
 	Duration     *time.Duration
 	Inputs       map[string]interface{} // alias for Input
 	Outputs      map[string]interface{} // alias for Output
 	Activities   []*ActivityExecution
 	WorkflowType string
-	
+
 	// Temporal workflow execution details (internal use)
-	WorkflowID  string
-	RunID       string
+	WorkflowID    string
+	RunID         string
 	ExecutionInfo *WorkflowExecutionInfo
 }
 
@@ -75,11 +75,11 @@ type WorkflowExecutionInfo struct {
 type JobStatus string
 
 const (
-	JobStatusUnknown   JobStatus = "unknown"
-	JobStatusRunning   JobStatus = "running"
-	JobStatusCompleted JobStatus = "completed"
-	JobStatusFailed    JobStatus = "failed"
-	JobStatusCanceled  JobStatus = "canceled"
+	JobStatusUnknown    JobStatus = "unknown"
+	JobStatusRunning    JobStatus = "running"
+	JobStatusCompleted  JobStatus = "completed"
+	JobStatusFailed     JobStatus = "failed"
+	JobStatusCanceled   JobStatus = "canceled"
 	JobStatusTerminated JobStatus = "terminated"
 )
 
@@ -93,7 +93,7 @@ type ActivityExecution struct {
 	Result    map[string]interface{}
 	Error     string
 	Attempt   int
-	
+
 	// Internal Temporal activity details
 	ActivityID   string
 	ActivityType string
@@ -126,7 +126,7 @@ type RecipeManifest struct {
 
 // RecipeFilter represents filter criteria for listing recipes
 type RecipeFilter struct {
-	Status       *WorkerStatus
+	Status         *WorkerStatus
 	IncludeRemoved bool // Include recipes that are no longer present but have historical data
 }
 

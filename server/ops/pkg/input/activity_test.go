@@ -10,9 +10,9 @@ import (
 )
 
 func TestInputActivity_GetMetadata(t *testing.T) {
-	activity := NewInputActivity()
+	activity := newInputActivity()
 	metadata := activity.GetMetadata()
-	
+
 	assert.Equal(t, "input", metadata.Type)
 	assert.Equal(t, "User Input Collection", metadata.Name)
 	assert.NotEmpty(t, metadata.Description)
@@ -91,10 +91,10 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			activity := NewInputActivity()
+			activity := newInputActivity()
 			output, err := activity.Execute(context.Background(), tt.config, tt.input)
 			tt.validate(t, output, err)
 		})
@@ -137,7 +137,7 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 		},
 		Timeout: 60,
 	}
-	
+
 	input := Input{
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
@@ -145,10 +145,10 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 			"deployment_id": "deploy-123",
 		},
 	}
-	
-	activity := NewInputActivity()
+
+	activity := newInputActivity()
 	output, err := activity.Execute(context.Background(), config, input)
-	
+
 	require.NoError(t, err)
 	assert.NotNil(t, output.Fields)
 	assert.Equal(t, "blue_green", output.Fields["strategy"])
@@ -158,8 +158,8 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 }
 
 func TestInputActivity_BuildForm(t *testing.T) {
-	activity := NewInputActivity()
-	
+	activity := newInputActivity()
+
 	t.Run("single question form", func(t *testing.T) {
 		config := Config{
 			Question: "Test question",
@@ -170,14 +170,14 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
-		
+
 		form := activity.buildForm(config, input)
-		
+
 		assert.Equal(t, "Test question", form.Question)
 		assert.Equal(t, FieldTypeShortAnswer, form.Type)
 		assert.Equal(t, 60*time.Second, form.Timeout)
 	})
-	
+
 	t.Run("multi-field form", func(t *testing.T) {
 		config := Config{
 			Title: "Test Form",
@@ -199,9 +199,9 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
-		
+
 		form := activity.buildForm(config, input)
-		
+
 		assert.Equal(t, "Test Form", form.Title)
 		assert.Len(t, form.Fields, 1)
 		assert.Equal(t, "field1", form.Fields[0].ID)
@@ -211,8 +211,8 @@ func TestInputActivity_BuildForm(t *testing.T) {
 }
 
 func TestInputActivity_DefaultOnTimeout(t *testing.T) {
-	activity := NewInputActivity()
-	
+	activity := newInputActivity()
+
 	t.Run("single question with default", func(t *testing.T) {
 		config := Config{
 			Question:         "Approve deployment?",
@@ -225,10 +225,10 @@ func TestInputActivity_DefaultOnTimeout(t *testing.T) {
 			BoxID:      "test-cell",
 			ActivityID: "test-activity",
 		}
-		
+
 		// In mock mode, it won't actually timeout, but we can test the config
 		output, err := activity.Execute(context.Background(), config, input)
-		
+
 		require.NoError(t, err)
 		// In mock mode, it returns the first option, not the default
 		// This is expected behavior for the mock
@@ -237,18 +237,18 @@ func TestInputActivity_DefaultOnTimeout(t *testing.T) {
 }
 
 func TestInputActivity_ManagementService(t *testing.T) {
-	activity := NewInputActivity()
-	
+	activity := newInputActivity()
+
 	// Test that management service is available
 	service := activity.GetManagementService()
 	assert.NotNil(t, service)
-	
+
 	// Test that it returns the correct routes
-	mgmtService := service.(*InputManagementService)
+	mgmtService := service.(*inputManagementService)
 	routes := mgmtService.GetRoutes()
-	
+
 	assert.Len(t, routes, 5)
-	
+
 	// Verify route paths
 	expectedPaths := []string{
 		"/api/user-inputs/pending",
@@ -257,7 +257,7 @@ func TestInputActivity_ManagementService(t *testing.T) {
 		"/api/user-inputs/{workflowID}/respond",
 		"/api/user-inputs/{workflowID}/cancel",
 	}
-	
+
 	for i, route := range routes {
 		assert.Equal(t, expectedPaths[i], route.Path)
 		assert.NotNil(t, route.Handler)
@@ -297,7 +297,7 @@ func TestFieldValidation(t *testing.T) {
 			shouldPass: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// This is a placeholder for actual validation logic

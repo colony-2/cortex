@@ -7,7 +7,7 @@ import (
 	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -20,7 +20,7 @@ func TestActivityInputParsing(t *testing.T) {
 	ctx := context.Background()
 
 	// Create activity registry
-	registry := worker.NewActivityRegistry()
+	registry := ops.NewActivityRegistry()
 	activities := opsactivity.GetAll()
 	for _, act := range activities {
 		err := registry.RegisterGeneric(act)
@@ -58,7 +58,7 @@ func TestReflectionBasedActivityExecution(t *testing.T) {
 	ctx := context.Background()
 
 	// Create activity registry
-	registry := worker.NewActivityRegistry()
+	registry := ops.NewActivityRegistry()
 	activities := opsactivity.GetAll()
 	for _, act := range activities {
 		err := registry.RegisterGeneric(act)

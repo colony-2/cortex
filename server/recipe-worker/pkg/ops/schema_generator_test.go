@@ -1,4 +1,4 @@
-package worker
+package ops
 
 import (
 	"encoding/json"
@@ -99,8 +99,8 @@ func TestSchemaGeneratorValidation(t *testing.T) {
 
 	t.Run("ignored fields are allowed", func(t *testing.T) {
 		type StructWithIgnored struct {
-			Public    string `json:"public"`
-			Ignored   string `json:"-"`
+			Public     string `json:"public"`
+			Ignored    string `json:"-"`
 			unexported string // Unexported fields don't need tags
 		}
 
@@ -148,17 +148,17 @@ func TestSchemaGeneratorGeneration(t *testing.T) {
 
 		// Debug: print the schema
 		t.Logf("Schema JSON: %s", string(schemaJSON))
-		
+
 		assert.Equal(t, "object", schemaMap["type"])
-		
+
 		properties, ok := schemaMap["properties"].(map[string]interface{})
 		require.True(t, ok, "properties not found in schema: %v", schemaMap)
-		
+
 		// Check url property
 		urlProp, ok := properties["url"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "string", urlProp["type"])
-		
+
 		// Check timeout property
 		timeoutProp, ok := properties["timeout"].(map[string]interface{})
 		require.True(t, ok)
@@ -190,11 +190,11 @@ func TestSchemaGeneratorGeneration(t *testing.T) {
 
 		properties, ok := schemaMap["properties"].(map[string]interface{})
 		require.True(t, ok)
-		
+
 		// Check that address property exists
 		addressProp, ok := properties["address"].(map[string]interface{})
 		require.True(t, ok)
-		
+
 		// invopop/jsonschema might use $ref for nested types
 		_, hasRef := addressProp["$ref"]
 		_, hasType := addressProp["type"]
@@ -218,11 +218,11 @@ func TestSchemaGeneratorGeneration(t *testing.T) {
 
 		properties, ok := schemaMap["properties"].(map[string]interface{})
 		require.True(t, ok)
-		
+
 		itemsProp, ok := properties["items"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "array", itemsProp["type"])
-		
+
 		itemsSchema, ok := itemsProp["items"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "string", itemsSchema["type"])

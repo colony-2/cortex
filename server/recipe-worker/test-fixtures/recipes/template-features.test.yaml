@@ -1,0 +1,70 @@
+tests:
+  - name: "basic_template_processing"
+    description: "Test basic template feature with items"
+    inputs:
+      items:
+        - "apple"
+        - "banana"
+        - "cherry"
+      separator: ", "
+    want:
+      summary:
+        joined: "apple, banana, cherry"
+        count: 3
+    wantErr: false
+
+  - name: "custom_separator"
+    description: "Test with custom separator"
+    inputs:
+      items:
+        - "one"
+        - "two"
+        - "three"
+      separator: " | "
+    want:
+      summary:
+        joined: "one | two | three"
+        count: 3
+    wantErr: false
+
+  - name: "single_item"
+    description: "Test with single item"
+    inputs:
+      items:
+        - "solo"
+      separator: ", "
+    want:
+      summary:
+        joined: "solo"
+        count: 1
+    wantErr: false
+
+  - name: "empty_items"
+    description: "Test with empty items array"
+    inputs:
+      items: []
+      separator: ", "
+    want:
+      summary:
+        joined: ""
+        count: 0
+    wantErr: false
+
+  - name: "default_separator"
+    description: "Test with default separator"
+    inputs:
+      items:
+        - "first"
+        - "second"
+    want:
+      summary:
+        joined: "first, second"
+        count: 2
+    wantErr: false
+
+  - name: "missing_items"
+    description: "Test with missing required items"
+    inputs:
+      separator: ", "
+    want: {}
+    wantErr: true

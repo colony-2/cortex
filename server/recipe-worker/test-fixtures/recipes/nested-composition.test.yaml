@@ -1,0 +1,46 @@
+tests:
+  - name: "basic_nested_processing"
+    description: "Test nested composition with basic data"
+    inputs:
+      data: "test data content"
+    want:
+      final_result:
+        formatted_output: "Processed: test data content"
+        report:
+          summary: "Processing complete"
+          charts: []
+        storage_id: "storage-123"
+        status: "success"
+    wantErr: false
+
+  - name: "complex_data_processing"
+    description: "Test nested composition with complex data"
+    inputs:
+      data: "complex JSON structure with multiple levels"
+    want:
+      final_result:
+        formatted_output: "Processed complex data"
+        report:
+          summary: "Complex processing complete"
+          charts:
+            - "chart1"
+            - "chart2"
+        storage_id: "storage-456"
+        status: "success"
+    wantErr: false
+
+  - name: "missing_data"
+    description: "Test with missing required data"
+    inputs: {}
+    want: {}
+    wantErr: true
+
+  - name: "empty_data"
+    description: "Test with empty data string"
+    inputs:
+      data: ""
+    want:
+      final_result:
+        formatted_output: "Processed: "
+        status: "success"
+    wantErr: false

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"os"
 	"os/exec"
 	"runtime"
 	"time"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags
@@ -49,33 +50,24 @@ func newCommandExecutionActivity() types.RegisterableOp {
 
 // NewCommandExecutionActivity creates a new command execution activity that implements RegisterableOp
 func GetOp() types.RegisterableOp {
-	return types.NewRegisterableOp(
+	return types.NewActivityMappedOp(
 		types.OpMetadata{
 			Type:           "command_execution",
 			Name:           "Command Execution",
 			Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
 			Version:        "1.0.0",
 			DefaultTimeout: 5 * time.Minute,
-			RetryPolicy: &types.RetryPolicy{
-				MaximumAttempts:    1, // Default to no retries for command execution
-				InitialInterval:    5 * time.Second,
-				BackoffCoefficient: 2.0,
-				MaximumInterval:    60 * time.Second,
-				NonRetryableErrorTypes: []string{
-					"CommandNotFoundError",
-					"TimeoutError",
-				},
-			},
 		}, execute)
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(ctx context.Context, config CommandExecutionConfig, input CommandExecutionInput) (CommandExecutionOutput, error) {
+func execute(ctx context.Context, input CommandExecutionInput) (CommandExecutionOutput, error) {
 	// Validate inputs
 	if input.Run == "" {
 		return CommandExecutionOutput{}, fmt.Errorf("run command is required")
 	}
 
+	config := CommandExecutionConfig{}
 	// Determine timeout
 	var timeout time.Duration
 	if input.Timeout != "" {

@@ -3,48 +3,30 @@ package executor
 import (
 	"context"
 	"fmt"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
-	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
-	"go.temporal.io/sdk/activity"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
-	"go.uber.org/zap"
 	"io"
 	"log"
 	"os"
+
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/workflow"
+	"go.uber.org/zap"
 )
 
 // StandaloneExecutor executes recipes without a Temporal server
 type StandaloneExecutor struct {
-	registry         *worker.ActivityRegistry
-	compiler         *compiler.Compiler
-	logger           *zap.Logger
-	activityExecutor *ActivityExecutor
+	registry *ops.ActivityRegistry
+	logger   *zap.Logger
 }
 
 // NewStandaloneExecutor creates a new standalone recipe executor
-func NewStandaloneExecutor(registry *worker.ActivityRegistry, logger *zap.Logger) (*StandaloneExecutor, error) {
-
-	// Create compiler activity registry
-	compilerRegistry := compiler.NewActivityRegistry()
-	// Register all activities in the compiler registry
-	for activityType := range registry.GetAll() {
-		compilerRegistry.RegisterActivity(activityType)
-	}
-
-	// Create compiler
-	comp := compiler.NewCompiler(compilerRegistry)
-
-	// Create activity executor
-	activityExecutor := NewActivityExecutor(registry, logger)
+func NewStandaloneExecutor(registry *ops.ActivityRegistry, logger *zap.Logger) (*StandaloneExecutor, error) {
 
 	return &StandaloneExecutor{
-		registry:         registry,
-		compiler:         comp,
-		logger:           logger,
-		activityExecutor: activityExecutor,
+		registry: registry,
+		logger:   logger,
 	}, nil
 }
 
@@ -105,35 +87,24 @@ func (e *StandaloneExecutor) Execute(
 		testEnv.SetOnActivityCompletedListener(nil)
 	}
 
-	// Create workflow function
-	// Use nil executor to use the default implementation that supports unified format
-	workflowFunc := recipeworkflows.CreateDynamicWorkflow(recipe, nil)
+	e.registry.EnableActivitiesInWorker(testEnv)
+	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+		return compiler.ExecuteNode(ctx, e.registry, &recipe.Node, inputs)
+	}
 
 	// Register workflow
 	testEnv.RegisterWorkflowWithOptions(
-		workflowFunc,
+		fn,
 		workflow.RegisterOptions{
-			Name: recipe.Name,
+			Name: recipe.ID,
 		},
 	)
-
-	// Register activities with the test environment
-	for activityType := range e.registry.GetAll() {
-		// Create a generic activity executor that wraps the real activity
-		activityFunc := e.activityExecutor.CreateTemporalActivity(activityType)
-		testEnv.RegisterActivityWithOptions(
-			activityFunc,
-			activity.RegisterOptions{
-				Name: activityType,
-			},
-		)
-	}
 
 	// Set context propagators
 	testEnv.SetContextPropagators(options.ContextPropagators)
 
 	// Execute workflow
-	testEnv.ExecuteWorkflow(recipe.Name, inputs)
+	testEnv.ExecuteWorkflow(recipe.ID, inputs)
 
 	// Check for errors
 	if err := testEnv.GetWorkflowError(); err != nil {
@@ -154,11 +125,6 @@ func (e *StandaloneExecutor) Execute(
 }
 
 // GetActivityRegistry returns the activity registry
-func (e *StandaloneExecutor) GetActivityRegistry() *worker.ActivityRegistry {
+func (e *StandaloneExecutor) GetActivityRegistry() *ops.ActivityRegistry {
 	return e.registry
-}
-
-// GetCompiler returns the compiler
-func (e *StandaloneExecutor) GetCompiler() *compiler.Compiler {
-	return e.compiler
 }

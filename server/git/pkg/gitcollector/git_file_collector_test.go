@@ -62,15 +62,16 @@ func setupTestGitRepo(t *testing.T, files map[string]string) string {
 }
 
 func TestGitFileCollectorActivity(t *testing.T) {
-	activity := NewGitFileCollectorActivity()
 
 	t.Run("Metadata", func(t *testing.T) {
-		metadata := activity.GetMetadata()
+		wrap := GetOp()
+		metadata := wrap.GetMetadata()
 		assert.Equal(t, "git_file_collector", metadata.Type)
 		assert.Equal(t, "1.0.0", metadata.Version)
 		assert.NotNil(t, metadata.RetryPolicy)
 	})
 
+	activity := &gitFileCollectorActivity{}
 	t.Run("CollectTrackedFiles", func(t *testing.T) {
 		tmpDir := setupTestGitRepo(t, map[string]string{
 			"main.go":     "package main\n\nfunc main() {}\n",
@@ -92,7 +93,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 		assert.Equal(t, 3, output.FileCount)
 		assert.NotEmpty(t, output.Repository.CommitHash)
 		assert.Equal(t, 3, len(output.Files))
-		
+
 		// Check that files have correct content
 		fileMap := make(map[string]string)
 		for _, f := range output.Files {
@@ -158,17 +159,17 @@ func TestGitFileCollectorActivity(t *testing.T) {
 		require.NoError(t, err)
 
 		input := GitFileCollectorInput{
-			ContextDir:      tmpDir,
-			IncludeStaged:   true,
-			ExcludeBinary:   true,
+			ContextDir:    tmpDir,
+			IncludeStaged: true,
+			ExcludeBinary: true,
 		}
 
 		output, err := activity.Execute(context.Background(), GitFileCollectorConfig{DefaultExcludeBinary: true}, input)
 		require.NoError(t, err)
-		
+
 		// Should only have text files
 		assert.Equal(t, 2, output.FileCount) // main.go and README.md
-		
+
 		// Check statistics
 		assert.Equal(t, 2, output.Statistics.SkippedFiles)
 		assert.Equal(t, 2, output.Statistics.SkippedReasons["binary_file"]) // binary.dat and image.png
@@ -236,7 +237,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 		// Create ignored files
 		err := os.WriteFile(filepath.Join(tmpDir, "debug.log"), []byte("log content"), 0644)
 		require.NoError(t, err)
-		
+
 		err = os.MkdirAll(filepath.Join(tmpDir, "build"), 0755)
 		require.NoError(t, err)
 		err = os.WriteFile(filepath.Join(tmpDir, "build", "output.bin"), []byte("binary"), 0644)
@@ -254,10 +255,10 @@ func TestGitFileCollectorActivity(t *testing.T) {
 
 		output, err := activity.Execute(context.Background(), GitFileCollectorConfig{}, input)
 		require.NoError(t, err)
-		
+
 		// Should have main.go, .gitignore, and new.go (but not debug.log or build/output.bin)
 		assert.Equal(t, 3, output.FileCount)
-		
+
 		filePaths := []string{}
 		for _, f := range output.Files {
 			filePaths = append(filePaths, f.Path)
@@ -397,7 +398,7 @@ func TestFileTypeDetection(t *testing.T) {
 			content := []byte("test content")
 			fileType := detectFileType(content, tt.path)
 			mimeType := detectMimeType(content, tt.path)
-			
+
 			assert.Equal(t, tt.expectedType, string(fileType))
 			assert.Equal(t, tt.expectedMime, mimeType)
 		})

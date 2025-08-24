@@ -1,0 +1,17 @@
+tests:
+  - name: "parallel_execution"
+    description: "Test parallel execution of sleep and command"
+    inputs: {}
+    want:
+      sleep_completed: true
+      command_output: "parallel execution result"
+    wantErr: false
+
+  - name: "parallel_timing"
+    description: "Test that parallel operations complete together"
+    inputs: {}
+    want:
+      sleep_duration: "2s"
+      command_duration: "< 2s"
+      total_duration: "~2s"
+    wantErr: false

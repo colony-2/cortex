@@ -1,0 +1,29 @@
+tests:
+  - name: "default_message_echo"
+    description: "Test execute with default message"
+    inputs: {}
+    want:
+      stdout: "Test message\n"
+      stderr: ""
+      exit_code: 0
+    wantErr: false
+
+  - name: "custom_message_echo"
+    description: "Test execute with custom message"
+    inputs:
+      message: "Custom message"
+    want:
+      stdout: "Custom message\n"
+      stderr: ""
+      exit_code: 0
+    wantErr: false
+
+  - name: "empty_message_echo"
+    description: "Test execute with empty message"
+    inputs:
+      message: ""
+    want:
+      stdout: "\n"
+      stderr: ""
+      exit_code: 0
+    wantErr: false

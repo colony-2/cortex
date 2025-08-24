@@ -4,24 +4,37 @@ package types
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"time"
 
 	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
+	"go.temporal.io/sdk/workflow"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
-	// Execute runs the operation with the provided configuration and input using string maps which are automatically mapped to struct types.
-	Execute(ctx context.Context, config map[string]interface{}, input map[string]interface{}) (output map[string]interface{}, err error)
+	// Execute will be execute this op as a Temporal Activity
+	Execute(ctx context.Context, input map[string]interface{}) (output map[string]interface{}, err error)
+
+	// ExecuteInline will execute the op inline within a workflow.
+	ExecuteInline(ctx workflow.Context, input map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
 
-	GetHandlerType() reflect.Type
+	ExecuteAsActivity() bool // whether this op maps to a Temporal activity or should be executed inline.
+
+	GetInputType() reflect.Type
+	GetOutputType() reflect.Type
+	GetManagementService() ManagementService
 
 	isOpSpec()
+}
+
+type HasManagmentService interface {
+	GetManagementService() ManagementService
 }
 
 // OpMetadata describes the activity for registration and documentation
@@ -31,48 +44,81 @@ type OpMetadata struct {
 	Description    string        // Detailed description
 	Version        string        // Semantic version
 	DefaultTimeout time.Duration // Default execution timeout
-	RetryPolicy    *RetryPolicy  // Default retry configuration
-
-}
-
-// RetryPolicy defines retry behavior
-type RetryPolicy struct {
-	MaximumAttempts        int32
-	InitialInterval        time.Duration
-	BackoffCoefficient     float64
-	MaximumInterval        time.Duration
-	NonRetryableErrorTypes []string
 }
 
 type OpExecutor interface {
 }
 
-func NewRegisterableOp[Config any, In any, Out any](metadata OpMetadata, handler func(context.Context, Config, In) (Out, error)) RegisterableOp {
-	return &opSpecImpl[Config, In, Out]{
-		Metadata: metadata,
-		Handler:  handler,
+func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, In) (Out, error)) RegisterableOp {
+	return &opSpecImpl[In, Out]{
+		metadata:      metadata,
+		inlineHandler: handler,
 	}
 }
 
-type opSpecImpl[Config any, In any, Out any] struct {
-	Metadata OpMetadata
-	Handler  func(context.Context, Config, In) (Out, error)
+func NewActivityMappedOp[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error)) RegisterableOp {
+	return &opSpecImpl[In, Out]{
+		metadata: metadata,
+		handler:  handler,
+	}
 }
 
-func (c *opSpecImpl[Config, In, Out]) GetMetadata() OpMetadata {
-	return c.Metadata
+func NewActivityMappedOpWithManagement[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), service ManagementService) RegisterableOp {
+	return &opSpecImpl[In, Out]{
+		metadata:          metadata,
+		handler:           handler,
+		managementService: service,
+	}
 }
 
-func (c *opSpecImpl[Config, In, Out]) Execute(ctx context.Context, configMap map[string]interface{}, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
+type opSpecImpl[In any, Out any] struct {
+	metadata          OpMetadata
+	handler           func(context.Context, In) (Out, error)
+	inlineHandler     func(workflow.Context, In) (Out, error)
+	managementService ManagementService
+}
+
+func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
+	return c.managementService
+}
+
+func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool {
+	return c.inlineHandler != nil
+}
+
+func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
+	return c.metadata
+}
+
+func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
+	if c.handler == nil {
+		panic("this must be run inline, not as an activity")
+	}
+
 	var input In
 	if err := decodeWithJsonTags(inputMap, &input); err != nil {
 		return nil, err
 	}
-	var config Config
-	if err := decodeWithJsonTags(configMap, &config); err != nil {
+	objResult, err := c.handler(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("error executing handler: %w", err)
+	}
+
+	s := structs.New(objResult)
+	s.TagName = "json" // Use JSON tags instead of default "structs" tags
+	return s.Map(), nil
+}
+
+func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
+	if c.inlineHandler == nil {
+		panic("this must be run as an activity, not inline")
+	}
+
+	var input In
+	if err := decodeWithJsonTags(inputMap, &input); err != nil {
 		return nil, err
 	}
-	objResult, err := c.Handler(ctx, config, input)
+	objResult, err := c.inlineHandler(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing handler: %w", err)
 	}
@@ -100,11 +146,57 @@ func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 	return nil
 }
 
-func (c *opSpecImpl[Config, In, Out]) GetHandlerType() reflect.Type {
-	return reflect.ValueOf(c.Handler).Type()
+func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {
+	if c.handler != nil {
+		return reflect.ValueOf(c.handler).Type().In(1)
+	} else {
+		return reflect.ValueOf(c.inlineHandler).Type().In(1)
+	}
 }
 
-func (c *opSpecImpl[Config, In, Out]) isOpSpec() {}
+func (c *opSpecImpl[In, Out]) GetOutputType() reflect.Type {
+	if c.handler != nil {
+		return reflect.ValueOf(c.handler).Type().Out(0)
+	} else {
+		return reflect.ValueOf(c.inlineHandler).Type().Out(0)
+	}
+}
+
+func (c *opSpecImpl[In, Out]) isOpSpec() {}
 
 // confirm opSpecImpl implements OpSpec
-var _ RegisterableOp = &opSpecImpl[string, string, string]{}
+var _ RegisterableOp = &opSpecImpl[string, string]{}
+
+// ManagementService provides HTTP endpoints for managing input requests
+type ManagementService interface {
+	// GetRoutes returns HTTP routes this service provides
+	GetRoutes() []Route
+
+	// Initialize with injected dependencies
+	Initialize(deps ServiceDependencies) error
+	Close()
+}
+
+type ServiceDependencies interface {
+	Get(name string) (interface{}, error)
+}
+
+// SSEManager interface for Server-Sent Events
+type SSEManager interface {
+	Broadcast(event SSEEvent)
+	Subscribe(clientID string) <-chan SSEEvent
+	Unsubscribe(clientID string)
+}
+
+// SSEEvent represents a server-sent event
+type SSEEvent struct {
+	Type string                 `json:"type"`
+	Data map[string]interface{} `json:"data"`
+}
+
+// Route represents an HTTP route
+type Route struct {
+	Method  string
+	Path    string
+	Handler http.HandlerFunc
+}

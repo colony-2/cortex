@@ -12,14 +12,14 @@ import (
 
 // Parser parses recipe files from disk
 type Parser struct {
-	logger *zap.Logger
+	logger               *zap.Logger
 	activityTypeRegistry *ActivityTypeRegistry
 }
 
 // NewParser creates a new recipe parser
 func NewParser(logger *zap.Logger) *Parser {
 	return &Parser{
-		logger: logger,
+		logger:               logger,
 		activityTypeRegistry: NewActivityTypeRegistry(),
 	}
 }
@@ -27,7 +27,7 @@ func NewParser(logger *zap.Logger) *Parser {
 // NewParserWithRegistry creates a new recipe parser with a custom activity type registry
 func NewParserWithRegistry(logger *zap.Logger, registry *ActivityTypeRegistry) *Parser {
 	return &Parser{
-		logger: logger,
+		logger:               logger,
 		activityTypeRegistry: registry,
 	}
 }
@@ -45,7 +45,7 @@ func (p *Parser) ParseRecipe(path string) (*Recipe, error) {
 	}
 
 	if info.IsDir() {
-		return p.parseMultiFileRecipe(path)
+		return nil, fmt.Errorf("directory not supported")
 	}
 
 	return p.parseSingleFileRecipe(path)
@@ -62,9 +62,9 @@ func (p *Parser) parseSingleFileRecipe(filePath string) (*Recipe, error) {
 
 	// Create Recipe struct from RecipeDefinition
 	recipe := &Recipe{
-		Name:         recipeDefinition.Name,
+		ID:           recipeDefinition.ID,
 		Version:      recipeDefinition.Version,
-		Description:  recipeDefinition.Description,
+		Description:  recipeDefinition.Desc,
 		BasePath:     filepath.Dir(filePath),
 		ManifestPath: filePath,
 		Recipe:       recipeDefinition,
@@ -88,20 +88,14 @@ func (p *Parser) parseSingleFileRecipe(filePath string) (*Recipe, error) {
 	return recipe, nil
 }
 
-// parseMultiFileRecipe parses a multi-file recipe from a directory
-// NOTE: Multi-file format is deprecated. Use single-file unified format instead.
-func (p *Parser) parseMultiFileRecipe(dirPath string) (*Recipe, error) {
-	return nil, fmt.Errorf("multi-file recipe format is deprecated. Please migrate to the unified single-file format")
-}
-
 // validateRecipe validates a recipe definition
 func (p *Parser) validateRecipe(recipe *Recipe) error {
 	if recipe == nil {
 		return fmt.Errorf("recipe cannot be nil")
 	}
 
-	if recipe.Name == "" {
-		return fmt.Errorf("recipe name is required")
+	if recipe.ID == "" {
+		return fmt.Errorf("recipe ID is required")
 	}
 
 	if recipe.Version == "" {
@@ -126,7 +120,7 @@ func (p *Parser) validateRecipe(recipe *Recipe) error {
 	if recipe.Recipe.States != nil {
 		count++
 	}
-	
+
 	if count == 0 {
 		return fmt.Errorf("recipe must have one of: op, sequence, parallel, or states")
 	}

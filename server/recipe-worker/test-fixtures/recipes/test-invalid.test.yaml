@@ -1,0 +1,15 @@
+tests:
+  - name: "invalid_activity_type"
+    description: "Test that invalid activity type fails"
+    inputs:
+      message: "test"
+    want: {}
+    wantErr: true
+    expectedError: "invalid activity type"
+
+  - name: "invalid_with_default"
+    description: "Test invalid activity with default message"
+    inputs: {}
+    want: {}
+    wantErr: true
+    expectedError: "invalid activity type"

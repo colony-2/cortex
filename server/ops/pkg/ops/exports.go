@@ -17,6 +17,6 @@ func GetAll() []interface{} {
 		recipe.NewRecipeActivity(),
 
 		// Input collection activities
-		input.NewInputActivity(),
+		input.newInputActivity(),
 	}
 }

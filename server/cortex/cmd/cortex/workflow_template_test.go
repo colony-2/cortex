@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
@@ -14,7 +15,6 @@ import (
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 )
 
@@ -24,7 +24,7 @@ func TestWorkflowTemplateExpansion(t *testing.T) {
 	env := testSuite.NewTestWorkflowEnvironment()
 
 	// Create activity registry and register real activities
-	registry := worker.NewActivityRegistry()
+	registry := ops.NewActivityRegistry()
 	activities := opsactivity.GetAll()
 	for _, act := range activities {
 		err := registry.RegisterGeneric(act)
@@ -106,7 +106,7 @@ func TestWorkflowWithMultipleTemplates(t *testing.T) {
 	env := testSuite.NewTestWorkflowEnvironment()
 
 	// Create activity registry and register real activities
-	registry := worker.NewActivityRegistry()
+	registry := ops.NewActivityRegistry()
 	activities := opsactivity.GetAll()
 	for _, act := range activities {
 		err := registry.RegisterGeneric(act)

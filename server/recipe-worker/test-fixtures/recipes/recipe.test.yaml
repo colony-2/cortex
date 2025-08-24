@@ -1,0 +1,47 @@
+tests:
+  - name: "default_research"
+    description: "Test research with default values"
+    inputs: {}
+    want:
+      report: "Research report on AI Research"
+      sources:
+        - "source1"
+        - "source2"
+    wantErr: false
+
+  - name: "custom_topic"
+    description: "Test research with custom topic"
+    inputs:
+      topic: "Quantum Computing"
+      max_sources: 5
+    want:
+      report: "Research report on Quantum Computing"
+      sources:
+        - "quantum_source1"
+        - "quantum_source2"
+        - "quantum_source3"
+        - "quantum_source4"
+        - "quantum_source5"
+    wantErr: false
+
+  - name: "limited_sources"
+    description: "Test research with limited sources"
+    inputs:
+      topic: "Machine Learning"
+      max_sources: 2
+    want:
+      report: "Research report on Machine Learning"
+      sources:
+        - "ml_source1"
+        - "ml_source2"
+    wantErr: false
+
+  - name: "empty_topic"
+    description: "Test research with empty topic"
+    inputs:
+      topic: ""
+      max_sources: 10
+    want:
+      report: "Research report"
+      sources: []
+    wantErr: false

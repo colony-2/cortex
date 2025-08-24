@@ -3,8 +3,9 @@ package input
 import (
 	"context"
 	"fmt"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"time"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -48,14 +49,19 @@ type InputActivity struct {
 	// This will be injected by the framework when running in a workflow context
 	temporalContext workflow.Context
 	// Management service for HTTP endpoints
-	managementService ManagementService
+	managementService types.ManagementService
 }
 
-// NewInputActivity creates a new input activity instance
-func NewInputActivity() *InputActivity {
+// newInputActivity creates a new input activity instance
+func newInputActivity() *InputActivity {
 	return &InputActivity{
-		managementService: NewInputManagementService(),
+		managementService: newInputManagementService(),
 	}
+}
+
+func GetOp() types.RegisterableOp {
+	a := newInputActivity()
+	return types.NewRegisterableOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -108,7 +114,7 @@ func (a *InputActivity) SetTemporalContext(ctx workflow.Context) {
 
 // GetManagementService returns the management service for HTTP endpoints
 // This implements the ManagementServiceProvider interface
-func (a *InputActivity) GetManagementService() ManagementService {
+func (a *InputActivity) GetManagementService() types.ManagementService {
 	return a.managementService
 }
 

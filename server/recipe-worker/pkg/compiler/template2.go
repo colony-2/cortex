@@ -1,4 +1,4 @@
-package statemachine
+package compiler
 
 import (
 	"bytes"
@@ -9,20 +9,20 @@ import (
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
-// TemplateResolver handles template resolution for inputs and outputs
-type TemplateResolver struct {
+// TemplateResolver2 handles template resolution for inputs and outputs
+type TemplateResolver2 struct {
 	templates map[string]*template.Template
 }
 
 // NewTemplateResolver creates a new template resolver
-func NewTemplateResolver() *TemplateResolver {
-	return &TemplateResolver{
+func NewTemplateResolver2() *TemplateResolver2 {
+	return &TemplateResolver2{
 		templates: make(map[string]*template.Template),
 	}
 }
 
 // ResolveInputs resolves template expressions in input values
-func (t *TemplateResolver) ResolveInputs(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+func (t *TemplateResolver2) ResolveInputs(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
 	if inputs == nil {
 		return make(map[string]interface{}), nil
 	}
@@ -40,7 +40,7 @@ func (t *TemplateResolver) ResolveInputs(inputs map[string]interface{}, stateCtx
 }
 
 // ResolveOutputs resolves template expressions in output values
-func (t *TemplateResolver) ResolveOutputs(outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
+func (t *TemplateResolver2) ResolveOutputs(outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (map[string]interface{}, error) {
 	if outputs == nil {
 		return make(map[string]interface{}), nil
 	}
@@ -58,7 +58,7 @@ func (t *TemplateResolver) ResolveOutputs(outputs map[string]interface{}, stateC
 }
 
 // resolveValue resolves a single value which may contain template expressions
-func (t *TemplateResolver) resolveValue(value interface{}, stateCtx *yamlpkg.StateContext) (interface{}, error) {
+func (t *TemplateResolver2) resolveValue(value interface{}, stateCtx *yamlpkg.StateContext) (interface{}, error) {
 	switch v := value.(type) {
 	case string:
 		// Check if it's a template expression
@@ -98,7 +98,7 @@ func (t *TemplateResolver) resolveValue(value interface{}, stateCtx *yamlpkg.Sta
 }
 
 // executeTemplate executes a template expression
-func (t *TemplateResolver) executeTemplate(expr string, stateCtx *yamlpkg.StateContext) (interface{}, error) {
+func (t *TemplateResolver2) executeTemplate(expr string, stateCtx *yamlpkg.StateContext) (interface{}, error) {
 	// Get or create template with strict error handling
 	tmpl, exists := t.templates[expr]
 	if !exists {
@@ -129,7 +129,7 @@ func (t *TemplateResolver) executeTemplate(expr string, stateCtx *yamlpkg.StateC
 }
 
 // prepareTemplateData prepares data for template execution
-func (t *TemplateResolver) prepareTemplateData(stateCtx *yamlpkg.StateContext) map[string]interface{} {
+func (t *TemplateResolver2) prepareTemplateData(stateCtx *yamlpkg.StateContext) map[string]interface{} {
 	data := make(map[string]interface{})
 
 	// Add inputs

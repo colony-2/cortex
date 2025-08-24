@@ -1,4 +1,4 @@
-package statemachine
+package compiler
 
 import (
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
@@ -8,13 +8,13 @@ import (
 type ScopedContext struct {
 	// Parent scope (nil for root)
 	Parent *ScopedContext
-	
+
 	// Local step outputs for this scope only
 	LocalStepOutputs map[string]interface{}
-	
+
 	// Reference to the global state context
 	StateContext *yamlpkg.StateContext
-	
+
 	// Scope identifier for debugging
 	ScopeID string
 }
@@ -25,7 +25,7 @@ func NewScopedContext(parent *ScopedContext, stateCtx *yamlpkg.StateContext, sco
 		Parent:           parent,
 		LocalStepOutputs: make(map[string]interface{}),
 		StateContext:     stateCtx,
-		ScopeID:         scopeID,
+		ScopeID:          scopeID,
 	}
 }
 
@@ -45,16 +45,16 @@ func (sc *ScopedContext) SetStepOutput(stepID string, output interface{}) {
 // GetTemplateData prepares template data with proper scoping
 func (sc *ScopedContext) GetTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
-	
+
 	// Global inputs (available at all levels)
 	data["Inputs"] = sc.StateContext.Inputs
-	
+
 	// State outputs (available at all levels)
 	data["States"] = sc.StateContext.StateOutputs
-	
+
 	// Steps - only from current scope
 	data["Steps"] = sc.LocalStepOutputs
-	
+
 	// Context (available at all levels)
 	if sc.StateContext.RecipeContext != nil {
 		data["Context"] = map[string]interface{}{
@@ -73,26 +73,26 @@ func (sc *ScopedContext) GetTemplateData() map[string]interface{} {
 			},
 		}
 	}
-	
+
 	// Current state outputs if available
 	if current, exists := sc.StateContext.StateOutputs[sc.StateContext.CurrentState]; exists {
 		data["Outputs"] = current
 	}
-	
+
 	return data
 }
 
 // GetCELVariables prepares variables for CEL evaluation with proper scoping
 func (sc *ScopedContext) GetCELVariables(currentOutputs map[string]interface{}) map[string]interface{} {
 	vars := make(map[string]interface{})
-	
+
 	// Current outputs
 	if currentOutputs != nil {
 		vars["Outputs"] = currentOutputs
 	} else {
 		vars["Outputs"] = make(map[string]interface{})
 	}
-	
+
 	// State information
 	if sc.StateContext.StateInfo != nil && sc.StateContext.CurrentState != "" {
 		if info, exists := sc.StateContext.StateInfo[sc.StateContext.CurrentState]; exists {
@@ -103,21 +103,21 @@ func (sc *ScopedContext) GetCELVariables(currentOutputs map[string]interface{}) 
 			}
 		}
 	}
-	
+
 	// Previous state outputs (global)
 	if sc.StateContext.StateOutputs != nil {
 		vars["States"] = sc.StateContext.StateOutputs
 	} else {
 		vars["States"] = make(map[string]interface{})
 	}
-	
+
 	// Current inputs (global)
 	if sc.StateContext.Inputs != nil {
 		vars["Inputs"] = sc.StateContext.Inputs
 	} else {
 		vars["Inputs"] = make(map[string]interface{})
 	}
-	
+
 	// Recipe context (global)
 	if sc.StateContext.RecipeContext != nil {
 		vars["Context"] = map[string]interface{}{
@@ -138,10 +138,10 @@ func (sc *ScopedContext) GetCELVariables(currentOutputs map[string]interface{}) 
 	} else {
 		vars["Context"] = make(map[string]interface{})
 	}
-	
+
 	// Step outputs - only from current scope
 	vars["Steps"] = sc.LocalStepOutputs
-	
+
 	return vars
 }
 

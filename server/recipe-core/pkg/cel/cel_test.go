@@ -1,4 +1,4 @@
-package shared
+package cel
 
 import (
 	"testing"
@@ -158,7 +158,7 @@ func TestCELExpressionEvaluation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := evaluateCEL(tt.expression, tt.data)
-			
+
 			if tt.expectErr {
 				assert.Error(t, err)
 			} else {
@@ -270,20 +270,20 @@ func TestCELWithStateContext(t *testing.T) {
 				"outputs": tt.outputs,
 				"state":   tt.state,
 			}
-			
+
 			// In real implementation, this would be part of evaluateTransitions
 			env, _ := cel.NewEnv(
 				cel.Variable("outputs", cel.MapType(cel.StringType, cel.DynType)),
 				cel.Variable("state", cel.MapType(cel.StringType, cel.DynType)),
 			)
-			
+
 			ast, _ := env.Parse(tt.expression)
 			checked, _ := env.Check(ast)
 			prg, _ := env.Program(checked)
-			
+
 			out, _, err := prg.Eval(data)
 			require.NoError(t, err)
-			
+
 			result, ok := out.Value().(bool)
 			require.True(t, ok)
 			assert.True(t, result)
@@ -295,14 +295,14 @@ func TestCELWithStateContext(t *testing.T) {
 func TestCELPerformance(t *testing.T) {
 	// Create a complex expression
 	expression := "(score > 80 && status == 'active') || (priority == 'high' && deadline < 100)"
-	
+
 	data := map[string]interface{}{
 		"score":    85,
 		"status":   "active",
 		"priority": "medium",
 		"deadline": 50,
 	}
-	
+
 	// Pre-compile the expression
 	env, err := cel.NewEnv(
 		cel.Variable("score", cel.IntType),
@@ -311,22 +311,22 @@ func TestCELPerformance(t *testing.T) {
 		cel.Variable("deadline", cel.IntType),
 	)
 	require.NoError(t, err)
-	
+
 	ast, issues := env.Parse(expression)
 	require.NoError(t, issues.Err())
-	
+
 	checked, issues := env.Check(ast)
 	require.NoError(t, issues.Err())
-	
+
 	prg, err := env.Program(checked)
 	require.NoError(t, err)
-	
+
 	// Run multiple evaluations
 	iterations := 1000
 	for i := 0; i < iterations; i++ {
 		out, _, err := prg.Eval(data)
 		require.NoError(t, err)
-		
+
 		result, ok := out.Value().(bool)
 		require.True(t, ok)
 		assert.True(t, result)

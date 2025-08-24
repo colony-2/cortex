@@ -60,7 +60,7 @@ func NewMockTemporalClient() *MockTemporalClient {
 func (m *MockTemporalClient) SignalWorkflow(ctx context.Context, workflowID, runID, signalName string, arg interface{}) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if wf, exists := m.workflows[workflowID]; exists {
 		if wf.SignalChannel != nil {
 			wf.SignalChannel <- arg
@@ -73,7 +73,7 @@ func (m *MockTemporalClient) SignalWorkflow(ctx context.Context, workflowID, run
 func (m *MockTemporalClient) DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*workflowservice.DescribeWorkflowExecutionResponse, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if _, exists := m.workflows[workflowID]; exists {
 		// Return a mock description
 		// In a real implementation, this would return actual workflow details
@@ -85,7 +85,7 @@ func (m *MockTemporalClient) DescribeWorkflowExecution(ctx context.Context, work
 func (m *MockTemporalClient) CancelWorkflow(ctx context.Context, workflowID, runID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if wf, exists := m.workflows[workflowID]; exists {
 		wf.Status = "cancelled"
 		return nil
@@ -103,19 +103,19 @@ func (m *MockTemporalClient) RegisterWorkflow(workflowID string, execution *Work
 func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface{}, error) {
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting recipe workflow", "recipeID", recipeID)
-	
+
 	// Step 1: Execute some initial activity
 	result := map[string]interface{}{
 		"recipe_id": recipeID,
 		"step":      "initial",
 	}
-	
+
 	// Step 2: Execute input activity to get user approval
 	inputActivityOptions := workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
 	}
 	ctx = workflow.WithActivityOptions(ctx, inputActivityOptions)
-	
+
 	inputConfig := Config{
 		Question: "Do you approve this deployment?",
 		Type:     FieldTypeMultipleChoice,
@@ -125,7 +125,7 @@ func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface
 		},
 		Timeout: 60,
 	}
-	
+
 	inputArgs := Input{
 		BoxID:      "test-cell",
 		ActivityID: "approval-activity",
@@ -133,13 +133,13 @@ func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface
 			"recipe_id": recipeID,
 		},
 	}
-	
+
 	var inputOutput Output
 	err := workflow.ExecuteActivity(ctx, InputActivityExecute, inputConfig, inputArgs).Get(ctx, &inputOutput)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Step 3: Process based on user response
 	if inputOutput.Response == "approve" {
 		result["status"] = "approved"
@@ -148,7 +148,7 @@ func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface
 		result["status"] = "rejected"
 		result["rejected_by"] = inputOutput.UserID
 	}
-	
+
 	return result, nil
 }
 
@@ -156,24 +156,24 @@ func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface
 func TestFullInputActivityLifecycle(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Register the recipe workflow
 	env.RegisterWorkflow(RecipeWorkflow)
-	
+
 	// Register the input activity function
 	env.RegisterActivity(InputActivityExecute)
-	
+
 	// Execute the recipe workflow
 	env.ExecuteWorkflow(RecipeWorkflow, "recipe-123")
-	
+
 	// Verify workflow completed successfully
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Get the result
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify the result
 	assert.Equal(t, "recipe-123", result["recipe_id"])
 	assert.Equal(t, "approved", result["status"])
@@ -186,10 +186,10 @@ func TestFullInputActivityLifecycle(t *testing.T) {
 func TestInputActivityWithChildWorkflow(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Register the input collection workflow
 	env.RegisterWorkflow(InputCollectionWorkflow)
-	
+
 	// Setup signal to respond to the input request
 	env.RegisterDelayedCallback(func() {
 		env.SignalWorkflow("user-response", UserResponseSignal{
@@ -203,7 +203,7 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 			},
 		})
 	}, 500*time.Millisecond)
-	
+
 	// Execute the InputCollectionWorkflow directly
 	params := InputWorkflowParams{
 		Form: InputForm{
@@ -219,13 +219,13 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
-	
+
 	env.ExecuteWorkflow(InputCollectionWorkflow, params)
-	
+
 	// Verify completion
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Verify the result
 	var result InputWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
@@ -238,39 +238,39 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 func TestInputManagementServiceAPI(t *testing.T) {
 	// Create mock temporal client
 	mockClient := NewMockTemporalClient()
-	
+
 	// Create SSE manager
 	sseManager := NewSimpleSSEManager()
-	
+
 	// Create management service
-	service := NewInputManagementService()
+	service := newInputManagementService()
 	service.Initialize(ServiceDependencies{
 		TemporalClient: mockClient,
 		SSEManager:     sseManager,
 	})
-	
+
 	// Create test router
 	router := chi.NewRouter()
 	routes := service.GetRoutes()
 	for _, route := range routes {
 		router.Method(route.Method, route.Path, route.Handler)
 	}
-	
+
 	// Test 1: List pending inputs (should return empty list)
 	t.Run("ListPending", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/user-inputs/pending", nil)
 		rec := httptest.NewRecorder()
-		
+
 		router.ServeHTTP(rec, req)
-		
+
 		assert.Equal(t, http.StatusOK, rec.Code)
-		
+
 		var pending []PendingInput
 		err := json.Unmarshal(rec.Body.Bytes(), &pending)
 		require.NoError(t, err)
 		assert.Empty(t, pending)
 	})
-	
+
 	// Test 2: Submit response to workflow
 	t.Run("SubmitResponse", func(t *testing.T) {
 		// Register a mock workflow
@@ -281,7 +281,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 			Status:        "running",
 			SignalChannel: signalChan,
 		})
-		
+
 		// Prepare response submission
 		submission := map[string]interface{}{
 			"fields": map[string]interface{}{
@@ -292,23 +292,23 @@ func TestInputManagementServiceAPI(t *testing.T) {
 				"submitted_via": "api-test",
 			},
 		}
-		
+
 		body, _ := json.Marshal(submission)
 		req := httptest.NewRequest("POST", "/api/user-inputs/"+workflowID+"/respond", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-User-ID", "test-user-789")
 		rec := httptest.NewRecorder()
-		
+
 		router.ServeHTTP(rec, req)
-		
+
 		assert.Equal(t, http.StatusOK, rec.Code)
-		
+
 		// Verify response
 		var response map[string]interface{}
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		require.NoError(t, err)
 		assert.True(t, response["success"].(bool))
-		
+
 		// Verify signal was sent
 		select {
 		case signal := <-signalChan:
@@ -320,7 +320,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 			t.Fatal("Expected signal not received")
 		}
 	})
-	
+
 	// Test 3: Cancel workflow
 	t.Run("CancelWorkflow", func(t *testing.T) {
 		workflowID := "test-workflow-456"
@@ -328,20 +328,20 @@ func TestInputManagementServiceAPI(t *testing.T) {
 			ID:     workflowID,
 			Status: "running",
 		})
-		
+
 		cancelRequest := map[string]string{
 			"reason": "User cancelled the operation",
 		}
-		
+
 		body, _ := json.Marshal(cancelRequest)
 		req := httptest.NewRequest("POST", "/api/user-inputs/"+workflowID+"/cancel", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
-		
+
 		router.ServeHTTP(rec, req)
-		
+
 		assert.Equal(t, http.StatusOK, rec.Code)
-		
+
 		// Verify workflow was cancelled
 		mockClient.mu.RLock()
 		wf := mockClient.workflows[workflowID]
@@ -353,11 +353,11 @@ func TestInputManagementServiceAPI(t *testing.T) {
 // TestSSEEventBroadcasting tests the SSE event system
 func TestSSEEventBroadcasting(t *testing.T) {
 	sseManager := NewSimpleSSEManager()
-	
+
 	// Subscribe a client
 	clientID := "test-client-1"
 	events := sseManager.Subscribe(clientID)
-	
+
 	// Broadcast an event
 	testEvent := SSEEvent{
 		Type: "input_completed",
@@ -366,9 +366,9 @@ func TestSSEEventBroadcasting(t *testing.T) {
 			"user_id":     "user-456",
 		},
 	}
-	
+
 	sseManager.Broadcast(testEvent)
-	
+
 	// Verify event was received
 	select {
 	case received := <-events:
@@ -377,7 +377,7 @@ func TestSSEEventBroadcasting(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Fatal("Expected event not received")
 	}
-	
+
 	// Unsubscribe
 	sseManager.Unsubscribe(clientID)
 	assert.Equal(t, 0, sseManager.GetClients())
@@ -388,20 +388,20 @@ func TestEndToEndScenario(t *testing.T) {
 	t.Run("SuccessfulApproval", func(t *testing.T) {
 		testSuite := &testsuite.WorkflowTestSuite{}
 		env := testSuite.NewTestWorkflowEnvironment()
-		
+
 		// Track workflow execution stages
 		stages := []string{}
-		
+
 		// Define the deployment workflow
 		deploymentWorkflow := func(ctx workflow.Context) (string, error) {
 			stages = append(stages, "workflow_started")
-			
+
 			// Execute input activity
 			activityOptions := workflow.ActivityOptions{
 				StartToCloseTimeout: 2 * time.Minute,
 			}
 			ctx = workflow.WithActivityOptions(ctx, activityOptions)
-			
+
 			config := Config{
 				Question: "Proceed with deployment?",
 				Type:     FieldTypeMultipleChoice,
@@ -411,31 +411,31 @@ func TestEndToEndScenario(t *testing.T) {
 				},
 				Timeout: 30,
 			}
-			
+
 			input := Input{
 				BoxID:      "deployment-cell",
 				ActivityID: "deploy-approval",
 			}
-			
+
 			stages = append(stages, "input_activity_called")
-			
+
 			var output Output
 			err := workflow.ExecuteActivity(ctx, InputActivityExecute, config, input).Get(ctx, &output)
 			if err != nil {
 				return "", err
 			}
-			
+
 			stages = append(stages, "input_received")
-			
+
 			if output.Response == "yes" {
 				return "deployment_approved", nil
 			}
 			return "deployment_cancelled", nil
 		}
-		
+
 		// Register the workflow
 		env.RegisterWorkflow(deploymentWorkflow)
-		
+
 		// Mock the input activity to return approval
 		env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
 			Output{
@@ -443,31 +443,31 @@ func TestEndToEndScenario(t *testing.T) {
 				UserID:   "approver-123",
 			}, nil,
 		)
-		
+
 		// Execute workflow
 		env.ExecuteWorkflow(deploymentWorkflow)
-		
+
 		// Verify successful completion
 		require.True(t, env.IsWorkflowCompleted())
 		require.NoError(t, env.GetWorkflowError())
-		
+
 		var result string
 		require.NoError(t, env.GetWorkflowResult(&result))
 		assert.Equal(t, "deployment_approved", result)
-		
+
 		// Verify all stages were executed
 		assert.Contains(t, stages, "workflow_started")
 		assert.Contains(t, stages, "input_activity_called")
 		assert.Contains(t, stages, "input_received")
 	})
-	
+
 	t.Run("TimeoutScenario", func(t *testing.T) {
 		testSuite := &testsuite.WorkflowTestSuite{}
 		env := testSuite.NewTestWorkflowEnvironment()
-		
+
 		// Register the input collection workflow
 		env.RegisterWorkflow(InputCollectionWorkflow)
-		
+
 		// Execute workflow with very short timeout
 		params := InputWorkflowParams{
 			Form: InputForm{
@@ -483,10 +483,10 @@ func TestEndToEndScenario(t *testing.T) {
 			BoxID:      "timeout-test-cell",
 			ActivityID: "timeout-activity",
 		}
-		
+
 		// Don't send any signal - let it timeout
 		env.ExecuteWorkflow(InputCollectionWorkflow, params)
-		
+
 		// Verify timeout occurred
 		require.True(t, env.IsWorkflowCompleted())
 		err := env.GetWorkflowError()
@@ -497,27 +497,27 @@ func TestEndToEndScenario(t *testing.T) {
 
 // TestActivityWithTemporalContext tests the activity with injected Temporal context
 func TestActivityWithTemporalContext(t *testing.T) {
-	activity := NewInputActivity()
-	
+	activity := newInputActivity()
+
 	// Test without temporal context (standalone mode)
 	config := Config{
 		Question: "Test question?",
 		Type:     FieldTypeShortAnswer,
 		Timeout:  60,
 	}
-	
+
 	input := Input{
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
-	
+
 	output, err := activity.Execute(context.Background(), config, input)
 	require.NoError(t, err)
-	
+
 	// In standalone mode, it returns mock response
 	assert.Equal(t, "test response", output.Response)
 	assert.Equal(t, "test-user", output.UserID)
-	
+
 	// Verify management service is available
 	mgmtService := activity.GetManagementService()
 	assert.NotNil(t, mgmtService)
@@ -527,14 +527,14 @@ func TestActivityWithTemporalContext(t *testing.T) {
 func TestMultiFieldFormIntegration(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Define workflow with multi-field form
 	configWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
 		activityOptions := workflow.ActivityOptions{
 			StartToCloseTimeout: 5 * time.Minute,
 		}
 		ctx = workflow.WithActivityOptions(ctx, activityOptions)
-		
+
 		config := Config{
 			Title: "Deployment Configuration",
 			Fields: []FormField{
@@ -580,18 +580,18 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 			},
 			Timeout: 300,
 		}
-		
+
 		input := Input{
 			BoxID:      "config-cell",
 			ActivityID: "config-activity",
 		}
-		
+
 		var output Output
 		err := workflow.ExecuteActivity(ctx, InputActivityExecute, config, input).Get(ctx, &output)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		// Process the multi-field response
 		result := map[string]interface{}{
 			"environment": output.Fields["environment"],
@@ -600,13 +600,13 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 			"notes":       output.Fields["notes"],
 			"approved_by": output.UserID,
 		}
-		
+
 		return result, nil
 	}
-	
+
 	// Register the workflow
 	env.RegisterWorkflow(configWorkflow)
-	
+
 	// Mock the input activity to return multi-field response
 	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
 		Output{
@@ -619,18 +619,18 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 			UserID: "config-user-999",
 		}, nil,
 	)
-	
+
 	// Execute workflow
 	env.ExecuteWorkflow(configWorkflow)
-	
+
 	// Verify completion
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Verify result
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	assert.Equal(t, "staging", result["environment"])
 	assert.Equal(t, "blue_green", result["strategy"])
 	assert.Equal(t, float64(3), result["urgency"])
@@ -640,8 +640,8 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 
 // BenchmarkInputActivityExecution benchmarks the input activity performance
 func BenchmarkInputActivityExecution(b *testing.B) {
-	activity := NewInputActivity()
-	
+	activity := newInputActivity()
+
 	config := Config{
 		Question: "Benchmark question?",
 		Type:     FieldTypeMultipleChoice,
@@ -651,14 +651,14 @@ func BenchmarkInputActivityExecution(b *testing.B) {
 		},
 		Timeout: 60,
 	}
-	
+
 	input := Input{
 		BoxID:      "bench-cell",
 		ActivityID: "bench-activity",
 	}
-	
+
 	ctx := context.Background()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := activity.Execute(ctx, config, input)
@@ -672,26 +672,26 @@ func BenchmarkInputActivityExecution(b *testing.B) {
 func TestWorkerIntegration(t *testing.T) {
 	// This test verifies that the activity can be properly registered with a worker
 	// In a real scenario, this would connect to an actual Temporal server
-	
+
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Create a mock worker
 	env.RegisterWorkflow(RecipeWorkflow)
 	env.RegisterWorkflow(InputCollectionWorkflow)
-	
+
 	// Register the actual input activity
-	inputActivity := NewInputActivity()
+	inputActivity := newInputActivity()
 	env.RegisterActivity(inputActivity.Execute)
-	
+
 	// Set up activity options
 	env.SetWorkerOptions(worker.Options{
 		MaxConcurrentActivityExecutionSize: 10,
 	})
-	
+
 	// Execute a workflow that uses the activity
 	env.ExecuteWorkflow(RecipeWorkflow, "integration-recipe-001")
-	
+
 	// The workflow should complete (even though the activity returns mock data in test mode)
 	require.True(t, env.IsWorkflowCompleted())
 }

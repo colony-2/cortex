@@ -2,19 +2,20 @@ package shared
 
 import (
 	"fmt"
+
 	gitactivity "github.com/divisive-ai/vibethis/server/git/pkg/activity"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
 	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"go.uber.org/zap"
 )
 
 // RegistryManager manages activity registry and executor initialization
 type RegistryManager struct {
-	registry *worker.ActivityRegistry
+	registry *ops.ActivityRegistry
 	executor *executor.StandaloneExecutor
 	logger   *zap.Logger
 }
@@ -27,10 +28,10 @@ func NewRegistryManager(logger *zap.Logger) (*RegistryManager, error) {
 		// Continue anyway - some activities might still work
 	}
 
-	registry := worker.NewActivityRegistry()
+	registry := ops.NewActivityRegistry()
 	err := registry.RegisterAll(
-		sleepop.NewSleepActivity(),
-		commandop.NewCommandExecutionActivity(),
+		sleepop.GetOp(),
+		commandop.GetOp(),
 		append(gitactivity.GetAll(), opsactivity.GetAll()...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to register Git activities: %w", err)
@@ -50,7 +51,7 @@ func NewRegistryManager(logger *zap.Logger) (*RegistryManager, error) {
 }
 
 // GetRegistry returns the activity registry
-func (rm *RegistryManager) GetRegistry() *worker.ActivityRegistry {
+func (rm *RegistryManager) GetRegistry() *ops.ActivityRegistry {
 	return rm.registry
 }
 

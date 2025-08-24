@@ -1,0 +1,53 @@
+tests:
+  - name: "standard_analysis"
+    description: "Test standard depth parallel analysis"
+    inputs:
+      document_path: "/path/to/document.pdf"
+      analysis_depth: "standard"
+    want:
+      analysis_report: "Formatted analysis report"
+      executive_summary: "Executive summary of document"
+      quality_score: 0.85
+      detected_issues: []
+    wantErr: false
+
+  - name: "deep_analysis"
+    description: "Test deep analysis with parallel processing"
+    inputs:
+      document_path: "/path/to/complex-document.pdf"
+      analysis_depth: "deep"
+    want:
+      analysis_report: "Detailed analysis report"
+      executive_summary: "Comprehensive executive summary"
+      quality_score: 0.92
+      detected_issues:
+        - "Minor formatting issue on page 3"
+    wantErr: false
+
+  - name: "quick_analysis"
+    description: "Test quick analysis mode"
+    inputs:
+      document_path: "/path/to/simple.txt"
+      analysis_depth: "quick"
+    want:
+      analysis_report: "Quick analysis report"
+      executive_summary: "Brief summary"
+      quality_score: 0.75
+      detected_issues: []
+    wantErr: false
+
+  - name: "missing_document_path"
+    description: "Test with missing required document path"
+    inputs:
+      analysis_depth: "standard"
+    want: {}
+    wantErr: true
+
+  - name: "default_depth"
+    description: "Test with default analysis depth"
+    inputs:
+      document_path: "/path/to/document.pdf"
+    want:
+      analysis_depth: "standard"
+      quality_score: 0.8
+    wantErr: false

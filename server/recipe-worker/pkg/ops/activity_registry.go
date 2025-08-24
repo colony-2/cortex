@@ -1,4 +1,4 @@
-package worker
+package ops
 
 import (
 	"fmt"
@@ -6,12 +6,12 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"github.com/invopop/jsonschema"
+	"go.temporal.io/sdk/activity"
 )
 
 // ActivityRegistration holds the activity and its generated schemas
 type ActivityRegistration struct {
 	Activity     types.RegisterableOp // The generic activity interface
-	ConfigSchema *jsonschema.Schema
 	InputSchema  *jsonschema.Schema
 	OutputSchema *jsonschema.Schema
 	Metadata     types.OpMetadata
@@ -49,6 +49,20 @@ func (r *ActivityRegistry) RegisterAll(ops ...types.RegisterableOp) error {
 	return nil
 }
 
+type ActivityRegisterable interface {
+	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
+}
+
+func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
+	for k, v := range r.activities {
+		if v.Activity.ExecuteAsActivity() {
+			worker.RegisterActivityWithOptions(v.Activity.Execute, activity.RegisterOptions{
+				Name: k,
+			})
+		}
+	}
+}
+
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
 func (r *ActivityRegistry) Register(activity types.RegisterableOp) error {
@@ -65,7 +79,7 @@ func (r *ActivityRegistry) Register(activity types.RegisterableOp) error {
 }
 
 // Register accepts any generic RegisterableOp from the activity module
-func Register[TConfig any, TInput any, TOutput any](r *ActivityRegistry, activity types.RegisterableOp) error {
+func Register[TInput any, TOutput any](r *ActivityRegistry, activity types.RegisterableOp) error {
 	metadata := activity.GetMetadata()
 
 	if _, exists := r.activities[metadata.Type]; exists {
@@ -73,24 +87,15 @@ func Register[TConfig any, TInput any, TOutput any](r *ActivityRegistry, activit
 	}
 
 	// Generate schemas from types using reflection on the generic type parameters
-	var config TConfig
 	var input TInput
 	var output TOutput
 
 	// Validate all struct fields have json tags before generating schemas
-	if err := r.generator.ValidateStructTags(reflect.TypeOf(config)); err != nil {
-		return fmt.Errorf("config type validation failed: %w", err)
-	}
 	if err := r.generator.ValidateStructTags(reflect.TypeOf(input)); err != nil {
 		return fmt.Errorf("input type validation failed: %w", err)
 	}
 	if err := r.generator.ValidateStructTags(reflect.TypeOf(output)); err != nil {
 		return fmt.Errorf("output type validation failed: %w", err)
-	}
-
-	configSchema, err := r.generator.GenerateSchema(reflect.TypeOf(config))
-	if err != nil {
-		return fmt.Errorf("config schema generation failed: %w", err)
 	}
 
 	inputSchema, err := r.generator.GenerateSchema(reflect.TypeOf(input))
@@ -105,7 +110,6 @@ func Register[TConfig any, TInput any, TOutput any](r *ActivityRegistry, activit
 
 	r.activities[metadata.Type] = ActivityRegistration{
 		Activity:     activity,
-		ConfigSchema: configSchema,
 		InputSchema:  inputSchema,
 		OutputSchema: outputSchema,
 		Metadata:     metadata,
@@ -147,28 +151,14 @@ func (r *ActivityRegistry) UpdateRegistration(activityType string, registration 
 
 // generateSchemasForRegistration generates schemas for an activity using reflection
 func (r *ActivityRegistry) generateSchemasForRegistration(registration *ActivityRegistration) {
-	// Use reflection to extract types from Execute method
-	methodType := registration.Activity.GetHandlerType()
-
-	// Execute method signature: func(ctx context.Context, config TConfig, input TInput) (TOutput, error)
-	if methodType.NumIn() < 3 || methodType.NumOut() < 2 {
-		return
-	}
-
-	// Config is the second parameter (after context)
-	configType := methodType.In(1)
-	if configType.Kind() != reflect.Interface {
-		registration.ConfigSchema, _ = r.generator.GenerateSchema(configType)
-	}
-
 	// Input is the third parameter
-	inputType := methodType.In(2)
+	inputType := registration.Activity.GetInputType()
 	if inputType.Kind() != reflect.Interface {
 		registration.InputSchema, _ = r.generator.GenerateSchema(inputType)
 	}
 
 	// Output is the first return value
-	outputType := methodType.Out(0)
+	outputType := registration.Activity.GetOutputType()
 	if outputType.Kind() != reflect.Interface {
 		registration.OutputSchema, _ = r.generator.GenerateSchema(outputType)
 	}

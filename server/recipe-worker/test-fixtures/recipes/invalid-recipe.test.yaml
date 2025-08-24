@@ -1,0 +1,7 @@
+tests:
+  - name: "invalid_recipe_structure"
+    description: "Test that invalid recipe fails properly"
+    inputs: {}
+    want: {}
+    wantErr: true
+    expectedError: "missing required workflow section"

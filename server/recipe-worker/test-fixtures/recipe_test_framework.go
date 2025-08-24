@@ -10,8 +10,8 @@ import (
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -34,7 +34,7 @@ type TestCases struct {
 func RunTestOnAllRecipes(path string, t *testing.T) {
 	// Create standalone executor once for all tests
 	logger := zaptest.NewLogger(t)
-	a := worker.NewActivityRegistry()
+	a := ops.NewActivityRegistry()
 	require.NoError(t, a.RegisterAll(sleepop.GetOp(), commandop.GetOp()))
 	exec, err := executor.NewStandaloneExecutor(a, logger)
 	require.NoError(t, err, "Failed to create standalone executor")

@@ -83,40 +83,28 @@ type FileStatistics struct {
 	TotalSize        int64          `json:"total_size"`
 }
 
-// GitFileCollectorActivity implements RegisterableOp
-type GitFileCollectorActivity struct {
+// gitFileCollectorActivity implements RegisterableOp
+type gitFileCollectorActivity struct {
 	gitRepo *commands.Repository
 }
 
-// Ensure we implement the interface
-var _ types.RegisterableOp[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] = (*GitFileCollectorActivity)(nil)
-
 // NewGitFileCollectorActivity creates a new activity instance
-func NewGitFileCollectorActivity() types.RegisterableOp[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput] {
-	return &GitFileCollectorActivity{
-		gitRepo: commands.New("", ""),
-	}
-}
-
-// GetMetadata returns activity metadata for registration
-func (a *GitFileCollectorActivity) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
-		Type:           "git_file_collector",
-		Name:           "Git File Collector",
-		Description:    "Collects files from a git repository with filtering and metadata",
-		Version:        "1.0.0",
-		DefaultTimeout: 30 * time.Second,
-		RetryPolicy: &types.RetryPolicy{
-			MaximumAttempts:    3,
-			InitialInterval:    1 * time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    10 * time.Second,
+func GetOp() types.RegisterableOp {
+	act := &gitFileCollectorActivity{}
+	return types.NewRegisterableOp(
+		types.OpMetadata{
+			Type:           "git_file_collector",
+			Name:           "Git File Collector",
+			Description:    "Collects files from a git repository with filtering and metadata",
+			Version:        "1.0.0",
+			DefaultTimeout: 30 * time.Second,
+			RetryPolicy:    &types.DefaultRetry,
 		},
-	}
+		act.Execute)
 }
 
 // Execute runs the git file collection
-func (a *GitFileCollectorActivity) Execute(
+func (a *gitFileCollectorActivity) Execute(
 	ctx context.Context,
 	config GitFileCollectorConfig,
 	input GitFileCollectorInput,
@@ -189,7 +177,7 @@ func (a *GitFileCollectorActivity) Execute(
 }
 
 // applyDefaults applies default values from config
-func (a *GitFileCollectorActivity) applyDefaults(input *GitFileCollectorInput, config GitFileCollectorConfig) {
+func (a *gitFileCollectorActivity) applyDefaults(input *GitFileCollectorInput, config GitFileCollectorConfig) {
 	if input.MaxFileSize == 0 && config.DefaultMaxFileSize > 0 {
 		input.MaxFileSize = config.DefaultMaxFileSize
 	}
@@ -210,7 +198,7 @@ func (a *GitFileCollectorActivity) applyDefaults(input *GitFileCollectorInput, c
 }
 
 // validateInput validates the input parameters
-func (a *GitFileCollectorActivity) validateInput(input GitFileCollectorInput) error {
+func (a *gitFileCollectorActivity) validateInput(input GitFileCollectorInput) error {
 	// Check required fields
 	if input.ContextDir == "" {
 		return fmt.Errorf("context_dir is required")
@@ -252,7 +240,7 @@ func (a *GitFileCollectorActivity) validateInput(input GitFileCollectorInput) er
 }
 
 // listGitFiles lists files from the git repository
-func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput, gitRoot string) ([]string, error) {
+func (a *gitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput, gitRoot string) ([]string, error) {
 	var files []string
 
 	// Calculate relative path from git root to context directory
@@ -318,7 +306,7 @@ func (a *GitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFi
 }
 
 // deduplicateFiles removes duplicate file paths
-func (a *GitFileCollectorActivity) deduplicateFiles(files []string) []string {
+func (a *gitFileCollectorActivity) deduplicateFiles(files []string) []string {
 	seen := make(map[string]bool)
 	result := []string{}
 
@@ -333,7 +321,7 @@ func (a *GitFileCollectorActivity) deduplicateFiles(files []string) []string {
 }
 
 // applyPatternFilters applies include/exclude patterns to file list
-func (a *GitFileCollectorActivity) applyPatternFilters(files []string, input GitFileCollectorInput) []string {
+func (a *gitFileCollectorActivity) applyPatternFilters(files []string, input GitFileCollectorInput) []string {
 	if len(input.FilePatterns) == 0 && len(input.ExcludePatterns) == 0 {
 		return files
 	}
@@ -390,7 +378,7 @@ func (a *GitFileCollectorActivity) applyPatternFilters(files []string, input Git
 }
 
 // collectFiles reads and processes files
-func (a *GitFileCollectorActivity) collectFiles(
+func (a *gitFileCollectorActivity) collectFiles(
 	ctx context.Context,
 	baseDir string,
 	filePaths []string,

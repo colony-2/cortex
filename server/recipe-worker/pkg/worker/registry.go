@@ -10,22 +10,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/fsnotify/fsnotify"
 	"go.uber.org/zap"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Registry manages the discovery and tracking of recipes
 type Registry struct {
-	logger       *zap.Logger
-	recipesDir   string
-	recipes      map[string]*recipe.Recipe // key is recipe name
-	mu           sync.RWMutex
-	watcher      *fsnotify.Watcher
-	ctx          context.Context
-	cancel       context.CancelFunc
+	logger        *zap.Logger
+	recipesDir    string
+	recipes       map[string]*recipe.Recipe // key is recipe name
+	mu            sync.RWMutex
+	watcher       *fsnotify.Watcher
+	ctx           context.Context
+	cancel        context.CancelFunc
 	workerManager WorkerManagerInterface
-	hashComputer *recipe.HashComputer
+	hashComputer  *recipe.HashComputer
 }
 
 // NewRegistry creates a new recipe registry
@@ -76,7 +76,7 @@ func (r *Registry) Start() error {
 	// Start the file watcher goroutine
 	go r.watchForChanges()
 
-	r.logger.Info("Recipe registry started", 
+	r.logger.Info("Recipe registry started",
 		zap.String("directory", r.recipesDir),
 		zap.Int("recipes", len(r.recipes)))
 
@@ -148,13 +148,13 @@ func (r *Registry) discoverRecipes() error {
 		if !d.IsDir() && strings.HasSuffix(d.Name(), ".yaml") {
 			recipe, err := r.loadUnifiedRecipe(path)
 			if err != nil {
-				r.logger.Error("Failed to load unified recipe", 
-					zap.String("path", path), 
+				r.logger.Error("Failed to load unified recipe",
+					zap.String("path", path),
 					zap.Error(err))
 				return nil
 			}
 			if recipe != nil {
-				discovered[recipe.Name] = recipe
+				discovered[recipe.ID] = recipe
 			}
 		}
 
@@ -184,7 +184,7 @@ func (r *Registry) discoverRecipes() error {
 	// Start or restart workers for new/changed recipes
 	for name, newRecipe := range discovered {
 		oldRecipe, exists := r.recipes[name]
-		
+
 		if !exists {
 			// New recipe
 			r.logger.Info("New recipe discovered", zap.String("name", name))
@@ -194,7 +194,7 @@ func (r *Registry) discoverRecipes() error {
 			}
 		} else if oldRecipe.Hash != newRecipe.Hash {
 			// Changed recipe
-			r.logger.Info("Recipe changed", 
+			r.logger.Info("Recipe changed",
 				zap.String("name", name),
 				zap.String("oldHash", oldRecipe.Hash),
 				zap.String("newHash", newRecipe.Hash))
@@ -206,7 +206,7 @@ func (r *Registry) discoverRecipes() error {
 			// No change, preserve worker status
 			newRecipe.WorkerStatus = oldRecipe.WorkerStatus
 		}
-		
+
 		r.recipes[name] = newRecipe
 	}
 
@@ -226,8 +226,6 @@ func (r *Registry) loadUnifiedRecipe(path string) (*recipe.Recipe, error) {
 	// Recipe parser already sets all metadata including hash
 	return recipeData, nil
 }
-
-
 
 // watchForChanges monitors the recipes directory for changes
 func (r *Registry) watchForChanges() {
@@ -258,7 +256,7 @@ func (r *Registry) watchForChanges() {
 				continue
 			}
 
-			r.logger.Debug("File system event", 
+			r.logger.Debug("File system event",
 				zap.String("name", event.Name),
 				zap.String("op", event.Op.String()))
 
@@ -279,10 +277,10 @@ func (r *Registry) watchForChanges() {
 // startWorkerAsync starts a worker for a recipe asynchronously
 func (r *Registry) startWorkerAsync(rec *recipe.Recipe) {
 	if err := r.workerManager.StartWorker(rec); err != nil {
-		r.logger.Error("Failed to start worker", 
-			zap.String("recipe", rec.Name),
+		r.logger.Error("Failed to start worker",
+			zap.String("recipe", rec.ID),
 			zap.Error(err))
-		
+
 		r.mu.Lock()
 		rec.WorkerStatus = recipe.WorkerStatusFailed
 		r.mu.Unlock()

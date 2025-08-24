@@ -1,0 +1,76 @@
+tests:
+  - name: "json_output_pipeline"
+    description: "Test unified pipeline with JSON output"
+    inputs:
+      data_sources:
+        - "database1"
+        - "api_endpoint1"
+        - "file_source1"
+      output_format: "json"
+    want:
+      processed_data:
+        format: "json"
+        sources_processed: 3
+      summary:
+        total_records: 1500
+        processing_time: "< 5s"
+    wantErr: false
+
+  - name: "xml_output_pipeline"
+    description: "Test unified pipeline with XML output"
+    inputs:
+      data_sources:
+        - "database1"
+      output_format: "xml"
+    want:
+      processed_data:
+        format: "xml"
+        sources_processed: 1
+      summary:
+        total_records: 500
+    wantErr: false
+
+  - name: "csv_output_pipeline"
+    description: "Test unified pipeline with CSV output"
+    inputs:
+      data_sources:
+        - "csv_source1"
+        - "csv_source2"
+      output_format: "csv"
+    want:
+      processed_data:
+        format: "csv"
+        sources_processed: 2
+      summary:
+        total_records: 800
+    wantErr: false
+
+  - name: "default_format"
+    description: "Test pipeline with default output format"
+    inputs:
+      data_sources:
+        - "source1"
+    want:
+      processed_data:
+        format: "json"
+        sources_processed: 1
+    wantErr: false
+
+  - name: "missing_data_sources"
+    description: "Test with missing required data sources"
+    inputs:
+      output_format: "json"
+    want: {}
+    wantErr: true
+
+  - name: "empty_data_sources"
+    description: "Test with empty data sources array"
+    inputs:
+      data_sources: []
+      output_format: "json"
+    want:
+      processed_data:
+        sources_processed: 0
+      summary:
+        total_records: 0
+    wantErr: false

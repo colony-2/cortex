@@ -25,12 +25,14 @@ type PersistCommitInput struct {
 // PersistCommitActivityWrapper implements the RegisterableOp interface
 type PersistCommitActivityWrapper struct{}
 
-// Ensure we implement the interface
-var _ types.RegisterableOp[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] = (*PersistCommitActivityWrapper)(nil)
-
 // NewPersistCommitActivity creates a new persist commit activity that implements RegisterableOp
-func NewPersistCommitActivity() types.RegisterableOp[PersistCommitConfig, PersistCommitInput, PersistCommitOutput] {
+func NewPersistCommitActivity() *PersistCommitActivityWrapper {
 	return &PersistCommitActivityWrapper{}
+}
+
+func GetPersistOp() types.RegisterableOp {
+	p := &PersistCommitActivityWrapper{}
+	return types.NewRegisterableOp(p.GetMetadata(), p.Execute)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -93,12 +95,14 @@ type RestoreCommitInput struct {
 // RestoreCommitActivityWrapper implements the RegisterableOp interface
 type RestoreCommitActivityWrapper struct{}
 
-// Ensure we implement the interface
-var _ types.RegisterableOp[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] = (*RestoreCommitActivityWrapper)(nil)
-
 // NewRestoreCommitActivity creates a new restore commit activity that implements RegisterableOp
-func NewRestoreCommitActivity() types.RegisterableOp[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput] {
+func NewRestoreCommitActivity() *RestoreCommitActivityWrapper {
 	return &RestoreCommitActivityWrapper{}
+}
+
+func GetRestoreOp() types.RegisterableOp {
+	r := &RestoreCommitActivityWrapper{}
+	return types.NewRegisterableOp(r.GetMetadata(), r.Execute)
 }
 
 // GetMetadata returns activity metadata for registration

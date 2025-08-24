@@ -3,8 +3,9 @@ package sleepop
 import (
 	"context"
 	"fmt"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"time"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // SleepConfig defines the configuration for sleep activities - ALL fields MUST have json tags
@@ -29,29 +30,20 @@ type SleepOutput struct {
 }
 
 func GetOp() types.RegisterableOp {
-	return types.NewRegisterableOp(types.OpMetadata{
+	return types.NewActivityMappedOp(types.OpMetadata{
 		Type:           "sleep",
 		Name:           "Sleep/Delay",
 		Description:    "Pauses execution for a specified duration",
 		Version:        "1.0.0",
 		DefaultTimeout: 24 * time.Hour, // Long timeout to support long sleeps
-		RetryPolicy: &types.RetryPolicy{
-			MaximumAttempts:    1, // Don't retry sleeps
-			InitialInterval:    time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    time.Minute,
-			NonRetryableErrorTypes: []string{
-				"InvalidDurationError",
-				"CancelledError",
-			},
-		},
 	}, executeSleep)
 }
 
 // Execute runs the activity with provided configuration and inputs
-func executeSleep(ctx context.Context, config SleepConfig, input SleepInput) (SleepOutput, error) {
+func executeSleep(ctx context.Context, input SleepInput) (SleepOutput, error) {
 	// Determine duration to use
 	durationStr := input.Duration
+	config := SleepConfig{}
 	if durationStr == "" && config.DefaultDuration != "" {
 		durationStr = config.DefaultDuration
 	}

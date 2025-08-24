@@ -1,4 +1,4 @@
-package statemachine
+package compiler
 
 import (
 	"testing"
@@ -93,7 +93,7 @@ func TestRetryBackoffCalculation(t *testing.T) {
 func TestSequentialComposition(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
-	
+
 	stateMap := &yamlpkg.StateMap{
 		Initial: "sequential_state",
 		States: map[string]yamlpkg.State{
@@ -125,10 +125,10 @@ func TestSequentialComposition(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Verify the compiler is set up correctly
 	assert.NotNil(t, compiler)
-	
+
 	// Test template resolution for step2
 	resolver := NewTemplateResolver()
 	stateCtx := &yamlpkg.StateContext{
@@ -137,13 +137,13 @@ func TestSequentialComposition(t *testing.T) {
 			"step2": map[string]interface{}{"result": "output2"},
 		},
 	}
-	
+
 	step2Inputs, err := resolver.ResolveInputs(
 		stateMap.States["sequential_state"].Sequence[1].Inputs,
 		stateCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, "output1", step2Inputs["data"])
-	
+
 	// Test template resolution for step3
 	step3Inputs, err := resolver.ResolveInputs(
 		stateMap.States["sequential_state"].Sequence[2].Inputs,
@@ -156,7 +156,7 @@ func TestSequentialComposition(t *testing.T) {
 func TestParallelComposition(t *testing.T) {
 	compiler, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
-	
+
 	stateMap := &yamlpkg.StateMap{
 		Initial: "parallel_state",
 		States: map[string]yamlpkg.State{
@@ -188,10 +188,10 @@ func TestParallelComposition(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Verify the compiler setup
 	assert.NotNil(t, compiler)
-	
+
 	// Test that the state map is properly structured
 	state := stateMap.States["parallel_state"]
 	assert.Len(t, state.Parallel, 3)
@@ -204,7 +204,7 @@ func TestParallelComposition(t *testing.T) {
 func TestBasicStateExecution(t *testing.T) {
 	_, err := NewStateMachineCompiler(nil)
 	assert.NoError(t, err)
-	
+
 	stateMap := &yamlpkg.StateMap{
 		Initial: "simple_state",
 		States: map[string]yamlpkg.State{
@@ -217,7 +217,7 @@ func TestBasicStateExecution(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Verify basic structure
 	assert.Equal(t, "simple_state", stateMap.Initial)
 	assert.Contains(t, stateMap.States, "simple_state")

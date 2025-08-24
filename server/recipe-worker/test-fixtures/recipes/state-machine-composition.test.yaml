@@ -1,0 +1,76 @@
+tests:
+  - name: "auto_detection_medium_depth"
+    description: "Test with auto document type detection and medium analysis"
+    inputs:
+      document: "Sample document content for processing"
+      document_type: "auto"
+      analysis_depth: "medium"
+      priority: "normal"
+      output_format: "json"
+    want:
+      result:
+        processed: true
+        type: "text"
+        analysis_level: "medium"
+      metadata:
+        priority: "normal"
+        format: "json"
+    wantErr: false
+
+  - name: "pdf_deep_analysis"
+    description: "Test PDF processing with deep analysis"
+    inputs:
+      document: "PDF binary content"
+      document_type: "pdf"
+      analysis_depth: "deep"
+      priority: "high"
+      output_format: "xml"
+    want:
+      result:
+        processed: true
+        type: "pdf"
+        analysis_level: "deep"
+      metadata:
+        priority: "high"
+        format: "xml"
+    wantErr: false
+
+  - name: "text_shallow_analysis"
+    description: "Test text processing with shallow analysis"
+    inputs:
+      document: "Simple text document"
+      document_type: "text"
+      analysis_depth: "shallow"
+      priority: "low"
+      output_format: "csv"
+    want:
+      result:
+        processed: true
+        type: "text"
+        analysis_level: "shallow"
+      metadata:
+        priority: "low"
+        format: "csv"
+    wantErr: false
+
+  - name: "missing_document"
+    description: "Test with missing required document"
+    inputs:
+      document_type: "auto"
+      analysis_depth: "medium"
+    want: {}
+    wantErr: true
+
+  - name: "default_values"
+    description: "Test with all default values"
+    inputs:
+      document: "Document with defaults"
+    want:
+      result:
+        processed: true
+        type: "auto"
+        analysis_level: "medium"
+      metadata:
+        priority: "normal"
+        format: "json"
+    wantErr: false
