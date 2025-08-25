@@ -18,16 +18,18 @@ func TestWorkerManager_Basic(t *testing.T) {
 	
 	// Create a test recipe with unified format for validation
 	_ = &recipe.Recipe{
-		Name:        "test-recipe",
+		ID:          "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
 		Recipe: &yamlpkg.RecipeDefinition{
-			Name:    "test-recipe",
-			Version: "1.0.0",
-			Op:      "activity1",
-			Inputs: map[string]interface{}{
-				"type": "function",
+			Node: yamlpkg.Node{
+				ID:   "test-recipe",
+				Op:   "activity1",
+				Inputs: map[string]interface{}{
+					"type": "function",
+				},
 			},
+			Version: "1.0.0",
 		},
 	}
 	
@@ -70,13 +72,31 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 
 	// Create a test recipe with shared activities
 	testRecipe := &recipe.Recipe{
-		Name:        "shared-test-recipe",
+		ID:          "shared-test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe with shared activities",
 		Recipe: &yamlpkg.RecipeDefinition{
-			Name:    "shared-test-recipe",
+			Node: yamlpkg.Node{
+				ID: "shared-test-recipe",
+				Sequence: []yamlpkg.Node{
+					{
+						ID:     "step1",
+						Shared: "my_llm",
+						Inputs: map[string]interface{}{
+							"prompt": "test",
+						},
+					},
+					{
+						ID:     "step2",
+						Shared: "my_http",
+						Inputs: map[string]interface{}{
+							"url": "https://api.example.com",
+						},
+					},
+				},
+			},
 			Version: "1.0.0",
-			Shared: map[string]yamlpkg.Node{
+			Defs: map[string]yamlpkg.Node{
 				"my_llm": {
 					Op: "llm",
 					Inputs: map[string]interface{}{
@@ -93,22 +113,6 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 					},
 				},
 			},
-			Sequence: []yamlpkg.Node{
-				{
-					ID:     "step1",
-					Shared: "my_llm",
-					Inputs: map[string]interface{}{
-						"prompt": "test",
-					},
-				},
-				{
-					ID:     "step2",
-					Shared: "my_http",
-					Inputs: map[string]interface{}{
-						"url": "https://api.example.com",
-					},
-				},
-			},
 		},
 	}
 
@@ -117,7 +121,7 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 	// But we can test that the registry gets populated correctly
 	
 	// Simulate what happens during worker creation - register shared activities
-	for name := range testRecipe.Recipe.Shared {
+	for name := range testRecipe.Recipe.Defs {
 		manager.activityRegistry.RegisterActivity(name)
 		manager.activityRegistry.RegisterActivity("shared/" + name) 
 	}
@@ -129,18 +133,18 @@ func TestWorkerManager_SharedActivityRegistration(t *testing.T) {
 	assert.True(t, manager.activityRegistry.HasActivity("shared/my_http"))
 
 	// Test recipe validation
-	assert.NotNil(t, testRecipe.Recipe.Shared)
-	assert.Len(t, testRecipe.Recipe.Shared, 2)
-	assert.Contains(t, testRecipe.Recipe.Shared, "my_llm")
-	assert.Contains(t, testRecipe.Recipe.Shared, "my_http")
+	assert.NotNil(t, testRecipe.Recipe.Defs)
+	assert.Len(t, testRecipe.Recipe.Defs, 2)
+	assert.Contains(t, testRecipe.Recipe.Defs, "my_llm")
+	assert.Contains(t, testRecipe.Recipe.Defs, "my_http")
 	
 	// Verify shared activity configurations
-	llmActivity := testRecipe.Recipe.Shared["my_llm"]
+	llmActivity := testRecipe.Recipe.Defs["my_llm"]
 	assert.Equal(t, "llm", llmActivity.Op)
 	assert.Equal(t, "ai_prompt", llmActivity.Inputs["type"])
 	assert.Equal(t, "gpt-4", llmActivity.Inputs["model"])
 	
-	httpActivity := testRecipe.Recipe.Shared["my_http"] 
+	httpActivity := testRecipe.Recipe.Defs["my_http"] 
 	assert.Equal(t, "http", httpActivity.Op)
 	assert.Equal(t, "http", httpActivity.Inputs["type"])
 }

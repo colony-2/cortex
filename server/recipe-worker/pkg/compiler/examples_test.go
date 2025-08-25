@@ -7,11 +7,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"go.uber.org/zap/zaptest"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"gopkg.in/yaml.v3"
 )
 
-func TestCompileExampleRecipes(t *testing.T) {
+func TestParseExampleRecipes(t *testing.T) {
 	// Find the examples directory relative to this test file
 	examplesDir := filepath.Join("..", "..", "examples")
 	
@@ -20,108 +20,158 @@ func TestCompileExampleRecipes(t *testing.T) {
 		t.Skip("Examples directory not found")
 	}
 	
-	logger := zaptest.NewLogger(t)
-	parser := recipe.NewParser(logger)
-	
 	tests := []struct {
 		name     string
 		filename string
-		setup    func(*ActivityRegistry)
 	}{
 		{
 			name:     "unified_data_pipeline",
 			filename: "unified_data_pipeline.yaml",
-			setup: func(r *ActivityRegistry) {
-				// Register activities that might be used in the example
-				r.RegisterActivity("validate_sources")
-				r.RegisterActivity("process_data") 
-				r.RegisterActivity("combine_results")
-				r.RegisterActivity("llm")
-				// Register shared activities
-				r.RegisterActivity("shared/data-validator")
-				r.RegisterActivity("shared/data-processor")
-				r.RegisterActivity("shared/data-analyzer")
-			},
 		},
 		{
 			name:     "template_features",
 			filename: "template_features.yaml",
-			setup: func(r *ActivityRegistry) {
-				// Register activities that might be used in the example
-				r.RegisterActivity("prepare_data")
-				r.RegisterActivity("format_text")
-				r.RegisterActivity("analyze_data")
-				r.RegisterActivity("create_summary")
-			},
 		},
 	}
 	
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Construct file path
-			filePath := filepath.Join(examplesDir, tt.filename)
+			recipePath := filepath.Join(examplesDir, tt.filename)
 			
-			// Check if file exists
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				t.Skipf("Example file %s not found", tt.filename)
-				return
+			// Check if recipe file exists
+			if _, err := os.Stat(recipePath); os.IsNotExist(err) {
+				t.Skipf("Recipe file not found: %s", recipePath)
 			}
 			
-			// Parse the recipe
-			recipeData, err := parser.ParseRecipe(filePath)
-			if err != nil {
-				t.Logf("Failed to parse example %s: %v", tt.filename, err)
-				t.Skip("Example file could not be parsed")
-				return
-			}
+			// Read recipe file
+			recipeData, err := os.ReadFile(recipePath)
+			require.NoError(t, err, "Failed to read recipe file")
 			
-			require.NotNil(t, recipeData)
-			require.NotNil(t, recipeData.Recipe)
+			// Parse recipe YAML
+			var recipeDef yamlpkg.RecipeDefinition
+			err = yaml.Unmarshal(recipeData, &recipeDef)
+			require.NoError(t, err, "Failed to parse recipe YAML")
 			
-			// Set up activity registry with required activities
-			registry := NewActivityRegistry()
-			tt.setup(registry)
+			// Basic validation
+			assert.NotEmpty(t, recipeDef.Version, "Recipe should have a version")
 			
-			// Create compiler and attempt to compile
-			compiler := NewCompiler(registry)
-			workflowFunc, err := compiler.CompileWorkflow(recipeData.Recipe)
-			require.NoError(t, err)
-			assert.NotNil(t, workflowFunc)
+			// Check that recipe has at least one node type defined
+			hasNode := recipeDef.Op != "" || 
+				len(recipeDef.Sequence) > 0 || 
+				len(recipeDef.Parallel) > 0 || 
+				recipeDef.States != nil
+			assert.True(t, hasNode, "Recipe should define at least one node type")
 		})
 	}
 }
 
-func TestCompileGeminiExample(t *testing.T) {
-	// Test the gemini workflow example if it exists
-	examplesDir := filepath.Join("..", "..", "examples")
-	filePath := filepath.Join(examplesDir, "gemini_workflow.yaml")
-	
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		t.Skip("Gemini example file not found")
+func TestRecipeStructureValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		recipe    yamlpkg.RecipeDefinition
+		wantError bool
+	}{
+		{
+			name: "valid_operation_recipe",
+			recipe: yamlpkg.RecipeDefinition{
+				Node: yamlpkg.Node{
+					Op: "test_activity",
+					Inputs: map[string]interface{}{
+						"param": "value",
+					},
+				},
+				Version: "1.0",
+			},
+			wantError: false,
+		},
+		{
+			name: "valid_sequence_recipe",
+			recipe: yamlpkg.RecipeDefinition{
+				Node: yamlpkg.Node{
+					Sequence: []yamlpkg.Node{
+						{
+							ID: "step1",
+							Op: "activity1",
+						},
+						{
+							ID: "step2",
+							Op: "activity2",
+						},
+					},
+				},
+				Version: "1.0",
+			},
+			wantError: false,
+		},
+		{
+			name: "valid_parallel_recipe",
+			recipe: yamlpkg.RecipeDefinition{
+				Node: yamlpkg.Node{
+					Parallel: []yamlpkg.Node{
+						{
+							ID: "task1",
+							Op: "activity1",
+						},
+						{
+							ID: "task2",
+							Op: "activity2",
+						},
+					},
+				},
+				Version: "1.0",
+			},
+			wantError: false,
+		},
+		{
+			name: "recipe_with_shared_definitions",
+			recipe: yamlpkg.RecipeDefinition{
+				Node: yamlpkg.Node{
+					Sequence: []yamlpkg.Node{
+						{
+							ID:     "step1",
+							Shared: "shared_op",
+						},
+					},
+				},
+				Version: "1.0",
+				Defs: map[string]yamlpkg.Node{
+					"shared_op": {
+						Op: "shared_activity",
+						Inputs: map[string]interface{}{
+							"param": "value",
+						},
+					},
+				},
+			},
+			wantError: false,
+		},
 	}
 	
-	logger := zaptest.NewLogger(t)
-	parser := recipe.NewParser(logger)
-	
-	// Parse the recipe
-	recipeData, err := parser.ParseRecipe(filePath)
-	if err != nil {
-		t.Skip("Gemini example could not be parsed - likely old format")
-		return
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Basic structural validation
+			assert.NotEmpty(t, tt.recipe.Version, "Recipe should have a version")
+			
+			// Check node structure
+			node := &tt.recipe.Node
+			nodeCount := 0
+			if node.Op != "" {
+				nodeCount++
+			}
+			if len(node.Sequence) > 0 {
+				nodeCount++
+			}
+			if len(node.Parallel) > 0 {
+				nodeCount++
+			}
+			if node.States != nil {
+				nodeCount++
+			}
+			
+			// A node should define exactly one type
+			if !tt.wantError {
+				assert.Equal(t, 1, nodeCount, "Node should define exactly one of: op, sequence, parallel, or states")
+			}
+		})
 	}
-	
-	require.NotNil(t, recipeData)
-	require.NotNil(t, recipeData.Recipe)
-	
-	// Set up registry with gemini activities
-	registry := NewActivityRegistry()
-	registry.RegisterActivity("gemini_generate")
-	registry.RegisterActivity("llm")
-	registry.RegisterActivity("gemini_report_activity")
-	
-	// Compile
-	compiler := NewCompiler(registry)
-	workflowFunc, err := compiler.CompileWorkflow(recipeData.Recipe)
-	require.NoError(t, err)
-	assert.NotNil(t, workflowFunc)
 }

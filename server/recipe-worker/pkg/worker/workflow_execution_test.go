@@ -10,18 +10,20 @@ import (
 func TestWorkflowExecution_Basic(t *testing.T) {
 	// Test basic unified recipe definition creation
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:        "test-execution",
-		Description: "Test execution recipe",
-		Version:     "1.0",
-		Op:          "test-activity",
-		Inputs: map[string]interface{}{
-			"type": "function",
-			"data": "test",
+		Node: yamlpkg.Node{
+			ID:   "test-execution",
+			Desc: "Test execution recipe",
+			Op:   "test-activity",
+			Inputs: map[string]interface{}{
+				"type": "function",
+				"data": "test",
+			},
 		},
+		Version: "1.0",
 	}
 
 	assert.NotNil(t, recipeDef)
-	assert.Equal(t, "test-execution", recipeDef.Name)
+	assert.Equal(t, "test-execution", recipeDef.ID)
 	assert.Equal(t, "test-activity", recipeDef.Op)
 	assert.NotNil(t, recipeDef.Inputs)
 }
@@ -29,9 +31,20 @@ func TestWorkflowExecution_Basic(t *testing.T) {
 func TestWorkflowExecution_Shared(t *testing.T) {
 	// Test recipe with shared activities
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:    "shared-execution",
+		Node: yamlpkg.Node{
+			ID: "shared-execution",
+			Sequence: []yamlpkg.Node{
+				{
+					ID:     "analyze",
+					Shared: "my_llm",
+					Inputs: map[string]interface{}{
+						"prompt": "test",
+					},
+				},
+			},
+		},
 		Version: "1.0",
-		Shared: map[string]yamlpkg.Node{
+		Defs: map[string]yamlpkg.Node{
 			"my_llm": {
 				Op: "llm",
 				Inputs: map[string]interface{}{
@@ -40,19 +53,10 @@ func TestWorkflowExecution_Shared(t *testing.T) {
 				},
 			},
 		},
-		Sequence: []yamlpkg.Node{
-			{
-				ID:     "analyze",
-				Shared: "my_llm",
-				Inputs: map[string]interface{}{
-					"prompt": "test",
-				},
-			},
-		},
 	}
 
 	assert.NotNil(t, recipeDef)
-	assert.Len(t, recipeDef.Shared, 1)
-	assert.Contains(t, recipeDef.Shared, "my_llm")
-	assert.Equal(t, "llm", recipeDef.Shared["my_llm"].Op)
+	assert.Len(t, recipeDef.Defs, 1)
+	assert.Contains(t, recipeDef.Defs, "my_llm")
+	assert.Equal(t, "llm", recipeDef.Defs["my_llm"].Op)
 }

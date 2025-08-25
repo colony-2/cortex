@@ -3,7 +3,7 @@ description: Research a topic and generate a comprehensive report
 version: "1.0"
 
 # Shared node definitions
-shared:
+defs:
   research_op:
     op: command_execution
     timeout: "5m"

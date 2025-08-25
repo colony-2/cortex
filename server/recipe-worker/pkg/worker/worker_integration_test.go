@@ -38,16 +38,18 @@ func TestWorkerIntegrationTestSuite(t *testing.T) {
 func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	// Create a unified recipe definition
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:        "test-recipe",
-		Description: "Test recipe",
-		Version:     "1.0",
-		Op:          "echo-activity",
-		Inputs: map[string]interface{}{
-			"text": "{{ .Inputs.message }}",
+		Node: yamlpkg.Node{
+			ID:   "test-recipe",
+			Desc: "Test recipe",
+			Op:   "echo-activity",
+			Inputs: map[string]interface{}{
+				"text": "{{ .Inputs.message }}",
+			},
+			Outputs: map[string]interface{}{
+				"echoed": "echo_result",
+			},
 		},
-		Outputs: map[string]interface{}{
-			"echoed": "echo_result",
-		},
+		Version: "1.0",
 	}
 
 	// Create compiler and registry
@@ -102,9 +104,9 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 	// Create a recipe with parallel steps
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:    "parallel-recipe",
-		Version: "1.0",
-		Parallel: []yamlpkg.Node{
+		Node: yamlpkg.Node{
+			ID:       "parallel-recipe",
+			Parallel: []yamlpkg.Node{
 			{
 				ID: "task1",
 				Op: "process-activity",
@@ -126,6 +128,8 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 				},
 			},
 		},
+		},
+		Version: "1.0",
 	}
 
 	// Create compiler and registry
@@ -183,24 +187,26 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 	// Create a recipe with shared activities
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:        "shared-recipe",
-		Description: "Shared activity test recipe",
-		Version:     "1.0",
-		Shared: map[string]yamlpkg.Node{
+		Node: yamlpkg.Node{
+			ID:   "shared-recipe",
+			Desc: "Shared activity test recipe",
+			Sequence: []yamlpkg.Node{
+				{
+					ID:     "analyze",
+					Shared: "my_processor",
+					Inputs: map[string]interface{}{
+						"input": "test data",
+					},
+				},
+			},
+		},
+		Version: "1.0",
+		Defs: map[string]yamlpkg.Node{
 			"my_processor": {
 				Op: "process-data",
 				Inputs: map[string]interface{}{
 					"type":    "function",
 					"timeout": "30s",
-				},
-			},
-		},
-		Sequence: []yamlpkg.Node{
-			{
-				ID:     "analyze",
-				Shared: "my_processor",
-				Inputs: map[string]interface{}{
-					"input": "test data",
 				},
 			},
 		},
@@ -257,15 +263,17 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 	// Create a workflow with retry functionality
 	recipeDef := &yamlpkg.RecipeDefinition{
-		Name:    "retry-recipe",
+		Node: yamlpkg.Node{
+			ID:  "retry-recipe",
+			Op:  "flaky-activity",
+			Inputs: map[string]interface{}{
+				"attempt": "1",
+			},
+			Outputs: map[string]interface{}{
+				"result": "output",
+			},
+		},
 		Version: "1.0",
-		Op:      "flaky-activity",
-		Inputs: map[string]interface{}{
-			"attempt": "1",
-		},
-		Outputs: map[string]interface{}{
-			"result": "output",
-		},
 	}
 
 	// Create compiler and registry
@@ -329,16 +337,18 @@ func (s *WorkerIntegrationTestSuite) TestWorkerManagerWithMockClient() {
 
 	// Create a test recipe using unified format
 	testRecipe := &recipe.Recipe{
-		Name:        "test-recipe",
+		ID:          "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
 		Recipe: &yamlpkg.RecipeDefinition{
-			Name:    "test-recipe",
-			Version: "1.0.0",
-			Op:      "test-activity",
-			Inputs: map[string]interface{}{
-				"input": "test",
+			Node: yamlpkg.Node{
+				ID:  "test-recipe",
+				Op:  "test-activity",
+				Inputs: map[string]interface{}{
+					"input": "test",
+				},
 			},
+			Version: "1.0.0",
 		},
 	}
 
@@ -362,6 +372,6 @@ func (s *WorkerIntegrationTestSuite) TestWorkerManagerWithMockClient() {
 	// Verify the recipe was created correctly
 	s.NotNil(testRecipe)
 	s.NotNil(testRecipe.Recipe)
-	s.Equal("test-recipe", testRecipe.Name)
+	s.Equal("test-recipe", testRecipe.ID)
 	s.Equal("1.0.0", testRecipe.Version)
 }

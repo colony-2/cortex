@@ -39,7 +39,7 @@ type RecipeDefinition struct {
 	Version string `yaml:"version"`
 
 	// Shared node definitions
-	Shared      map[string]Node     `yaml:"shared,omitempty"`       // Shared node definitions
+	Defs        map[string]Node     `yaml:"defs,omitempty"`         // Shared node definitions
 	InputSchema map[string]InputDef `yaml:"input_schema,omitempty"` // Optional schema for inputs
 }
 

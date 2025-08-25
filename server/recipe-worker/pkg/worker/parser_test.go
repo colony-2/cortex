@@ -54,7 +54,7 @@ sequence:
 		t.Logf("Parse error: %v", err)
 	} else {
 		t.Logf("Parse success!")
-		t.Logf("Recipe name: %s", recipeData.Name)
+		t.Logf("Recipe ID: %s", recipeData.ID)
 		t.Logf("Recipe version: %s", recipeData.Version)
 		// Log which node type is being used
 		if recipeData.Recipe.Op != "" {
@@ -82,7 +82,7 @@ sequence:
 	} else if loadedRecipe == nil {
 		t.Logf("Registry returned nil recipe (file was skipped)")
 	} else {
-		t.Logf("Registry loaded recipe: %s", loadedRecipe.Name)
+		t.Logf("Registry loaded recipe: %s", loadedRecipe.ID)
 	}
 	
 	assert.NotNil(t, recipeData)

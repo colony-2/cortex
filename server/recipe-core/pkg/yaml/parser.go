@@ -34,12 +34,12 @@ func (p *Parser) ParseRecipeReader(r io.Reader) (*RecipeDefinition, error) {
 	if err := decoder.Decode(&recipe); err != nil {
 		return nil, fmt.Errorf("failed to decode recipe: %w", err)
 	}
-	
+
 	// Validate that recipe has exactly one root node type
 	if err := p.validateRootNode(&recipe); err != nil {
 		return nil, err
 	}
-	
+
 	return &recipe, nil
 }
 
@@ -58,19 +58,18 @@ func (p *Parser) validateRootNode(recipe *RecipeDefinition) error {
 	if recipe.States != nil {
 		count++
 	}
-	
+
 	if count == 0 {
 		return fmt.Errorf("recipe must have one of: op, sequence, parallel, or states")
 	}
 	if count > 1 {
 		return fmt.Errorf("recipe must have exactly one of: op, sequence, parallel, or states")
 	}
-	
+
 	// Validate that operations don't have outputs
 	if recipe.Op != "" && recipe.Outputs != nil && len(recipe.Outputs) > 0 {
 		return fmt.Errorf("operation nodes cannot have outputs")
 	}
-	
+
 	return nil
 }
-

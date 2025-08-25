@@ -27,47 +27,57 @@ func TestHashRecipe(t *testing.T) {
 		{
 			name: "identical recipes produce same hash",
 			recipe1: &Recipe{
-				Name:        "test-recipe",
+				ID:          "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID:   "test-recipe",
+						Desc: "Test recipe",
+						Op:   "test_activity",
+					},
 					Version: "1.0.0",
-					Op:      "test_activity",
 				},
 			},
 			recipe2: &Recipe{
-				Name:        "test-recipe",
+				ID:          "test-recipe",
 				Version:     "1.0.0",
 				Description: "Test recipe",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID:   "test-recipe",
+						Desc: "Test recipe",
+						Op:   "test_activity",
+					},
 					Version: "1.0.0",
-					Op:      "test_activity",
 				},
 			},
 			shouldBeEqual: true,
 		},
 		{
-			name: "different names produce different hashes",
+			name: "different IDs produce different hashes",
 			recipe1: &Recipe{
-				Name:        "recipe1",
+				ID:          "recipe1",
 				Version:     "1.0.0",
 				Description: "Test recipe",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "recipe1",
+					Node: yamlpkg.Node{
+						ID: "recipe1",
+						Op: "test_activity",
+					},
 					Version: "1.0.0",
-					Op:      "test_activity",
 				},
 			},
 			recipe2: &Recipe{
-				Name:        "recipe2",
+				ID:          "recipe2",
 				Version:     "1.0.0",
 				Description: "Test recipe",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "recipe2",
+					Node: yamlpkg.Node{
+						ID: "recipe2",
+						Op: "test_activity",
+					},
 					Version: "1.0.0",
-					Op:      "test_activity",
 				},
 			},
 			shouldBeEqual: false,
@@ -75,21 +85,25 @@ func TestHashRecipe(t *testing.T) {
 		{
 			name: "different operations produce different hashes",
 			recipe1: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Op: "activity1",
+					},
 					Version: "1.0.0",
-					Op:      "activity1",
 				},
 			},
 			recipe2: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Op: "activity2",
+					},
 					Version: "1.0.0",
-					Op:      "activity2",
 				},
 			},
 			shouldBeEqual: false,
@@ -97,12 +111,17 @@ func TestHashRecipe(t *testing.T) {
 		{
 			name: "recipes with shared nodes",
 			recipe1: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Sequence: []yamlpkg.Node{
+							{ID: "step1", Shared: "my_processor"},
+						},
+					},
 					Version: "1.0.0",
-					Shared: map[string]yamlpkg.Node{
+					Defs: map[string]yamlpkg.Node{
 						"my_processor": {
 							Op: "llm",
 							Inputs: map[string]interface{}{
@@ -110,27 +129,26 @@ func TestHashRecipe(t *testing.T) {
 							},
 						},
 					},
-					Sequence: []yamlpkg.Node{
-						{ID: "step1", Shared: "my_processor"},
-					},
 				},
 			},
 			recipe2: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Sequence: []yamlpkg.Node{
+							{ID: "step1", Shared: "my_processor"},
+						},
+					},
 					Version: "1.0.0",
-					Shared: map[string]yamlpkg.Node{
+					Defs: map[string]yamlpkg.Node{
 						"my_processor": {
 							Op: "llm",
 							Inputs: map[string]interface{}{
 								"model": "gpt-3.5",
 							},
 						},
-					},
-					Sequence: []yamlpkg.Node{
-						{ID: "step1", Shared: "my_processor"},
 					},
 				},
 			},
@@ -139,27 +157,31 @@ func TestHashRecipe(t *testing.T) {
 		{
 			name: "order of sequence matters",
 			recipe1: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
-					Version: "1.0.0",
-					Sequence: []yamlpkg.Node{
-						{ID: "step1", Op: "activity1"},
-						{ID: "step2", Op: "activity2"},
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Sequence: []yamlpkg.Node{
+							{ID: "step1", Op: "activity1"},
+							{ID: "step2", Op: "activity2"},
+						},
 					},
+					Version: "1.0.0",
 				},
 			},
 			recipe2: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
-					Version: "1.0.0",
-					Sequence: []yamlpkg.Node{
-						{ID: "step2", Op: "activity2"},
-						{ID: "step1", Op: "activity1"},
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Sequence: []yamlpkg.Node{
+							{ID: "step2", Op: "activity2"},
+							{ID: "step1", Op: "activity1"},
+						},
 					},
+					Version: "1.0.0",
 				},
 			},
 			shouldBeEqual: false,
@@ -167,27 +189,31 @@ func TestHashRecipe(t *testing.T) {
 		{
 			name: "parallel vs sequence produces different hashes",
 			recipe1: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
-					Version: "1.0.0",
-					Sequence: []yamlpkg.Node{
-						{ID: "step1", Op: "activity1"},
-						{ID: "step2", Op: "activity2"},
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Sequence: []yamlpkg.Node{
+							{ID: "step1", Op: "activity1"},
+							{ID: "step2", Op: "activity2"},
+						},
 					},
+					Version: "1.0.0",
 				},
 			},
 			recipe2: &Recipe{
-				Name:    "test-recipe",
+				ID:      "test-recipe",
 				Version: "1.0.0",
 				Recipe: &yamlpkg.RecipeDefinition{
-					Name:    "test-recipe",
-					Version: "1.0.0",
-					Parallel: []yamlpkg.Node{
-						{ID: "step1", Op: "activity1"},
-						{ID: "step2", Op: "activity2"},
+					Node: yamlpkg.Node{
+						ID: "test-recipe",
+						Parallel: []yamlpkg.Node{
+							{ID: "step1", Op: "activity1"},
+							{ID: "step2", Op: "activity2"},
+						},
 					},
+					Version: "1.0.0",
 				},
 			},
 			shouldBeEqual: false,
@@ -222,7 +248,7 @@ func TestHashRecipe_NilRecipe(t *testing.T) {
 	assert.Empty(t, hash)
 	
 	recipe := &Recipe{
-		Name:    "test",
+		ID:      "test",
 		Version: "1.0",
 		Recipe:  nil,
 	}

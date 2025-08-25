@@ -25,8 +25,8 @@ type MockWorkerManager struct {
 func (m *MockWorkerManager) StartWorker(r *recipe.Recipe) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.workers[r.Name] = true
-	m.logger.Info("Mock: Started worker", zap.String("recipe", r.Name))
+	m.workers[r.ID] = true
+	m.logger.Info("Mock: Started worker", zap.String("recipe", r.ID))
 	return nil
 }
 
@@ -117,7 +117,7 @@ sequence:
 	assert.Len(t, recipes, 1)
 	
 	// Verify worker was started
-	recipeName := recipes[0].Name
+	recipeID := recipes[0].ID
 	status := manager.GetWorkerStatus(recipeName)
 	assert.Equal(t, recipe.WorkerStatusRunning, status)
 	
@@ -272,7 +272,7 @@ sequence:
 	// Check if recipe was discovered
 	foundRecipe, err := registry.GetRecipe("multi-file-test")
 	require.NoError(t, err)
-	assert.Equal(t, "multi-file-test", foundRecipe.Name)
+	assert.Equal(t, "multi-file-test", foundRecipe.ID)
 	assert.Equal(t, "1.0.0", foundRecipe.Version)
 	assert.NotNil(t, foundRecipe.Recipe)
 	assert.NotEmpty(t, foundRecipe.Recipe.Sequence)
@@ -353,7 +353,7 @@ sequence:
 	// Verify all workers were started
 	runningCount := 0
 	for _, r := range recipes {
-		if manager.GetWorkerStatus(r.Name) == recipe.WorkerStatusRunning {
+		if manager.GetWorkerStatus(r.ID) == recipe.WorkerStatusRunning {
 			runningCount++
 		}
 	}

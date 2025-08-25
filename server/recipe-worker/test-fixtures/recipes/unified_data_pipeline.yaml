@@ -14,7 +14,7 @@ inputs:
     description: Processing mode (standard, enhanced, minimal)
 
 # Reusable activity configurations
-shared:
+defs:
   # Data analyst persona for analysis tasks
   data_analyst:
     op: llm

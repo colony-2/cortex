@@ -29,12 +29,11 @@ func TestCommandExecutionActivity_GetMetadata(t *testing.T) {
 func TestCommandExecutionActivity_Execute_SimpleCommand(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run: "echo 'Hello, World!'",
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -57,19 +56,15 @@ func TestCommandExecutionActivity_Execute_SimpleCommand(t *testing.T) {
 func TestCommandExecutionActivity_Execute_WithEnvironmentVariables(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{
-		Env: map[string]string{
-			"CONFIG_VAR": "config_value",
-		},
-	}
 	input := CommandExecutionInput{
 		Run: "echo $CONFIG_VAR $INPUT_VAR",
 		Env: map[string]string{
+			"CONFIG_VAR": "config_value",
 			"INPUT_VAR": "input_value",
 		},
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -89,13 +84,12 @@ func TestCommandExecutionActivity_Execute_WithWorkingDirectory(t *testing.T) {
 	// Use temp directory for testing
 	tempDir := t.TempDir()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run:              "pwd",
 		WorkingDirectory: tempDir,
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -110,12 +104,11 @@ func TestCommandExecutionActivity_Execute_WithWorkingDirectory(t *testing.T) {
 func TestCommandExecutionActivity_Execute_FailedCommand(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run: "exit 1",
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err == nil {
 		t.Error("Expected error for failed command")
 	}
@@ -131,13 +124,12 @@ func TestCommandExecutionActivity_Execute_FailedCommand(t *testing.T) {
 func TestCommandExecutionActivity_Execute_ContinueOnError(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run:             "exit 1",
 		ContinueOnError: true,
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err != nil {
 		t.Errorf("Expected no error with continue_on_error=true, got: %v", err)
 	}
@@ -158,13 +150,12 @@ func TestCommandExecutionActivity_Execute_Timeout(t *testing.T) {
 
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run:     "sleep 5",
 		Timeout: "100ms",
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err == nil {
 		t.Error("Expected timeout error")
 	}
@@ -180,12 +171,11 @@ func TestCommandExecutionActivity_Execute_Timeout(t *testing.T) {
 func TestCommandExecutionActivity_Execute_MissingCommand(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run: "",
 	}
 
-	_, err := execute(ctx, config, input)
+	_, err := execute(ctx, input)
 	if err == nil {
 		t.Error("Expected error for missing command")
 	}
@@ -197,13 +187,12 @@ func TestCommandExecutionActivity_Execute_MissingCommand(t *testing.T) {
 func TestCommandExecutionActivity_Execute_InvalidTimeout(t *testing.T) {
 	ctx := context.Background()
 
-	config := CommandExecutionConfig{}
 	input := CommandExecutionInput{
 		Run:     "echo test",
 		Timeout: "invalid",
 	}
 
-	_, err := execute(ctx, config, input)
+	_, err := execute(ctx, input)
 	if err == nil {
 		t.Error("Expected error for invalid timeout")
 	}
@@ -216,15 +205,12 @@ func TestCommandExecutionActivity_Execute_ShellOverride(t *testing.T) {
 	ctx := context.Background()
 
 	// Test with bash if available
-	config := CommandExecutionConfig{
-		Shell: "sh", // Default to sh
-	}
 	input := CommandExecutionInput{
 		Run:   "echo 'Shell test'",
 		Shell: "bash", // Override with bash if available
 	}
 
-	output, err := execute(ctx, config, input)
+	output, err := execute(ctx, input)
 	if err != nil {
 		// If bash is not available, skip this test
 		if strings.Contains(err.Error(), "bash") {

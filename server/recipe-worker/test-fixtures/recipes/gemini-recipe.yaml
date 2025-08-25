@@ -22,7 +22,7 @@ sequence:
     outputs:
       report: final_report
 
-shared:
+defs:
   gemini_report_activity:
     op: llm
     config:

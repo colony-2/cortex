@@ -60,14 +60,20 @@ func (p *Parser) parseSingleFileRecipe(filePath string) (*Recipe, error) {
 		return nil, fmt.Errorf("failed to parse recipe YAML: %w", err)
 	}
 
+	// Resolve shared node references using visitor pattern
+	resolvedDefinition, err := yamlpkg.ResolveSharedReferences(recipeDefinition)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve shared references: %w", err)
+	}
+
 	// Create Recipe struct from RecipeDefinition
 	recipe := &Recipe{
-		ID:           recipeDefinition.ID,
-		Version:      recipeDefinition.Version,
-		Description:  recipeDefinition.Desc,
+		ID:           resolvedDefinition.ID,
+		Version:      resolvedDefinition.Version,
+		Description:  resolvedDefinition.Desc,
 		BasePath:     filepath.Dir(filePath),
 		ManifestPath: filePath,
-		Recipe:       recipeDefinition,
+		Recipe:       resolvedDefinition,
 	}
 
 	// Validate recipe

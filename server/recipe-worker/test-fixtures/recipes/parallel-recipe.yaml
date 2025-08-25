@@ -60,7 +60,7 @@ sequence:
     outputs:
       combined: final_results
 
-shared:
+defs:
   validate_sources:
     op: validate_sources
     config:

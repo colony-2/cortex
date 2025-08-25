@@ -10,8 +10,8 @@ import (
 
 func TestParseSimpleOperation(t *testing.T) {
 	yamlContent := `
-name: test_recipe
-description: A test recipe with single operation
+id: test_recipe
+desc: A test recipe with single operation
 version: "1.0"
 
 # Root is a single operation
@@ -24,11 +24,11 @@ inputs:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
-	assert.Equal(t, "test_recipe", recipe.Name)
-	assert.Equal(t, "A test recipe with single operation", recipe.Description)
+
+	assert.Equal(t, "test_recipe", recipe.ID)
+	assert.Equal(t, "A test recipe with single operation", recipe.Desc)
 	assert.Equal(t, "1.0", recipe.Version)
-	
+
 	// Check root node
 	assert.Equal(t, "research_activity", recipe.Op)
 	assert.NotNil(t, recipe.Inputs)
@@ -38,7 +38,7 @@ inputs:
 
 func TestParseSequence(t *testing.T) {
 	yamlContent := `
-name: sequence_recipe
+id: sequence_recipe
 version: "1.0"
 
 # Root is a sequence
@@ -63,16 +63,16 @@ outputs:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
+
 	// Check sequence
 	require.NotNil(t, recipe.Sequence)
 	require.Len(t, recipe.Sequence, 2)
-	
+
 	// First node
 	assert.Equal(t, "validate", recipe.Sequence[0].ID)
 	assert.Equal(t, "validation_activity", recipe.Sequence[0].Op)
 	assert.Equal(t, "{{ .inputs.data }}", recipe.Sequence[0].Inputs["data"])
-	
+
 	// Second node
 	assert.Equal(t, "analyze", recipe.Sequence[1].ID)
 	assert.Equal(t, "llm", recipe.Sequence[1].Op)
@@ -81,7 +81,7 @@ outputs:
 
 func TestParseParallel(t *testing.T) {
 	yamlContent := `
-name: parallel_recipe
+id: parallel_recipe
 version: "1.0"
 
 # Root is parallel
@@ -100,15 +100,15 @@ parallel:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
+
 	// Check parallel
 	require.NotNil(t, recipe.Parallel)
 	require.Len(t, recipe.Parallel, 2)
-	
+
 	assert.Equal(t, "task1", recipe.Parallel[0].ID)
 	assert.Equal(t, "command_execution", recipe.Parallel[0].Op)
 	assert.Equal(t, "echo task1", recipe.Parallel[0].Inputs["run"])
-	
+
 	assert.Equal(t, "task2", recipe.Parallel[1].ID)
 	assert.Equal(t, "command_execution", recipe.Parallel[1].Op)
 	assert.Equal(t, "echo task2", recipe.Parallel[1].Inputs["run"])
@@ -116,7 +116,7 @@ parallel:
 
 func TestParseStateMachine(t *testing.T) {
 	yamlContent := `
-name: state_machine_recipe
+id: state_machine_recipe
 version: "1.0"
 
 # Root is a state machine
@@ -129,7 +129,7 @@ states:
       data: "{{ .inputs.data }}"
     transitions:
       - to: process
-        when: ".outputs.valid == true"
+        when: "inputs.valid == true"
       - to: error
   
   process:
@@ -152,19 +152,19 @@ inputs:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
+
 	// Check state machine
 	require.NotNil(t, recipe.States)
 	assert.Equal(t, "validate", recipe.States.Initial)
-	
+
 	// Check states
 	validateState, exists := recipe.States.States["validate"]
 	require.True(t, exists)
 	assert.Equal(t, "validation_activity", validateState.Op)
 	assert.Len(t, validateState.Transitions, 2)
 	assert.Equal(t, "process", validateState.Transitions[0].To)
-	assert.Equal(t, ".outputs.valid == true", validateState.Transitions[0].When)
-	
+	assert.Equal(t, "inputs.valid == true", validateState.Transitions[0].When.String())
+
 	errorState, exists := recipe.States.States["error"]
 	require.True(t, exists)
 	assert.Equal(t, "Validation failed", errorState.Error)
@@ -172,10 +172,10 @@ inputs:
 
 func TestParseSharedNodes(t *testing.T) {
 	yamlContent := `
-name: recipe_with_shared
+id: recipe_with_shared
 version: "1.0"
 
-shared:
+defs:
   data_processor:
     op: llm
     inputs:
@@ -209,24 +209,24 @@ sequence:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
+
 	// Check shared nodes
-	require.NotNil(t, recipe.Shared)
-	require.Len(t, recipe.Shared, 2)
-	
+	require.NotNil(t, recipe.Defs)
+	require.Len(t, recipe.Defs, 2)
+
 	// Check data processor shared node
-	dataProcessor, exists := recipe.Shared["data_processor"]
+	dataProcessor, exists := recipe.Defs["data_processor"]
 	require.True(t, exists)
 	assert.Equal(t, "llm", dataProcessor.Op)
 	assert.Equal(t, "gpt-4", dataProcessor.Inputs["model"])
-	assert.Equal(t, "30s", dataProcessor.Timeout)
-	
+	assert.Equal(t, "30s", dataProcessor.Timeout.String())
+
 	// Check validator shared node (sequence)
-	validator, exists := recipe.Shared["validator"]
+	validator, exists := recipe.Defs["validator"]
 	require.True(t, exists)
 	require.NotNil(t, validator.Sequence)
 	assert.Len(t, validator.Sequence, 2)
-	
+
 	// Check root sequence references shared nodes
 	require.Len(t, recipe.Sequence, 2)
 	assert.Equal(t, "validator", recipe.Sequence[0].Shared)
@@ -235,7 +235,7 @@ sequence:
 
 func TestParseNestedComposition(t *testing.T) {
 	yamlContent := `
-name: nested_composition
+id: nested_composition
 version: "1.0"
 
 # Root sequence with nested parallel
@@ -269,16 +269,16 @@ sequence:
 	parser := NewParser()
 	recipe, err := parser.ParseRecipeReader(strings.NewReader(yamlContent))
 	require.NoError(t, err)
-	
+
 	// Check root sequence
 	require.Len(t, recipe.Sequence, 3)
-	
+
 	// Check nested parallel
 	parallelNode := recipe.Sequence[1]
 	assert.Equal(t, "parallel_process", parallelNode.ID)
 	require.NotNil(t, parallelNode.Parallel)
 	assert.Len(t, parallelNode.Parallel, 2)
-	
+
 	// Check nested sequence in parallel
 	branch1 := parallelNode.Parallel[0]
 	assert.Equal(t, "branch1", branch1.ID)
@@ -295,7 +295,7 @@ func TestValidationErrors(t *testing.T) {
 		{
 			name: "no root node",
 			yamlContent: `
-name: invalid
+id: invalid
 version: "1.0"
 `,
 			expectError: "recipe must have one of",
@@ -303,7 +303,7 @@ version: "1.0"
 		{
 			name: "multiple root nodes",
 			yamlContent: `
-name: invalid
+id: invalid
 version: "1.0"
 op: some_op
 sequence:
@@ -315,7 +315,7 @@ sequence:
 		{
 			name: "operation with outputs",
 			yamlContent: `
-name: invalid
+id: invalid
 version: "1.0"
 op: some_op
 outputs:
@@ -324,7 +324,7 @@ outputs:
 			expectError: "operation nodes cannot have outputs",
 		},
 	}
-	
+
 	parser := NewParser()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {

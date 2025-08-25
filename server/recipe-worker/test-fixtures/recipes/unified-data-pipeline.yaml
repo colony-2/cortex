@@ -70,7 +70,7 @@ sequence:
     outputs:
       summary: analysis_summary
 
-shared:
+defs:
   data-validator:
     op: validate_sources
     config:

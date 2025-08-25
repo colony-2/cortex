@@ -64,7 +64,7 @@ sequence:
     outputs:
       summary: final_summary
 
-shared:
+defs:
   prepare_data:
     op: prepare_data
     config:

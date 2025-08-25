@@ -31,9 +31,9 @@ func TestParseRecipe_UnifiedFormat(t *testing.T) {
 		{
 			name: "valid recipe with sequence",
 			yamlContent: `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
-description: Test recipe
+desc: Test recipe
 sequence:
   - id: step1
     op: test_activity
@@ -42,7 +42,7 @@ sequence:
 `,
 			expectedError: false,
 			validate: func(t *testing.T, recipe *Recipe) {
-				assert.Equal(t, "test-recipe", recipe.Name)
+				assert.Equal(t, "test-recipe", recipe.ID)
 				assert.Equal(t, "1.0.0", recipe.Version)
 				assert.Equal(t, "Test recipe", recipe.Description)
 				require.NotNil(t, recipe.Recipe)
@@ -55,7 +55,7 @@ sequence:
 		{
 			name: "valid recipe with single operation",
 			yamlContent: `
-name: simple-recipe
+id: simple-recipe
 version: "1.0.0"
 op: echo_activity
 inputs:
@@ -63,7 +63,7 @@ inputs:
 `,
 			expectedError: false,
 			validate: func(t *testing.T, recipe *Recipe) {
-				assert.Equal(t, "simple-recipe", recipe.Name)
+				assert.Equal(t, "simple-recipe", recipe.ID)
 				require.NotNil(t, recipe.Recipe)
 				assert.Equal(t, "echo_activity", recipe.Recipe.Op)
 				assert.Equal(t, "Hello World", recipe.Recipe.Inputs["message"])
@@ -72,9 +72,9 @@ inputs:
 		{
 			name: "recipe with shared nodes",
 			yamlContent: `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
-shared:
+defs:
   my_processor:
     op: llm
     inputs:
@@ -87,18 +87,24 @@ sequence:
 `,
 			expectedError: false,
 			validate: func(t *testing.T, recipe *Recipe) {
-				assert.Equal(t, "test-recipe", recipe.Name)
+				assert.Equal(t, "test-recipe", recipe.ID)
 				require.NotNil(t, recipe.Recipe)
-				require.NotNil(t, recipe.Recipe.Shared)
-				assert.Contains(t, recipe.Recipe.Shared, "my_processor")
-				assert.Equal(t, "llm", recipe.Recipe.Shared["my_processor"].Op)
-				assert.Equal(t, "my_processor", recipe.Recipe.Sequence[0].Shared)
+				// After resolution, defs should be nil
+				assert.Nil(t, recipe.Recipe.Defs)
+				// Shared reference should be resolved
+				require.Len(t, recipe.Recipe.Sequence, 1)
+				assert.Equal(t, "analyze", recipe.Recipe.Sequence[0].ID)
+				assert.Equal(t, "llm", recipe.Recipe.Sequence[0].Op)
+				assert.Empty(t, recipe.Recipe.Sequence[0].Shared)
+				// Inputs should be merged
+				assert.Equal(t, "gpt-4", recipe.Recipe.Sequence[0].Inputs["model"])
+				assert.Equal(t, "Hello", recipe.Recipe.Sequence[0].Inputs["prompt"])
 			},
 		},
 		{
 			name: "recipe with parallel execution",
 			yamlContent: `
-name: parallel-recipe
+id: parallel-recipe
 version: "1.0.0"
 parallel:
   - id: task1
@@ -112,7 +118,7 @@ parallel:
 `,
 			expectedError: false,
 			validate: func(t *testing.T, recipe *Recipe) {
-				assert.Equal(t, "parallel-recipe", recipe.Name)
+				assert.Equal(t, "parallel-recipe", recipe.ID)
 				require.NotNil(t, recipe.Recipe)
 				require.NotNil(t, recipe.Recipe.Parallel)
 				require.Len(t, recipe.Recipe.Parallel, 2)
@@ -123,7 +129,7 @@ parallel:
 		{
 			name: "recipe with state machine",
 			yamlContent: `
-name: state-recipe
+id: state-recipe
 version: "1.0.0"
 states:
   initial: start
@@ -136,14 +142,14 @@ states:
 `,
 			expectedError: false,
 			validate: func(t *testing.T, recipe *Recipe) {
-				assert.Equal(t, "state-recipe", recipe.Name)
+				assert.Equal(t, "state-recipe", recipe.ID)
 				require.NotNil(t, recipe.Recipe)
 				require.NotNil(t, recipe.Recipe.States)
 				assert.Equal(t, "start", recipe.Recipe.States.Initial)
 			},
 		},
 		{
-			name: "invalid recipe - missing name",
+			name: "invalid recipe - missing id",
 			yamlContent: `
 version: "1.0.0"
 op: test_activity
@@ -153,7 +159,7 @@ op: test_activity
 		{
 			name: "invalid recipe - no root node",
 			yamlContent: `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
 `,
 			expectedError: true,
@@ -161,12 +167,26 @@ version: "1.0.0"
 		{
 			name: "invalid recipe - multiple root nodes",
 			yamlContent: `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
 op: test_activity
 sequence:
   - id: step1
     op: another_activity
+`,
+			expectedError: true,
+		},
+		{
+			name: "invalid recipe - missing shared reference",
+			yamlContent: `
+id: test-recipe
+version: "1.0.0"
+defs:
+  existing_def:
+    op: some_activity
+sequence:
+  - id: step1
+    shared: non_existent_def
 `,
 			expectedError: true,
 		},
@@ -223,7 +243,7 @@ func TestValidateRecipe(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "recipe without name",
+			name: "recipe without id",
 			recipe: &Recipe{
 				Version: "1.0.0",
 			},
@@ -232,7 +252,7 @@ func TestValidateRecipe(t *testing.T) {
 		{
 			name: "recipe without version",
 			recipe: &Recipe{
-				Name: "test",
+				ID: "test",
 			},
 			expectError: true,
 		},

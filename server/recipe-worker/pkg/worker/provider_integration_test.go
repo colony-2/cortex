@@ -11,13 +11,13 @@ import (
 func TestProviderIntegration_Basic(t *testing.T) {
 	// Create a test recipe with unified format
 	testRecipe := &recipe.Recipe{
-		Name:        "provider-test",
+		ID:          "provider-test",
 		Version:     "1.0.0",
 		Description: "Provider integration test",
 		Recipe: &yamlpkg.RecipeDefinition{
-			Name:    "provider-test",
-			Version: "1.0.0",
-			Sequence: []yamlpkg.Node{
+			Node: yamlpkg.Node{
+				ID: "provider-test",
+				Sequence: []yamlpkg.Node{
 				{
 					ID: "http_step",
 					Op: "http-activity",
@@ -37,6 +37,8 @@ func TestProviderIntegration_Basic(t *testing.T) {
 					},
 				},
 			},
+			},
+			Version: "1.0.0",
 		},
 	}
 

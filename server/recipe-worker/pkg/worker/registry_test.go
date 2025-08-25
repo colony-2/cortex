@@ -86,13 +86,13 @@ sequence:
 	recipes, err := registry.ListRecipes(nil)
 	require.NoError(t, err)
 	assert.Len(t, recipes, 1)
-	assert.Equal(t, "test-recipe", recipes[0].Name)
+	assert.Equal(t, "test-recipe", recipes[0].ID)
 	assert.Equal(t, "1.0.0", recipes[0].Version)
 	
 	// Test GetRecipe
 	recipe, err := registry.GetRecipe("test-recipe")
 	require.NoError(t, err)
-	assert.Equal(t, "test-recipe", recipe.Name)
+	assert.Equal(t, "test-recipe", recipe.ID)
 }
 
 // TestRegistry_MultiFileRecipe removed - unified format doesn't support multi-file recipes
@@ -181,15 +181,15 @@ func TestRegistry_ListRecipesWithFilter(t *testing.T) {
 	
 	// Add some test recipes manually
 	registry.recipes["recipe1"] = &recipe.Recipe{
-		Name:         "recipe1",
+		ID:           "recipe1",
 		WorkerStatus: recipe.WorkerStatusRunning,
 	}
 	registry.recipes["recipe2"] = &recipe.Recipe{
-		Name:         "recipe2",
+		ID:           "recipe2",
 		WorkerStatus: recipe.WorkerStatusStopped,
 	}
 	registry.recipes["recipe3"] = &recipe.Recipe{
-		Name:         "recipe3",
+		ID:           "recipe3",
 		WorkerStatus: recipe.WorkerStatusRunning,
 	}
 	

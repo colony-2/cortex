@@ -2,9 +2,9 @@ package schema
 
 // SchemaType provides discriminated union support for operations
 type SchemaType interface {
-	SchemaDiscriminator() string  // Returns the const value for "op" field
-	SchemaInputs() interface{}    // Returns the input struct
-	SchemaOutputs() interface{}   // Returns the output struct
+	SchemaDiscriminator() string // Returns the const value for "op" field
+	SchemaInputs() interface{}   // Returns the input struct
+	SchemaOutputs() interface{}  // Returns the output struct
 }
 
 // SchemaProvider allows types to customize their schema generation
@@ -62,11 +62,11 @@ type WorkflowNode struct {
 	When    string       `json:"when,omitempty" description:"CEL expression for conditional execution"`
 	Timeout Duration     `json:"timeout,omitempty" description:"Timeout duration"`
 	Retry   *RetryPolicy `json:"retry,omitempty" description:"Retry policy"`
-	
+
 	// Node inputs and outputs
 	Inputs  map[string]interface{} `json:"inputs,omitempty" description:"Node input values"`
 	Outputs map[string]interface{} `json:"outputs,omitempty" description:"Node output mappings"`
-	
+
 	// Exactly one of these should be set (enforced by validation)
 	Operation *NodeOperation `json:"-" oneOf:"true"`
 	Sequence  *SequenceNode  `json:"-" oneOf:"true"`
@@ -93,18 +93,18 @@ type StateNode struct {
 
 // State represents a single state in a state machine
 type State struct {
-	WorkflowNode        // Embed node fields
-	Transitions []Transition `json:"transitions,omitempty" description:"State transitions"`
-	Error       string       `json:"error,omitempty" description:"Error message for terminal error states"`
+	WorkflowNode              // Embed node fields
+	Transitions  []Transition `json:"transitions,omitempty" description:"State transitions"`
+	Error        string       `json:"error,omitempty" description:"Error message for terminal error states"`
 }
 
 // Recipe defines a complete workflow recipe
 type Recipe struct {
-	Name        string                 `json:"name" required:"true" description:"Name of the recipe"`
-	Version     string                 `json:"version" default:"1.0" description:"Version of the recipe"`
-	Description string                 `json:"description,omitempty" description:"Human-readable description of what the recipe does"`
-	InputSchema map[string]InputDef    `json:"input_schema,omitempty" description:"Schema definitions for recipe inputs"`
-	Shared      map[string]WorkflowNode `json:"shared,omitempty" description:"Shared node definitions that can be referenced"`
+	Name        string                  `json:"name" required:"true" description:"Name of the recipe"`
+	Version     string                  `json:"version" default:"1.0" description:"Version of the recipe"`
+	Description string                  `json:"description,omitempty" description:"Human-readable description of what the recipe does"`
+	InputSchema map[string]InputDef     `json:"input_schema,omitempty" description:"Schema definitions for recipe inputs"`
+	Shared      map[string]WorkflowNode `json:"defs,omitempty" description:"Shared node definitions that can be referenced"`
 	
 	// Root node - embed WorkflowNode fields
 	WorkflowNode `json:",inline"`
@@ -113,12 +113,12 @@ type Recipe struct {
 // NodeOperation represents a discriminated union of all operation types
 type NodeOperation struct {
 	// Exactly one of these should be set
-	Sleep           *SleepOperation           `json:"-" op:"sleep"`
+	Sleep           *SleepOperation            `json:"-" op:"sleep"`
 	Command         *CommandExecutionOperation `json:"-" op:"command_execution"`
-	LLM             *LLMInferenceOperation    `json:"-" op:"llm_inference"`
-	GitShallowClone *GitShallowCloneOperation `json:"-" op:"git_shallow_clone"`
-	Recipe          *RecipeOperation          `json:"-" op:"recipe"`
-	Input           *InputOperation           `json:"-" op:"input"`
+	LLM             *LLMInferenceOperation     `json:"-" op:"llm_inference"`
+	GitShallowClone *GitShallowCloneOperation  `json:"-" op:"git_shallow_clone"`
+	Recipe          *RecipeOperation           `json:"-" op:"recipe"`
+	Input           *InputOperation            `json:"-" op:"input"`
 }
 
 // GetOperationType returns the operation type discriminator

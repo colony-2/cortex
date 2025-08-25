@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // Generator handles schema generation from Go types
@@ -388,10 +390,10 @@ func (g *Generator) generateOperationSchema(op SchemaType) map[string]interface{
 // generateAllDefinitions generates all type definitions
 func (g *Generator) generateAllDefinitions() {
 	// Core types
-	g.definitions["RetryPolicy"] = g.generateFromType(reflect.TypeOf(RetryPolicy{}), RetryPolicy{})
+	g.definitions["RetryPolicy"] = g.generateFromType(reflect.TypeOf(types.RetryPolicy{}), RetryPolicy{})
 	g.definitions["InputDef"] = g.generateFromType(reflect.TypeOf(InputDef{}), InputDef{})
-	g.definitions["Transition"] = g.generateFromType(reflect.TypeOf(Transition{}), Transition{})
-	
+	g.definitions["Transition"] = g.generateFromType(reflect.TypeOf(types.Transition{}), Transition{})
+
 	// Node types
 	g.definitions["Node"] = g.generateFromType(reflect.TypeOf(WorkflowNode{}), WorkflowNode{})
 	g.definitions["SequenceNode"] = g.generateFromType(reflect.TypeOf(SequenceNode{}), SequenceNode{})
