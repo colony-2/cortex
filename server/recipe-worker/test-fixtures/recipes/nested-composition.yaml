@@ -1,5 +1,5 @@
-name: nested_composition_demo
-description: Demonstrates deeply nested sequential, parallel, and conditional compositions
+id: nested_composition_demo
+desc: Demonstrates deeply nested sequential, parallel, and conditional compositions
 version: "1.0.0"
 
 inputs:

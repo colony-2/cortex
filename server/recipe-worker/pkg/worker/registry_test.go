@@ -52,11 +52,11 @@ func TestRegistry_RecipeDiscovery(t *testing.T) {
 	
 	// Create a simple recipe file
 	recipeContent := `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
-description: Test recipe
+desc: Test recipe
 
-shared:
+defs:
   test-activity:
     op: test-activity
     inputs:
@@ -120,8 +120,9 @@ func TestRegistry_FileWatchingDebounce(t *testing.T) {
 	
 	// Create initial recipe
 	recipeContent := `
-name: watch-test
+id: watch-test
 version: "1.0.0"
+desc: Watch test recipe
 
 sequence:
   - id: step1
@@ -151,8 +152,9 @@ sequence:
 	// Update recipe rapidly multiple times
 	for i := 0; i < 5; i++ {
 		updatedContent := `
-name: watch-test
+id: watch-test
 version: "1.0.` + string(rune('1'+i)) + `"
+desc: Watch test recipe
 
 sequence:
   - id: step1

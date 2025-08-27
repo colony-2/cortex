@@ -5,8 +5,8 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
-// InputDef defines the schema for an input parameter
-type InputDef struct {
+// InputSchema defines the schema for an input parameter
+type InputSchema struct {
 	Type        string      `yaml:"type,omitempty"`        // Type of the input (string, number, boolean, etc.)
 	Description string      `yaml:"description,omitempty"` // Description of the input
 	Required    bool        `yaml:"required,omitempty"`    // Whether the input is required
@@ -14,22 +14,22 @@ type InputDef struct {
 }
 
 type Node struct {
-	ID   string `yaml:"id,omitempty"`
-	Desc string `yaml:"desc,omitempty"`
+	ID   string `yaml:"id,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
+	Desc string `yaml:"desc,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
 
 	// Root node - embedded directly (one of these four)
-	Op       string    `yaml:"op,omitempty"`       // Operation node
-	Sequence []Node    `yaml:"sequence,omitempty"` // Sequence node
-	Parallel []Node    `yaml:"parallel,omitempty"` // Parallel node
-	States   *StateMap `yaml:"states,omitempty"`   // State machine node
-	Shared   string    `yaml:"shared,omitempty"`   // Reference to shared node
+	Op       string    `yaml:"op,omitempty" jsonschema:"oneof_required=op"`             // Operation node
+	Sequence []Node    `yaml:"sequence,omitempty" jsonschema:"oneof_required=sequence"` // Sequence node
+	Parallel []Node    `yaml:"parallel,omitempty" jsonschema:"oneof_required=parallel"` // Parallel node
+	States   *StateMap `yaml:"states,omitempty" jsonschema:"oneof_required=state"`      // State machine node
+	Shared   string    `yaml:"shared,omitempty"  jsonschema:"oneof_required=shared"`    // Reference to shared node
 
 	// Node properties that apply at root
-	Inputs  map[string]interface{} `yaml:"inputs,omitempty"`
-	Outputs map[string]interface{} `yaml:"outputs,omitempty"` // Only for composite types
-	Timeout types.Duration         `yaml:"timeout,omitempty"`
-	Retry   *types.RetryPolicy     `yaml:"retry,omitempty"`
-	When    cel.CELExpr            `yaml:"when,omitempty"` // Conditional execution
+	Inputs  map[string]interface{} `yaml:"inputs,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
+	Outputs map[string]interface{} `yaml:"outputs,omitempty" jsonschema:"oneof_required=sequence,parallel,state"`
+	Timeout types.Duration         `yaml:"timeout,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
+	Retry   *RetryPolicy           `yaml:"retry,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
+	When    cel.CELExpr            `yaml:"when,omitempty" jsonschema:"oneof_required=sequence,op,parallel,state"`
 }
 
 // RecipeDefinition represents the complete unified recipe YAML structure
@@ -39,8 +39,8 @@ type RecipeDefinition struct {
 	Version string `yaml:"version"`
 
 	// Shared node definitions
-	Defs        map[string]Node     `yaml:"defs,omitempty"`         // Shared node definitions
-	InputSchema map[string]InputDef `yaml:"input_schema,omitempty"` // Optional schema for inputs
+	Defs        map[string]Node        `yaml:"defs,omitempty"`         // Shared node definitions
+	InputSchema map[string]InputSchema `yaml:"input_schema,omitempty"` // Optional schema for inputs
 }
 
 // StateMap represents a state machine configuration
@@ -64,10 +64,12 @@ type Transition struct {
 	When cel.CELExpr `yaml:"when,omitempty"` // CEL expression
 }
 
-// RetryPolicy defines retry behavior
+// RetryPolicy represents a retry configuration that can be serialized to/from YAML
+// This struct mirrors Temporal's RetryPolicy but without any Temporal dependencies
 type RetryPolicy struct {
-	MaxAttempts        int     `yaml:"max_attempts"`
-	InitialInterval    string  `yaml:"initial_interval"`
-	BackoffCoefficient float64 `yaml:"backoff_coefficient,omitempty"`
-	MaxInterval        string  `yaml:"max_interval,omitempty"`
+	InitialInterval        types.Duration `yaml:"initial_interval,omitempty"`
+	BackoffCoefficient     float64        `yaml:"backoff_coefficient,omitempty"`
+	MaximumInterval        types.Duration `yaml:"maximum_interval,omitempty"`
+	MaximumAttempts        int32          `yaml:"maximum_attempts,omitempty"`
+	NonRetryableErrorTypes []string       `yaml:"non_retryable_error_types,omitempty"`
 }

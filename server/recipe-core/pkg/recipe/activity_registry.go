@@ -54,153 +54,7 @@ func NewActivityTypeRegistry() *ActivityTypeRegistry {
 		types: make(map[string]*ActivityTypeDefinition),
 	}
 
-	// Register built-in types
-	registry.registerBuiltInTypes()
-
 	return registry
-}
-
-// registerBuiltInTypes registers the default activity types
-func (r *ActivityTypeRegistry) registerBuiltInTypes() {
-	// HTTP activity type
-	r.types["http"] = &ActivityTypeDefinition{
-		Type:        "http",
-		Description: "Makes HTTP requests to external APIs",
-		ConfigSchema: JSONSchema{
-			"type":     "object",
-			"required": []string{"method", "url"},
-			"properties": map[string]interface{}{
-				"method": map[string]interface{}{
-					"type": "string",
-					"enum": []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"},
-				},
-				"url": map[string]interface{}{
-					"type": "string",
-					"format": "uri",
-				},
-				"headers": map[string]interface{}{
-					"type": "object",
-					"additionalProperties": map[string]interface{}{
-						"type": "string",
-					},
-				},
-				"body": map[string]interface{}{
-					"type": "object",
-				},
-			},
-		},
-		RequiredConfig:        true,
-		AllowAdditionalConfig: true,
-		AllowAdditionalInputs: true,
-		AllowAdditionalOutputs: true,
-	}
-
-	// AI Prompt activity type
-	r.types["ai_prompt"] = &ActivityTypeDefinition{
-		Type:        "ai_prompt",
-		Description: "Executes AI/LLM prompts",
-		ConfigSchema: JSONSchema{
-			"type":     "object",
-			"required": []string{"prompt"},
-			"properties": map[string]interface{}{
-				"prompt": map[string]interface{}{
-					"type": "string",
-				},
-				"model": map[string]interface{}{
-					"type": "string",
-				},
-				"provider": map[string]interface{}{
-					"type": "string",
-					"enum": []string{"openai", "anthropic", "gemini", "bedrock"},
-				},
-				"temperature": map[string]interface{}{
-					"type":    "number",
-					"minimum": 0,
-					"maximum": 2,
-				},
-				"response_format": map[string]interface{}{
-					"type": "string",
-					"enum": []string{"text", "json"},
-				},
-			},
-		},
-		RequiredConfig:        true,
-		AllowAdditionalConfig: true,
-		AllowAdditionalInputs: true,
-		AllowAdditionalOutputs: true,
-	}
-
-	// Function activity type
-	r.types["function"] = &ActivityTypeDefinition{
-		Type:        "function",
-		Description: "Calls a registered function handler",
-		ConfigSchema: JSONSchema{
-			"type":     "object",
-			"required": []string{"handler"},
-			"properties": map[string]interface{}{
-				"handler": map[string]interface{}{
-					"type": "string",
-				},
-				"runtime": map[string]interface{}{
-					"type": "string",
-				},
-			},
-		},
-		RequiredConfig:        true,
-		AllowAdditionalConfig: false,
-		AllowAdditionalInputs: true,
-		AllowAdditionalOutputs: true,
-	}
-
-	// Script activity type (placeholder)
-	r.types["script"] = &ActivityTypeDefinition{
-		Type:           "script",
-		Description:    "Executes external scripts or commands",
-		RequiredConfig: true,
-		ConfigSchema: JSONSchema{
-			"type":     "object",
-			"required": []string{"command"},
-			"properties": map[string]interface{}{
-				"command": map[string]interface{}{
-					"type": "string",
-				},
-				"args": map[string]interface{}{
-					"type": "array",
-					"items": map[string]interface{}{
-						"type": "string",
-					},
-				},
-			},
-		},
-		AllowAdditionalConfig: true,
-		AllowAdditionalInputs: true,
-		AllowAdditionalOutputs: true,
-	}
-
-	// gRPC activity type (placeholder)
-	r.types["grpc"] = &ActivityTypeDefinition{
-		Type:           "grpc",
-		Description:    "Makes gRPC calls to services",
-		RequiredConfig: true,
-		ConfigSchema: JSONSchema{
-			"type":     "object",
-			"required": []string{"service", "method"},
-			"properties": map[string]interface{}{
-				"service": map[string]interface{}{
-					"type": "string",
-				},
-				"method": map[string]interface{}{
-					"type": "string",
-				},
-				"address": map[string]interface{}{
-					"type": "string",
-				},
-			},
-		},
-		AllowAdditionalConfig: true,
-		AllowAdditionalInputs: true,
-		AllowAdditionalOutputs: true,
-	}
 }
 
 // RegisterActivityType registers a new activity type
@@ -226,12 +80,6 @@ func (r *ActivityTypeRegistry) RegisterActivityType(def *ActivityTypeDefinition)
 	if def.OutputSchema != nil {
 		if err := validateJSONSchema(def.OutputSchema); err != nil {
 			return fmt.Errorf("invalid output schema: %w", err)
-		}
-	}
-
-	if def.ConfigSchema != nil {
-		if err := validateJSONSchema(def.ConfigSchema); err != nil {
-			return fmt.Errorf("invalid config schema: %w", err)
 		}
 	}
 
@@ -311,16 +159,16 @@ func validateJSONSchema(schema JSONSchema) error {
 func validateAgainstSchema(data interface{}, schema JSONSchema, allowAdditional bool) error {
 	// This is a simplified validation - in production, you'd use a proper JSON schema validator
 	// For now, we'll do basic type checking
-	
+
 	schemaType, _ := schema["type"].(string)
-	
+
 	switch schemaType {
 	case "object":
 		dataMap, ok := data.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("expected object, got %T", data)
 		}
-		
+
 		// Check required fields
 		if required, ok := schema["required"].([]interface{}); ok {
 			for _, field := range required {
@@ -337,7 +185,7 @@ func validateAgainstSchema(data interface{}, schema JSONSchema, allowAdditional 
 				}
 			}
 		}
-		
+
 		// Check properties
 		if properties, ok := schema["properties"].(map[string]interface{}); ok {
 			for key, value := range dataMap {
@@ -359,12 +207,12 @@ func validateAgainstSchema(data interface{}, schema JSONSchema, allowAdditional 
 				}
 			}
 		}
-		
+
 	case "string":
 		if _, ok := data.(string); !ok {
 			return fmt.Errorf("expected string, got %T", data)
 		}
-		
+
 	case "integer":
 		switch data.(type) {
 		case int, int64, int32, float64:
@@ -377,7 +225,7 @@ func validateAgainstSchema(data interface{}, schema JSONSchema, allowAdditional 
 		default:
 			return fmt.Errorf("expected integer, got %T", data)
 		}
-		
+
 	case "number":
 		switch data.(type) {
 		case float64, float32, int, int64, int32:
@@ -385,13 +233,13 @@ func validateAgainstSchema(data interface{}, schema JSONSchema, allowAdditional 
 		default:
 			return fmt.Errorf("expected number, got %T", data)
 		}
-		
+
 	case "array":
 		if _, ok := data.([]interface{}); !ok {
 			return fmt.Errorf("expected array, got %T", data)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -412,7 +260,7 @@ func validateEnum(value interface{}, enum interface{}) bool {
 		}
 		return false
 	}
-	
+
 	for _, allowed := range enumSlice {
 		if value == allowed {
 			return true
@@ -425,6 +273,6 @@ func validateEnum(value interface{}, enum interface{}) bool {
 func (r *ActivityTypeRegistry) MarshalJSON() ([]byte, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	return json.Marshal(r.types)
 }

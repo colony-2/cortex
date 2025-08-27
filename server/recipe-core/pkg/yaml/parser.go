@@ -31,6 +31,7 @@ func (p *Parser) ParseRecipe(path string) (*RecipeDefinition, error) {
 func (p *Parser) ParseRecipeReader(r io.Reader) (*RecipeDefinition, error) {
 	var recipe RecipeDefinition
 	decoder := yaml.NewDecoder(r)
+
 	if err := decoder.Decode(&recipe); err != nil {
 		return nil, fmt.Errorf("failed to decode recipe: %w", err)
 	}

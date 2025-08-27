@@ -36,13 +36,13 @@ sequence:
 			validate: func(t *testing.T, resolved *RecipeDefinition) {
 				// Defs should be cleared
 				assert.Nil(t, resolved.Defs)
-				
+
 				// Sequence should have resolved node
 				require.Len(t, resolved.Sequence, 1)
 				assert.Equal(t, "step1", resolved.Sequence[0].ID)
 				assert.Equal(t, "validation_activity", resolved.Sequence[0].Op)
 				assert.Equal(t, "", resolved.Sequence[0].Shared) // Shared ref should be cleared
-				
+
 				// Inputs should be merged
 				assert.Equal(t, "schema", resolved.Sequence[0].Inputs["type"])
 				assert.Equal(t, "test", resolved.Sequence[0].Inputs["data"])
@@ -72,16 +72,16 @@ sequence:
 			validate: func(t *testing.T, resolved *RecipeDefinition) {
 				assert.Nil(t, resolved.Defs)
 				require.Len(t, resolved.Sequence, 1)
-				
+
 				mainNode := resolved.Sequence[0]
 				assert.Equal(t, "main", mainNode.ID)
 				assert.Empty(t, mainNode.Shared)
-				
+
 				// Should have inherited sequence from workflow
 				require.Len(t, mainNode.Sequence, 2)
 				assert.Equal(t, "validate", mainNode.Sequence[0].ID)
 				assert.Equal(t, "validator", mainNode.Sequence[0].Op)
-				
+
 				// Nested shared ref should also be resolved
 				assert.Equal(t, "process", mainNode.Sequence[1].ID)
 				assert.Equal(t, "llm", mainNode.Sequence[1].Op)
@@ -132,7 +132,7 @@ parallel:
 			validate: func(t *testing.T, resolved *RecipeDefinition) {
 				assert.Nil(t, resolved.Defs)
 				require.Len(t, resolved.Parallel, 2)
-				
+
 				// First task with overrides
 				task1 := resolved.Parallel[0]
 				assert.Equal(t, "task1", task1.ID)
@@ -141,7 +141,7 @@ parallel:
 				assert.Equal(t, "gpt-3.5", task1.Inputs["model"])
 				assert.Equal(t, 0.9, task1.Inputs["temperature"]) // Override
 				assert.Equal(t, "Task 1", task1.Inputs["prompt"])
-				
+
 				// Second task with base values
 				task2 := resolved.Parallel[1]
 				assert.Equal(t, "task2", task2.ID)
@@ -175,7 +175,7 @@ states:
 			validate: func(t *testing.T, resolved *RecipeDefinition) {
 				assert.Nil(t, resolved.Defs)
 				require.NotNil(t, resolved.States)
-				
+
 				startState, exists := resolved.States.States["start"]
 				require.True(t, exists)
 				assert.Equal(t, "validation_activity", startState.Op)
@@ -234,20 +234,20 @@ sequence:
 			validate: func(t *testing.T, resolved *RecipeDefinition) {
 				assert.Nil(t, resolved.Defs)
 				require.Len(t, resolved.Sequence, 1)
-				
+
 				mainWorkflow := resolved.Sequence[0]
 				require.Len(t, mainWorkflow.Sequence, 2)
-				
+
 				// Check deeply nested resolution
 				fetchData := mainWorkflow.Sequence[0]
 				assert.Equal(t, "fetch_data", fetchData.ID)
 				assert.Equal(t, "http", fetchData.Op)
 				assert.Empty(t, fetchData.Shared)
-				
+
 				// Check input merging through multiple levels
 				assert.Equal(t, "GET", fetchData.Inputs["method"])
 				assert.Equal(t, "https://api.example.com", fetchData.Inputs["url"])
-				
+
 				headers, ok := fetchData.Inputs["headers"].(map[string]interface{})
 				require.True(t, ok)
 				assert.Equal(t, "Bearer token", headers["Authorization"])
@@ -333,7 +333,7 @@ func (nc *nodeCounter) PostVisit(node *Node, path []string) error {
 
 func (nc *nodeCounter) VisitNode(node *Node, path []string) (*Node, error) {
 	nc.count++
-	
+
 	if node.Op != "" {
 		nc.nodeTypes["op"]++
 	}
@@ -349,7 +349,7 @@ func (nc *nodeCounter) VisitNode(node *Node, path []string) (*Node, error) {
 	if node.Shared != "" {
 		nc.nodeTypes["shared"]++
 	}
-	
+
 	return node, nil
 }
 

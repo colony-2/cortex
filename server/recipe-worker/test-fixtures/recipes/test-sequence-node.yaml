@@ -1,5 +1,5 @@
-name: test-sequence-node
-description: Test recipe for sequence node with multiple operations
+id: test-sequence-node
+desc: Test recipe for sequence node with multiple operations
 version: "1.0"
 
 sequence:

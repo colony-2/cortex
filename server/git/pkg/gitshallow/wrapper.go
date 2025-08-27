@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // GitShallowConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags
@@ -45,7 +46,7 @@ func (a *GitShallowActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Performs a shallow clone of a local git repository to another directory at a specific commit",
 		Version:        "1.0.0",
 		DefaultTimeout: 2 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    1 * time.Second,
 			BackoffCoefficient: 2.0,

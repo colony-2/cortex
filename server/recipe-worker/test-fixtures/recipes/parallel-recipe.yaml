@@ -1,6 +1,6 @@
 # Parallel recipe example - demonstrates parallel execution capabilities
-name: parallel_processing
-description: Demonstrates parallel step execution
+id: parallel_processing
+desc: Demonstrates parallel step execution
 version: "1.0"
 
 inputs:

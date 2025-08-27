@@ -1,6 +1,6 @@
 # Unified data pipeline example - demonstrates the unified activity model
-name: unified_data_pipeline
-description: Data pipeline using unified activity model with shared activities
+id: unified_data_pipeline
+desc: Data pipeline using unified activity model with shared activities
 version: "1.0"
 
 inputs:

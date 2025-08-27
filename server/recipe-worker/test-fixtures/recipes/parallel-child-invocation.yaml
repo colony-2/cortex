@@ -1,9 +1,9 @@
 # Parallel Child Recipe Invocation Example
 # This example shows a parent recipe that invokes multiple child recipes in parallel
 
-name: parallel_analysis_pipeline
+id: parallel_analysis_pipeline
 version: "1.0"
-description: Parent recipe that runs multiple analysis recipes in parallel and aggregates results
+desc: Parent recipe that runs multiple analysis recipes in parallel and aggregates results
 
 inputs:
   - name: document_path

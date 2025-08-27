@@ -1,5 +1,5 @@
-name: error-handling-example
-description: Example recipe demonstrating different error type handling
+id: error-handling-example
+desc: Example recipe demonstrating different error type handling
 version: "1.0.0"
 
 # Root is a state machine

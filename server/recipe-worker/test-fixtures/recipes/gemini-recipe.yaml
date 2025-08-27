@@ -1,6 +1,6 @@
 # Recipe using Gemini 2.5-flash for report generation
-name: gemini_research_recipe
-description: Research recipe using Google Gemini AI
+id: gemini_research_recipe
+desc: Research recipe using Google Gemini AI
 version: "1.0"
 
 inputs:

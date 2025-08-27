@@ -1,6 +1,6 @@
 # Simple unified recipe example
-name: simple_research
-description: A simple research workflow using unified activity model
+id: simple_research
+desc: A simple research workflow using unified activity model
 version: "1.0"
 
 inputs:

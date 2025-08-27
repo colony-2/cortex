@@ -1,5 +1,5 @@
-name: advanced_document_processor
-description: Advanced document processing pipeline with state machine composition
+id: advanced_document_processor
+desc: Advanced document processing pipeline with state machine composition
 version: "1.0.0"
 
 inputs:

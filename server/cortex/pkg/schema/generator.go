@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Generator handles schema generation from Go types
@@ -27,7 +28,7 @@ func (g *Generator) GenerateRecipeSchema() (map[string]interface{}, error) {
 	// Generate the main recipe schema
 	recipe := Recipe{}
 	recipeSchema := g.generateFromType(reflect.TypeOf(recipe), recipe)
-	
+
 	// Build the complete schema document
 	schema := map[string]interface{}{
 		"$schema":     "https://json-schema.org/draft/2020-12/schema",
@@ -36,7 +37,7 @@ func (g *Generator) GenerateRecipeSchema() (map[string]interface{}, error) {
 		"type":        "object",
 		"description": "Schema for Vibethis recipe definitions",
 	}
-	
+
 	// Merge recipe properties
 	if props, ok := recipeSchema["properties"].(map[string]interface{}); ok {
 		schema["properties"] = props
@@ -44,7 +45,7 @@ func (g *Generator) GenerateRecipeSchema() (map[string]interface{}, error) {
 	if req, ok := recipeSchema["required"].([]string); ok {
 		schema["required"] = req
 	}
-	
+
 	// Add oneOf constraint for node type
 	schema["oneOf"] = []map[string]interface{}{
 		{"required": []string{"op"}},
@@ -52,18 +53,18 @@ func (g *Generator) GenerateRecipeSchema() (map[string]interface{}, error) {
 		{"required": []string{"parallel"}},
 		{"required": []string{"states"}},
 	}
-	
+
 	// Generate all definitions
 	g.generateAllDefinitions()
 	schema["definitions"] = g.definitions
-	
+
 	return schema, nil
 }
 
 // GenerateActivitySchema generates schema for a specific activity
 func (g *Generator) GenerateActivitySchema(activityType string) (map[string]interface{}, error) {
 	var operation SchemaType
-	
+
 	switch activityType {
 	case "sleep":
 		operation = &SleepOperation{}
@@ -80,34 +81,34 @@ func (g *Generator) GenerateActivitySchema(activityType string) (map[string]inte
 	default:
 		return nil, fmt.Errorf("unknown activity type: %s", activityType)
 	}
-	
+
 	schema := map[string]interface{}{
 		"$schema":     "http://json-schema.org/draft-07/schema#",
 		"title":       "Activity Schema: " + activityType,
 		"type":        "object",
 		"description": fmt.Sprintf("Schema for %s activity", activityType),
 	}
-	
+
 	props := make(map[string]interface{})
-	
+
 	// Add operation schema with const discrimination
 	opSchema := g.generateOperationSchema(operation)
 	props["operation"] = opSchema
-	
+
 	// Add input schema
 	if inputs := operation.SchemaInputs(); inputs != nil {
 		inputSchema := g.generateFromType(reflect.TypeOf(inputs), inputs)
 		props["inputs"] = inputSchema
 	}
-	
+
 	// Add output schema
 	if outputs := operation.SchemaOutputs(); outputs != nil {
 		outputSchema := g.generateFromType(reflect.TypeOf(outputs), outputs)
 		props["outputs"] = outputSchema
 	}
-	
+
 	schema["properties"] = props
-	
+
 	return schema, nil
 }
 
@@ -117,7 +118,7 @@ func (g *Generator) generateFromType(t reflect.Type, v interface{}) map[string]i
 	if provider, ok := v.(SchemaProvider); ok {
 		return provider.ProvideSchema()
 	}
-	
+
 	// Handle pointer types
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -127,9 +128,9 @@ func (g *Generator) generateFromType(t reflect.Type, v interface{}) map[string]i
 			v = reflect.ValueOf(v).Elem().Interface()
 		}
 	}
-	
+
 	schema := make(map[string]interface{})
-	
+
 	switch t.Kind() {
 	case reflect.Struct:
 		schema = g.generateStructSchema(t, v)
@@ -161,12 +162,12 @@ func (g *Generator) generateFromType(t reflect.Type, v interface{}) map[string]i
 		schema["type"] = "object"
 		schema["additionalProperties"] = true
 	}
-	
+
 	// Apply schema enhancer if available
 	if enhancer, ok := v.(SchemaEnhancer); ok {
 		enhancer.EnhanceSchema(schema)
 	}
-	
+
 	return schema
 }
 
@@ -175,15 +176,15 @@ func (g *Generator) generateStructSchema(t reflect.Type, v interface{}) map[stri
 	schema := map[string]interface{}{
 		"type": "object",
 	}
-	
+
 	properties := make(map[string]interface{})
 	required := []string{}
 	hasOneOf := false
 	oneOfFields := []map[string]interface{}{}
-	
+
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		
+
 		// Handle embedded fields
 		if field.Anonymous {
 			if field.Tag.Get("json") == ",inline" {
@@ -200,7 +201,7 @@ func (g *Generator) generateStructSchema(t reflect.Type, v interface{}) map[stri
 			}
 			continue
 		}
-		
+
 		// Parse json tag
 		jsonTag := field.Tag.Get("json")
 		if jsonTag == "-" {
@@ -227,32 +228,32 @@ func (g *Generator) generateStructSchema(t reflect.Type, v interface{}) map[stri
 			}
 			continue
 		}
-		
+
 		fieldName := getJSONFieldName(field)
 		if fieldName == "" {
 			continue
 		}
-		
+
 		// Get field value for schema generation
 		fieldValue := reflect.Zero(field.Type).Interface()
 		if reflect.ValueOf(v).Kind() == reflect.Struct && reflect.ValueOf(v).NumField() > i {
 			fieldValue = reflect.ValueOf(v).Field(i).Interface()
 		}
-		
+
 		// Generate field schema
 		fieldSchema := g.generateFromType(field.Type, fieldValue)
-		
+
 		// Add field metadata from tags
 		g.addFieldMetadata(fieldSchema, field)
-		
+
 		// Check if required
 		if field.Tag.Get("required") == "true" {
 			required = append(required, fieldName)
 		}
-		
+
 		properties[fieldName] = fieldSchema
 	}
-	
+
 	// Handle WorkflowNode special case
 	if t.Name() == "WorkflowNode" {
 		// Add the node type discriminators
@@ -270,32 +271,32 @@ func (g *Generator) generateStructSchema(t reflect.Type, v interface{}) map[stri
 			"$ref": "#/definitions/StateMap",
 		}
 	}
-	
+
 	// Handle NodeOperation special case
 	if t.Name() == "NodeOperation" {
 		// Build oneOf array for all operation types
 		schema = g.generateNodeOperationSchema()
 		return schema
 	}
-	
+
 	if len(properties) > 0 {
 		schema["properties"] = properties
 	}
-	
+
 	if len(required) > 0 {
 		schema["required"] = required
 	}
-	
+
 	// Add additionalProperties: false by default for strict validation
 	if _, hasAdditional := schema["additionalProperties"]; !hasAdditional {
 		schema["additionalProperties"] = false
 	}
-	
+
 	// Add oneOf constraints if needed
 	if hasOneOf && len(oneOfFields) > 0 {
 		schema["oneOf"] = oneOfFields
 	}
-	
+
 	return schema
 }
 
@@ -312,20 +313,20 @@ func (g *Generator) generateNodeOperationSchema() map[string]interface{} {
 		{"RecipeOperation", &RecipeOperation{}},
 		{"InputOperation", &InputOperation{}},
 	}
-	
+
 	oneOf := []map[string]interface{}{}
-	
+
 	for _, op := range operations {
 		// Generate and add operation schema to definitions automatically
 		opSchema := g.generateOperationSchema(op.op)
 		g.definitions[op.name] = opSchema
-		
+
 		// Add to oneOf with reference to definitions
 		oneOf = append(oneOf, map[string]interface{}{
 			"$ref": fmt.Sprintf("#/definitions/%s", op.name),
 		})
 	}
-	
+
 	return map[string]interface{}{
 		"oneOf": oneOf,
 	}
@@ -334,11 +335,11 @@ func (g *Generator) generateNodeOperationSchema() map[string]interface{} {
 // generateOperationSchema generates schema for a specific operation
 func (g *Generator) generateOperationSchema(op SchemaType) map[string]interface{} {
 	schema := map[string]interface{}{
-		"type":     "object",
-		"required": []string{"op"},
+		"type":                 "object",
+		"required":             []string{"op"},
 		"additionalProperties": false,
 	}
-	
+
 	properties := map[string]interface{}{
 		"op": map[string]interface{}{
 			"const": op.SchemaDiscriminator(),
@@ -363,7 +364,7 @@ func (g *Generator) generateOperationSchema(op SchemaType) map[string]interface{
 			"description": "CEL expression for conditional execution",
 		},
 	}
-	
+
 	// Add inputs
 	if inputs := op.SchemaInputs(); inputs != nil {
 		inputSchema := g.generateFromType(reflect.TypeOf(inputs), inputs)
@@ -375,22 +376,22 @@ func (g *Generator) generateOperationSchema(op SchemaType) map[string]interface{
 			"required":             inputSchema["required"],
 		}
 	}
-	
+
 	// Add outputs
 	if outputs := op.SchemaOutputs(); outputs != nil {
 		outputSchema := g.generateFromType(reflect.TypeOf(outputs), outputs)
 		properties["outputs"] = outputSchema
 	}
-	
+
 	schema["properties"] = properties
-	
+
 	return schema
 }
 
 // generateAllDefinitions generates all type definitions
 func (g *Generator) generateAllDefinitions() {
 	// Core types
-	g.definitions["RetryPolicy"] = g.generateFromType(reflect.TypeOf(types.RetryPolicy{}), RetryPolicy{})
+	g.definitions["RetryPolicy"] = g.generateFromType(reflect.TypeOf(yaml.RetryPolicy{}), RetryPolicy{})
 	g.definitions["InputDef"] = g.generateFromType(reflect.TypeOf(InputDef{}), InputDef{})
 	g.definitions["Transition"] = g.generateFromType(reflect.TypeOf(types.Transition{}), Transition{})
 
@@ -400,12 +401,12 @@ func (g *Generator) generateAllDefinitions() {
 	g.definitions["ParallelNode"] = g.generateFromType(reflect.TypeOf(ParallelNode{}), ParallelNode{})
 	g.definitions["StateNode"] = g.generateFromType(reflect.TypeOf(StateNode{}), StateNode{})
 	g.definitions["State"] = g.generateFromType(reflect.TypeOf(State{}), State{})
-	
+
 	// Trigger automatic generation of operation types by processing NodeOperation
 	// This will automatically add all operation schemas to definitions
 	nodeOp := NodeOperation{}
 	g.generateFromType(reflect.TypeOf(nodeOp), nodeOp)
-	
+
 	// Value types for arrays
 	g.definitions["SequenceValue"] = map[string]interface{}{
 		"type":        "array",
@@ -413,17 +414,17 @@ func (g *Generator) generateAllDefinitions() {
 		"items":       map[string]interface{}{"$ref": "#/definitions/Node"},
 		"minItems":    1,
 	}
-	
+
 	g.definitions["ParallelValue"] = map[string]interface{}{
 		"type":        "array",
 		"description": "Parallel execution of nodes",
 		"items":       map[string]interface{}{"$ref": "#/definitions/Node"},
 		"minItems":    1,
 	}
-	
+
 	g.definitions["StateMap"] = map[string]interface{}{
-		"type":     "object",
-		"required": []string{"initial"},
+		"type":                 "object",
+		"required":             []string{"initial"},
 		"additionalProperties": map[string]interface{}{"$ref": "#/definitions/State"},
 		"properties": map[string]interface{}{
 			"initial": map[string]interface{}{
@@ -432,18 +433,18 @@ func (g *Generator) generateAllDefinitions() {
 			},
 		},
 	}
-	
+
 	// Shared reference node
 	g.definitions["SharedRefNode"] = map[string]interface{}{
-		"type":     "object",
-		"required": []string{"shared"},
+		"type":                 "object",
+		"required":             []string{"shared"},
 		"additionalProperties": false,
 		"properties": map[string]interface{}{
 			"shared": map[string]interface{}{
 				"type":        "string",
 				"description": "Reference to a shared node definition",
 			},
-			"id": map[string]interface{}{"type": "string"},
+			"id":   map[string]interface{}{"type": "string"},
 			"desc": map[string]interface{}{"type": "string"},
 			"inputs": map[string]interface{}{
 				"type":                 "object",
@@ -455,7 +456,7 @@ func (g *Generator) generateAllDefinitions() {
 			},
 		},
 	}
-	
+
 	// Form field types
 	g.definitions["FormField"] = g.generateFromType(reflect.TypeOf(FormField{}), FormField{})
 	g.definitions["FieldOption"] = g.generateFromType(reflect.TypeOf(FieldOption{}), FieldOption{})
@@ -469,27 +470,27 @@ func (g *Generator) addFieldMetadata(schema map[string]interface{}, field reflec
 	if desc := field.Tag.Get("description"); desc != "" {
 		schema["description"] = desc
 	}
-	
+
 	// Default value
 	if def := field.Tag.Get("default"); def != "" {
 		schema["default"] = parseValue(def, field.Type)
 	}
-	
+
 	// Pattern (for strings)
 	if pattern := field.Tag.Get("pattern"); pattern != "" {
 		schema["pattern"] = pattern
 	}
-	
+
 	// Format
 	if format := field.Tag.Get("format"); format != "" {
 		schema["format"] = format
 	}
-	
+
 	// Enum values
 	if enum := field.Tag.Get("enum"); enum != "" {
 		schema["enum"] = strings.Split(enum, ",")
 	}
-	
+
 	// Min/Max for numbers
 	if min := field.Tag.Get("min"); min != "" {
 		if field.Type.Kind() == reflect.String {
@@ -498,7 +499,7 @@ func (g *Generator) addFieldMetadata(schema map[string]interface{}, field reflec
 			schema["minimum"] = parseNumericValue(min, field.Type)
 		}
 	}
-	
+
 	if max := field.Tag.Get("max"); max != "" {
 		if field.Type.Kind() == reflect.String {
 			schema["maxLength"] = parseIntValue(max)
@@ -506,7 +507,7 @@ func (g *Generator) addFieldMetadata(schema map[string]interface{}, field reflec
 			schema["maximum"] = parseNumericValue(max, field.Type)
 		}
 	}
-	
+
 	// MinItems for arrays
 	if minItems := field.Tag.Get("minItems"); minItems != "" {
 		schema["minItems"] = parseIntValue(minItems)
@@ -536,10 +537,10 @@ func getJSONFieldName(field reflect.StructField) string {
 	if tag == "" || tag == "-" {
 		return ""
 	}
-	
+
 	parts := strings.Split(tag, ",")
 	name := parts[0]
-	
+
 	// Handle omitempty and other options
 	if name == "" && len(parts) > 1 {
 		for _, part := range parts[1:] {
@@ -548,11 +549,11 @@ func getJSONFieldName(field reflect.StructField) string {
 			}
 		}
 	}
-	
+
 	if name == "" {
 		return field.Name
 	}
-	
+
 	return name
 }
 

@@ -187,7 +187,6 @@ func copyMap(m map[string]interface{}) map[string]interface{} {
 	return copied
 }
 
-
 // mergeInputs merges two input maps, with overrides taking precedence
 func mergeInputs(base, override map[string]interface{}) map[string]interface{} {
 	if base == nil {
@@ -292,7 +291,7 @@ func collectSharedRefs(node *Node) []string {
 	}
 
 	var refs []string
-	
+
 	// Collect this node's shared reference
 	if node.Shared != "" {
 		refs = append(refs, node.Shared)
@@ -353,13 +352,13 @@ func (r *CachingSharedReferenceResolver) VisitNode(node *Node, path []string) (*
 			// Keep the original node's identity fields
 			ID:   node.ID,
 			Desc: node.Desc,
-			
+
 			// Copy structural fields from resolved def
 			Op:       resolvedDef.Op,
 			Sequence: resolvedDef.Sequence,
 			Parallel: resolvedDef.Parallel,
 			States:   resolvedDef.States,
-			
+
 			// Merge or override other fields
 			Inputs:  mergeInputs(resolvedDef.Inputs, node.Inputs),
 			Outputs: resolvedDef.Outputs,
@@ -408,7 +407,7 @@ func (r *CachingSharedReferenceResolver) resolveDefCached(name string) (*Node, e
 		for key := range r.defs {
 			availableKeys = append(availableKeys, key)
 		}
-		return nil, fmt.Errorf("shared node reference '%s' not found in defs. Available defs: %v", 
+		return nil, fmt.Errorf("shared node reference '%s' not found in defs. Available defs: %v",
 			name, availableKeys)
 	}
 
@@ -455,7 +454,7 @@ func (r *CachingSharedReferenceResolver) resolveDef(node *Node) (*Node, error) {
 		result.Parallel = resolvedDef.Parallel
 		result.States = resolvedDef.States
 		result.Inputs = mergeInputs(resolvedDef.Inputs, result.Inputs)
-		
+
 		if result.Desc == "" && resolvedDef.Desc != "" {
 			result.Desc = resolvedDef.Desc
 		}
@@ -471,7 +470,7 @@ func (r *CachingSharedReferenceResolver) resolveDef(node *Node) (*Node, error) {
 		if result.Outputs == nil && resolvedDef.Outputs != nil {
 			result.Outputs = copyMap(resolvedDef.Outputs)
 		}
-		
+
 		// Clear the shared reference
 		result.Shared = ""
 		return result, nil
@@ -509,21 +508,21 @@ func (r *CachingSharedReferenceResolver) resolveDef(node *Node) (*Node, error) {
 			Initial: node.States.Initial,
 			States:  make(map[string]State),
 		}
-		
+
 		for stateName, state := range node.States.States {
 			stateNode := &state.Node
 			resolved, err := r.resolveDef(stateNode)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			resolvedStates.States[stateName] = State{
 				Node:        *resolved,
 				Transitions: state.Transitions,
 				Error:       state.Error,
 			}
 		}
-		
+
 		result.States = resolvedStates
 	}
 

@@ -1,5 +1,5 @@
-name: test-invalid
-description: Test recipe with invalid activity type
+id: test-invalid
+desc: Test recipe with invalid activity type
 version: "1.0"
 
 inputs:

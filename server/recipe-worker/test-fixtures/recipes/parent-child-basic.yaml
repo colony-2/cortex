@@ -1,9 +1,9 @@
 # Basic Parent-Child Recipe Example
 # This example shows a parent recipe that invokes a child recipe using the recipe activity
 
-name: data_processing_pipeline
+id: data_processing_pipeline
 version: "1.0"
-description: Parent recipe that orchestrates data processing through child recipes
+desc: Parent recipe that orchestrates data processing through child recipes
 
 inputs:
   - name: dataset_ids

@@ -1,5 +1,5 @@
-name: research_report_recipe
-description: Research a topic and generate a comprehensive report
+id: research_report_recipe
+desc: Research a topic and generate a comprehensive report
 version: "1.0"
 
 # Shared node definitions

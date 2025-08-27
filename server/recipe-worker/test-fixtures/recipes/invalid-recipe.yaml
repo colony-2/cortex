@@ -1,4 +1,4 @@
-name: invalid-test-recipe
+id: invalid-test-recipe
 version: "1.0.0"
 # Missing required workflow section
-description: An invalid recipe for testing error handling
+desc: An invalid recipe for testing error handling

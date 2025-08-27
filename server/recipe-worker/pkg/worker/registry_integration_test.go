@@ -79,11 +79,11 @@ func TestRegistryWorkerIntegration(t *testing.T) {
 	
 	// Create a test recipe file - using unified format
 	recipeContent := `
-name: integration-test
+id: integration-test
 version: "1.0.0"
-description: Integration test recipe
+desc: Integration test recipe
 
-shared:
+defs:
   process-data:
     op: process-data
     inputs:
@@ -118,16 +118,16 @@ sequence:
 	
 	// Verify worker was started
 	recipeID := recipes[0].ID
-	status := manager.GetWorkerStatus(recipeName)
+	status := manager.GetWorkerStatus(recipeID)
 	assert.Equal(t, recipe.WorkerStatusRunning, status)
 	
 	// Test recipe update
 	updatedContent := `
-name: integration-test
+id: integration-test
 version: "2.0.0"
-description: Updated integration test recipe
+desc: Updated integration test recipe
 
-shared:
+defs:
   process-data:
     op: process-data
     inputs:
@@ -161,7 +161,7 @@ sequence:
 	time.Sleep(1 * time.Second)
 	
 	// Verify recipe was updated
-	updatedRecipe, err := registry.GetRecipe(recipeName)
+	updatedRecipe, err := registry.GetRecipe(recipeID)
 	require.NoError(t, err)
 	assert.NotEqual(t, recipes[0].Hash, updatedRecipe.Hash)
 	
@@ -173,13 +173,13 @@ sequence:
 	time.Sleep(1 * time.Second)
 	
 	// Verify recipe was removed
-	_, err = registry.GetRecipe(recipeName)
+	_, err = registry.GetRecipe(recipeID)
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "not found")
 	}
 	
 	// Verify worker was stopped
-	status = manager.GetWorkerStatus(recipeName)
+	status = manager.GetWorkerStatus(recipeID)
 	assert.Equal(t, recipe.WorkerStatusStopped, status)
 	
 	// Cleanup
@@ -220,11 +220,11 @@ recipe:
 	
 	// Create workflow.yaml using unified format
 	workflowContent := `
-name: multi-file-test
+id: multi-file-test
 version: "1.0.0"
-description: Multi-file test recipe
+desc: Multi-file test recipe
 
-shared:
+defs:
   prepare-data:
     op: prepare-data
     inputs:
@@ -310,10 +310,11 @@ func TestConcurrentRecipeDiscovery(t *testing.T) {
 	for i := 0; i < recipeCount; i++ {
 		go func(index int) {
 			recipeContent := fmt.Sprintf(`
-name: concurrent-test-%d
+id: concurrent-test-%d
 version: "1.0.0"
+desc: Concurrent test recipe %d
 
-shared:
+defs:
   activity-%d:
     op: activity-%d
     inputs:
@@ -323,7 +324,7 @@ shared:
 sequence:
   - id: step1
     shared: activity-%d
-`, index, index, index, index)
+`, index, index, index, index, index)
 			
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))
 			err := os.WriteFile(recipePath, []byte(recipeContent), 0644)

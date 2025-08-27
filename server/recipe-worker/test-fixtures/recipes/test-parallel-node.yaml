@@ -1,5 +1,5 @@
-name: test-parallel-node
-description: Test recipe for parallel node execution
+id: test-parallel-node
+desc: Test recipe for parallel node execution
 version: "1.0"
 
 parallel:

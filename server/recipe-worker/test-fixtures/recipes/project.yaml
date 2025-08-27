@@ -1,6 +1,6 @@
-name: research_report_project
+id: research_report_project
 version: "1.0"
-description: Research and report generation recipe
+desc: Research and report generation recipe
 
 files:
   recipe: ./recipe.yaml

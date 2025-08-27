@@ -1,5 +1,5 @@
-name: simple_data_pipeline
-description: Simple data pipeline demonstrating state machine composition features
+id: simple_data_pipeline
+desc: Simple data pipeline demonstrating state machine composition features
 version: "1.0.0"
 
 # Root is a state machine

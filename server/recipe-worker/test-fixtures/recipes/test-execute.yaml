@@ -1,5 +1,5 @@
-name: test-execute
-description: Test recipe for execution refactoring
+id: test-execute
+desc: Test recipe for execution refactoring
 version: "1.0"
 
 inputs:

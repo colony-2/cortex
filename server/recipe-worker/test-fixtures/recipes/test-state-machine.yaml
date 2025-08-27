@@ -1,5 +1,5 @@
-name: test-state-machine
-description: Test recipe for state machine with transitions
+id: test-state-machine
+desc: Test recipe for state machine with transitions
 version: "1.0"
 
 states:

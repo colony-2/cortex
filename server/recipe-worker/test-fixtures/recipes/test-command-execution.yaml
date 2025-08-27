@@ -1,5 +1,5 @@
-name: test-command-execution
-description: Test recipe for command execution operation with const discrimination
+id: test-command-execution
+desc: Test recipe for command execution operation with const discrimination
 version: "1.0"
 
 op: command_execution

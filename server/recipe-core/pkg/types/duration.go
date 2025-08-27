@@ -39,13 +39,3 @@ func (d Duration) ToDuration() time.Duration {
 func (d Duration) String() string {
 	return time.Duration(d).String()
 }
-
-// RetryPolicy represents a retry configuration that can be serialized to/from YAML
-// This struct mirrors Temporal's RetryPolicy but without any Temporal dependencies
-type RetryPolicy struct {
-	InitialInterval        Duration `yaml:"initial_interval,omitempty"`
-	BackoffCoefficient     float64  `yaml:"backoff_coefficient,omitempty"`
-	MaximumInterval        Duration `yaml:"maximum_interval,omitempty"`
-	MaximumAttempts        int32    `yaml:"maximum_attempts,omitempty"`
-	NonRetryableErrorTypes []string `yaml:"non_retryable_error_types,omitempty"`
-}

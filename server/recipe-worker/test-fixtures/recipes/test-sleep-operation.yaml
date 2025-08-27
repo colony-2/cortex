@@ -1,5 +1,5 @@
-name: test-sleep-operation
-description: Test recipe for sleep operation with const discrimination
+id: test-sleep-operation
+desc: Test recipe for sleep operation with const discrimination
 version: "1.0"
 
 op: sleep

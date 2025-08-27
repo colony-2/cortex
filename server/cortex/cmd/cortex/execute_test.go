@@ -76,18 +76,18 @@ func TestParseInputs(t *testing.T) {
 				tmpFile, err := os.CreateTemp("", "input-*.json")
 				require.NoError(t, err)
 				defer os.Remove(tmpFile.Name())
-				
+
 				_, err = tmpFile.WriteString(tt.fileContent)
 				require.NoError(t, err)
 				tmpFile.Close()
-				
+
 				inputFile = tmpFile.Name()
 			} else {
 				inputFile = tt.inputFile
 			}
-			
+
 			result, err := parseInputs(tt.inputFlags, inputFile)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -107,18 +107,18 @@ func TestParseInputsFromFile(t *testing.T) {
 				"nested": true
 			}
 		}`
-		
+
 		tmpFile, err := os.CreateTemp("", "input-*.json")
 		require.NoError(t, err)
 		defer os.Remove(tmpFile.Name())
-		
+
 		_, err = tmpFile.WriteString(content)
 		require.NoError(t, err)
 		tmpFile.Close()
-		
+
 		result, err := parseInputs(nil, tmpFile.Name())
 		require.NoError(t, err)
-		
+
 		expected := map[string]interface{}{
 			"message": "hello",
 			"count":   float64(42),
@@ -128,7 +128,7 @@ func TestParseInputsFromFile(t *testing.T) {
 		}
 		assert.Equal(t, expected, result)
 	})
-	
+
 	t.Run("YAML file", func(t *testing.T) {
 		content := `
 message: hello
@@ -139,37 +139,37 @@ data:
     - one
     - two
 `
-		
+
 		tmpFile, err := os.CreateTemp("", "input-*.yaml")
 		require.NoError(t, err)
 		defer os.Remove(tmpFile.Name())
-		
+
 		_, err = tmpFile.WriteString(content)
 		require.NoError(t, err)
 		tmpFile.Close()
-		
+
 		result, err := parseInputs(nil, tmpFile.Name())
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, "hello", result["message"])
 		assert.Equal(t, 42, result["count"])
 		assert.NotNil(t, result["data"])
 	})
-	
+
 	t.Run("CLI overrides file", func(t *testing.T) {
 		content := `{"message": "from_file", "count": 10}`
-		
+
 		tmpFile, err := os.CreateTemp("", "input-*.json")
 		require.NoError(t, err)
 		defer os.Remove(tmpFile.Name())
-		
+
 		_, err = tmpFile.WriteString(content)
 		require.NoError(t, err)
 		tmpFile.Close()
-		
+
 		result, err := parseInputs([]string{"message=from_cli"}, tmpFile.Name())
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, "from_cli", result["message"])
 		assert.Equal(t, float64(10), result["count"])
 	})
@@ -190,7 +190,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 				Version:     "1.0",
 				Sequence: []yamlpkg.Node{
 					{
-						ID:   "step1",
+						ID: "step1",
 						Op: "some_activity",
 					},
 				},
@@ -213,7 +213,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 			recipe: &yamlpkg.RecipeDefinition{
 				Name:        "test",
 				Description: "Test",
-				Sequence:       []yamlpkg.Node{},
+				Sequence:    []yamlpkg.Node{},
 			},
 			expectError: true,
 			errorMsg:    "recipe must define one of: op, sequence, parallel, or states",
@@ -254,11 +254,11 @@ func TestValidateRecipeStructure(t *testing.T) {
 			expectError: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateRecipeStructure(tt.recipe)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				if tt.errorMsg != "" && err != nil {
@@ -282,7 +282,7 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "all required inputs provided",
 			recipe: &yamlpkg.RecipeDefinition{
-				InputSchema: map[string]yamlpkg.InputDef{
+				InputSchema: map[string]yamlpkg.InputSchema{
 					"required1": {Type: "string", Required: true},
 					"required2": {Type: "number", Required: true},
 					"optional":  {Type: "string", Required: false},
@@ -297,7 +297,7 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "missing required input",
 			recipe: &yamlpkg.RecipeDefinition{
-				InputSchema: map[string]yamlpkg.InputDef{
+				InputSchema: map[string]yamlpkg.InputSchema{
 					"required": {Type: "string", Required: true},
 				},
 			},
@@ -308,7 +308,7 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "optional input not required",
 			recipe: &yamlpkg.RecipeDefinition{
-				InputSchema: map[string]yamlpkg.InputDef{
+				InputSchema: map[string]yamlpkg.InputSchema{
 					"optional": {Type: "string", Required: false},
 				},
 			},
@@ -318,7 +318,7 @@ func TestValidateInputs(t *testing.T) {
 		{
 			name: "extra inputs allowed",
 			recipe: &yamlpkg.RecipeDefinition{
-				InputSchema: map[string]yamlpkg.InputDef{
+				InputSchema: map[string]yamlpkg.InputSchema{
 					"defined": {Type: "string", Required: true},
 				},
 			},
@@ -329,15 +329,15 @@ func TestValidateInputs(t *testing.T) {
 			expectError: false,
 		},
 	}
-	
+
 	logger := zap.NewNop()
 	rm, _ := shared.NewRegistryManager(logger)
 	validator := shared.NewRecipeValidator(rm)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidateInputs(tt.recipe, tt.inputs)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				if tt.errorMsg != "" && err != nil {
@@ -410,14 +410,14 @@ func TestSetNestedValue(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.initial
 			if result == nil {
 				result = make(map[string]interface{})
 			}
-			
+
 			setNestedValue(result, tt.key, tt.value)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -426,33 +426,33 @@ func TestSetNestedValue(t *testing.T) {
 
 func TestSaveAndLoadState(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	state := &ExecutionState{
-		RunID:      "test-run-123",
-		RecipeFile: "/path/to/recipe.yaml",
-		StartTime:  time.Now(),
-		LastUpdate: time.Now(),
-		Status:     "running",
+		RunID:          "test-run-123",
+		RecipeFile:     "/path/to/recipe.yaml",
+		StartTime:      time.Now(),
+		LastUpdate:     time.Now(),
+		Status:         "running",
 		CompletedSteps: []string{"step1", "step2"},
 		CurrentStep:    "step3",
 		Outputs: map[string]interface{}{
 			"result": "partial",
 		},
 	}
-	
+
 	// Save state
 	err := saveState(tempDir, state)
 	require.NoError(t, err)
-	
+
 	// Load state
 	stateFile := filepath.Join(tempDir, "state.json")
 	data, err := os.ReadFile(stateFile)
 	require.NoError(t, err)
-	
+
 	var loaded ExecutionState
 	err = json.Unmarshal(data, &loaded)
 	require.NoError(t, err)
-	
+
 	// Verify
 	assert.Equal(t, state.RunID, loaded.RunID)
 	assert.Equal(t, state.RecipeFile, loaded.RecipeFile)
@@ -512,11 +512,11 @@ func TestFormatTextResult(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := formatTextResult(tt.result)
-			
+
 			for _, expected := range tt.contains {
 				assert.Contains(t, output, expected)
 			}
@@ -534,59 +534,59 @@ func TestOutputResult(t *testing.T) {
 			"message": "hello",
 		},
 	}
-	
+
 	t.Run("JSON format", func(t *testing.T) {
 		// Capture stdout
 		old := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
-		
+
 		err := outputResult(result, "json")
 		assert.NoError(t, err)
-		
+
 		w.Close()
 		os.Stdout = old
-		
+
 		var buf [1024]byte
 		n, _ := r.Read(buf[:])
 		output := string(buf[:n])
-		
+
 		// For successful results, only outputs are returned
 		var parsed map[string]interface{}
 		err = json.Unmarshal([]byte(output), &parsed)
 		assert.NoError(t, err)
 		assert.Equal(t, result.Outputs["message"], parsed["message"])
 	})
-	
+
 	t.Run("YAML format", func(t *testing.T) {
 		// Capture stdout
 		old := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
-		
+
 		err := outputResult(result, "yaml")
 		assert.NoError(t, err)
-		
+
 		w.Close()
 		os.Stdout = old
-		
+
 		var buf [1024]byte
 		n, _ := r.Read(buf[:])
 		output := string(buf[:n])
-		
+
 		// For successful results, only outputs are returned
 		var parsed map[string]interface{}
 		err = yaml.Unmarshal([]byte(output), &parsed)
 		assert.NoError(t, err)
 		assert.Equal(t, result.Outputs["message"], parsed["message"])
 	})
-	
+
 	t.Run("unsupported format", func(t *testing.T) {
 		err := outputResult(result, "xml")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "unsupported output format")
 	})
-	
+
 	t.Run("error result outputs full structure", func(t *testing.T) {
 		errorResult := ExecutionResult{
 			Success:       false,
@@ -598,22 +598,22 @@ func TestOutputResult(t *testing.T) {
 				Details: "Something went wrong",
 			},
 		}
-		
+
 		// Capture stdout
 		old := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
-		
+
 		err := outputResult(errorResult, "json")
 		assert.NoError(t, err)
-		
+
 		w.Close()
 		os.Stdout = old
-		
+
 		var buf [1024]byte
 		n, _ := r.Read(buf[:])
 		output := string(buf[:n])
-		
+
 		// For error results, full structure is returned
 		var parsed ExecutionResult
 		err = json.Unmarshal([]byte(output), &parsed)
@@ -659,22 +659,21 @@ func TestSetupLogger(t *testing.T) {
 			format: "json",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logger, err := setupLogger(tt.level, tt.format, tt.noColor)
-			
+
 			if tt.expectError {
 				assert.Error(t, err)
 				assert.Nil(t, logger)
 			} else {
 				require.NoError(t, err)
 				assert.NotNil(t, logger)
-				
+
 				// Test that logger works
 				logger.Info("test message", zap.String("field", "value"))
 			}
 		})
 	}
 }
-

@@ -1,6 +1,6 @@
 # Template features example - demonstrates advanced template capabilities
-name: template_demo
-description: Demonstrates various template features and expressions
+id: template_demo
+desc: Demonstrates various template features and expressions
 version: "1.0"
 
 inputs:

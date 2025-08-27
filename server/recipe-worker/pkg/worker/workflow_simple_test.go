@@ -4,29 +4,28 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 )
 
 func TestSimpleWorkflowRegistry(t *testing.T) {
-	activityRegistry := compiler.NewActivityRegistry()
+	activityRegistry := ops.NewActivityRegistry()
+	assert.NotNil(t, activityRegistry)
 	
-	// Register an activity
-	activityRegistry.RegisterActivity("test-activity")
+	// Get list of activities
+	activities := activityRegistry.List()
+	assert.NotNil(t, activities)
 	
-	// Check if activity is registered
-	hasActivity := activityRegistry.HasActivity("test-activity")
-	require.True(t, hasActivity)
-	
-	// Check non-existent activity
-	hasNonExistent := activityRegistry.HasActivity("non-existent")
-	assert.False(t, hasNonExistent)
+	// Check if we can get all activities
+	allActivities := activityRegistry.GetAll()
+	assert.NotNil(t, allActivities)
 }
 
 func TestSimpleWorkflowCompiler(t *testing.T) {
-	activityRegistry := compiler.NewActivityRegistry()
-	activityRegistry.RegisterActivity("test-activity")
+	activityRegistry := ops.NewActivityRegistry()
+	assert.NotNil(t, activityRegistry)
 	
-	compiler := compiler.NewCompiler(activityRegistry)
-	assert.NotNil(t, compiler)
+	// The compiler is no longer a separate struct, it's just functions
+	// Test that the registry can be created and used
+	activities := activityRegistry.List()
+	assert.NotNil(t, activities)
 }

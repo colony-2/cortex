@@ -10,6 +10,8 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	"github.com/invopop/jsonschema"
+	jsg "github.com/swaggest/jsonschema-go"
 )
 
 type CELExpr struct {
@@ -17,8 +19,24 @@ type CELExpr struct {
 	program cel.Program
 }
 
+func (CELExpr) JSONSchema() (jsg.Schema, error) {
+	var schema jsg.Schema
+	schema.AddType(jsg.String)
+	schema.WithDescription("cel expression")
+	return schema, nil
+}
+
+func (e CELExpr) InlineJSONSchema() {
+}
+
 func (e CELExpr) String() string {
 	return e.expr
+}
+
+func (e CELExpr) JSONSchemaExtend(schema *jsonschema.Schema) {
+	schema.Type = "string"
+	schema.Properties = nil
+	schema.AdditionalProperties = nil
 }
 
 func (e CELExpr) AlwaysTrue() bool {

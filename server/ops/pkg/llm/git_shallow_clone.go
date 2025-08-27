@@ -3,7 +3,10 @@ package llm
 import (
 	"context"
 	"fmt"
+
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,7 +57,7 @@ func (a *GitShallowCloneActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Performs a shallow clone of a git repository with specified depth",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    5 * time.Second,
 			BackoffCoefficient: 2.0,

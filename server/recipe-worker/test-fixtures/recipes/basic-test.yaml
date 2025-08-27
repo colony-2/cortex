@@ -1,5 +1,5 @@
-name: basic-test
-description: Basic test recipe
+id: basic-test
+desc: Basic test recipe
 version: "1.0"
 
 # Root is a simple operation

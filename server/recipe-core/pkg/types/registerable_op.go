@@ -23,9 +23,10 @@ type RegisterableOp interface {
 	ExecuteInline(ctx workflow.Context, input map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
-
+	GetName() string
 	ExecuteAsActivity() bool // whether this op maps to a Temporal activity or should be executed inline.
 
+	GetInputStruct() interface{}
 	GetInputType() reflect.Type
 	GetOutputType() reflect.Type
 	GetManagementService() ManagementService
@@ -76,6 +77,14 @@ type opSpecImpl[In any, Out any] struct {
 	handler           func(context.Context, In) (Out, error)
 	inlineHandler     func(workflow.Context, In) (Out, error)
 	managementService ManagementService
+}
+
+func (c *opSpecImpl[In, Out]) GetInputStruct() interface{} {
+	return reflect.New(c.GetInputType()).Elem().Interface()
+}
+
+func (c *opSpecImpl[In, Out]) GetName() string {
+	return c.metadata.Name
 }
 
 func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
@@ -199,4 +208,9 @@ type Route struct {
 	Method  string
 	Path    string
 	Handler http.HandlerFunc
+}
+
+type OpDef interface {
+	GetName() string
+	GetInputStruct() interface{}
 }

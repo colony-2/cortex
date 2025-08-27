@@ -5,7 +5,15 @@
       "Bash(find:*)",
       "Bash(go test:*)",
       "Bash(go build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(if grep -q \"^name:\" \"$file\")",
+      "Bash(then)",
+      "Bash(sed:*)",
+      "Bash(echo:*)",
+      "Bash(fi)",
+      "Bash(done)"
     ],
     "deny": []
   }

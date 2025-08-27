@@ -16,11 +16,11 @@ func TestParserDebug(t *testing.T) {
 	
 	// Create a simple test recipe file with unified format
 	recipeContent := `
-name: test-recipe
+id: test-recipe
 version: "1.0.0"
-description: Test unified recipe
+desc: Test unified recipe
 
-shared:
+defs:
   my_llm:
     op: llm
     inputs:
@@ -66,7 +66,7 @@ sequence:
 		} else if recipeData.Recipe.States != nil {
 			t.Logf("State machine with initial state: %s", recipeData.Recipe.States.Initial)
 		}
-		t.Logf("Shared activities: %d", len(recipeData.Recipe.Shared))
+		t.Logf("Shared activities: %d", len(recipeData.Recipe.Defs))
 	}
 	
 	// Also test the registry's loadUnifiedRecipe

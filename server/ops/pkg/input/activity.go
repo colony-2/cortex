@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -72,7 +73,7 @@ func (a *InputActivity) GetMetadata() types.OpMetadata {
 		Description:    "Collects user input through interactive forms with support for various field types",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    1, // Don't retry user inputs
 			InitialInterval:    time.Second,
 			BackoffCoefficient: 2.0,

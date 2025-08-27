@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+
 	"math/rand"
 	"os"
 	"strings"
@@ -73,7 +76,7 @@ func (a *RecipeActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Invokes another recipe as a child workflow with automatic context propagation",
 		Version:        "1.0.0",
 		DefaultTimeout: 35 * time.Minute, // Default timeout, can be overridden
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    5 * time.Second,
 			BackoffCoefficient: 2.0,

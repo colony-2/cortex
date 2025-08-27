@@ -5,9 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"go.uber.org/zap"
-
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Parser parses recipe files from disk
@@ -54,14 +53,14 @@ func (p *Parser) ParseRecipe(path string) (*Recipe, error) {
 // parseSingleFileRecipe parses a single-file recipe using unified format
 func (p *Parser) parseSingleFileRecipe(filePath string) (*Recipe, error) {
 	// Use the YAML parser to parse the unified recipe format
-	parser := yamlpkg.NewParser()
+	parser := yaml.NewParser()
 	recipeDefinition, err := parser.ParseRecipe(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse recipe YAML: %w", err)
 	}
 
 	// Resolve shared node references using visitor pattern
-	resolvedDefinition, err := yamlpkg.ResolveSharedReferences(recipeDefinition)
+	resolvedDefinition, err := yaml.ResolveSharedReferences(recipeDefinition)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve shared references: %w", err)
 	}

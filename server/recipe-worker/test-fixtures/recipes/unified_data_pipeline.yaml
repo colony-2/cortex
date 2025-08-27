@@ -1,7 +1,7 @@
 # Unified data pipeline example showing all features
-name: data-pipeline
+id: data-pipeline
 version: "1.0"
-description: End-to-end data processing pipeline with unified activity model
+desc: End-to-end data processing pipeline with unified activity model
 
 inputs:
   - name: dataset_ids

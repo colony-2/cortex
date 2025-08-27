@@ -1,9 +1,9 @@
 # Context Propagation Example
 # This example shows how context is automatically propagated from parent to child recipes
 
-name: context_aware_pipeline
+id: context_aware_pipeline
 version: "1.0"
-description: Demonstrates context propagation through recipe hierarchy
+desc: Demonstrates context propagation through recipe hierarchy
 
 inputs:
   - name: request_id

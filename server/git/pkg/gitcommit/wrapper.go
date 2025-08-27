@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // PersistCommitConfig defines the configuration for persist commit activities - ALL fields MUST have json tags
@@ -43,7 +44,7 @@ func (a *PersistCommitActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Capture a Git commit and generate a portable thin pack for external storage",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    1 * time.Second,
 			BackoffCoefficient: 2.0,
@@ -113,7 +114,7 @@ func (a *RestoreCommitActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Restore a specific commit state, rebuilding from thin packs if necessary",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    1 * time.Second,
 			BackoffCoefficient: 2.0,

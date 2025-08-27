@@ -3,7 +3,10 @@ package llm
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+
 	"time"
 )
 
@@ -51,7 +54,7 @@ func (a *LLMActivityWrapper) GetMetadata() types.OpMetadata {
 		Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &types.RetryPolicy{
+		RetryPolicy: &yaml.RetryPolicy{
 			MaximumAttempts:    3,
 			InitialInterval:    2 * time.Second,
 			BackoffCoefficient: 2.0,

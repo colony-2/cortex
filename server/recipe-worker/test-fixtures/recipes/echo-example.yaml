@@ -1,5 +1,5 @@
-name: echo_example
-description: Simple recipe that echoes an input string
+id: echo_example
+desc: Simple recipe that echoes an input string
 version: "1.0"
 
 # Root is a sequence

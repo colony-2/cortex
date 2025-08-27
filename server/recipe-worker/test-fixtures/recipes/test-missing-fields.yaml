@@ -1,5 +1,5 @@
-name: test-missing-fields
-description: Test recipe with missing required fields
+id: test-missing-fields
+desc: Test recipe with missing required fields
 version: "1.0"
 
 sequence:

@@ -2,9 +2,9 @@
 # This example demonstrates a parent recipe that processes multiple datasets through child recipes
 # and aggregates their outputs for analysis
 
-name: multi_dataset_aggregator
+id: multi_dataset_aggregator
 version: "1.0"
-description: Process multiple datasets through child recipes and aggregate results
+desc: Process multiple datasets through child recipes and aggregate results
 
 inputs:
   - name: datasets
