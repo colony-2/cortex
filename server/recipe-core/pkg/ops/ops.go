@@ -2,8 +2,6 @@ package ops
 
 import (
 	"sync"
-
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 )
 
 // opsRegistry is our singleton instance
@@ -26,7 +24,7 @@ func getInstance() *opsRegistry {
 }
 
 // Register adds a new operatio(s)) to the registry
-func Register(ops ...types.RegisterableOp) {
+func Register(ops ...RegisterableOp) {
 	registry := getInstance()
 	for _, op := range ops {
 		registry.ops.Store(op.GetName(), op)
@@ -34,23 +32,23 @@ func Register(ops ...types.RegisterableOp) {
 }
 
 // Get retrieves an operation by name with existence check
-func Get(name string) (types.RegisterableOp, bool) {
+func Get(name string) (RegisterableOp, bool) {
 	registry := getInstance()
 
 	value, exists := registry.ops.Load(name)
 	if exists {
-		return value.(types.RegisterableOp), true
+		return value.(RegisterableOp), true
 	}
 	return nil, false
 }
 
 // List returns all registered operation names
-func List() []types.RegisterableOp {
+func List() []RegisterableOp {
 	registry := getInstance()
 
-	ops := make([]types.RegisterableOp, 0, 10)
+	ops := make([]RegisterableOp, 0, 10)
 	registry.ops.Range(func(key, value any) bool {
-		ops = append(ops, value.(types.RegisterableOp))
+		ops = append(ops, value.(RegisterableOp))
 		return true // continue iteration
 	})
 	return ops

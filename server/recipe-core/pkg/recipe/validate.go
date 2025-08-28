@@ -1,17 +1,16 @@
-package validate
+package recipe
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/p2"
 	"github.com/goccy/go-yaml"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-func Validate(recipe string) error {
+func Validate(recipex string) error {
 	// Compile the schema
-	schemaStr, err := p2.GenerateSchemaString()
+	schemaStr, err := GenerateSchemaString()
 	if err != nil {
 		return err
 	}
@@ -36,7 +35,7 @@ func Validate(recipe string) error {
 	}
 
 	var data interface{}
-	if err := yaml.Unmarshal([]byte(recipe), &data); err != nil {
+	if err := yaml.Unmarshal([]byte(recipex), &data); err != nil {
 		return err
 	}
 

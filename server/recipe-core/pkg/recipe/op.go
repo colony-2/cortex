@@ -1,9 +1,9 @@
-package p2
+package recipe
 
 import (
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	yaml "gopkg.in/yaml.v3"
 )
 

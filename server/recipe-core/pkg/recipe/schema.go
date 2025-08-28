@@ -1,11 +1,11 @@
-package p2
+package recipe
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
 )
 

@@ -1,5 +1,5 @@
 // Package types defines interfaces for activities that can be consumed by recipe-worker
-package types
+package ops
 
 import (
 	"context"

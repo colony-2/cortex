@@ -1,4 +1,4 @@
-package p2
+package recipe
 
 import (
 	"fmt"
@@ -52,4 +52,12 @@ func (d Duration) ToDuration() time.Duration {
 // String implements the Stringer interface
 func (d Duration) String() string {
 	return time.Duration(d).String()
+}
+
+type RetryPolicy struct {
+	InitialInterval        Duration `yaml:"initial_interval,omitempty"`
+	BackoffCoefficient     float64  `yaml:"backoff_coefficient,omitempty"`
+	MaximumInterval        Duration `yaml:"maximum_interval,omitempty"`
+	MaximumAttempts        int32    `yaml:"maximum_attempts,omitempty"`
+	NonRetryableErrorTypes []string `yaml:"non_retryable_error_types,omitempty"`
 }

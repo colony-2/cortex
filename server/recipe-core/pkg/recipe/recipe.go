@@ -1,4 +1,4 @@
-package p2
+package recipe
 
 import (
 	"fmt"
@@ -11,6 +11,19 @@ type RecipeImpl interface {
 }
 type Recipe struct {
 	RecipeImpl
+}
+
+func (r Recipe) GetMetdata() RecipeMetadata {
+	switch t := r.RecipeImpl.(type) {
+	case *RecipeState:
+		return t.RecipeMetadata
+	case *RecipeSequence:
+		return t.RecipeMetadata
+	case *RecipeOp:
+		return t.RecipeMetadata
+	default:
+		panic("invalid recipe type")
+	}
 }
 
 func (n *Recipe) MarshalYAML() (interface{}, error) {

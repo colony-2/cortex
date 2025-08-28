@@ -1,4 +1,4 @@
-package p2
+package recipe
 
 import "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
 

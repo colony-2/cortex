@@ -1,4 +1,4 @@
-package p2
+package recipe
 
 type SequenceData struct {
 	Sequence NodeList  `yaml:"sequence,omitempty"`

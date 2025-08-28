@@ -1,11 +1,10 @@
-package p2
+package recipe
 
 import (
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	ops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
 	yamlv3 "gopkg.in/yaml.v3"
 )
@@ -93,9 +92,9 @@ func (NodeOp) JSONSchema() *jsonschema.Schema {
 func (n NodeOp) isNode() {}
 
 type NodeMetadata struct {
-	ID      string            `yaml:"id,omitempty"`
-	Desc    string            `yaml:"desc,omitempty"`
-	Timeout Duration          `yaml:"timeout,omitempty"`
-	Retry   *yaml.RetryPolicy `yaml:"retry,omitempty"`
-	When    cel.CELExpr       `yaml:"when,omitempty"` // Conditional execution
+	ID      string       `yaml:"id,omitempty"`
+	Desc    string       `yaml:"desc,omitempty"`
+	Timeout Duration     `yaml:"timeout,omitempty"`
+	Retry   *RetryPolicy `yaml:"retry,omitempty"`
+	When    cel.CELExpr  `yaml:"when,omitempty"` // Conditional execution
 }

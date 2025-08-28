@@ -2,26 +2,20 @@ package recipe
 
 import (
 	"time"
-
-	yaml "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 )
 
 // Recipe represents a discovered recipe with its metadata
-type Recipe struct {
+type RecipeFile struct {
 	// Core identity
 	ID          string
 	Version     string
 	Description string
 
 	// File paths
-	BasePath       string // Directory containing the recipe
-	ManifestPath   string // Path to recipe.yaml or single-file recipe
-	WorkflowPath   string
-	ActivitiesPath string
-	AgentsPath     string
+	BasePath string // Directory containing the recipe
 
 	// Content
-	Recipe *yaml.RecipeDefinition
+	Recipe *Recipe
 
 	// Metadata
 	Hash         string // Canonical hash of recipe content
