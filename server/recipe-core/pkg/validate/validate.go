@@ -2,23 +2,37 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/p2"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
 	"github.com/goccy/go-yaml"
-	"github.com/santhosh-tekuri/jsonschema/v5"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-func Validate(recipe string, ops ...types.OpDef) error {
+func Validate(recipe string) error {
 	// Compile the schema
-	schemaStr, err := p2.GenerateSchemaString(ops...)
+	schemaStr, err := p2.GenerateSchemaString()
 	if err != nil {
 		return err
 	}
-
-	schema, err := jsonschema.CompileString("schema.json", schemaStr)
+	compiler := jsonschema.NewCompiler()
+	compiler.DefaultDraft(jsonschema.Draft2020)
+	compiler.AssertFormat()
+	compiler.AssertVocabs()
+	compiler.AssertContent()
+	s, err := jsonschema.UnmarshalJSON(strings.NewReader(schemaStr))
 	if err != nil {
-		return fmt.Errorf("Schema compilation error: %w", err)
+		return fmt.Errorf("failure parsing schema's JSON: %w", err)
+	}
+
+	err = compiler.AddResource("schema5.json", s)
+	if err != nil {
+		return fmt.Errorf("schema add error: %w", err)
+	}
+
+	schema, err := compiler.Compile("schema5.json")
+	if err != nil {
+		return fmt.Errorf("schema compilation error: %w", err)
 	}
 
 	var data interface{}

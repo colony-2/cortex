@@ -4,28 +4,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/swaggest/jsonschema-go"
+	"github.com/invopop/jsonschema"
 )
 
 type InputMap map[string]interface{}
 
-func (InputMap) InlineJSONSchema()         {}
-func (input InputMap) Description() string { return "input configuration mapping" }
-
 type OutputMap map[string]interface{}
-
-func (OutputMap) InlineJSONSchema()         {}
-func (input OutputMap) Description() string { return "output schema and mapping" }
 
 // Duration wraps time.Duration to provide custom YAML marshaling/unmarshaling
 // It serializes to/from human-readable strings like "1s", "500ms", "2m"
 type Duration time.Duration
 
-func (d Duration) Exposer() (jsonschema.Schema, error) {
-	var schema jsonschema.Schema
-	schema.AddType(jsonschema.String)
-	schema.WithDescription("duration string")
-	return schema, nil
+func (d Duration) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:        "string",
+		Title:       "Duration",
+		Description: "Human friendly duration string",
+	}
 }
 
 // MarshalYAML converts Duration to a YAML string

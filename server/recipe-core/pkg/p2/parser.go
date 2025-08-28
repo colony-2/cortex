@@ -1,29 +1,48 @@
 package p2
 
-import "github.com/goccy/go-yaml"
+import (
+	"fmt"
 
-func recipe(recipe *Recipe, data []byte) error {
-	return nil
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"gopkg.in/yaml.v3"
+)
+
+func Parse(data []byte) (Recipe, error) {
+	var recipe Recipe
+	err := yaml.Unmarshal(data, &recipe)
+	return recipe, err
 }
 
-func node(node *Node, data []byte) error {
-	return nil
-}
+func opDataImpls(defs ...types.OpDef) func(*OpData, []byte) error {
+	return func(impl *OpData, data []byte) error {
+		if err := yaml.Unmarshal(data, &impl); err != nil {
+			return err
+		}
 
-type NodeImplFunc func(*OpImpl, []byte) error
+		// see if we can match the op name
+		var def types.OpDef = nil
+		for _, innerDef := range defs {
+			if innerDef.GetName() == impl.Op {
+				def = innerDef
+			}
+		}
 
-func nodeimpl(defs ...OpDef) NodeImplFunc {
-	return func(impl *OpImpl, data []byte) error {
+		if def == nil {
+			return fmt.Errorf("unknown op: %s", impl.Op)
+		}
+
+		data, err := yaml.Marshal(impl.Inputs)
+		if err != nil {
+			return err
+		}
+
+		concreteInputType := def.GetInputStruct()
+
+		// Unmarshal into the concrete type and report error if exists.
+		if err := yaml.Unmarshal(data, &concreteInputType); err != nil {
+			return err
+		}
+
 		return nil
 	}
-}
-
-func Parse(data []byte) (InputMap, error) {
-	var input InputMap
-	err := yaml.UnmarshalWithOptions(data, &input,
-		yaml.CustomUnmarshaler[Recipe](recipe),
-		yaml.CustomUnmarshaler[Node](node),
-		yaml.CustomUnmarshaler[Node](node),
-	)
-	return input, err
 }

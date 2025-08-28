@@ -1,63 +1,81 @@
 package p2
 
-import "github.com/swaggest/jsonschema-go"
+import (
+	"fmt"
 
-type baseRecipe struct{}
+	yamlv3 "gopkg.in/yaml.v3"
+)
 
-func (baseRecipe) JSONSchemaOneOf() []interface{} {
-	// Helper builds an exposer from sample values.
-	return []interface{}{RecipeState{}, RecipeSequence{}, RecipeOp{}}
-}
-func (baseRecipe) InlineJSONSchema() {}
-
-type Recipe interface {
+type RecipeImpl interface {
 	isRecipe()
+}
+type Recipe struct {
+	RecipeImpl
+}
+
+func (n *Recipe) MarshalYAML() (interface{}, error) {
+	return n.RecipeImpl, nil
+}
+
+func (n *Recipe) UnmarshalYAML(node *yamlv3.Node) error {
+	var raw map[string]interface{}
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+
+	var impl RecipeImpl
+	switch {
+	case raw["state"] != nil:
+		impl = &RecipeState{}
+	case raw["sequence"] != nil:
+		impl = &RecipeSequence{}
+	case raw["op"] != nil:
+		impl = &RecipeOp{}
+	default:
+		return fmt.Errorf("intermediate node must either be a op, sequence, state, or shared reference")
+	}
+
+	// Second pass: decode into concrete type
+	if err := node.Decode(impl); err != nil {
+		return err
+	}
+
+	n.RecipeImpl = impl
+	return nil
 }
 
 type RecipeMetadata struct {
 	Version      string `yaml:"version"`
-	NodeMetadata `yaml:",inline" refer:"true"`
+	NodeMetadata `yaml:",inline"`
 	Defs         map[string]Node        `yaml:"defs,omitempty"`         // Shared node definitions
 	InputSchema  map[string]InputSchema `yaml:"input_schema,omitempty"` // Optional schema for inputs
 }
 
 type RecipeSequence struct {
 	RecipeMetadata `yaml:",inline" refer:"true"`
-	Sequence       []Node   `yaml:"sequence,omitempty"`
-	_              struct{} `additionalProperties:"false"`
+	SequenceData   `yaml:",inline" refer:"true"`
 }
 
 func (r RecipeSequence) isRecipe() {}
 
 type RecipeState struct {
 	RecipeMetadata `yaml:",inline" refer:"true"`
-	States         *StateMap `yaml:"states,omitempty" refer:"true"`
-	_              struct{}  `additionalProperties:"false"`
+	StateData      `yaml:",inline" refer:"true"`
 }
 
 func (r RecipeState) isRecipe() {}
 
 type RecipeOp struct {
 	RecipeMetadata `yaml:",inline" refer:"true"`
-	OpImpl         `yaml:",inline" refer:"true"`
-	_              struct{} `additionalProperties:"false"`
-}
-
-func (c RecipeOp) JSONSchema() (jsonschema.Schema, error) {
-	var schema jsonschema.Schema
-	schema.WithAllOf(
-		(&jsonschema.Schema{}).WithRef(refSchema).ToSchemaOrBool(),
-		(&jsonschema.Schema{}).WithRef("#/definitions/RecipeMetadata").ToSchemaOrBool(),
-	)
-	return schema, nil
+	OpData         `yaml:",inline" refer:"true"`
 }
 
 func (r RecipeOp) isRecipe() {}
 
 // InputSchema defines the schema for an input parameter
 type InputSchema struct {
-	Type        string      `yaml:"type,omitempty"`        // Type of the input (string, number, boolean, etc.)
-	Description string      `yaml:"description,omitempty"` // Description of the input
-	Required    bool        `yaml:"required,omitempty"`    // Whether the input is required
-	Default     interface{} `yaml:"default,omitempty"`     // Default value if not provided
+	Type        string      `yaml:"type,omitempty"`                                                // Type of the input (string, number, boolean, etc.)
+	Description string      `yaml:"description,omitempty"`                                         // Description of the input
+	Required    bool        `yaml:"required,omitempty"`                                            // Whether the input is required
+	Default     interface{} `yaml:"default_value,omitempty" jsonschema:"oneof_type=string;number"` // Default value if not provided
 }
