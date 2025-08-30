@@ -15,7 +15,7 @@ type RecipeFile struct {
 	BasePath string // Directory containing the recipe
 
 	// Content
-	Recipe *Recipe
+	Recipe Recipe
 
 	// Metadata
 	Hash         string // Canonical hash of recipe content

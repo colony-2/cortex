@@ -15,41 +15,42 @@ import (
 
 // WorkerManager manages the lifecycle of workers for recipes
 type WorkerManager struct {
-	logger               *zap.Logger
-	temporalClient       client.Client
-	workers              map[string]worker.Worker // key is recipe name
-	mu                   sync.RWMutex
-	taskQueue            string // Base task queue name
-	activityRegistry     *ops.ActivityRegistry
-	activityTypeRegistry *recipe.ActivityTypeRegistry
+	logger           *zap.Logger
+	temporalClient   client.Client
+	workers          map[string]worker.Worker // key is recipe name
+	mu               sync.RWMutex
+	taskQueue        string // Base task queue name
+	activityRegistry *ops.ActivityRegistry
 }
 
 // NewWorkerManager creates a new worker manager
 func NewWorkerManager(logger *zap.Logger, temporalClient client.Client) *WorkerManager {
-	activityRegistry := ops.NewActivityRegistry()
-	activityTypeRegistry := recipe.NewActivityTypeRegistry()
+	activityRegistry, err := ops.NewActivityRegistry()
+	if err != nil {
+		//TODO: handle error better
+		panic(fmt.Errorf("failed to create activity registry: %w", err))
+	}
 	return &WorkerManager{
-		logger:               logger,
-		temporalClient:       temporalClient,
-		workers:              make(map[string]worker.Worker),
-		taskQueue:            "ono-recipes", // Base task queue
-		activityRegistry:     activityRegistry,
-		activityTypeRegistry: activityTypeRegistry,
+		logger:           logger,
+		temporalClient:   temporalClient,
+		workers:          make(map[string]worker.Worker),
+		taskQueue:        "ono-recipes", // Base task queue
+		activityRegistry: activityRegistry,
 	}
 }
 
 // StartWorker starts a new worker for a recipe
-func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
+func (m *WorkerManager) StartWorker(file *recipe.RecipeFile) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	// Check if worker already exists
-	if _, exists := m.workers[recipe.ID]; exists {
-		return fmt.Errorf("worker already exists for recipe %q", recipe.ID)
+	if _, exists := m.workers[file.ID]; exists {
+		return fmt.Errorf("worker already exists for file %q", file.ID)
 	}
 
-	// Create task queue name for this recipe
-	taskQueue := fmt.Sprintf("%s-%s", m.taskQueue, recipe.ID)
+	// Create task queue name for this file
+	taskQueue := fmt.Sprintf("%s-%s", m.taskQueue, file.ID)
 
 	// Create worker options
 	workerOptions := worker.Options{
@@ -58,31 +59,28 @@ func (m *WorkerManager) StartWorker(recipe *recipe.Recipe) error {
 	}
 
 	// Create the worker
-	if recipe.Recipe == nil {
-		return fmt.Errorf("recipe is nil")
-	}
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 	m.activityRegistry.EnableActivitiesInWorker(w)
 	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, m.activityRegistry, &recipe.Recipe.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, m.activityRegistry, file.Recipe, inputs)
 	}
 
 	w.RegisterWorkflowWithOptions(
 		fn,
 		workflow.RegisterOptions{
-			Name: recipe.ID + "-workflow",
+			Name: file.ID + "-workflow",
 		},
 	)
 
 	// Start the worker
 	err := w.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start worker for recipe %q: %w", recipe.ID, err)
+		return fmt.Errorf("failed to start worker for file %q: %w", file.ID, err)
 	}
 
-	m.workers[recipe.ID] = w
-	m.logger.Info("Started worker for recipe",
-		zap.String("recipe", recipe.ID),
+	m.workers[file.ID] = w
+	m.logger.Info("Started worker for file",
+		zap.String("file", file.ID),
 		zap.String("taskQueue", taskQueue))
 
 	return nil
@@ -106,7 +104,7 @@ func (m *WorkerManager) StopWorker(recipeName string) error {
 }
 
 // RestartWorker restarts a worker for a recipe
-func (m *WorkerManager) RestartWorker(recipeName string, recipe *recipe.Recipe) error {
+func (m *WorkerManager) RestartWorker(recipeName string, recipe *recipe.RecipeFile) error {
 	// Stop existing worker if it exists
 	_ = m.StopWorker(recipeName)
 
@@ -144,9 +142,4 @@ func (m *WorkerManager) GetWorkerStatus(recipeName string) recipe.WorkerStatus {
 // GetTaskQueueForRecipe returns the task queue name for a recipe
 func (m *WorkerManager) GetTaskQueueForRecipe(recipeName string) string {
 	return fmt.Sprintf("%s-%s", m.taskQueue, recipeName)
-}
-
-// GetActivityTypeRegistry returns the activity type registry for testing
-func (m *WorkerManager) GetActivityTypeRegistry() *recipe.ActivityTypeRegistry {
-	return m.activityTypeRegistry
 }

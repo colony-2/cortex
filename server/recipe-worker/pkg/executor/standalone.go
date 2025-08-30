@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/testsuite"
@@ -49,7 +49,7 @@ func DefaultExecutionOptions() ExecutionOptions {
 // Execute runs a recipe with the given inputs
 func (e *StandaloneExecutor) Execute(
 	ctx context.Context,
-	recipe *yamlpkg.RecipeDefinition,
+	r recipe.Recipe,
 	inputs map[string]interface{},
 	opts ...ExecutionOptions,
 ) (map[string]interface{}, error) {
@@ -89,14 +89,14 @@ func (e *StandaloneExecutor) Execute(
 
 	e.registry.EnableActivitiesInWorker(testEnv)
 	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, e.registry, &recipe.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, e.registry, r, inputs)
 	}
 
 	// Register workflow
 	testEnv.RegisterWorkflowWithOptions(
 		fn,
 		workflow.RegisterOptions{
-			Name: recipe.ID,
+			Name: r.GetMetdata().ID,
 		},
 	)
 
@@ -104,7 +104,7 @@ func (e *StandaloneExecutor) Execute(
 	testEnv.SetContextPropagators(options.ContextPropagators)
 
 	// Execute workflow
-	testEnv.ExecuteWorkflow(recipe.ID, inputs)
+	testEnv.ExecuteWorkflow(r.GetMetdata().ID, inputs)
 
 	// Check for errors
 	if err := testEnv.GetWorkflowError(); err != nil {

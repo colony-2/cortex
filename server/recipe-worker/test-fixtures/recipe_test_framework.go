@@ -7,11 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -34,8 +32,8 @@ type TestCases struct {
 func RunTestOnAllRecipes(path string, t *testing.T) {
 	// Create standalone executor once for all tests
 	logger := zaptest.NewLogger(t)
-	a := ops.NewActivityRegistry()
-	require.NoError(t, a.RegisterAll(sleepop.GetOp(), commandop.GetOp()))
+	a, err := ops.NewActivityRegistry()
+	require.NoError(t, err)
 	exec, err := executor.NewStandaloneExecutor(a, logger)
 	require.NoError(t, err, "Failed to create standalone executor")
 
@@ -69,7 +67,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				return
 			}
 
-			var recipeDef yamlpkg.RecipeDefinition
+			var recipeDef recipe.Recipe
 			err = yaml.Unmarshal(recipeData, &recipeDef)
 			require.NoError(t, err, "Failed to parse recipe file: %s", recipePath)
 
@@ -80,7 +78,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 					// Execute recipe using standalone executor
 					result, err := exec.Execute(
 						context.Background(),
-						&recipeDef,
+						recipeDef,
 						tc.Inputs,
 						executor.ExecutionOptions{
 							SuppressLogs: true, // Keep tests clean

@@ -8,7 +8,9 @@ import (
 
 type RecipeImpl interface {
 	isRecipe()
+	GetMetadata() RecipeMetadata
 }
+
 type Recipe struct {
 	RecipeImpl
 }
@@ -69,21 +71,33 @@ type RecipeSequence struct {
 	SequenceData   `yaml:",inline" refer:"true"`
 }
 
-func (r RecipeSequence) isRecipe() {}
+func (r *RecipeSequence) GetMetadata() RecipeMetadata {
+	return r.RecipeMetadata
+}
+
+func (r *RecipeSequence) isRecipe() {}
 
 type RecipeState struct {
 	RecipeMetadata `yaml:",inline" refer:"true"`
 	StateData      `yaml:",inline" refer:"true"`
 }
 
-func (r RecipeState) isRecipe() {}
+func (r *RecipeState) GetMetadata() RecipeMetadata {
+	return r.RecipeMetadata
+}
+
+func (r *RecipeState) isRecipe() {}
 
 type RecipeOp struct {
 	RecipeMetadata `yaml:",inline" refer:"true"`
 	OpData         `yaml:",inline" refer:"true"`
 }
 
-func (r RecipeOp) isRecipe() {}
+func (r *RecipeOp) GetMetadata() RecipeMetadata {
+	return r.RecipeMetadata
+}
+
+func (r *RecipeOp) isRecipe() {}
 
 // InputSchema defines the schema for an input parameter
 type InputSchema struct {

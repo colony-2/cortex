@@ -5,35 +5,53 @@ import (
 	"fmt"
 	"time"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
+func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
+	switch t := r.RecipeImpl.(type) {
+	case *recipe.RecipeState:
+		outputs, err := executeStateMachine(ctx, activityRegistry, t.States, inputs)
+		return processNodeOutputs(outputs, t.Outputs, err)
+	case *recipe.RecipeOp:
+		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.Op, t.Inputs, inputs)
+
+	case *recipe.RecipeSequence:
+		outputs, err := executeSequence(ctx, activityRegistry, t.NodeMetadata, t.Sequence, inputs)
+		return processNodeOutputs(outputs, t.Outputs, err)
+	default:
+		return nil, fmt.Errorf("unsupported recipe type: %T", t)
+	}
+}
+
 // ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes
-func ExecuteNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
-	// Handle new unified format - check which node type is defined
+func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n *recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
+	switch t := n.NodeImpl.(type) {
+	case *recipe.NodeState:
+		return executeStateMachine(ctx, activityRegistry, t.States, inputs)
 
-	if node.Op != "" {
-		// Single operation node
-		return executeOp(ctx, activityRegistry, node, node.Inputs, inputs)
-	} else if len(node.Sequence) > 0 {
-		// Sequential execution
+	case *recipe.NodeOp:
+		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.Op, t.Inputs, inputs)
 
-		return executeSequence(ctx, activityRegistry, node, inputs)
-	} else if len(node.Parallel) > 0 {
-		// Parallel execution
-		return executeParallelNodes(ctx, activityRegistry, node, inputs)
-	} else if node.States != nil {
-		return executeStateMachine(ctx, activityRegistry, node, inputs)
+	case *recipe.NodeSequence:
+		return executeSequence(ctx, activityRegistry, t.NodeMetadata, t.Sequence, inputs)
+
+	default:
+		return nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
 
-	return nil, fmt.Errorf("node must define one of: op, sequence, parallel, or states")
 }
 
 // processNodeOutputs processes outputs from node execution
-func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[string]interface{}) (map[string]interface{}, error) {
+func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[string]interface{}, err error) (map[string]interface{}, error) {
+
+	if err != nil {
+		return outputs, err
+	}
+
 	if outputTemplates == nil {
 		return outputs, nil
 	}
@@ -56,7 +74,7 @@ type StepResult struct {
 }
 
 // executeOperation executes a single operation node
-func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *yamlpkg.Node, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
+func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
 	// Create workflow state for template resolution
 	state := &WorkflowState{
 		Inputs:  workflowInputs,
@@ -83,28 +101,28 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, nod
 		inputs[k] = v
 	}
 
-	opImpl, exists := activityRegistry.Get(node.Op)
+	opImpl, exists := activityRegistry.Get(op)
 	if !exists {
-		return nil, fmt.Errorf("op type %q not found", node.Op)
+		return nil, fmt.Errorf("op type %q not found", op)
 	}
 
 	if !opImpl.Activity.ExecuteAsActivity() {
-		return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(node.Retry), time.Duration(node.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
+		return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), time.Duration(metadata.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
 			return opImpl.Activity.ExecuteInline(ctx, inputs)
 		})
 	}
 
 	// Configure activity options
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Duration(node.Timeout), // Default timeout
-		RetryPolicy:         ToTemporalRetryPolicy(node.Retry),
+		StartToCloseTimeout: time.Duration(metadata.Timeout), // Default timeout
+		RetryPolicy:         ToTemporalRetryPolicy(metadata.Retry),
 	}
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
 	// Execute the operation
 	var outputs map[string]interface{}
 
-	err := workflow.ExecuteActivity(ctx, node.Op, inputs).Get(ctx, &outputs)
+	err := workflow.ExecuteActivity(ctx, op, inputs).Get(ctx, &outputs)
 	if err != nil {
 		return nil, err
 	}
@@ -112,17 +130,17 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, nod
 	return outputs, nil
 }
 
-func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, outerNode *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
+func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
 	outputs := make(map[string]interface{})
-	for i, node := range outerNode.Sequence {
-		nodeOutputs, err := ExecuteNode(ctx, activityRegistry, &node, inputs)
+	for i, node := range sequence {
+		nodeOutputs, err := executeNode(ctx, activityRegistry, &node, inputs)
 		if err != nil {
 			return nil, fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
 
 		// Store outputs with node ID if specified
-		if node.ID != "" {
-			outputs[node.ID] = nodeOutputs
+		if metadata.ID != "" {
+			outputs[metadata.ID] = nodeOutputs
 		}
 
 		// Pass outputs as inputs to next node
@@ -135,9 +153,9 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 }
 
 // executeSequenceNodes executes nodes in sequence
-func executeSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *yamlpkg.Node, nodeInputs map[string]interface{}) (map[string]interface{}, error) {
-	return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(node.Retry), time.Duration(node.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
-		return innerSequence(inner, activityRegistry, node, nodeInputs)
+func executeSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, nodeInputs map[string]interface{}) (map[string]interface{}, error) {
+	return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), time.Duration(metadata.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
+		return innerSequence(inner, activityRegistry, metadata, sequence, nodeInputs)
 	})
 
 }
@@ -205,9 +223,4 @@ func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolic
 		"MAX_RETRIES_EXCEEDED",
 		lastErr,
 	)
-}
-
-// executeParallelNodes executes nodes in parallel
-func executeParallelNodes(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
-	return nil, fmt.Errorf("parallel nodes not yet supported")
 }

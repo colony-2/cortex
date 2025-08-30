@@ -19,7 +19,7 @@ import (
 type Registry struct {
 	logger        *zap.Logger
 	recipesDir    string
-	recipes       map[string]*recipe.Recipe // key is recipe name
+	recipes       map[string]*recipe.RecipeFile // key is recipe name
 	mu            sync.RWMutex
 	watcher       *fsnotify.Watcher
 	ctx           context.Context
@@ -50,7 +50,7 @@ func NewRegistry(logger *zap.Logger, recipesDir string, workerManager WorkerMana
 	r := &Registry{
 		logger:        logger,
 		recipesDir:    absDir,
-		recipes:       make(map[string]*recipe.Recipe),
+		recipes:       make(map[string]*recipe.RecipeFile),
 		watcher:       watcher,
 		ctx:           ctx,
 		cancel:        cancel,
@@ -90,7 +90,7 @@ func (r *Registry) Stop() error {
 }
 
 // GetRecipe returns a recipe by name
-func (r *Registry) GetRecipe(name string) (*recipe.Recipe, error) {
+func (r *Registry) GetRecipe(name string) (*recipe.RecipeFile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -103,28 +103,28 @@ func (r *Registry) GetRecipe(name string) (*recipe.Recipe, error) {
 }
 
 // ListRecipes returns all discovered recipes
-func (r *Registry) ListRecipes(filter *recipe.RecipeFilter) ([]*recipe.Recipe, error) {
+func (r *Registry) ListRecipes(filter *recipe.RecipeFilter) ([]*recipe.RecipeFile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var recipes []*recipe.Recipe
-	for _, recipe := range r.recipes {
+	var files []*recipe.RecipeFile
+	for _, file := range r.recipes {
 		// Apply filters
 		if filter != nil && filter.Status != nil {
-			if recipe.WorkerStatus != *filter.Status {
+			if file.WorkerStatus != *filter.Status {
 				continue
 			}
 		}
 
-		recipes = append(recipes, recipe)
+		files = append(files, file)
 	}
 
-	return recipes, nil
+	return files, nil
 }
 
 // discoverRecipes scans the recipes directory for recipe definitions
 func (r *Registry) discoverRecipes() error {
-	discovered := make(map[string]*recipe.Recipe)
+	discovered := make(map[string]*recipe.RecipeFile)
 
 	err := filepath.WalkDir(r.recipesDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -146,7 +146,7 @@ func (r *Registry) discoverRecipes() error {
 
 		// Check for unified recipe files (*.yaml files)
 		if !d.IsDir() && strings.HasSuffix(d.Name(), ".yaml") {
-			recipe, err := r.loadUnifiedRecipe(path)
+			recipe, err := r.loadRecipeFile(path)
 			if err != nil {
 				r.logger.Error("Failed to load unified recipe",
 					zap.String("path", path),
@@ -174,7 +174,8 @@ func (r *Registry) discoverRecipes() error {
 		if _, exists := discovered[name]; !exists {
 			r.logger.Info("Recipe removed", zap.String("name", name))
 			if r.workerManager != nil {
-				r.workerManager.StopWorker(name)
+				_ = r.workerManager.StopWorker(name)
+				// TODO: Handle worker stop errors
 			}
 			oldRecipe.WorkerStatus = recipe.WorkerStatusStopped
 			delete(r.recipes, name) // Remove from registry
@@ -213,18 +214,35 @@ func (r *Registry) discoverRecipes() error {
 	return nil
 }
 
-// loadUnifiedRecipe loads a recipe from a single unified YAML file
-func (r *Registry) loadUnifiedRecipe(path string) (*recipe.Recipe, error) {
-	// Use recipe parser to parse unified format
-	parser := recipe.NewParser(r.logger)
-	recipeData, err := parser.ParseRecipe(path)
+// loadRecipeFile loads a recipe from a single unified YAML file
+func (reg *Registry) loadRecipeFile(path string) (*recipe.RecipeFile, error) {
+
+	f, err := os.Open(path)
 	if err != nil {
-		// Not a valid recipe file, skip
-		return nil, nil
+		return nil, err
+	}
+	defer f.Close()
+	rec, err := recipe.LoadRecipeFromReader(f)
+	if err != nil {
+		return nil, err
 	}
 
+	out := &recipe.RecipeFile{
+		ID:          rec.GetMetdata().ID,
+		Version:     rec.GetMetdata().Version,
+		Description: rec.GetMetdata().Desc,
+		BasePath:    filepath.Dir(path),
+	}
+
+	resolver := recipe.NewSharedNodeResolver(rec.GetMetdata().Defs)
+	newRec, err := resolver.VisitRecipe(rec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
+	}
+
+	out.Recipe = newRec
 	// Recipe parser already sets all metadata including hash
-	return recipeData, nil
+	return out, nil
 }
 
 // watchForChanges monitors the recipes directory for changes
@@ -275,7 +293,7 @@ func (r *Registry) watchForChanges() {
 }
 
 // startWorkerAsync starts a worker for a recipe asynchronously
-func (r *Registry) startWorkerAsync(rec *recipe.Recipe) {
+func (r *Registry) startWorkerAsync(rec *recipe.RecipeFile) {
 	if err := r.workerManager.StartWorker(rec); err != nil {
 		r.logger.Error("Failed to start worker",
 			zap.String("recipe", rec.ID),

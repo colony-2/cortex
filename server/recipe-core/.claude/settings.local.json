@@ -6,7 +6,8 @@
       "Bash(oapi-codegen:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(curl:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

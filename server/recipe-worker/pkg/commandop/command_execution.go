@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags
@@ -43,15 +43,15 @@ type CommandExecutionOutput struct {
 }
 
 // Deprecated: CommandExecutionActivity is now a RegisterableOp
-func newCommandExecutionActivity() types.RegisterableOp {
+func newCommandExecutionActivity() ops.RegisterableOp {
 	// Create a new command execution activity that implements RegisterableOp
 	return GetOp()
 }
 
 // NewCommandExecutionActivity creates a new command execution activity that implements RegisterableOp
-func GetOp() types.RegisterableOp {
-	return types.NewActivityMappedOp(
-		types.OpMetadata{
+func GetOp() ops.RegisterableOp {
+	return ops.NewActivityMappedOp(
+		ops.OpMetadata{
 			Type:           "command_execution",
 			Name:           "Command Execution",
 			Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",

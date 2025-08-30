@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"go.uber.org/zap/zaptest"
 )
 
 func TestParserDebug(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create a simple test recipe file with unified format
 	recipeContent := `
 id: test-recipe
@@ -49,7 +49,7 @@ sequence:
 	logger := zaptest.NewLogger(t)
 	parser := recipe.NewParser(logger)
 	recipeData, err := parser.ParseRecipe(recipePath)
-	
+
 	if err != nil {
 		t.Logf("Parse error: %v", err)
 	} else {
@@ -68,15 +68,15 @@ sequence:
 		}
 		t.Logf("Shared activities: %d", len(recipeData.Recipe.Defs))
 	}
-	
+
 	// Also test the registry's loadUnifiedRecipe
 	registry := &Registry{
 		recipesDir:   tempDir,
 		recipes:      make(map[string]*recipe.Recipe),
 		hashComputer: recipe.NewHashComputer(),
 	}
-	
-	loadedRecipe, err := registry.loadUnifiedRecipe(recipePath)
+
+	loadedRecipe, err := registry.loadRecipeFile(recipePath)
 	if err != nil {
 		t.Logf("Registry load error: %v", err)
 	} else if loadedRecipe == nil {
@@ -84,7 +84,7 @@ sequence:
 	} else {
 		t.Logf("Registry loaded recipe: %s", loadedRecipe.ID)
 	}
-	
+
 	assert.NotNil(t, recipeData)
 	assert.NoError(t, err)
 }

@@ -1,76 +1,108 @@
 # Git Workflow Integration Specification
 
 ## Overview
-This specification describes the automatic injection of git Temporal activities into the compiled workflow during the recipe-to-temporal workflow compilation process. The goal is to ensure every recipe-driven workflow automatically maintains git state through persist and restore activities, enabling reliable workflow restarts and providing a complete audit trail of changes.
+This specification describes the automatic decoration of Temporal activities with git state management during the recipe-to-temporal workflow compilation process. The goal is to ensure every recipe-driven workflow automatically maintains git state through activity decoration, enabling reliable workflow restarts and providing a complete audit trail of changes.
 
 ## Key Principles
-- **Temporal Activity Injection**: Git operations are injected as Temporal activities during compilation, not as recipe ops
-- **Universal Wrapping**: EVERY operation gets wrapped with git activities, no exceptions
-- **Transparent Integration**: The recipe structure remains unchanged; injection happens at the compiler level
-- **Complete State Tracking**: Even manual git operations get wrapped, providing state tracking at every step
-- **Maximum Simplicity**: No special cases or skip logic - everything gets the same treatment
+- **Activity Decoration Pattern**: Each activity is decorated to handle git restore/persist internally, not as separate activities
+- **Commit Chain Passing**: Activities pass the current git commit hash as part of their output to the next activity
+- **No Direct Git Operations**: Persist/restore operations are internal only - not exposed as recipe ops
+- **Transparent Integration**: The recipe structure remains unchanged; decoration happens at the compiler level
+- **Simplified State Flow**: Git state flows through activity outputs rather than workflow state management
 
 ## Current State
 - **Recipe Worker**: Located in `server/recipe-worker`, compiles recipes to Temporal workflows
-- **Git Operations**: Located in `server/git`, provides Temporal activities:
-  - `GitShallowClone`: Initial repository setup activity
-  - `PersistCommit`: Commits changes and creates thin packs activity
-  - `RestoreCommit`: Restores repository to specific commit state activity
+- **Git Operations**: Located in `server/git`, provides internal git functionality:
+  - `GitShallowClone`: Initial repository setup (remains as standalone activity)
+  - `PersistCommit`: Internal function for committing changes (NOT exposed as recipe op)
+  - `RestoreCommit`: Internal function for restoring state (NOT exposed as recipe op)
 
-Currently, these operations can be manually inserted into recipes as ops. This specification proposes automatic Temporal activity injection during workflow compilation, which works orthogonally to any manual git ops in the recipe.
+This specification proposes that persist/restore operations become internal-only functions used by the activity decorator, never directly accessible from recipes.
 
 ## Proposed Architecture
 
-### 1. Temporal Activity Injection Points
+### 1. Activity Decorator Pattern
 
-The compiler will inject Temporal activities at these points during workflow compilation:
+Instead of injecting separate git activities, each recipe operation activity is decorated with git functionality:
 
-#### 1.1 Workflow Start: Git Initialize Activity
+#### 1.1 Decorated Activity Structure
 ```go
-// Injected as first Temporal activity in compiled workflow
-gitInitActivity := workflow.ExecuteActivity(ctx, gitshallow.GitShallowClone, 
+// Each activity receives the previous commit hash and outputs the new one
+type DecoratedActivityInput struct {
+    // Git state
+    PreviousCommit string                  // Commit hash from previous activity
+    GitConfig      GitOperationConfig      // Git configuration
+    
+    // Original activity input
+    OriginalInput  map[string]interface{}  // The actual recipe operation input
+}
+
+type DecoratedActivityOutput struct {
+    // Git state
+    CurrentCommit  string                  // Commit hash after this activity
+    
+    // Original activity output  
+    OriginalOutput map[string]interface{}  // The actual recipe operation output
+}
+```
+
+#### 1.2 Activity Decorator Implementation
+```go
+// Decorator wraps each activity with git restore/persist
+func DecorateActivityWithGit(originalActivity interface{}, gitConfig GitOperationConfig) func(ctx context.Context, input DecoratedActivityInput) (DecoratedActivityOutput, error) {
+    return func(ctx context.Context, input DecoratedActivityInput) (DecoratedActivityOutput, error) {
+        // 1. Restore to previous commit (internal operation)
+        if input.PreviousCommit != "" {
+            err := restoreCommitInternal(gitConfig.WorkingDir, input.PreviousCommit, gitConfig)
+            if err != nil {
+                return DecoratedActivityOutput{}, fmt.Errorf("failed to restore: %w", err)
+            }
+        }
+        
+        // 2. Execute the original activity
+        result, err := executeOriginalActivity(ctx, originalActivity, input.OriginalInput)
+        if err != nil {
+            return DecoratedActivityOutput{}, err
+        }
+        
+        // 3. Persist current state (internal operation)
+        commitHash, err := persistCommitInternal(gitConfig.WorkingDir, gitConfig)
+        if err != nil {
+            return DecoratedActivityOutput{}, fmt.Errorf("failed to persist: %w", err)
+        }
+        
+        return DecoratedActivityOutput{
+            CurrentCommit:  commitHash,
+            OriginalOutput: result,
+        }, nil
+    }
+}
+```
+
+#### 1.3 Workflow Start: Git Initialize Activity
+```go
+// Git initialization remains as a standalone activity
+initOutput, err := workflow.ExecuteActivity(ctx, gitshallow.GitShallowClone,
     gitshallow.GitShallowCloneInput{
         SourceDir:  workflowInputs["__source_repo"].(string),
         TargetDir:  workflowInputs["__working_dir"].(string),
         CommitHash: workflowInputs["__base_commit"].(string),
-    })
+    }).Get(ctx, &initOutput)
+
+initialCommit := initOutput.CommitHash
 ```
 
-#### 1.2 Pre-Operation: Git Restore Activity
+#### 1.4 Workflow End: Git Merge Activity  
 ```go
-// Injected before each recipe operation's Temporal activity
-restoreActivity := workflow.ExecuteActivity(ctx, gitcommit.RestoreCommit,
-    gitcommit.RestoreCommitActivity{
-        RepoPath:        gitConfig.WorkingDir,
-        TargetCommit:    lastCommitHash, // From workflow state
-        RootHash:        gitConfig.BaseCommit,
-        StorageLocation: gitConfig.PackStorage,
-    })
-```
-
-#### 1.3 Post-Operation: Git Persist Activity
-```go
-// Injected after each recipe operation's Temporal activity
-persistActivity := workflow.ExecuteActivity(ctx, gitcommit.PersistCommit,
-    gitcommit.PersistCommitActivity{
-        RepoPath:        gitConfig.WorkingDir,
-        RootHash:        gitConfig.BaseCommit,
-        StorageLocation: gitConfig.PackStorage,
-        CommitMessage:   fmt.Sprintf("After %s", operationName),
-        Author:          gitConfig.GitAuthor,
-    })
-```
-
-#### 1.4 Workflow End: Git Merge Activity
-```go
-// Injected as last Temporal activity in compiled workflow
-mergeActivity := workflow.ExecuteActivity(ctx, gitmerge.MergeChanges,
+// Git merge remains as a standalone activity
+mergeOutput, err := workflow.ExecuteActivity(ctx, gitmerge.MergeChanges,
     gitmerge.MergeChangesInput{
-        WorkingDir:  gitConfig.WorkingDir,
-        TargetRepo:  gitConfig.SourceRepo,
-        BranchName:  gitConfig.MergeBranch,
-        PushRemote:  gitConfig.PushRemote,
-    })
+        WorkingDir:   gitConfig.WorkingDir,
+        FinalCommit:  lastCommit,
+        TargetRepo:   gitConfig.SourceRepo,
+        BranchName:   gitConfig.MergeBranch,
+        PushRemote:   gitConfig.PushRemote,
+    }).Get(ctx, &mergeOutput)
 ```
 
 ### 2. Compiler Modifications
@@ -87,6 +119,14 @@ type GitWorkflowConfig struct {
     GitAuthor           string             // Optional: Git author for commits
     MergeBranch         string             // Optional: Target branch for merge
     PushRemote          string             // Optional: Remote to push changes
+}
+
+type GitOperationConfig struct {
+    WorkingDir      string
+    BaseCommit      string
+    PackStorage     string
+    GitAuthor       string
+    CommitMessage   string
 }
 ```
 
@@ -109,95 +149,41 @@ func NewCompiler(registry *ActivityRegistry, gitConfig *GitWorkflowConfig) *Comp
 }
 ```
 
-#### 2.3 Activity Injection Logic
+#### 2.3 Activity Decoration Logic
 ```go
-// pkg/compiler/git_injection.go
+// pkg/compiler/git_decoration.go
 
-// Modified executeOperation to inject git activities around EVERY operation
+// Modified executeOperation to use decorated activities
 func (c *Compiler) executeOperation(
     ctx workflow.Context, 
     op string, 
     nodeInputs map[string]interface{}, 
     workflowInputs map[string]interface{},
-) (map[string]interface{}, error) {
+    previousCommit string, // Passed from previous activity or init
+) (map[string]interface{}, string, error) { // Returns output AND commit hash
     
     // If git integration is disabled, execute the recipe op normally
     if !c.gitConfig.EnableGitIntegration {
-        return c.executeRecipeOperation(ctx, op, nodeInputs, workflowInputs)
+        result, err := c.executeRecipeOperation(ctx, op, nodeInputs, workflowInputs)
+        return result, "", err // No commit hash when git disabled
     }
     
-    // 1. Execute Git Restore Activity (before the operation)
-    if !c.isFirstOperation(ctx) {
-        restoreInput := gitcommit.RestoreCommitActivity{
-            RepoPath:        c.gitConfig.WorkingDir,
-            TargetCommit:    c.getLastCommitHash(ctx),
-            RootHash:        c.gitConfig.BaseCommit,
-            StorageLocation: c.gitConfig.PackStorage,
-            Force:           true, // Force restore to ensure clean state
-        }
-        
-        var restoreOutput gitcommit.RestoreCommitOutput
-        restoreActivity := workflow.ExecuteActivity(ctx, gitcommit.RestoreCommit, restoreInput)
-        if err := restoreActivity.Get(ctx, &restoreOutput); err != nil {
-            // Log warning but continue - might be first operation
-            workflow.GetLogger(ctx).Warn("Git restore failed", "error", err)
-        }
+    // Create decorated input
+    decoratedInput := DecoratedActivityInput{
+        PreviousCommit: previousCommit,
+        GitConfig: GitOperationConfig{
+            WorkingDir:    c.gitConfig.WorkingDir,
+            BaseCommit:    c.gitConfig.BaseCommit,
+            PackStorage:   c.gitConfig.PackStorage,
+            GitAuthor:     c.gitConfig.GitAuthor,
+            CommitMessage: fmt.Sprintf("After operation: %s", op),
+        },
+        OriginalInput: nodeInputs,
     }
     
-    // 2. Execute the actual recipe operation (as Temporal activity)
-    result, err := c.executeRecipeOperation(ctx, op, nodeInputs, workflowInputs)
-    if err != nil {
-        return nil, err
-    }
-    
-    // 3. Execute Git Persist Activity (after the operation)
-    persistInput := gitcommit.PersistCommitActivity{
-        RepoPath:        c.gitConfig.WorkingDir,
-        RootHash:        c.gitConfig.BaseCommit,
-        StorageLocation: c.gitConfig.PackStorage,
-        CommitMessage:   fmt.Sprintf("After operation: %s", op),
-        Author:          c.gitConfig.GitAuthor,
-    }
-    
-    var persistOutput gitcommit.PersistCommitOutput
-    persistActivity := workflow.ExecuteActivity(ctx, gitcommit.PersistCommit, persistInput)
-    if err := persistActivity.Get(ctx, &persistOutput); err != nil {
-        return nil, fmt.Errorf("git persist failed after %s: %w", op, err)
-    }
-    
-    // Store commit hash in workflow state for next operation
-    c.setLastCommitHash(ctx, persistOutput.CommitHash)
-    
-    return result, nil
-}
-
-// executeRecipeOperation executes the actual recipe operation as a Temporal activity
-func (c *Compiler) executeRecipeOperation(
-    ctx workflow.Context,
-    op string,
-    nodeInputs map[string]interface{},
-    workflowInputs map[string]interface{},
-) (map[string]interface{}, error) {
-    // This is the existing executeOperation logic
-    // It compiles the recipe op into a Temporal activity
-    
-    state := &WorkflowState{
-        Inputs:  workflowInputs,
-        Steps:   make(map[string]StepResult),
-        Outputs: make(map[string]interface{}),
-    }
-    
-    resolver := NewTemplateResolver(state)
-    resolvedNodeInputs := make(map[string]interface{})
-    for k, v := range nodeInputs {
-        resolved, err := resolver.ResolveValue(v)
-        if err != nil {
-            return nil, fmt.Errorf("failed to resolve template in input %s: %w", k, err)
-        }
-        resolvedNodeInputs[k] = resolved
-    }
-    
-    // Execute as Temporal activity
+    // Execute the decorated activity
+    var decoratedOutput DecoratedActivityOutput
+    decoratedActivity := c.getDecoratedActivity(op)
     activityOptions := workflow.ActivityOptions{
         StartToCloseTimeout: 5 * time.Minute,
         RetryPolicy: &temporal.RetryPolicy{
@@ -209,20 +195,57 @@ func (c *Compiler) executeRecipeOperation(
     }
     ctx = workflow.WithActivityOptions(ctx, activityOptions)
     
-    var result map[string]interface{}
-    future := workflow.ExecuteActivity(ctx, op, resolvedNodeInputs)
-    if err := future.Get(ctx, &result); err != nil {
-        return nil, fmt.Errorf("activity %s failed: %w", op, err)
+    future := workflow.ExecuteActivity(ctx, decoratedActivity, decoratedInput)
+    if err := future.Get(ctx, &decoratedOutput); err != nil {
+        return nil, previousCommit, fmt.Errorf("decorated activity %s failed: %w", op, err)
     }
     
-    return result, nil
+    return decoratedOutput.OriginalOutput, decoratedOutput.CurrentCommit, nil
+}
+
+// getDecoratedActivity returns a decorated version of the recipe operation
+func (c *Compiler) getDecoratedActivity(op string) interface{} {
+    originalActivity := c.activityRegistry.GetActivity(op)
+    if originalActivity == nil {
+        return nil
+    }
+    
+    // Return the decorated version that includes git operations
+    return DecorateActivityWithGit(originalActivity, c.gitConfig)
+}
+
+// Internal git operations (not exposed as recipe ops)
+func restoreCommitInternal(workingDir string, targetCommit string, config GitOperationConfig) error {
+    // Implementation of git restore - internal only
+    // This is NOT available as a recipe operation
+    return gitcommit.RestoreCommitInternal(gitcommit.RestoreCommitParams{
+        RepoPath:        workingDir,
+        TargetCommit:    targetCommit,
+        RootHash:        config.BaseCommit,
+        StorageLocation: config.PackStorage,
+        Force:           true,
+    })
+}
+
+func persistCommitInternal(workingDir string, config GitOperationConfig) (string, error) {
+    // Implementation of git persist - internal only
+    // This is NOT available as a recipe operation
+    return gitcommit.PersistCommitInternal(gitcommit.PersistCommitParams{
+        RepoPath:        workingDir,
+        RootHash:        config.BaseCommit,
+        StorageLocation: config.PackStorage,
+        CommitMessage:   config.CommitMessage,
+        Author:          config.GitAuthor,
+    })
 }
 
 
-// Inject git activities at workflow start and end
+// Execute workflow with commit chain passing
 func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefinition, inputs map[string]interface{}) (map[string]interface{}, error) {
     
-    // 1. Inject Git Initialize Activity at workflow start
+    var currentCommit string
+    
+    // 1. Git Initialize Activity at workflow start (if enabled)
     if c.gitConfig.EnableGitIntegration {
         initInput := gitshallow.GitShallowCloneInput{
             SourceDir:  c.gitConfig.SourceRepo,
@@ -236,23 +259,23 @@ func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefi
             return nil, fmt.Errorf("git initialization failed: %w", err)
         }
         
-        // Set initial commit hash
-        c.setLastCommitHash(ctx, c.gitConfig.BaseCommit)
+        currentCommit = initOutput.CommitHash
     }
     
-    // 2. Execute the recipe workflow (with git activities injected around each op)
+    // 2. Execute the recipe workflow (with decorated activities passing commits)
     var result map[string]interface{}
+    var finalCommit string
     var err error
     
     if def.Op != "" {
-        result, err = c.executeOperation(ctx, def.Op, def.Inputs, inputs)
+        result, finalCommit, err = c.executeOperation(ctx, def.Op, def.Inputs, inputs, currentCommit)
     } else if len(def.Sequence) > 0 {
-        result, err = c.executeSequenceNodes(ctx, def.Sequence, inputs)
+        result, finalCommit, err = c.executeSequenceNodes(ctx, def.Sequence, inputs, currentCommit)
     } else if len(def.Parallel) > 0 {
-        result, err = c.executeParallelNodes(ctx, def.Parallel, inputs)
+        result, finalCommit, err = c.executeParallelNodes(ctx, def.Parallel, inputs, currentCommit)
     } else if def.States != nil {
         if c.stateMachineCompiler != nil {
-            result, err = c.stateMachineCompiler.ExecuteStateMap(ctx, def.States, inputs)
+            result, finalCommit, err = c.executeStateMap(ctx, def.States, inputs, currentCommit)
         } else {
             return nil, fmt.Errorf("state machine compiler not initialized")
         }
@@ -264,13 +287,14 @@ func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefi
         return nil, err
     }
     
-    // 3. Inject Git Merge Activity at workflow end
+    // 3. Git Merge Activity at workflow end (if enabled)
     if c.gitConfig.EnableGitIntegration && c.gitConfig.MergeBranch != "" {
         mergeInput := gitmerge.MergeChangesInput{
-            WorkingDir:  c.gitConfig.WorkingDir,
-            TargetRepo:  c.gitConfig.SourceRepo,
-            BranchName:  c.gitConfig.MergeBranch,
-            PushRemote:  c.gitConfig.PushRemote,
+            WorkingDir:   c.gitConfig.WorkingDir,
+            FinalCommit:  finalCommit,
+            TargetRepo:   c.gitConfig.SourceRepo,
+            BranchName:   c.gitConfig.MergeBranch,
+            PushRemote:   c.gitConfig.PushRemote,
         }
         
         var mergeOutput gitmerge.MergeChangesOutput
@@ -283,41 +307,62 @@ func (c *Compiler) ExecuteWorkflow(ctx workflow.Context, def *yamlpkg.RecipeDefi
     
     return result, nil
 }
+
+// Execute sequence with commit chain
+func (c *Compiler) executeSequenceNodes(ctx workflow.Context, nodes []yamlpkg.RecipeNode, inputs map[string]interface{}, currentCommit string) (map[string]interface{}, string, error) {
+    var result map[string]interface{}
+    var err error
+    
+    for _, node := range nodes {
+        result, currentCommit, err = c.executeNode(ctx, node, inputs, currentCommit)
+        if err != nil {
+            return nil, currentCommit, err
+        }
+    }
+    
+    return result, currentCommit, nil
+}
 ```
 
 ### 3. Workflow State Management
 
-#### 3.1 Git State Storage
+#### 3.1 Git State Through Activity Outputs
 ```go
-// Store git state in workflow context
-type GitWorkflowState struct {
-    LastCommitHash string
-    CommitHistory  []string
-    WorkingDir     string
-    Initialized    bool
-}
+// No explicit workflow state management needed!
+// Git state flows through activity outputs naturally
 
-// Use Temporal's workflow state management
-func (c *Compiler) getGitState(ctx workflow.Context) *GitWorkflowState {
-    var state GitWorkflowState
-    workflow.SideEffect(ctx, func(ctx workflow.Context) interface{} {
-        // Retrieve state from workflow execution
-        return state
-    })
-    return &state
-}
+// Each activity in the chain receives the previous commit
+// and outputs the new commit for the next activity
+// This eliminates the need for complex state management
+
+// Example flow:
+// Init -> commit1 -> Activity1(commit1) -> commit2 -> Activity2(commit2) -> commit3 -> ...
 ```
 
 ### 4. Activity Registration
 
-#### 4.1 Auto-Register Git Activities
+#### 4.1 Register Decorated Activities
 ```go
 // pkg/worker/register_activities.go
-func RegisterGitActivities(worker worker.Worker) {
+func RegisterActivities(worker worker.Worker, gitConfig *GitWorkflowConfig) {
+    // Only register git init and merge as standalone activities
     worker.RegisterActivity(gitshallow.GitShallowClone)
-    worker.RegisterActivity(gitcommit.PersistCommit)
-    worker.RegisterActivity(gitcommit.RestoreCommit)
-    worker.RegisterActivity(gitmerge.MergeChanges)  // New activity
+    worker.RegisterActivity(gitmerge.MergeChanges)
+    
+    // All recipe operations are registered as decorated activities
+    for name, activity := range activityRegistry.GetAll() {
+        if gitConfig.EnableGitIntegration {
+            // Register the decorated version
+            decorated := DecorateActivityWithGit(activity, gitConfig)
+            worker.RegisterActivity(decorated)
+        } else {
+            // Register the original version
+            worker.RegisterActivity(activity)
+        }
+    }
+    
+    // IMPORTANT: PersistCommit and RestoreCommit are NOT registered
+    // They are internal functions only, not Temporal activities
 }
 ```
 
@@ -338,48 +383,45 @@ input_schema:
   # Users can override these at execution time
 ```
 
-#### 5.2 Manual Git Ops Also Get Wrapped
-Manual git operations in recipes get wrapped just like any other operation:
+#### 5.2 No Manual Git Operations Allowed
 ```yaml
-name: recipe_with_manual_git
+name: recipe_with_operations
 version: "1.0"
 
 sequence:
-  - id: manual_clone
-    op: git_shallow_clone  # Gets wrapped with restore/persist
-    inputs:
-      source_dir: "/custom/repo"
-      target_dir: "/custom/target"
-      commit_hash: "abc123"
+  # Git operations are NOT available as recipe ops
+  # The following would be INVALID:
+  # - op: git_persist       # ERROR: Not a valid operation
+  # - op: git_restore       # ERROR: Not a valid operation
   
+  # Only regular operations are allowed:
   - id: do_work
-    op: command_execution  # Gets wrapped with restore/persist
+    op: command_execution  # Automatically decorated with git operations
     inputs:
       run: "make build"
   
-  - id: manual_persist  
-    op: git_persist  # Gets wrapped with restore/persist
+  - id: run_tests
+    op: command_execution  # Automatically decorated with git operations
     inputs:
-      repo_path: "/custom/target"
-      commit_message: "Manual checkpoint"
+      run: "make test"
 ```
 
-Every operation gets the same treatment - automatic git state tracking before and after, ensuring maximum consistency and simplicity.
+Git persist/restore are completely internal - users cannot reference them directly. Git state management happens transparently through the decorator pattern.
 
 ### 6. Error Handling and Recovery
 
 #### 6.1 Git Operation Failures
-- If restore fails: Log warning, continue with current state (might be first operation)
-- If persist fails: Retry with exponential backoff, fail workflow if max retries exceeded
+- If internal restore fails: Activity fails and retries according to retry policy
+- If internal persist fails: Activity fails and retries according to retry policy
 - If initial clone fails: Fail workflow immediately
 - If final merge fails: Store changes as thin packs, notify user for manual resolution
 
 #### 6.2 Workflow Restart Behavior
 When a workflow restarts:
-1. Skip the initial clone (working directory exists)
-2. Find the last successful commit from thin packs
-3. Restore to that commit
-4. Resume execution from the failed operation
+1. Temporal replays completed activities (including their commit outputs)
+2. The commit chain is reconstructed from activity outputs
+3. Resume execution from the failed activity with the correct commit
+4. No explicit state management needed - Temporal handles it
 
 ### 7. Implementation Phases
 
@@ -404,15 +446,16 @@ When a workflow restarts:
 ### 8. Testing Strategy
 
 #### 8.1 Unit Tests
-- Test git wrapper logic
-- Test skip operation detection
-- Test state management
+- Test activity decoration logic
+- Test commit chain passing
+- Test internal git operations (restore/persist)
+- Verify git_persist/git_restore are not exposed
 
 #### 8.2 Integration Tests
-- Test full workflow with git integration
-- Test workflow restart scenarios
-- Test parallel operation handling
-- Test error recovery
+- Test full workflow with decorated activities
+- Test workflow restart with commit chain reconstruction
+- Test parallel operation handling with commit synchronization
+- Test error recovery within decorated activities
 
 #### 8.3 Example Test Recipe
 ```yaml
@@ -424,12 +467,12 @@ git_config:
 
 sequence:
   - id: modify_file
-    op: command_execution
+    op: command_execution  # Decorated automatically
     inputs:
       run: "echo 'test' > test.txt"
   
   - id: check_file
-    op: command_execution
+    op: command_execution  # Receives commit from previous activity
     inputs:
       run: "cat test.txt"
 ```
@@ -451,16 +494,16 @@ sequence:
 ## Migration Guide
 
 ### For Existing Recipes
-1. All operations (including manual git ops) get wrapped with automatic git tracking
-2. Manual git operations still execute their intended function
-3. Add `git_config` section if you want to customize automatic injection behavior
-4. Ensure input schema includes git-related parameters for automatic injection
+1. Remove any manual git persist/restore operations - they are no longer valid
+2. Git state management happens automatically through decoration
+3. Add `git_config` section if you want to customize git behavior
+4. Git shallow clone remains available for custom repository setup
 
 ### For New Recipes
-1. Enable git integration in workflow configuration for automatic git tracking
-2. Every single operation gets wrapped with git activities
-3. No need to think about what gets wrapped - everything does
-4. Maximum simplicity and consistency across all workflows
+1. DO NOT use git_persist or git_restore operations - they don't exist
+2. Enable git integration in workflow configuration for automatic tracking
+3. Every operation is automatically decorated with git functionality
+4. Git state flows through activity outputs, not workflow state
 
 ## Security Considerations
 

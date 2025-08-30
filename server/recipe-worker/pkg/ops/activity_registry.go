@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
 )
 
 // ActivityRegistration holds the activity and its generated schemas
 type ActivityRegistration struct {
-	Activity     types.RegisterableOp // The generic activity interface
+	Activity     ops.RegisterableOp // The generic activity interface
 	InputSchema  *jsonschema.Schema
 	OutputSchema *jsonschema.Schema
-	Metadata     types.OpMetadata
+	Metadata     ops.OpMetadata
 }
 
 // ActivityRegistry manages all registered activities
@@ -31,22 +31,18 @@ type SchemaGenerator interface {
 }
 
 // NewActivityRegistry creates a new activity registry
-func NewActivityRegistry() *ActivityRegistry {
-	return &ActivityRegistry{
+func NewActivityRegistry() (*ActivityRegistry, error) {
+	a := &ActivityRegistry{
 		activities: make(map[string]ActivityRegistration),
 		generator:  NewDefaultSchemaGenerator(),
 	}
-}
-
-func (r *ActivityRegistry) RegisterAll(ops ...types.RegisterableOp) error {
-	// Register all provided operations
-	for _, op := range ops {
-		if err := r.Register(op); err != nil {
-			// Log error but continue - some activities might still work
-			return fmt.Errorf("failed to register activity %T: %w", op, err)
+	opsList := ops.List()
+	for _, op := range opsList {
+		if err := a.register(op); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+	return a, nil
 }
 
 type ActivityRegisterable interface {
@@ -65,7 +61,7 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
-func (r *ActivityRegistry) Register(activity types.RegisterableOp) error {
+func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
 	metadata := activity.GetMetadata()
 	registration := ActivityRegistration{
 		Activity: activity,
@@ -79,31 +75,27 @@ func (r *ActivityRegistry) Register(activity types.RegisterableOp) error {
 }
 
 // Register accepts any generic RegisterableOp from the activity module
-func Register[TInput any, TOutput any](r *ActivityRegistry, activity types.RegisterableOp) error {
+func Register(r *ActivityRegistry, activity ops.RegisterableOp) error {
 	metadata := activity.GetMetadata()
 
 	if _, exists := r.activities[metadata.Type]; exists {
 		return fmt.Errorf("activity type %s already registered", metadata.Type)
 	}
 
-	// Generate schemas from types using reflection on the generic type parameters
-	var input TInput
-	var output TOutput
-
 	// Validate all struct fields have json tags before generating schemas
-	if err := r.generator.ValidateStructTags(reflect.TypeOf(input)); err != nil {
+	if err := r.generator.ValidateStructTags(activity.GetInputType()); err != nil {
 		return fmt.Errorf("input type validation failed: %w", err)
 	}
-	if err := r.generator.ValidateStructTags(reflect.TypeOf(output)); err != nil {
+	if err := r.generator.ValidateStructTags(activity.GetOutputType()); err != nil {
 		return fmt.Errorf("output type validation failed: %w", err)
 	}
 
-	inputSchema, err := r.generator.GenerateSchema(reflect.TypeOf(input))
+	inputSchema, err := r.generator.GenerateSchema(activity.GetInputType())
 	if err != nil {
 		return fmt.Errorf("input schema generation failed: %w", err)
 	}
 
-	outputSchema, err := r.generator.GenerateSchema(reflect.TypeOf(output))
+	outputSchema, err := r.generator.GenerateSchema(activity.GetOutputType())
 	if err != nil {
 		return fmt.Errorf("output schema generation failed: %w", err)
 	}

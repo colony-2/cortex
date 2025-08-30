@@ -5,9 +5,8 @@ import (
 	"os"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/divisive-ai/vibethis/server/recipe-core/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/p2"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/validate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
 	"gopkg.in/yaml.v3"
@@ -15,15 +14,14 @@ import (
 
 func main() {
 	ops.Register(commandop.GetOp(), sleepop.GetOp())
-	p2.PrintSchema()
-
-	err := validate.Validate(recipe)
+	rec := r1
+	err := recipe.Validate(rec)
 	if err != nil {
 		fmt.Printf("failure to validate:\n\t %v", err)
 		os.Exit(-1)
 	}
 
-	parsedRecipe, err := p2.Parse([]byte(recipe))
+	parsedRecipe, err := recipe.LoadRecipeFromString([]byte(rec))
 	if err != nil {
 		fmt.Printf("failure to parse:\n\t %v", err)
 		os.Exit(-1)
@@ -38,7 +36,7 @@ func main() {
 
 }
 
-var recipe3 = `
+var r2 = `
 id: simple-test-recipe
 version: "1.0.0"
 desc: A simple test recipe for integration testing
@@ -48,7 +46,7 @@ inputs:
 
 `
 
-var recipe = `
+var r1 = `
 id: simple-test-recipe
 version: "1.0.0"
 desc: A simple test recipe for integration testing

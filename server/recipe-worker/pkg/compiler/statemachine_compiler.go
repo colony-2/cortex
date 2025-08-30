@@ -3,27 +3,26 @@ package compiler
 import (
 	"fmt"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/workflow"
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format
-func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *yamlpkg.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
-	stateMap := node.States
+func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, stateMap *recipe.StateMap, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Initialize state context
-	stateCtx := &yamlpkg.StateContext{
+	stateCtx := &StateContext{
 		CurrentState: stateMap.Initial,
 		Inputs:       inputs,
 		StateOutputs: make(map[string]map[string]interface{}),
 		Attempts:     make(map[string]int),
-		StateInfo:    make(map[string]*yamlpkg.StateInfo),
+		StateInfo:    make(map[string]*StateInfo),
 		StepOutputs:  make(map[string]interface{}),
 	}
 
 	// Extract recipe context from inputs if available
 	if ctxVal, ok := inputs["context"]; ok {
-		if recipeCtx, ok := ctxVal.(*yamlpkg.RecipeContext); ok {
+		if recipeCtx, ok := ctxVal.(*RecipeContext); ok {
 			stateCtx.RecipeContext = recipeCtx
 		}
 	}
@@ -37,15 +36,15 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 		}
 
 		// Track state entry
-		stateCtx.StateInfo[stateCtx.CurrentState] = &yamlpkg.StateInfo{
+		stateCtx.StateInfo[stateCtx.CurrentState] = &StateInfo{
 			Name:      stateCtx.CurrentState,
 			Attempts:  stateCtx.Attempts[stateCtx.CurrentState],
 			EnteredAt: workflow.Now(ctx),
 		}
 
 		// Execute state
-		preparedInputs := prepareInputs(stateDef.Inputs, stateCtx)
-		outputs, err := ExecuteNode(ctx, activityRegistry, &stateDef.Node, preparedInputs)
+		preparedInputs := prepareInputs(stateDef.GetMetadata().Inputs, stateCtx)
+		outputs, err := executeNode(ctx, activityRegistry, &stateDef.Node, preparedInputs)
 		if err != nil {
 			// Handle retry if configured
 			return nil, fmt.Errorf("state '%s' execution failed: %w", stateCtx.CurrentState, err)
@@ -70,8 +69,15 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 
 	// Return final outputs
 	finalState := stateMap.States[stateCtx.CurrentState]
-	if len(finalState.Transitions) == 0 && finalState.Outputs != nil {
-		return prepareOutputs(finalState.Outputs, stateCtx), nil
+	var outputs map[string]interface{}
+	switch t := finalState.NodeImpl.(type) {
+	case *recipe.NodeState:
+		outputs = t.Outputs
+	case *recipe.NodeSequence:
+		outputs = t.Outputs
+	}
+	if len(finalState.Transitions) == 0 && outputs != nil {
+		return prepareOutputs(outputs, stateCtx), nil
 	}
 
 	// Return the last state's outputs
@@ -88,7 +94,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 }
 
 // isTerminalState checks if a state is terminal using the new State type
-func isTerminalState(stateName string, states map[string]yamlpkg.State) bool {
+func isTerminalState(stateName string, states map[string]recipe.State) bool {
 	state, exists := states[stateName]
 	if !exists {
 		return true // Non-existent state is terminal
@@ -97,7 +103,7 @@ func isTerminalState(stateName string, states map[string]yamlpkg.State) bool {
 }
 
 // evaluateTransitions evaluates transitions using the new Transition type
-func evaluateTransitions(transitions []yamlpkg.Transition, outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) (string, error) {
+func evaluateTransitions(transitions []recipe.Transition, outputs map[string]interface{}, stateCtx *StateContext) (string, error) {
 	for _, transition := range transitions {
 		shouldTransition, err := transition.When.AsBool(outputs)
 		if err != nil {
@@ -113,7 +119,7 @@ func evaluateTransitions(transitions []yamlpkg.Transition, outputs map[string]in
 }
 
 // prepareInputs prepares inputs by resolving templates
-func prepareInputs(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext) map[string]interface{} {
+func prepareInputs(inputs map[string]interface{}, stateCtx *StateContext) map[string]interface{} {
 	if inputs == nil {
 		return make(map[string]interface{})
 	}
@@ -128,7 +134,7 @@ func prepareInputs(inputs map[string]interface{}, stateCtx *yamlpkg.StateContext
 }
 
 // prepareOutputs prepares outputs by resolving templates
-func prepareOutputs(outputs map[string]interface{}, stateCtx *yamlpkg.StateContext) map[string]interface{} {
+func prepareOutputs(outputs map[string]interface{}, stateCtx *StateContext) map[string]interface{} {
 	if outputs == nil {
 		return make(map[string]interface{})
 	}

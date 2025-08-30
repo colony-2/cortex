@@ -219,27 +219,6 @@ func (r *SharedNodeResolver) VisitNodeShared(node *NodeShared, path []string) (N
 }
 ```
 
-### 5. OpRewriter (Example - Only Modifies Ops)
-```go
-type OpRewriter struct {
-    BaseVisitor  // Get all default implementations
-}
-
-// Only implement the op visitor
-func (r *OpRewriter) VisitNodeOp(node *NodeOp, path []string) (Node, error) {
-    // Custom op transformation logic here
-    modifiedOp := &NodeOp{
-        NodeMetadata: node.NodeMetadata,
-        OpData: OpData{
-            Op: "transformed_" + node.Op,
-            Inputs: node.Inputs,
-        },
-    }
-    return Node{NodeImpl: modifiedOp}, nil
-}
-
-// That's it! No boilerplate needed for other node types
-```
 
 ## Tree Traversal Rules
 
@@ -264,26 +243,8 @@ walker := NewNodeWalker(resolver)
 resolvedRecipe, err := walker.Walk(recipe)
 ```
 
-### Example 2: Transform Only Ops (No Boilerplate)
-```go
-// Only implement VisitNodeOp, everything else passes through
-type OpPrefixer struct {
-    BaseVisitor
-    prefix string
-}
 
-func (o *OpPrefixer) VisitNodeOp(node *NodeOp, path []string) (Node, error) {
-    node.Op = o.prefix + node.Op
-    return Node{NodeImpl: node}, nil
-}
-
-// Usage
-prefixer := &OpPrefixer{prefix: "custom_"}
-walker := NewNodeWalker(prefixer)
-transformedRecipe, err := walker.Walk(recipe)
-```
-
-### Example 3: Collect Metrics Without Modifying
+### Example 2: Collect Metrics Without Modifying
 ```go
 type MetricsCollector struct {
     BaseVisitor
@@ -311,8 +272,3 @@ func (m *MetricsCollector) VisitNodeSequence(node *NodeSequence, path []string) 
 4. **Metadata Preservation**: Maintain NodeMetadata (ID, Desc, Timeout, etc.) during transformations
 5. **Error Context**: Include path information in error messages for debugging
 
-## Future Visitors
-- **ValidationVisitor**: Validate node configurations
-- **OptimizationVisitor**: Optimize recipe structure
-- **MetricsVisitor**: Collect metrics about recipe complexity
-- **TransformVisitor**: Apply arbitrary transformations to nodes

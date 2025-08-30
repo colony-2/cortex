@@ -3,13 +3,9 @@ package shared
 import (
 	"fmt"
 
-	gitactivity "github.com/divisive-ai/vibethis/server/git/pkg/activity"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
 	"go.uber.org/zap"
 )
 
@@ -28,11 +24,7 @@ func NewRegistryManager(logger *zap.Logger) (*RegistryManager, error) {
 		// Continue anyway - some activities might still work
 	}
 
-	registry := ops.NewActivityRegistry()
-	err := registry.RegisterAll(
-		sleepop.GetOp(),
-		commandop.GetOp(),
-		append(gitactivity.GetAll(), opsactivity.GetAll()...))
+	registry, err := ops.NewActivityRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("failed to register Git activities: %w", err)
 	}

@@ -11,13 +11,13 @@ type StateMap struct {
 // State represents a state in a state machine
 // A state is a node plus transition information
 type State struct {
-	Node                Node `yaml:",inline" refer:"true"`
-	SingleStateMetadata `yaml:",inline" refer:"true"`
+	Node                `yaml:",inline"`
+	SingleStateMetadata `yaml:",inline"`
 }
 
 type SingleStateMetadata struct {
-	Error       *string       `json:"error,omitempty"`
-	Transitions *[]Transition `json:"transitions,omitempty"`
+	Error       *string      `json:"error,omitempty"`
+	Transitions []Transition `json:"transitions,omitempty"`
 }
 
 // Transition represents a state transition
@@ -28,7 +28,6 @@ type Transition struct {
 
 type StateData struct {
 	States  *StateMap `yaml:"states,omitempty"`
-	Inputs  InputMap  `yaml:"inputs,omitempty"`
+	Inputs  InputMap  `yaml:"inputs"`
 	Outputs OutputMap `yaml:"outputs,omitempty"`
-	//_       struct{}  `additionalProperties:"false"`
 }

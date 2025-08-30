@@ -1,9 +1,5 @@
 package compiler
 
-import (
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
-)
-
 // ScopedContext represents an isolated execution context for nested compositions
 type ScopedContext struct {
 	// Parent scope (nil for root)
@@ -13,14 +9,14 @@ type ScopedContext struct {
 	LocalStepOutputs map[string]interface{}
 
 	// Reference to the global state context
-	StateContext *yamlpkg.StateContext
+	StateContext *StateContext
 
 	// Scope identifier for debugging
 	ScopeID string
 }
 
 // NewScopedContext creates a new scoped context
-func NewScopedContext(parent *ScopedContext, stateCtx *yamlpkg.StateContext, scopeID string) *ScopedContext {
+func NewScopedContext(parent *ScopedContext, stateCtx *StateContext, scopeID string) *ScopedContext {
 	return &ScopedContext{
 		Parent:           parent,
 		LocalStepOutputs: make(map[string]interface{}),

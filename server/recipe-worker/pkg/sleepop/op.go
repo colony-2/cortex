@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // SleepConfig defines the configuration for sleep activities - ALL fields MUST have json tags
@@ -29,8 +29,8 @@ type SleepOutput struct {
 	ErrorMessage   string    `json:"error_message"`   // Error message if interrupted
 }
 
-func GetOp() types.RegisterableOp {
-	return types.NewActivityMappedOp(types.OpMetadata{
+func GetOp() ops.RegisterableOp {
+	return ops.NewActivityMappedOp(ops.OpMetadata{
 		Type:           "sleep",
 		Name:           "Sleep/Delay",
 		Description:    "Pauses execution for a specified duration",

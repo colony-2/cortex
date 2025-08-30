@@ -1,13 +1,12 @@
 package compiler
 
 import (
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"go.temporal.io/sdk/temporal"
 )
 
 // ToTemporalRetryPolicy converts our RetryPolicy to Temporal's RetryPolicy
-func ToTemporalRetryPolicy(r *yaml.RetryPolicy) *temporal.RetryPolicy {
+func ToTemporalRetryPolicy(r *recipe.RetryPolicy) *temporal.RetryPolicy {
 	return &temporal.RetryPolicy{
 		InitialInterval:        r.InitialInterval.ToDuration(),
 		BackoffCoefficient:     r.BackoffCoefficient,
@@ -18,15 +17,15 @@ func ToTemporalRetryPolicy(r *yaml.RetryPolicy) *temporal.RetryPolicy {
 }
 
 // FromTemporalRetryPolicy converts Temporal's RetryPolicy to our RetryPolicy
-func FromTemporalRetryPolicy(temporalPolicy *temporal.RetryPolicy) *yaml.RetryPolicy {
+func FromTemporalRetryPolicy(temporalPolicy *temporal.RetryPolicy) *recipe.RetryPolicy {
 	if temporalPolicy == nil {
 		return nil
 	}
 
-	return &yaml.RetryPolicy{
-		InitialInterval:        types.Duration(temporalPolicy.InitialInterval),
+	return &recipe.RetryPolicy{
+		InitialInterval:        recipe.Duration(temporalPolicy.InitialInterval),
 		BackoffCoefficient:     temporalPolicy.BackoffCoefficient,
-		MaximumInterval:        types.Duration(temporalPolicy.MaximumInterval),
+		MaximumInterval:        recipe.Duration(temporalPolicy.MaximumInterval),
 		MaximumAttempts:        temporalPolicy.MaximumAttempts,
 		NonRetryableErrorTypes: temporalPolicy.NonRetryableErrorTypes,
 	}
