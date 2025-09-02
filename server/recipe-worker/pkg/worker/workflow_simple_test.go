@@ -8,7 +8,8 @@ import (
 )
 
 func TestSimpleWorkflowRegistry(t *testing.T) {
-	activityRegistry := ops.NewActivityRegistry()
+	activityRegistry, err := ops.NewActivityRegistry()
+	assert.NoError(t, err)
 	assert.NotNil(t, activityRegistry)
 	
 	// Get list of activities
@@ -21,7 +22,8 @@ func TestSimpleWorkflowRegistry(t *testing.T) {
 }
 
 func TestSimpleWorkflowCompiler(t *testing.T) {
-	activityRegistry := ops.NewActivityRegistry()
+	activityRegistry, err := ops.NewActivityRegistry()
+	assert.NoError(t, err)
 	assert.NotNil(t, activityRegistry)
 	
 	// The compiler is no longer a separate struct, it's just functions

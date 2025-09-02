@@ -28,6 +28,32 @@ func NewDefaultSchemaGenerator() *DefaultSchemaGenerator {
 
 // GenerateSchema creates a JSON schema from a Go type
 func (g *DefaultSchemaGenerator) GenerateSchema(typ reflect.Type) (*jsonschema.Schema, error) {
+	// Handle nil types
+	if typ == nil {
+		return &jsonschema.Schema{
+			Type: "object",
+			AdditionalProperties: &jsonschema.Schema{},
+		}, nil
+	}
+	
+	// Handle interface types
+	if typ.Kind() == reflect.Interface {
+		// For interface{} types, return a schema that accepts any type
+		return &jsonschema.Schema{
+			Type: "object",
+			AdditionalProperties: &jsonschema.Schema{},
+		}, nil
+	}
+	
+	// Handle map types
+	if typ.Kind() == reflect.Map {
+		// For map[string]interface{} types, return a flexible object schema
+		return &jsonschema.Schema{
+			Type: "object",
+			AdditionalProperties: &jsonschema.Schema{},
+		}, nil
+	}
+	
 	// Create a value from the type
 	val := reflect.New(typ).Interface()
 	
@@ -38,6 +64,16 @@ func (g *DefaultSchemaGenerator) GenerateSchema(typ reflect.Type) (*jsonschema.S
 
 // ValidateStructTags ensures all fields have explicit json tags
 func (g *DefaultSchemaGenerator) ValidateStructTags(typ reflect.Type) error {
+	// Handle nil types
+	if typ == nil {
+		return nil
+	}
+	
+	// Handle interface and map types - they don't need validation
+	if typ.Kind() == reflect.Interface || typ.Kind() == reflect.Map {
+		return nil
+	}
+	
 	// Ensure type is a struct
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()

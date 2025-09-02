@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/activity"
@@ -38,23 +37,27 @@ func TestWorkerIntegrationTestSuite(t *testing.T) {
 func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	s.T().Skip("Workflow execution requires proper activity registration")
 	// Create a unified recipe definition
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID:   "test-recipe",
-			Desc: "Test recipe",
-			Op:   "echo-activity",
-			Inputs: map[string]interface{}{
-				"text": "Hello, World!",
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeOp{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID:   "test-recipe",
+					Desc: "Test recipe",
+					Inputs: map[string]interface{}{
+						"text": "Hello, World!",
+					},
+				},
+				Version: "1.0",
 			},
-			Outputs: map[string]interface{}{
-				"echoed": "echo_result",
+			OpData: recipe.OpData{
+				Op: "echo-activity",
 			},
 		},
-		Version: "1.0",
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	s.Require().NoError(err)
 
 	// Create mock activity function
 	echoActivityFunc := func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
@@ -71,9 +74,9 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 		},
 	)
 
-	// Create a workflow that uses ExecuteNode
+	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, registry, &recipeDef.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -100,40 +103,53 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	s.NotNil(result)
 }
 
-func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
-	s.T().Skip("Parallel execution not yet supported")
-	// Create a recipe with parallel steps
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID:       "parallel-recipe",
-			Parallel: []yamlpkg.Node{
-			{
-				ID: "task1",
-				Op: "process-activity",
-				Inputs: map[string]interface{}{
-					"data": "data1",
+func (s *WorkerIntegrationTestSuite) TestSequenceWorkflowExecution() {
+	s.T().Skip("Sequence execution test")
+	// Create a recipe with sequence steps
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID: "sequence-recipe",
 				},
-				Outputs: map[string]interface{}{
-					"result": "result1",
-				},
+				Version: "1.0",
 			},
-			{
-				ID: "task2",
-				Op: "process-activity",
-				Inputs: map[string]interface{}{
-					"data": "data2",
-				},
-				Outputs: map[string]interface{}{
-					"result": "result2",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task1",
+								Inputs: map[string]interface{}{
+									"data": "data1",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "process-activity",
+							},
+						},
+					},
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task2",
+								Inputs: map[string]interface{}{
+									"data": "data2",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "process-activity",
+							},
+						},
+					},
 				},
 			},
 		},
-		},
-		Version: "1.0",
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	s.Require().NoError(err)
 
 	// Create mock activity function
 	processActivityFunc := func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
@@ -151,14 +167,14 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 		},
 	)
 
-	// Create a workflow that uses ExecuteNode
+	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, registry, &recipeDef.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
 		workflow.RegisterOptions{
-			Name: "parallel-recipe",
+			Name: "sequence-recipe",
 		},
 	)
 
@@ -173,7 +189,7 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 	)
 
 	// Execute the workflow
-	s.env.ExecuteWorkflow("parallel-recipe", map[string]interface{}{})
+	s.env.ExecuteWorkflow("sequence-recipe", map[string]interface{}{})
 
 	// Verify the result
 	s.True(s.env.IsWorkflowCompleted())
@@ -187,34 +203,45 @@ func (s *WorkerIntegrationTestSuite) TestParallelWorkflowExecution() {
 func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 	s.T().Skip("Shared activity resolution needs proper implementation")
 	// Create a recipe with shared activities
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID:   "shared-recipe",
-			Desc: "Shared activity test recipe",
-			Sequence: []yamlpkg.Node{
-				{
-					ID:     "analyze",
-					Shared: "my_processor",
-					Inputs: map[string]interface{}{
-						"input": "test data",
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID:   "shared-recipe",
+					Desc: "Shared activity test recipe",
+				},
+				Version: "1.0",
+				Defs: map[string]recipe.Node{
+					"my_processor": {
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								Inputs: map[string]interface{}{
+									"type":    "function",
+									"timeout": "30s",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "process-data",
+							},
+						},
 					},
 				},
 			},
-		},
-		Version: "1.0",
-		Defs: map[string]yamlpkg.Node{
-			"my_processor": {
-				Op: "process-data",
-				Inputs: map[string]interface{}{
-					"type":    "function",
-					"timeout": "30s",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeShared{
+							Shared: "my_processor",
+						},
+					},
 				},
 			},
 		},
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	s.Require().NoError(err)
 
 	// Create mock activity function
 	processActivityFunc := func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
@@ -231,9 +258,9 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 		},
 	)
 
-	// Create a workflow that uses ExecuteNode
+	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, registry, &recipeDef.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -263,22 +290,26 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 	s.T().Skip("Retry handling needs proper implementation")
 	// Create a workflow with retry functionality
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID:  "retry-recipe",
-			Op:  "flaky-activity",
-			Inputs: map[string]interface{}{
-				"attempt": "1",
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeOp{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID: "retry-recipe",
+					Inputs: map[string]interface{}{
+						"attempt": "1",
+					},
+				},
+				Version: "1.0",
 			},
-			Outputs: map[string]interface{}{
-				"result": "output",
+			OpData: recipe.OpData{
+				Op: "flaky-activity",
 			},
 		},
-		Version: "1.0",
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	s.Require().NoError(err)
 
 	// Create mock activity function that fails first time
 	attemptCount := 0
@@ -298,9 +329,9 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 		},
 	)
 
-	// Create a workflow that uses ExecuteNode
+	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteNode(ctx, registry, &recipeDef.Node, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -337,19 +368,25 @@ func (s *WorkerIntegrationTestSuite) TestWorkerManagerWithMockClient() {
 	logger := zaptest.NewLogger(s.T())
 
 	// Create a test recipe using unified format
-	testRecipe := &recipe.Recipe{
+	testRecipe := &recipe.RecipeFile{
 		ID:          "test-recipe",
 		Version:     "1.0.0",
 		Description: "Test recipe",
-		Recipe: &yamlpkg.RecipeDefinition{
-			Node: yamlpkg.Node{
-				ID:  "test-recipe",
-				Op:  "test-activity",
-				Inputs: map[string]interface{}{
-					"input": "test",
+		Recipe: recipe.Recipe{
+			RecipeImpl: &recipe.RecipeOp{
+				RecipeMetadata: recipe.RecipeMetadata{
+					NodeMetadata: recipe.NodeMetadata{
+						ID: "test-recipe",
+						Inputs: map[string]interface{}{
+							"input": "test",
+						},
+					},
+					Version: "1.0.0",
+				},
+				OpData: recipe.OpData{
+					Op: "test-activity",
 				},
 			},
-			Version: "1.0.0",
 		},
 	}
 

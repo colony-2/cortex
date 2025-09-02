@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
-
 	"time"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // LLMConfig defines the configuration for LLM activities - ALL fields MUST have json tags
@@ -18,6 +17,8 @@ type LLMConfig struct {
 
 // LLMInput defines the input for LLM activities - ALL fields MUST have json tags
 type LLMInput struct {
+	Provider       string          `json:"provider"`                  // Required: openai, anthropic, gemini
+	Model          string          `json:"model"`                     // Required: model name
 	Prompt         string          `json:"prompt"`                    // Required: the prompt to send
 	SystemPrompt   string          `json:"system_prompt"`             // Optional: system prompt
 	Temperature    float64         `json:"temperature"`               // Optional: temperature (0-2)
@@ -35,40 +36,20 @@ type LLMOutput struct {
 	Usage        map[string]interface{} `json:"usage"`         // Token usage statistics
 }
 
-// LLMActivityWrapper implements the RegisterableOp interface
-type LLMActivityWrapper struct{}
-
-// Ensure we implement the interface
-var _ types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] = (*LLMActivityWrapper)(nil)
-
-// NewLLMActivity creates a new LLM activity that implements RegisterableOp
-func NewLLMActivity() types.RegisterableOp[LLMConfig, LLMInput, LLMOutput] {
-	return &LLMActivityWrapper{}
-}
-
-// GetMetadata returns activity metadata for registration
-func (a *LLMActivityWrapper) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
-		Type:           "llm_inference",
-		Name:           "LLM Inference",
-		Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
-		Version:        "1.0.0",
-		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &yaml.RetryPolicy{
-			MaximumAttempts:    3,
-			InitialInterval:    2 * time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    30 * time.Second,
-			NonRetryableErrorTypes: []string{
-				"InvalidRequestError",
-				"AuthenticationError",
-			},
+func GetOp() ops.RegisterableOp {
+	return ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:           "llm_inference",
+			Name:           "llm_inference",
+			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
+			Version:        "1.0.0",
+			DefaultTimeout: 5 * time.Minute,
 		},
-	}
+		execute)
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *LLMActivityWrapper) Execute(ctx context.Context, config LLMConfig, input LLMInput) (LLMOutput, error) {
+func execute(ctx context.Context, input LLMInput) (LLMOutput, error) {
 	// Ensure registry is initialized
 	if globalRegistry == nil {
 		if err := InitializeRegistry(); err != nil {
@@ -80,8 +61,8 @@ func (a *LLMActivityWrapper) Execute(ctx context.Context, config LLMConfig, inpu
 	activityInput := LLMActivity{
 		Prompt:         input.Prompt,
 		SystemPrompt:   input.SystemPrompt,
-		ModelName:      config.Model,
-		AdapterName:    config.Provider,
+		ModelName:      input.Model,
+		AdapterName:    input.Provider,
 		Temperature:    input.Temperature,
 		MaxTokens:      input.MaxTokens,
 		TopP:           input.TopP,

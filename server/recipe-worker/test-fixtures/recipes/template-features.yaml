@@ -1,69 +1,44 @@
-# Template features example - demonstrates advanced template capabilities
 id: template_demo
 desc: Demonstrates various template features and expressions
-version: "1.0"
-
+version: '1.0'
 inputs:
-  - name: items
-    type: array
-    required: true
-    description: List of items to process
-  - name: separator
-    type: string
-    required: false
-    default: ", "
-    description: Separator for joining items
-
+  items: []
+  separator: ', '
 outputs:
-  - name: summary
-    type: object
-    description: Processing summary
-
+  summary: '{{ .outputs.summary }}'
 sequence:
-  # Demonstrate input references and default values
-  - id: prepare
-    op: prepare_data
-    inputs:
-      items: "{{ .Inputs.items }}"
-      separator: "{{ .Inputs.separator }}"
-    outputs:
-      prepared: prepared_data
-  
-  # Demonstrate join function
-  - id: format
-    op: format_text
-    inputs:
-      text: "Processing items: {{ join .Inputs.separator .Inputs.items }}"
-      count: "{{ len .Inputs.items }}"
-    outputs:
-      formatted: formatted_text
-  
-  # Demonstrate nested references
-  - id: analyze
-    op: analyze_data
-    inputs:
-      data: "{{ .Steps.prepare.outputs.prepared }}"
-      metadata:
-        source: "template_demo"
-        step_id: "{{ .Context.workflowID }}"
-        formatted_output: "{{ .Steps.format.outputs.formatted }}"
-    outputs:
-      analysis: result
-  
-  # Demonstrate JSON serialization
-  - id: summarize
-    op: create_summary
-    inputs:
-      results: |
-        {{- json (dict
-          "prepared_data" .Steps.prepare.outputs.prepared
-          "formatted_text" .Steps.format.outputs.formatted
-          "analysis" .Steps.analyze.outputs.analysis
-          "item_count" (len .Inputs.items)
-        ) -}}
-    outputs:
-      summary: final_summary
-
+- id: prepare
+  op: prepare_data
+  inputs:
+    items: '{{ .Inputs.items }}'
+    separator: '{{ .Inputs.separator }}'
+  outputs:
+    prepared: prepared_data
+- id: format
+  op: format_text
+  inputs:
+    text: 'Processing items: {{ join .Inputs.separator .Inputs.items }}'
+    count: '{{ len .Inputs.items }}'
+  outputs:
+    formatted: formatted_text
+- id: analyze
+  op: analyze_data
+  inputs:
+    data: '{{ .Steps.prepare.outputs.prepared }}'
+    metadata:
+      source: template_demo
+      step_id: '{{ .Context.workflowID }}'
+      formatted_output: '{{ .Steps.format.outputs.formatted }}'
+  outputs:
+    analysis: result
+- id: summarize
+  op: create_summary
+  inputs:
+    results: "{{- json (dict\n  \"prepared_data\" .Steps.prepare.outputs.prepared\n\
+      \  \"formatted_text\" .Steps.format.outputs.formatted\n  \"analysis\" .Steps.analyze.outputs.analysis\n\
+      \  \"item_count\" (len .Inputs.items)\n) -}}\n"
+  outputs:
+    summary: final_summary
 defs:
   prepare_data:
     op: prepare_data
@@ -71,21 +46,18 @@ defs:
       type: function
       timeout: 30s
       description: Prepare data for processing
-      
   format_text:
     op: format_text
     config:
       type: function
       timeout: 10s
       description: Format text with templates
-      
   analyze_data:
     op: analyze_data
     config:
       type: function
       timeout: 1m
       description: Analyze prepared data
-      
   create_summary:
     op: create_summary
     config:

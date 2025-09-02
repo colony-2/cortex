@@ -14,7 +14,7 @@ type Node struct {
 }
 
 func (n Node) GetMetadata() NodeMetadata {
-	return n.GetMetadata()
+	return n.NodeImpl.GetMetadata()
 }
 
 func (Node) JSONSchema() *jsonschema.Schema {

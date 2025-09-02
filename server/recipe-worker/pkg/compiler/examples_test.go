@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,18 +48,26 @@ func TestParseExampleRecipes(t *testing.T) {
 			require.NoError(t, err, "Failed to read recipe file")
 			
 			// Parse recipe YAML
-			var recipeDef yamlpkg.RecipeDefinition
+			var recipeDef recipe.Recipe
 			err = yaml.Unmarshal(recipeData, &recipeDef)
 			require.NoError(t, err, "Failed to parse recipe YAML")
 			
 			// Basic validation
-			assert.NotEmpty(t, recipeDef.Version, "Recipe should have a version")
+			metadata := recipeDef.RecipeImpl.GetMetadata()
+			assert.NotEmpty(t, metadata.Version, "Recipe should have a version")
 			
 			// Check that recipe has at least one node type defined
-			hasNode := recipeDef.Op != "" || 
-				len(recipeDef.Sequence) > 0 || 
-				len(recipeDef.Parallel) > 0 || 
-				recipeDef.States != nil
+			hasNode := false
+			if recipeDef.RecipeImpl != nil {
+				switch impl := recipeDef.RecipeImpl.(type) {
+				case *recipe.RecipeOp:
+					hasNode = impl.Op != ""
+				case *recipe.RecipeSequence:
+					hasNode = len(impl.Sequence) > 0
+				case *recipe.RecipeState:
+					hasNode = impl.States != nil
+				}
+			}
 			assert.True(t, hasNode, "Recipe should define at least one node type")
 		})
 	}
@@ -68,77 +76,91 @@ func TestParseExampleRecipes(t *testing.T) {
 func TestRecipeStructureValidation(t *testing.T) {
 	tests := []struct {
 		name      string
-		recipe    yamlpkg.RecipeDefinition
+		recipe    recipe.Recipe
 		wantError bool
 	}{
 		{
 			name: "valid_operation_recipe",
-			recipe: yamlpkg.RecipeDefinition{
-				Node: yamlpkg.Node{
-					Op: "test_activity",
-					Inputs: map[string]interface{}{
-						"param": "value",
+			recipe: recipe.Recipe{
+				RecipeImpl: &recipe.RecipeOp{
+					RecipeMetadata: recipe.RecipeMetadata{
+						NodeMetadata: recipe.NodeMetadata{
+							Inputs: map[string]interface{}{
+								"param": "value",
+							},
+						},
+						Version: "1.0",
+					},
+					OpData: recipe.OpData{
+						Op: "test_activity",
 					},
 				},
-				Version: "1.0",
 			},
 			wantError: false,
 		},
 		{
 			name: "valid_sequence_recipe",
-			recipe: yamlpkg.RecipeDefinition{
-				Node: yamlpkg.Node{
-					Sequence: []yamlpkg.Node{
-						{
-							ID: "step1",
-							Op: "activity1",
-						},
-						{
-							ID: "step2",
-							Op: "activity2",
+			recipe: recipe.Recipe{
+				RecipeImpl: &recipe.RecipeSequence{
+					RecipeMetadata: recipe.RecipeMetadata{
+						Version: "1.0",
+					},
+					SequenceData: recipe.SequenceData{
+						Sequence: []recipe.Node{
+							{
+								NodeImpl: &recipe.NodeOp{
+									NodeMetadata: recipe.NodeMetadata{
+										ID: "step1",
+									},
+									OpData: recipe.OpData{
+										Op: "activity1",
+									},
+								},
+							},
+							{
+								NodeImpl: &recipe.NodeOp{
+									NodeMetadata: recipe.NodeMetadata{
+										ID: "step2",
+									},
+									OpData: recipe.OpData{
+										Op: "activity2",
+									},
+								},
+							},
 						},
 					},
 				},
-				Version: "1.0",
-			},
-			wantError: false,
-		},
-		{
-			name: "valid_parallel_recipe",
-			recipe: yamlpkg.RecipeDefinition{
-				Node: yamlpkg.Node{
-					Parallel: []yamlpkg.Node{
-						{
-							ID: "task1",
-							Op: "activity1",
-						},
-						{
-							ID: "task2",
-							Op: "activity2",
-						},
-					},
-				},
-				Version: "1.0",
 			},
 			wantError: false,
 		},
 		{
 			name: "recipe_with_shared_definitions",
-			recipe: yamlpkg.RecipeDefinition{
-				Node: yamlpkg.Node{
-					Sequence: []yamlpkg.Node{
-						{
-							ID:     "step1",
-							Shared: "shared_op",
+			recipe: recipe.Recipe{
+				RecipeImpl: &recipe.RecipeSequence{
+					RecipeMetadata: recipe.RecipeMetadata{
+						Version: "1.0",
+						Defs: map[string]recipe.Node{
+							"shared_op": {
+								NodeImpl: &recipe.NodeOp{
+									NodeMetadata: recipe.NodeMetadata{
+										Inputs: map[string]interface{}{
+											"param": "value",
+										},
+									},
+									OpData: recipe.OpData{
+										Op: "shared_activity",
+									},
+								},
+							},
 						},
 					},
-				},
-				Version: "1.0",
-				Defs: map[string]yamlpkg.Node{
-					"shared_op": {
-						Op: "shared_activity",
-						Inputs: map[string]interface{}{
-							"param": "value",
+					SequenceData: recipe.SequenceData{
+						Sequence: []recipe.Node{
+							{
+								NodeImpl: &recipe.NodeShared{
+									Shared: "shared_op",
+								},
+							},
 						},
 					},
 				},
@@ -150,27 +172,31 @@ func TestRecipeStructureValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Basic structural validation
-			assert.NotEmpty(t, tt.recipe.Version, "Recipe should have a version")
+			metadata := tt.recipe.RecipeImpl.GetMetadata()
+			assert.NotEmpty(t, metadata.Version, "Recipe should have a version")
 			
-			// Check node structure
-			node := &tt.recipe.Node
+			// Check recipe structure
 			nodeCount := 0
-			if node.Op != "" {
-				nodeCount++
-			}
-			if len(node.Sequence) > 0 {
-				nodeCount++
-			}
-			if len(node.Parallel) > 0 {
-				nodeCount++
-			}
-			if node.States != nil {
-				nodeCount++
+			if tt.recipe.RecipeImpl != nil {
+				switch impl := tt.recipe.RecipeImpl.(type) {
+				case *recipe.RecipeOp:
+					if impl.Op != "" {
+						nodeCount++
+					}
+				case *recipe.RecipeSequence:
+					if len(impl.Sequence) > 0 {
+						nodeCount++
+					}
+				case *recipe.RecipeState:
+					if impl.States != nil {
+						nodeCount++
+					}
+				}
 			}
 			
-			// A node should define exactly one type
+			// A recipe should define exactly one type
 			if !tt.wantError {
-				assert.Equal(t, 1, nodeCount, "Node should define exactly one of: op, sequence, parallel, or states")
+				assert.Equal(t, 1, nodeCount, "Recipe should define exactly one of: op, sequence, or states")
 			}
 		})
 	}

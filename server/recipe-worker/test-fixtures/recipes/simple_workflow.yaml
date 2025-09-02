@@ -1,33 +1,22 @@
-# Simple unified recipe example
 id: simple_research
 desc: A simple research workflow using unified activity model
-version: "1.0"
-
+version: '1.0'
 inputs:
-  - name: query
-    type: string
-    required: true
-    description: What to research
-
+  query: ''
 outputs:
-  - name: result
-    value: "{{ .nodes.summarize.outputs.summary }}"
-    type: string
-    description: Research result
-
+  result: '{{ .nodes.summarize.outputs.summary }}'
 sequence:
-  - id: search
-    name: Quick Search
-    op: quick_search_activity
-    inputs:
-      query: "{{ .Inputs.query }}"
-    outputs:
-      data: ".search_results"
-  
-  - id: summarize
-    name: Summarize Results
-    op: summarize_activity
-    inputs:
-      data: "{{ .nodes.search.outputs.data }}"
-    outputs:
-      summary: ".final_summary"
+- id: search
+  name: Quick Search
+  op: quick_search_activity
+  inputs:
+    query: '{{ .Inputs.query }}'
+  outputs:
+    data: .search_results
+- id: summarize
+  name: Summarize Results
+  op: summarize_activity
+  inputs:
+    data: '{{ .nodes.search.outputs.data }}'
+  outputs:
+    summary: .final_summary

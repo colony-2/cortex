@@ -1,80 +1,58 @@
-# Basic Parent-Child Recipe Example
-# This example shows a parent recipe that invokes a child recipe using the recipe activity
-
 id: data_processing_pipeline
-version: "1.0"
+version: '1.0'
 desc: Parent recipe that orchestrates data processing through child recipes
-
 inputs:
-  - name: dataset_ids
-    type: array
-    required: true
-    description: List of dataset IDs to process
-  - name: processing_mode
-    type: string
-    default: "standard"
-    description: Processing mode (standard, fast, thorough)
-
+  dataset_ids: []
+  processing_mode: standard
 sequence:
-  # Step 1: Validate inputs
-  - id: validate_inputs
-    op: validation
-    inputs:
-      datasets: "{{ .Inputs.dataset_ids }}"
-      mode: "{{ .Inputs.processing_mode }}"
-    outputs:
-      validation_result: ".validation_status"
-
-  # Step 2: Process each dataset using a child recipe
-  - id: process_dataset_1
-    op: recipe  # Special activity type for recipe invocation
-    config:
-      recipe: "data-processor"  # Name of the child recipe to invoke
-      timeout: "10m"
-      retry_policy:
-        maximum_attempts: 3
-        initial_interval: "5s"
-        backoff_coefficient: 2.0
-    inputs:
-      dataset_id: "{{ index .Inputs.dataset_ids 0 }}"
-      mode: "{{ .Inputs.processing_mode }}"
-      parent_validation: "{{ .nodes.validate_inputs.outputs.validation_result }}"
-    outputs:
-      processed_data: ".result"
-      execution_id: ".execution_id"
-      status: ".status"
-
-  # Step 3: Process second dataset with different configuration
-  - id: process_dataset_2
-    op: recipe
-    config:
-      recipe: "data-processor@v2.0.0"  # Can specify version
-      timeout: "15m"
-    inputs:
-      dataset_id: "{{ index .Inputs.dataset_ids 1 }}"
-      mode: "enhanced"
-      previous_result: "{{ .nodes.process_dataset_1.outputs.processed_data }}"
-    outputs:
-      processed_data: ".result"
-
-  # Step 4: Aggregate results from child recipes
-  - id: aggregate_results
-    op: aggregation
-    inputs:
-      dataset_1_result: "{{ .nodes.process_dataset_1.outputs.processed_data }}"
-      dataset_2_result: "{{ .nodes.process_dataset_2.outputs.processed_data }}"
-      dataset_1_status: "{{ .nodes.process_dataset_1.outputs.status }}"
-      dataset_2_status: "{{ .nodes.process_dataset_2.outputs.status }}"
-    outputs:
-      final_result: ".aggregated_data"
-      summary: ".summary_stats"
-
+- id: validate_inputs
+  op: validation
+  inputs:
+    datasets: '{{ .Inputs.dataset_ids }}'
+    mode: '{{ .Inputs.processing_mode }}'
+  outputs:
+    validation_result: .validation_status
+- id: process_dataset_1
+  op: recipe
+  config:
+    recipe: data-processor
+    timeout: 10m
+    retry_policy:
+      maximum_attempts: 3
+      initial_interval: 5s
+      backoff_coefficient: 2.0
+  inputs:
+    dataset_id: '{{ index .Inputs.dataset_ids 0 }}'
+    mode: '{{ .Inputs.processing_mode }}'
+    parent_validation: '{{ .nodes.validate_inputs.outputs.validation_result }}'
+  outputs:
+    processed_data: .result
+    execution_id: .execution_id
+    status: .status
+- id: process_dataset_2
+  op: recipe
+  config:
+    recipe: data-processor@v2.0.0
+    timeout: 15m
+  inputs:
+    dataset_id: '{{ index .Inputs.dataset_ids 1 }}'
+    mode: enhanced
+    previous_result: '{{ .nodes.process_dataset_1.outputs.processed_data }}'
+  outputs:
+    processed_data: .result
+- id: aggregate_results
+  op: aggregation
+  inputs:
+    dataset_1_result: '{{ .nodes.process_dataset_1.outputs.processed_data }}'
+    dataset_2_result: '{{ .nodes.process_dataset_2.outputs.processed_data }}'
+    dataset_1_status: '{{ .nodes.process_dataset_1.outputs.status }}'
+    dataset_2_status: '{{ .nodes.process_dataset_2.outputs.status }}'
+  outputs:
+    final_result: .aggregated_data
+    summary: .summary_stats
 outputs:
-  - name: processing_summary
-    value: "{{ .nodes.aggregate_results.outputs.summary }}"
-  - name: final_data
-    value: "{{ .nodes.aggregate_results.outputs.final_result }}"
-  - name: child_execution_ids
-    value:
-      - "{{ .nodes.process_dataset_1.outputs.execution_id }}"
-      - "{{ .nodes.process_dataset_2.outputs.execution_id }}"
+  processing_summary: '{{ .nodes.aggregate_results.outputs.summary }}'
+  final_data: '{{ .nodes.aggregate_results.outputs.final_result }}'
+  child_execution_ids:
+  - '{{ .nodes.process_dataset_1.outputs.execution_id }}'
+  - '{{ .nodes.process_dataset_2.outputs.execution_id }}'

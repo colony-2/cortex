@@ -1,180 +1,140 @@
-# Data Aggregation Pattern Example
-# This example demonstrates a parent recipe that processes multiple datasets through child recipes
-# and aggregates their outputs for analysis
-
 id: multi_dataset_aggregator
-version: "1.0"
+version: '1.0'
 desc: Process multiple datasets through child recipes and aggregate results
-
 inputs:
-  - name: datasets
-    type: array
-    required: true
-    description: List of dataset configurations
-    example:
-      - id: "dataset-001"
-        source: "s3://bucket/data1.csv"
-        format: "csv"
-      - id: "dataset-002"
-        source: "s3://bucket/data2.json"
-        format: "json"
-  - name: aggregation_method
-    type: string
-    default: "weighted_average"
-    description: Method for aggregating results (average, weighted_average, max, min)
-  - name: quality_threshold
-    type: number
-    default: 0.75
-    description: Minimum quality score threshold
-
+  datasets:
+  - id: dataset-001
+    source: s3://bucket/data1.csv
+    format: csv
+  - id: dataset-002
+    source: s3://bucket/data2.json
+    format: json
+  aggregation_method: weighted_average
+  quality_threshold: 0.75
 sequence:
-    # Step 1: Validate all datasets
-    - id: validate_datasets
-      op: batch_validator
-      inputs:
-        datasets: "{{ .Inputs.datasets }}"
-      outputs:
-        valid_datasets: ".validated_datasets"
-        validation_report: ".report"
-
-    # Step 2: Process each dataset through child recipes
-    # Note: In a real implementation, this would be a loop or map operation
-    # For demonstration, we show processing of first 3 datasets
-    - id: process_datasets
-      parallel:
-        - id: process_dataset_0
-          op: recipe
-          config:
-            recipe: "dataset-processor"
-            timeout: "20m"
-            retry_policy:
-              maximum_attempts: 3
-              initial_interval: "10s"
-              backoff_coefficient: 2.0
-              maximum_interval: "1m"
-          inputs:
-            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 0 }}"
-            processing_config:
-              normalize: true
-              remove_outliers: true
-              fill_missing: "interpolate"
-          outputs:
-            processed_data: ".result.data"
-            metrics: ".result.metrics"
-            quality_score: ".result.quality_score"
-            processing_time: ".execution_metadata.duration_ms"
-
-        - id: process_dataset_1
-          op: recipe
-          config:
-            recipe: "dataset-processor"
-            timeout: "20m"
-          inputs:
-            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 1 }}"
-            processing_config:
-              normalize: true
-              remove_outliers: true
-              fill_missing: "interpolate"
-          outputs:
-            processed_data: ".result.data"
-            metrics: ".result.metrics"
-            quality_score: ".result.quality_score"
-
-        - id: process_dataset_2
-          op: recipe
-          config:
-            recipe: "dataset-processor"
-            timeout: "20m"
-          inputs:
-            dataset: "{{ index .nodes.validate_datasets.outputs.valid_datasets 2 }}"
-            processing_config:
-              normalize: true
-              remove_outliers: false
-              fill_missing: "forward_fill"
-          outputs:
-            processed_data: ".result.data"
-            metrics: ".result.metrics"
-            quality_score: ".result.quality_score"
-
-    # Step 3: Filter results by quality threshold
-    - id: filter_by_quality
-      op: quality_filter
-      inputs:
-        results:
-          - dataset_id: "{{ index .Inputs.datasets 0 'id' }}"
-            data: "{{ .nodes.process_datasets.process_dataset_0.outputs.processed_data }}"
-            quality: "{{ .nodes.process_datasets.process_dataset_0.outputs.quality_score }}"
-            metrics: "{{ .nodes.process_datasets.process_dataset_0.outputs.metrics }}"
-          - dataset_id: "{{ index .Inputs.datasets 1 'id' }}"
-            data: "{{ .nodes.process_datasets.process_dataset_1.outputs.processed_data }}"
-            quality: "{{ .nodes.process_datasets.process_dataset_1.outputs.quality_score }}"
-            metrics: "{{ .nodes.process_datasets.process_dataset_1.outputs.metrics }}"
-          - dataset_id: "{{ index .Inputs.datasets 2 'id' }}"
-            data: "{{ .nodes.process_datasets.process_dataset_2.outputs.processed_data }}"
-            quality: "{{ .nodes.process_datasets.process_dataset_2.outputs.quality_score }}"
-            metrics: "{{ .nodes.process_datasets.process_dataset_2.outputs.metrics }}"
-        threshold: "{{ .Inputs.quality_threshold }}"
-      outputs:
-        passing_datasets: ".datasets_above_threshold"
-        failing_datasets: ".datasets_below_threshold"
-        passing_count: ".count_above_threshold"
-
-    # Step 4: Aggregate the passing datasets
-    - id: aggregate_data
-      op: data_aggregator
-      inputs:
-        datasets: "{{ .nodes.filter_by_quality.outputs.passing_datasets }}"
-        method: "{{ .Inputs.aggregation_method }}"
-        weights: "quality_score"  # Use quality scores as weights
-      outputs:
-        aggregated_data: ".result"
-        aggregation_stats: ".statistics"
-
-    # Step 5: Generate insights from aggregated data
-    - id: generate_insights
-      op: recipe
-      config:
-        recipe: "insight-generator"
-        timeout: "10m"
-      inputs:
-        aggregated_data: "{{ .nodes.aggregate_data.outputs.aggregated_data }}"
-        statistics: "{{ .nodes.aggregate_data.outputs.aggregation_stats }}"
-        original_count: "{{ len .Inputs.datasets }}"
-        processed_count: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
-      outputs:
-        insights: ".result.insights"
-        recommendations: ".result.recommendations"
-        confidence_score: ".result.confidence"
-
-    # Step 6: Create final report
-    - id: create_report
-      op: report_builder
-      inputs:
-        validation_report: "{{ .nodes.validate_datasets.outputs.validation_report }}"
-        passing_datasets: "{{ .nodes.filter_by_quality.outputs.passing_datasets }}"
-        failing_datasets: "{{ .nodes.filter_by_quality.outputs.failing_datasets }}"
-        aggregated_data: "{{ .nodes.aggregate_data.outputs.aggregated_data }}"
-        insights: "{{ .nodes.generate_insights.outputs.insights }}"
-        recommendations: "{{ .nodes.generate_insights.outputs.recommendations }}"
-        metadata:
-          total_datasets: "{{ len .Inputs.datasets }}"
-          processed_successfully: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
-          aggregation_method: "{{ .Inputs.aggregation_method }}"
-          quality_threshold: "{{ .Inputs.quality_threshold }}"
-      outputs:
-        report: ".final_report"
-        summary: ".executive_summary"
-
+- id: validate_datasets
+  op: batch_validator
+  inputs:
+    datasets: '{{ .Inputs.datasets }}'
+  outputs:
+    valid_datasets: .validated_datasets
+    validation_report: .report
+- id: process_dataset_0
+  op: recipe
+  config:
+    recipe: dataset-processor
+    timeout: 20m
+    retry_policy:
+      maximum_attempts: 3
+      initial_interval: 10s
+      backoff_coefficient: 2.0
+      maximum_interval: 1m
+  inputs:
+    dataset: '{{ index .nodes.validate_datasets.outputs.valid_datasets 0 }}'
+    processing_config:
+      normalize: true
+      remove_outliers: true
+      fill_missing: interpolate
+  outputs:
+    processed_data: .result.data
+    metrics: .result.metrics
+    quality_score: .result.quality_score
+    processing_time: .execution_metadata.duration_ms
+- id: process_dataset_1
+  op: recipe
+  config:
+    recipe: dataset-processor
+    timeout: 20m
+  inputs:
+    dataset: '{{ index .nodes.validate_datasets.outputs.valid_datasets 1 }}'
+    processing_config:
+      normalize: true
+      remove_outliers: true
+      fill_missing: interpolate
+  outputs:
+    processed_data: .result.data
+    metrics: .result.metrics
+    quality_score: .result.quality_score
+- id: process_dataset_2
+  op: recipe
+  config:
+    recipe: dataset-processor
+    timeout: 20m
+  inputs:
+    dataset: '{{ index .nodes.validate_datasets.outputs.valid_datasets 2 }}'
+    processing_config:
+      normalize: true
+      remove_outliers: false
+      fill_missing: forward_fill
+  outputs:
+    processed_data: .result.data
+    metrics: .result.metrics
+    quality_score: .result.quality_score
+- id: filter_by_quality
+  op: quality_filter
+  inputs:
+    results:
+    - dataset_id: '{{ index .Inputs.datasets 0 ''id'' }}'
+      data: '{{ .nodes.process_dataset_0.outputs.processed_data }}'
+      quality: '{{ .nodes.process_dataset_0.outputs.quality_score }}'
+      metrics: '{{ .nodes.process_dataset_0.outputs.metrics }}'
+    - dataset_id: '{{ index .Inputs.datasets 1 ''id'' }}'
+      data: '{{ .nodes.process_dataset_1.outputs.processed_data }}'
+      quality: '{{ .nodes.process_dataset_1.outputs.quality_score }}'
+      metrics: '{{ .nodes.process_dataset_1.outputs.metrics }}'
+    - dataset_id: '{{ index .Inputs.datasets 2 ''id'' }}'
+      data: '{{ .nodes.process_dataset_2.outputs.processed_data }}'
+      quality: '{{ .nodes.process_dataset_2.outputs.quality_score }}'
+      metrics: '{{ .nodes.process_dataset_2.outputs.metrics }}'
+    threshold: '{{ .Inputs.quality_threshold }}'
+  outputs:
+    passing_datasets: .datasets_above_threshold
+    failing_datasets: .datasets_below_threshold
+    passing_count: .count_above_threshold
+- id: aggregate_data
+  op: data_aggregator
+  inputs:
+    datasets: '{{ .nodes.filter_by_quality.outputs.passing_datasets }}'
+    method: '{{ .Inputs.aggregation_method }}'
+    weights: quality_score
+  outputs:
+    aggregated_data: .result
+    aggregation_stats: .statistics
+- id: generate_insights
+  op: recipe
+  config:
+    recipe: insight-generator
+    timeout: 10m
+  inputs:
+    aggregated_data: '{{ .nodes.aggregate_data.outputs.aggregated_data }}'
+    statistics: '{{ .nodes.aggregate_data.outputs.aggregation_stats }}'
+    original_count: '{{ len .Inputs.datasets }}'
+    processed_count: '{{ .nodes.filter_by_quality.outputs.passing_count }}'
+  outputs:
+    insights: .result.insights
+    recommendations: .result.recommendations
+    confidence_score: .result.confidence
+- id: create_report
+  op: report_builder
+  inputs:
+    validation_report: '{{ .nodes.validate_datasets.outputs.validation_report }}'
+    passing_datasets: '{{ .nodes.filter_by_quality.outputs.passing_datasets }}'
+    failing_datasets: '{{ .nodes.filter_by_quality.outputs.failing_datasets }}'
+    aggregated_data: '{{ .nodes.aggregate_data.outputs.aggregated_data }}'
+    insights: '{{ .nodes.generate_insights.outputs.insights }}'
+    recommendations: '{{ .nodes.generate_insights.outputs.recommendations }}'
+    metadata:
+      total_datasets: '{{ len .Inputs.datasets }}'
+      processed_successfully: '{{ .nodes.filter_by_quality.outputs.passing_count }}'
+      aggregation_method: '{{ .Inputs.aggregation_method }}'
+      quality_threshold: '{{ .Inputs.quality_threshold }}'
+  outputs:
+    report: .final_report
+    summary: .executive_summary
 outputs:
-  - name: final_report
-    value: "{{ .nodes.create_report.outputs.report }}"
-  - name: executive_summary
-    value: "{{ .nodes.create_report.outputs.summary }}"
-  - name: processed_count
-    value: "{{ .nodes.filter_by_quality.outputs.passing_count }}"
-  - name: insights
-    value: "{{ .nodes.generate_insights.outputs.insights }}"
-  - name: confidence_score
-    value: "{{ .nodes.generate_insights.outputs.confidence_score }}"
-  - name: aggregated_statistics
-    value: "{{ .nodes.aggregate_data.outputs.aggregation_stats }}"
+  final_report: '{{ .nodes.create_report.outputs.report }}'
+  executive_summary: '{{ .nodes.create_report.outputs.summary }}'
+  processed_count: '{{ .nodes.filter_by_quality.outputs.passing_count }}'
+  insights: '{{ .nodes.generate_insights.outputs.insights }}'
+  confidence_score: '{{ .nodes.generate_insights.outputs.confidence_score }}'
+  aggregated_statistics: '{{ .nodes.aggregate_data.outputs.aggregation_stats }}'

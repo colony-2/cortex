@@ -1,8 +1,8 @@
 id: test-parallel-node
-desc: Test recipe for parallel node execution
+desc: Test recipe for sequential node execution (parallel no longer supported)
 version: "1.0"
 
-parallel:
+sequence:
   - id: task1
     op: sleep
     inputs:
@@ -11,7 +11,7 @@ parallel:
   - id: task2
     op: command_execution
     inputs:
-      run: "echo 'Running in parallel'"
+      run: "echo 'Running sequentially'"
       working_directory: "/tmp"
       working_dir: "/tmp"
       shell: "bash"

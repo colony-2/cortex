@@ -3,353 +3,504 @@ desc: Example recipe demonstrating different error type handling
 version: "1.0.0"
 
 # Root is a state machine
-states:
+state:
   initial: fetchData
-
-variables:
-  retryCount: 0
-  maxRetries: 3
-  lastErrorType: ""
-  data: null
-  processedData: null
-
-  fetchData:
-    op: fetchExternalData
+  
+  variables:
+    retryCount: 0
+    maxRetries: 3
+    lastErrorType: ""
+    data: null
+    processedData: null
+  
+  states:
+    fetchData:
+    op:
+      fetchExternalData
     inputs:
-      url: "${config.dataSourceUrl}"
-      timeout: "30s"
+    url:
+      "${config.dataSourceUrl}"
+    timeout:
+      "30s"
     outputs:
-      data: data
+    data:
+      data
     retryPolicy:
-      maximumAttempts: 2
-      initialInterval: "1s"
-      backoffCoefficient: 2.0
+    maximumAttempts:
+      2
+    initialInterval:
+      "1s"
+    backoffCoefficient:
+      2.0
     transitions:
       # Check for specific error types using CEL expressions
       - condition: 'error != nil && error.contains("timeout")'
-        to: handleTimeout
-        actions:
+    to:
+      handleTimeout
+    actions:
           - set: lastErrorType
-            value: '"timeout"'
+    value:
+      '"timeout"'
       
       - condition: 'error != nil && error.contains("unauthorized")'
-        to: handleAuthError
-        actions:
+    to:
+      handleAuthError
+    actions:
           - set: lastErrorType
-            value: '"unauthorized"'
+    value:
+      '"unauthorized"'
       
       - condition: 'error != nil && error.contains("not found")'
-        to: handleNotFound
-        actions:
+    to:
+      handleNotFound
+    actions:
           - set: lastErrorType
-            value: '"not_found"'
+    value:
+      '"not_found"'
       
       - condition: 'error != nil && error.contains("rate limit")'
-        to: handleRateLimit
-        actions:
+    to:
+      handleRateLimit
+    actions:
           - set: lastErrorType
-            value: '"rate_limit"'
+    value:
+      '"rate_limit"'
       
       # Generic error handler for unknown errors
       - condition: 'error != nil'
-        to: handleGenericError
-        actions:
+    to:
+      handleGenericError
+    actions:
           - set: lastErrorType
-            value: '"unknown"'
+    value:
+      '"unknown"'
       
       # Success path
       - condition: 'data != null'
-        to: processData
+    to:
+      processData
 
-  handleTimeout:
+    handleTimeout:
     sequence:
       - id: logTimeout
-        op: logTimeout
-        inputs:
-          message: "Operation timed out, attempting with extended timeout"
-          severity: "warning"
+    op:
+      logTimeout
+    inputs:
+    message:
+      "Operation timed out, attempting with extended timeout"
+    severity:
+      "warning"
       - id: fetchExternalDataSlowPath
-        op: fetchExternalDataSlowPath
-        inputs:
-          url: "${config.dataSourceUrl}"
-          slowMode: true
-          timeout: "2m"
-        outputs:
-          data: data
+    op:
+      fetchExternalDataSlowPath
+    inputs:
+    url:
+      "${config.dataSourceUrl}"
+    slowMode:
+      true
+    timeout:
+      "2m"
+    outputs:
+    data:
+      data
     transitions:
       - condition: 'error == nil && data != null'
-        to: processData
+    to:
+      processData
       - condition: 'retryCount < maxRetries'
-        to: retryWithBackoff
-        actions:
+    to:
+      retryWithBackoff
+    actions:
           - set: retryCount
-            value: 'retryCount + 1'
+    value:
+      'retryCount + 1'
       - condition: 'true'
-        to: criticalFailure
+    to:
+      criticalFailure
 
-  handleAuthError:
+    handleAuthError:
     sequence:
       - id: refreshAuthToken
-        op: refreshAuthToken
-        inputs:
-          refreshToken: "${config.refreshToken}"
-          timeout: "10s"
-        outputs:
-          newToken: newToken
+    op:
+      refreshAuthToken
+    inputs:
+    refreshToken:
+      "${config.refreshToken}"
+    timeout:
+      "10s"
+    outputs:
+    newToken:
+      newToken
       - id: updateCredentials
-        op: updateCredentials
-        inputs:
-          token: "${newToken}"
+    op:
+      updateCredentials
+    inputs:
+    token:
+      "${newToken}"
     transitions:
       - condition: 'error == nil'
-        to: fetchData  # Retry with new credentials
+    to:
+      fetchData  # Retry with new credentials
       - condition: 'true'
-        to: authFailure
+    to:
+      authFailure
 
-  handleNotFound:
+    handleNotFound:
     sequence:
       - id: createDefaultData
-        op: createDefaultData
-        inputs:
-          template: "default"
-        outputs:
-          data: data
+    op:
+      createDefaultData
+    inputs:
+    template:
+      "default"
+    outputs:
+    data:
+      data
       - id: logNotFound
-        op: logNotFound
-        inputs:
-          message: "Resource not found, using default data"
-          severity: "info"
+    op:
+      logNotFound
+    inputs:
+    message:
+      "Resource not found, using default data"
+    severity:
+      "info"
     transitions:
       - condition: 'data != null'
-        to: processData
+    to:
+      processData
       - condition: 'true'
-        to: criticalFailure
+    to:
+      criticalFailure
 
-  handleRateLimit:
+    handleRateLimit:
     sequence:
       - id: calculateBackoff
-        op: calculateBackoff
-        inputs:
-          retryCount: "${retryCount}"
-        outputs:
-          waitDuration: waitDuration
+    op:
+      calculateBackoff
+    inputs:
+    retryCount:
+      "${retryCount}"
+    outputs:
+    waitDuration:
+      waitDuration
       - id: waitForRateLimit
-        op: waitForRateLimit
-        inputs:
-          duration: "${waitDuration}"
-          timeout: "5m"
+    op:
+      waitForRateLimit
+    inputs:
+    duration:
+      "${waitDuration}"
+    timeout:
+      "5m"
       - id: logRateLimit
-        op: logRateLimit
-        inputs:
-          message: "Rate limited, waiting ${waitDuration} before retry"
-          severity: "warning"
+    op:
+      logRateLimit
+    inputs:
+    message:
+      "Rate limited, waiting ${waitDuration} before retry"
+    severity:
+      "warning"
     transitions:
       - condition: 'retryCount < maxRetries'
-        to: fetchData
-        actions:
+    to:
+      fetchData
+    actions:
           - set: retryCount
-            value: 'retryCount + 1'
+    value:
+      'retryCount + 1'
       - condition: 'true'
-        to: rateLimitExceeded
+    to:
+      rateLimitExceeded
 
-  handleGenericError:
+    handleGenericError:
     sequence:
       - id: logGenericError
-        op: logGenericError
-        inputs:
-          message: "Unexpected error occurred: ${error}"
-          severity: "error"
+    op:
+      logGenericError
+    inputs:
+    message:
+      "Unexpected error occurred: ${error}"
+    severity:
+      "error"
       - id: captureErrorMetrics
-        op: captureErrorMetrics
-        inputs:
-          errorType: "generic"
-          error: "${error}"
+    op:
+      captureErrorMetrics
+    inputs:
+    errorType:
+      "generic"
+    error:
+      "${error}"
     transitions:
       - condition: 'retryCount < maxRetries'
-        to: retryWithBackoff
-        actions:
+    to:
+      retryWithBackoff
+    actions:
           - set: retryCount
-            value: 'retryCount + 1'
+    value:
+      'retryCount + 1'
       - condition: 'true'
-        to: criticalFailure
+    to:
+      criticalFailure
 
-  retryWithBackoff:
+    retryWithBackoff:
     sequence:
       - id: exponentialBackoff
-        op: exponentialBackoff
-        inputs:
-          attempt: "${retryCount}"
-          baseDelay: "2s"
-        outputs:
-          delay: delay
+    op:
+      exponentialBackoff
+    inputs:
+    attempt:
+      "${retryCount}"
+    baseDelay:
+      "2s"
+    outputs:
+    delay:
+      delay
       - id: wait
-        op: wait
-        inputs:
-          duration: "${delay}"
+    op:
+      wait
+    inputs:
+    duration:
+      "${delay}"
     transitions:
       - condition: 'true'
-        to: fetchData
+    to:
+      fetchData
 
-  processData:
+    processData:
     sequence:
       - id: validateData
-        op: validateData
-        inputs:
-          data: "${data}"
-        outputs:
-          validationResult: validationResult
+    op:
+      validateData
+    inputs:
+    data:
+      "${data}"
+    outputs:
+    validationResult:
+      validationResult
       - id: transformData
-        op: transformData
-        inputs:
-          data: "${data}"
-          validationResult: "${validationResult}"
-          timeout: "1m"
-        outputs:
-          processedData: processedData
+    op:
+      transformData
+    inputs:
+    data:
+      "${data}"
+    validationResult:
+      "${validationResult}"
+    timeout:
+      "1m"
+    outputs:
+    processedData:
+      processedData
     transitions:
       - condition: 'error != nil && error.contains("validation")'
-        to: validationError
+    to:
+      validationError
       - condition: 'error != nil && error.contains("transform")'
-        to: transformError
+    to:
+      transformError
       - condition: 'processedData != null'
-        to: saveResults
+    to:
+      saveResults
       - condition: 'true'
-        to: processingError
+    to:
+      processingError
 
-  validationError:
-    op: attemptDataRepair
+    validationError:
+    op:
+      attemptDataRepair
     inputs:
-      data: "${data}"
+    data:
+      "${data}"
     outputs:
-      repairedData: repairedData
+    repairedData:
+      repairedData
     transitions:
       - condition: 'repairedData != null'
-        to: processData
-        actions:
+    to:
+      processData
+    actions:
           - set: data
-            value: 'repairedData'
+    value:
+      'repairedData'
       - condition: 'true'
-        to: validationFailure
+    to:
+      validationFailure
 
-  transformError:
-    op: fallbackTransform
+    transformError:
+    op:
+      fallbackTransform
     inputs:
-      data: "${data}"
-      useSimpleTransform: true
+    data:
+      "${data}"
+    useSimpleTransform:
+      true
     outputs:
-      processedData: processedData
+    processedData:
+      processedData
     transitions:
       - condition: 'processedData != null'
-        to: saveResults
+    to:
+      saveResults
       - condition: 'true'
-        to: processingError
+    to:
+      processingError
 
-  saveResults:
+    saveResults:
     sequence:
       - id: persistData
-        op: persistData
-        inputs:
-          data: "${processedData}"
-          timeout: "30s"
-        outputs:
-          savedId: savedId
-        retryPolicy:
-          maximumAttempts: 3
-          initialInterval: "500ms"
+    op:
+      persistData
+    inputs:
+    data:
+      "${processedData}"
+    timeout:
+      "30s"
+    outputs:
+    savedId:
+      savedId
+    retryPolicy:
+    maximumAttempts:
+      3
+    initialInterval:
+      "500ms"
       - id: publishSuccess
-        op: publishSuccess
-        inputs:
-          id: "${savedId}"
-          data: "${processedData}"
+    op:
+      publishSuccess
+    inputs:
+    id:
+      "${savedId}"
+    data:
+      "${processedData}"
     transitions:
       - condition: 'error != nil && error.contains("database")'
-        to: databaseError
+    to:
+      databaseError
       - condition: 'error != nil'
-        to: saveError
+    to:
+      saveError
       - condition: 'true'
-        to: success
+    to:
+      success
 
-  databaseError:
+    databaseError:
     sequence:
       - id: saveToBackupStorage
-        op: saveToBackupStorage
-        inputs:
-          data: "${processedData}"
-        outputs:
-          backupId: backupId
+    op:
+      saveToBackupStorage
+    inputs:
+    data:
+      "${processedData}"
+    outputs:
+    backupId:
+      backupId
       - id: scheduleDataReconciliation
-        op: scheduleDataReconciliation
-        inputs:
-          backupId: "${backupId}"
-          primaryStorage: "database"
+    op:
+      scheduleDataReconciliation
+    inputs:
+    backupId:
+      "${backupId}"
+    primaryStorage:
+      "database"
     transitions:
       - condition: 'backupId != null'
-        to: partialSuccess
+    to:
+      partialSuccess
       - condition: 'true'
-        to: criticalFailure
+    to:
+      criticalFailure
 
-  saveError:
-    op: logSaveError
+    saveError:
+    op:
+      logSaveError
     inputs:
-      error: "${error}"
-      severity: "error"
+    error:
+      "${error}"
+    severity:
+      "error"
     transitions:
       - condition: 'true'
-        to: criticalFailure
+    to:
+      criticalFailure
 
   # Terminal states for different error scenarios
-  authFailure:
-    op: notifyAuthFailure
+    authFailure:
+    op:
+      notifyAuthFailure
     inputs:
-      message: "Authentication failed after refresh attempt"
-      severity: "critical"
+    message:
+      "Authentication failed after refresh attempt"
+    severity:
+      "critical"
 
-  rateLimitExceeded:
-    op: notifyRateLimitExceeded
+    rateLimitExceeded:
+    op:
+      notifyRateLimitExceeded
     inputs:
-      message: "Rate limit exceeded after ${maxRetries} retries"
-      severity: "error"
+    message:
+      "Rate limit exceeded after ${maxRetries} retries"
+    severity:
+      "error"
 
-  validationFailure:
-    op: notifyValidationFailure
+    validationFailure:
+    op:
+      notifyValidationFailure
     inputs:
-      message: "Data validation failed and could not be repaired"
-      data: "${data}"
+    message:
+      "Data validation failed and could not be repaired"
+    data:
+      "${data}"
 
-  processingError:
-    op: notifyProcessingError
+    processingError:
+    op:
+      notifyProcessingError
     inputs:
-      message: "Data processing failed"
-      lastError: "${error}"
+    message:
+      "Data processing failed"
+    lastError:
+      "${error}"
 
-  criticalFailure:
+    criticalFailure:
     sequence:
       - id: notifyCriticalFailure
-        op: notifyCriticalFailure
-        inputs:
-          message: "Critical failure in workflow"
-          lastErrorType: "${lastErrorType}"
-          error: "${error}"
+    op:
+      notifyCriticalFailure
+    inputs:
+    message:
+      "Critical failure in workflow"
+    lastErrorType:
+      "${lastErrorType}"
+    error:
+      "${error}"
       - id: triggerAlert
-        op: triggerAlert
-        inputs:
-          alertLevel: "critical"
-          workflow: "error-handling-example"
-
-  partialSuccess:
-    op: notifyPartialSuccess
+    op:
+      triggerAlert
     inputs:
-      message: "Data saved to backup storage, reconciliation scheduled"
-      backupId: "${backupId}"
+    alertLevel:
+      "critical"
+    workflow:
+      "error-handling-example"
 
-  success:
-    op: notifySuccess
+    partialSuccess:
+    op:
+      notifyPartialSuccess
     inputs:
-      message: "Workflow completed successfully"
-      savedId: "${savedId}"
+    message:
+      "Data saved to backup storage, reconciliation scheduled"
+    backupId:
+      "${backupId}"
+
+    success:
+    op:
+      notifySuccess
+    inputs:
+    message:
+      "Workflow completed successfully"
+    savedId:
+      "${savedId}"
 
 # Configuration parameters that would be provided at runtime
-config:
-  dataSourceUrl: "https://api.example.com/data"
-  refreshToken: "refresh_token_here"
-  alertWebhook: "https://alerts.example.com/webhook"
+    config:
+    dataSourceUrl:
+      "https://api.example.com/data"
+    refreshToken:
+      "refresh_token_here"
+    alertWebhook:
+      "https://alerts.example.com/webhook"

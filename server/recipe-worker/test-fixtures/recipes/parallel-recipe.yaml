@@ -1,65 +1,42 @@
-# Parallel recipe example - demonstrates parallel execution capabilities
 id: parallel_processing
 desc: Demonstrates parallel step execution
-version: "1.0"
-
+version: '1.0'
 inputs:
-  - name: data_sources
-    type: array
-    required: true
-    description: List of data sources to process
-
+  data_sources: []
 outputs:
-  - name: aggregated_results
-    type: object
-    description: Combined results from all parallel operations
-
+  aggregated_results: '{{ .outputs.aggregated_results }}'
 sequence:
-  # First, validate all sources
-  - id: validate
-    op: validate_sources
-    inputs:
-      sources: "{{ .Inputs.data_sources }}"
-    outputs:
-      valid_sources: validated_list
-  
-  # Process sources in parallel
-  - id: parallel_process
-    parallel:
-      - id: process_source_1
-        op: process_data
-        inputs:
-          source: "{{ index .nodes.validate.outputs.valid_sources 0 }}"
-        outputs:
-          data: result_1
-      
-      - id: process_source_2
-        op: process_data
-        inputs:
-          source: "{{ index .nodes.validate.outputs.valid_sources 1 }}"
-        outputs:
-          data: result_2
-      
-      - id: process_source_3
-        op: process_data
-        inputs:
-          source: "{{ index .nodes.validate.outputs.valid_sources 2 }}"
-        outputs:
-          data: result_3
-  
-  # Aggregate results
-  - id: aggregate
-    op: combine_results
-    inputs:
-      results: |
-        {{- json (list 
-          .nodes.process_source_1.outputs.data
-          .nodes.process_source_2.outputs.data
-          .nodes.process_source_3.outputs.data
-        ) -}}
-    outputs:
-      combined: final_results
-
+- id: validate
+  op: validate_sources
+  inputs:
+    sources: '{{ .Inputs.data_sources }}'
+  outputs:
+    valid_sources: validated_list
+- id: process_source_1
+  op: process_data
+  inputs:
+    source: '{{ index .nodes.validate.outputs.valid_sources 0 }}'
+  outputs:
+    data: result_1
+- id: process_source_2
+  op: process_data
+  inputs:
+    source: '{{ index .nodes.validate.outputs.valid_sources 1 }}'
+  outputs:
+    data: result_2
+- id: process_source_3
+  op: process_data
+  inputs:
+    source: '{{ index .nodes.validate.outputs.valid_sources 2 }}'
+  outputs:
+    data: result_3
+- id: aggregate
+  op: combine_results
+  inputs:
+    results: "{{- json (list \n  .nodes.process_source_1.outputs.data\n  .nodes.process_source_2.outputs.data\n\
+      \  .nodes.process_source_3.outputs.data\n) -}}\n"
+  outputs:
+    combined: final_results
 defs:
   validate_sources:
     op: validate_sources
@@ -67,14 +44,12 @@ defs:
       type: function
       timeout: 30s
       description: Validate data sources
-  
   process_data:
     op: process_data
     config:
       type: function
       timeout: 2m
       description: Process a single data source
-  
   combine_results:
     op: combine_results
     config:

@@ -51,6 +51,7 @@ type ActivityRegisterable interface {
 
 func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
 	for k, v := range r.activities {
+		// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
 		if v.Activity.ExecuteAsActivity() {
 			worker.RegisterActivityWithOptions(v.Activity.Execute, activity.RegisterOptions{
 				Name: k,

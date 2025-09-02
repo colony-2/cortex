@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
@@ -35,21 +35,25 @@ func TestCompilerTestSuite(t *testing.T) {
 
 func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	// Create a simple recipe definition using unified format
-	node := &yamlpkg.Node{
-		ID:   "test-recipe",
-		Desc: "Test recipe",
-		Op:   "test_activity",
-		Inputs: map[string]interface{}{
-			"type":   "function",
-			"param1": "test_value",
-		},
-		Outputs: map[string]interface{}{
-			"result": "activity_output",
+	node := &recipe.Node{
+		NodeImpl: &recipe.NodeOp{
+			NodeMetadata: recipe.NodeMetadata{
+				ID:   "test-recipe",
+				Desc: "Test recipe",
+				Inputs: map[string]interface{}{
+					"type":   "function",
+					"param1": "test_value",
+				},
+			},
+			OpData: recipe.OpData{
+				Op: "test_activity",
+			},
 		},
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(s.T(), err)
 	
 	// Register a test activity function
 	testActivityFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
@@ -57,9 +61,17 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	}
 	s.env.RegisterActivity(testActivityFunc)
 	
-	// Define workflow that uses ExecuteNode
+	// Define workflow that uses ExecuteRecipe
 	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteNode(ctx, registry, node, map[string]interface{}{
+		testRecipe := &recipe.Recipe{
+			RecipeImpl: &recipe.RecipeOp{
+				RecipeMetadata: recipe.RecipeMetadata{
+					NodeMetadata: node.NodeImpl.(*recipe.NodeOp).NodeMetadata,
+				},
+				OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
+			},
+		}
+		return ExecuteRecipe(ctx, registry, *testRecipe, map[string]interface{}{
 			"param1": "test_value",
 		})
 	}
@@ -131,35 +143,49 @@ func TestTemplateResolver(t *testing.T) {
 	}
 }
 
-func (s *CompilerTestSuite) TestParallelRecipeCompilation() {
-	node := &yamlpkg.Node{
-		ID:       "parallel-recipe",
-		Parallel: []yamlpkg.Node{
-			{
-				ID: "task_a",
-				Op: "activity_a",
-				Inputs: map[string]interface{}{
-					"type": "function",
-				},
-				Outputs: map[string]interface{}{
-					"result": "output_a",
-				},
+func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
+	// Test sequence compilation instead of parallel
+	node := &recipe.Node{
+		NodeImpl: &recipe.NodeSequence{
+			NodeMetadata: recipe.NodeMetadata{
+				ID: "sequence-recipe",
 			},
-			{
-				ID: "task_b",
-				Op: "activity_b",
-				Inputs: map[string]interface{}{
-					"type": "function",
-				},
-				Outputs: map[string]interface{}{
-					"result": "output_b",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task_a",
+								Inputs: map[string]interface{}{
+									"type": "function",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "activity_a",
+							},
+						},
+					},
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task_b",
+								Inputs: map[string]interface{}{
+									"type": "function",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "activity_b",
+							},
+						},
+					},
 				},
 			},
 		},
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(s.T(), err)
 	
 	// Register test activity functions
 	activityAFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
@@ -171,9 +197,17 @@ func (s *CompilerTestSuite) TestParallelRecipeCompilation() {
 	s.env.RegisterActivity(activityAFunc)
 	s.env.RegisterActivity(activityBFunc)
 	
-	// Define workflow that uses ExecuteNode
+	// Define workflow that uses ExecuteRecipe
 	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteNode(ctx, registry, node, map[string]interface{}{})
+		testRecipe := &recipe.Recipe{
+			RecipeImpl: &recipe.RecipeSequence{
+				RecipeMetadata: recipe.RecipeMetadata{
+					NodeMetadata: node.NodeImpl.(*recipe.NodeSequence).NodeMetadata,
+				},
+				SequenceData: node.NodeImpl.(*recipe.NodeSequence).SequenceData,
+			},
+		}
+		return ExecuteRecipe(ctx, registry, *testRecipe, map[string]interface{}{})
 	}
 	
 	s.env.RegisterWorkflow(testWorkflow)
@@ -194,7 +228,7 @@ func (s *CompilerTestSuite) TestParallelRecipeCompilation() {
 
 func TestActivityRegistry(t *testing.T) {
 	// Activity registry is now in ops package
-	registry := ops.NewActivityRegistry()
+	registry, _ := ops.NewActivityRegistry()
 
 	// Test that registry exists and can be created
 	assert.NotNil(t, registry)
@@ -205,38 +239,50 @@ func TestActivityRegistry(t *testing.T) {
 }
 
 func (s *CompilerTestSuite) TestRecipeWithSharedActivities() {
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID: "shared-recipe",
-			Sequence: []yamlpkg.Node{
-				{
-					ID:     "analyze",
-					Shared: "my_llm",
-					Inputs: map[string]interface{}{
-						"prompt": "Analyze this data",
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID: "shared-recipe",
+				},
+				Version: "1.0",
+				Defs: map[string]recipe.Node{
+					"my_llm": {
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								Inputs: map[string]interface{}{
+									"type":  "ai_prompt",
+									"model": "gpt-4",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "llm",
+							},
+						},
 					},
 				},
 			},
-		},
-		Version: "1.0",
-		Defs: map[string]yamlpkg.Node{
-			"my_llm": {
-				Op: "llm",
-				Inputs: map[string]interface{}{
-					"type":  "ai_prompt",
-					"model": "gpt-4",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeShared{
+							Shared: "my_llm",
+						},
+					},
 				},
 			},
 		},
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(s.T(), err)
 	
 	// For now just verify structure is correct
 	assert.NotNil(s.T(), recipeDef)
 	assert.NotNil(s.T(), registry)
-	assert.Equal(s.T(), "1.0", recipeDef.Version)
-	assert.NotNil(s.T(), recipeDef.Defs)
-	assert.Len(s.T(), recipeDef.Sequence, 1)
+	recipeSeq := recipeDef.RecipeImpl.(*recipe.RecipeSequence)
+	assert.Equal(s.T(), "1.0", recipeSeq.RecipeMetadata.Version)
+	assert.NotNil(s.T(), recipeSeq.RecipeMetadata.Defs)
+	assert.Len(s.T(), recipeSeq.Sequence, 1)
 }

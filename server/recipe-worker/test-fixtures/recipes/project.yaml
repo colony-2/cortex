@@ -2,7 +2,7 @@ id: research_report_project
 version: "1.0"
 desc: Research and report generation recipe
 
-files:
-  recipe: ./recipe.yaml
-  ops: ./ops.yaml
-  agents: ./agents.yaml
+# Simple test operation
+op: echo_activity
+inputs:
+  message: "project test"

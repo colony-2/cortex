@@ -36,14 +36,14 @@ sequence:
   - id: analyze
     shared: analyze_op
     inputs:
-      data: "{{ .nodes.research.stdout }}"
+      data: "{{ .nodes.research.outputs.stdout }}"
       topic: "{{ .inputs.topic }}"
       
   - id: write_report
     shared: write_report_op
     inputs:
-      research: "{{ .nodes.research.stdout }}"
-      analysis: "{{ .nodes.analyze.stdout }}"
+      research: "{{ .nodes.research.outputs.stdout }}"
+      analysis: "{{ .nodes.analyze.outputs.stdout }}"
       topic: "{{ .inputs.topic }}"
 
 # Root node properties

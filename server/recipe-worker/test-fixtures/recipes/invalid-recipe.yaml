@@ -1,4 +1,4 @@
 id: invalid-test-recipe
 version: "1.0.0"
-# Missing required workflow section
 desc: An invalid recipe for testing error handling
+# Missing required op/sequence/state section - this makes it invalid

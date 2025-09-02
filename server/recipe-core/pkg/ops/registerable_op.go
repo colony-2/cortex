@@ -92,7 +92,7 @@ func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
 }
 
 func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool {
-	return c.inlineHandler != nil
+	return c.handler != nil
 }
 
 func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {

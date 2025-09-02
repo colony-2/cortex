@@ -14,14 +14,14 @@ import (
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		outputs, err := executeStateMachine(ctx, activityRegistry, t.States, inputs)
-		return processNodeOutputs(outputs, t.Outputs, err)
+		outputs, err := executeStateMachine(ctx, activityRegistry, t.StateData.States, inputs)
+		return processNodeOutputs(outputs, t.StateData.Outputs, inputs, err)
 	case *recipe.RecipeOp:
-		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.Op, t.Inputs, inputs)
+		return executeOp(ctx, activityRegistry, t.RecipeMetadata.NodeMetadata, t.OpData.Op, t.RecipeMetadata.NodeMetadata.Inputs, inputs)
 
 	case *recipe.RecipeSequence:
-		outputs, err := executeSequence(ctx, activityRegistry, t.NodeMetadata, t.Sequence, inputs)
-		return processNodeOutputs(outputs, t.Outputs, err)
+		outputs, modifiedInputs, err := executeSequence(ctx, activityRegistry, t.RecipeMetadata.NodeMetadata, t.SequenceData.Sequence, inputs)
+		return processNodeOutputs(outputs, t.SequenceData.Outputs, modifiedInputs, err)
 	default:
 		return nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -31,13 +31,13 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n *recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return executeStateMachine(ctx, activityRegistry, t.States, inputs)
+		return executeStateMachine(ctx, activityRegistry, t.StateData.States, inputs)
 
 	case *recipe.NodeOp:
-		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.Op, t.Inputs, inputs)
+		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.OpData.Op, t.NodeMetadata.Inputs, inputs)
 
 	case *recipe.NodeSequence:
-		return executeSequence(ctx, activityRegistry, t.NodeMetadata, t.Sequence, inputs)
+		return executeSequence(ctx, activityRegistry, t.NodeMetadata, t.SequenceData.Sequence, inputs)
 
 	default:
 		return nil, fmt.Errorf("unsupported recipe type: %T", t)
@@ -46,19 +46,51 @@ func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n
 }
 
 // processNodeOutputs processes outputs from node execution
-func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[string]interface{}, err error) (map[string]interface{}, error) {
+func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[string]interface{}, inputs map[string]interface{}, err error) (map[string]interface{}, error) {
 
 	if err != nil {
-		return outputs, err
+		return nil, err
 	}
 
-	if outputTemplates == nil {
+	if outputTemplates == nil || len(outputTemplates) == 0 {
 		return outputs, nil
 	}
 
-	// TODO: Implement output template resolution for new node format
-	// For now, return outputs as-is
-	return outputs, nil
+	// Build nodes structure for template resolution
+	steps := make(map[string]StepResult)
+	for nodeID, nodeOutput := range outputs {
+		// Ensure nodeOutput is a map
+		outputMap, ok := nodeOutput.(map[string]interface{})
+		if !ok {
+			// If not a map, wrap it
+			outputMap = map[string]interface{}{
+				"result": nodeOutput,
+			}
+		}
+		steps[nodeID] = StepResult{
+			Outputs: outputMap,
+		}
+	}
+	
+	// Create template resolver with workflow state
+	resolver := &TemplateResolver{
+		state: &WorkflowState{
+			Inputs: inputs,
+			Steps:  steps,
+		},
+	}
+	
+	// Resolve output templates
+	resolvedOutputs := make(map[string]interface{})
+	for key, tmpl := range outputTemplates {
+		resolved, err := resolver.ResolveValue(tmpl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve output template %s: %w", key, err)
+		}
+		resolvedOutputs[key] = resolved
+	}
+	
+	return resolvedOutputs, nil
 }
 
 // WorkflowState maintains the runtime state of a workflow
@@ -106,15 +138,24 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 		return nil, fmt.Errorf("op type %q not found", op)
 	}
 
+	// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
 	if !opImpl.Activity.ExecuteAsActivity() {
-		return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), time.Duration(metadata.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
+		timeout := time.Duration(metadata.Timeout)
+		if timeout == 0 {
+			timeout = 30 * time.Second // Default timeout
+		}
+		return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), timeout, func(inner workflow.Context) (map[string]interface{}, error) {
 			return opImpl.Activity.ExecuteInline(ctx, inputs)
 		})
 	}
 
 	// Configure activity options
+	timeout := time.Duration(metadata.Timeout)
+	if timeout == 0 {
+		timeout = 30 * time.Second // Default timeout
+	}
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: time.Duration(metadata.Timeout), // Default timeout
+		StartToCloseTimeout: timeout,
 		RetryPolicy:         ToTemporalRetryPolicy(metadata.Retry),
 	}
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
@@ -131,37 +172,67 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 }
 
 func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
-	outputs := make(map[string]interface{})
+	// Track all node outputs for template resolution
+	nodeOutputs := make(map[string]interface{})
+	
+	// Create nodes map for template resolution
+	if inputs["nodes"] == nil {
+		inputs["nodes"] = make(map[string]interface{})
+	}
+	nodesMap := inputs["nodes"].(map[string]interface{})
+	
 	for i, node := range sequence {
-		nodeOutputs, err := executeNode(ctx, activityRegistry, &node, inputs)
+		outputs, err := executeNode(ctx, activityRegistry, &node, inputs)
 		if err != nil {
 			return nil, fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
 
-		// Store outputs with node ID if specified
-		if metadata.ID != "" {
-			outputs[metadata.ID] = nodeOutputs
-		}
-
-		// Pass outputs as inputs to next node
-		for k, v := range outputs {
-			inputs[k] = v
+		// Store outputs with node's own ID if specified
+		nodeMetadata := node.GetMetadata()
+		if nodeMetadata.ID != "" {
+			// Store in nodes map for template access (.nodes.<id>.outputs)
+			nodesMap[nodeMetadata.ID] = map[string]interface{}{
+				"outputs": outputs,
+			}
+			nodeOutputs[nodeMetadata.ID] = outputs
 		}
 	}
 
-	return outputs, nil
+	// Return all node outputs
+	return nodeOutputs, nil
 }
 
 // executeSequenceNodes executes nodes in sequence
-func executeSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, nodeInputs map[string]interface{}) (map[string]interface{}, error) {
-	return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), time.Duration(metadata.Timeout), func(inner workflow.Context) (map[string]interface{}, error) {
+func executeSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, nodeInputs map[string]interface{}) (map[string]interface{}, map[string]interface{}, error) {
+	timeout := time.Duration(metadata.Timeout)
+	if timeout == 0 {
+		timeout = 30 * time.Second // Default timeout
+	}
+	outputs, err := executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), timeout, func(inner workflow.Context) (map[string]interface{}, error) {
 		return innerSequence(inner, activityRegistry, metadata, sequence, nodeInputs)
 	})
-
+	// Return outputs, modified inputs (with nodes), and error
+	return outputs, nodeInputs, err
 }
 
 // executeCompositeInEnvelope executes a composite nodes in a retry/timeout envelope
 func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolicy, timeoutDuration time.Duration, fn func(inner workflow.Context) (map[string]interface{}, error)) (map[string]interface{}, error) {
+	// If no retry policy, just execute once with timeout
+	if retry == nil {
+		if timeoutDuration > 0 {
+			var cancel workflow.CancelFunc
+			ctx, cancel = workflow.WithCancel(ctx)
+			defer cancel()
+			
+			// Start timeout timer
+			workflow.Go(ctx, func(ctx workflow.Context) {
+				_ = workflow.Sleep(ctx, timeoutDuration)
+				cancel()
+			})
+		}
+		return fn(ctx)
+	}
+	
 	ctx, cancel := workflow.WithCancel(ctx)
 	defer cancel()
 

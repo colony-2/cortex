@@ -4,57 +4,76 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 )
 
 func TestSimpleRecipeStructure(t *testing.T) {
 	// Create a simple recipe definition using unified format
-	node := &yamlpkg.Node{
-		ID:   "test-recipe",
-		Desc: "Test recipe",
-		Op:   "test_activity",
-		Inputs: map[string]interface{}{
-			"type":   "function",
-			"param1": "test_value",
-		},
-		Outputs: map[string]interface{}{
-			"result": "activity_output",
+	node := &recipe.Node{
+		NodeImpl: &recipe.NodeOp{
+			NodeMetadata: recipe.NodeMetadata{
+				ID:   "test-recipe",
+				Desc: "Test recipe",
+				Inputs: map[string]interface{}{
+					"type":   "function",
+					"param1": "test_value",
+				},
+			},
+			OpData: recipe.OpData{
+				Op: "test_activity",
+			},
 		},
 	}
 
 	// Create activity registry
-	registry := ops.NewActivityRegistry()
+	registry, err := ops.NewActivityRegistry()
+	assert.NoError(t, err)
 	
 	// Verify the structure
 	assert.NotNil(t, node)
-	assert.Equal(t, "test-recipe", node.ID)
-	assert.Equal(t, "test_activity", node.Op)
+	nodeOp := node.NodeImpl.(*recipe.NodeOp)
+	assert.Equal(t, "test-recipe", nodeOp.NodeMetadata.ID)
+	assert.Equal(t, "test_activity", nodeOp.Op)
 	assert.NotNil(t, registry)
 }
 
-func TestParallelRecipeStructure(t *testing.T) {
-	node := &yamlpkg.Node{
-		ID:       "parallel-recipe",
-		Parallel: []yamlpkg.Node{
-			{
-				ID: "task_a",
-				Op: "activity_a",
-				Inputs: map[string]interface{}{
-					"type": "function",
-				},
-				Outputs: map[string]interface{}{
-					"result": "output_a",
-				},
+func TestSequenceRecipeStructure(t *testing.T) {
+	// Test sequence structure instead of parallel
+	node := &recipe.Node{
+		NodeImpl: &recipe.NodeSequence{
+			NodeMetadata: recipe.NodeMetadata{
+				ID:   "sequence-recipe",
+				Desc: "Sequence recipe",
 			},
-			{
-				ID: "task_b",
-				Op: "activity_b",
-				Inputs: map[string]interface{}{
-					"type": "function",
-				},
-				Outputs: map[string]interface{}{
-					"result": "output_b",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task_a",
+								Inputs: map[string]interface{}{
+									"type": "function",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "activity_a",
+							},
+						},
+					},
+					{
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								ID: "task_b",
+								Inputs: map[string]interface{}{
+									"type": "function",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "activity_b",
+							},
+						},
+					},
 				},
 			},
 		},
@@ -62,32 +81,45 @@ func TestParallelRecipeStructure(t *testing.T) {
 
 	// Verify the structure
 	assert.NotNil(t, node)
-	assert.Len(t, node.Parallel, 2)
-	assert.Equal(t, "task_a", node.Parallel[0].ID)
-	assert.Equal(t, "task_b", node.Parallel[1].ID)
+	nodeSeq := node.NodeImpl.(*recipe.NodeSequence)
+	assert.Len(t, nodeSeq.Sequence, 2)
+	node1 := nodeSeq.Sequence[0].NodeImpl.(*recipe.NodeOp)
+	node2 := nodeSeq.Sequence[1].NodeImpl.(*recipe.NodeOp)
+	assert.Equal(t, "task_a", node1.NodeMetadata.ID)
+	assert.Equal(t, "task_b", node2.NodeMetadata.ID)
 }
 
 func TestRecipeWithSharedDefinitions(t *testing.T) {
-	recipeDef := &yamlpkg.RecipeDefinition{
-		Node: yamlpkg.Node{
-			ID: "shared-recipe",
-			Sequence: []yamlpkg.Node{
-				{
-					ID:     "analyze",
-					Shared: "my_llm",
-					Inputs: map[string]interface{}{
-						"prompt": "Analyze this data",
+	recipeDef := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{
+					ID: "shared-recipe",
+				},
+				Version: "1.0",
+				Defs: map[string]recipe.Node{
+					"my_llm": {
+						NodeImpl: &recipe.NodeOp{
+							NodeMetadata: recipe.NodeMetadata{
+								Inputs: map[string]interface{}{
+									"type":  "ai_prompt",
+									"model": "gpt-4",
+								},
+							},
+							OpData: recipe.OpData{
+								Op: "llm",
+							},
+						},
 					},
 				},
 			},
-		},
-		Version: "1.0",
-		Defs: map[string]yamlpkg.Node{
-			"my_llm": {
-				Op: "llm",
-				Inputs: map[string]interface{}{
-					"type":  "ai_prompt",
-					"model": "gpt-4",
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{
+						NodeImpl: &recipe.NodeShared{
+							Shared: "my_llm",
+						},
+					},
 				},
 			},
 		},
@@ -95,8 +127,9 @@ func TestRecipeWithSharedDefinitions(t *testing.T) {
 
 	// Verify the structure
 	assert.NotNil(t, recipeDef)
-	assert.Equal(t, "1.0", recipeDef.Version)
-	assert.NotNil(t, recipeDef.Defs)
-	assert.Len(t, recipeDef.Sequence, 1)
-	assert.Contains(t, recipeDef.Defs, "my_llm")
+	recipeSeq := recipeDef.RecipeImpl.(*recipe.RecipeSequence)
+	assert.Equal(t, "1.0", recipeSeq.RecipeMetadata.Version)
+	assert.NotNil(t, recipeSeq.RecipeMetadata.Defs)
+	assert.Len(t, recipeSeq.Sequence, 1)
+	assert.Contains(t, recipeSeq.RecipeMetadata.Defs, "my_llm")
 }

@@ -2,36 +2,37 @@ id: test-state-machine
 desc: Test recipe for state machine with transitions
 version: "1.0"
 
-states:
+state:
   initial: start
-  start:
-    op: command_execution
-    inputs:
-      run: "echo 'Starting state machine'"
-      working_directory: "/tmp"
-      working_dir: "/tmp"
-      shell: "bash"
-      env: {}
-      continue_on_error: false
-      timeout: "10s"
-    transitions:
-      - to: sleep_state
-        when: "true"
-  sleep_state:
-    op: sleep
-    inputs:
-      duration: "1s"
-      default_duration: "2s"
-    transitions:
-      - to: end
-        when: "true"
-  end:
-    op: command_execution
-    inputs:
-      run: "echo 'State machine complete'"
-      working_directory: "/tmp"
-      working_dir: "/tmp"
-      shell: "bash"
-      env: {}
-      continue_on_error: false
-      timeout: "10s"
+  states:
+    start:
+      op: command_execution
+      inputs:
+        run: "echo 'Starting state machine'"
+        working_directory: "/tmp"
+        working_dir: "/tmp"
+        shell: "bash"
+        env: {}
+        continue_on_error: false
+        timeout: "10s"
+      transitions:
+        - to: sleep_state
+          when: "true"
+    sleep_state:
+      op: sleep
+      inputs:
+        duration: "1s"
+        default_duration: "2s"
+      transitions:
+        - to: end
+          when: "true"
+    end:
+      op: command_execution
+      inputs:
+        run: "echo 'State machine complete'"
+        working_directory: "/tmp"
+        working_dir: "/tmp"
+        shell: "bash"
+        env: {}
+        continue_on_error: false
+        timeout: "10s"

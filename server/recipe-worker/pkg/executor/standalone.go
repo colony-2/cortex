@@ -59,6 +59,18 @@ func (e *StandaloneExecutor) Execute(
 		options = opts[0]
 	}
 
+	// Resolve shared nodes before execution
+	metadata := r.GetMetdata()
+	if metadata.Defs != nil && len(metadata.Defs) > 0 {
+		resolver := recipe.NewSharedNodeResolver(metadata.Defs)
+		walker := recipe.NewNodeWalker(resolver)
+		resolvedRecipe, err := walker.Walk(r)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
+		}
+		r = resolvedRecipe
+	}
+
 	// Suppress test environment debug logs if requested
 	var originalLogger io.Writer
 	var originalStdout *os.File

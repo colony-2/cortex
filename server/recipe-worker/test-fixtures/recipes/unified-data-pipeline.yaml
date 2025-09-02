@@ -1,75 +1,54 @@
-# Unified data pipeline example - demonstrates the unified activity model
 id: unified_data_pipeline
 desc: Data pipeline using unified activity model with shared activities
-version: "1.0"
-
+version: '1.0'
 inputs:
-  - name: data_sources
-    type: array
-    required: true
-    description: List of data sources to process
-  - name: output_format
-    type: string
-    default: "json"
-    description: Output format (json, csv, xml)
-
+  data_sources: []
+  output_format: json
 outputs:
-  - name: processed_data
-    type: object
-    description: Final processed data
-  - name: summary
-    type: object
-    description: Processing summary and statistics
-
+  processed_data: '{{ .outputs.processed_data }}'
+  summary: '{{ .outputs.summary }}'
 sequence:
-  # Validate input sources
-  - id: validate
-    op: shared/data-validator
+- id: validate
+  op: shared/data-validator
+  inputs:
+    sources: '{{ .Inputs.data_sources }}'
+    format: '{{ .Inputs.output_format }}'
+  outputs:
+    validated_sources: sources
+    validation_report: report
+- id: parallel_processing
+  parallel:
+  - id: process_batch_1
+    op: shared/data-processor
     inputs:
-      sources: "{{ .Inputs.data_sources }}"
-      format: "{{ .Inputs.output_format }}"
+      sources: '{{ slice .nodes.validate.outputs.validated_sources 0 (div (len .nodes.validate.outputs.validated_sources)
+        2) }}'
+      batch_id: batch_1
     outputs:
-      validated_sources: sources
-      validation_report: report
-
-  # Process data sources in parallel  
-  - id: parallel_processing
-    parallel:
-      - id: process_batch_1
-        op: shared/data-processor
-        inputs:
-          sources: "{{ slice .nodes.validate.outputs.validated_sources 0 (div (len .nodes.validate.outputs.validated_sources) 2) }}"
-          batch_id: "batch_1"
-        outputs:
-          processed: batch_1_data
-          
-      - id: process_batch_2
-        op: shared/data-processor
-        inputs:
-          sources: "{{ slice .nodes.validate.outputs.validated_sources (div (len .nodes.validate.outputs.validated_sources) 2) (len .nodes.validate.outputs.validated_sources) }}"
-          batch_id: "batch_2"
-        outputs:
-          processed: batch_2_data
-  
-  # Combine results
-  - id: combine
-    op: combine_results
+      processed: batch_1_data
+  - id: process_batch_2
+    op: shared/data-processor
     inputs:
-      batch_1: "{{ .nodes.process_batch_1.outputs.processed }}"
-      batch_2: "{{ .nodes.process_batch_2.outputs.processed }}"
-      format: "{{ .Inputs.output_format }}"
+      sources: '{{ slice .nodes.validate.outputs.validated_sources (div (len .nodes.validate.outputs.validated_sources)
+        2) (len .nodes.validate.outputs.validated_sources) }}'
+      batch_id: batch_2
     outputs:
-      combined: final_data
-      
-  # Generate summary using LLM
-  - id: summarize
-    op: shared/data-analyzer
-    inputs:
-      data: "{{ .nodes.combine.outputs.combined }}"
-      validation_report: "{{ .nodes.validate.outputs.validation_report }}"
-    outputs:
-      summary: analysis_summary
-
+      processed: batch_2_data
+- id: combine
+  op: combine_results
+  inputs:
+    batch_1: '{{ .nodes.process_batch_1.outputs.processed }}'
+    batch_2: '{{ .nodes.process_batch_2.outputs.processed }}'
+    format: '{{ .Inputs.output_format }}'
+  outputs:
+    combined: final_data
+- id: summarize
+  op: shared/data-analyzer
+  inputs:
+    data: '{{ .nodes.combine.outputs.combined }}'
+    validation_report: '{{ .nodes.validate.outputs.validation_report }}'
+  outputs:
+    summary: analysis_summary
 defs:
   data-validator:
     op: validate_sources
@@ -77,7 +56,6 @@ defs:
       type: function
       timeout: 1m
       description: Validate and prepare data sources
-      
   data-processor:
     op: process_data
     config:
@@ -85,7 +63,6 @@ defs:
       timeout: 5m
       parallel_enabled: true
       description: Process data sources in parallel batches
-      
   data-analyzer:
     op: llm
     config:
@@ -93,16 +70,23 @@ defs:
       model: gpt-4
       temperature: 0.3
       timeout: 2m
-      prompt: |
-        Analyze the following data processing results and provide a summary:
-        
+      prompt: 'Analyze the following data processing results and provide a summary:
+
+
         Data: {{ .data }}
+
         Validation Report: {{ .validation_report }}
-        
+
+
         Provide:
+
         1. Data quality assessment
+
         2. Key insights and patterns
+
         3. Processing statistics
+
         4. Recommendations for optimization
-        
-        Format as structured JSON.
+
+
+        Format as structured JSON.'

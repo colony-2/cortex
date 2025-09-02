@@ -1,2 +1,11 @@
-greeting: Greetings
-id: YAML Test
+id: inputs
+desc: Test static inputs
+version: "1.0"
+
+# Simple operation that returns static values
+op: echo_activity
+inputs:
+  message: "test"
+outputs:
+  greeting: "Greetings"
+  name: "YAML Test"

@@ -1,51 +1,41 @@
-# Unified data pipeline example showing all features
 id: data-pipeline
-version: "1.0"
+version: '1.0'
 desc: End-to-end data processing pipeline with unified activity model
-
 inputs:
-  - name: dataset_ids
-    type: array
-    required: true
-    description: List of dataset IDs to process
-  - name: processing_mode
-    type: string
-    default: "standard"
-    description: Processing mode (standard, enhanced, minimal)
-
-# Reusable activity configurations
+  dataset_ids: []
+  processing_mode: standard
 defs:
-  # Data analyst persona for analysis tasks
   data_analyst:
     op: llm
     config:
-      model: "gpt-4"
+      model: gpt-4
       temperature: 0.3
-      system_prompt: |
-        You are a senior data analyst specializing in dataset quality assessment.
+      system_prompt: 'You are a senior data analyst specializing in dataset quality
+        assessment.
+
         Provide detailed technical analysis with statistical insights.
+
         Focus on data integrity, patterns, and anomalies.
-  
-  # Report writer persona for documentation
+
+        '
   report_writer:
     op: llm
     config:
-      model: "gpt-4"
+      model: gpt-4
       temperature: 0.5
-      system_prompt: |
-        You are an executive report writer.
+      system_prompt: 'You are an executive report writer.
+
         Create clear, concise summaries for non-technical stakeholders.
+
         Focus on business impact and actionable recommendations.
-  
-  # Standard validation configuration
+
+        '
   dataset_validator:
     op: validation_activity
     config:
-      validation_type: "dataset"
+      validation_type: dataset
       strict_mode: true
-      timeout: "30s"
-  
-  # Inline state machine for quality review
+      timeout: 30s
   quality_review_machine:
     op: state_machine
     config:
@@ -54,198 +44,172 @@ defs:
         analyzing:
           op: quality_check_activity
           transitions:
-            - to: passing
-              when: ".Outputs.quality_score >= 85"
-            - to: needs_improvement
-              when: ".Outputs.quality_score >= 70 && .Outputs.quality_score < 85"
-            - to: failing
-              when: ".Outputs.quality_score < 70"
-        
+          - to: passing
+            when: .Outputs.quality_score >= 85
+          - to: needs_improvement
+            when: .Outputs.quality_score >= 70 && .Outputs.quality_score < 85
+          - to: failing
+            when: .Outputs.quality_score < 70
         needs_improvement:
           op: llm
           config:
-            model: "gpt-4"
-            system_prompt: "You are a data quality expert. Suggest improvements."
+            model: gpt-4
+            system_prompt: You are a data quality expert. Suggest improvements.
           inputs:
-            prompt: "Suggest improvements for this dataset with quality score {{ .State.quality_score }}"
+            prompt: Suggest improvements for this dataset with quality score {{ .State.quality_score
+              }}
           transitions:
-            - to: reanalyzing
-              when: "true"
-        
+          - to: reanalyzing
+            when: 'true'
         reanalyzing:
           op: quality_check_activity
           config:
             enhanced_mode: true
           transitions:
-            - to: passing
-              when: ".Outputs.quality_score >= 85"
-            - to: failing
-              when: ".State.attempts >= 2"
-        
+          - to: passing
+            when: .Outputs.quality_score >= 85
+          - to: failing
+            when: .State.attempts >= 2
         passing:
           terminal: true
           outputs:
-            status: "approved"
-            score: "{{ .State.quality_score }}"
-            improvements: "{{ .States.needs_improvement.outputs }}"
-        
+            status: approved
+            score: '{{ .State.quality_score }}'
+            improvements: '{{ .States.needs_improvement.outputs }}'
         failing:
           terminal: true
           outputs:
-            status: "rejected"
-            score: "{{ .State.quality_score }}"
-            reason: "Quality score below threshold after {{ .State.attempts }} attempts"
-
+            status: rejected
+            score: '{{ .State.quality_score }}'
+            reason: Quality score below threshold after {{ .State.attempts }} attempts
 sequence:
-  # Step 1: Validate inputs using shared configuration
-  - id: validate
-    name: Validate Inputs
-    op: shared/dataset_validator
-    inputs:
-      datasets: "{{ .Inputs.dataset_ids }}"
-      mode: "{{ .Inputs.processing_mode }}"
-    outputs:
-      valid_ids: ".validated_ids"
-      validation_report: ".report"
-  
-  # Step 2: Parallel processing of each dataset
-  - id: process_datasets
-    name: Process Each Dataset
-    op: parallel_processor
-    parallel:
-      for_each: "{{ .nodes.validate.outputs.valid_ids }}"
-      as: dataset_id
-      sequence:
-        - id: fetch
-          op: fetch_dataset_activity
-          inputs:
-            dataset_id: "{{ .dataset_id }}"
-        
-        - id: transform
-          op: transform_activity
-          config:
-            mode: "{{ .Inputs.processing_mode }}"
-          inputs:
-            data: "{{ .nodes.fetch.outputs }}"
-        
-        - id: enrich
-          op: enrich_activity
-          inputs:
-            data: "{{ .nodes.transform.outputs }}"
-  
-  # Step 3: Analyze using data analyst persona
-  - id: analyze_results
-    name: Analyze Processed Data
-    op: shared/data_analyst
-    inputs:
-      prompt: |
-        Analyze the following processed datasets for quality and completeness:
-        {{ .nodes.process_datasets.outputs | json }}
-        
-        Provide:
-        1. Statistical summary
-        2. Data quality assessment
-        3. Identified patterns or anomalies
-        4. Recommendations for improvement
-  
-  # Step 4: Quality review using inline state machine
-  - id: quality_review
-    name: Quality Review Process
-    op: shared/quality_review_machine
-    inputs:
-      data: "{{ .nodes.process_datasets.outputs }}"
-      analysis: "{{ .nodes.analyze_results.outputs }}"
-  
-  # Step 5: User approval with input activity
-  - id: get_approval
-    name: Get User Approval
-    op: user_input_form
-    config:
-      title: "Review Pipeline Results"
-      fields:
-        - id: "approval_decision"
-          type: "multiple_choice"
-          question: "Do you approve these results?"
-          options:
-            - value: "approve"
-              label: "Approve and Continue"
-            - value: "reject"
-              label: "Reject and Retry"
-            - value: "conditional"
-              label: "Approve with Conditions"
-        - id: "notes"
-          type: "paragraph_text"
-          question: "Additional notes (optional)"
-      timeout: "10m"
-    inputs:
-      context:
-        quality_status: "{{ .nodes.quality_review.outputs.status }}"
-        quality_score: "{{ .nodes.quality_review.outputs.score }}"
-        analysis_report: "{{ .nodes.analyze_results.outputs }}"
-  
-  # Step 6: Generate executive report using report writer persona
-  - id: generate_report
-    name: Generate Executive Report
-    op: shared/report_writer
-    inputs:
-      prompt: |
-        Create an executive summary based on:
-        
-        Data Analysis: {{ .nodes.analyze_results.outputs }}
-        Quality Review: {{ .nodes.quality_review.outputs }}
-        User Decision: {{ .nodes.get_approval.outputs }}
-        
-        Include:
-        - Key findings (3-5 bullet points)
-        - Business impact assessment
-        - Recommendations (prioritized)
-        - Next steps
-  
-  # Step 7: Execute notification commands
-  - id: notify
-    name: Send Notifications
-    op: command_execution
-    config:
-      shell: "/bin/bash"
-      retry:
-        max_attempts: 3
-        initial_interval: "5s"
-    inputs:
-      command: |
-        echo "Pipeline complete for {{ len .Inputs.dataset_ids }} datasets"
-        echo "Status: {{ .nodes.quality_review.outputs.status }}"
-        echo "Approval: {{ .nodes.get_approval.outputs.approval_decision }}"
-        
-        # Send webhook notification if approved
-        if [ "{{ .nodes.get_approval.outputs.approval_decision }}" = "approve" ]; then
-          curl -X POST ${WEBHOOK_URL} \
-            -H "Content-Type: application/json" \
-            -d '{
-              "pipeline": "data-pipeline",
-              "status": "approved",
-              "datasets": {{ .Inputs.dataset_ids | json }},
-              "quality_score": "{{ .nodes.quality_review.outputs.score }}",
-              "report_url": "{{ .nodes.generate_report.outputs.url }}"
-            }'
-        fi
+- id: validate
+  name: Validate Inputs
+  op: shared/dataset_validator
+  inputs:
+    datasets: '{{ .Inputs.dataset_ids }}'
+    mode: '{{ .Inputs.processing_mode }}'
+  outputs:
+    valid_ids: .validated_ids
+    validation_report: .report
+- id: process_datasets
+  name: Process Each Dataset
+  op: parallel_processor
+  parallel:
+    for_each: '{{ .nodes.validate.outputs.valid_ids }}'
+    as: dataset_id
+    sequence:
+    - id: fetch
+      op: fetch_dataset_activity
+      inputs:
+        dataset_id: '{{ .dataset_id }}'
+    - id: transform
+      op: transform_activity
+      config:
+        mode: '{{ .Inputs.processing_mode }}'
+      inputs:
+        data: '{{ .nodes.fetch.outputs }}'
+    - id: enrich
+      op: enrich_activity
+      inputs:
+        data: '{{ .nodes.transform.outputs }}'
+- id: analyze_results
+  name: Analyze Processed Data
+  op: shared/data_analyst
+  inputs:
+    prompt: 'Analyze the following processed datasets for quality and completeness:
 
+      {{ .nodes.process_datasets.outputs | json }}
+
+
+      Provide:
+
+      1. Statistical summary
+
+      2. Data quality assessment
+
+      3. Identified patterns or anomalies
+
+      4. Recommendations for improvement
+
+      '
+- id: quality_review
+  name: Quality Review Process
+  op: shared/quality_review_machine
+  inputs:
+    data: '{{ .nodes.process_datasets.outputs }}'
+    analysis: '{{ .nodes.analyze_results.outputs }}'
+- id: get_approval
+  name: Get User Approval
+  op: user_input_form
+  config:
+    title: Review Pipeline Results
+    fields:
+    - id: approval_decision
+      type: multiple_choice
+      question: Do you approve these results?
+      options:
+      - value: approve
+        label: Approve and Continue
+      - value: reject
+        label: Reject and Retry
+      - value: conditional
+        label: Approve with Conditions
+    - id: notes
+      type: paragraph_text
+      question: Additional notes (optional)
+    timeout: 10m
+  inputs:
+    context:
+      quality_status: '{{ .nodes.quality_review.outputs.status }}'
+      quality_score: '{{ .nodes.quality_review.outputs.score }}'
+      analysis_report: '{{ .nodes.analyze_results.outputs }}'
+- id: generate_report
+  name: Generate Executive Report
+  op: shared/report_writer
+  inputs:
+    prompt: 'Create an executive summary based on:
+
+
+      Data Analysis: {{ .nodes.analyze_results.outputs }}
+
+      Quality Review: {{ .nodes.quality_review.outputs }}
+
+      User Decision: {{ .nodes.get_approval.outputs }}
+
+
+      Include:
+
+      - Key findings (3-5 bullet points)
+
+      - Business impact assessment
+
+      - Recommendations (prioritized)
+
+      - Next steps
+
+      '
+- id: notify
+  name: Send Notifications
+  op: command_execution
+  config:
+    shell: /bin/bash
+    retry:
+      max_attempts: 3
+      initial_interval: 5s
+  inputs:
+    command: "echo \"Pipeline complete for {{ len .Inputs.dataset_ids }} datasets\"\
+      \necho \"Status: {{ .nodes.quality_review.outputs.status }}\"\necho \"Approval:\
+      \ {{ .nodes.get_approval.outputs.approval_decision }}\"\n\n# Send webhook notification\
+      \ if approved\nif [ \"{{ .nodes.get_approval.outputs.approval_decision }}\"\
+      \ = \"approve\" ]; then\n  curl -X POST ${WEBHOOK_URL} \\\n    -H \"Content-Type:\
+      \ application/json\" \\\n    -d '{\n      \"pipeline\": \"data-pipeline\",\n\
+      \      \"status\": \"approved\",\n      \"datasets\": {{ .Inputs.dataset_ids\
+      \ | json }},\n      \"quality_score\": \"{{ .nodes.quality_review.outputs.score\
+      \ }}\",\n      \"report_url\": \"{{ .nodes.generate_report.outputs.url }}\"\n\
+      \    }'\nfi\n"
 outputs:
-  - name: processed_data
-    value: "{{ .nodes.process_datasets.outputs }}"
-    type: object
-    description: All processed dataset results
-  
-  - name: quality_status
-    value: "{{ .nodes.quality_review.outputs.status }}"
-    type: string
-    description: Quality review status (approved/rejected)
-  
-  - name: executive_summary
-    value: "{{ .nodes.generate_report.outputs }}"
-    type: object
-    description: Executive summary report
-  
-  - name: approval_status
-    value: "{{ .nodes.get_approval.outputs.approval_decision }}"
-    type: string
-    description: User approval decision
+  processed_data: '{{ .nodes.process_datasets.outputs }}'
+  quality_status: '{{ .nodes.quality_review.outputs.status }}'
+  executive_summary: '{{ .nodes.generate_report.outputs }}'
+  approval_status: '{{ .nodes.get_approval.outputs.approval_decision }}'

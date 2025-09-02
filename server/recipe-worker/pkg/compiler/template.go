@@ -77,7 +77,9 @@ func (r *TemplateResolver) getFuncMap() template.FuncMap {
 func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
 	
-	// Add inputs
+	// Add inputs - use lowercase for compatibility with existing templates
+	data["inputs"] = r.state.Inputs
+	// Also add capital case for backwards compatibility
 	data["Inputs"] = r.state.Inputs
 	
 	// Add steps - directly expose outputs at the step level
@@ -94,15 +96,19 @@ func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 		steps[stepID] = stepData
 	}
 	data["Steps"] = steps
+	// Also add lowercase steps for compatibility
+	data["steps"] = steps
 	
 	// Add environment variables (placeholder for now)
 	data["Env"] = map[string]string{}
+	data["env"] = data["Env"]
 	
 	// Add context (placeholder for now)
 	data["Context"] = map[string]interface{}{
 		"workflowID": "workflow-id",
 		"runID":      "run-id",
 	}
+	data["context"] = data["Context"]
 	
 	return data
 }

@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,76 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
+
+// TestInput and TestOutput types for test activities
+type TestInput struct {
+	Data    string `json:"data"`
+	Source  string `json:"source"`
+	Type    string `json:"type"`
+	Timeout string `json:"timeout"`
+}
+
+type TestOutput struct {
+	Result    string `json:"result"`
+	Data      string `json:"data"`
+	Prepared  string `json:"prepared"`
+	Processed string `json:"processed"`
+}
+
+func init() {
+	// Register test activities for integration tests
+	// Note: Name field is what's used for lookup when op: is specified in YAML
+	processDataOp := ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:        "process-data",
+			Name:        "process-data",  // Name must match what's in YAML op field
+			Description: "Test activity for processing data",
+			Version:     "1.0.0",
+		},
+		func(ctx context.Context, input TestInput) (TestOutput, error) {
+			return TestOutput{
+				Result:    "processed",
+				Processed: input.Data + "_processed",
+			}, nil
+		},
+	)
+	ops.Register(processDataOp)
+
+	prepareDataOp := ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:        "prepare-data",
+			Name:        "prepare-data",  // Name must match what's in YAML op field
+			Description: "Test activity for preparing data",
+			Version:     "1.0.0",
+		},
+		func(ctx context.Context, input TestInput) (TestOutput, error) {
+			return TestOutput{
+				Data:     "prepared_data",
+				Prepared: input.Source + "_prepared",
+			}, nil
+		},
+	)
+	ops.Register(prepareDataOp)
+
+	transformDataOp := ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:        "transform-data",
+			Name:        "transform-data",  // Name must match what's in YAML op field
+			Description: "Test activity for transforming data",
+			Version:     "1.0.0",
+		},
+		func(ctx context.Context, input TestInput) (TestOutput, error) {
+			return TestOutput{
+				Result: "transformed",
+				Data:   input.Data + "_transformed",
+			}, nil
+		},
+	)
+	ops.Register(transformDataOp)
+}
 
 // MockWorkerManager tracks worker operations without creating real workers
 type MockWorkerManager struct {
@@ -22,7 +91,7 @@ type MockWorkerManager struct {
 	logger  *zap.Logger
 }
 
-func (m *MockWorkerManager) StartWorker(r *recipe.Recipe) error {
+func (m *MockWorkerManager) StartWorker(r *recipe.RecipeFile) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.workers[r.ID] = true
@@ -38,7 +107,7 @@ func (m *MockWorkerManager) StopWorker(name string) error {
 	return nil
 }
 
-func (m *MockWorkerManager) RestartWorker(name string, r *recipe.Recipe) error {
+func (m *MockWorkerManager) RestartWorker(name string, r *recipe.RecipeFile) error {
 	m.StopWorker(name)
 	return m.StartWorker(r)
 }
@@ -83,20 +152,13 @@ id: integration-test
 version: "1.0.0"
 desc: Integration test recipe
 
-defs:
-  process-data:
-    op: process-data
-    inputs:
-      type: function
-      timeout: 30s
-
 sequence:
   - id: step1
-    shared: process-data
+    op: process-data
     inputs:
       data: "test-data"
-    outputs:
-      result: processed
+      type: function
+      timeout: 30s
 `
 	
 	recipePath := filepath.Join(tempDir, "integration-test.yaml")
@@ -224,31 +286,19 @@ id: multi-file-test
 version: "1.0.0"
 desc: Multi-file test recipe
 
-defs:
-  prepare-data:
-    op: prepare-data
-    inputs:
-      type: function
-      timeout: 30s
-  process-data:
-    op: process-data
-    inputs:
-      type: function
-      timeout: 1m
-
 sequence:
   - id: prepare
-    shared: prepare-data
+    op: prepare-data
     inputs:
       source: "test"
-    outputs:
-      data: prepared
+      type: function
+      timeout: 30s
   - id: process
-    shared: process-data
+    op: process-data
     inputs:
       data: "{{ .nodes.prepare.data }}"
-    outputs:
-      result: processed
+      type: function
+      timeout: 1m
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
 	require.NoError(t, err)
@@ -275,7 +325,11 @@ sequence:
 	assert.Equal(t, "multi-file-test", foundRecipe.ID)
 	assert.Equal(t, "1.0.0", foundRecipe.Version)
 	assert.NotNil(t, foundRecipe.Recipe)
-	assert.NotEmpty(t, foundRecipe.Recipe.Sequence)
+	if foundRecipe.Recipe.RecipeImpl != nil {
+		if recipeSeq, ok := foundRecipe.Recipe.RecipeImpl.(*recipe.RecipeSequence); ok {
+			assert.NotEmpty(t, recipeSeq.Sequence)
+		}
+	}
 	
 	// Verify worker was started
 	status := manager.GetWorkerStatus("multi-file-test")
@@ -314,17 +368,14 @@ id: concurrent-test-%d
 version: "1.0.0"
 desc: Concurrent test recipe %d
 
-defs:
-  activity-%d:
-    op: activity-%d
-    inputs:
-      type: function
-      timeout: 30s
-
 sequence:
   - id: step1
-    shared: activity-%d
-`, index, index, index, index, index)
+    op: process-data
+    inputs:
+      data: "test-%d"
+      type: function
+      timeout: 30s
+`, index, index, index)
 			
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))
 			err := os.WriteFile(recipePath, []byte(recipeContent), 0644)

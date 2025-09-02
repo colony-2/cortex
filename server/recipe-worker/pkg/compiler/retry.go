@@ -7,6 +7,9 @@ import (
 
 // ToTemporalRetryPolicy converts our RetryPolicy to Temporal's RetryPolicy
 func ToTemporalRetryPolicy(r *recipe.RetryPolicy) *temporal.RetryPolicy {
+	if r == nil {
+		return nil
+	}
 	return &temporal.RetryPolicy{
 		InitialInterval:        r.InitialInterval.ToDuration(),
 		BackoffCoefficient:     r.BackoffCoefficient,

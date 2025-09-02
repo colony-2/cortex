@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,10 +40,10 @@ type BadInput struct {
 }
 
 // testActivity is a mock RegisterableOp for testing
-var testActivity = types.NewActivityMappedOp(
-	types.OpMetadata{
-		Type:           "test_activity",
-		Name:           "Test Activity",
+var testActivity = recipeops.NewActivityMappedOp(
+	recipeops.OpMetadata{
+		Type:           "test_registry_activity",
+		Name:           "Test Registry Activity",
 		Description:    "A test activity for unit testing",
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
@@ -61,38 +61,39 @@ func testExecute(ctx context.Context, config TestConfig, input TestInput) (TestO
 }
 
 func TestActivityRegistration(t *testing.T) {
-	registry := NewActivityRegistry()
+	registry, err := NewActivityRegistry()
+	require.NoError(t, err)
 
 	t.Run("successful registration", func(t *testing.T) {
-		err := Register[TestInput, TestOutput](registry, testActivity)
+		err := Register(registry, testActivity)
 		assert.NoError(t, err)
 
 		// Verify activity was registered
-		registration, exists := registry.Get("test_activity")
+		registration, exists := registry.Get("test_registry_activity")
 		assert.True(t, exists)
 		assert.NotNil(t, registration.Activity)
 		assert.NotNil(t, registration.InputSchema)
 		assert.NotNil(t, registration.OutputSchema)
-		assert.Equal(t, "test_activity", registration.Metadata.Type)
+		assert.Equal(t, "test_registry_activity", registration.Metadata.Type)
 	})
 
 	t.Run("duplicate registration fails", func(t *testing.T) {
-		err := Register[TestInput, TestOutput](registry, testActivity)
+		err := Register(registry, testActivity)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "already registered")
 	})
 
 	t.Run("list registered activities", func(t *testing.T) {
 		types := registry.List()
-		assert.Contains(t, types, "test_activity")
+		assert.Contains(t, types, "test_registry_activity")
 	})
 }
 
 // BadActivity for testing validation failures
 type BadActivity struct{}
 
-func (a *BadActivity) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
+func (a *BadActivity) GetMetadata() recipeops.OpMetadata {
+	return recipeops.OpMetadata{
 		Type:           "bad_activity",
 		Name:           "Bad Activity",
 		Description:    "Test activity with bad types",
@@ -162,12 +163,13 @@ func TestJSONTagValidation(t *testing.T) {
 }
 
 func TestSchemaGeneration(t *testing.T) {
-	registry := NewActivityRegistry()
-
-	err := Register[TestInput, TestOutput](registry, testActivity)
+	registry, err := NewActivityRegistry()
 	require.NoError(t, err)
 
-	registration, exists := registry.Get("test_activity")
+	err = Register(registry, testActivity)
+	require.NoError(t, err)
+
+	registration, exists := registry.Get("test_registry_activity")
 	require.True(t, exists)
 
 	// Config schema test removed - no longer part of ActivityRegistration

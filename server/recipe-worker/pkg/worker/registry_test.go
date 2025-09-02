@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,8 +10,37 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
+
+// TestRegistryInput and TestRegistryOutput types for test activities
+type TestRegistryInput struct {
+	Data string `json:"data"`
+	Type string `json:"type"`
+}
+
+type TestRegistryOutput struct {
+	Result string `json:"result"`
+}
+
+func init() {
+	// Register test-activity for registry tests
+	testActivityOp := ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:        "test-activity",
+			Name:        "test-activity",  // Name must match what's in YAML op field
+			Description: "Test activity for registry tests",
+			Version:     "1.0.0",
+		},
+		func(ctx context.Context, input TestRegistryInput) (TestRegistryOutput, error) {
+			return TestRegistryOutput{
+				Result: "success",
+			}, nil
+		},
+	)
+	ops.Register(testActivityOp)
+}
 
 func TestRegistry_NewRegistry(t *testing.T) {
 	logger := zaptest.NewLogger(t)
@@ -182,15 +212,15 @@ func TestRegistry_ListRecipesWithFilter(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Add some test recipes manually
-	registry.recipes["recipe1"] = &recipe.Recipe{
+	registry.recipes["recipe1"] = &recipe.RecipeFile{
 		ID:           "recipe1",
 		WorkerStatus: recipe.WorkerStatusRunning,
 	}
-	registry.recipes["recipe2"] = &recipe.Recipe{
+	registry.recipes["recipe2"] = &recipe.RecipeFile{
 		ID:           "recipe2",
 		WorkerStatus: recipe.WorkerStatusStopped,
 	}
-	registry.recipes["recipe3"] = &recipe.Recipe{
+	registry.recipes["recipe3"] = &recipe.RecipeFile{
 		ID:           "recipe3",
 		WorkerStatus: recipe.WorkerStatusRunning,
 	}

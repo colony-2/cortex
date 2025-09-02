@@ -235,13 +235,18 @@ func (reg *Registry) loadRecipeFile(path string) (*recipe.RecipeFile, error) {
 	}
 
 	resolver := recipe.NewSharedNodeResolver(rec.GetMetdata().Defs)
-	newRec, err := resolver.VisitRecipe(rec)
+	walker := recipe.NewNodeWalker(resolver)
+	newRec, err := walker.Walk(*rec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
 	}
 
 	out.Recipe = newRec
-	// Recipe parser already sets all metadata including hash
+	
+	// Compute hash for the recipe
+	hashComputer := recipe.NewHashComputer()
+	out.Hash = hashComputer.ComputeRecipeHash(&newRec)
+	
 	return out, nil
 }
 

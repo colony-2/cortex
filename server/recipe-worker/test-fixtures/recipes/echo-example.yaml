@@ -21,5 +21,5 @@ inputs:
   message: "Hello"
   repeat_count: 1
 outputs:
-  echo_result: "{{ .nodes.echo.stdout }}"
-  timestamp: "{{ .nodes.get_timestamp.stdout }}"
+  echo_result: "{{ .nodes.echo.outputs.stdout }}"
+  timestamp: "{{ .nodes.get_timestamp.outputs.stdout }}"
