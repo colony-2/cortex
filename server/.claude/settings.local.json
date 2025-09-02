@@ -1,33 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build:*)",
-      "Bash(mkdir:*)",
-      "Bash(moon run:*)",
-      "Bash(go:*)",
-      "Bash(ls:*)",
-      "Bash(mv:*)",
-      "Bash(rm:*)",
-      "Bash(find:*)",
-      "Bash(git restore:*)",
-      "Bash(for file in ./ono/pkg/cli/start_integration_test.go ./ono/pkg/cli/start_with_recipes.go ./ono/pkg/cli/start_smoke_test.go ./ono/pkg/cli/workflow_create_integration_test.go ./ono/pkg/cli/devserver_sqlite_test.go ./ono/pkg/cli/devserver_restart_test.go)",
-      "Bash(do sed -i '' 's|\"\"github.com/vibethis/embeddedtemporal\"\"|\"\"github.com/vibethis/embeddedtemporal/pkg/temporal\"\"|g' \"$file\")",
-      "Bash(done)",
-      "Bash(for file in *.go)",
-      "Bash(do sed -i '' 's/embeddedtemporal\\./temporal./g' \"$file\")",
-      "Bash(git add:*)",
-      "Bash(chmod:*)",
-      "Bash(./update_imports.sh)",
-      "Bash(./perform_import_updates.sh:*)",
-      "Bash(./fix_remaining_imports.sh)",
-      "Bash(cp:*)",
-      "Bash(moon task:*)",
-      "WebFetch(domain:github.com)",
-      "Bash(git commit:*)",
-      "Bash(make test-recipe-worker:*)",
-      "Bash(moon :test)",
-      "Bash(npm install)"
+      "Bash(grep:*)",
+      "Bash(go get:*)",
+      "Bash(go test:*)"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   }
 }

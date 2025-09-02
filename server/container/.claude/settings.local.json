@@ -5,7 +5,11 @@
       "Bash(go test:*)",
       "WebFetch(domain:docs.docker.com)",
       "Bash(curl:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(go doc:*)",
+      "Bash(go build:*)",
+      "Bash(go tool cover:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

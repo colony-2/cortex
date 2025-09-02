@@ -12,6 +12,8 @@ import (
 // Manager implements the container.Manager interface using devcontainers
 type Manager struct {
 	docker *DockerClient
+	devContainer *DevContainer // Optional pre-configured devcontainer
+	dockerClient *DockerClient // Alias for consistency with terminal.go
 }
 
 // NewManager creates a new devcontainer manager
@@ -23,25 +25,39 @@ func NewManager() (*Manager, error) {
 
 	return &Manager{
 		docker: docker,
+		dockerClient: docker, // Set alias for terminal.go compatibility
 	}, nil
+}
+
+// SetDevContainer sets a pre-configured devcontainer for the manager
+func (m *Manager) SetDevContainer(dc *DevContainer) {
+	m.devContainer = dc
 }
 
 // Create creates a new container for the specified node
 func (m *Manager) Create(ctx context.Context, nodePath string) (string, error) {
-	// Look for devcontainer.json in the node path
-	devcontainerPath := filepath.Join(nodePath, ".devcontainer", "devcontainer.json")
+	var dc *DevContainer
+	
+	// Use pre-configured devcontainer if available
+	if m.devContainer != nil {
+		dc = m.devContainer
+	} else {
+		// Look for devcontainer.json in the node path
+		devcontainerPath := filepath.Join(nodePath, ".devcontainer", "devcontainer.json")
 
-	// Load devcontainer configuration
-	dc, err := LoadDevContainer(devcontainerPath)
-	if err != nil {
-		// If no devcontainer.json, use a default configuration
-		dc = &DevContainer{
-			ImageContainer: &ImageContainer{
-				Image: "mcr.microsoft.com/devcontainers/base:ubuntu",
-			},
-			DevContainerCommon: DevContainerCommon{
-				WorkspaceFolder: "/workspace",
-			},
+		// Load devcontainer configuration
+		var err error
+		dc, err = LoadDevContainer(devcontainerPath)
+		if err != nil {
+			// If no devcontainer.json, use a default configuration
+			dc = &DevContainer{
+				ImageContainer: &ImageContainer{
+					Image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+				},
+				DevContainerCommon: DevContainerCommon{
+					WorkspaceFolder: "/workspace",
+				},
+			}
 		}
 	}
 

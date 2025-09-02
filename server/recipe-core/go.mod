@@ -8,7 +8,6 @@ require (
 	github.com/google/cel-go v0.26.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggest/jsonschema-go v0.3.78
@@ -39,6 +38,7 @@ require (
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.5.0 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
+	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect

@@ -35,33 +35,41 @@ Each composite node creates a new scope that:
 
 ### Template Variable Structure
 
-**Key Design Decision**: To maintain consistency between Go templates and CEL expressions, the template data is structured as a map with named keys (inputs, outputs, sequence, states, scope) rather than passing data as root context. This allows identical syntax in both contexts without leading dots.
+**Key Design Decision**: To maintain consistency between Go templates and CEL expressions, the template data is structured as a map with named keys (inputs, sequence, states, scope) rather than passing data as root context. This allows identical syntax in both contexts without leading dots.
 
 #### Within Sequences
 ```
 sequence.<node_id>.outputs.<output_name>  # Reference to sibling node output
-sequence.<node_id>.attempts[<n>].outputs.<output_name>  # Specific attempt
+sequence.<node_id>.runs[<n>].outputs.<output_name>  # Specific run (retry or loop)
 inputs.<input_name>  # Sequence inputs
-outputs.<output_name>  # Current node outputs (in output mapping only)
 ```
 
 #### Within State Machines
 ```
 states.<state_id>.outputs.<output_name>  # State output (completed states only)
+states.<state_id>.runs[<n>].outputs.<output_name>  # Specific state run (loop back or retry)
 inputs.<input_name>  # State machine inputs
 
 # In transitions, can access current state's nodes:
 sequence.<node_id>.outputs.<output_name>  # If current state is a sequence
-outputs.<output_name>  # Current state's op outputs (if leaf op)
 ```
 
-#### Global Context
+#### Scope Context
 ```
-scope.attempts.current  # Current attempt number
-scope.attempts.max  # Maximum attempts configured
 scope.timestamp  # Current timestamp
 scope.execution_id  # Unique execution identifier
+# Note: No scope.attempts/runs - unclear which level (root, sequence, node)
 ```
+
+#### Output Mapping Context
+When defining outputs for a composite node (sequence or state), templates can reference the internal nodes:
+```yaml
+outputs:
+  result: "{{ sequence.transform.outputs.data }}"  # In sequence output mapping
+  final: "{{ states.process.outputs.result }}"     # In state machine output mapping
+```
+
+**Important**: There is no unqualified "outputs" variable. Outputs are always accessed via their parent context (sequence.node_id, states.state_id, etc.)
 
 #### Template Types and Usage
 
@@ -108,31 +116,32 @@ Both Go templates and CEL receive the same data structure to ensure consistency:
 // TemplateData is the root context for both Go templates and CEL
 type TemplateData struct {
     inputs   map[string]interface{}  // Current scope inputs
-    outputs  map[string]interface{}  // Current outputs (context-dependent)
     sequence map[string]NodeOutput   // Sibling nodes in sequence
     states   map[string]StateOutput  // Completed states in state machine
     scope    ScopeMetadata          // Execution metadata
+    // Note: No unqualified "outputs" field - outputs always qualified by context
 }
 
 type NodeOutput struct {
-    outputs  map[string]interface{}
-    attempts []AttemptOutput  // If retries occurred
+    outputs map[string]interface{}
+    runs    []RunOutput  // Previous runs (retries or loops)
 }
 
 type StateOutput struct {
-    outputs  map[string]interface{}
-    attempts []AttemptOutput  // If retries occurred
+    outputs map[string]interface{}
+    runs    []RunOutput  // Previous runs (state loops or retries)
+}
+
+type RunOutput struct {
+    outputs map[string]interface{}
+    run_id  string
+    timestamp time.Time
 }
 
 type ScopeMetadata struct {
-    attempts     AttemptInfo
     execution_id string
     timestamp    time.Time
-}
-
-type AttemptInfo struct {
-    current int
-    max     int
+    // Note: No attempts/runs counter - ambiguous which level
 }
 ```
 
@@ -157,8 +166,7 @@ type ResolutionContext struct {
     
     // Metadata
     ScopeID string
-    AttemptNumber int
-    MaxAttempts int
+    CurrentRunID string  // Track current run for this scope
 }
 
 // ResolveTemplate handles Go template evaluation for inputs/outputs
@@ -176,10 +184,9 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
         return false, err
     }
     
-    // Pass TemplateData fields as CEL variables
+    // Pass TemplateData fields as CEL variables (no outputs at root)
     result, _, err := program.Eval(map[string]interface{}{
         "inputs":   rc.TemplateData.inputs,
-        "outputs":  rc.TemplateData.outputs,
         "sequence": rc.TemplateData.sequence,
         "states":   rc.TemplateData.states,
         "scope":    rc.TemplateData.scope,
@@ -270,7 +277,7 @@ outputs:
   final_result: "{{ sequence.save_result.outputs.id }}"
 ```
 
-**CEL Variables at `process_data`:**
+**Template Data at `process_data`:**
 ```
 {
   "inputs": { /* sequence inputs */ },
@@ -280,7 +287,6 @@ outputs:
     }
   },
   "scope": {
-    "attempts": { "current": 1, "max": 1 },
     "execution_id": "exec-123",
     "timestamp": "2024-01-01T00:00:00Z"
   }
@@ -331,7 +337,6 @@ states:
     }
   },
   "scope": {
-    "attempts": { "current": 1, "max": 3 },
     "execution_id": "exec-123",
     "timestamp": "2024-01-01T00:00:00Z"
   }
@@ -351,7 +356,7 @@ states:
 }
 ```
 
-### Example 3: Retry with Attempt References
+### Example 3: Retry with Run References
 
 ```yaml
 sequence:
@@ -365,12 +370,11 @@ sequence:
   - id: process
     op: processor
     inputs:
-      # Reference latest attempt by default
+      # Reference latest run by default
       latest: "{{ sequence.api_call.outputs.response }}"
-      # Reference specific attempt
-      first_attempt: "{{ sequence.api_call.attempts[0].outputs.response }}"
-      # Check current attempt number
-      attempt_info: "{{ scope.attempts.current }}"
+      # Reference specific previous run
+      first_run: "{{ sequence.api_call.runs[0].outputs.response }}"
+      # Note: No scope.attempts - unclear which level
 ```
 
 ### Example 4: Complex State Machine
@@ -413,7 +417,7 @@ states:
         when: "outputs.final != null"
 ```
 
-**CEL Variables at `transform` in `process` state sequence:**
+**Template Data at `transform` in `process` state sequence:**
 ```
 {
   "inputs": { "payload": {...} },  // State machine inputs
@@ -428,8 +432,8 @@ states:
     }
   },
   "scope": {
-    "attempts": { "current": 1, "max": 1 },
-    "execution_id": "exec-123"
+    "execution_id": "exec-123",
+    "timestamp": "2024-01-01T00:00:00Z"
   }
 }
 ```
@@ -515,7 +519,7 @@ states:
   state2:
     op: op2
     inputs:
-      # INVALID: Cannot reference state that may not have executed
+      # VALID: States can be evaluated in any order
       data: "{{ states.state3.outputs.data }}"
     transitions:
       - to: state3
@@ -526,7 +530,7 @@ states:
     op: op3
 ```
 
-### 5. Invalid Attempt References
+### 5. Invalid Attempt References: DEFER THIS CHECK, NOT IMPORTANT.
 
 ```yaml
 sequence:
@@ -598,14 +602,15 @@ sequence:
   - id: node1
     op: op1
     inputs:
-      # INVALID: Wrong scope metadata path
-      attempt: "{{ scope.attempt }}"  # Should be scope.attempts.current
-      
       # INVALID: Non-existent scope field
       user: "{{ scope.user_id }}"
       
+      # INVALID: Removed scope.attempts - ambiguous level
+      attempt: "{{ scope.attempts.current }}"
+      
       # VALID: Correct scope access
-      current_attempt: "{{ scope.attempts.current }}"
+      exec_id: "{{ scope.execution_id }}"
+      timestamp: "{{ scope.timestamp }}"
 ```
 
 ## Implementation Plan
@@ -636,10 +641,11 @@ sequence:
 
 1. **Consistent Syntax**: No leading dots in any context - same paths work in Go templates and CEL
 2. **Hybrid Evaluation**: Go templates for inputs/outputs, CEL for conditions
-3. **Scope Isolation**: Child scopes cannot access parent siblings
-4. **Sibling Visibility**: Nodes can reference prior siblings in sequence
-5. **State Transitions**: Transitions correctly evaluate current state's node outputs
-6. **Attempt Tracking**: All attempts are accessible via indexing
-7. **Validation**: Invalid references fail during template/CEL compilation before execution
-8. **Performance**: Template resolution adds < 5ms overhead per node
-9. **Error Messages**: Clear error messages for both Go template and CEL failures
+3. **No Unqualified Outputs**: Outputs always accessed via parent qualifier (sequence.node_id, states.state_id)
+4. **Scope Isolation**: Child scopes cannot access parent siblings
+5. **Sibling Visibility**: Nodes can reference prior siblings in sequence
+6. **State Transitions**: Transitions correctly evaluate current state's node outputs
+7. **Run Tracking**: All runs (retries/loops) are accessible via indexing
+8. **Validation**: Invalid references fail during template/CEL compilation before execution
+9. **Performance**: Template resolution adds < 5ms overhead per node
+10. **Error Messages**: Clear error messages for both Go template and CEL failures
