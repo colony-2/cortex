@@ -4,63 +4,31 @@ version: '1.0'
 inputs:
   items: []
   separator: ', '
-outputs:
-  summary: '{{ .outputs.summary }}'
+# outputs:
+#   summary: '{{ sequence.summarize.outputs.result }}'
 sequence:
 - id: prepare
   op: prepare_data
   inputs:
-    items: '{{ .Inputs.items }}'
-    separator: '{{ .Inputs.separator }}'
-  outputs:
-    prepared: prepared_data
+    items: '{{ inputs.items }}'
+    separator: '{{ has(inputs.separator) ? inputs.separator : ", " }}'
 - id: format
   op: format_text
   inputs:
-    text: 'Processing items: {{ join .Inputs.separator .Inputs.items }}'
-    count: '{{ len .Inputs.items }}'
-  outputs:
-    formatted: formatted_text
+    text: 'Processing items: {{ size(inputs.items) }} items'
+    count: '{{ size(inputs.items) }}'
 - id: analyze
   op: analyze_data
   inputs:
-    data: '{{ .Steps.prepare.outputs.prepared }}'
+    data: static_data
     metadata:
       source: template_demo
-      step_id: '{{ .Context.workflowID }}'
-      formatted_output: '{{ .Steps.format.outputs.formatted }}'
-  outputs:
-    analysis: result
+      step_id: static_id
+      formatted_output: static_format
 - id: summarize
   op: create_summary
   inputs:
-    results: "{{- json (dict\n  \"prepared_data\" .Steps.prepare.outputs.prepared\n\
-      \  \"formatted_text\" .Steps.format.outputs.formatted\n  \"analysis\" .Steps.analyze.outputs.analysis\n\
-      \  \"item_count\" (len .Inputs.items)\n) -}}\n"
-  outputs:
-    summary: final_summary
-defs:
-  prepare_data:
-    op: prepare_data
-    config:
-      type: function
-      timeout: 30s
-      description: Prepare data for processing
-  format_text:
-    op: format_text
-    config:
-      type: function
-      timeout: 10s
-      description: Format text with templates
-  analyze_data:
-    op: analyze_data
-    config:
-      type: function
-      timeout: 1m
-      description: Analyze prepared data
-  create_summary:
-    op: create_summary
-    config:
-      type: function
-      timeout: 30s
-      description: Create final summary
+    prepared_data: static_prepared
+    formatted_text: static_formatted
+    analysis: static_analysis
+    item_count: '{{ size(inputs.items) }}'

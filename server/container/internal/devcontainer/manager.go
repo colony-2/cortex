@@ -14,6 +14,7 @@ type Manager struct {
 	docker *DockerClient
 	devContainer *DevContainer // Optional pre-configured devcontainer
 	dockerClient *DockerClient // Alias for consistency with terminal.go
+	customMounts []container.Mount // Custom mount configurations
 }
 
 // NewManager creates a new devcontainer manager
@@ -52,12 +53,20 @@ func (m *Manager) Create(ctx context.Context, nodePath string) (string, error) {
 			// If no devcontainer.json, use a default configuration
 			dc = &DevContainer{
 				ImageContainer: &ImageContainer{
-					Image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+					Image: "alpine:latest",
 				},
 				DevContainerCommon: DevContainerCommon{
 					WorkspaceFolder: "/workspace",
 				},
 			}
+		}
+		
+	}
+	
+	// Apply custom mounts if configured
+	if len(m.customMounts) > 0 {
+		if err := m.applyCustomMounts(dc); err != nil {
+			return "", fmt.Errorf("failed to apply custom mounts: %w", err)
 		}
 	}
 
@@ -137,6 +146,69 @@ func (m *Manager) AttachWebSocket(ctx context.Context, containerID string) (cont
 	// This would require a more complex implementation with websockets
 	// For now, return an error
 	return nil, fmt.Errorf("websocket attachment not implemented")
+}
+
+// ConfigureMounts configures custom mount points for containers
+func (m *Manager) ConfigureMounts(mounts []container.Mount) error {
+	m.customMounts = mounts
+	return nil
+}
+
+// applyCustomMounts applies custom mount configurations to a DevContainer
+func (m *Manager) applyCustomMounts(dc *DevContainer) error {
+    // Build custom mounts in devcontainer object format (object style)
+    var custom []interface{}
+    for _, mount := range m.customMounts {
+        custom = append(custom, map[string]interface{}{
+            "type":     mount.Type,
+            "source":   mount.Source,
+            "target":   mount.Target,
+            "readonly": mount.ReadOnly,
+        })
+    }
+
+    // Merge: preserve mounts declared in devcontainer.json and append custom mounts.
+    // If there are duplicate object-style targets, prefer custom by removing earlier duplicates.
+    // Note: string-style mounts are kept as-is (cannot safely de-dup without parsing).
+    var merged []interface{}
+
+    // Track targets we will override to avoid duplicates
+    targets := map[string]bool{}
+    for _, cm := range custom {
+        if m, ok := cm.(map[string]interface{}); ok {
+            if tgt, ok := m["target"].(string); ok && tgt != "" {
+                targets[tgt] = true
+            }
+        }
+    }
+
+    // First, copy existing mounts that are not overridden by a custom mount (object-style)
+    for _, em := range dc.Mounts {
+        if mobj, ok := em.(map[string]interface{}); ok {
+            if tgt, ok := mobj["target"].(string); ok && tgt != "" {
+                if targets[tgt] {
+                    // Skip, will be provided by custom
+                    continue
+                }
+            }
+        }
+        merged = append(merged, em)
+    }
+
+    // Append all custom mounts
+    merged = append(merged, custom...)
+
+    dc.Mounts = merged
+
+    // Clear workspace mount to prevent conflicts (shai manages workspace mount separately)
+    dc.WorkspaceMount = "none"
+
+    // Ensure workspace folder is set
+    if dc.WorkspaceFolder == "" {
+        dc.WorkspaceFolder = "/workspace"
+    }
+
+    return nil
 }
 
 // Close closes the Docker client connection

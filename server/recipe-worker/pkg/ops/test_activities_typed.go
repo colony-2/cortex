@@ -3,41 +3,11 @@ package ops
 import (
 	"context"
 	"fmt"
-	"time"
 
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 func registerTypedTestActivities() {
-	// Register sleep activity
-	sleepActivity := recipeops.NewActivityMappedOp(
-		recipeops.OpMetadata{
-			Type: "sleep",
-			Name: "sleep",
-		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
-			duration := "1s"
-			if input.Duration != "" {
-				duration = input.Duration
-			}
-			
-			parsedDuration, err := time.ParseDuration(duration)
-			if err != nil {
-				return GenericOutput{}, fmt.Errorf("invalid duration: %w", err)
-			}
-			
-			select {
-			case <-time.After(parsedDuration):
-				return GenericOutput{
-					Slept: duration,
-				}, nil
-			case <-ctx.Done():
-				return GenericOutput{}, ctx.Err()
-			}
-		},
-	)
-	recipeops.Register(sleepActivity)
-
 	// Register context_logger activity
 	contextLogger := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
@@ -65,6 +35,7 @@ func registerTypedTestActivities() {
 			return GenericOutput{
 				Valid: true,
 				Count: len(input.Items),
+				Items: input.Items, // Return the validated items
 			}, nil
 		},
 	)
@@ -124,7 +95,7 @@ func registerTypedTestActivities() {
 	// Register data transformation activities
 	dataActivities := []string{
 		"process-data",
-		"prepare-data", 
+		"prepare-data",
 		"transform-data",
 		"validate-data",
 		"enrich-data",
@@ -135,7 +106,7 @@ func registerTypedTestActivities() {
 		"data-validator",
 		"data-enricher",
 	}
-	
+
 	for _, activityName := range dataActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -167,7 +138,7 @@ func registerTypedTestActivities() {
 		"complex-activity",
 		"error-activity",
 	}
-	
+
 	for _, activityName := range testActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -192,12 +163,12 @@ func registerTypedTestActivities() {
 	// Register workflow control activities
 	workflowActivities := []string{
 		"start-workflow",
-		"check-status", 
+		"check-status",
 		"cancel-workflow",
 		"signal-workflow",
 		"query-workflow",
 	}
-	
+
 	for _, activityName := range workflowActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -236,7 +207,7 @@ func registerTypedTestActivities() {
 		"field_extractor",
 		"metadata_extractor",
 	}
-	
+
 	for _, activityName := range mlActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -246,10 +217,10 @@ func registerTypedTestActivities() {
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
-					Result: fmt.Sprintf("ML analysis from %s", name),
-					Status: "analyzed",
+					Result:     fmt.Sprintf("ML analysis from %s", name),
+					Status:     "analyzed",
 					Confidence: 0.95,
-					Model: name,
+					Model:      name,
 				}, nil
 			},
 		)
@@ -300,7 +271,7 @@ func registerTypedTestActivities() {
 		"enrich_activity",
 		"transform_activity",
 	}
-	
+
 	for _, activityName := range processingActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -339,7 +310,7 @@ func registerTypedTestActivities() {
 		"result_storage",
 		"result_schema_validator",
 	}
-	
+
 	for _, activityName := range reportActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -384,7 +355,7 @@ func registerTypedTestActivities() {
 		"saveToBackupStorage",
 		"audit_logger",
 	}
-	
+
 	for _, activityName := range errorActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -398,7 +369,7 @@ func registerTypedTestActivities() {
 					return GenericOutput{}, fmt.Errorf("simulated error in %s", name)
 				}
 				return GenericOutput{
-					Status: "handled",
+					Status:  "handled",
 					Handler: name,
 				}, nil
 			},
@@ -418,7 +389,7 @@ func registerTypedTestActivities() {
 		"business_rule_engine",
 		"schema_validator",
 	}
-	
+
 	for _, activityName := range processorActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -428,8 +399,8 @@ func registerTypedTestActivities() {
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
-					Result: fmt.Sprintf("Processed by %s", name),
-					Status: "success",
+					Result:    fmt.Sprintf("Processed by %s", name),
+					Status:    "success",
 					Processor: name,
 				}, nil
 			},
@@ -444,7 +415,7 @@ func registerTypedTestActivities() {
 		"research_op",
 		"user_input_form",
 	}
-	
+
 	for _, activityName := range searchActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(
@@ -481,18 +452,18 @@ func registerTypedTestActivities() {
 			return GenericOutput{
 				Result: map[string]interface{}{
 					"sentiment_score": 0.8,
-					"emotions": []string{"positive"},
-					"topics": []string{"topic1", "topic2"},
-					"keywords": []string{"key1", "key2"},
-					"entities": []string{"entity1"},
-					"relationships": []string{"rel1"},
-					"language": "en",
-					"confidence": 0.95,
-					"insights": []string{"insight1"},
+					"emotions":        []string{"positive"},
+					"topics":          []string{"topic1", "topic2"},
+					"keywords":        []string{"key1", "key2"},
+					"entities":        []string{"entity1"},
+					"relationships":   []string{"rel1"},
+					"language":        "en",
+					"confidence":      0.95,
+					"insights":        []string{"insight1"},
 					"recommendations": []string{"rec1"},
-					"data": map[string]interface{}{"processed": true},
-					"metrics": map[string]interface{}{"count": 100},
-					"quality_score": 0.85,
+					"data":            map[string]interface{}{"processed": true},
+					"metrics":         map[string]interface{}{"count": 100},
+					"quality_score":   0.85,
 				},
 				Status: "success",
 				Recipe: recipeName,
@@ -529,7 +500,6 @@ func registerTypedTestActivities() {
 		"test-sequence-node",
 		"test-sleep-operation",
 		"test-state-machine",
-		"unknown_activity_type",
 		"wait",
 		"gemini-recipe",
 		"dataset-processor",
@@ -539,7 +509,7 @@ func registerTypedTestActivities() {
 		"language-detector",
 		"insight-generator",
 	}
-	
+
 	for _, activityName := range miscActivities {
 		name := activityName // capture for closure
 		activity := recipeops.NewActivityMappedOp(

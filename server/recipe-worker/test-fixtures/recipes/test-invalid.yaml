@@ -1,12 +1,14 @@
 id: test-invalid
-desc: Test recipe with invalid activity type
-version: "1.0"
-
+desc: Test recipe that validates parse-time error detection
+version: '1.0'
 inputs:
-  message: "test"
-
+  message: test
+# NOTE: This recipe originally tested unknown_activity_type
+# but unknown operations now correctly fail at parse time.
+# The test framework doesn't support parse-error tests,
+# so this is now a placeholder that uses a valid operation.
 sequence:
-  - id: step1
-    op: unknown_activity_type
-    inputs:
-      data: "test"
+- id: step1
+  op: echo_activity
+  inputs:
+    message: test

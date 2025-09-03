@@ -1,11 +1,11 @@
 id: basic-test
 desc: Basic test recipe
-version: "1.0"
-
-# Root is a simple operation
-op: command_execution
-inputs:
-  run: "echo '{{ .inputs.message }}'"
-  message: "{{ .inputs.message }}"
+version: '1.0'
+sequence:
+- id: cmd
+  op: command_execution
+  inputs:
+    run: '{{ "echo ''" + inputs.message + "''" }}'
+    message: '{{ inputs.message }}'
 outputs:
-  result: "{{ .stdout }}"
+  result: '{{ sequence.cmd.outputs.stdout }}'

@@ -57,11 +57,11 @@ func TestIntegrationRealContainers(t *testing.T) {
 						"PORT":     "3000",
 					},
 					ForwardPorts: []interface{}{float64(3000), float64(9229)},
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("node_modules"),
-							Target: "/workspace/node_modules",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "node_modules",
+							"target": "/workspace/node_modules",
 						},
 					},
 				},

@@ -1,15 +1,12 @@
 id: simple-test-recipe
-version: "1.0.0"
+version: 1.0.0
 desc: A simple test recipe for integration testing
-
-# Root is a sequence of operations
 sequence:
-  - id: step1
-    op: command_execution
-    inputs:
-      run: "curl -s https://httpbin.org/get"
-    
-  - id: step2
-    op: command_execution
-    inputs:
-      run: "echo 'Hello from test'"
+- id: step1
+  op: command_execution
+  inputs:
+    run: echo 'Step 1 output'
+- id: step2
+  op: command_execution
+  inputs:
+    run: echo 'Hello from test'

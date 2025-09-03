@@ -47,12 +47,21 @@ func (n *Recipe) UnmarshalYAML(node *yamlv3.Node) error {
 	case raw["op"] != nil:
 		impl = &RecipeOp{}
 	default:
-		return fmt.Errorf("intermediate node must either be a op, sequence, state, or shared reference")
+		// update to include line/col
+
+		return fmt.Errorf("root node must either be a op, sequence, state, or shared reference at %d:%d", node.Line, node.Column)
 	}
 
 	// Second pass: decode into concrete type
 	if err := node.Decode(impl); err != nil {
 		return err
+	}
+
+	if op, ok := impl.(*RecipeOp); ok {
+		err := checkOpInputs(op.Op, op.Inputs, node.Line, node.Column)
+		if err != nil {
+			return err
+		}
 	}
 
 	n.RecipeImpl = impl

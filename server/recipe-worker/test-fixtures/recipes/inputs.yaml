@@ -1,11 +1,8 @@
 id: inputs
 desc: Test static inputs
-version: "1.0"
-
-# Simple operation that returns static values
+version: '1.0'
 op: echo_activity
 inputs:
-  message: "test"
+  message: test
 outputs:
-  greeting: "Greetings"
-  name: "YAML Test"
+  output: .output

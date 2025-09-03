@@ -1,25 +1,16 @@
 id: echo_example
 desc: Simple recipe that echoes an input string
-version: "1.0"
-
-# Root is a sequence
+version: '1.0'
 sequence:
-  - id: echo
-    desc: Echo Message
-    op: command_execution
-    inputs:
-      run: "for i in $(seq 1 {{ .inputs.repeat_count }}); do echo '{{ .inputs.message }}'; done"
-      
-  - id: get_timestamp
-    desc: Get Timestamp
-    op: command_execution
-    inputs:
-      run: "date '+%Y-%m-%d %H:%M:%S'"
-
-# Root node properties
+- id: echo
+  desc: Echo Message
+  op: command_execution
+  inputs:
+    run: '{{ "for i in $(seq 1 " + string(has(inputs.repeat_count) ? inputs.repeat_count
+      : 1) + "); do echo ''" + (has(inputs.message) ? inputs.message : "Hello") +
+      "''; done" }}'
 inputs:
-  message: "Hello"
+  message: Hello
   repeat_count: 1
 outputs:
-  echo_result: "{{ .nodes.echo.outputs.stdout }}"
-  timestamp: "{{ .nodes.get_timestamp.outputs.stdout }}"
+  echo_result: '{{ sequence.echo.outputs.stdout }}'

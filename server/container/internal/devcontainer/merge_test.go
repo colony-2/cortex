@@ -284,16 +284,16 @@ func TestExpandVariables(t *testing.T) {
 			name: "expand mount sources",
 			dc: &DevContainer{
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeBind,
-							Source: strPtr("${localWorkspaceFolder}/data"),
-							Target: "/data",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "bind",
+							"source": "${localWorkspaceFolder}/data",
+							"target": "/data",
 						},
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("${containerWorkspaceFolderBasename}-cache"),
-							Target: "/cache",
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "${containerWorkspaceFolderBasename}-cache",
+							"target": "/cache",
 						},
 					},
 				},
@@ -307,11 +307,22 @@ func TestExpandVariables(t *testing.T) {
 					t.Fatalf("expected 2 mounts, got %d", len(dc.Mounts))
 				}
 				
-				if *dc.Mounts[0].Source != "/projects/app/data" {
-					t.Errorf("expected first mount source to be expanded")
+				// Check first mount (bind)
+				mount0, ok := dc.Mounts[0].(map[string]interface{})
+				if !ok {
+					t.Fatalf("expected first mount to be a map")
 				}
-				if *dc.Mounts[1].Source != "app-cache" {
-					t.Errorf("expected second mount source to be expanded")
+				if mount0["source"] != "/projects/app/data" {
+					t.Errorf("expected first mount source to be expanded, got %v", mount0["source"])
+				}
+				
+				// Check second mount (volume)
+				mount1, ok := dc.Mounts[1].(map[string]interface{})
+				if !ok {
+					t.Fatalf("expected second mount to be a map")
+				}
+				if mount1["source"] != "app-cache" {
+					t.Errorf("expected second mount source to be expanded, got %v", mount1["source"])
 				}
 			},
 		},

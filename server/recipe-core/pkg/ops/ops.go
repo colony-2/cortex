@@ -28,6 +28,7 @@ func Register(ops ...RegisterableOp) {
 	registry := getInstance()
 	for _, op := range ops {
 		registry.ops.Store(op.GetName(), op)
+		registry.ops.Store(op.GetMetadata().Type, op)
 	}
 }
 

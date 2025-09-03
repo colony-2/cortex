@@ -124,16 +124,16 @@ func TestBuildDockerRunCommand(t *testing.T) {
 					Image: "golang:1.21",
 				},
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeBind,
-							Source: strPtr("/host/cache"),
-							Target: "/go/pkg/mod",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "bind",
+							"source": "/host/cache",
+							"target": "/go/pkg/mod",
 						},
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("go-build-cache"),
-							Target: "/root/.cache/go-build",
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "go-build-cache",
+							"target": "/root/.cache/go-build",
 						},
 					},
 				},
@@ -143,8 +143,8 @@ func TestBuildDockerRunCommand(t *testing.T) {
 			wantErr:       false,
 			validateFunc: func(t *testing.T, config *DockerRunConfig) {
 				expectedMounts := []string{
-					"type=bind,target=/go/pkg/mod,source=/host/cache",
-					"type=volume,target=/root/.cache/go-build,source=go-build-cache",
+					"type=bind,source=/host/cache,target=/go/pkg/mod",
+					"type=volume,source=go-build-cache,target=/root/.cache/go-build",
 				}
 				if !reflect.DeepEqual(config.Mounts, expectedMounts) {
 					t.Errorf("expected mounts %v, got %v", expectedMounts, config.Mounts)

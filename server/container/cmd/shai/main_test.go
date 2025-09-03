@@ -12,10 +12,12 @@ import (
 )
 
 func TestShaiInitialization(t *testing.T) {
-	// Skip if not in CI or if Docker is not available
-	if os.Getenv("CI") == "" {
-		t.Skip("Skipping integration test outside of CI")
+	// Skip if Docker is not available (check by trying to create a client)
+	testClient, err := devcontainer.NewManager()
+	if err != nil {
+		t.Skip("Skipping integration test - Docker not available:", err)
 	}
+	testClient.Close()
 
 	// Create temporary directory for test
 	tmpDir := t.TempDir()
@@ -26,11 +28,10 @@ func TestShaiInitialization(t *testing.T) {
 		t.Fatalf("Failed to create .devcontainer directory: %v", err)
 	}
 	
-	devcontainerJSON := `{
-		"name": "test-container",
-		"image": "alpine:latest",
-		"command": "/bin/sh"
-	}`
+    devcontainerJSON := `{
+        "image": "alpine:latest",
+        "command": "/bin/sh"
+    }`
 	
 	devcontainerPath := filepath.Join(devcontainerDir, "devcontainer.json")
 	if err := os.WriteFile(devcontainerPath, []byte(devcontainerJSON), 0644); err != nil {

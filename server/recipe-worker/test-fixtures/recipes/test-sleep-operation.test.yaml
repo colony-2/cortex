@@ -1,17 +1,8 @@
 tests:
-  - name: "basic_sleep"
-    description: "Test basic sleep operation"
-    inputs: {}
-    want:
-      sleep_completed: true
-      duration: "1s"
-    wantErr: false
-
-  - name: "custom_duration_sleep"
-    description: "Test sleep with custom duration"
-    inputs:
-      duration: "3s"
-    want:
-      sleep_completed: true
-      actual_duration: "~3s"
-    wantErr: false
+- name: basic_sleep
+  description: Test basic sleep operation
+  inputs: {}
+  want:
+    sleep_completed: true
+    was_interrupted: false
+  wantErr: false

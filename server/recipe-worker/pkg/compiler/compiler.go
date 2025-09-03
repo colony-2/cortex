@@ -11,6 +11,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
@@ -34,7 +35,7 @@ func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n
 		return executeStateMachine(ctx, activityRegistry, t.StateData.States, inputs)
 
 	case *recipe.NodeOp:
-		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.OpData.Op, t.NodeMetadata.Inputs, inputs)
+		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.OpData.Op, nil, inputs)
 
 	case *recipe.NodeSequence:
 		outputs, _, err := executeSequence(ctx, activityRegistry, t.NodeMetadata, t.SequenceData.Sequence, inputs)
@@ -106,21 +107,32 @@ type StepResult struct {
 
 // executeOperation executes a single operation node
 func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
-	// Create resolution context for this operation
-	resCtx, err := NewResolutionContext("op", metadata.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resolution context: %w", err)
-	}
-	resCtx.TemplateData.Inputs = workflowInputs
-
-	// Resolve templates in node inputs
-	resolvedNodeInputs := make(map[string]interface{})
-	for k, v := range nodeInputs {
-		resolved, err := resCtx.ResolveValue(v)
+	var resolvedNodeInputs map[string]interface{}
+	
+	// If nodeInputs is nil, it means the inputs are already resolved (from sequence context)
+	// Otherwise, resolve templates in node inputs using a new resolution context
+	if nodeInputs != nil {
+		// Create resolution context for this operation
+		resCtx, err := NewResolutionContext("op", metadata.ID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve template in input %s: %w", k, err)
+			return nil, fmt.Errorf("failed to create resolution context: %w", err)
 		}
-		resolvedNodeInputs[k] = resolved
+		resCtx.TemplateData.Inputs = workflowInputs
+
+		// Resolve templates in node inputs
+		resolvedNodeInputs = make(map[string]interface{})
+		for k, v := range nodeInputs {
+			resolved, err := resCtx.ResolveValue(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve template in input %s: %w", k, err)
+			}
+			resolvedNodeInputs[k] = resolved
+		}
+	} else {
+		// Inputs are already resolved, extract them from workflowInputs 
+		// (they were merged by the calling sequence)
+		resolvedNodeInputs = make(map[string]interface{})
+		// For sequence nodes, the resolved node inputs are already included in workflowInputs
 	}
 
 	// Merge workflow inputs with resolved node inputs
@@ -163,7 +175,7 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 	// Execute the operation
 	var outputs map[string]interface{}
 
-	err = workflow.ExecuteActivity(ctx, op, inputs).Get(ctx, &outputs)
+	err := workflow.ExecuteActivity(ctx, op, inputs).Get(ctx, &outputs)
 	if err != nil {
 		return nil, err
 	}
@@ -210,9 +222,10 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 
 		// Store outputs with node's own ID if specified
 		if nodeMetadata.ID != "" {
-			// Add to resolution context for sibling visibility
-			resCtx.AddSequenceNode(nodeMetadata.ID, outputs)
 			nodeOutputs[nodeMetadata.ID] = outputs
+			// IMPORTANT: Add to resolution context immediately after execution
+			// so that subsequent nodes can reference this node in their input templates
+			resCtx.AddSequenceNode(nodeMetadata.ID, outputs)
 		}
 	}
 

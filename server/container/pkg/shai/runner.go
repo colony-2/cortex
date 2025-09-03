@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
-	"github.com/docker/docker/api/types/mount"
 )
 
 // Config represents shai configuration
@@ -24,8 +23,6 @@ type Runner struct {
 	manager          container.Manager
 	mountBuilder     *MountBuilder
 	progressReporter *ProgressReporter
-	// Store mount configuration to pass to manager
-	mounts           []mount.Mount
 }
 
 // New creates a new shai runner with a provided container manager
@@ -60,7 +57,6 @@ func New(config Config, manager container.Manager) (*Runner, error) {
 		manager:          manager,
 		mountBuilder:     mountBuilder,
 		progressReporter: NewProgressReporter(),
-		mounts:           mountBuilder.BuildMounts(),
 	}, nil
 }
 
@@ -71,16 +67,14 @@ func (r *Runner) OnProgress(cb ProgressCallback) {
 
 // Start creates and starts the container
 func (r *Runner) Start(ctx context.Context) (*container.Info, error) {
-	r.progressReporter.Report(PhaseValidating, "Loading devcontainer configuration...")
+	r.progressReporter.Report(PhaseValidating, "Configuring selective mounts...")
 	
-	// Create container with progress reporting
-	r.progressReporter.Report(PhaseCreating, "Creating container with mounts...")
+	// Configure custom mounts on the manager
+	if err := r.configureManagerMounts(); err != nil {
+		return nil, fmt.Errorf("failed to configure mounts: %w", err)
+	}
 	
-	// Note: The manager implementation is responsible for:
-	// - Loading devcontainer configuration
-	// - Applying mounts
-	// - Setting auto-remove
-	// The shai runner just coordinates the high-level flow
+	r.progressReporter.Report(PhaseCreating, "Creating container with custom mounts...")
 	
 	containerID, err := r.manager.Create(ctx, r.config.WorkingDir)
 	if err != nil {
@@ -124,5 +118,25 @@ func (r *Runner) Close() error {
 		return closer.Close()
 	}
 	return nil
+}
+
+// configureManagerMounts configures the container manager with our custom mounts
+func (r *Runner) configureManagerMounts() error {
+	// Build mount configurations from our mount builder
+	dockerMounts := r.mountBuilder.BuildMounts()
+	
+	// Convert Docker mount.Mount to container.Mount
+	var containerMounts []container.Mount
+	for _, m := range dockerMounts {
+		containerMounts = append(containerMounts, container.Mount{
+			Type:     string(m.Type),
+			Source:   m.Source,
+			Target:   m.Target,
+			ReadOnly: m.ReadOnly,
+		})
+	}
+	
+	// Configure the manager with our custom mounts
+	return r.manager.ConfigureMounts(containerMounts)
 }
 

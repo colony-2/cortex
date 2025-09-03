@@ -1,8 +1,6 @@
 id: research_report_project
-version: "1.0"
+version: '1.0'
 desc: Research and report generation recipe
-
-# Simple test operation
 op: echo_activity
 inputs:
-  message: "project test"
+  message: project test

@@ -1,75 +1,62 @@
 id: simple_data_pipeline
 desc: Simple data pipeline demonstrating state machine composition features
-version: "1.0.0"
-
-# Root is a state machine
-state:
-  initial: validate
+version: 1.0.0
+op: state_machine
+config:
+  initial_state: validate
   states:
-    # Simple validation state
     validate:
       op: data_validator
       inputs:
-        size: "{{ .inputs.data_size }}"
+        size: '{{ inputs.data_size }}'
       transitions:
-        - to: process
-          when: ".outputs.valid == true"
-        - to: error
-          when: ".outputs.valid == false"
-    
-    # Process state with conditional logic (using nested sequence with conditionals)
+      - to: process
+        when: states.validate.outputs.valid == true
+      - to: error
+        when: states.validate.outputs.valid == false
     process:
       sequence:
-        - id: check_size
-          op: command_execution
-          inputs:
-            run: "test {{ .inputs.data_size }} -gt 1000000"
-          when: "{{ .inputs.data_size }} > 1000000"
-        
-        # Convert parallel to sequential execution
-        - id: batch1
-          op: batch_processor
-          inputs:
-            batch_id: 1
-            size: 500000
-          when: "{{ .nodes.check_size.exit_code }} == 0"
-        
-        - id: batch2
-          op: batch_processor
-          inputs:
-            batch_id: 2
-            size: 500000
-          when: "{{ .nodes.check_size.exit_code }} == 0"
-        
-        - id: fast_process
-          op: fast_processor
-          inputs:
-            data_size: "{{ .inputs.data_size }}"
-          when: "{{ .inputs.priority }} == 'high' && {{ .nodes.check_size.exit_code }} != 0"
-        
-        - id: standard_process
-          op: standard_processor
-          inputs:
-            data_size: "{{ .inputs.data_size }}"
-          when: "{{ .inputs.priority }} != 'high' && {{ .nodes.check_size.exit_code }} != 0"
-      
+      - id: check_size
+        op: command_execution
+        inputs:
+          run: 'test {{ inputs.data_size }} -gt 1000000'
+      - id: batch1
+        op: batch_processor
+        inputs:
+          batch_id: 1
+          size: 500000
+        when: sequence.check_size.outputs.exit_code == 0
+      - id: batch2
+        op: batch_processor
+        inputs:
+          batch_id: 2
+          size: 500000
+        when: sequence.check_size.outputs.exit_code == 0
+      - id: fast_process
+        op: fast_processor
+        inputs:
+          data_size: '{{ inputs.data_size }}'
+        when: inputs.priority == "high" && sequence.check_size.outputs.exit_code != 0
+      - id: standard_process
+        op: standard_processor
+        inputs:
+          data_size: '{{ inputs.data_size }}'
+        when: inputs.priority != "high" && sequence.check_size.outputs.exit_code != 0
       transitions:
-        - to: complete
-    
-    # Terminal states
+      - to: complete
     complete:
       op: command_execution
       inputs:
-        run: "echo 'Pipeline completed successfully'"
+        run: echo 'Pipeline completed successfully'
       outputs:
-        result: "{{ .states.process.outputs }}"
-        status: "success"
-    
+        result: .stdout
+        status: .success
     error:
-      error: "Validation failed"
-
+      op: error_handler
+      inputs:
+        message: 'Validation failed'
 inputs:
   data_size: 1000
-  priority: "normal"
+  priority: normal
 outputs:
-  result: "{{ .states.complete.outputs.result }}"
+  result: '{{ states.complete.outputs.result }}'

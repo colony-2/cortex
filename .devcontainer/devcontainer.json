@@ -1,22 +1,19 @@
 {
   "name": "${localWorkspaceFolderBasename}",
-  "image": "golang:1.21-bookworm",
+  "image": "golang:1.24-bookworm",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {},
-    "ghcr.io/devcontainers/features/git:1": {}
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0.5": {}
   },
   "workspaceFolder": "/workspace",
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
     "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
     "source=${localEnv:HOME}/.cache/go-build,target=/go/pkg,type=bind",
-    "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind"
+    "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
   ],
   "remoteUser": "vscode",
-  "customizations": {
-    "vscode": {
-      "extensions": ["golang.go"]
-    }
-  },
-  "postCreateCommand": "go version && go mod download"
+  "postCreateCommand": "go version"
 }

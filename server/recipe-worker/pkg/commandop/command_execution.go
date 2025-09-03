@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
@@ -141,8 +142,8 @@ func execute(ctx context.Context, input CommandExecutionInput) (CommandExecution
 
 	// Prepare output
 	output := CommandExecutionOutput{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
+		Stdout:   strings.TrimRight(stdout.String(), "\r\n"),
+		Stderr:   strings.TrimRight(stderr.String(), "\r\n"),
 		ExitCode: 0,
 		Success:  true,
 		TimedOut: false,

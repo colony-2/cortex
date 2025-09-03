@@ -42,7 +42,8 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 	case raw["shared"] != nil:
 		impl = &NodeShared{}
 	default:
-		return fmt.Errorf("intermediate node must either be a op, sequence, state, or shared reference")
+		foo, _ := yamlv3.Marshal(node)
+		return fmt.Errorf("intermediate node must either be a op, sequence, state, or shared reference at %d:%d. tree: %s", node.Line, node.Column, foo)
 	}
 
 	// Second pass: decode into concrete type
@@ -51,7 +52,7 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 	}
 
 	if nodeOp != nil {
-		if err := checkOpInputs(nodeOp.Op, nodeOp.Inputs); err != nil {
+		if err := checkOpInputs(nodeOp.Op, nodeOp.Inputs, node.Line, node.Column); err != nil {
 			return err
 		}
 	}
@@ -59,10 +60,10 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 	return nil
 }
 
-func checkOpInputs(opName string, inputs map[string]interface{}) error {
+func checkOpInputs(opName string, inputs map[string]interface{}, line int, col int) error {
 	op, exists := ops.Get(opName)
 	if !exists {
-		return fmt.Errorf("unknown op: %s", opName)
+		return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
 	}
 	concreteInputType := op.GetInputStruct()
 
@@ -71,7 +72,7 @@ func checkOpInputs(opName string, inputs map[string]interface{}) error {
 		return err
 	}
 	if err := yamlv3.Unmarshal(data, &concreteInputType); err != nil {
-		return err
+		return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
 	}
 	return nil
 }

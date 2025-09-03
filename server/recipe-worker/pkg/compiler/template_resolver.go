@@ -114,19 +114,10 @@ func (rc *ResolutionContext) NewChildContext(scopeType string, scopeID string, i
 }
 
 
-// ResolveTemplate handles expression evaluation using CEL
+// ResolveTemplate handles expression evaluation using CEL with interpolation support
 func (rc *ResolutionContext) ResolveTemplate(expr string) (interface{}, error) {
-	// If it doesn't look like an expression, return as-is
-	trimmed := strings.TrimSpace(expr)
-	if !strings.HasPrefix(trimmed, "{{") || !strings.HasSuffix(trimmed, "}}") {
-		return expr, nil
-	}
-
-	// Extract the expression from the template markers
-	innerExpr := strings.TrimSpace(trimmed[2:len(trimmed)-2])
-	
-	// Use CEL to evaluate the expression
-	return rc.EvaluateCELExpression(innerExpr)
+	// Use the new interpolation mode by default for backward compatibility
+	return rc.interpolateString(expr, ModeInterpolation)
 }
 
 // EvaluateCEL handles pure CEL evaluation for when conditions
@@ -196,38 +187,9 @@ func (rc *ResolutionContext) EvaluateCELExpression(expr string) (interface{}, er
 	return result.Value(), nil
 }
 
-// ResolveValue recursively resolves templates in a value
+// ResolveValue recursively resolves templates in a value (uses interpolation mode by default)
 func (rc *ResolutionContext) ResolveValue(value interface{}) (interface{}, error) {
-	switch v := value.(type) {
-	case string:
-		// Resolve string templates
-		return rc.ResolveTemplate(v)
-	case map[string]interface{}:
-		// Recursively resolve map values
-		result := make(map[string]interface{})
-		for key, val := range v {
-			resolved, err := rc.ResolveValue(val)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve key %s: %w", key, err)
-			}
-			result[key] = resolved
-		}
-		return result, nil
-	case []interface{}:
-		// Recursively resolve slice values
-		result := make([]interface{}, len(v))
-		for i, val := range v {
-			resolved, err := rc.ResolveValue(val)
-			if err != nil {
-				return nil, fmt.Errorf("failed to resolve index %d: %w", i, err)
-			}
-			result[i] = resolved
-		}
-		return result, nil
-	default:
-		// For other types (numbers, bools, etc.), return as-is
-		return value, nil
-	}
+	return rc.ResolveValueWithMode(value, ModeInterpolation)
 }
 
 // AddSequenceNode adds a node output to the sequence context

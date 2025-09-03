@@ -2,12 +2,13 @@
 package devcontainer
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
+    "encoding/json"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strconv"
+    "strings"
+    "regexp"
 )
 
 // DevContainer represents the devcontainer.json configuration
@@ -60,7 +61,7 @@ type DevContainerCommon struct {
 	InitializeCommand    interface{}    `json:"initializeCommand,omitempty"`
 	
 	// Mounts and volumes
-	Mounts          []DevContainerCommonMountsElem `json:"mounts,omitempty"`
+	Mounts          []interface{} `json:"mounts,omitempty"`
 	
 	// Security
 	CapAdd          []string          `json:"capAdd,omitempty"`
@@ -285,9 +286,35 @@ func (m *Mount) UnmarshalJSON(data []byte) error {
 
 // BuildDockerRunCommand builds a Docker run configuration from a DevContainer
 func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRunConfig, error) {
-	// Expand variables in the devcontainer before building
-	vars := GetStandardVariables(workspaceFolder)
-	ExpandVariables(dc, vars)
+    // Expand variables in the devcontainer before building
+    vars := GetStandardVariables(workspaceFolder)
+    ExpandVariables(dc, vars)
+
+    // Resolve ${localEnv:VAR[:default]} in mounts; fail if any unresolved without default
+    var missing []string
+    for i, mount := range dc.Mounts {
+        if s, ok := mount.(string); ok {
+            resolved, miss := resolveLocalEnvVars(s)
+            if len(miss) > 0 {
+                missing = append(missing, miss...)
+            }
+            dc.Mounts[i] = resolved
+        } else if m, ok := mount.(map[string]interface{}); ok {
+            if src, ok2 := m["source"].(string); ok2 {
+                resolved, miss := resolveLocalEnvVars(src)
+                if len(miss) > 0 { missing = append(missing, miss...) }
+                m["source"] = resolved
+            }
+            if tgt, ok2 := m["target"].(string); ok2 {
+                resolved, miss := resolveLocalEnvVars(tgt)
+                if len(miss) > 0 { missing = append(missing, miss...) }
+                m["target"] = resolved
+            }
+        }
+    }
+    if len(missing) > 0 {
+        return nil, fmt.Errorf("unresolved localEnv variables in devcontainer mounts: %s", strings.Join(uniqueStrings(missing), ", "))
+    }
 	
 	config := &DockerRunConfig{
 		WorkspaceFolder: dc.WorkspaceFolder,
@@ -367,10 +394,19 @@ func BuildDockerRunCommand(dc *DevContainer, workspaceFolder string) (*DockerRun
 		}
 	}
 	
-	// Handle mounts
+	// Handle mounts (can be strings or objects)
 	for _, mount := range dc.Mounts {
-		mountStr := buildMountString(mount)
-		config.Mounts = append(config.Mounts, mountStr)
+		switch m := mount.(type) {
+		case string:
+			// String format: "source=...,target=...,type=...,readonly"
+			config.Mounts = append(config.Mounts, m)
+		case map[string]interface{}:
+			// Object format: convert to string
+			mountStr := buildMountStringFromMap(m)
+			if mountStr != "" {
+				config.Mounts = append(config.Mounts, mountStr)
+			}
+		}
 	}
 	
 	// Handle init
@@ -411,7 +447,7 @@ func (c *DockerRunConfig) ToDockerRunArgs() []string {
 	}
 	
 	// Add workspace mount
-	if c.WorkspaceMount != "" {
+	if c.WorkspaceMount != "" && c.WorkspaceMount != "none" {
 		args = append(args, "-v", c.WorkspaceMount)
 	}
 	
@@ -785,6 +821,10 @@ func buildMountString(dcMount DevContainerCommonMountsElem) string {
 	if dcMount.Source != nil && *dcMount.Source != "" {
 		result += fmt.Sprintf(",source=%s", *dcMount.Source)
 	}
+	// IMPORTANT: Add readonly flag if specified
+	if dcMount.ReadOnly {
+		result += ",readonly"
+	}
 	return result
 }
 
@@ -1071,13 +1111,19 @@ func ExpandVariables(dc *DevContainer, vars map[string]string) {
 	}
 	
 	// Expand variables in mounts
-	for i := range dc.Mounts {
-		if dc.Mounts[i].Source != nil {
-			expanded := expandVariableString(*dc.Mounts[i].Source, vars)
-			dc.Mounts[i].Source = &expanded
-		}
-		if dc.Mounts[i].Target != "" {
-			dc.Mounts[i].Target = expandVariableString(dc.Mounts[i].Target, vars)
+	for i, mount := range dc.Mounts {
+		switch m := mount.(type) {
+		case string:
+			// Expand variables in string mount
+			dc.Mounts[i] = expandVariableString(m, vars)
+		case map[string]interface{}:
+			// Expand variables in object mount
+			if source, ok := m["source"].(string); ok {
+				m["source"] = expandVariableString(source, vars)
+			}
+			if target, ok := m["target"].(string); ok {
+				m["target"] = expandVariableString(target, vars)
+			}
 		}
 	}
 	
@@ -1109,12 +1155,50 @@ func ExpandVariables(dc *DevContainer, vars map[string]string) {
 
 // expandVariableString expands variables in a string
 func expandVariableString(s string, vars map[string]string) string {
-	result := s
-	for key, value := range vars {
-		result = strings.ReplaceAll(result, "${"+key+"}", value)
-		result = strings.ReplaceAll(result, "$"+key, value)
-	}
-	return result
+    result := s
+    for key, value := range vars {
+        result = strings.ReplaceAll(result, "${"+key+"}", value)
+        result = strings.ReplaceAll(result, "$"+key, value)
+    }
+    // Also resolve ${localEnv:VAR[:default]} here for non-mount strings
+    result, _ = resolveLocalEnvVars(result)
+    return result
+}
+
+// resolveLocalEnvVars replaces ${localEnv:VAR[:default]} with the host env value or the provided default.
+// Returns the resolved string and a slice of missing variable names (no env and no default provided).
+var reLocalEnv = regexp.MustCompile(`\$\{localEnv:([^}:]+)(?::([^}]*))?\}`)
+
+func resolveLocalEnvVars(in string) (string, []string) {
+    missing := []string{}
+    out := reLocalEnv.ReplaceAllStringFunc(in, func(m string) string {
+        sub := reLocalEnv.FindStringSubmatch(m)
+        if len(sub) < 2 { return m }
+        name := sub[1]
+        def := ""
+        if len(sub) >= 3 { def = sub[2] }
+        if val, ok := os.LookupEnv(name); ok && val != "" {
+            return val
+        }
+        if def != "" {
+            return def
+        }
+        missing = append(missing, name)
+        return m
+    })
+    return out, missing
+}
+
+func uniqueStrings(in []string) []string {
+    seen := map[string]struct{}{}
+    var out []string
+    for _, s := range in {
+        if _, ok := seen[s]; !ok {
+            seen[s] = struct{}{}
+            out = append(out, s)
+        }
+    }
+    return out
 }
 
 // HostRequirementsCheck checks if host requirements are valid
@@ -1356,6 +1440,30 @@ func mergeRemoteEnv(base, override map[string]*string) map[string]*string {
 	// Override with new values (including nil to unset)
 	for k, v := range override {
 		result[k] = v
+	}
+	
+	return result
+}
+
+// buildMountStringFromMap builds a mount string from a map
+func buildMountStringFromMap(m map[string]interface{}) string {
+	mountType := "bind"
+	if t, ok := m["type"].(string); ok {
+		mountType = t
+	}
+	
+	result := fmt.Sprintf("type=%s", mountType)
+	
+	if source, ok := m["source"].(string); ok {
+		result += fmt.Sprintf(",source=%s", source)
+	}
+	
+	if target, ok := m["target"].(string); ok {
+		result += fmt.Sprintf(",target=%s", target)
+	}
+	
+	if readOnly, ok := m["readonly"].(bool); ok && readOnly {
+		result += ",readonly"
 	}
 	
 	return result

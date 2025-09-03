@@ -53,16 +53,16 @@ func TestRealDockerExecution(t *testing.T) {
 					Image: "ubuntu:22.04",
 				},
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("test-cache"),
-							Target: "/cache",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "test-cache",
+							"target": "/cache",
 						},
-						{
-							Type:   MountTypeBind,
-							Source: strPtr(tmpDir),
-							Target: "/data",
+						map[string]interface{}{
+							"type":   "bind",
+							"source": tmpDir,
+							"target": "/data",
 						},
 					},
 				},

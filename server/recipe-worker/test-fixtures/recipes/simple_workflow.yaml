@@ -4,19 +4,15 @@ version: '1.0'
 inputs:
   query: ''
 outputs:
-  result: '{{ .nodes.summarize.outputs.summary }}'
+  result: '{{ sequence.summarize.outputs.report }}'
 sequence:
 - id: search
   name: Quick Search
   op: quick_search_activity
   inputs:
-    query: '{{ .Inputs.query }}'
-  outputs:
-    data: .search_results
+    query: '{{ inputs.query }}'
 - id: summarize
   name: Summarize Results
   op: summarize_activity
   inputs:
-    data: '{{ .nodes.search.outputs.data }}'
-  outputs:
-    summary: .final_summary
+    data: '{{ sequence.search.outputs.result }}'

@@ -5,7 +5,7 @@ import "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
 // StateMap represents a state machine configuration
 type StateMap struct {
 	Initial string           `yaml:"initial"` // Which state to start with
-	States  map[string]State `yaml:",inline"` // Inline the states
+	States  map[string]State `yaml:"states"`  // Inline the states
 }
 
 // State represents a state in a state machine
@@ -27,7 +27,6 @@ type Transition struct {
 }
 
 type StateData struct {
-	States  *StateMap `yaml:"states,omitempty"`
-	Inputs  InputMap  `yaml:"inputs"`
+	States  *StateMap `yaml:"state,omitempty"`
 	Outputs OutputMap `yaml:"outputs,omitempty"`
 }

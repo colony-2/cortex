@@ -11,44 +11,44 @@ sequence:
 - id: validate
   op: shared/data-validator
   inputs:
-    sources: '{{ .Inputs.data_sources }}'
-    format: '{{ .Inputs.output_format }}'
+    sources: '{{ inputs.data_sources }}'
+    format: '{{ inputs.output_format }}'
   outputs:
-    validated_sources: sources
-    validation_report: report
+    validated_sources: .sources
+    validation_report: .report
 - id: parallel_processing
   parallel:
   - id: process_batch_1
     op: shared/data-processor
     inputs:
-      sources: '{{ slice .nodes.validate.outputs.validated_sources 0 (div (len .nodes.validate.outputs.validated_sources)
+      sources: '{{ slice sequence.validate.outputs.validated_sources 0 (div (len sequence.validate.outputs.validated_sources)
         2) }}'
       batch_id: batch_1
     outputs:
-      processed: batch_1_data
+      processed: .batch_1_data
   - id: process_batch_2
     op: shared/data-processor
     inputs:
-      sources: '{{ slice .nodes.validate.outputs.validated_sources (div (len .nodes.validate.outputs.validated_sources)
-        2) (len .nodes.validate.outputs.validated_sources) }}'
+      sources: '{{ slice sequence.validate.outputs.validated_sources (div (len sequence.validate.outputs.validated_sources)
+        2) (len sequence.validate.outputs.validated_sources) }}'
       batch_id: batch_2
     outputs:
-      processed: batch_2_data
+      processed: .batch_2_data
 - id: combine
   op: combine_results
   inputs:
-    batch_1: '{{ .nodes.process_batch_1.outputs.processed }}'
-    batch_2: '{{ .nodes.process_batch_2.outputs.processed }}'
-    format: '{{ .Inputs.output_format }}'
+    batch_1: '{{ sequence.process_batch_1.outputs.processed }}'
+    batch_2: '{{ sequence.process_batch_2.outputs.processed }}'
+    format: '{{ inputs.output_format }}'
   outputs:
-    combined: final_data
+    combined: .final_data
 - id: summarize
   op: shared/data-analyzer
   inputs:
-    data: '{{ .nodes.combine.outputs.combined }}'
-    validation_report: '{{ .nodes.validate.outputs.validation_report }}'
+    data: '{{ sequence.combine.outputs.combined }}'
+    validation_report: '{{ sequence.validate.outputs.validation_report }}'
   outputs:
-    summary: analysis_summary
+    summary: .analysis_summary
 defs:
   data-validator:
     op: validate_sources
@@ -70,12 +70,12 @@ defs:
       model: gpt-4
       temperature: 0.3
       timeout: 2m
-      prompt: 'Analyze the following data processing results and provide a summary:
+      prompt: '{ "Analyze the following data processing results and provide a summary:
 
 
-        Data: {{ .data }}
+        Data: " + outputs.data + "
 
-        Validation Report: {{ .validation_report }}
+        Validation Report: " + outputs.validation_report + "
 
 
         Provide:
@@ -89,4 +89,4 @@ defs:
         4. Recommendations for optimization
 
 
-        Format as structured JSON.'
+        Format as structured JSON." }'

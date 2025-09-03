@@ -2,7 +2,7 @@
 
 ## Overview
 
-Container orchestration and devcontainer lifecycle management system for vibethis "boxes". Provides isolated development environments using Docker and devcontainer specifications, with full container lifecycle operations and WebSocket terminal access.
+Container orchestration and devcontainer lifecycle management system for vibethis "boxes". Provides isolated development environments using Docker and devcontainer specifications, with full container lifecycle operations, ephemeral containers, and terminal integration. Includes `shai` CLI for interactive devcontainer management.
 
 ## Architecture
 
@@ -14,17 +14,24 @@ Container orchestration and devcontainer lifecycle management system for vibethi
 - **Config Struct**: Docker host and registry authentication configuration
 
 ### Internal Implementation (`internal/devcontainer/`)
-- **DevContainer**: Complete devcontainer.json parser with image, dockerfile, and compose support
-- **DockerClient**: Multi-platform Docker SDK wrapper with automatic connection detection
+- **DevContainer**: Complete devcontainer.json parser with flexible mount support (string/object formats)
+- **DockerClient**: Multi-platform Docker SDK wrapper with automatic connection detection and image pulling
 - **Manager**: Bridges public API to Docker operations with devcontainer integration
-- **Docker Integration**: Supports Docker Desktop, rootless Docker, and remote hosts
+- **Docker Integration**: Supports Docker Desktop (prioritized on macOS), rootless Docker, and remote hosts
+
+### Shai CLI (`pkg/shai/` & `cmd/shai/`)
+- **EphemeralRunner**: Automated devcontainer setup with lifecycle script execution and progress display
+- **MountBuilder**: Selective read-write path mounting for workspace isolation
+- **ProgressDisplay**: Clean spinner/checkmark UI with error output on failure only
 
 ### Core Components
 ```
 Manager (interface) -> devcontainer.Manager -> DockerClient -> Docker SDK
 DevContainer (struct) -> DockerRunConfig -> Container Creation
+EphemeralRunner -> DevContainer + MountBuilder -> Automated Setup
 Variable Expansion -> Standard devcontainer variables
 Lifecycle Commands -> Shell script generation for container setup
+Shai CLI -> Ephemeral/Persistent modes with progress display
 ```
 
 ## Key Interfaces
@@ -73,6 +80,72 @@ func (c *DockerClient) ExecInContainer(ctx context.Context, containerID string, 
 ```go
 func GetStandardVariables(workspaceFolder string) map[string]string
 func ExpandVariables(dc *DevContainer, vars map[string]string)
+```
+
+### Shai CLI Interface
+```go
+// Ephemeral containers (auto-removed)
+type EphemeralRunner struct {
+    config           EphemeralConfig
+    devContainer     *devcontainer.DevContainer
+    docker           *client.Client
+    mountBuilder     *MountBuilder
+    progress         *ProgressDisplay
+}
+
+func NewEphemeralRunner(config EphemeralConfig) (*EphemeralRunner, error)
+func (r *EphemeralRunner) Run(ctx context.Context) error
+
+// Mount builder for selective workspace access
+type MountBuilder struct {
+    workingDir     string
+    readWritePaths []string
+    dockerMounts   []mount.Mount
+}
+
+func NewMountBuilder(workingDir string, rwPaths []string) (*MountBuilder, error)
+```
+
+## Shai CLI Tool
+
+Interactive devcontainer management with automatic setup and cleanup.
+
+### Basic Usage
+```bash
+# Ephemeral mode (default) - container auto-removed on exit
+shai -rw /path/to/workspace
+
+# Persistent mode - container remains after exit
+shai -rw /path/to/workspace -ephemeral=false -name=my-container
+
+# Multiple read-write paths
+shai -rw /path/to/workspace -rw /path/to/data
+
+# Build options
+shai -rw /path/to/workspace -no-cache -verbose
+```
+
+### Features
+- **Automatic Image Pulling**: Downloads missing Docker images
+- **Lifecycle Script Execution**: Runs onCreate, postCreate, postStart commands
+- **Progress Display**: Clean spinner UI with error output on failure only
+- **Mount Validation**: Auto-creates missing cache directories
+- **Platform-Optimized**: Docker Desktop prioritized on macOS
+
+### Progress Display
+```
+⠋ Checking image availability
+✅ Image found locally
+⠋ Creating container  
+✅ Container created
+⠋ Starting container
+✅ Container started
+⠋ Running devcontainer setup
+❌ Container setup failed: exit code 1
+
+--- Container Output (exit code 1) ---
+[error details shown only on failure]
+--- End Container Output ---
 ```
 
 ## Usage Examples
@@ -165,7 +238,18 @@ ExpandVariables(dc, vars)
 - `${containerWorkspaceFolderBasename}` - Container workspace name
 
 ### Docker Connection Detection
+**macOS (Darwin)**:
+1. Environment settings (DOCKER_HOST)
+2. Docker Desktop primary (~/.docker/run/docker.sock)
+3. Docker Desktop alternative (~/.docker/desktop/docker.sock)
+4. Linux default fallback (/var/run/docker.sock)
+
+**Linux**:
 1. Environment settings (DOCKER_HOST)
 2. Default Unix socket (/var/run/docker.sock)
-3. Docker Desktop macOS (~/.docker/run/docker.sock)
-4. Rootless Docker (XDG_RUNTIME_DIR or ~/.docker/desktop/docker.sock)
+3. Rootless Docker (XDG_RUNTIME_DIR or ~/.docker/run/docker.sock)
+
+### Mount Format Support
+- **String format**: `"source=/host/path,target=/container/path,type=bind,readonly"`
+- **Object format**: `{"type": "bind", "source": "/host/path", "target": "/container/path", "readonly": true}`
+- **Auto-creation**: Cache directories (`.cache` paths) created automatically

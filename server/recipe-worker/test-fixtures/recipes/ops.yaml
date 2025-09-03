@@ -1,19 +1,18 @@
 id: ops
 desc: Test operations
-version: "1.0"
-
+version: '1.0'
 sequence:
-  - id: research
-    op: research_op
-    inputs:
-      topic: "test"
-  - id: analyze  
-    op: analyze_op
-    inputs:
-      data: "test"
-  - id: report
-    op: write_report_op
-    inputs:
-      research: "test"
-      analysis: "test"
-      topic: "test"
+- id: research
+  op: research_op
+  inputs:
+    topic: test
+- id: analyze
+  op: analyze_op
+  inputs:
+    data: test
+- id: report
+  op: write_report_op
+  inputs:
+    research: test
+    analysis: test
+    topic: test

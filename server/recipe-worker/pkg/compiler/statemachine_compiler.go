@@ -53,6 +53,9 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 			return nil, fmt.Errorf("state '%s' execution failed: %w", currentState, err)
 		}
 
+		// Debug: Log what we got from state execution
+		workflow.GetLogger(ctx).Debug("State execution result", "state", currentState, "outputs", stateOutputs)
+		
 		// Store state outputs in parent context
 		resCtx.AddStateOutput(currentState, stateOutputs)
 
@@ -72,6 +75,8 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 
 	// Return final outputs
 	finalState := stateMap.States[currentState]
+	
+	// First check if we have output templates on NodeState or NodeSequence
 	var outputTemplates map[string]interface{}
 	switch t := finalState.NodeImpl.(type) {
 	case *recipe.NodeState:
@@ -80,7 +85,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 		outputTemplates = t.Outputs
 	}
 	
-	// If there are output templates, resolve them
+	// If there are output templates on the state definition, resolve them
 	if len(finalState.Transitions) == 0 && outputTemplates != nil {
 		resolvedOutputs := make(map[string]interface{})
 		for key, tmpl := range outputTemplates {
@@ -93,12 +98,18 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 		return resolvedOutputs, nil
 	}
 
-	// Return the last state's outputs
-	if lastState, ok := resCtx.TemplateData.States[currentState]; ok {
-		return lastState.Outputs, nil
+	// For terminal states (no transitions), return the actual state execution outputs
+	if len(finalState.Transitions) == 0 {
+		if lastState, ok := resCtx.TemplateData.States[currentState]; ok {
+			// Debug: check what we have
+			workflow.GetLogger(ctx).Debug("Terminal state outputs check", "state", currentState, "outputs", lastState.Outputs)
+			if lastState.Outputs != nil && len(lastState.Outputs) > 0 {
+				return lastState.Outputs, nil
+			}
+		}
 	}
 
-	// Return all state outputs as a single map
+	// If we still don't have outputs, return all state outputs as a single map
 	allOutputs := make(map[string]interface{})
 	for stateName, stateOutput := range resCtx.TemplateData.States {
 		allOutputs[stateName] = stateOutput.Outputs

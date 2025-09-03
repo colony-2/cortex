@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -24,52 +25,86 @@ type DockerClient struct {
 
 // NewDockerClient creates a new Docker client using the SDK
 func NewDockerClient() (*DockerClient, error) {
-	// Try multiple connection methods in order
-	connectionAttempts := []func() (*client.Client, error){
-		// 1. Try environment settings first (respects DOCKER_HOST)
-		func() (*client.Client, error) {
-			return client.NewClientWithOpts(
-				client.FromEnv,
-				client.WithAPIVersionNegotiation(),
-			)
-		},
-		// 2. Try the default Unix socket
-		func() (*client.Client, error) {
-			return client.NewClientWithOpts(
-				client.WithHost("unix:///var/run/docker.sock"),
-				client.WithAPIVersionNegotiation(),
-			)
-		},
-		// 3. Try Docker Desktop socket location on macOS
-		func() (*client.Client, error) {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithOpts(
-				client.WithHost("unix://"+homeDir+"/.docker/run/docker.sock"),
-				client.WithAPIVersionNegotiation(),
-			)
-		},
-		// 4. Try rootless Docker socket
-		func() (*client.Client, error) {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
-			if xdgRuntimeDir != "" {
+	var connectionAttempts []func() (*client.Client, error)
+	
+	// On macOS, prioritize Docker Desktop locations
+	if runtime.GOOS == "darwin" {
+		connectionAttempts = []func() (*client.Client, error){
+			// 1. Try environment settings first (respects DOCKER_HOST)
+			func() (*client.Client, error) {
 				return client.NewClientWithOpts(
-					client.WithHost("unix://"+xdgRuntimeDir+"/docker.sock"),
+					client.FromEnv,
 					client.WithAPIVersionNegotiation(),
 				)
-			}
-			// Fallback to common rootless location
-			return client.NewClientWithOpts(
-				client.WithHost("unix://"+homeDir+"/.docker/desktop/docker.sock"),
-				client.WithAPIVersionNegotiation(),
-			)
-		},
+			},
+			// 2. Try Docker Desktop socket location on macOS (primary)
+			func() (*client.Client, error) {
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				return client.NewClientWithOpts(
+					client.WithHost("unix://"+homeDir+"/.docker/run/docker.sock"),
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+			// 3. Try Docker Desktop alternative location
+			func() (*client.Client, error) {
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				return client.NewClientWithOpts(
+					client.WithHost("unix://"+homeDir+"/.docker/desktop/docker.sock"),
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+			// 4. Try the default Unix socket (less common on macOS)
+			func() (*client.Client, error) {
+				return client.NewClientWithOpts(
+					client.WithHost("unix:///var/run/docker.sock"),
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+		}
+	} else {
+		// On Linux, prioritize system locations
+		connectionAttempts = []func() (*client.Client, error){
+			// 1. Try environment settings first (respects DOCKER_HOST)
+			func() (*client.Client, error) {
+				return client.NewClientWithOpts(
+					client.FromEnv,
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+			// 2. Try the default Unix socket
+			func() (*client.Client, error) {
+				return client.NewClientWithOpts(
+					client.WithHost("unix:///var/run/docker.sock"),
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+			// 3. Try rootless Docker socket
+			func() (*client.Client, error) {
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				// Try XDG_RUNTIME_DIR first for rootless Docker
+				xdgRuntimeDir := os.Getenv("XDG_RUNTIME_DIR")
+				if xdgRuntimeDir != "" {
+					return client.NewClientWithOpts(
+						client.WithHost("unix://"+xdgRuntimeDir+"/docker.sock"),
+						client.WithAPIVersionNegotiation(),
+					)
+				}
+				// Fallback to common rootless location
+				return client.NewClientWithOpts(
+					client.WithHost("unix://"+homeDir+"/.docker/run/docker.sock"),
+					client.WithAPIVersionNegotiation(),
+				)
+			},
+		}
 	}
 	
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -99,6 +134,11 @@ func NewDockerClient() (*DockerClient, error) {
 // Close closes the Docker client connection
 func (c *DockerClient) Close() error {
 	return c.client.Close()
+}
+
+// GetClient returns the underlying Docker client for direct access
+func (c *DockerClient) GetClient() *client.Client {
+	return c.client
 }
 
 // RunContainer runs a Docker container with the given configuration
@@ -159,6 +199,10 @@ func (c *DockerClient) CreateContainer(ctx context.Context, config *DockerRunCon
 				mountReadOnly = true
 				continue
 			}
+			if part == "rw" {
+				mountReadOnly = false
+				continue
+			}
 			kv := strings.SplitN(part, "=", 2)
 			if len(kv) == 2 {
 				mountParts[kv[0]] = kv[1]
@@ -173,12 +217,19 @@ func (c *DockerClient) CreateContainer(ctx context.Context, config *DockerRunCon
 			mountType = mount.TypeTmpfs
 		}
 		
-		hostConfig.Mounts = append(hostConfig.Mounts, mount.Mount{
+		dockerMount := mount.Mount{
 			Type:     mountType,
 			Source:   mountParts["source"],
 			Target:   mountParts["target"],
 			ReadOnly: mountReadOnly,
-		})
+		}
+		
+		// Check for empty target and fail fast
+		if dockerMount.Target == "" {
+			return "", fmt.Errorf("mount target is empty for mount string: %s", mountStr)
+		}
+		
+		hostConfig.Mounts = append(hostConfig.Mounts, dockerMount)
 	}
 	
 	// Add capabilities
@@ -196,7 +247,8 @@ func (c *DockerClient) CreateContainer(ctx context.Context, config *DockerRunCon
 	}
 	
 	// Add the workspace mount if specified
-	if config.WorkspaceMount != "" {
+	if config.WorkspaceMount != "" && config.WorkspaceMount != "none" {
+		
 		// Parse workspace mount
 		mountParts := make(map[string]string)
 		mountReadOnly := false
@@ -227,6 +279,7 @@ func (c *DockerClient) CreateContainer(ctx context.Context, config *DockerRunCon
 			ReadOnly: mountReadOnly,
 		})
 	}
+	
 	
 	resp, err := c.client.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, config.Name)
 	if err != nil {

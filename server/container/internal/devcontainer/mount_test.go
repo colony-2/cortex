@@ -79,20 +79,20 @@ func TestMountHandlingInDockerCommand(t *testing.T) {
 					Image: "alpine:latest",
 				},
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeBind,
-							Source: strPtr("/host/code"),
-							Target: "/code",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "bind",
+							"source": "/host/code",
+							"target": "/code",
 						},
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("cache-vol"),
-							Target: "/cache",
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "cache-vol",
+							"target": "/cache",
 						},
-						{
-							Type:   "tmpfs",
-							Target: "/tmp/scratch",
+						map[string]interface{}{
+							"type":   "tmpfs",
+							"target": "/tmp/scratch",
 						},
 					},
 				},
@@ -101,12 +101,12 @@ func TestMountHandlingInDockerCommand(t *testing.T) {
 				cmdStr := strings.Join(args, " ")
 				
 				// Check for bind mount
-				if !strings.Contains(cmdStr, "--mount type=bind,target=/code,source=/host/code") {
+				if !strings.Contains(cmdStr, "--mount type=bind,source=/host/code,target=/code") {
 					t.Error("missing bind mount")
 				}
 				
 				// Check for volume mount
-				if !strings.Contains(cmdStr, "--mount type=volume,target=/cache,source=cache-vol") {
+				if !strings.Contains(cmdStr, "--mount type=volume,source=cache-vol,target=/cache") {
 					t.Error("missing volume mount")
 				}
 				
@@ -126,11 +126,11 @@ func TestMountHandlingInDockerCommand(t *testing.T) {
 					WorkspaceMount: strPtr("type=bind,source=/projects/app,target=/workspace"),
 				},
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("node_modules"),
-							Target: "/workspace/node_modules",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "node_modules",
+							"target": "/workspace/node_modules",
 						},
 					},
 				},
@@ -140,7 +140,7 @@ func TestMountHandlingInDockerCommand(t *testing.T) {
 				
 				// Workspace mount should come first
 				workspaceIdx := strings.Index(cmdStr, "type=bind,source=/projects/app,target=/workspace")
-				additionalIdx := strings.Index(cmdStr, "type=volume,target=/workspace/node_modules,source=node_modules")
+				additionalIdx := strings.Index(cmdStr, "type=volume,source=node_modules,target=/workspace/node_modules")
 				
 				if workspaceIdx == -1 {
 					t.Error("missing workspace mount")
@@ -160,10 +160,10 @@ func TestMountHandlingInDockerCommand(t *testing.T) {
 					Image: "ubuntu:22.04",
 				},
 				DevContainerCommon: DevContainerCommon{
-					Mounts: []DevContainerCommonMountsElem{
-						{Type: MountTypeVolume, Source: strPtr("first"), Target: "/1"},
-						{Type: MountTypeVolume, Source: strPtr("second"), Target: "/2"},
-						{Type: MountTypeVolume, Source: strPtr("third"), Target: "/3"},
+					Mounts: []interface{}{
+						map[string]interface{}{"type": "volume", "source": "first", "target": "/1"},
+						map[string]interface{}{"type": "volume", "source": "second", "target": "/2"},
+						map[string]interface{}{"type": "volume", "source": "third", "target": "/3"},
 					},
 				},
 			},
@@ -290,16 +290,16 @@ func TestMountValidation(t *testing.T) {
 func TestMountExpansion(t *testing.T) {
 	dc := &DevContainer{
 		DevContainerCommon: DevContainerCommon{
-			Mounts: []DevContainerCommonMountsElem{
-				{
-					Type:   MountTypeBind,
-					Source: strPtr("${localWorkspaceFolder}/data"),
-					Target: "/data",
+			Mounts: []interface{}{
+				map[string]interface{}{
+					"type":   "bind",
+					"source": "${localWorkspaceFolder}/data",
+					"target": "/data",
 				},
-				{
-					Type:   MountTypeVolume,
-					Source: strPtr("${containerWorkspaceFolderBasename}-cache"),
-					Target: "${containerWorkspaceFolder}/cache",
+				map[string]interface{}{
+					"type":   "volume",
+					"source": "${containerWorkspaceFolderBasename}-cache",
+					"target": "${containerWorkspaceFolder}/cache",
 				},
 			},
 		},
@@ -318,14 +318,23 @@ func TestMountExpansion(t *testing.T) {
 	ExpandVariables(dc, variables)
 
 	// Check mount expansion
-	if *dc.Mounts[0].Source != "/home/user/myproject/data" {
-		t.Errorf("expected first mount source to be expanded, got %s", *dc.Mounts[0].Source)
+	mount0, ok := dc.Mounts[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected first mount to be a map")
 	}
-	if *dc.Mounts[1].Source != "myproject-cache" {
-		t.Errorf("expected second mount source to be expanded, got %s", *dc.Mounts[1].Source)
+	if mount0["source"] != "/home/user/myproject/data" {
+		t.Errorf("expected first mount source to be expanded, got %v", mount0["source"])
 	}
-	if dc.Mounts[1].Target != "/workspace/myproject/cache" {
-		t.Errorf("expected second mount target to be expanded, got %s", dc.Mounts[1].Target)
+	
+	mount1, ok := dc.Mounts[1].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected second mount to be a map")
+	}
+	if mount1["source"] != "myproject-cache" {
+		t.Errorf("expected second mount source to be expanded, got %v", mount1["source"])
+	}
+	if mount1["target"] != "/workspace/myproject/cache" {
+		t.Errorf("expected second mount target to be expanded, got %v", mount1["target"])
 	}
 
 	// Check workspace mount expansion

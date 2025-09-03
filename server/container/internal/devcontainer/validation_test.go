@@ -194,11 +194,11 @@ func TestValidationWithRealDevContainer(t *testing.T) {
 				"GOPROXY": "https://proxy.golang.org",
 			},
 			ForwardPorts: []interface{}{float64(8080)},
-			Mounts: []DevContainerCommonMountsElem{
-				{
-					Type:   MountTypeVolume,
-					Source: strPtr("go-mod-cache"),
-					Target: "/go/pkg/mod",
+			Mounts: []interface{}{
+				map[string]interface{}{
+					"type":   "volume",
+					"source": "go-mod-cache",
+					"target": "/go/pkg/mod",
 				},
 			},
 			Init:       boolPtr(true),

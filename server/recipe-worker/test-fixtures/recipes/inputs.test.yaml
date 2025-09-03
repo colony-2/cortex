@@ -1,18 +1,14 @@
 tests:
-  - name: "static_inputs"
-    description: "Test static input values"
-    inputs: {}
-    want:
-      greeting: "Greetings"
-      name: "YAML Test"
-    wantErr: false
-
-  - name: "override_inputs"
-    description: "Test overriding static inputs"
-    inputs:
-      greeting: "Hello"
-      name: "Custom Test"
-    want:
-      greeting: "Greetings"
-      name: "YAML Test"
-    wantErr: false
+- name: static_inputs
+  description: Test static input values
+  inputs: {}
+  want:
+    output: "test"
+  wantErr: false
+- name: override_inputs
+  description: Test overriding static inputs
+  inputs:
+    message: "custom"
+  want:
+    output: "test"
+  wantErr: false

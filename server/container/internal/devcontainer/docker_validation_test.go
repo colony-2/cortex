@@ -107,16 +107,16 @@ func TestBuildDockerRunCommandValidation(t *testing.T) {
 						"PYTHONPATH": "/app",
 					},
 					ForwardPorts: []interface{}{float64(8000), "5432:5432"},
-					Mounts: []DevContainerCommonMountsElem{
-						{
-							Type:   MountTypeVolume,
-							Source: strPtr("pip-cache"),
-							Target: "/root/.cache/pip",
+					Mounts: []interface{}{
+						map[string]interface{}{
+							"type":   "volume",
+							"source": "pip-cache",
+							"target": "/root/.cache/pip",
 						},
-						{
-							Type:   MountTypeBind,
-							Source: strPtr("/host/data"),
-							Target: "/container/data",
+						map[string]interface{}{
+							"type":   "bind",
+							"source": "/host/data",
+							"target": "/container/data",
 						},
 					},
 				},

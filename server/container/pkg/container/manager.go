@@ -25,6 +25,14 @@ type Info struct {
 	Ports   map[string]string `json:"ports,omitempty"`
 }
 
+// Mount represents a container mount configuration
+type Mount struct {
+	Type     string // bind, volume, tmpfs
+	Source   string // host path
+	Target   string // container path  
+	ReadOnly bool   // read-only flag
+}
+
 // Manager provides container lifecycle operations.
 type Manager interface {
 	// Create creates a new container for the specified node.
@@ -53,6 +61,9 @@ type Manager interface {
 	
 	// AttachWebSocket attaches a WebSocket for terminal access.
 	AttachWebSocket(ctx context.Context, containerID string) (TerminalConnection, error)
+	
+	// ConfigureMounts configures custom mount points for containers.
+	ConfigureMounts(mounts []Mount) error
 }
 
 // TerminalConnection represents a terminal connection to a container.
@@ -155,4 +166,9 @@ func (m *stubManager) Exec(ctx context.Context, containerID string, command []st
 // AttachWebSocket attaches a WebSocket for terminal access
 func (m *stubManager) AttachWebSocket(ctx context.Context, containerID string) (TerminalConnection, error) {
 	return nil, fmt.Errorf("container websocket not implemented")
+}
+
+// ConfigureMounts configures custom mount points for containers
+func (m *stubManager) ConfigureMounts(mounts []Mount) error {
+	return fmt.Errorf("container mount configuration not implemented")
 }

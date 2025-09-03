@@ -1,84 +1,79 @@
 tests:
-  - name: "standard_mode_pipeline"
-    description: "Test data pipeline with standard processing mode"
-    inputs:
-      dataset_ids:
-        - "dataset-001"
-        - "dataset-002"
-        - "dataset-003"
-      processing_mode: "standard"
-    want:
-      processed_data:
-        dataset-001: "processed"
-        dataset-002: "processed"
-        dataset-003: "processed"
-      quality_status: "approved"
-      executive_summary:
-        total_datasets: 3
-        successful: 3
-      approval_status: "approved"
-    wantErr: false
-
-  - name: "fast_mode_pipeline"
-    description: "Test data pipeline with fast processing mode"
-    inputs:
-      dataset_ids:
-        - "dataset-001"
-      processing_mode: "fast"
-    want:
-      processed_data:
-        dataset-001: "fast-processed"
-      quality_status: "passed"
-      executive_summary:
-        total_datasets: 1
-        processing_time: "< 1s"
-      approval_status: "auto-approved"
-    wantErr: false
-
-  - name: "thorough_mode_pipeline"
-    description: "Test data pipeline with thorough processing mode"
-    inputs:
-      dataset_ids:
-        - "dataset-001"
-        - "dataset-002"
-      processing_mode: "thorough"
-    want:
-      processed_data:
-        dataset-001: "thoroughly-processed"
-        dataset-002: "thoroughly-processed"
-      quality_status: "excellent"
-      executive_summary:
-        total_datasets: 2
-        quality_score: "> 0.95"
-      approval_status: "approved"
-    wantErr: false
-
-  - name: "quality_failure"
-    description: "Test pipeline when quality check fails"
-    inputs:
-      dataset_ids:
-        - "corrupt-dataset"
-      processing_mode: "standard"
-    want:
-      processed_data:
-        corrupt-dataset: "processed-with-issues"
-      quality_status: "failed"
-      approval_status: "rejected"
-    wantErr: false
-
-  - name: "default_processing_mode"
-    description: "Test with default processing mode"
-    inputs:
-      dataset_ids:
-        - "dataset-001"
-    want:
-      processing_mode: "standard"
-      quality_status: "approved"
-    wantErr: false
-
-  - name: "missing_dataset_ids"
-    description: "Test with missing required dataset_ids"
-    inputs:
-      processing_mode: "standard"
-    want: {}
-    wantErr: true
+- name: standard_mode_pipeline
+  description: Test data pipeline with standard processing mode
+  inputs:
+    dataset_ids:
+    - dataset-001
+    - dataset-002
+    - dataset-003
+    processing_mode: standard
+  want:
+    processed_data:
+      dataset-001: processed
+      dataset-002: processed
+      dataset-003: processed
+    quality_status: approved
+    executive_summary:
+      total_datasets: 3
+      successful: 3
+    approval_status: approved
+  wantErr: false
+- name: fast_mode_pipeline
+  description: Test data pipeline with fast processing mode
+  inputs:
+    dataset_ids:
+    - dataset-001
+    processing_mode: fast
+  want:
+    processed_data:
+      dataset-001: fast-processed
+    quality_status: passed
+    executive_summary:
+      total_datasets: 1
+      processing_time: < 1s
+    approval_status: auto-approved
+  wantErr: false
+- name: thorough_mode_pipeline
+  description: Test data pipeline with thorough processing mode
+  inputs:
+    dataset_ids:
+    - dataset-001
+    - dataset-002
+    processing_mode: thorough
+  want:
+    processed_data:
+      dataset-001: thoroughly-processed
+      dataset-002: thoroughly-processed
+    quality_status: excellent
+    executive_summary:
+      total_datasets: 2
+      quality_score: '> 0.95'
+    approval_status: approved
+  wantErr: false
+- name: quality_failure
+  description: Test pipeline when quality check fails
+  inputs:
+    dataset_ids:
+    - corrupt-dataset
+    processing_mode: standard
+  want:
+    processed_data:
+      corrupt-dataset: processed-with-issues
+    quality_status: failed
+    approval_status: rejected
+  wantErr: false
+- name: default_processing_mode
+  description: Test with default processing mode
+  inputs:
+    dataset_ids:
+    - dataset-001
+  want:
+    processing_mode: standard
+    quality_status: approved
+  wantErr: false
+- name: missing_dataset_ids
+  description: Test with missing required dataset_ids
+  inputs:
+    processing_mode: standard
+  want: {}
+  wantErr: true

@@ -41,11 +41,11 @@ func TestE2EMountsActuallyWork(t *testing.T) {
 			Image: "alpine:latest",
 		},
 		DevContainerCommon: DevContainerCommon{
-			Mounts: []DevContainerCommonMountsElem{
-				{
-					Type:   MountTypeBind,
-					Source: strPtr(tmpDir),
-					Target: "/test-mount",
+			Mounts: []interface{}{
+				map[string]interface{}{
+					"type":   "bind",
+					"source": tmpDir,
+					"target": "/test-mount",
 				},
 			},
 		},
@@ -116,11 +116,11 @@ func TestE2EVolumePersistence(t *testing.T) {
 			Image: "alpine:latest",
 		},
 		DevContainerCommon: DevContainerCommon{
-			Mounts: []DevContainerCommonMountsElem{
-				{
-					Type:   MountTypeVolume,
-					Source: strPtr(volumeName),
-					Target: "/data",
+			Mounts: []interface{}{
+				map[string]interface{}{
+					"type":   "volume",
+					"source": volumeName,
+					"target": "/data",
 				},
 			},
 		},
@@ -210,11 +210,11 @@ func TestE2ELifecycleCommandsActualExecution(t *testing.T) {
 			Image: "alpine:latest",
 		},
 		DevContainerCommon: DevContainerCommon{
-			Mounts: []DevContainerCommonMountsElem{
-				{
-					Type:   MountTypeBind,
-					Source: strPtr(tmpDir),
-					Target: "/scripts",
+			Mounts: []interface{}{
+				map[string]interface{}{
+					"type":   "bind",
+					"source": tmpDir,
+					"target": "/scripts",
 				},
 			},
 		},

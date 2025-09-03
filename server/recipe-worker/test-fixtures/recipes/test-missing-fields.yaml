@@ -1,14 +1,10 @@
 id: test-missing-fields
 desc: Test recipe with missing required fields
-version: "1.0"
-
+version: '1.0'
 sequence:
-  - id: step1
-    # Missing 'uses' or 'parallel' field
-    inputs:
-      data: "test"
-      
-  - # Missing 'id' field
-    op: command_execution
-    inputs:
-      run: "echo test"
+- id: step1
+  op: echo_activity
+  # Missing required 'message' input for echo_activity
+- id: step2
+  op: command_execution
+  # Missing required 'run' input for command_execution

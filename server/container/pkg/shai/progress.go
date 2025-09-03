@@ -17,6 +17,13 @@ const (
 	PhaseStarting    Phase = "starting"
 )
 
+// ProgressUpdate represents a progress update for ephemeral containers
+type ProgressUpdate struct {
+	Phase   string // FEATURES, ONCREATE, UPDATECONTENT, POSTCREATE, POSTSTART, POSTATTACH, USERSWITCH
+	Status  string // START, COMPLETE, ERROR, PROGRESS
+	Message string // Human-readable message
+}
+
 // ProgressCallback reports progress during operations
 type ProgressCallback func(phase Phase, message string)
 

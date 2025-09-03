@@ -1,55 +1,19 @@
 id: research_report_recipe
 desc: Research a topic and generate a comprehensive report
-version: "1.0"
-
-# Shared node definitions
-defs:
-  research_op:
-    op: command_execution
-    timeout: "5m"
-    retry:
-      max_attempts: 3
-      initial_interval: "1s"
-    inputs:
-      run: "echo 'Researching topic'"
-      
-  analyze_op:
-    op: command_execution
-    timeout: "3m"
-    inputs:
-      run: "echo 'Analyzing data'"
-      
-  write_report_op:
-    op: command_execution
-    timeout: "5m"
-    inputs:
-      run: "echo 'Writing report'"
-
-# Root is a sequence
+version: '1.0'
 sequence:
-  - id: research
-    shared: research_op
-    inputs:
-      topic: "{{ .inputs.topic }}"
-      max_sources: "{{ .inputs.max_sources }}"
-      
-  - id: analyze
-    shared: analyze_op
-    inputs:
-      data: "{{ .nodes.research.outputs.stdout }}"
-      topic: "{{ .inputs.topic }}"
-      
-  - id: write_report
-    shared: write_report_op
-    inputs:
-      research: "{{ .nodes.research.outputs.stdout }}"
-      analysis: "{{ .nodes.analyze.outputs.stdout }}"
-      topic: "{{ .inputs.topic }}"
-
-# Root node properties
+- id: research
+  op: command_execution
+  inputs:
+    run: echo 'Researching topic'
+- id: analyze
+  op: command_execution
+  inputs:
+    run: echo 'Analyzing data'
+- id: writereport
+  op: command_execution
+  inputs:
+    run: echo 'Writing report'
 inputs:
-  topic: "AI Research"
+  topic: AI Research
   max_sources: 10
-outputs:
-  report: "{{ .nodes.write_report.stdout }}"
-  sources: "{{ .nodes.research.stdout }}"

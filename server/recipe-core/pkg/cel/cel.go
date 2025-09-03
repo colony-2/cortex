@@ -88,7 +88,6 @@ func (e CELExpr) MarshalYAML() (interface{}, error) {
 	return e.expr, nil
 }
 
-// UnmarshalYAML parses a YAML string into a Duration
 func (e *CELExpr) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -27,15 +28,21 @@ func (m *MultiStringFlag) Set(value string) error {
 }
 
 func main() {
-	var rwPaths MultiStringFlag
-	var containerName string
-	var verbose bool
-	var noCache bool
+    var rwPaths MultiStringFlag
+    var containerName string
+    var verbose bool
+    var noCache bool
+    var ephemeral bool
+    var hideProgress bool
+    var printScript bool
 	
 	flag.Var(&rwPaths, "rw", "Read-write directory (can be specified multiple times)")
 	flag.StringVar(&containerName, "name", "", "Container name")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	flag.BoolVar(&noCache, "no-cache", false, "Force rebuild")
+    flag.BoolVar(&ephemeral, "ephemeral", true, "Run in ephemeral mode (container removed on exit)")
+    flag.BoolVar(&hideProgress, "hide-progress", false, "Hide progress markers in ephemeral mode")
+    flag.BoolVar(&printScript, "print-script", false, "Print the generated setup script in ephemeral mode")
 	flag.Parse()
 	
 	if len(rwPaths) == 0 {
@@ -53,6 +60,62 @@ func main() {
 		os.Exit(1)
 	}
 	
+    // Set up signal handling for graceful shutdown
+    ctx, cancel := setupSignals(ephemeral)
+    defer cancel()
+	
+	// Run in ephemeral mode if requested
+    if ephemeral {
+        runEphemeral(ctx, workingDir, rwPaths, noCache, hideProgress, verbose, printScript)
+    } else {
+        runPersistent(ctx, workingDir, rwPaths, containerName, noCache, verbose)
+    }
+}
+
+func runEphemeral(ctx context.Context, workingDir string, rwPaths []string, noCache, hideProgress, verbose, printScript bool) {
+	// Create ephemeral runner
+    runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+        WorkingDir:          workingDir,
+        ReadWritePaths:      rwPaths,
+        NoCache:             noCache,
+        HideProgressMarkers: hideProgress,
+        DebugScript:         printScript || verbose,
+    })
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	defer runner.Close()
+	
+	// Set up progress display for ephemeral mode
+	setupEphemeralProgressDisplay(runner, verbose)
+	
+	// Run the ephemeral container
+	if err := runner.Run(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// setupSignals configures signal handling and returns a cancellable context.
+// In ephemeral mode, SIGINT is ignored so Ctrl-C reaches the container shell.
+func setupSignals(ephemeral bool) (context.Context, context.CancelFunc) {
+    ctx, cancel := context.WithCancel(context.Background())
+    sigCh := make(chan os.Signal, 1)
+    if ephemeral {
+        signal.Ignore(syscall.SIGINT)
+        signal.Notify(sigCh, syscall.SIGTERM)
+    } else {
+        signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+    }
+    go func() {
+        <-sigCh
+        cancel()
+    }()
+    return ctx, cancel
+}
+
+func runPersistent(ctx context.Context, workingDir string, rwPaths []string, containerName string, noCache, verbose bool) {
 	// Create devcontainer manager (cmd can import from internal)
 	manager, err := devcontainer.NewManager()
 	if err != nil {
@@ -75,17 +138,6 @@ func main() {
 	
 	// Set up progress display
 	setupProgressDisplay(runner, verbose)
-	
-	// Set up signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
 	
 	// Start container
 	container, err := runner.Start(ctx)
@@ -145,6 +197,113 @@ func setupProgressDisplay(runner *shai.Runner, verbose bool) {
 			}
 		}
 	})
+}
+
+func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
+    // Simpler UI: accumulate completed items as checkmarks, show a single spinner line for the current item.
+    var completed []string
+    current := ""
+    spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+    spinnerIdx := 0
+    var spinTicker *time.Ticker
+    renderSpinner := func() {
+        if current == "" { return }
+        fmt.Printf("\r\033[K%s %s", spinner[spinnerIdx%len(spinner)], current)
+    }
+    startSpinner := func() {
+        if spinTicker != nil { return }
+        spinTicker = time.NewTicker(120 * time.Millisecond)
+        go func() {
+            for range spinTicker.C {
+                spinnerIdx = (spinnerIdx + 1) % len(spinner)
+                renderSpinner()
+            }
+        }()
+    }
+    // print a completed item as a persistent checkmark line
+    finishCurrent := func() {
+        if current == "" { return }
+        if spinTicker != nil { spinTicker.Stop(); spinTicker = nil }
+        // Clear spinner line and print checkmark line
+        fmt.Printf("\r\033[K✓ %s\n", current)
+        completed = append(completed, current)
+        current = ""
+    }
+
+    runner.OnProgress(func(update shai.ProgressUpdate) {
+        switch update.Phase {
+        case "INIT":
+            if update.Status == "START" {
+                current = "Initialize devcontainer setup"
+                startSpinner()
+                renderSpinner()
+            }
+        case "FEATURES":
+            switch update.Status {
+            case "START":
+                if current == "Initialize devcontainer setup" {
+                    finishCurrent()
+                }
+            case "PROGRESS":
+                finishCurrent()
+                current = update.Message
+                startSpinner()
+                renderSpinner()
+            case "COMPLETE":
+                finishCurrent()
+            }
+        case "POSTCREATE":
+            if update.Status == "START" {
+                current = "PostCreate"
+                startSpinner()
+                renderSpinner()
+            } else if update.Status == "COMPLETE" {
+                finishCurrent()
+            }
+        case "USERSWITCH":
+            if update.Status == "START" {
+                finishCurrent()
+                // Completed items already printed above; do not print again
+            }
+        }
+    })
+}
+
+// formatEphemeralProgress writes a clean, line-based progress message to w without using carriage returns.
+func formatEphemeralProgress(w io.Writer, update shai.ProgressUpdate, verbose bool) {
+	switch update.Status {
+	case "START":
+		switch update.Phase {
+		case "FEATURES":
+			fmt.Fprintf(w, "🔧 %s\n", update.Message)
+		case "ONCREATE":
+			fmt.Fprintf(w, "📦 %s\n", update.Message)
+		case "UPDATECONTENT":
+			fmt.Fprintf(w, "🔄 %s\n", update.Message)
+		case "POSTCREATE":
+			fmt.Fprintf(w, "🔨 %s\n", update.Message)
+		case "POSTSTART":
+			fmt.Fprintf(w, "🚀 %s\n", update.Message)
+		case "POSTATTACH":
+			fmt.Fprintf(w, "📎 %s\n", update.Message)
+		case "USERSWITCH":
+			fmt.Fprintf(w, "👤 %s\n", update.Message)
+		case "INIT":
+			fmt.Fprintf(w, "⚙️  %s\n", update.Message)
+		default:
+			fmt.Fprintf(w, "⚙️  %s\n", update.Message)
+		}
+	case "COMPLETE":
+		fmt.Fprintf(w, "✅ %s\n", update.Message)
+	case "ERROR":
+		fmt.Fprintf(w, "❌ %s\n", update.Message)
+	case "PROGRESS":
+		if update.Phase == "FEATURES" {
+			fmt.Fprintf(w, "  - %s\n", update.Message)
+		} else if verbose {
+			fmt.Fprintf(w, "  • %s\n", update.Message)
+		}
+	}
 }
 
 // Simple spinner characters for terminal animation
