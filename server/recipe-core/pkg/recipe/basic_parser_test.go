@@ -1,8 +1,11 @@
 package recipe
 
 import (
+	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,4 +18,51 @@ const r2 = `
 id: invalid_op_test
 version: 1.0.0
 op: my_invalid_op
+`
+
+type EchoIn struct {
+	Message string `yaml:"message"`
+}
+
+type EchoOut struct {
+	Output string `yaml:"output"`
+}
+
+func registerOp() {
+	echoActivity := ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type: "echo",
+			Name: "echo",
+		},
+		func(ctx context.Context, input EchoIn) (EchoOut, error) {
+			message := input.Message
+			return EchoOut{
+				Output: message,
+			}, nil
+		},
+	)
+	ops.Register(echoActivity)
+}
+
+func TestSharedResolution(t *testing.T) {
+	registerOp()
+	r, err := LoadRecipeFromString([]byte(shared))
+	require.NoError(t, err)
+	seq := r.RecipeImpl.(*RecipeSequence)
+	item := seq.Sequence[0]
+	//assert that the shared node was resolved
+	assert.NotNil(t, item.NodeImpl)
+	assert.IsType(t, &NodeOp{}, item.NodeImpl)
+}
+
+const shared = `
+id: invalid_op_test
+version: 1.0.0
+sequence: 
+  - shared: foo
+defs: 
+  foo:
+    op: echo
+    inputs:
+      message: hi
 `

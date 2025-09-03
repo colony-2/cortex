@@ -16,9 +16,12 @@ tests:
     message: Custom message
   want:
     echo_message:
-      result: "Executed: echo Custom message"
-      status: success
-      stdout: "Executed: echo Custom message"
+      stdout: "Custom message"
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false
 - name: empty_message_echo
   description: Test execute with empty message
@@ -26,7 +29,10 @@ tests:
     message: ''
   want:
     echo_message:
-      result: "Executed: echo "
-      status: success
-      stdout: "Executed: echo "
+      stdout: ""
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false

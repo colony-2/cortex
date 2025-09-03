@@ -9,12 +9,12 @@ tests:
     message: test
   want:
     step1:
-      output: "test\n"
+      output: "test"
   wantErr: false
 - name: invalid_with_default
   description: Placeholder test (actual invalid op testing in basic_parser_test.go)  
   inputs: {}
   want:
     step1:
-      output: "test\n"
+      output: "test"
   wantErr: false

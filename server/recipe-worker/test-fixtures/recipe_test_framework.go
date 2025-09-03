@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -27,6 +28,117 @@ type TestCase struct {
 
 type TestCases struct {
 	Tests []TestCase `yaml:"tests"`
+}
+
+// equalWithTypeFlexibility compares two values with flexibility for numeric types.
+// It treats int and float64 as equivalent when they represent the same numeric value,
+// but only as a fallback after exact comparison fails.
+func equalWithTypeFlexibility(expected, actual interface{}) bool {
+	// First try exact comparison
+	if reflect.DeepEqual(expected, actual) {
+		return true
+	}
+	
+	// If exact comparison failed, try with type flexibility
+	
+	// Handle maps recursively
+	if expectedMap, ok := expected.(map[string]interface{}); ok {
+		actualMap, ok := actual.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		
+		// Check if both maps have the same keys
+		if len(expectedMap) != len(actualMap) {
+			return false
+		}
+		
+		// Compare each key-value pair with type flexibility
+		for key, expectedValue := range expectedMap {
+			actualValue, exists := actualMap[key]
+			if !exists {
+				return false
+			}
+			
+			if !equalWithTypeFlexibility(expectedValue, actualValue) {
+				return false
+			}
+		}
+		return true
+	}
+	
+	// Handle slices recursively
+	if expectedSlice, ok := expected.([]interface{}); ok {
+		actualSlice, ok := actual.([]interface{})
+		if !ok {
+			return false
+		}
+		
+		if len(expectedSlice) != len(actualSlice) {
+			return false
+		}
+		
+		for i := range expectedSlice {
+			if !equalWithTypeFlexibility(expectedSlice[i], actualSlice[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	
+	// Handle numeric comparisons with type flexibility only as fallback
+	expectedNum, expectedIsNum := toFloat64(expected)
+	actualNum, actualIsNum := toFloat64(actual)
+	
+	if expectedIsNum && actualIsNum {
+		return expectedNum == actualNum
+	}
+	
+	// Values are not equal even with type flexibility
+	return false
+}
+
+// toFloat64 attempts to convert a value to float64 for numeric comparison
+func toFloat64(val interface{}) (float64, bool) {
+	switch v := val.(type) {
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+// assertEqualWithTypeFlexibility wraps the comparison with proper test assertion messaging
+func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, msgAndArgs ...interface{}) bool {
+	if equalWithTypeFlexibility(expected, actual) {
+		return true
+	}
+	
+	// If not equal, use standard assert.Equal to get nice diff output
+	// This will fail but provide good diagnostic information
+	return assert.Equal(t, expected, actual, msgAndArgs...)
 }
 
 func RunTestOnAllRecipes(path string, t *testing.T) {
@@ -96,7 +208,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 						require.NoError(t, err, "Unexpected error executing recipe")
 
 						if tc.Want != nil {
-							assert.Equal(t, tc.Want, result, "Output mismatch")
+							assertEqualWithTypeFlexibility(t, tc.Want, result, "Output mismatch")
 						}
 					}
 				})

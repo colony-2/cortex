@@ -47,6 +47,36 @@ func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n
 
 }
 
+// convertOutputMap recursively converts recipe.OutputMap to map[string]interface{}
+func convertOutputMap(value interface{}) interface{} {
+	switch v := value.(type) {
+	case recipe.OutputMap:
+		// Convert OutputMap to map[string]interface{}
+		result := make(map[string]interface{})
+		for k, val := range v {
+			result[k] = convertOutputMap(val)
+		}
+		return result
+	case map[string]interface{}:
+		// Recursively convert any nested OutputMaps
+		result := make(map[string]interface{})
+		for k, val := range v {
+			result[k] = convertOutputMap(val)
+		}
+		return result
+	case []interface{}:
+		// Recursively convert array elements
+		result := make([]interface{}, len(v))
+		for i, val := range v {
+			result[i] = convertOutputMap(val)
+		}
+		return result
+	default:
+		// Return other types as-is
+		return value
+	}
+}
+
 // processNodeOutputs processes outputs from node execution
 func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[string]interface{}, inputs map[string]interface{}, err error) (map[string]interface{}, error) {
 
@@ -80,10 +110,13 @@ func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[stri
 		resCtx.AddSequenceNode(nodeID, outputMap)
 	}
 	
-	// Resolve output templates
+	// Resolve output templates - handle OutputMap type correctly
 	resolvedOutputs := make(map[string]interface{})
 	for key, tmpl := range outputTemplates {
-		resolved, err := resCtx.ResolveValue(tmpl)
+		// Convert OutputMap to map[string]interface{} recursively
+		tmplValue := convertOutputMap(tmpl)
+		
+		resolved, err := resCtx.ResolveValue(tmplValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve output template %s: %w", key, err)
 		}

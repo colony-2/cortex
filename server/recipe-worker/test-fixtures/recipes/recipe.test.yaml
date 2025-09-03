@@ -4,14 +4,26 @@ tests:
   inputs: {}
   want:
     research:
-      result: "Researching topic\n"
-      stdout: "Researching topic\n"
+      stdout: Researching topic
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     analyze:
-      result: "Analyzing data\n"
-      stdout: "Analyzing data\n"
+      stdout: Analyzing data
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     writereport:
-      result: "Writing report\n"
-      stdout: "Writing report\n"
+      stdout: Writing report
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false
 - name: custom_topic
   description: Test research with custom topic
@@ -20,14 +32,26 @@ tests:
     max_sources: 5
   want:
     research:
-      result: "Researching topic\n"
-      stdout: "Researching topic\n"
+      stdout: Researching topic
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     analyze:
-      result: "Analyzing data\n"
-      stdout: "Analyzing data\n"
+      stdout: Analyzing data
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     writereport:
-      result: "Writing report\n"
-      stdout: "Writing report\n"
+      stdout: Writing report
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false
 - name: limited_sources
   description: Test research with limited sources
@@ -36,14 +60,26 @@ tests:
     max_sources: 2
   want:
     research:
-      result: "Researching topic\n"
-      stdout: "Researching topic\n"
+      stdout: Researching topic
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     analyze:
-      result: "Analyzing data\n"
-      stdout: "Analyzing data\n"
+      stdout: Analyzing data
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     writereport:
-      result: "Writing report\n"
-      stdout: "Writing report\n"
+      stdout: Writing report
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false
 - name: empty_topic
   description: Test research with empty topic
@@ -52,12 +88,24 @@ tests:
     max_sources: 10
   want:
     research:
-      result: "Researching topic\n"
-      stdout: "Researching topic\n"
+      stdout: Researching topic
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     analyze:
-      result: "Analyzing data\n"
-      stdout: "Analyzing data\n"
+      stdout: Analyzing data
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
     writereport:
-      result: "Writing report\n"
-      stdout: "Writing report\n"
+      stdout: Writing report
+      success: true
+      exit_code: 0
+      stderr: ''
+      error_message: ''
+      timed_out: false
   wantErr: false

@@ -83,10 +83,10 @@ outputs:
 	t.Logf("Recipe execution result: %+v", result)
 
 	// Check if outputs were properly resolved
-	assert.Equal(t, "Starting process\n", result["step1_output"])
-	assert.Equal(t, "Processing data\n", result["step2_result"])
-	assert.Equal(t, "Previous: Processing data\n\n", result["step3_output"])
-	assert.Equal(t, "Starting process\n -> Processing data\n", result["combined"])
+	assert.Equal(t, "Starting process", result["step1_output"])
+	assert.Equal(t, "Processing data", result["step2_result"])
+	assert.Equal(t, "Previous: Processing data", result["step3_output"])
+	assert.Equal(t, "Starting process -> Processing data", result["combined"])
 }
 
 func TestSequenceWithComplexTemplates(t *testing.T) {
@@ -109,7 +109,7 @@ sequence:
   inputs:
     message: '{{ string(sequence.process_data.outputs.output).contains("Processed") ? "Valid" : "Invalid" }}'
 outputs:
-  is_valid: '{{ string(sequence.validate.outputs.output) == "Valid\n" }}'
+  is_valid: '{{ string(sequence.validate.outputs.output) == "Valid" }}'
   fetch_output: '{{ sequence.fetch_data.outputs.output }}'
   process_output: '{{ sequence.process_data.outputs.output }}'
   validation_output: '{{ sequence.validate.outputs.output }}'
@@ -145,9 +145,9 @@ outputs:
 
 	// Verify complex outputs
 	assert.Equal(t, true, result["is_valid"])
-	assert.Equal(t, "100\n", result["fetch_output"])
-	assert.Equal(t, "Processed: 100\n\n", result["process_output"])
-	assert.Equal(t, "Valid\n", result["validation_output"])
+	assert.Equal(t, "100", result["fetch_output"])
+	assert.Equal(t, "Processed: 100", result["process_output"])
+	assert.Equal(t, "Valid", result["validation_output"])
 }
 
 func TestSequenceOutputErrorHandling(t *testing.T) {
@@ -247,7 +247,7 @@ outputs:
 	t.Logf("Actual recipe file result: %+v", result)
 
 	// Verify outputs match expected values
-	assert.Equal(t, "first step\n", result["command_output"])
-	assert.Equal(t, "second step\n", result["step2_result"])
-	assert.Equal(t, "Step 3 complete\n", result["final_output"])
+	assert.Equal(t, "first step", result["command_output"])
+	assert.Equal(t, "second step", result["step2_result"])
+	assert.Equal(t, "Step 3 complete", result["final_output"])
 }

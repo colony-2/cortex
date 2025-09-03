@@ -9,15 +9,24 @@ import (
 
 func LoadRecipeFromString(data []byte) (*Recipe, error) {
 	recipe := &Recipe{}
-	err := yaml.Unmarshal(data, recipe)
-	return recipe, err
+	return resolve(recipe, yaml.Unmarshal(data, recipe))
 }
 
 func LoadRecipeFromReader(r io.Reader) (*Recipe, error) {
 	recipe := &Recipe{}
-	err := yaml.NewDecoder(r).Decode(&recipe)
+	return resolve(recipe, yaml.NewDecoder(r).Decode(&recipe))
+}
+
+func resolve(recipe *Recipe, err error) (*Recipe, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode recipe: %w", err)
 	}
-	return recipe, nil
+	resolver := NewSharedNodeResolver(recipe.GetMetdata().Defs)
+	walker := NewNodeWalker(resolver)
+	result, err := walker.Walk(*recipe)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
+	}
+
+	return &result, err
 }

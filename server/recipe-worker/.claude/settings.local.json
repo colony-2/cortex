@@ -52,7 +52,10 @@
       "Read(/Users/jnadeau/src/vibethis/server/recipe-core/pkg/cel/**)",
       "Read(/Users/jnadeau/src/vibethis/server/recipe-core/pkg/recipe/**)",
       "Read(/Users/jnadeau/src/vibethis/server/recipe-core/pkg/**)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(/Users/jnadeau/src/vibethis/server/recipe-core/pkg/recipe/**)",
+      "Read(/Users/jnadeau/src/vibethis/server/recipe-core/**)",
+      "Read(/Users/jnadeau/src/vibethis/server/recipe-core/pkg/recipe/**)"
     ],
     "deny": []
   }

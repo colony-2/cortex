@@ -2,232 +2,176 @@
 
 ## Overview
 
-Recipe Core is a Go library that provides foundational data structures, parsing, and execution primitives for unified recipe definitions. It supports declarative workflow specifications using YAML with operations, sequences, parallel execution, and state machines, backed by an extensible activity type registry for custom integrations.
+Recipe Core is a Go library for defining, parsing, validating, and transforming “recipes” that describe executable workflows in YAML. The model is intentionally small and composable:
 
-## Architecture
+- A recipe is one of: a single op, a sequence, or a state machine.
+- Nodes support shared references, conditional execution via CEL, and simple metadata.
+- Ops are pluggable via a registry, including input/output typing and whether they run as Temporal activities or inline.
 
-### Core Components
+Module path: `github.com/divisive-ai/vibethis/server/recipe-core`.
 
-- **`pkg/recipe`**: Recipe parsing, validation, and data structures
-  - `Parser`: High-level recipe parser with activity type registry integration
-  - `Recipe`: Complete recipe representation with metadata and content hash
-  - `Job`: Execution instance tracking with status, timing, and results
-  - `ActivityTypeRegistry`: Extensible registry for custom activity types
-  - `HashComputer`: Deterministic content hashing for versioning
+## Layout
 
-- **`pkg/yaml`**: Low-level YAML parsing and unified recipe format
-  - `RecipeDefinition`: Root recipe structure with embedded node properties
-  - `Node`: Fundamental execution unit (operation, sequence, parallel, state machine, shared reference)
-  - `StateMap/State`: State machine definitions with transitions and CEL expressions
-  - `Parser`: YAML unmarshalling with validation
+- `pkg/recipe`: Core types, YAML parsing, JSON Schema, validation, visitors, hashing.
+- `pkg/ops`: Op interface + registry, metadata, management service hooks.
+- `pkg/cel`: Small wrapper and helpers around `cel-go` for conditional expressions.
 
-### Recipe Format
+## Core Types
 
-Unified single-file YAML format with embedded root node execution model:
+- `recipe.Recipe`: Root wrapper around one of `RecipeOp`, `RecipeSequence`, `RecipeState`.
+- `recipe.Node`: Inner nodes used by containers. One of `NodeOp`, `NodeSequence`, `NodeState`, `NodeShared`.
+- `recipe.NodeMetadata`: Common fields on every node
+  - `id`, `desc`, `timeout`, `retry`, `inputs`, `when` (CEL expression).
+- `recipe.RecipeMetadata`: Top-level recipe fields
+  - `version`, inline `NodeMetadata`, `defs` (shared node map), `input_schema` (optional input contract).
+- `recipe.StateMap`/`recipe.State`: State machine data with `transitions[]` each with `to` and optional `when` (CEL).
+- `recipe.Job`, `recipe.ActivityExecution`, `recipe.WorkerStatus`, `recipe.JobStatus`: Execution tracking structs used by runtimes.
+
+## YAML Shape
+
+Top-level is metadata + exactly one root node kind (op | sequence | state):
 
 ```yaml
-name: example-recipe
+id: example
 version: 1.0.0
-description: Example unified recipe
+desc: Demo
 
-# Root node (one of: op, sequence, parallel, states)
-sequence:
-  - id: step1
-    op: http
+# Optional shared node defs (referenced via `shared: <name>`)
+defs:
+  say_shared:
+    op: echo
     inputs:
-      url: "https://api.example.com/data"
-  - id: step2
-    parallel:
-      - op: ai_prompt
-        inputs:
-          prompt: "Analyze: ${step1.response}"
-      - op: function
-        inputs:
-          handler: "process_data"
+      message: "from shared"
+
+# Optional input schema for external inputs
+input_schema:
+  message:
+    type: string
+    description: Greeting to use
+    required: true
+
+# Root node (choose one)
+sequence:
+  - id: greet
+    op: echo
+    inputs:
+      message: "hello"
+  - shared: say_shared
 ```
 
-## Key Interfaces
+State machine example:
 
-### Recipe Parser
-
-```go
-// Create parser with activity registry
-parser := recipe.NewParser(logger)
-registry := parser.GetActivityTypeRegistry()
-
-// Parse recipe from file
-recipe, err := parser.ParseRecipe("/path/to/recipe.yaml")
-
-// Access parsed content
-fmt.Printf("Recipe: %s v%s\n", recipe.Name, recipe.Version)
-fmt.Printf("Hash: %s\n", recipe.Hash)
+```yaml
+id: approval
+version: 1.0.0
+state:
+  initial: start
+  states:
+    start:
+      op: evaluate
+      transitions:
+        - to: approved
+          when: "inputs.score >= 80"
+        - to: rejected
+          when: "inputs.score < 80"
+    approved: {}
+    rejected: {}
 ```
 
-### Activity Type Registry
+Notes:
+- Sequence runs nodes in order. Parallelism is not modeled in core.
+- `when` uses CEL; empty or `true` means no gating.
+- `shared` nodes resolve via `defs` using the visitor described below.
+
+## Parsing and Validation
+
+- YAML → Go: `recipe.LoadRecipeFromString([]byte)` or `LoadRecipeFromReader(io.Reader)`.
+- Input type checking: on unmarshal, ops are looked up in `pkg/ops` and `inputs` are decoded into the op’s concrete input struct; type errors surface with line/column.
+- JSON Schema: `recipe.GenerateSchemaString()` reflects the model plus all registered ops’ input shapes into a single schema.
+- Validate: `recipe.Validate(yamlText)` compiles the generated schema and validates the provided YAML.
+
+## Visitors and Shared Nodes
+
+- `recipe.NodeVisitor` and `recipe.NodeWalker` implement a transform-friendly traversal over the recipe tree.
+- `recipe.SharedNodeResolver` resolves `NodeShared` references using the top-level `defs` map, with circular reference detection.
+- Visitors can control traversal of children via `ShouldTraverseSequenceChildren` and `ShouldTraverseStateChildren`.
+
+## Ops Registry (pkg/ops)
+
+- `ops.RegisterableOp`: contract for pluggable operations
+  - `Execute(ctx)`, `ExecuteInline(workflowCtx)`, `GetInputStruct()`, `GetInputType()`, `GetOutputType()`, `ExecuteAsActivity()`.
+  - `GetMetadata()` returns `OpMetadata{Name, Type, Description, Version, DefaultTimeout}`.
+- Constructors:
+  - `ops.NewActivityMappedOp[In,Out](metadata, func(context.Context, In) (Out, error))`.
+  - `ops.NewInlineOp[In,Out](metadata, func(workflow.Context, In) (Out, error))`.
+- Registry API: `ops.Register(op...)`, `ops.Get(name)`, `ops.List()`, `ops.Clear()`, `ops.Size()`.
+- Optional `ManagementService` for HTTP routes used by surrounding systems.
+
+Example op registration:
 
 ```go
-// Register custom activity type
-registry.RegisterActivityType(&recipe.ActivityTypeDefinition{
-    Type:        "custom_api",
-    Description: "Custom API integration",
-    ConfigSchema: recipe.JSONSchema{
-        "type": "object",
-        "required": []string{"endpoint"},
-        "properties": map[string]interface{}{
-            "endpoint": map[string]interface{}{"type": "string"},
-            "timeout": map[string]interface{}{"type": "integer"},
-        },
-    },
-    RequiredConfig: true,
-    AllowAdditionalInputs: true,
-})
-
-// Validate activity configuration
-err := registry.ValidateActivityConfig("custom_api", config)
-```
-
-### YAML Parser
-
-```go
-// Parse unified recipe format
-yamlParser := yaml.NewParser()
-definition, err := yamlParser.ParseRecipe("recipe.yaml")
-
-// Access recipe structure
-if definition.Sequence != nil {
-    for _, node := range definition.Sequence {
-        fmt.Printf("Node ID: %s, Op: %s\n", node.ID, node.Op)
-    }
-}
-```
-
-### Hash Computation
-
-```go
-// Compute deterministic recipe hash
-hashComputer := recipe.NewHashComputer()
-hash := hashComputer.ComputeRecipeHash(recipe)
-
-// Hash accounts for normalized content, ignoring whitespace and ordering
-```
-
-## Usage Examples
-
-### Basic Recipe Parsing
-
-```go
-package main
+package myops
 
 import (
-    "log"
-    "go.uber.org/zap"
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+    "context"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
-func main() {
-    logger, _ := zap.NewProduction()
-    defer logger.Sync()
+type EchoIn struct { Message string `json:"message"` }
+type EchoOut struct { Echoed string `json:"echoed"` }
 
-    parser := recipe.NewParser(logger)
-    r, err := parser.ParseRecipe("example.yaml")
-    if err != nil {
-        log.Fatalf("Parse error: %v", err)
-    }
+var Echo = ops.NewActivityMappedOp[EchoIn, EchoOut](
+    ops.OpMetadata{Type: "echo", Name: "echo", Description: "Echo a message", Version: "1.0.0"},
+    func(ctx context.Context, in EchoIn) (EchoOut, error) { return EchoOut{Echoed: in.Message}, nil },
+)
 
-    log.Printf("Loaded: %s v%s", r.Name, r.Version)
-    log.Printf("Type: %T", r.Recipe) // *yaml.RecipeDefinition
-}
+func init() { ops.Register(Echo) }
 ```
 
-### Custom Activity Registration
+## CEL Integration (pkg/cel)
+
+- `cel.CELExpr` wraps compiled CEL programs and marshals as a YAML string.
+- `NodeMetadata.when` and `Transition.when` use `CELExpr`.
+- Access pattern for conditions is flexible; a `DynamicMapValue` adapter enables dot access into maps.
+
+## Hashing
+
+- `recipe.HashComputer` computes a deterministic SHA-256 over the normalized recipe structure (fallback to id+version on error).
+
+## Minimal Usage Examples
+
+Parse and validate:
 
 ```go
-// Register webhook activity type
-registry := parser.GetActivityTypeRegistry()
-err := registry.RegisterActivityType(&recipe.ActivityTypeDefinition{
-    Type: "webhook",
-    Description: "HTTP webhook sender",
-    ConfigSchema: recipe.JSONSchema{
-        "type": "object",
-        "required": []string{"url"},
-        "properties": map[string]interface{}{
-            "url": map[string]interface{}{
-                "type": "string",
-                "format": "uri",
-            },
-            "method": map[string]interface{}{
-                "type": "string",
-                "enum": []string{"POST", "PUT", "PATCH"},
-                "default": "POST",
-            },
-        },
-    },
-    RequiredConfig: true,
-    AllowAdditionalInputs: true,
-})
-```
+import (
+  "fmt"
+  "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+)
 
-### Job Execution Tracking
+data := `id: demo\nversion: 1.0.0\nop: echo\ninputs: { message: "hi" }\n`
+r, err := recipe.LoadRecipeFromString([]byte(data))
+if err != nil { panic(err) }
 
-```go
-// Create job instance
-job := &recipe.Job{
-    ID:            "job-123",
-    RecipeName:    r.Name,
-    RecipeVersion: r.Version,
-    Status:        recipe.JobStatusRunning,
-    StartTime:     time.Now(),
-    Input:         map[string]interface{}{"key": "value"},
+if err := recipe.Validate(data); err != nil {
+  panic(err)
 }
 
-// Update job status
-job.Status = recipe.JobStatusCompleted
-job.Output = map[string]interface{}{"result": "success"}
-endTime := time.Now()
-job.EndTime = &endTime
+fmt.Println(r.GetMetdata().ID, r.GetMetdata().Version)
 ```
 
-### State Machine Context
+Resolve shared nodes via visitor:
 
 ```go
-// State machine execution context
-context := &yaml.StateContext{
-    CurrentState: "initial",
-    Inputs: map[string]interface{}{
-        "user_id": "12345",
-    },
-    StateOutputs: make(map[string]map[string]interface{}),
-    RecipeContext: &yaml.RecipeContext{
-        Recipe: yaml.RecipeInfo{
-            Name:    r.Name,
-            Version: r.Version,
-        },
-    },
+defs := map[string]recipe.Node{
+  "say": { NodeImpl: &recipe.NodeOp{ OpData: recipe.OpData{ Op: "echo" } } },
 }
+resolver := recipe.NewSharedNodeResolver(defs)
+walker := recipe.NewNodeWalker(resolver)
+out, err := walker.Walk(*r)
+_ = out; _ = err
 ```
 
-## Configuration
+## Notes and Constraints
 
-### Built-in Activity Types
-
-- `http`: HTTP requests with method, URL, headers, body
-- `ai_prompt`: LLM inference with provider, model, temperature
-- `function`: Registered function handlers
-- `script`: External command execution
-- `grpc`: gRPC service calls
-
-### Validation Settings
-
-```go
-// Activity type validation levels
-type ActivityTypeDefinition struct {
-    RequiredConfig         bool // Config section mandatory
-    AllowAdditionalConfig  bool // Extra config fields allowed
-    AllowAdditionalInputs  bool // Extra input fields allowed
-    AllowAdditionalOutputs bool // Extra output fields allowed
-}
-```
-
-### Deprecation Notice
-
-Multi-file recipe format (directory with `recipe.yaml` manifest) is deprecated. Use unified single-file format for all new recipes.
+- Parallelism is out of scope for core; compose sequences/states to model flows.
+- The core focuses on structure, typing, schema and transformation; execution is provided by external runtimes that consume `ops.RegisterableOp` and the recipe tree.

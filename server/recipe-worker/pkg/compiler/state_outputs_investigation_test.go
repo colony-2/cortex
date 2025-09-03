@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"context"
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -21,16 +20,8 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	// Register a mock echo activity that returns known outputs
-	echoActivity := func(ctx context.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		t.Logf("Echo activity called with inputs: %+v", inputs)
-		return map[string]interface{}{
-			"message": inputs["message"],
-			"status":  "success",
-			"echo":    true,
-		}, nil
-	}
-	env.RegisterActivity(echoActivity)
+	// The registry already has echo_activity registered, enable it in the worker
+	registry.EnableActivitiesInWorker(env)
 
 	// Simple state machine with one terminal state
 	stateMap := &recipe.StateMap{

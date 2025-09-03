@@ -39,6 +39,8 @@ tests:
   description: Test with default values
   inputs:
     message: 'Default test'
+    analysis_depth: medium
+    output_format: json
   want:
     result: ['Default test']
     metadata:
