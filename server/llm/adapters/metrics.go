@@ -4,44 +4,46 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // MetricsCollector tracks adapter usage
 type MetricsCollector interface {
 	// RecordGeneration tracks basic generation metrics
 	RecordGeneration(provider string, model string, duration time.Duration, tokens int)
-	
+
 	// RecordToolExecution tracks tool execution
 	RecordToolExecution(toolName string, success bool, duration time.Duration)
-	
+
 	// RecordFileOperation tracks file operations
-	RecordFileOperation(operation string, fileType FileType, size int64)
-	
+	RecordFileOperation(operation string, fileType f2.FileType, size int64)
+
 	// GetMetrics returns current metrics
 	GetMetrics() Metrics
-	
+
 	// Reset resets all metrics
 	Reset()
 }
 
 // Metrics holds collected metrics data
 type Metrics struct {
-	Generations      GenerationMetrics      `json:"generations"`
-	ToolExecutions   ToolExecutionMetrics   `json:"tool_executions"`
-	FileOperations   FileOperationMetrics   `json:"file_operations"`
-	CollectionPeriod CollectionPeriod       `json:"collection_period"`
+	Generations      GenerationMetrics    `json:"generations"`
+	ToolExecutions   ToolExecutionMetrics `json:"tool_executions"`
+	FileOperations   FileOperationMetrics `json:"file_operations"`
+	CollectionPeriod CollectionPeriod     `json:"collection_period"`
 }
 
 // GenerationMetrics tracks LLM generation statistics
 type GenerationMetrics struct {
-	TotalRequests    int64                       `json:"total_requests"`
-	TotalTokens      int64                       `json:"total_tokens"`
-	TotalDuration    time.Duration               `json:"total_duration"`
-	AverageDuration  time.Duration               `json:"average_duration"`
-	ByProvider       map[string]*ProviderMetrics `json:"by_provider"`
-	ByModel          map[string]*ModelMetrics    `json:"by_model"`
-	ErrorCount       int64                       `json:"error_count"`
-	SuccessRate      float64                     `json:"success_rate"`
+	TotalRequests   int64                       `json:"total_requests"`
+	TotalTokens     int64                       `json:"total_tokens"`
+	TotalDuration   time.Duration               `json:"total_duration"`
+	AverageDuration time.Duration               `json:"average_duration"`
+	ByProvider      map[string]*ProviderMetrics `json:"by_provider"`
+	ByModel         map[string]*ModelMetrics    `json:"by_model"`
+	ErrorCount      int64                       `json:"error_count"`
+	SuccessRate     float64                     `json:"success_rate"`
 }
 
 // ProviderMetrics tracks metrics per provider
@@ -63,13 +65,13 @@ type ModelMetrics struct {
 
 // ToolExecutionMetrics tracks tool execution statistics
 type ToolExecutionMetrics struct {
-	TotalExecutions  int64                     `json:"total_executions"`
-	SuccessCount     int64                     `json:"success_count"`
-	FailureCount     int64                     `json:"failure_count"`
-	TotalDuration    time.Duration             `json:"total_duration"`
-	AverageDuration  time.Duration             `json:"average_duration"`
-	ByTool           map[string]*ToolMetrics   `json:"by_tool"`
-	SuccessRate      float64                   `json:"success_rate"`
+	TotalExecutions int64                   `json:"total_executions"`
+	SuccessCount    int64                   `json:"success_count"`
+	FailureCount    int64                   `json:"failure_count"`
+	TotalDuration   time.Duration           `json:"total_duration"`
+	AverageDuration time.Duration           `json:"average_duration"`
+	ByTool          map[string]*ToolMetrics `json:"by_tool"`
+	SuccessRate     float64                 `json:"success_rate"`
 }
 
 // ToolMetrics tracks metrics per tool
@@ -84,10 +86,10 @@ type ToolMetrics struct {
 
 // FileOperationMetrics tracks file operation statistics
 type FileOperationMetrics struct {
-	TotalOperations  int64                              `json:"total_operations"`
-	TotalBytes       int64                              `json:"total_bytes"`
-	ByOperation      map[string]*FileOperationDetail   `json:"by_operation"`
-	ByFileType       map[FileType]*FileTypeMetrics     `json:"by_file_type"`
+	TotalOperations int64                            `json:"total_operations"`
+	TotalBytes      int64                            `json:"total_bytes"`
+	ByOperation     map[string]*FileOperationDetail  `json:"by_operation"`
+	ByFileType      map[f2.FileType]*FileTypeMetrics `json:"by_file_type"`
 }
 
 // FileOperationDetail tracks details per operation type
@@ -98,8 +100,8 @@ type FileOperationDetail struct {
 
 // FileTypeMetrics tracks metrics per file type
 type FileTypeMetrics struct {
-	Operations int64 `json:"operations"`
-	TotalBytes int64 `json:"total_bytes"`
+	Operations  int64 `json:"operations"`
+	TotalBytes  int64 `json:"total_bytes"`
 	AverageSize int64 `json:"average_size"`
 }
 
@@ -112,9 +114,9 @@ type CollectionPeriod struct {
 
 // DefaultMetricsCollector implements MetricsCollector
 type DefaultMetricsCollector struct {
-	mu         sync.RWMutex
-	metrics    Metrics
-	startTime  time.Time
+	mu        sync.RWMutex
+	metrics   Metrics
+	startTime time.Time
 }
 
 // NewMetricsCollector creates a new metrics collector
@@ -130,7 +132,7 @@ func NewMetricsCollector() MetricsCollector {
 			},
 			FileOperations: FileOperationMetrics{
 				ByOperation: make(map[string]*FileOperationDetail),
-				ByFileType:  make(map[FileType]*FileTypeMetrics),
+				ByFileType:  make(map[f2.FileType]*FileTypeMetrics),
 			},
 		},
 		startTime: time.Now(),
@@ -141,12 +143,12 @@ func NewMetricsCollector() MetricsCollector {
 func (m *DefaultMetricsCollector) RecordGeneration(provider string, model string, duration time.Duration, tokens int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Update total metrics
 	m.metrics.Generations.TotalRequests++
 	m.metrics.Generations.TotalTokens += int64(tokens)
 	m.metrics.Generations.TotalDuration += duration
-	
+
 	// Update provider metrics
 	if m.metrics.Generations.ByProvider[provider] == nil {
 		m.metrics.Generations.ByProvider[provider] = &ProviderMetrics{}
@@ -156,7 +158,7 @@ func (m *DefaultMetricsCollector) RecordGeneration(provider string, model string
 	providerMetrics.Tokens += int64(tokens)
 	providerMetrics.TotalDuration += duration
 	providerMetrics.AverageDuration = time.Duration(int64(providerMetrics.TotalDuration) / providerMetrics.Requests)
-	
+
 	// Update model metrics
 	if m.metrics.Generations.ByModel[model] == nil {
 		m.metrics.Generations.ByModel[model] = &ModelMetrics{}
@@ -166,7 +168,7 @@ func (m *DefaultMetricsCollector) RecordGeneration(provider string, model string
 	modelMetrics.Tokens += int64(tokens)
 	modelMetrics.TotalDuration += duration
 	modelMetrics.AverageDuration = time.Duration(int64(modelMetrics.TotalDuration) / modelMetrics.Requests)
-	
+
 	// Calculate averages
 	if m.metrics.Generations.TotalRequests > 0 {
 		m.metrics.Generations.AverageDuration = time.Duration(
@@ -181,17 +183,17 @@ func (m *DefaultMetricsCollector) RecordGeneration(provider string, model string
 func (m *DefaultMetricsCollector) RecordToolExecution(toolName string, success bool, duration time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Update total metrics
 	m.metrics.ToolExecutions.TotalExecutions++
 	m.metrics.ToolExecutions.TotalDuration += duration
-	
+
 	if success {
 		m.metrics.ToolExecutions.SuccessCount++
 	} else {
 		m.metrics.ToolExecutions.FailureCount++
 	}
-	
+
 	// Update tool-specific metrics
 	if m.metrics.ToolExecutions.ByTool[toolName] == nil {
 		m.metrics.ToolExecutions.ByTool[toolName] = &ToolMetrics{}
@@ -200,18 +202,18 @@ func (m *DefaultMetricsCollector) RecordToolExecution(toolName string, success b
 	toolMetrics.Executions++
 	toolMetrics.TotalDuration += duration
 	toolMetrics.LastExecution = time.Now()
-	
+
 	if success {
 		toolMetrics.SuccessCount++
 	} else {
 		toolMetrics.FailureCount++
 	}
-	
+
 	// Calculate averages
 	if toolMetrics.Executions > 0 {
 		toolMetrics.AverageDuration = time.Duration(int64(toolMetrics.TotalDuration) / toolMetrics.Executions)
 	}
-	
+
 	if m.metrics.ToolExecutions.TotalExecutions > 0 {
 		m.metrics.ToolExecutions.AverageDuration = time.Duration(
 			int64(m.metrics.ToolExecutions.TotalDuration) / m.metrics.ToolExecutions.TotalExecutions,
@@ -222,14 +224,14 @@ func (m *DefaultMetricsCollector) RecordToolExecution(toolName string, success b
 }
 
 // RecordFileOperation tracks file operations
-func (m *DefaultMetricsCollector) RecordFileOperation(operation string, fileType FileType, size int64) {
+func (m *DefaultMetricsCollector) RecordFileOperation(operation string, fileType f2.FileType, size int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Update total metrics
 	m.metrics.FileOperations.TotalOperations++
 	m.metrics.FileOperations.TotalBytes += size
-	
+
 	// Update operation-specific metrics
 	if m.metrics.FileOperations.ByOperation[operation] == nil {
 		m.metrics.FileOperations.ByOperation[operation] = &FileOperationDetail{}
@@ -237,7 +239,7 @@ func (m *DefaultMetricsCollector) RecordFileOperation(operation string, fileType
 	opDetail := m.metrics.FileOperations.ByOperation[operation]
 	opDetail.Count++
 	opDetail.TotalBytes += size
-	
+
 	// Update file type metrics
 	if m.metrics.FileOperations.ByFileType[fileType] == nil {
 		m.metrics.FileOperations.ByFileType[fileType] = &FileTypeMetrics{}
@@ -254,10 +256,10 @@ func (m *DefaultMetricsCollector) RecordFileOperation(operation string, fileType
 func (m *DefaultMetricsCollector) GetMetrics() Metrics {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	// Create a copy of metrics
 	metricsCopy := m.metrics
-	
+
 	// Update collection period
 	now := time.Now()
 	metricsCopy.CollectionPeriod = CollectionPeriod{
@@ -265,7 +267,7 @@ func (m *DefaultMetricsCollector) GetMetrics() Metrics {
 		EndTime:   now,
 		Duration:  now.Sub(m.startTime),
 	}
-	
+
 	return metricsCopy
 }
 
@@ -273,7 +275,7 @@ func (m *DefaultMetricsCollector) GetMetrics() Metrics {
 func (m *DefaultMetricsCollector) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.metrics = Metrics{
 		Generations: GenerationMetrics{
 			ByProvider: make(map[string]*ProviderMetrics),
@@ -284,7 +286,7 @@ func (m *DefaultMetricsCollector) Reset() {
 		},
 		FileOperations: FileOperationMetrics{
 			ByOperation: make(map[string]*FileOperationDetail),
-			ByFileType:  make(map[FileType]*FileTypeMetrics),
+			ByFileType:  make(map[f2.FileType]*FileTypeMetrics),
 		},
 	}
 	m.startTime = time.Now()
@@ -309,34 +311,34 @@ func NewMetricsMiddleware(adapter Adapter, collector MetricsCollector, provider 
 // Generate wraps the Generate method with metrics collection
 func (m *MetricsMiddleware) Generate(ctx context.Context, prompt string, config Config) (Response, error) {
 	start := time.Now()
-	
+
 	response, err := m.adapter.Generate(ctx, prompt, config)
-	
+
 	duration := time.Since(start)
 	tokens := 0
 	if err == nil {
 		tokens = response.Usage.TotalTokens
 	}
-	
+
 	m.collector.RecordGeneration(m.provider, config.Model, duration, tokens)
-	
+
 	return response, err
 }
 
 // GenerateWithTools wraps the GenerateWithTools method with metrics collection
 func (m *MetricsMiddleware) GenerateWithTools(ctx context.Context, prompt string, tools []Tool, config Config) (Response, error) {
 	start := time.Now()
-	
+
 	response, err := m.adapter.GenerateWithTools(ctx, prompt, tools, config)
-	
+
 	duration := time.Since(start)
 	tokens := 0
 	if err == nil {
 		tokens = response.Usage.TotalTokens
 	}
-	
+
 	m.collector.RecordGeneration(m.provider, config.Model, duration, tokens)
-	
+
 	return response, err
 }
 

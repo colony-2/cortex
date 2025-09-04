@@ -96,8 +96,6 @@ managing dependencies, and working with development containers.`,
 
 	// Add subcommands
 	rootCmd.AddCommand(serverCmd)
-	rootCmd.AddCommand(schemaCmd)
-	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(executeCmd)
 
 	return rootCmd.Execute()

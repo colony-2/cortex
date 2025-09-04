@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
@@ -37,7 +38,7 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	if err != nil {
 		return nil, fmt.Errorf("failed to get adapter: %w", err)
 	}
-	
+
 	// Check if adapter supports file handling
 	fileAdapter, supportsFiles := adapter.(llmadapters.FileAdapter)
 
@@ -55,16 +56,16 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	var finalPrompt string
 	switch input.Mode {
 	case ModePersona:
-		
+
 		// Build system prompt from persona
 		config.SystemPrompt = BuildPersonaSystemPrompt(input.Persona)
 		finalPrompt = input.Prompt
-		
+
 	case ModeSimple:
 		// Use direct system prompt if provided
 		config.SystemPrompt = input.SystemPrompt
 		finalPrompt = input.Prompt
-		
+
 	default:
 		// Default to simple mode
 		config.SystemPrompt = input.SystemPrompt
@@ -72,7 +73,7 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	}
 
 	// Resolve files if context is provided
-	var files []llmadapters.File
+	var files []f2.File
 	if input.Context != nil {
 		resolvedFiles, err := resolveArtifacts(ctx, input.Context, previousOutputs)
 		if err != nil {
@@ -81,7 +82,7 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 		} else if len(resolvedFiles) > 0 {
 			// Convert resolved files to adapter format
 			files = convertToAdapterFiles(resolvedFiles)
-			
+
 			// If adapter doesn't support files, fall back to text inclusion
 			if !supportsFiles && len(files) > 0 {
 				fileContext := buildFileContext(resolvedFiles, input.AdapterName)
@@ -96,19 +97,19 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 	// Handle structured response if provided
 	if input.ResponseStructure != nil {
 		config.ResponseFormat = "json"
-		
+
 		// Add schema information to the prompt
 		schemaJSON, err := generateJSONSchema(input.ResponseStructure)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate JSON schema: %w", err)
 		}
-		
-		finalPrompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s", 
+
+		finalPrompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s",
 			finalPrompt, string(schemaJSON))
 	} else if len(input.ResponseStructureJSON) > 0 {
 		// If JSON schema was provided directly
 		config.ResponseFormat = "json"
-		finalPrompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s", 
+		finalPrompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s",
 			finalPrompt, string(input.ResponseStructureJSON))
 	}
 
@@ -171,7 +172,7 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs map[string]interface{}) ([]ResolvedFile, error) {
 	paths := []string{}
 	labels := map[string]string{}
-	
+
 	// Static artifacts
 	for _, artifact := range config.Artifacts {
 		paths = append(paths, artifact.Path)
@@ -179,7 +180,7 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			labels[artifact.Path] = artifact.Label
 		}
 	}
-	
+
 	// Get artifacts from previous activity output
 	if ref := config.ArtifactsFromOutput; ref != "" {
 		parts := strings.Split(ref, ".")
@@ -200,7 +201,7 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			}
 		}
 	}
-	
+
 	// Apply glob patterns
 	for _, glob := range config.ArtifactsGlob {
 		matches, err := filepath.Glob(glob.Pattern)
@@ -221,7 +222,7 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			}
 		}
 	}
-	
+
 	// Directory listing
 	if dir := config.ArtifactsDirectory; dir != nil {
 		dirPaths, err := listDirectory(dir.Path, dir.Recursive, dir.Extensions)
@@ -229,7 +230,7 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			paths = append(paths, dirPaths...)
 		}
 	}
-	
+
 	// Combined resolution
 	if res := config.ArtifactsResolution; res != nil {
 		for _, source := range res.Sources {
@@ -237,10 +238,10 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			paths = append(paths, sourcePaths...)
 		}
 	}
-	
+
 	// Deduplicate paths
 	paths = DeduplicatePaths(paths)
-	
+
 	// Read files and create ResolvedFile objects
 	resolvedFiles := []ResolvedFile{}
 	for _, path := range paths {
@@ -248,9 +249,9 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 		if err != nil {
 			continue // Skip files that can't be read
 		}
-		
+
 		mimeType := DetectMimeType(path, content)
-		
+
 		resolved := ResolvedFile{
 			Path:     path,
 			Label:    labels[path],
@@ -258,7 +259,7 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 			MimeType: mimeType,
 			Size:     int64(len(content)),
 		}
-		
+
 		// Apply size limits
 		if config.FileLimits != nil {
 			if resolved.Size > config.FileLimits.MaxFileSize {
@@ -270,33 +271,33 @@ func resolveArtifacts(ctx context.Context, config *FileContext, previousOutputs 
 				}
 			}
 		}
-		
+
 		resolvedFiles = append(resolvedFiles, resolved)
 	}
-	
+
 	// Apply total limits
 	if config.FileLimits != nil {
 		resolvedFiles = ApplyTotalLimits(resolvedFiles, config.FileLimits)
 	}
-	
+
 	return resolvedFiles, nil
 }
 
 // listDirectory lists files in a directory
 func listDirectory(path string, recursive bool, extensions []string) ([]string, error) {
 	var files []string
-	
+
 	if recursive {
 		err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil // Skip errors
 			}
-			
+
 			// Skip directories
 			if info.IsDir() {
 				return nil
 			}
-			
+
 			// Check extensions if specified
 			if len(extensions) > 0 {
 				ext := filepath.Ext(filePath)
@@ -311,7 +312,7 @@ func listDirectory(path string, recursive bool, extensions []string) ([]string, 
 					return nil
 				}
 			}
-			
+
 			files = append(files, filePath)
 			return nil
 		})
@@ -324,14 +325,14 @@ func listDirectory(path string, recursive bool, extensions []string) ([]string, 
 		if err != nil {
 			return nil, err
 		}
-		
+
 		for _, entry := range entries {
 			if entry.IsDir() {
 				continue
 			}
-			
+
 			filePath := filepath.Join(path, entry.Name())
-			
+
 			// Check extensions if specified
 			if len(extensions) > 0 {
 				ext := filepath.Ext(entry.Name())
@@ -346,18 +347,18 @@ func listDirectory(path string, recursive bool, extensions []string) ([]string, 
 					continue
 				}
 			}
-			
+
 			files = append(files, filePath)
 		}
 	}
-	
+
 	return files, nil
 }
 
 // resolveSource resolves paths from a single source
 func resolveSource(source ResolutionSource, previousOutputs map[string]interface{}) []string {
 	var paths []string
-	
+
 	switch source.Type {
 	case "activity_output":
 		if output, ok := previousOutputs[source.Activity]; ok {
@@ -373,7 +374,7 @@ func resolveSource(source ResolutionSource, previousOutputs map[string]interface
 				}
 			}
 		}
-		
+
 	case "glob":
 		for _, pattern := range source.Patterns {
 			matches, err := filepath.Glob(pattern)
@@ -381,7 +382,7 @@ func resolveSource(source ResolutionSource, previousOutputs map[string]interface
 				paths = append(paths, matches...)
 			}
 		}
-		
+
 	case "directory":
 		if source.Path != "" {
 			dirPaths, err := listDirectory(source.Path, source.Recursive, nil)
@@ -399,11 +400,11 @@ func resolveSource(source ResolutionSource, previousOutputs map[string]interface
 				paths = append(paths, dirPaths...)
 			}
 		}
-		
+
 	case "static":
 		paths = append(paths, source.Paths...)
 	}
-	
+
 	return paths
 }
 
@@ -412,16 +413,16 @@ func buildFileContext(files []ResolvedFile, adapterName string) string {
 	if len(files) == 0 {
 		return ""
 	}
-	
+
 	var parts []string
 	parts = append(parts, "### File Context ###")
-	
+
 	for _, file := range files {
 		label := file.Label
 		if label == "" {
 			label = file.Path
 		}
-		
+
 		// Check if it's an image or binary file
 		if strings.HasPrefix(file.MimeType, "image/") {
 			// For providers that support images, we would handle this differently
@@ -438,7 +439,7 @@ func buildFileContext(files []ResolvedFile, adapterName string) string {
 			parts = append(parts, "```")
 		}
 	}
-	
+
 	return strings.Join(parts, "\n")
 }
 
@@ -446,23 +447,23 @@ func buildFileContext(files []ResolvedFile, adapterName string) string {
 type ProviderFacade interface {
 	// AddFileContext adds file context to the provider
 	AddFileContext(ctx context.Context, files []ResolvedFile) error
-	
+
 	// SupportsFileType checks if the provider supports a specific file type
 	SupportsFileType(mimeType string) bool
-	
+
 	// GetMaxFileSize returns the maximum file size supported
 	GetMaxFileSize() int64
-	
+
 	// ClearContext clears any stored file context
 	ClearContext() error
 }
 
 // convertToAdapterFiles converts resolved files to adapter format
-func convertToAdapterFiles(resolvedFiles []ResolvedFile) []llmadapters.File {
-	files := make([]llmadapters.File, 0, len(resolvedFiles))
-	
+func convertToAdapterFiles(resolvedFiles []ResolvedFile) []f2.File {
+	files := make([]f2.File, 0, len(resolvedFiles))
+
 	for _, rf := range resolvedFiles {
-		file := llmadapters.File{
+		file := f2.File{
 			Path:     rf.Path,
 			Name:     rf.Label,
 			Content:  rf.Content,
@@ -470,14 +471,14 @@ func convertToAdapterFiles(resolvedFiles []ResolvedFile) []llmadapters.File {
 			Type:     llmadapters.GetFileType(rf.MimeType),
 			Metadata: rf.Metadata,
 		}
-		
+
 		// Use label as name if available
 		if file.Name == "" {
 			file.Name = filepath.Base(rf.Path)
 		}
-		
+
 		files = append(files, file)
 	}
-	
+
 	return files
 }

@@ -5,65 +5,50 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 
 	"time"
 
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
-// LLMInferenceConfig provides configuration for the enhanced LLM inference activity
-type LLMInferenceConfig struct {
-	// Provider configurations
-	DefaultProvider string            `yaml:"default_provider" json:"default_provider,omitempty"`
-	DefaultModel    string            `yaml:"default_model" json:"default_model,omitempty"`
-	APIKeys         map[string]string `yaml:"api_keys" json:"api_keys,omitempty"`
+type LLMInferenceConfig = LLMInferenceInput
 
-	// Tool execution settings
-	EnableToolExecution bool   `yaml:"enable_tool_execution" json:"enable_tool_execution,omitempty"`
-	DefaultWorkingDir   string `yaml:"default_working_dir" json:"default_working_dir,omitempty"`
-	MaxToolRounds       int    `yaml:"max_tool_rounds" json:"max_tool_rounds,omitempty"`
+// LLMInferenceInput defines enhanced input (backward compatible)
+type LLMInferenceInput struct {
+	Provider      string            `yaml:"default_provider" json:"default_provider,omitempty"`
+	Model         string            `yaml:"default_model" json:"default_model,omitempty"`
+	APIKeys       map[string]string `yaml:"api_keys" json:"api_keys,omitempty"`
+	Temperature   float64           `json:"temperature,omitempty"`
+	MaxTokens     int               `json:"max_tokens,omitempty"`
+	TopP          float64           `json:"top_p,omitempty"`
+	StopSequences []string          `json:"stop_sequences,omitempty"`
+
+	EnableSandbox   bool     `yaml:"enable_sandbox" json:"enable_sandbox,omitempty"`
+	AllowedPaths    []string `yaml:"allowed_paths" json:"allowed_paths,omitempty"`
+	RestrictedPaths []string `yaml:"restricted_paths" json:"restricted_paths,omitempty"`
 
 	// File handling settings
 	DefaultFileHandling string `yaml:"default_file_handling" json:"default_file_handling,omitempty"`
 	MaxFileContextSize  int    `yaml:"max_file_context_size" json:"max_file_context_size,omitempty"`
 
-	// Safety settings
-	EnableSandbox   bool     `yaml:"enable_sandbox" json:"enable_sandbox,omitempty"`
-	AllowedPaths    []string `yaml:"allowed_paths" json:"allowed_paths,omitempty"`
-	RestrictedPaths []string `yaml:"restricted_paths" json:"restricted_paths,omitempty"`
-}
-
-// LLMInferenceInput defines enhanced input (backward compatible)
-type LLMInferenceInput struct {
-	// Standard fields (existing - backward compatible)
 	Prompt         string          `json:"prompt,omitempty"`
 	SystemPrompt   string          `json:"system_prompt,omitempty"`
-	Temperature    float64         `json:"temperature,omitempty"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
-	TopP           float64         `json:"top_p,omitempty"`
-	StopSequences  []string        `json:"stop_sequences,omitempty"`
 	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
-	Provider       string          `json:"provider,omitempty"`
-	Model          string          `json:"model,omitempty"`
 
 	// Enhanced fields (new)
-	Files          []llmadapters.File `json:"files,omitempty"`
-	FileHandling   string             `json:"file_handling,omitempty"` // native, text_fallback, hybrid
-	Tools          []ToolDefinition   `json:"tools,omitempty"`
-	ExecuteTools   bool               `json:"execute_tools,omitempty"`
-	ToolWorkingDir string             `json:"tool_working_dir,omitempty"`
-	MaxToolRounds  int                `json:"max_tool_rounds,omitempty"`
-
-	// Advanced options
+	Files               []f2.File              `json:"files,omitempty"`
+	FileHandling        string                 `json:"file_handling,omitempty"` // native, text_fallback, hybrid
+	Tools               []ToolDefinition       `json:"tools,omitempty"`
+	ExecuteTools        bool                   `json:"execute_tools,omitempty"`
+	DefaultWorkingDir   string                 `yaml:"default_working_dir" json:"default_working_dir,omitempty"`
+	ToolWorkingDir      string                 `json:"tool_working_dir,omitempty"`
+	EnableToolExecution bool                   `yaml:"enable_tool_execution" json:"enable_tool_execution,omitempty"`
+	MaxToolRounds       int                    `yaml:"max_tool_rounds" json:"max_tool_rounds,omitempty"`
 	ContinueOnToolError bool                   `json:"continue_on_tool_error,omitempty"`
 	ToolTimeout         string                 `json:"tool_timeout,omitempty"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`
-
-	// Backward compatibility fields (map old field names)
-	ModelName   string `json:"modelName,omitempty"`   // Maps to Model
-	AdapterName string `json:"adapterName,omitempty"` // Maps to Provider
 }
 
 // ToolDefinition defines a tool for LLM
@@ -133,51 +118,41 @@ type EnhancedLLMInferenceActivity struct {
 	config       *LLMInferenceConfig
 }
 
-var _ types.RegisterableOp[LLMInferenceConfig, LLMInferenceInput, LLMInferenceOutput] = (*EnhancedLLMInferenceActivity)(nil)
-
-// NewEnhancedLLMInferenceActivity creates a new enhanced LLM inference activity
-func NewEnhancedLLMInferenceActivity() types.RegisterableOp[LLMInferenceConfig, LLMInferenceInput, LLMInferenceOutput] {
-	// Initialize registry if not already done
-	if globalRegistry == nil {
-		InitializeRegistry()
-	}
-
-	return &EnhancedLLMInferenceActivity{
-		registry: globalRegistry,
-	}
+func GetEnhancedOp() ops.RegisterableOp {
+	e := &EnhancedLLMInferenceActivity{}
+	return ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:           "llm_inference2",
+			Name:           "llm_inference2",
+			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
+			Version:        "1.0.0",
+			DefaultTimeout: 5 * time.Minute,
+		},
+		e.Execute)
 }
 
 // GetMetadata returns activity metadata
-func (a *EnhancedLLMInferenceActivity) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
-		Type:           "llm_inference", // Same type for backward compatibility
-		Name:           "LLM Inference",
-		Description:    "Enhanced LLM inference with file and tool support",
-		Version:        "2.0.0",
-		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &yaml.RetryPolicy{
-			MaximumAttempts:        3,
-			InitialInterval:        2 * time.Second,
-			BackoffCoefficient:     2.0,
-			MaximumInterval:        30 * time.Second,
-			NonRetryableErrorTypes: []string{"InvalidAPIKey", "QuotaExceeded"},
-		},
+func (a *EnhancedLLMInferenceActivity) GetMetadata() ops.OpMetadata {
+	return ops.OpMetadata{
+		Type:        "llm_inference", // Same type for backward compatibility
+		Name:        "LLM Inference",
+		Description: "Enhanced LLM inference with file and tool support",
+		Version:     "2.0.0",
 	}
 }
 
 // Execute runs the enhanced LLM inference activity
 func (a *EnhancedLLMInferenceActivity) Execute(
 	ctx context.Context,
-	config LLMInferenceConfig,
 	input LLMInferenceInput,
 ) (LLMInferenceOutput, error) {
+
+	config := LLMInferenceConfig{}
 	startTime := time.Now()
 
 	// Store config for use in other methods
-	a.config = &config
-
-	// Apply defaults and handle backward compatibility
-	a.applyDefaults(&input, config)
+	conf := LLMInferenceConfig(input)
+	a.config = &conf
 
 	// Validate input
 	if err := a.validateInput(input, config); err != nil {
@@ -222,52 +197,6 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 	}
 
 	return output, nil
-}
-
-// applyDefaults applies default values and handles backward compatibility
-func (a *EnhancedLLMInferenceActivity) applyDefaults(input *LLMInferenceInput, config LLMInferenceConfig) {
-	// Handle backward compatibility - map old field names
-	if input.ModelName != "" && input.Model == "" {
-		input.Model = input.ModelName
-	}
-	if input.AdapterName != "" && input.Provider == "" {
-		input.Provider = input.AdapterName
-	}
-
-	// Apply defaults from config
-	if input.Provider == "" && config.DefaultProvider != "" {
-		input.Provider = config.DefaultProvider
-	}
-	if input.Model == "" && config.DefaultModel != "" {
-		input.Model = config.DefaultModel
-	}
-
-	// Default temperature
-	if input.Temperature == 0 {
-		input.Temperature = 0.7
-	}
-
-	// Default max tokens
-	if input.MaxTokens == 0 {
-		input.MaxTokens = 1000
-	}
-
-	// Tool execution defaults
-	if input.ToolWorkingDir == "" && config.DefaultWorkingDir != "" {
-		input.ToolWorkingDir = config.DefaultWorkingDir
-	}
-	if input.MaxToolRounds == 0 && config.MaxToolRounds > 0 {
-		input.MaxToolRounds = config.MaxToolRounds
-	} else if input.MaxToolRounds == 0 {
-		input.MaxToolRounds = 5 // Default to 5 rounds
-	}
-
-	// File handling defaults
-	if input.FileHandling == "" && config.DefaultFileHandling != "" {
-		input.FileHandling = config.DefaultFileHandling
-	} else if input.FileHandling == "" {
-		input.FileHandling = "native"
-	}
 }
 
 // validateInput validates the input parameters

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
@@ -16,33 +17,33 @@ func (a *EnhancedLLMInferenceActivity) executeBasic(
 	input LLMInferenceInput,
 ) (LLMInferenceOutput, error) {
 	config := llmadapters.Config{
-		Model:          input.Model,
-		Temperature:    input.Temperature,
-		MaxTokens:      input.MaxTokens,
-		TopP:           input.TopP,
-		SystemPrompt:   input.SystemPrompt,
-		StopSequences:  input.StopSequences,
-		Metadata:       input.Metadata,
+		Model:         input.Model,
+		Temperature:   input.Temperature,
+		MaxTokens:     input.MaxTokens,
+		TopP:          input.TopP,
+		SystemPrompt:  input.SystemPrompt,
+		StopSequences: input.StopSequences,
+		Metadata:      input.Metadata,
 	}
-	
+
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		config.ResponseFormat = "json"
 		config.ResponseSchema = input.ResponseSchema
 	}
-	
+
 	// Generate response
 	response, err := adapter.Generate(ctx, input.Prompt, config)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("generation failed: %w", err)
 	}
-	
+
 	// Convert response
 	responseJSON, err := json.Marshal(response.Content)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	
+
 	return LLMInferenceOutput{
 		Response:     responseJSON,
 		Model:        response.Model,
@@ -67,35 +68,35 @@ func (a *EnhancedLLMInferenceActivity) executeWithFiles(
 		// Fall back to text inclusion
 		return a.executeWithFilesFallback(ctx, adapter, input)
 	}
-	
+
 	config := llmadapters.Config{
-		Model:          input.Model,
-		Temperature:    input.Temperature,
-		MaxTokens:      input.MaxTokens,
-		TopP:           input.TopP,
-		SystemPrompt:   input.SystemPrompt,
-		StopSequences:  input.StopSequences,
-		Metadata:       input.Metadata,
+		Model:         input.Model,
+		Temperature:   input.Temperature,
+		MaxTokens:     input.MaxTokens,
+		TopP:          input.TopP,
+		SystemPrompt:  input.SystemPrompt,
+		StopSequences: input.StopSequences,
+		Metadata:      input.Metadata,
 	}
-	
+
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		config.ResponseFormat = "json"
 		config.ResponseSchema = input.ResponseSchema
 	}
-	
+
 	// Generate with files
 	response, err := fileAdapter.GenerateWithFiles(ctx, input.Prompt, input.Files, config)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("generation with files failed: %w", err)
 	}
-	
+
 	// Convert response
 	responseJSON, err := json.Marshal(response.Content)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	
+
 	return LLMInferenceOutput{
 		Response:     responseJSON,
 		Model:        response.Model,
@@ -117,11 +118,11 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesFallback(
 	// Build file context as text
 	fileContext := a.buildFileContext(input.Files)
 	enhancedPrompt := fmt.Sprintf("%s\n\n%s", input.Prompt, fileContext)
-	
+
 	// Update input and execute as basic
 	input.Prompt = enhancedPrompt
 	input.Files = nil
-	
+
 	return a.executeBasic(ctx, adapter, input)
 }
 
@@ -133,28 +134,28 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 ) (LLMInferenceOutput, error) {
 	// Convert tool definitions to adapter format
 	tools := a.convertTools(input.Tools)
-	
+
 	config := llmadapters.Config{
-		Model:          input.Model,
-		Temperature:    input.Temperature,
-		MaxTokens:      input.MaxTokens,
-		TopP:           input.TopP,
-		SystemPrompt:   input.SystemPrompt,
-		StopSequences:  input.StopSequences,
-		Metadata:       input.Metadata,
+		Model:         input.Model,
+		Temperature:   input.Temperature,
+		MaxTokens:     input.MaxTokens,
+		TopP:          input.TopP,
+		SystemPrompt:  input.SystemPrompt,
+		StopSequences: input.StopSequences,
+		Metadata:      input.Metadata,
 	}
-	
+
 	// Track tool execution
 	var allToolResults []ToolResult
 	toolRounds := 0
 	currentPrompt := input.Prompt
-	
+
 	// Initial generation with tools
 	response, err := adapter.GenerateWithTools(ctx, currentPrompt, tools, config)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("generation with tools failed: %w", err)
 	}
-	
+
 	// Process tool calls if present and execution is enabled
 	if len(response.ToolCalls) > 0 && input.ExecuteTools {
 		for toolRounds < input.MaxToolRounds && len(response.ToolCalls) > 0 {
@@ -163,18 +164,18 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 			if err != nil && !input.ContinueOnToolError {
 				return LLMInferenceOutput{}, fmt.Errorf("tool execution failed: %w", err)
 			}
-			
+
 			allToolResults = append(allToolResults, toolResults...)
 			toolRounds++
-			
+
 			// Check if we need another round
 			if toolRounds >= input.MaxToolRounds || response.FinishReason != "tool_calls" {
 				break
 			}
-			
+
 			// Update prompt with tool results for next round
 			currentPrompt = a.formatToolResults(toolResults)
-			
+
 			// Make another call with updated context
 			response, err = adapter.GenerateWithTools(ctx, currentPrompt, tools, config)
 			if err != nil {
@@ -182,22 +183,22 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 			}
 		}
 	}
-	
+
 	// Final response after all tool rounds
 	finalResponse, err := adapter.Generate(ctx, currentPrompt, config)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("final generation failed: %w", err)
 	}
-	
+
 	responseJSON, err := json.Marshal(finalResponse.Content)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	
+
 	return LLMInferenceOutput{
-		Response:       responseJSON,
-		Model:          finalResponse.Model,
-		FinishReason:   finalResponse.FinishReason,
+		Response:     responseJSON,
+		Model:        finalResponse.Model,
+		FinishReason: finalResponse.FinishReason,
 		Usage: Usage{
 			PromptTokens:     finalResponse.Usage.PromptTokens,
 			CompletionTokens: finalResponse.Usage.CompletionTokens,
@@ -220,7 +221,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 		// Create unified adapter from existing adapters
 		fileAdapter, hasFiles := adapter.(llmadapters.FileAdapter)
 		execAdapter, hasExec := adapter.(llmadapters.ExecutableToolAdapter)
-		
+
 		if hasFiles && hasExec {
 			unifiedAdapter = llmadapters.NewUnifiedAdapter(fileAdapter, execAdapter)
 		} else {
@@ -228,43 +229,43 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 			return a.executeSequential(ctx, adapter, input)
 		}
 	}
-	
+
 	// Convert tools to adapter format
 	tools := a.convertTools(input.Tools)
-	
+
 	// Build unified config
 	unifiedConfig := llmadapters.UnifiedConfig{
 		ExecutableToolConfig: llmadapters.ExecutableToolConfig{
 			Config: llmadapters.Config{
-				Model:          input.Model,
-				Temperature:    input.Temperature,
-				MaxTokens:      input.MaxTokens,
-				TopP:           input.TopP,
-				SystemPrompt:   input.SystemPrompt,
-				StopSequences:  input.StopSequences,
-				Metadata:       input.Metadata,
+				Model:         input.Model,
+				Temperature:   input.Temperature,
+				MaxTokens:     input.MaxTokens,
+				TopP:          input.TopP,
+				SystemPrompt:  input.SystemPrompt,
+				StopSequences: input.StopSequences,
+				Metadata:      input.Metadata,
 			},
-			AutoExecute:      input.ExecuteTools,
-			MaxToolRounds:    input.MaxToolRounds,
-			WorkingDirectory: input.ToolWorkingDir,
+			AutoExecute:        input.ExecuteTools,
+			MaxToolRounds:      input.MaxToolRounds,
+			WorkingDirectory:   input.ToolWorkingDir,
 			ContinueAfterTools: true,
 		},
 		FileHandling: llmadapters.FileHandlingMode(input.FileHandling),
 	}
-	
+
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		unifiedConfig.ExecutableToolConfig.Config.ResponseFormat = "json"
 		unifiedConfig.ExecutableToolConfig.Config.ResponseSchema = input.ResponseSchema
 	}
-	
+
 	// Parse tool timeout
 	if input.ToolTimeout != "" {
 		if duration, err := time.ParseDuration(input.ToolTimeout); err == nil {
 			unifiedConfig.ExecutableToolConfig.ToolTimeout = llmadapters.Duration{Duration: duration}
 		}
 	}
-	
+
 	// Execute with files and tools
 	response, err := unifiedAdapter.GenerateWithFilesAndTools(
 		ctx,
@@ -276,13 +277,13 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("unified generation failed: %w", err)
 	}
-	
+
 	// Convert response
 	responseJSON, err := json.Marshal(response.Response.Content)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	
+
 	// Convert tool results
 	var toolResults []ToolResult
 	for _, result := range response.ToolResults {
@@ -294,7 +295,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 			Error:      result.Error,
 		})
 	}
-	
+
 	return LLMInferenceOutput{
 		Response:     responseJSON,
 		Model:        response.Response.Model,
@@ -323,11 +324,11 @@ func (a *EnhancedLLMInferenceActivity) executeSequential(
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
-	
+
 	// Then handle tools with the file-enriched context
 	input.Prompt = string(fileOutput.Response)
 	input.Files = nil // Clear files since they've been processed
-	
+
 	return a.executeWithTools(ctx, adapter, input)
 }
 
@@ -338,10 +339,10 @@ func (a *EnhancedLLMInferenceActivity) executeToolCalls(
 	input LLMInferenceInput,
 ) ([]ToolResult, error) {
 	var results []ToolResult
-	
+
 	for _, call := range toolCalls {
 		startTime := time.Now()
-		
+
 		// Parse arguments
 		var args map[string]interface{}
 		if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -353,14 +354,14 @@ func (a *EnhancedLLMInferenceActivity) executeToolCalls(
 			})
 			continue
 		}
-		
+
 		// Execute tool
 		result, err := a.toolExecutor.Execute(ctx, ToolExecutionRequest{
 			Name:       call.Name,
 			Arguments:  args,
 			WorkingDir: input.ToolWorkingDir,
 		})
-		
+
 		results = append(results, ToolResult{
 			ToolCallID: call.ID,
 			ToolName:   call.Name,
@@ -370,7 +371,7 @@ func (a *EnhancedLLMInferenceActivity) executeToolCalls(
 			Duration:   time.Since(startTime).Milliseconds(),
 		})
 	}
-	
+
 	return results, nil
 }
 
@@ -388,18 +389,18 @@ func (a *EnhancedLLMInferenceActivity) convertTools(tools []ToolDefinition) []ll
 }
 
 // buildFileContext builds a text representation of files
-func (a *EnhancedLLMInferenceActivity) buildFileContext(files []llmadapters.File) string {
+func (a *EnhancedLLMInferenceActivity) buildFileContext(files []f2.File) string {
 	context := "### File Context ###\n\n"
-	
+
 	for _, file := range files {
-		context += fmt.Sprintf("**File: %s** (Type: %s, Size: %d bytes)\n", 
+		context += fmt.Sprintf("**File: %s** (Type: %s, Size: %d bytes)\n",
 			file.Path, file.Type, len(file.Content))
-		
+
 		// Include text content
-		if file.Type == llmadapters.FileTypeText || 
-		   file.Type == llmadapters.FileTypeCode ||
-		   file.Type == llmadapters.FileTypeConfig ||
-		   file.Type == llmadapters.FileTypeMarkdown {
+		if file.Type == f2.FileTypeText ||
+			file.Type == f2.FileTypeCode ||
+			file.Type == f2.FileTypeConfig ||
+			file.Type == f2.FileTypeMarkdown {
 			content := string(file.Content)
 			if len(content) > 1000 {
 				content = content[:1000] + "...\n[Content truncated]"
@@ -409,14 +410,14 @@ func (a *EnhancedLLMInferenceActivity) buildFileContext(files []llmadapters.File
 			context += fmt.Sprintf("[%s file - content not displayed]\n\n", file.Type)
 		}
 	}
-	
+
 	return context
 }
 
 // formatToolResults formats tool results for the next prompt
 func (a *EnhancedLLMInferenceActivity) formatToolResults(results []ToolResult) string {
 	prompt := "Based on the tool execution results:\n\n"
-	
+
 	for _, result := range results {
 		if result.Success {
 			prompt += fmt.Sprintf("✓ %s executed successfully\n", result.ToolName)
@@ -428,7 +429,7 @@ func (a *EnhancedLLMInferenceActivity) formatToolResults(results []ToolResult) s
 			prompt += fmt.Sprintf("✗ %s failed: %s\n", result.ToolName, result.Error)
 		}
 	}
-	
+
 	prompt += "\nPlease continue with the task based on these results."
 	return prompt
 }

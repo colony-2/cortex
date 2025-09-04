@@ -11,7 +11,6 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
@@ -93,10 +92,10 @@ func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
-	
+
 	// Set inputs
 	resCtx.TemplateData.Inputs = inputs
-	
+
 	// Add all node outputs to sequence context
 	for nodeID, nodeOutput := range outputs {
 		// Ensure nodeOutput is a map
@@ -109,20 +108,20 @@ func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[stri
 		}
 		resCtx.AddSequenceNode(nodeID, outputMap)
 	}
-	
+
 	// Resolve output templates - handle OutputMap type correctly
 	resolvedOutputs := make(map[string]interface{})
 	for key, tmpl := range outputTemplates {
 		// Convert OutputMap to map[string]interface{} recursively
 		tmplValue := convertOutputMap(tmpl)
-		
+
 		resolved, err := resCtx.ResolveValue(tmplValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve output template %s: %w", key, err)
 		}
 		resolvedOutputs[key] = resolved
 	}
-	
+
 	return resolvedOutputs, nil
 }
 
@@ -141,7 +140,7 @@ type StepResult struct {
 // executeOperation executes a single operation node
 func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
 	var resolvedNodeInputs map[string]interface{}
-	
+
 	// If nodeInputs is nil, it means the inputs are already resolved (from sequence context)
 	// Otherwise, resolve templates in node inputs using a new resolution context
 	if nodeInputs != nil {
@@ -162,7 +161,7 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 			resolvedNodeInputs[k] = resolved
 		}
 	} else {
-		// Inputs are already resolved, extract them from workflowInputs 
+		// Inputs are already resolved, extract them from workflowInputs
 		// (they were merged by the calling sequence)
 		resolvedNodeInputs = make(map[string]interface{})
 		// For sequence nodes, the resolved node inputs are already included in workflowInputs
@@ -188,8 +187,9 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 		if timeout == 0 {
 			timeout = 30 * time.Second // Default timeout
 		}
-		return executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), timeout, func(inner workflow.Context) (map[string]interface{}, error) {
-			return opImpl.Activity.ExecuteInline(ctx, inputs)
+		retry := ToTemporalRetryPolicy(metadata.Retry)
+		return executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
+			return opImpl.Activity.ExecuteInline(ctx, timeout, retry, inputs)
 		})
 	}
 
@@ -223,19 +223,19 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
 	resCtx.TemplateData.Inputs = inputs
-	
+
 	// Track all node outputs for return
 	nodeOutputs := make(map[string]interface{})
-	
+
 	for i, node := range sequence {
 		nodeMetadata := node.GetMetadata()
-		
+
 		// Create inputs for this node with access to previous siblings
 		nodeInputs := make(map[string]interface{})
 		for k, v := range inputs {
 			nodeInputs[k] = v
 		}
-		
+
 		// Resolve node's input templates if any
 		if nodeMetadata.Inputs != nil {
 			for k, v := range nodeMetadata.Inputs {
@@ -246,7 +246,7 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 				nodeInputs[k] = resolved
 			}
 		}
-		
+
 		// Execute the node
 		outputs, err := executeNode(ctx, activityRegistry, &node, nodeInputs)
 		if err != nil {
@@ -287,7 +287,7 @@ func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolic
 			var cancel workflow.CancelFunc
 			ctx, cancel = workflow.WithCancel(ctx)
 			defer cancel()
-			
+
 			// Start timeout timer
 			workflow.Go(ctx, func(ctx workflow.Context) {
 				_ = workflow.Sleep(ctx, timeoutDuration)
@@ -296,7 +296,7 @@ func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolic
 		}
 		return fn(ctx)
 	}
-	
+
 	ctx, cancel := workflow.WithCancel(ctx)
 	defer cancel()
 

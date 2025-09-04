@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/go-chi/chi/v5"
 	"go.temporal.io/sdk/client"
 )
@@ -15,7 +15,7 @@ import (
 // inputManagementService implements ManagementService for input activities
 type inputManagementService struct {
 	workflowType string
-	sse          types.SSEManager
+	sse          ops.SSEManager
 	client       client.Client
 }
 
@@ -27,12 +27,12 @@ func newInputManagementService() *inputManagementService {
 }
 
 // Initialize sets up the service with dependencies
-func (s *inputManagementService) Initialize(deps types.ServiceDependencies) error {
+func (s *inputManagementService) Initialize(deps ops.ServiceDependencies) error {
 	sse, err := deps.Get("sse")
 	if err != nil {
 		return err
 	}
-	s.sse = sse.(types.SSEManager)
+	s.sse = sse.(ops.SSEManager)
 	c, err := deps.Get("temporal_client")
 	if err != nil {
 		return err
@@ -50,8 +50,8 @@ func (s *inputManagementService) Close() {
 }
 
 // GetRoutes returns the HTTP routes provided by this service
-func (s *inputManagementService) GetRoutes() []types.Route {
-	return []types.Route{
+func (s *inputManagementService) GetRoutes() []ops.Route {
+	return []ops.Route{
 		{Method: "GET", Path: "/api/user-inputs/pending", Handler: s.ListPending},
 		{Method: "GET", Path: "/api/user-inputs/stream", Handler: s.SSEStream},
 		{Method: "GET", Path: "/api/user-inputs/{workflowID}", Handler: s.GetDetails},
@@ -153,7 +153,7 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 
 	// Notify via SSE if available
 	if s.sse != nil {
-		s.sse.Broadcast(types.SSEEvent{
+		s.sse.Broadcast(ops.SSEEvent{
 			Type: "input_completed",
 			Data: map[string]interface{}{
 				"workflow_id": workflowID,
@@ -192,7 +192,7 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 
 	// Notify via SSE if available
 	if s.sse != nil {
-		s.sse.Broadcast(types.SSEEvent{
+		s.sse.Broadcast(ops.SSEEvent{
 			Type: "input_cancelled",
 			Data: map[string]interface{}{
 				"workflow_id": workflowID,

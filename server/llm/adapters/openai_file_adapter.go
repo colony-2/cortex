@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 	"github.com/openai/openai-go"
 )
 
@@ -13,7 +14,7 @@ import (
 var _ FileAdapter = (*OpenAIAdapter)(nil)
 
 // GenerateWithFiles creates a completion with file context using OpenAI's native capabilities
-func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []File, config Config) (Response, error) {
+func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []f2.File, config Config) (Response, error) {
 	// Apply rate limiting
 	if a.rateLimiter != nil {
 		if err := a.rateLimiter.Wait(ctx); err != nil {
@@ -36,7 +37,7 @@ func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, fi
 	// Check if we need to use vision model for images
 	hasImages := false
 	for _, file := range files {
-		if file.Type == FileTypeImage {
+		if file.Type == f2.FileTypeImage {
 			hasImages = true
 			break
 		}
@@ -50,11 +51,11 @@ func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, fi
 
 	// Build messages with file content
 	messages := []openai.ChatCompletionMessageParamUnion{}
-	
+
 	if config.SystemPrompt != "" {
 		messages = append(messages, openai.SystemMessage(config.SystemPrompt))
 	}
-	
+
 	// Build user message with files
 	userMessage := a.buildUserMessageWithFiles(prompt, files)
 	messages = append(messages, userMessage)
@@ -64,7 +65,7 @@ func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, fi
 		Model:    openai.ChatModel(a.mapModel(modelName)),
 		Messages: messages,
 	}
-	
+
 	// Set other parameters
 	if config.Temperature > 0 {
 		params.Temperature = openai.Float(float64(config.Temperature))
@@ -113,25 +114,25 @@ func (a *OpenAIAdapter) GenerateWithFiles(ctx context.Context, prompt string, fi
 }
 
 // buildUserMessageWithFiles creates a user message with file content
-func (a *OpenAIAdapter) buildUserMessageWithFiles(prompt string, files []File) openai.ChatCompletionMessageParamUnion {
+func (a *OpenAIAdapter) buildUserMessageWithFiles(prompt string, files []f2.File) openai.ChatCompletionMessageParamUnion {
 	// For simplicity and compatibility, we'll combine everything into text
 	// The OpenAI SDK's multimodal API structure varies between versions
-	
+
 	var fullPrompt strings.Builder
 	fullPrompt.WriteString(prompt)
-	
+
 	// Add files as text content
 	for _, file := range files {
 		label := file.Name
 		if label == "" {
 			label = file.Path
 		}
-		
+
 		switch file.Type {
-		case FileTypeText:
+		case f2.FileTypeText:
 			fullPrompt.WriteString(fmt.Sprintf("\n\nFile: %s\n```\n%s\n```", label, string(file.Content)))
-			
-		case FileTypeImage:
+
+		case f2.FileTypeImage:
 			// For vision models, we'd need to use the vision API
 			// For now, we'll note the image
 			base64Data := base64.StdEncoding.EncodeToString(file.Content)
@@ -140,41 +141,41 @@ func (a *OpenAIAdapter) buildUserMessageWithFiles(prompt string, files []File) o
 			} else {
 				fullPrompt.WriteString(fmt.Sprintf("\n\n[Image: %s]\nBase64: %s", label, base64Data))
 			}
-			
-		case FileTypePDF:
+
+		case f2.FileTypePDF:
 			// Add PDF as text reference
 			fullPrompt.WriteString(fmt.Sprintf("\n\n[PDF Document: %s]\n[%d bytes]", label, len(file.Content)))
 			// If small enough, include raw content
 			if len(file.Content) < 5000 {
 				fullPrompt.WriteString(fmt.Sprintf("\nContent (as text):\n```\n%s\n```", string(file.Content)))
 			}
-			
+
 		default:
 			// Unsupported file type - add as reference
 			fullPrompt.WriteString(fmt.Sprintf("\n\n[File: %s (type: %s)]", label, file.Type))
 		}
 	}
-	
+
 	return openai.UserMessage(fullPrompt.String())
 }
 
 // GetFileCapabilities returns OpenAI's file handling capabilities
 func (a *OpenAIAdapter) GetFileCapabilities() FileCapabilities {
 	return FileCapabilities{
-		SupportedTypes: []FileType{
-			FileTypeText,
-			FileTypeImage, // Only with vision models
+		SupportedTypes: []f2.FileType{
+			f2.FileTypeText,
+			f2.FileTypeImage, // Only with vision models
 		},
-		MaxFileSize:    20 * 1024 * 1024, // 20MB for images
+		MaxFileSize:    20 * 1024 * 1024,  // 20MB for images
 		MaxFileCount:   10,                // Reasonable limit for context
 		TotalSizeLimit: 100 * 1024 * 1024, // 100MB total
 	}
 }
 
 // ValidateFile checks if a file can be processed by OpenAI
-func (a *OpenAIAdapter) ValidateFile(file File) error {
+func (a *OpenAIAdapter) ValidateFile(file f2.File) error {
 	caps := a.GetFileCapabilities()
-	
+
 	// Check file type
 	supported := false
 	for _, t := range caps.SupportedTypes {
@@ -183,21 +184,21 @@ func (a *OpenAIAdapter) ValidateFile(file File) error {
 			break
 		}
 	}
-	
+
 	// PDF files can be processed as text
-	if file.Type == FileTypePDF {
+	if file.Type == f2.FileTypePDF {
 		supported = true
 	}
-	
+
 	if !supported {
 		return fmt.Errorf("file type %s not supported", file.Type)
 	}
-	
+
 	// Check file size
 	if int64(len(file.Content)) > caps.MaxFileSize {
 		return fmt.Errorf("file size %d exceeds maximum %d", len(file.Content), caps.MaxFileSize)
 	}
-	
+
 	return nil
 }
 
@@ -209,7 +210,7 @@ func isVisionModel(model string) bool {
 		"gpt-4o",
 		"gpt-4o-mini",
 	}
-	
+
 	for _, vm := range visionModels {
 		if model == vm {
 			return true

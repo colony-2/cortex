@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
-
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -50,7 +48,7 @@ type InputActivity struct {
 	// This will be injected by the framework when running in a workflow context
 	temporalContext workflow.Context
 	// Management service for HTTP endpoints
-	managementService types.ManagementService
+	managementService ops.ManagementService
 }
 
 // newInputActivity creates a new input activity instance
@@ -60,39 +58,29 @@ func newInputActivity() *InputActivity {
 	}
 }
 
-func GetOp() types.RegisterableOp {
+func GetOp() ops.RegisterableOp {
 	a := newInputActivity()
-	return types.NewRegisterableOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
+	return ops.NewActivityMappedOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *InputActivity) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
+func (a *InputActivity) GetMetadata() ops.OpMetadata {
+	return ops.OpMetadata{
 		Type:           "input",
 		Name:           "User Input Collection",
 		Description:    "Collects user input through interactive forms with support for various field types",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
-		RetryPolicy: &yaml.RetryPolicy{
-			MaximumAttempts:    1, // Don't retry user inputs
-			InitialInterval:    time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    time.Minute,
-			NonRetryableErrorTypes: []string{
-				"InputTimeout",
-				"UserCancelled",
-			},
-		},
 	}
 }
 
 // Execute runs the input activity
-func (a *InputActivity) Execute(ctx context.Context, config Config, input Input) (Output, error) {
+func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error) {
 	// Build the form from config
-	form := a.buildForm(config, input)
+	form := a.buildForm(Config{}, input)
 
 	// Set default timeout if not specified
-	timeout := time.Duration(config.Timeout) * time.Second
+	timeout := time.Duration(Config{}.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = 5 * time.Minute
 	}
@@ -100,11 +88,11 @@ func (a *InputActivity) Execute(ctx context.Context, config Config, input Input)
 	// If we have a temporal context (running in workflow), use child workflow
 	// Otherwise, we're in standalone mode for testing
 	if a.temporalContext != nil {
-		return a.executeWithWorkflow(form, timeout, config, input)
+		return a.executeWithWorkflow(form, timeout, Config{}, input)
 	}
 
 	// Standalone mode - just return a mock response for testing
-	return a.executeMockResponse(config)
+	return a.executeMockResponse(Config{})
 }
 
 // SetTemporalContext sets the workflow context for the activity
@@ -115,7 +103,7 @@ func (a *InputActivity) SetTemporalContext(ctx workflow.Context) {
 
 // GetManagementService returns the management service for HTTP endpoints
 // This implements the ManagementServiceProvider interface
-func (a *InputActivity) GetManagementService() types.ManagementService {
+func (a *InputActivity) GetManagementService() ops.ManagementService {
 	return a.managementService
 }
 

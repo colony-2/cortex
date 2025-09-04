@@ -4,18 +4,24 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 )
+
+type svc struct {
+}
+
+func (s *svc) Get(name string) (interface{}, error) {
+	return nil, fmt.Errorf("service not found: %s", name)
+}
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
@@ -54,32 +60,18 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	// Initialize container manager
 	containerMgr := container.NewManager(container.Config{})
+	svcContext := &svc{}
+
+	extensionRoutes, cleanup, err := shared.SetupOps(svcContext)
+	if err != nil {
+		return web.Dependencies{}, nil, fmt.Errorf("failed to setup ops: %w", err)
+	}
 
 	// Get static filesystem (will be embedded in production builds)
 	staticFS, err := static.GetFileSystem()
 	if err != nil {
 		// Log warning but continue - server can still work without static files
 		fmt.Fprintf(os.Stderr, "Warning: Could not load static files: %v\n", err)
-	}
-
-	// Set up input management service routes
-	inputService := input.newInputManagementService()
-	// Initialize with empty dependencies for now (no Temporal client)
-	inputService.Initialize(input.ServiceDependencies{})
-
-	// Convert input service routes to extension routes
-	// Strip /api prefix since routes are added to the api subrouter
-	var extensionRoutes []web.ExtensionRoute
-	for _, route := range inputService.GetRoutes() {
-		path := route.Path
-		if strings.HasPrefix(path, "/api") {
-			path = strings.TrimPrefix(path, "/api")
-		}
-		extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
-			Method:  route.Method,
-			Path:    path,
-			Handler: route.Handler,
-		})
 	}
 
 	deps := web.Dependencies{

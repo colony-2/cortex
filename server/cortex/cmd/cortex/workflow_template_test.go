@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/export"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11,25 +17,29 @@ import (
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
-	opsactivity "github.com/divisive-ai/vibethis/server/ops/pkg/ops"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"
 )
+
+type svcContext struct {
+}
+
+func (s svcContext) Get(name string) (interface{}, error) {
+	return nil, fmt.Errorf("service not found: %s", name)
+}
 
 func TestWorkflowTemplateExpansion(t *testing.T) {
 	// Create test suite
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 
-	// Create activity registry and register real activities
-	registry := ops.NewActivityRegistry()
-	activities := opsactivity.GetAll()
-	for _, act := range activities {
-		err := registry.RegisterGeneric(act)
-		require.NoError(t, err)
-	}
+	_, _, err := shared.SetupOps(svcContext{})
+	require.NoError(t, err)
+
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(t, err)
 
 	// Track what inputs the activity receives
 	var capturedInputs map[string]interface{}
@@ -41,7 +51,8 @@ func TestWorkflowTemplateExpansion(t *testing.T) {
 
 			// Execute the real activity
 			logger := createTestLogger()
-			activityExecutor := executor.NewActivityExecutor(registry, logger)
+			activityExecutor, err := executor.NewStandaloneExecutor(registry, logger)
+			require.NoError(t, err)
 			executorFunc := activityExecutor.CreateTemporalActivity("command_execution")
 			return executorFunc.(func(context.Context, map[string]interface{}) (map[string]interface{}, error))(ctx, inputs)
 		},
@@ -51,7 +62,7 @@ func TestWorkflowTemplateExpansion(t *testing.T) {
 	)
 
 	// Create a recipe with templates
-	recipe := &yamlpkg.RecipeDefinition{
+	recipe := &yamlpkg.Recipe{
 		Name: "test-workflow-templates",
 		Sequence: []yamlpkg.Node{
 			{

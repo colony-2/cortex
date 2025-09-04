@@ -3,6 +3,7 @@ module github.com/divisive-ai/vibethis/server/ops
 go 1.24.1
 
 require (
+	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
@@ -18,6 +19,7 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
+	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -28,6 +30,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect
 	github.com/openai/openai-go v1.11.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -53,5 +56,7 @@ require (
 )
 
 replace github.com/divisive-ai/vibethis/server/llm => ../llm
+
+replace github.com/divisive-ai/vibethis/server/core => ../core
 
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core

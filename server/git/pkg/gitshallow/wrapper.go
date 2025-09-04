@@ -2,10 +2,8 @@ package gitshallow
 
 import (
 	"context"
-	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // GitShallowConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags
@@ -33,34 +31,23 @@ func NewGitShallowActivity() *GitShallowActivityWrapper {
 	return &GitShallowActivityWrapper{}
 }
 
-func GetOp() types.RegisterableOp {
+func GetOp() ops.RegisterableOp {
 	a := NewGitShallowActivity()
-	return types.NewRegisterableOp(a.GetMetadata(), a.Execute)
+	return ops.NewActivityMappedOp(a.GetMetadata(), a.Execute)
 }
 
 // GetMetadata returns activity metadata for registration
-func (a *GitShallowActivityWrapper) GetMetadata() types.OpMetadata {
-	return types.OpMetadata{
-		Type:           "git_shallow_clone",
-		Name:           "Git Shallow Clone",
-		Description:    "Performs a shallow clone of a local git repository to another directory at a specific commit",
-		Version:        "1.0.0",
-		DefaultTimeout: 2 * time.Minute,
-		RetryPolicy: &yaml.RetryPolicy{
-			MaximumAttempts:    3,
-			InitialInterval:    1 * time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    30 * time.Second,
-			NonRetryableErrorTypes: []string{
-				"InvalidInputError",
-				"DirectoryExistsError",
-			},
-		},
+func (a *GitShallowActivityWrapper) GetMetadata() ops.OpMetadata {
+	return ops.OpMetadata{
+		Type:        "git_shallow_clone",
+		Name:        "Git Shallow Clone",
+		Description: "Performs a shallow clone of a local git repository to another directory at a specific commit",
+		Version:     "1.0.0",
 	}
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *GitShallowActivityWrapper) Execute(ctx context.Context, config GitShallowConfig, input GitShallowInput) (GitShallowOutput, error) {
+func (a *GitShallowActivityWrapper) Execute(ctx context.Context, input GitShallowInput) (GitShallowOutput, error) {
 	// Build the clone input
 	cloneInput := GitShallowCloneInput{
 		SourceDir:  input.SourceDir,

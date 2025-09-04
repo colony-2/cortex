@@ -9,24 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/core/pkg/file"
 	"github.com/divisive-ai/vibethis/server/git/internal/commands"
 	"github.com/divisive-ai/vibethis/server/git/pkg/common"
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/types"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
-
-// GitFileCollectorConfig provides configuration for the activity
-type GitFileCollectorConfig struct {
-	// Default limits
-	DefaultMaxFileSize  int `yaml:"default_max_file_size"`
-	DefaultMaxTotalSize int `yaml:"default_max_total_size"`
-
-	// Default behavior
-	DefaultIncludeStaged    bool `yaml:"default_include_staged"`
-	DefaultIncludeUntracked bool `yaml:"default_include_untracked"`
-	DefaultUseGitignore     bool `yaml:"default_use_gitignore"`
-	DefaultExcludeBinary    bool `yaml:"default_exclude_binary"`
-}
 
 // GitFileCollectorInput defines the input parameters
 type GitFileCollectorInput struct {
@@ -54,11 +41,11 @@ type GitFileCollectorInput struct {
 
 // GitFileCollectorOutput defines the output structure
 type GitFileCollectorOutput struct {
-	Files      []llmadapters.File `json:"files"`
-	FileCount  int                `json:"file_count"`
-	TotalSize  int64              `json:"total_size"`
-	Repository GitRepositoryInfo  `json:"repository"`
-	Statistics FileStatistics     `json:"statistics,omitempty"`
+	Files      []file.File       `json:"files"`
+	FileCount  int               `json:"file_count"`
+	TotalSize  int64             `json:"total_size"`
+	Repository GitRepositoryInfo `json:"repository"`
+	Statistics FileStatistics    `json:"statistics,omitempty"`
 }
 
 // GitRepositoryInfo contains git repository metadata
@@ -89,16 +76,16 @@ type gitFileCollectorActivity struct {
 }
 
 // NewGitFileCollectorActivity creates a new activity instance
-func GetOp() types.RegisterableOp {
+func GetOp() ops.RegisterableOp {
+
 	act := &gitFileCollectorActivity{}
-	return types.NewRegisterableOp(
-		types.OpMetadata{
-			Type:           "git_file_collector",
-			Name:           "Git File Collector",
-			Description:    "Collects files from a git repository with filtering and metadata",
-			Version:        "1.0.0",
-			DefaultTimeout: 30 * time.Second,
-			RetryPolicy:    &types.DefaultRetry,
+
+	return ops.NewActivityMappedOp(
+		ops.OpMetadata{
+			Type:        "git_file_collector",
+			Name:        "Git File Collector",
+			Description: "Collects files from a git repository with filtering and metadata",
+			Version:     "1.0.0",
 		},
 		act.Execute)
 }
@@ -106,11 +93,9 @@ func GetOp() types.RegisterableOp {
 // Execute runs the git file collection
 func (a *gitFileCollectorActivity) Execute(
 	ctx context.Context,
-	config GitFileCollectorConfig,
 	input GitFileCollectorInput,
 ) (GitFileCollectorOutput, error) {
 	// Apply defaults from config
-	a.applyDefaults(&input, config)
 
 	// Validate input
 	if err := a.validateInput(input); err != nil {
@@ -174,27 +159,6 @@ func (a *gitFileCollectorActivity) Execute(
 		Repository: repoInfo,
 		Statistics: stats,
 	}, nil
-}
-
-// applyDefaults applies default values from config
-func (a *gitFileCollectorActivity) applyDefaults(input *GitFileCollectorInput, config GitFileCollectorConfig) {
-	if input.MaxFileSize == 0 && config.DefaultMaxFileSize > 0 {
-		input.MaxFileSize = config.DefaultMaxFileSize
-	}
-	if input.MaxTotalSize == 0 && config.DefaultMaxTotalSize > 0 {
-		input.MaxTotalSize = config.DefaultMaxTotalSize
-	}
-	// Apply boolean defaults only if not explicitly set
-	// Note: We can't distinguish between unset and false, so we use config defaults
-	if config.DefaultIncludeStaged {
-		input.IncludeStaged = true
-	}
-	if config.DefaultUseGitignore {
-		input.UseGitignore = true
-	}
-	if config.DefaultExcludeBinary {
-		input.ExcludeBinary = true
-	}
 }
 
 // validateInput validates the input parameters
@@ -383,8 +347,8 @@ func (a *gitFileCollectorActivity) collectFiles(
 	baseDir string,
 	filePaths []string,
 	input GitFileCollectorInput,
-) ([]llmadapters.File, FileStatistics, error) {
-	var files []llmadapters.File
+) ([]file.File, FileStatistics, error) {
+	var files []file.File
 	var totalSize int64
 	stats := FileStatistics{
 		FilesByType:      make(map[string]int),
@@ -431,7 +395,7 @@ func (a *gitFileCollectorActivity) collectFiles(
 		}
 
 		// Detect file type
-		fileType := llmadapters.FileTypeText
+		fileType := file.FileTypeText
 		mimeType := "text/plain"
 		if input.AutoDetectType {
 			fileType = detectFileType(content, filePath)
@@ -439,7 +403,7 @@ func (a *gitFileCollectorActivity) collectFiles(
 		}
 
 		// Create file object
-		file := llmadapters.File{
+		file := file.File{
 			Path:     filePath,
 			Name:     filepath.Base(filePath),
 			Content:  content,
@@ -512,7 +476,7 @@ func isBinaryFile(content []byte, path string) bool {
 }
 
 // detectFileType detects the file type based on content and extension
-func detectFileType(content []byte, path string) llmadapters.FileType {
+func detectFileType(content []byte, path string) file.FileType {
 	ext := strings.ToLower(filepath.Ext(path))
 
 	// Check for common code file extensions
@@ -525,12 +489,12 @@ func detectFileType(content []byte, path string) llmadapters.FileType {
 	}
 
 	if codeExtensions[ext] {
-		return llmadapters.FileTypeCode
+		return file.FileTypeCode
 	}
 
 	// Check for markdown/document extensions
 	if ext == ".md" {
-		return llmadapters.FileTypeMarkdown
+		return file.FileTypeMarkdown
 	}
 
 	// Check for config extensions
@@ -540,7 +504,7 @@ func detectFileType(content []byte, path string) llmadapters.FileType {
 	}
 
 	if configExtensions[ext] {
-		return llmadapters.FileTypeConfig
+		return file.FileTypeConfig
 	}
 
 	// Check for data extensions
@@ -549,11 +513,11 @@ func detectFileType(content []byte, path string) llmadapters.FileType {
 	}
 
 	if dataExtensions[ext] {
-		return llmadapters.FileTypeData
+		return file.FileTypeData
 	}
 
 	// Default to text
-	return llmadapters.FileTypeText
+	return file.FileTypeText
 }
 
 // detectMimeType detects the MIME type based on content and extension

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -178,13 +178,13 @@ data:
 func TestValidateRecipeStructure(t *testing.T) {
 	tests := []struct {
 		name        string
-		recipe      *yamlpkg.RecipeDefinition
+		recipe      *yamlpkg.Recipe
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "valid recipe",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Name:        "test-recipe",
 				Description: "Test",
 				Version:     "1.0",
@@ -199,7 +199,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 		},
 		{
 			name: "missing name",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Description: "Test",
 				Sequence: []yamlpkg.Node{
 					{ID: "step1", Op: "activity"},
@@ -210,7 +210,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 		},
 		{
 			name: "no steps",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Name:        "test",
 				Description: "Test",
 				Sequence:    []yamlpkg.Node{},
@@ -220,7 +220,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 		},
 		{
 			name: "step missing ID",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Name: "test",
 				Sequence: []yamlpkg.Node{
 					{Op: "activity"},
@@ -230,7 +230,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 		},
 		{
 			name: "step missing action",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Name: "test",
 				Sequence: []yamlpkg.Node{
 					{ID: "step1"},
@@ -240,7 +240,7 @@ func TestValidateRecipeStructure(t *testing.T) {
 		},
 		{
 			name: "valid parallel step",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				Name: "test",
 				Sequence: []yamlpkg.Node{
 					{
@@ -274,14 +274,14 @@ func TestValidateRecipeStructure(t *testing.T) {
 func TestValidateInputs(t *testing.T) {
 	tests := []struct {
 		name        string
-		recipe      *yamlpkg.RecipeDefinition
+		recipe      *yamlpkg.Recipe
 		inputs      map[string]interface{}
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "all required inputs provided",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				InputSchema: map[string]yamlpkg.InputSchema{
 					"required1": {Type: "string", Required: true},
 					"required2": {Type: "number", Required: true},
@@ -296,7 +296,7 @@ func TestValidateInputs(t *testing.T) {
 		},
 		{
 			name: "missing required input",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				InputSchema: map[string]yamlpkg.InputSchema{
 					"required": {Type: "string", Required: true},
 				},
@@ -307,7 +307,7 @@ func TestValidateInputs(t *testing.T) {
 		},
 		{
 			name: "optional input not required",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				InputSchema: map[string]yamlpkg.InputSchema{
 					"optional": {Type: "string", Required: false},
 				},
@@ -317,7 +317,7 @@ func TestValidateInputs(t *testing.T) {
 		},
 		{
 			name: "extra inputs allowed",
-			recipe: &yamlpkg.RecipeDefinition{
+			recipe: &yamlpkg.Recipe{
 				InputSchema: map[string]yamlpkg.InputSchema{
 					"defined": {Type: "string", Required: true},
 				},

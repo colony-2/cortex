@@ -7,15 +7,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // FileCollector provides file collection capabilities for LLM context
 type FileCollector interface {
 	// CollectFiles gathers files based on patterns
-	CollectFiles(patterns []string, opts CollectionOptions) ([]File, error)
-	
+	CollectFiles(patterns []string, opts CollectionOptions) ([]f2.File, error)
+
 	// CollectGitFiles gathers git-tracked files
-	CollectGitFiles(repoPath string, opts GitCollectionOptions) ([]File, error)
+	CollectGitFiles(repoPath string, opts GitCollectionOptions) ([]f2.File, error)
 }
 
 // CollectionOptions configures file collection
@@ -48,68 +50,68 @@ func NewFileCollector() FileCollector {
 }
 
 // CollectFiles gathers files based on patterns
-func (c *DefaultFileCollector) CollectFiles(patterns []string, opts CollectionOptions) ([]File, error) {
-	files := []File{}
+func (c *DefaultFileCollector) CollectFiles(patterns []string, opts CollectionOptions) ([]f2.File, error) {
+	files := []f2.File{}
 	seen := make(map[string]bool)
-	
+
 	// Set defaults
 	if opts.MaxFileSize <= 0 {
 		opts.MaxFileSize = 1024 * 1024 // 1MB default
 	}
-	
+
 	for _, pattern := range patterns {
 		matches, err := filepath.Glob(pattern)
 		if err != nil {
 			return nil, fmt.Errorf("invalid pattern %s: %w", pattern, err)
 		}
-		
+
 		for _, match := range matches {
 			// Skip if already processed
 			if seen[match] {
 				continue
 			}
 			seen[match] = true
-			
+
 			// Check if file should be excluded
 			if c.shouldExclude(match, opts) {
 				continue
 			}
-			
+
 			// Process the file
 			file, err := c.processFile(match, opts)
 			if err != nil {
 				// Skip files that can't be processed
 				continue
 			}
-			
+
 			files = append(files, file)
 		}
 	}
-	
+
 	return files, nil
 }
 
 // CollectGitFiles gathers git-tracked files
-func (c *DefaultFileCollector) CollectGitFiles(repoPath string, opts GitCollectionOptions) ([]File, error) {
-	files := []File{}
-	
+func (c *DefaultFileCollector) CollectGitFiles(repoPath string, opts GitCollectionOptions) ([]f2.File, error) {
+	files := []f2.File{}
+
 	// Ensure we're in a git repository
 	if !c.isGitRepo(repoPath) {
 		return nil, fmt.Errorf("not a git repository: %s", repoPath)
 	}
-	
+
 	// Get list of files from git
 	gitFiles, err := c.getGitFiles(repoPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get git files: %w", err)
 	}
-	
+
 	for _, gitFile := range gitFiles {
 		// Skip if file should be excluded
 		if c.shouldExclude(gitFile, opts.CollectionOptions) {
 			continue
 		}
-		
+
 		// Process the file
 		fullPath := filepath.Join(repoPath, gitFile)
 		file, err := c.processFile(fullPath, opts.CollectionOptions)
@@ -117,60 +119,60 @@ func (c *DefaultFileCollector) CollectGitFiles(repoPath string, opts GitCollecti
 			// Skip files that can't be processed
 			continue
 		}
-		
+
 		// Add git metadata
 		if file.Metadata == nil {
 			file.Metadata = make(map[string]interface{})
 		}
 		file.Metadata["git_tracked"] = true
-		
+
 		files = append(files, file)
 	}
-	
+
 	return files, nil
 }
 
 // processFile processes a single file
-func (c *DefaultFileCollector) processFile(path string, opts CollectionOptions) (File, error) {
-	file := File{
+func (c *DefaultFileCollector) processFile(path string, opts CollectionOptions) (f2.File, error) {
+	file := f2.File{
 		Path:     path,
 		Name:     filepath.Base(path),
 		Metadata: make(map[string]interface{}),
 	}
-	
+
 	// Get file info
 	info, err := os.Stat(path)
 	if err != nil {
 		return file, err
 	}
-	
+
 	// Skip directories
 	if info.IsDir() {
 		return file, fmt.Errorf("path is a directory")
 	}
-	
+
 	// Check file size
 	if info.Size() > opts.MaxFileSize {
 		return file, fmt.Errorf("file exceeds maximum size")
 	}
-	
+
 	// Read file content
 	content, err := ioutil.ReadFile(path)
 	if err != nil {
 		return file, err
 	}
-	
+
 	file.Content = content
 	file.Metadata["size"] = info.Size()
 	file.Metadata["modified"] = info.ModTime().Unix()
-	
+
 	// Detect file type if requested
 	if opts.AutoDetectType {
 		file.MimeType = c.typeDetector.DetectMimeType(content, path)
 		file.Type = c.typeDetector.DetectType(content, path)
-		
+
 		// Add language for code files
-		if file.Type == FileTypeCode {
+		if file.Type == f2.FileTypeCode {
 			if lang := c.typeDetector.GetLanguage(content, path); lang != "" {
 				file.Metadata["language"] = lang
 			}
@@ -180,7 +182,7 @@ func (c *DefaultFileCollector) processFile(path string, opts CollectionOptions) 
 		file.MimeType = getMimeTypeFromPath(path)
 		file.Type = GetFileType(file.MimeType)
 	}
-	
+
 	return file, nil
 }
 
@@ -190,21 +192,21 @@ func (c *DefaultFileCollector) shouldExclude(path string, opts CollectionOptions
 	if !opts.IncludeHidden && strings.HasPrefix(filepath.Base(path), ".") {
 		return true
 	}
-	
+
 	// Check exclude patterns
 	for _, pattern := range opts.ExcludePatterns {
 		matched, err := filepath.Match(pattern, filepath.Base(path))
 		if err == nil && matched {
 			return true
 		}
-		
+
 		// Also check against full path
 		matched, err = filepath.Match(pattern, path)
 		if err == nil && matched {
 			return true
 		}
 	}
-	
+
 	// Check if it's a symlink and we're not following them
 	if !opts.FollowSymlinks {
 		info, err := os.Lstat(path)
@@ -212,7 +214,7 @@ func (c *DefaultFileCollector) shouldExclude(path string, opts CollectionOptions
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -226,23 +228,23 @@ func (c *DefaultFileCollector) isGitRepo(path string) bool {
 // getGitFiles gets list of files from git
 func (c *DefaultFileCollector) getGitFiles(repoPath string, opts GitCollectionOptions) ([]string, error) {
 	files := []string{}
-	
+
 	// Base command to list tracked files
 	cmd := exec.Command("git", "ls-files")
 	cmd.Dir = repoPath
-	
+
 	// Add branch if specified
 	if opts.Branch != "" {
 		// Switch to specified branch temporarily
 		cmd = exec.Command("git", "ls-tree", "-r", "--name-only", opts.Branch)
 		cmd.Dir = repoPath
 	}
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Parse output
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
@@ -251,7 +253,7 @@ func (c *DefaultFileCollector) getGitFiles(repoPath string, opts GitCollectionOp
 			files = append(files, line)
 		}
 	}
-	
+
 	// Add staged files if requested
 	if opts.IncludeStaged {
 		cmd = exec.Command("git", "diff", "--cached", "--name-only")
@@ -267,7 +269,7 @@ func (c *DefaultFileCollector) getGitFiles(repoPath string, opts GitCollectionOp
 			}
 		}
 	}
-	
+
 	// Add untracked files if requested
 	if opts.IncludeUntracked {
 		cmd = exec.Command("git", "ls-files", "--others", "--exclude-standard")
@@ -283,7 +285,7 @@ func (c *DefaultFileCollector) getGitFiles(repoPath string, opts GitCollectionOp
 			}
 		}
 	}
-	
+
 	return files, nil
 }
 

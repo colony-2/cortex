@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,14 +15,14 @@ func TestStateTransitionLogic(t *testing.T) {
 	tests := []struct {
 		name         string
 		currentState string
-		transitions  []yamlpkg.Transition
+		transitions  []recipe.Transition
 		outputs      map[string]interface{}
 		expected     string
 	}{
 		{
 			name:         "simple transition based on score",
 			currentState: "review",
-			transitions: []yamlpkg.Transition{
+			transitions: []recipe.Transition{
 				{To: "approved", When: "score >= 80"},
 				{To: "rejected", When: "score < 80"},
 			},
@@ -34,7 +34,7 @@ func TestStateTransitionLogic(t *testing.T) {
 		{
 			name:         "first matching transition wins",
 			currentState: "processing",
-			transitions: []yamlpkg.Transition{
+			transitions: []recipe.Transition{
 				{To: "complete", When: "success == true"},
 				{To: "failed", When: "error != nil"},
 				{To: "retry", When: "attempts < 3"},
@@ -49,9 +49,9 @@ func TestStateTransitionLogic(t *testing.T) {
 		{
 			name:         "default transition without condition",
 			currentState: "waiting",
-			transitions: []yamlpkg.Transition{
+			transitions: []recipe.Transition{
 				{To: "timeout", When: "elapsed > 60"},
-				{To: "continue"},  // No condition - always matches
+				{To: "continue"}, // No condition - always matches
 			},
 			outputs: map[string]interface{}{
 				"elapsed": 30,
@@ -61,7 +61,7 @@ func TestStateTransitionLogic(t *testing.T) {
 		{
 			name:         "complex condition with multiple fields",
 			currentState: "analysis",
-			transitions: []yamlpkg.Transition{
+			transitions: []recipe.Transition{
 				{To: "escalate", When: "severity == 'high' && confidence > 0.9"},
 				{To: "investigate", When: "severity == 'medium' || confidence < 0.5"},
 				{To: "archive", When: "severity == 'low'"},
@@ -75,7 +75,7 @@ func TestStateTransitionLogic(t *testing.T) {
 		{
 			name:         "no matching transition",
 			currentState: "unknown",
-			transitions: []yamlpkg.Transition{
+			transitions: []recipe.Transition{
 				{To: "next", When: "value > 100"},
 			},
 			outputs: map[string]interface{}{
@@ -94,13 +94,13 @@ func TestStateTransitionLogic(t *testing.T) {
 }
 
 // evaluateTransitions simulates the transition evaluation logic
-func evaluateTransitions(transitions []yamlpkg.Transition, outputs map[string]interface{}) string {
+func evaluateTransitions(transitions []recipe.Transition, outputs map[string]interface{}) string {
 	for _, transition := range transitions {
 		if transition.When == "" {
 			// No condition means always transition
 			return transition.To
 		}
-		
+
 		// Simplified CEL evaluation for testing
 		// In production, this would use the actual CEL evaluator
 		if evaluateSimpleCondition(transition.When, outputs) {
@@ -158,15 +158,15 @@ func evaluateSimpleCondition(condition string, data map[string]interface{}) bool
 func TestRetryPolicyEvaluation(t *testing.T) {
 	tests := []struct {
 		name        string
-		policy      *yamlpkg.RetryPolicy
+		policy      *recipe.RetryPolicy
 		attempt     int
 		lastError   error
 		shouldRetry bool
 	}{
 		{
 			name: "retry within max attempts",
-			policy: &yamlpkg.RetryPolicy{
-				MaxAttempts:        3,
+			policy: &recipe.RetryPolicy{
+				MaximumAttempts:    3,
 				InitialInterval:    "1s",
 				BackoffCoefficient: 2.0,
 			},
@@ -176,8 +176,8 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 		},
 		{
 			name: "max attempts reached",
-			policy: &yamlpkg.RetryPolicy{
-				MaxAttempts:     3,
+			policy: &recipe.RetryPolicy{
+				MaximumAttempts: 3,
 				InitialInterval: "1s",
 			},
 			attempt:     3,
@@ -185,7 +185,7 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 			shouldRetry: false,
 		},
 		{
-			name: "no retry policy",
+			name:        "no retry policy",
 			policy:      nil,
 			attempt:     1,
 			lastError:   errors.New("error"),
@@ -193,8 +193,8 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 		},
 		{
 			name: "first attempt failure",
-			policy: &yamlpkg.RetryPolicy{
-				MaxAttempts:     5,
+			policy: &recipe.RetryPolicy{
+				MaximumAttempts: 5,
 				InitialInterval: "500ms",
 			},
 			attempt:     1,
@@ -212,48 +212,48 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 }
 
 // shouldRetry determines if an operation should be retried
-func shouldRetry(policy *yamlpkg.RetryPolicy, attempt int, lastError error) bool {
+func shouldRetry(policy *recipe.RetryPolicy, attempt int32, lastError error) bool {
 	if policy == nil || lastError == nil {
 		return false
 	}
-	
-	return attempt < policy.MaxAttempts
+
+	return attempt < policy.MaximumAttempts
 }
 
 // TestBackoffCalculation tests exponential backoff calculation
 func TestBackoffCalculation(t *testing.T) {
 	tests := []struct {
-		name               string
-		policy             *yamlpkg.RetryPolicy
-		attempt            int
-		expectedMinDelay   time.Duration
-		expectedMaxDelay   time.Duration
+		name             string
+		policy           *recipe.RetryPolicy
+		attempt          int
+		expectedMinDelay time.Duration
+		expectedMaxDelay time.Duration
 	}{
 		{
 			name: "simple exponential backoff",
-			policy: &yamlpkg.RetryPolicy{
+			policy: &recipe.RetryPolicy{
 				InitialInterval:    "1s",
 				BackoffCoefficient: 2.0,
-				MaxInterval:        "30s",
+				MaximumInterval:    "30s",
 			},
 			attempt:          3,
-			expectedMinDelay: 4 * time.Second,  // 1s * 2^2
+			expectedMinDelay: 4 * time.Second, // 1s * 2^2
 			expectedMaxDelay: 4 * time.Second,
 		},
 		{
 			name: "backoff with max interval cap",
-			policy: &yamlpkg.RetryPolicy{
+			policy: &recipe.RetryPolicy{
 				InitialInterval:    "1s",
 				BackoffCoefficient: 2.0,
-				MaxInterval:        "5s",
+				MaximumInterval:    "5s",
 			},
 			attempt:          5,
-			expectedMinDelay: 5 * time.Second,  // Would be 16s but capped at 5s
+			expectedMinDelay: 5 * time.Second, // Would be 16s but capped at 5s
 			expectedMaxDelay: 5 * time.Second,
 		},
 		{
 			name: "no backoff coefficient",
-			policy: &yamlpkg.RetryPolicy{
+			policy: &recipe.RetryPolicy{
 				InitialInterval: "2s",
 			},
 			attempt:          3,
@@ -272,10 +272,10 @@ func TestBackoffCalculation(t *testing.T) {
 }
 
 // calculateBackoff calculates the backoff delay for a retry attempt
-func calculateBackoff(policy *yamlpkg.RetryPolicy, attempt int) time.Duration {
+func calculateBackoff(policy *recipe.RetryPolicy, attempt int) time.Duration {
 	// Parse initial interval
 	initial, _ := time.ParseDuration(policy.InitialInterval)
-	
+
 	// Calculate exponential backoff
 	delay := initial
 	if policy.BackoffCoefficient > 0 && attempt > 1 {
@@ -285,7 +285,7 @@ func calculateBackoff(policy *yamlpkg.RetryPolicy, attempt int) time.Duration {
 		}
 		delay = time.Duration(float64(initial) * multiplier)
 	}
-	
+
 	// Apply max interval cap if specified
 	if policy.MaxInterval != "" {
 		maxInterval, _ := time.ParseDuration(policy.MaxInterval)
@@ -293,38 +293,38 @@ func calculateBackoff(policy *yamlpkg.RetryPolicy, attempt int) time.Duration {
 			delay = maxInterval
 		}
 	}
-	
+
 	return delay
 }
 
 // TestStateMachineExecution tests complete state machine execution flow
 func TestStateMachineExecution(t *testing.T) {
 	// Define a state machine for document review workflow
-	stateMachine := &yamlpkg.StateMap{
+	stateMachine := &recipe.StateMap{
 		Initial: "draft",
-		States: map[string]yamlpkg.State{
+		States: map[string]recipe.State{
 			"draft": {
 				Op: "edit_document",
-				Transitions: []yamlpkg.Transition{
+				Transitions: []recipe.Transition{
 					{To: "review", When: "completed == true"},
-					{To: "draft"},  // Stay in draft if not completed
+					{To: "draft"}, // Stay in draft if not completed
 				},
 			},
 			"review": {
 				Op: "review_document",
-				Transitions: []yamlpkg.Transition{
+				Transitions: []recipe.Transition{
 					{To: "approved", When: "score >= 80"},
 					{To: "revision", When: "score < 80"},
 				},
-				Retry: &yamlpkg.RetryPolicy{
+				Retry: &recipe.RetryPolicy{
 					MaxAttempts:     2,
 					InitialInterval: "1s",
 				},
 			},
 			"revision": {
 				Op: "revise_document",
-				Transitions: []yamlpkg.Transition{
-					{To: "review"},  // Always go back to review
+				Transitions: []recipe.Transition{
+					{To: "review"}, // Always go back to review
 				},
 			},
 			"approved": {
@@ -380,31 +380,31 @@ func TestStateMachineExecution(t *testing.T) {
 			// Simulate state machine execution
 			path := []string{}
 			currentState := tt.startState
-			
+
 			for i := 0; i < len(tt.expectedPath) && i < 10; i++ { // Limit iterations to prevent infinite loops
 				path = append(path, currentState)
-				
+
 				// Get state definition
 				state, exists := stateMachine.States[currentState]
 				if !exists {
 					break
 				}
-				
+
 				// Get mock outputs for this state
 				outputs := tt.mockOutputs[currentState]
 				if outputs == nil {
 					break
 				}
-				
+
 				// Evaluate transitions
 				nextState := evaluateTransitions(state.Transitions, outputs)
 				if nextState == "" {
 					break
 				}
-				
+
 				currentState = nextState
 			}
-			
+
 			// Verify execution path
 			require.Equal(t, len(tt.expectedPath), len(path), "Path length mismatch")
 			for i, state := range tt.expectedPath {

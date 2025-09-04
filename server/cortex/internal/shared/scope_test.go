@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,25 +101,25 @@ func TestScopedTemplateResolution(t *testing.T) {
 func resolveTemplate(template string, scope *ExecutionScope) string {
 	// Simplified template resolution for testing
 	// Real implementation would use proper template engine
-	
+
 	if template == "{{ .inputs.message }}" {
 		if msg, ok := scope.Inputs["message"].(string); ok {
 			return msg
 		}
 	}
-	
+
 	if template == "{{ .parent.inputs.message }}" && scope.Parent != nil {
 		if msg, ok := scope.Parent.Inputs["message"].(string); ok {
 			return msg
 		}
 	}
-	
+
 	if template == "{{ .parent.parent.inputs.message }}" && scope.Parent != nil && scope.Parent.Parent != nil {
 		if msg, ok := scope.Parent.Parent.Inputs["message"].(string); ok {
 			return msg
 		}
 	}
-	
+
 	if template == "{{ .parent.children.sibling.outputs.result }}" && scope.Parent != nil {
 		if sibling, ok := scope.Parent.Children["sibling"]; ok {
 			if result, ok := sibling.Outputs["result"].(string); ok {
@@ -127,7 +127,7 @@ func resolveTemplate(template string, scope *ExecutionScope) string {
 			}
 		}
 	}
-	
+
 	return template
 }
 
@@ -140,10 +140,10 @@ func TestScopeIsolation(t *testing.T) {
 			"secret": "parent-secret",
 			"shared": "parent-value",
 		},
-		Outputs: map[string]interface{}{},
+		Outputs:  map[string]interface{}{},
 		Children: make(map[string]*ExecutionScope),
 	}
-	
+
 	// Create child scopes with different isolation levels
 	childA := &ExecutionScope{
 		ID:     "childA",
@@ -154,7 +154,7 @@ func TestScopeIsolation(t *testing.T) {
 		},
 		Outputs: map[string]interface{}{},
 	}
-	
+
 	childB := &ExecutionScope{
 		ID:     "childB",
 		Parent: parentScope,
@@ -164,10 +164,10 @@ func TestScopeIsolation(t *testing.T) {
 		},
 		Outputs: map[string]interface{}{},
 	}
-	
+
 	parentScope.Children["childA"] = childA
 	parentScope.Children["childB"] = childB
-	
+
 	tests := []struct {
 		name      string
 		scope     *ExecutionScope
@@ -204,11 +204,11 @@ func TestScopeIsolation(t *testing.T) {
 			canAccess: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			value, found := resolveVariable(tt.variable, tt.scope)
-			
+
 			if tt.canAccess {
 				require.True(t, found, "Variable should be accessible")
 				assert.Equal(t, tt.expected, value)
@@ -225,14 +225,14 @@ func resolveVariable(varName string, scope *ExecutionScope) (interface{}, bool) 
 	if val, ok := scope.Inputs[varName]; ok {
 		return val, true
 	}
-	
+
 	// Check parent scope if not found locally
 	if scope.Parent != nil && varName != "childB.local" {
 		if val, ok := scope.Parent.Inputs[varName]; ok {
 			return val, true
 		}
 	}
-	
+
 	return nil, false
 }
 
@@ -277,13 +277,13 @@ func TestNestedCompositionExecution(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Test scope creation for nested structure
 	rootScope := createExecutionScope("root", nil)
-	
+
 	// Execute and create scopes
 	scopes := executeNestedComposition(rootComposition, rootScope)
-	
+
 	// Verify scope hierarchy
 	assert.NotNil(t, scopes["root"])
 	assert.NotNil(t, scopes["step1"])
@@ -292,7 +292,7 @@ func TestNestedCompositionExecution(t *testing.T) {
 	assert.NotNil(t, scopes["p1s1"])
 	assert.NotNil(t, scopes["p1s2"])
 	assert.NotNil(t, scopes["parallel2"])
-	
+
 	// Verify parent-child relationships
 	assert.Equal(t, scopes["root"], scopes["step1"].Parent)
 	assert.Equal(t, scopes["nested_parallel"], scopes["parallel1"].Parent)
@@ -308,22 +308,22 @@ func createExecutionScope(id string, parent *ExecutionScope) *ExecutionScope {
 		Outputs:  make(map[string]interface{}),
 		Children: make(map[string]*ExecutionScope),
 	}
-	
+
 	if parent != nil {
 		parent.Children[id] = scope
 	}
-	
+
 	return scope
 }
 
 // executeNestedComposition simulates execution of nested compositions
 func executeNestedComposition(node *yamlpkg.Node, parentScope *ExecutionScope) map[string]*ExecutionScope {
 	scopes := make(map[string]*ExecutionScope)
-	
+
 	// Create scope for current node
 	nodeScope := createExecutionScope(node.ID, parentScope)
 	scopes[node.ID] = nodeScope
-	
+
 	// Process based on node type
 	if node.Op != "" {
 		// Leaf operation node
@@ -349,7 +349,7 @@ func executeNestedComposition(node *yamlpkg.Node, parentScope *ExecutionScope) m
 		// Simplified - just mark as executed
 		nodeScope.Outputs["final_state"] = "completed"
 	}
-	
+
 	return scopes
 }
 
@@ -394,7 +394,7 @@ func TestScopedCELEvaluation(t *testing.T) {
 			expected: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Simplified CEL evaluation for testing
@@ -412,18 +412,18 @@ func evaluateScopedCEL(expression string, scope *ExecutionScope) bool {
 			return score > 80
 		}
 	}
-	
+
 	if expression == "parent.threshold < local.value" {
 		localData, _ := scope.Inputs["local"].(map[string]interface{})
 		localValue, _ := localData["value"].(int)
-		
+
 		if scope.Parent != nil {
 			parentData, _ := scope.Parent.Inputs["parent"].(map[string]interface{})
 			threshold, _ := parentData["threshold"].(int)
 			return threshold < localValue
 		}
 	}
-	
+
 	return false
 }
 
@@ -434,24 +434,24 @@ func TestScopeCleanup(t *testing.T) {
 	child1 := createExecutionScope("child1", root)
 	child2 := createExecutionScope("child2", root)
 	grandchild := createExecutionScope("grandchild", child1)
-	
+
 	// Add some data to scopes
 	root.Inputs["data"] = "root data"
 	child1.Inputs["data"] = "child1 data"
 	child2.Inputs["data"] = "child2 data"
 	grandchild.Inputs["data"] = "grandchild data"
-	
+
 	// Test cleanup order (bottom-up)
 	cleanupOrder := []string{}
 	cleanupScope(grandchild, &cleanupOrder)
 	cleanupScope(child1, &cleanupOrder)
 	cleanupScope(child2, &cleanupOrder)
 	cleanupScope(root, &cleanupOrder)
-	
+
 	// Verify cleanup order
 	expected := []string{"grandchild", "child1", "child2", "root"}
 	assert.Equal(t, expected, cleanupOrder)
-	
+
 	// Verify scopes are cleaned
 	assert.Empty(t, grandchild.Inputs)
 	assert.Empty(t, child1.Inputs)
@@ -462,11 +462,11 @@ func TestScopeCleanup(t *testing.T) {
 // cleanupScope cleans up an execution scope
 func cleanupScope(scope *ExecutionScope, order *[]string) {
 	*order = append(*order, scope.ID)
-	
+
 	// Clear scope data
 	scope.Inputs = make(map[string]interface{})
 	scope.Outputs = make(map[string]interface{})
-	
+
 	// Remove from parent's children
 	if scope.Parent != nil {
 		delete(scope.Parent.Children, scope.ID)

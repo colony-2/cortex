@@ -2,34 +2,36 @@ package input
 
 import (
 	"sync"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // SimpleSSEManager is a basic implementation of SSEManager
 type SimpleSSEManager struct {
 	mu          sync.RWMutex
-	clients     map[string]chan SSEEvent
-	eventBuffer []SSEEvent
+	clients     map[string]chan ops.SSEEvent
+	eventBuffer []ops.SSEEvent
 	bufferSize  int
 }
 
 // NewSimpleSSEManager creates a new SSE manager
 func NewSimpleSSEManager() *SimpleSSEManager {
 	return &SimpleSSEManager{
-		clients:     make(map[string]chan SSEEvent),
-		eventBuffer: make([]SSEEvent, 0, 100),
+		clients:     make(map[string]chan ops.SSEEvent),
+		eventBuffer: make([]ops.SSEEvent, 0, 100),
 		bufferSize:  100,
 	}
 }
 
 // Subscribe adds a client and returns their event channel
-func (m *SimpleSSEManager) Subscribe(clientID string) <-chan SSEEvent {
+func (m *SimpleSSEManager) Subscribe(clientID string) <-chan ops.SSEEvent {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Create a buffered channel for the client
-	ch := make(chan SSEEvent, 10)
+	ch := make(chan ops.SSEEvent, 10)
 	m.clients[clientID] = ch
-	
+
 	// Send recent events from buffer
 	for _, event := range m.eventBuffer {
 		select {
@@ -38,7 +40,7 @@ func (m *SimpleSSEManager) Subscribe(clientID string) <-chan SSEEvent {
 			// Skip if channel is full
 		}
 	}
-	
+
 	return ch
 }
 
@@ -46,7 +48,7 @@ func (m *SimpleSSEManager) Subscribe(clientID string) <-chan SSEEvent {
 func (m *SimpleSSEManager) Unsubscribe(clientID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if ch, exists := m.clients[clientID]; exists {
 		close(ch)
 		delete(m.clients, clientID)
@@ -54,17 +56,17 @@ func (m *SimpleSSEManager) Unsubscribe(clientID string) {
 }
 
 // Broadcast sends an event to all connected clients
-func (m *SimpleSSEManager) Broadcast(event SSEEvent) {
+func (m *SimpleSSEManager) Broadcast(event ops.SSEEvent) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Add to buffer
 	m.eventBuffer = append(m.eventBuffer, event)
 	if len(m.eventBuffer) > m.bufferSize {
 		// Remove oldest events if buffer is full
 		m.eventBuffer = m.eventBuffer[len(m.eventBuffer)-m.bufferSize:]
 	}
-	
+
 	// Send to all clients
 	for clientID, ch := range m.clients {
 		select {

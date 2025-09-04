@@ -8,13 +8,14 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // Ensure AnthropicAdapter implements FileAdapter
 var _ FileAdapter = (*AnthropicAdapter)(nil)
 
 // GenerateWithFiles creates a completion with file context using Anthropic's native capabilities
-func (a *AnthropicAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []File, config Config) (Response, error) {
+func (a *AnthropicAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []f2.File, config Config) (Response, error) {
 	// Apply rate limiting
 	if a.rateLimiter != nil {
 		if err := a.rateLimiter.Wait(ctx); err != nil {
@@ -100,25 +101,25 @@ func (a *AnthropicAdapter) GenerateWithFiles(ctx context.Context, prompt string,
 }
 
 // buildMessageContent builds the message content with files for Anthropic
-func (a *AnthropicAdapter) buildMessageContent(prompt string, files []File) anthropic.MessageParam {
+func (a *AnthropicAdapter) buildMessageContent(prompt string, files []f2.File) anthropic.MessageParam {
 	// For now, we'll combine all content into a single text message
 	// since the SDK's multimodal support structure isn't clear
-	
+
 	var fullContent strings.Builder
 	fullContent.WriteString(prompt)
-	
+
 	// Add files as text content
 	for _, file := range files {
 		label := file.Name
 		if label == "" {
 			label = file.Path
 		}
-		
+
 		switch file.Type {
-		case FileTypeText:
+		case f2.FileTypeText:
 			fullContent.WriteString(fmt.Sprintf("\n\nFile: %s\n```\n%s\n```", label, string(file.Content)))
-			
-		case FileTypeImage:
+
+		case f2.FileTypeImage:
 			// For images, we'll note them but can't embed without proper SDK support
 			base64Data := base64.StdEncoding.EncodeToString(file.Content)
 			if len(base64Data) > 1000 {
@@ -126,15 +127,15 @@ func (a *AnthropicAdapter) buildMessageContent(prompt string, files []File) anth
 			} else {
 				fullContent.WriteString(fmt.Sprintf("\n\n[Image: %s]\nBase64: %s", label, base64Data))
 			}
-			
-		case FileTypePDF:
+
+		case f2.FileTypePDF:
 			fullContent.WriteString(fmt.Sprintf("\n\n[PDF Document: %s]\n[%d bytes]", label, len(file.Content)))
-			
+
 		default:
 			fullContent.WriteString(fmt.Sprintf("\n\n[File: %s (type: %s)]", label, file.Type))
 		}
 	}
-	
+
 	// Return as a simple text message
 	return anthropic.NewUserMessage(anthropic.NewTextBlock(fullContent.String()))
 }
@@ -142,21 +143,21 @@ func (a *AnthropicAdapter) buildMessageContent(prompt string, files []File) anth
 // GetFileCapabilities returns Anthropic's file handling capabilities
 func (a *AnthropicAdapter) GetFileCapabilities() FileCapabilities {
 	return FileCapabilities{
-		SupportedTypes: []FileType{
-			FileTypeText,
-			FileTypeImage,
-			FileTypePDF, // Native PDF support
+		SupportedTypes: []f2.FileType{
+			f2.FileTypeText,
+			f2.FileTypeImage,
+			f2.FileTypePDF, // Native PDF support
 		},
 		MaxFileSize:    20 * 1024 * 1024,  // 20MB per file
-		MaxFileCount:   20,                 // Claude can handle many files
+		MaxFileCount:   20,                // Claude can handle many files
 		TotalSizeLimit: 100 * 1024 * 1024, // 100MB total
 	}
 }
 
 // ValidateFile checks if a file can be processed by Anthropic
-func (a *AnthropicAdapter) ValidateFile(file File) error {
+func (a *AnthropicAdapter) ValidateFile(file f2.File) error {
 	caps := a.GetFileCapabilities()
-	
+
 	// Check file type
 	supported := false
 	for _, t := range caps.SupportedTypes {
@@ -165,25 +166,25 @@ func (a *AnthropicAdapter) ValidateFile(file File) error {
 			break
 		}
 	}
-	
+
 	if !supported {
 		return fmt.Errorf("file type %s not supported", file.Type)
 	}
-	
+
 	// Check file size
 	if int64(len(file.Content)) > caps.MaxFileSize {
 		return fmt.Errorf("file size %d exceeds maximum %d", len(file.Content), caps.MaxFileSize)
 	}
-	
+
 	// Special validation for images
-	if file.Type == FileTypeImage {
+	if file.Type == f2.FileTypeImage {
 		supportedImageTypes := []string{
 			"image/jpeg",
 			"image/png",
 			"image/gif",
 			"image/webp",
 		}
-		
+
 		supported := false
 		for _, mt := range supportedImageTypes {
 			if file.MimeType == mt {
@@ -191,11 +192,11 @@ func (a *AnthropicAdapter) ValidateFile(file File) error {
 				break
 			}
 		}
-		
+
 		if !supported {
 			return fmt.Errorf("image type %s not supported", file.MimeType)
 		}
 	}
-	
+
 	return nil
 }

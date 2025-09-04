@@ -1,4 +1,4 @@
-package ops
+package export
 
 import (
 	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
@@ -11,13 +11,9 @@ import (
 // This provides a single entry point for consumers like recipe-worker to discover and register all activities
 func GetAll() []ops.RegisterableOp {
 	return []ops.RegisterableOp{
-		// LLM activities
 		llm.GetOp(),
-
-		// Recipe invocation activities
-		recipe.NewRecipeActivity(),
-
-		// Input collection activities
-		input.newInputActivity(),
+		llm.GetEnhancedOp(),
+		recipe.GetOp(),
+		input.GetOp(),
 	}
 }

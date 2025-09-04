@@ -1,15 +1,19 @@
 module github.com/divisive-ai/vibethis/server/llm
 
-go 1.23
+go 1.24
 
 toolchain go1.24.1
 
+replace github.com/divisive-ai/vibethis/server/core => ../core
+
 require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2
+	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
 	github.com/openai/openai-go v1.11.1
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/time v0.6.0
 	google.golang.org/genai v1.16.0
+
 )
 
 require (

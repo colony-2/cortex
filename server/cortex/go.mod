@@ -12,9 +12,7 @@ require (
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
 	github.com/divisive-ai/vibethis/server/storage v0.0.0
-	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
-	github.com/olekukonko/tablewriter v0.0.5
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
@@ -39,14 +37,16 @@ require (
 	github.com/divisive-ai/vibethis/server/llm v0.0.0 // indirect
 	github.com/divisive-ai/vibethis/server/openapi v0.0.0 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fatih/structs v1.1.0 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
+	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
@@ -58,7 +58,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-runewidth v0.0.9 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
@@ -68,9 +68,12 @@ require (
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/swaggest/jsonschema-go v0.3.78 // indirect
+	github.com/swaggest/refl v1.4.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

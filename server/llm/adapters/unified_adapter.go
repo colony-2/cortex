@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // UnifiedAdapter combines file and tool capabilities
 type UnifiedAdapter interface {
 	FileAdapter
 	ExecutableToolAdapter
-	
+
 	// GenerateWithFilesAndTools combines both capabilities
 	GenerateWithFilesAndTools(
 		ctx context.Context,
 		prompt string,
-		files []File,
+		files []f2.File,
 		tools []Tool,
 		config UnifiedConfig,
 	) (UnifiedResponse, error)
@@ -51,7 +53,7 @@ func NewUnifiedAdapter(fileAdapter FileAdapter, execAdapter ExecutableToolAdapte
 	if unifiedProvider, ok := fileAdapter.(UnifiedAdapter); ok {
 		return unifiedProvider
 	}
-	
+
 	return &BaseUnifiedAdapter{
 		fileAdapter:   fileAdapter,
 		execAdapter:   execAdapter,
@@ -73,7 +75,7 @@ func (a *BaseUnifiedAdapter) StreamGenerate(ctx context.Context, prompt string, 
 	return a.fileAdapter.StreamGenerate(ctx, prompt, config)
 }
 
-func (a *BaseUnifiedAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []File, config Config) (Response, error) {
+func (a *BaseUnifiedAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []f2.File, config Config) (Response, error) {
 	return a.fileAdapter.GenerateWithFiles(ctx, prompt, files, config)
 }
 
@@ -81,7 +83,7 @@ func (a *BaseUnifiedAdapter) GetFileCapabilities() FileCapabilities {
 	return a.fileAdapter.GetFileCapabilities()
 }
 
-func (a *BaseUnifiedAdapter) ValidateFile(file File) error {
+func (a *BaseUnifiedAdapter) ValidateFile(file f2.File) error {
 	return a.fileAdapter.ValidateFile(file)
 }
 
@@ -98,7 +100,7 @@ func (a *BaseUnifiedAdapter) SetToolExecutor(executor ToolExecutor) {
 func (a *BaseUnifiedAdapter) GenerateWithFilesAndTools(
 	ctx context.Context,
 	prompt string,
-	files []File,
+	files []f2.File,
 	tools []Tool,
 	config UnifiedConfig,
 ) (UnifiedResponse, error) {
@@ -108,26 +110,26 @@ func (a *BaseUnifiedAdapter) GenerateWithFilesAndTools(
 		FilesModified:  []string{},
 		FilesDeleted:   []string{},
 	}
-	
+
 	// Process files for context
 	processedFiles, err := a.processFilesForContext(files, config)
 	if err != nil {
 		return response, fmt.Errorf("failed to process files: %w", err)
 	}
-	
+
 	// Track processed files
 	for _, file := range processedFiles {
 		response.FilesProcessed = append(response.FilesProcessed, file.Path)
 	}
-	
+
 	// Build enhanced prompt with file context
 	enhancedPrompt := a.buildPromptWithFileContext(prompt, processedFiles)
-	
+
 	// Add file operation tools if files are provided
 	if len(files) > 0 {
 		tools = a.addFileOperationTools(tools, config)
 	}
-	
+
 	// Execute with tools and files
 	if config.AutoExecute {
 		// Use tool execution flow
@@ -140,22 +142,22 @@ func (a *BaseUnifiedAdapter) GenerateWithFilesAndTools(
 		if err != nil {
 			return response, err
 		}
-		
+
 		response.ExecutableToolResponse = execResponse
-		
+
 		// Track file operations from tool results
 		a.trackFileOperations(&response, execResponse.ToolResults)
-		
+
 	} else {
 		// Just generate with tools, no execution
 		baseResponse, err := a.GenerateWithTools(ctx, enhancedPrompt, tools, config.Config)
 		if err != nil {
 			return response, err
 		}
-		
+
 		response.Response = baseResponse
 	}
-	
+
 	// Add metadata about the operation
 	if response.ExecutionMetadata == nil {
 		response.ExecutionMetadata = make(map[string]interface{})
@@ -163,17 +165,17 @@ func (a *BaseUnifiedAdapter) GenerateWithFilesAndTools(
 	response.ExecutionMetadata["files_provided"] = len(files)
 	response.ExecutionMetadata["files_processed"] = len(response.FilesProcessed)
 	response.ExecutionMetadata["file_handling_mode"] = config.FileHandling
-	
+
 	return response, nil
 }
 
 // processFilesForContext processes files for inclusion in LLM context
-func (a *BaseUnifiedAdapter) processFilesForContext(files []File, config UnifiedConfig) ([]File, error) {
-	processed := []File{}
+func (a *BaseUnifiedAdapter) processFilesForContext(files []f2.File, config UnifiedConfig) ([]f2.File, error) {
+	processed := []f2.File{}
 	capabilities := a.fileAdapter.GetFileCapabilities()
-	
+
 	totalSize := int64(0)
-	
+
 	for _, file := range files {
 		// Validate file against adapter capabilities
 		if err := a.fileAdapter.ValidateFile(file); err != nil {
@@ -184,58 +186,58 @@ func (a *BaseUnifiedAdapter) processFilesForContext(files []File, config Unified
 			// In hybrid or fallback mode, try to convert
 			file = a.convertFileToText(file)
 		}
-		
+
 		// Filter secrets from file content
 		if a.secretFilter != nil {
 			file = *a.secretFilter.FilterFile(&file)
 		}
-		
+
 		// Check size limits
 		totalSize += int64(len(file.Content))
 		if totalSize > capabilities.TotalSizeLimit {
 			return nil, fmt.Errorf("total file size exceeds limit of %d bytes", capabilities.TotalSizeLimit)
 		}
-		
+
 		// Add file type metadata if not set
-		if file.Type == "" || file.Type == FileTypeUnknown {
+		if file.Type == "" || file.Type == f2.FileTypeUnknown {
 			detector := NewFileTypeDetector()
 			file.Type = detector.DetectType(file.Content, file.Path)
 			file.MimeType = detector.DetectMimeType(file.Content, file.Path)
 		}
-		
+
 		processed = append(processed, file)
-		
+
 		// Check file count limit
 		if len(processed) >= capabilities.MaxFileCount {
 			break
 		}
 	}
-	
+
 	return processed, nil
 }
 
 // buildPromptWithFileContext builds an enhanced prompt with file context
-func (a *BaseUnifiedAdapter) buildPromptWithFileContext(prompt string, files []File) string {
+func (a *BaseUnifiedAdapter) buildPromptWithFileContext(prompt string, files []f2.File) string {
 	if len(files) == 0 {
 		return prompt
 	}
-	
+
 	enhanced := prompt + "\n\n### File Context ###\n"
-	
+
 	for _, file := range files {
 		enhanced += fmt.Sprintf("\n**File: %s** (Type: %s, Size: %d bytes)\n",
 			file.Path, file.Type, len(file.Content))
-		
+
 		// Add file metadata if relevant
 		if file.Metadata != nil {
 			if lang, ok := file.Metadata["language"].(string); ok {
 				enhanced += fmt.Sprintf("Language: %s\n", lang)
 			}
 		}
-		
+
 		// For text-based files, include a preview
-		if file.Type == FileTypeText || file.Type == FileTypeCode ||
-			file.Type == FileTypeConfig || file.Type == FileTypeMarkdown {
+		if file.Type == f2.FileTypeText || file.Type == f2.FileTypeCode ||
+			file.Type == f2.FileTypeConfig || file.Type == f2.FileTypeMarkdown {
 			preview := string(file.Content)
 			if len(preview) > 500 {
 				preview = preview[:500] + "...\n[Content truncated for context]"
@@ -245,9 +247,9 @@ func (a *BaseUnifiedAdapter) buildPromptWithFileContext(prompt string, files []F
 			enhanced += fmt.Sprintf("[%s file - content available for processing]\n", file.Type)
 		}
 	}
-	
+
 	enhanced += "\n### End File Context ###\n"
-	
+
 	return enhanced
 }
 
@@ -261,7 +263,7 @@ func (a *BaseUnifiedAdapter) addFileOperationTools(tools []Tool, config UnifiedC
 			break
 		}
 	}
-	
+
 	if !hasFileTools {
 		// Add basic file operation tools
 		fileTools := []Tool{
@@ -296,10 +298,10 @@ func (a *BaseUnifiedAdapter) addFileOperationTools(tools []Tool, config UnifiedC
 				}`),
 			},
 		}
-		
+
 		tools = append(tools, fileTools...)
 	}
-	
+
 	return tools
 }
 
@@ -309,7 +311,7 @@ func (a *BaseUnifiedAdapter) trackFileOperations(response *UnifiedResponse, resu
 		if !result.Success {
 			continue
 		}
-		
+
 		switch result.ToolName {
 		case "write_file", "create_file":
 			if path := a.extractPathFromResult(result); path != "" {
@@ -320,12 +322,12 @@ func (a *BaseUnifiedAdapter) trackFileOperations(response *UnifiedResponse, resu
 					response.FilesCreated = append(response.FilesCreated, path)
 				}
 			}
-			
+
 		case "delete_file", "remove_file":
 			if path := a.extractPathFromResult(result); path != "" {
 				response.FilesDeleted = append(response.FilesDeleted, path)
 			}
-			
+
 		case "modify_file", "update_file":
 			if path := a.extractPathFromResult(result); path != "" {
 				response.FilesModified = append(response.FilesModified, path)
@@ -335,31 +337,31 @@ func (a *BaseUnifiedAdapter) trackFileOperations(response *UnifiedResponse, resu
 }
 
 // convertFileToText converts non-text files to text representation
-func (a *BaseUnifiedAdapter) convertFileToText(file File) File {
+func (a *BaseUnifiedAdapter) convertFileToText(file f2.File) f2.File {
 	// Create a text representation based on file type
 	switch file.Type {
-	case FileTypeImage:
+	case f2.FileTypeImage:
 		file.Content = []byte(fmt.Sprintf("[Image file: %s, Size: %d bytes, Type: %s]",
 			file.Path, len(file.Content), file.MimeType))
-		file.Type = FileTypeText
-		
-	case FileTypePDF:
+		file.Type = f2.FileTypeText
+
+	case f2.FileTypePDF:
 		// In a real implementation, we would extract text from PDF
 		file.Content = []byte(fmt.Sprintf("[PDF file: %s, Size: %d bytes]",
 			file.Path, len(file.Content)))
-		file.Type = FileTypeText
-		
-	case FileTypeBinary:
+		file.Type = f2.FileTypeText
+
+	case f2.FileTypeBinary:
 		file.Content = []byte(fmt.Sprintf("[Binary file: %s, Size: %d bytes, Type: %s]",
 			file.Path, len(file.Content), file.MimeType))
-		file.Type = FileTypeText
-		
-	case FileTypeAudio, FileTypeVideo:
+		file.Type = f2.FileTypeText
+
+	case f2.FileTypeAudio, f2.FileTypeVideo:
 		file.Content = []byte(fmt.Sprintf("[Media file: %s, Size: %d bytes, Type: %s]",
 			file.Path, len(file.Content), file.MimeType))
-		file.Type = FileTypeText
+		file.Type = f2.FileTypeText
 	}
-	
+
 	return file
 }
 
@@ -368,14 +370,14 @@ func (a *BaseUnifiedAdapter) extractPathFromResult(result ToolResult) string {
 	if result.Result == nil {
 		return ""
 	}
-	
+
 	var resultData map[string]interface{}
 	if err := json.Unmarshal(result.Result, &resultData); err == nil {
 		if path, ok := resultData["path"].(string); ok {
 			return path
 		}
 	}
-	
+
 	return ""
 }
 

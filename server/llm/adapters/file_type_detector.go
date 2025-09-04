@@ -5,35 +5,28 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
-)
 
-// Enhanced FileType constants
-const (
-	FileTypeCode     FileType = "code"     // Source code files
-	FileTypeConfig   FileType = "config"   // Configuration files
-	FileTypeData     FileType = "data"     // Data files (JSON, XML, CSV)
-	FileTypeMarkdown FileType = "markdown" // Documentation
-	FileTypeBinary   FileType = "binary"   // Generic binary
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // FileTypeDetector provides enhanced file type detection
 type FileTypeDetector interface {
 	// DetectType determines the FileType from content and metadata
-	DetectType(content []byte, path string) FileType
-	
+	DetectType(content []byte, path string) f2.FileType
+
 	// DetectMimeType determines the MIME type
 	DetectMimeType(content []byte, path string) string
-	
+
 	// IsTextFile checks if content is text-based
 	IsTextFile(content []byte) bool
-	
+
 	// GetLanguage detects programming language for source files
 	GetLanguage(content []byte, path string) string
 }
 
 // DefaultFileTypeDetector implements FileTypeDetector
 type DefaultFileTypeDetector struct {
-	extensionMap map[string]FileType
+	extensionMap map[string]f2.FileType
 	languageMap  map[string]string
 }
 
@@ -46,79 +39,79 @@ func NewFileTypeDetector() FileTypeDetector {
 }
 
 // DetectType determines the FileType from content and metadata
-func (d *DefaultFileTypeDetector) DetectType(content []byte, path string) FileType {
+func (d *DefaultFileTypeDetector) DetectType(content []byte, path string) f2.FileType {
 	ext := strings.ToLower(filepath.Ext(path))
-	
+
 	// Check extension-based detection first
 	if fileType, ok := d.extensionMap[ext]; ok {
 		return fileType
 	}
-	
+
 	// Check if it's a text file
 	if !d.IsTextFile(content) {
-		return FileTypeBinary
+		return f2.FileTypeBinary
 	}
-	
+
 	// Content-based detection for text files
 	contentStr := string(content[:min(1000, len(content))])
-	
+
 	// Check for code patterns
 	if d.looksLikeCode(contentStr, path) {
-		return FileTypeCode
+		return f2.FileTypeCode
 	}
-	
+
 	// Check for configuration patterns
 	if d.looksLikeConfig(contentStr, path) {
-		return FileTypeConfig
+		return f2.FileTypeConfig
 	}
-	
+
 	// Check for data format patterns
 	if d.looksLikeData(contentStr) {
-		return FileTypeData
+		return f2.FileTypeData
 	}
-	
+
 	// Check for markdown
 	if d.looksLikeMarkdown(contentStr) {
-		return FileTypeMarkdown
+		return f2.FileTypeMarkdown
 	}
-	
+
 	// Default to text for text-based files
-	return FileTypeText
+	return f2.FileTypeText
 }
 
 // DetectMimeType determines the MIME type
 func (d *DefaultFileTypeDetector) DetectMimeType(content []byte, path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	
+
 	// Extension-based MIME type detection
 	mimeType := getMimeTypeFromExtension(ext)
 	if mimeType != "" {
 		return mimeType
 	}
-	
+
 	// Content-based detection for common formats
 	if len(content) > 0 {
 		// Check for JSON
 		if json.Valid(content) {
 			return "application/json"
 		}
-		
+
 		// Check for XML
 		if bytes.HasPrefix(bytes.TrimSpace(content), []byte("<?xml")) {
 			return "application/xml"
 		}
-		
+
 		// Check for HTML
 		if d.looksLikeHTML(string(content[:min(500, len(content))])) {
 			return "text/html"
 		}
 	}
-	
+
 	// Check if it's text
 	if d.IsTextFile(content) {
 		return "text/plain"
 	}
-	
+
 	return "application/octet-stream"
 }
 
@@ -127,7 +120,7 @@ func (d *DefaultFileTypeDetector) IsTextFile(content []byte) bool {
 	if len(content) == 0 {
 		return true
 	}
-	
+
 	// Check first 8192 bytes for binary content
 	checkLen := min(8192, len(content))
 	for i := 0; i < checkLen; i++ {
@@ -144,7 +137,7 @@ func (d *DefaultFileTypeDetector) IsTextFile(content []byte) bool {
 			return false
 		}
 	}
-	
+
 	// Check for UTF-8 validity
 	return isValidUTF8(content[:checkLen])
 }
@@ -152,12 +145,12 @@ func (d *DefaultFileTypeDetector) IsTextFile(content []byte) bool {
 // GetLanguage detects programming language for source files
 func (d *DefaultFileTypeDetector) GetLanguage(content []byte, path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	
+
 	// Extension-based language detection
 	if lang, ok := d.languageMap[ext]; ok {
 		return lang
 	}
-	
+
 	// Shebang-based detection
 	if len(content) > 2 && content[0] == '#' && content[1] == '!' {
 		firstLine := string(bytes.Split(content, []byte("\n"))[0])
@@ -177,10 +170,10 @@ func (d *DefaultFileTypeDetector) GetLanguage(content []byte, path string) strin
 			return "perl"
 		}
 	}
-	
+
 	// Content-based detection
 	contentStr := string(content[:min(1000, len(content))])
-	
+
 	// Python
 	if strings.Contains(contentStr, "import ") || strings.Contains(contentStr, "from ") ||
 		strings.Contains(contentStr, "def ") || strings.Contains(contentStr, "class ") {
@@ -188,7 +181,7 @@ func (d *DefaultFileTypeDetector) GetLanguage(content []byte, path string) strin
 			return "python"
 		}
 	}
-	
+
 	// JavaScript/TypeScript
 	if strings.Contains(contentStr, "function ") || strings.Contains(contentStr, "const ") ||
 		strings.Contains(contentStr, "let ") || strings.Contains(contentStr, "var ") {
@@ -199,19 +192,19 @@ func (d *DefaultFileTypeDetector) GetLanguage(content []byte, path string) strin
 			return "javascript"
 		}
 	}
-	
+
 	// Go
 	if strings.Contains(contentStr, "package ") && strings.Contains(contentStr, "func ") {
 		return "go"
 	}
-	
+
 	// Java
 	if strings.Contains(contentStr, "public class ") || strings.Contains(contentStr, "private ") {
 		if strings.Contains(contentStr, "import java.") {
 			return "java"
 		}
 	}
-	
+
 	// C/C++
 	if strings.Contains(contentStr, "#include ") {
 		if strings.Contains(contentStr, "iostream") || strings.Contains(contentStr, "namespace") {
@@ -219,12 +212,12 @@ func (d *DefaultFileTypeDetector) GetLanguage(content []byte, path string) strin
 		}
 		return "c"
 	}
-	
+
 	// Rust
 	if strings.Contains(contentStr, "fn ") && (strings.Contains(contentStr, "let ") || strings.Contains(contentStr, "mut ")) {
 		return "rust"
 	}
-	
+
 	return ""
 }
 
@@ -236,20 +229,20 @@ func (d *DefaultFileTypeDetector) looksLikeCode(content, path string) bool {
 	if _, ok := d.languageMap[ext]; ok {
 		return true
 	}
-	
+
 	// Check for common code patterns
 	codePatterns := []string{
 		"function ", "def ", "class ", "import ", "package ",
 		"const ", "let ", "var ", "public ", "private ",
 		"#include", "namespace", "func ", "fn ", "impl ",
 	}
-	
+
 	for _, pattern := range codePatterns {
 		if strings.Contains(content, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -261,13 +254,13 @@ func (d *DefaultFileTypeDetector) looksLikeConfig(content, path string) bool {
 		"package.json", "tsconfig.json", "webpack.config", ".gitignore",
 		"requirements.txt", "cargo.toml", "go.mod", "pom.xml",
 	}
-	
+
 	for _, name := range configNames {
 		if strings.Contains(baseName, name) {
 			return true
 		}
 	}
-	
+
 	// Check for config-like content patterns
 	if strings.Contains(content, "=") && strings.Contains(content, "\n") {
 		// Likely a properties or env file
@@ -283,7 +276,7 @@ func (d *DefaultFileTypeDetector) looksLikeConfig(content, path string) bool {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -292,12 +285,12 @@ func (d *DefaultFileTypeDetector) looksLikeData(content string) bool {
 	if strings.HasPrefix(strings.TrimSpace(content), "{") || strings.HasPrefix(strings.TrimSpace(content), "[") {
 		return json.Valid([]byte(content))
 	}
-	
+
 	// Check for XML
 	if strings.HasPrefix(strings.TrimSpace(content), "<?xml") || strings.HasPrefix(strings.TrimSpace(content), "<") {
 		return true
 	}
-	
+
 	// Check for CSV (simple heuristic)
 	lines := strings.Split(content, "\n")
 	if len(lines) > 1 {
@@ -316,7 +309,7 @@ func (d *DefaultFileTypeDetector) looksLikeData(content string) bool {
 			}
 		}
 	}
-	
+
 	// Check for YAML
 	if strings.Contains(content, ":\n") || strings.Contains(content, ": ") {
 		yamlPatterns := []string{"---", "- ", "  - "}
@@ -326,7 +319,7 @@ func (d *DefaultFileTypeDetector) looksLikeData(content string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -334,12 +327,12 @@ func (d *DefaultFileTypeDetector) looksLikeMarkdown(content string) bool {
 	// Check for markdown patterns
 	mdPatterns := []string{
 		"# ", "## ", "### ", // Headers
-		"```",               // Code blocks
-		"* ", "- ", "+ ",    // Lists
-		"[", "](",           // Links
+		"```",            // Code blocks
+		"* ", "- ", "+ ", // Lists
+		"[", "](", // Links
 		"**", "__", "*", "_", // Emphasis
 	}
-	
+
 	matchCount := 0
 	for _, pattern := range mdPatterns {
 		if strings.Contains(content, pattern) {
@@ -349,7 +342,7 @@ func (d *DefaultFileTypeDetector) looksLikeMarkdown(content string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -357,207 +350,207 @@ func (d *DefaultFileTypeDetector) looksLikeHTML(content string) bool {
 	htmlPatterns := []string{
 		"<!DOCTYPE", "<html", "<head", "<body", "<div", "<p>", "<a ",
 	}
-	
+
 	for _, pattern := range htmlPatterns {
 		if strings.Contains(strings.ToLower(content), strings.ToLower(pattern)) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // Helper functions
 
-func initExtensionMap() map[string]FileType {
-	return map[string]FileType{
+func initExtensionMap() map[string]f2.FileType {
+	return map[string]f2.FileType{
 		// Code files
-		".go":     FileTypeCode,
-		".py":     FileTypeCode,
-		".js":     FileTypeCode,
-		".ts":     FileTypeCode,
-		".jsx":    FileTypeCode,
-		".tsx":    FileTypeCode,
-		".java":   FileTypeCode,
-		".c":      FileTypeCode,
-		".cpp":    FileTypeCode,
-		".cc":     FileTypeCode,
-		".h":      FileTypeCode,
-		".hpp":    FileTypeCode,
-		".cs":     FileTypeCode,
-		".rb":     FileTypeCode,
-		".php":    FileTypeCode,
-		".swift":  FileTypeCode,
-		".kt":     FileTypeCode,
-		".rs":     FileTypeCode,
-		".scala":  FileTypeCode,
-		".r":      FileTypeCode,
-		".m":      FileTypeCode,
-		".mm":     FileTypeCode,
-		".pl":     FileTypeCode,
-		".sh":     FileTypeCode,
-		".bash":   FileTypeCode,
-		".zsh":    FileTypeCode,
-		".fish":   FileTypeCode,
-		".ps1":    FileTypeCode,
-		".lua":    FileTypeCode,
-		".vim":    FileTypeCode,
-		
+		".go":    f2.FileTypeCode,
+		".py":    f2.FileTypeCode,
+		".js":    f2.FileTypeCode,
+		".ts":    f2.FileTypeCode,
+		".jsx":   f2.FileTypeCode,
+		".tsx":   f2.FileTypeCode,
+		".java":  f2.FileTypeCode,
+		".c":     f2.FileTypeCode,
+		".cpp":   f2.FileTypeCode,
+		".cc":    f2.FileTypeCode,
+		".h":     f2.FileTypeCode,
+		".hpp":   f2.FileTypeCode,
+		".cs":    f2.FileTypeCode,
+		".rb":    f2.FileTypeCode,
+		".php":   f2.FileTypeCode,
+		".swift": f2.FileTypeCode,
+		".kt":    f2.FileTypeCode,
+		".rs":    f2.FileTypeCode,
+		".scala": f2.FileTypeCode,
+		".r":     f2.FileTypeCode,
+		".m":     f2.FileTypeCode,
+		".mm":    f2.FileTypeCode,
+		".pl":    f2.FileTypeCode,
+		".sh":    f2.FileTypeCode,
+		".bash":  f2.FileTypeCode,
+		".zsh":   f2.FileTypeCode,
+		".fish":  f2.FileTypeCode,
+		".ps1":   f2.FileTypeCode,
+		".lua":   f2.FileTypeCode,
+		".vim":   f2.FileTypeCode,
+
 		// Config files
-		".json":   FileTypeConfig,
-		".yaml":   FileTypeConfig,
-		".yml":    FileTypeConfig,
-		".toml":   FileTypeConfig,
-		".ini":    FileTypeConfig,
-		".conf":   FileTypeConfig,
-		".cfg":    FileTypeConfig,
-		".env":    FileTypeConfig,
-		".properties": FileTypeConfig,
-		
+		".json":       f2.FileTypeConfig,
+		".yaml":       f2.FileTypeConfig,
+		".yml":        f2.FileTypeConfig,
+		".toml":       f2.FileTypeConfig,
+		".ini":        f2.FileTypeConfig,
+		".conf":       f2.FileTypeConfig,
+		".cfg":        f2.FileTypeConfig,
+		".env":        f2.FileTypeConfig,
+		".properties": f2.FileTypeConfig,
+
 		// Data files
-		".xml":    FileTypeData,
-		".csv":    FileTypeData,
-		".tsv":    FileTypeData,
-		".sql":    FileTypeData,
-		
+		".xml": f2.FileTypeData,
+		".csv": f2.FileTypeData,
+		".tsv": f2.FileTypeData,
+		".sql": f2.FileTypeData,
+
 		// Markdown files
-		".md":       FileTypeMarkdown,
-		".markdown": FileTypeMarkdown,
-		".rst":      FileTypeMarkdown,
-		".adoc":     FileTypeMarkdown,
-		
+		".md":       f2.FileTypeMarkdown,
+		".markdown": f2.FileTypeMarkdown,
+		".rst":      f2.FileTypeMarkdown,
+		".adoc":     f2.FileTypeMarkdown,
+
 		// Text files
-		".txt":    FileTypeText,
-		".log":    FileTypeText,
-		".out":    FileTypeText,
-		
+		".txt": f2.FileTypeText,
+		".log": f2.FileTypeText,
+		".out": f2.FileTypeText,
+
 		// Image files
-		".jpg":    FileTypeImage,
-		".jpeg":   FileTypeImage,
-		".png":    FileTypeImage,
-		".gif":    FileTypeImage,
-		".bmp":    FileTypeImage,
-		".svg":    FileTypeImage,
-		".webp":   FileTypeImage,
-		".ico":    FileTypeImage,
-		
+		".jpg":  f2.FileTypeImage,
+		".jpeg": f2.FileTypeImage,
+		".png":  f2.FileTypeImage,
+		".gif":  f2.FileTypeImage,
+		".bmp":  f2.FileTypeImage,
+		".svg":  f2.FileTypeImage,
+		".webp": f2.FileTypeImage,
+		".ico":  f2.FileTypeImage,
+
 		// PDF files
-		".pdf":    FileTypePDF,
-		
+		".pdf": f2.FileTypePDF,
+
 		// Audio files
-		".mp3":    FileTypeAudio,
-		".wav":    FileTypeAudio,
-		".ogg":    FileTypeAudio,
-		".m4a":    FileTypeAudio,
-		".flac":   FileTypeAudio,
-		
+		".mp3":  f2.FileTypeAudio,
+		".wav":  f2.FileTypeAudio,
+		".ogg":  f2.FileTypeAudio,
+		".m4a":  f2.FileTypeAudio,
+		".flac": f2.FileTypeAudio,
+
 		// Video files
-		".mp4":    FileTypeVideo,
-		".avi":    FileTypeVideo,
-		".mov":    FileTypeVideo,
-		".wmv":    FileTypeVideo,
-		".flv":    FileTypeVideo,
-		".webm":   FileTypeVideo,
-		".mkv":    FileTypeVideo,
-		
+		".mp4":  f2.FileTypeVideo,
+		".avi":  f2.FileTypeVideo,
+		".mov":  f2.FileTypeVideo,
+		".wmv":  f2.FileTypeVideo,
+		".flv":  f2.FileTypeVideo,
+		".webm": f2.FileTypeVideo,
+		".mkv":  f2.FileTypeVideo,
+
 		// Binary files
-		".exe":    FileTypeBinary,
-		".dll":    FileTypeBinary,
-		".so":     FileTypeBinary,
-		".dylib":  FileTypeBinary,
-		".a":      FileTypeBinary,
-		".o":      FileTypeBinary,
-		".jar":    FileTypeBinary,
-		".class":  FileTypeBinary,
-		".pyc":    FileTypeBinary,
-		".pyo":    FileTypeBinary,
-		".wasm":   FileTypeBinary,
-		".zip":    FileTypeBinary,
-		".tar":    FileTypeBinary,
-		".gz":     FileTypeBinary,
-		".rar":    FileTypeBinary,
-		".7z":     FileTypeBinary,
+		".exe":   f2.FileTypeBinary,
+		".dll":   f2.FileTypeBinary,
+		".so":    f2.FileTypeBinary,
+		".dylib": f2.FileTypeBinary,
+		".a":     f2.FileTypeBinary,
+		".o":     f2.FileTypeBinary,
+		".jar":   f2.FileTypeBinary,
+		".class": f2.FileTypeBinary,
+		".pyc":   f2.FileTypeBinary,
+		".pyo":   f2.FileTypeBinary,
+		".wasm":  f2.FileTypeBinary,
+		".zip":   f2.FileTypeBinary,
+		".tar":   f2.FileTypeBinary,
+		".gz":    f2.FileTypeBinary,
+		".rar":   f2.FileTypeBinary,
+		".7z":    f2.FileTypeBinary,
 	}
 }
 
 func initLanguageMap() map[string]string {
 	return map[string]string{
-		".go":     "go",
-		".py":     "python",
-		".js":     "javascript",
-		".ts":     "typescript",
-		".jsx":    "javascript",
-		".tsx":    "typescript",
-		".java":   "java",
-		".c":      "c",
-		".cpp":    "cpp",
-		".cc":     "cpp",
-		".h":      "c",
-		".hpp":    "cpp",
-		".cs":     "csharp",
-		".rb":     "ruby",
-		".php":    "php",
-		".swift":  "swift",
-		".kt":     "kotlin",
-		".rs":     "rust",
-		".scala":  "scala",
-		".r":      "r",
-		".m":      "objective-c",
-		".mm":     "objective-c++",
-		".pl":     "perl",
-		".sh":     "shell",
-		".bash":   "bash",
-		".zsh":    "zsh",
-		".fish":   "fish",
-		".ps1":    "powershell",
-		".lua":    "lua",
-		".vim":    "vimscript",
-		".sql":    "sql",
-		".html":   "html",
-		".css":    "css",
-		".scss":   "scss",
-		".sass":   "sass",
-		".less":   "less",
-		".xml":    "xml",
-		".yaml":   "yaml",
-		".yml":    "yaml",
-		".json":   "json",
-		".toml":   "toml",
-		".md":     "markdown",
+		".go":    "go",
+		".py":    "python",
+		".js":    "javascript",
+		".ts":    "typescript",
+		".jsx":   "javascript",
+		".tsx":   "typescript",
+		".java":  "java",
+		".c":     "c",
+		".cpp":   "cpp",
+		".cc":    "cpp",
+		".h":     "c",
+		".hpp":   "cpp",
+		".cs":    "csharp",
+		".rb":    "ruby",
+		".php":   "php",
+		".swift": "swift",
+		".kt":    "kotlin",
+		".rs":    "rust",
+		".scala": "scala",
+		".r":     "r",
+		".m":     "objective-c",
+		".mm":    "objective-c++",
+		".pl":    "perl",
+		".sh":    "shell",
+		".bash":  "bash",
+		".zsh":   "zsh",
+		".fish":  "fish",
+		".ps1":   "powershell",
+		".lua":   "lua",
+		".vim":   "vimscript",
+		".sql":   "sql",
+		".html":  "html",
+		".css":   "css",
+		".scss":  "scss",
+		".sass":  "sass",
+		".less":  "less",
+		".xml":   "xml",
+		".yaml":  "yaml",
+		".yml":   "yaml",
+		".json":  "json",
+		".toml":  "toml",
+		".md":    "markdown",
 	}
 }
 
 func getMimeTypeFromExtension(ext string) string {
 	mimeTypes := map[string]string{
-		".html":  "text/html",
-		".css":   "text/css",
-		".js":    "application/javascript",
-		".json":  "application/json",
-		".xml":   "application/xml",
-		".pdf":   "application/pdf",
-		".zip":   "application/zip",
-		".tar":   "application/x-tar",
-		".gz":    "application/gzip",
-		".jpg":   "image/jpeg",
-		".jpeg":  "image/jpeg",
-		".png":   "image/png",
-		".gif":   "image/gif",
-		".svg":   "image/svg+xml",
-		".mp3":   "audio/mpeg",
-		".wav":   "audio/wav",
-		".mp4":   "video/mp4",
-		".avi":   "video/x-msvideo",
-		".txt":   "text/plain",
-		".csv":   "text/csv",
-		".yaml":  "application/x-yaml",
-		".yml":   "application/x-yaml",
-		".toml":  "application/toml",
+		".html": "text/html",
+		".css":  "text/css",
+		".js":   "application/javascript",
+		".json": "application/json",
+		".xml":  "application/xml",
+		".pdf":  "application/pdf",
+		".zip":  "application/zip",
+		".tar":  "application/x-tar",
+		".gz":   "application/gzip",
+		".jpg":  "image/jpeg",
+		".jpeg": "image/jpeg",
+		".png":  "image/png",
+		".gif":  "image/gif",
+		".svg":  "image/svg+xml",
+		".mp3":  "audio/mpeg",
+		".wav":  "audio/wav",
+		".mp4":  "video/mp4",
+		".avi":  "video/x-msvideo",
+		".txt":  "text/plain",
+		".csv":  "text/csv",
+		".yaml": "application/x-yaml",
+		".yml":  "application/x-yaml",
+		".toml": "application/toml",
 	}
-	
+
 	if mimeType, ok := mimeTypes[ext]; ok {
 		return mimeType
 	}
-	
+
 	return ""
 }
 
@@ -568,7 +561,7 @@ func isValidUTF8(data []byte) bool {
 			i++
 			continue
 		}
-		
+
 		// Multi-byte sequence
 		var size int
 		if data[i]&0xE0 == 0xC0 {
@@ -580,19 +573,19 @@ func isValidUTF8(data []byte) bool {
 		} else {
 			return false
 		}
-		
+
 		if i+size > len(data) {
 			return false
 		}
-		
+
 		for j := 1; j < size; j++ {
 			if data[i+j]&0xC0 != 0x80 {
 				return false
 			}
 		}
-		
+
 		i += size
 	}
-	
+
 	return true
 }

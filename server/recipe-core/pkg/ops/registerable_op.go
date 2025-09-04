@@ -10,6 +10,7 @@ import (
 
 	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -20,7 +21,7 @@ type RegisterableOp interface {
 	Execute(ctx context.Context, input map[string]interface{}) (output map[string]interface{}, err error)
 
 	// ExecuteInline will execute the op inline within a workflow.
-	ExecuteInline(ctx workflow.Context, input map[string]interface{}) (output map[string]interface{}, err error)
+	ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -50,7 +51,7 @@ type OpMetadata struct {
 type OpExecutor interface {
 }
 
-func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, In) (Out, error)) RegisterableOp {
+func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)) RegisterableOp {
 	return &opSpecImpl[In, Out]{
 		metadata:      metadata,
 		inlineHandler: handler,
@@ -75,7 +76,7 @@ func NewActivityMappedOpWithManagement[In any, Out any](metadata OpMetadata, han
 type opSpecImpl[In any, Out any] struct {
 	metadata          OpMetadata
 	handler           func(context.Context, In) (Out, error)
-	inlineHandler     func(workflow.Context, In) (Out, error)
+	inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
 	managementService ManagementService
 }
 
@@ -118,7 +119,7 @@ func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]i
 	return s.Map(), nil
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
+func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
 	if c.inlineHandler == nil {
 		panic("this must be run as an activity, not inline")
 	}
@@ -127,7 +128,7 @@ func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, inputMap map[s
 	if err := decodeWithJsonTags(inputMap, &input); err != nil {
 		return nil, err
 	}
-	objResult, err := c.inlineHandler(ctx, input)
+	objResult, err := c.inlineHandler(ctx, timeout, retry, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing handler: %w", err)
 	}

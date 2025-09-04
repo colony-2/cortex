@@ -6,33 +6,35 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 )
 
 // MockAdapter implements all adapter interfaces for testing
 type MockAdapter struct {
 	// Configurable responses
-	Responses      []Response
-	responseIndex  int
-	
+	Responses     []Response
+	responseIndex int
+
 	// Tool execution simulation
-	ToolResults    map[string]ToolResult
-	ToolExecutor   ToolExecutor
-	
+	ToolResults  map[string]ToolResult
+	ToolExecutor ToolExecutor
+
 	// File handling
 	FileCapabilities FileCapabilities
 	FileResponses    []Response
-	
+
 	// Error injection
-	ErrorOn        string
-	ErrorMessage   string
-	
+	ErrorOn      string
+	ErrorMessage string
+
 	// Tracking
-	mu             sync.Mutex
-	CallHistory    []MockCall
-	
+	mu          sync.Mutex
+	CallHistory []MockCall
+
 	// Behavior configuration
-	SimulateDelay  time.Duration
-	StreamTokens   []string
+	SimulateDelay time.Duration
+	StreamTokens  []string
 }
 
 // MockCall records a method call for verification
@@ -47,11 +49,11 @@ type MockCall struct {
 // NewMockAdapter creates a new mock adapter
 func NewMockAdapter() *MockAdapter {
 	return &MockAdapter{
-		Responses:     []Response{},
-		ToolResults:   make(map[string]ToolResult),
-		CallHistory:   []MockCall{},
+		Responses:   []Response{},
+		ToolResults: make(map[string]ToolResult),
+		CallHistory: []MockCall{},
 		FileCapabilities: FileCapabilities{
-			SupportedTypes: []FileType{FileTypeText, FileTypeCode, FileTypeConfig},
+			SupportedTypes: []f2.FileType{f2.FileTypeText, f2.FileTypeCode, f2.FileTypeConfig},
 			MaxFileSize:    1024 * 1024, // 1MB
 			MaxFileCount:   10,
 			TotalSizeLimit: 10 * 1024 * 1024, // 10MB
@@ -63,7 +65,7 @@ func NewMockAdapter() *MockAdapter {
 func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config) (Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Record the call
 	call := MockCall{
 		Method:    "Generate",
@@ -73,12 +75,12 @@ func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config
 			"config": config,
 		},
 	}
-	
+
 	// Simulate delay if configured
 	if m.SimulateDelay > 0 {
 		time.Sleep(m.SimulateDelay)
 	}
-	
+
 	// Check for error injection
 	if m.ErrorOn == "Generate" {
 		err := fmt.Errorf(m.ErrorMessage)
@@ -86,7 +88,7 @@ func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config
 		m.CallHistory = append(m.CallHistory, call)
 		return Response{}, err
 	}
-	
+
 	// Return configured response
 	var response Response
 	if len(m.Responses) > 0 {
@@ -105,10 +107,10 @@ func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config
 			Model:        config.Model,
 		}
 	}
-	
+
 	call.Response = response
 	m.CallHistory = append(m.CallHistory, call)
-	
+
 	return response, nil
 }
 
@@ -116,7 +118,7 @@ func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config
 func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tools []Tool, config Config) (Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Record the call
 	call := MockCall{
 		Method:    "GenerateWithTools",
@@ -128,12 +130,12 @@ func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tool
 			"tool_count": len(tools),
 		},
 	}
-	
+
 	// Simulate delay if configured
 	if m.SimulateDelay > 0 {
 		time.Sleep(m.SimulateDelay)
 	}
-	
+
 	// Check for error injection
 	if m.ErrorOn == "GenerateWithTools" {
 		err := fmt.Errorf(m.ErrorMessage)
@@ -141,7 +143,7 @@ func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tool
 		m.CallHistory = append(m.CallHistory, call)
 		return Response{}, err
 	}
-	
+
 	// Return configured response or generate one with tool calls
 	var response Response
 	if len(m.Responses) > 0 {
@@ -167,10 +169,10 @@ func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tool
 			Model:        config.Model,
 		}
 	}
-	
+
 	call.Response = response
 	m.CallHistory = append(m.CallHistory, call)
-	
+
 	return response, nil
 }
 
@@ -178,7 +180,7 @@ func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tool
 func (m *MockAdapter) StreamGenerate(ctx context.Context, prompt string, config Config) (<-chan Token, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Record the call
 	call := MockCall{
 		Method:    "StreamGenerate",
@@ -188,7 +190,7 @@ func (m *MockAdapter) StreamGenerate(ctx context.Context, prompt string, config 
 			"config": config,
 		},
 	}
-	
+
 	// Check for error injection
 	if m.ErrorOn == "StreamGenerate" {
 		err := fmt.Errorf(m.ErrorMessage)
@@ -196,19 +198,19 @@ func (m *MockAdapter) StreamGenerate(ctx context.Context, prompt string, config 
 		m.CallHistory = append(m.CallHistory, call)
 		return nil, err
 	}
-	
+
 	// Create stream channel
 	stream := make(chan Token, len(m.StreamTokens))
-	
+
 	// Send configured tokens or generate default ones
 	go func() {
 		defer close(stream)
-		
+
 		tokens := m.StreamTokens
 		if len(tokens) == 0 {
 			tokens = []string{"Mock", " streaming", " response", " to:", " ", prompt}
 		}
-		
+
 		for _, token := range tokens {
 			select {
 			case <-ctx.Done():
@@ -220,17 +222,17 @@ func (m *MockAdapter) StreamGenerate(ctx context.Context, prompt string, config 
 			}
 		}
 	}()
-	
+
 	m.CallHistory = append(m.CallHistory, call)
-	
+
 	return stream, nil
 }
 
 // GenerateWithFiles implements FileAdapter interface
-func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []File, config Config) (Response, error) {
+func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, files []f2.File, config Config) (Response, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	// Record the call
 	call := MockCall{
 		Method:    "GenerateWithFiles",
@@ -241,7 +243,7 @@ func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, file
 			"config":     config,
 		},
 	}
-	
+
 	// Check for error injection
 	if m.ErrorOn == "GenerateWithFiles" {
 		err := fmt.Errorf(m.ErrorMessage)
@@ -249,7 +251,7 @@ func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, file
 		m.CallHistory = append(m.CallHistory, call)
 		return Response{}, err
 	}
-	
+
 	// Return configured response
 	var response Response
 	if len(m.FileResponses) > 0 {
@@ -267,10 +269,10 @@ func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, file
 			Model:        config.Model,
 		}
 	}
-	
+
 	call.Response = response
 	m.CallHistory = append(m.CallHistory, call)
-	
+
 	return response, nil
 }
 
@@ -280,7 +282,7 @@ func (m *MockAdapter) GetFileCapabilities() FileCapabilities {
 }
 
 // ValidateFile implements FileAdapter interface
-func (m *MockAdapter) ValidateFile(file File) error {
+func (m *MockAdapter) ValidateFile(file f2.File) error {
 	// Check file type
 	supported := false
 	for _, t := range m.FileCapabilities.SupportedTypes {
@@ -289,16 +291,16 @@ func (m *MockAdapter) ValidateFile(file File) error {
 			break
 		}
 	}
-	
+
 	if !supported {
 		return fmt.Errorf("file type %s not supported", file.Type)
 	}
-	
+
 	// Check file size
 	if int64(len(file.Content)) > m.FileCapabilities.MaxFileSize {
 		return fmt.Errorf("file exceeds maximum size")
 	}
-	
+
 	return nil
 }
 
@@ -319,14 +321,14 @@ func (m *MockAdapter) GenerateAndExecuteTools(
 	if err != nil {
 		return ExecutableToolResponse{}, err
 	}
-	
+
 	response := ExecutableToolResponse{
 		Response:          baseResponse,
 		ToolResults:       []ToolResult{},
 		ExecutionErrors:   []ToolExecutionError{},
 		ExecutionMetadata: make(map[string]interface{}),
 	}
-	
+
 	// Execute tools if configured
 	if config.AutoExecute && len(baseResponse.ToolCalls) > 0 {
 		for _, call := range baseResponse.ToolCalls {
@@ -347,10 +349,10 @@ func (m *MockAdapter) GenerateAndExecuteTools(
 			}
 		}
 	}
-	
+
 	response.ExecutionMetadata["mock"] = true
 	response.ExecutionMetadata["tools_executed"] = len(response.ToolResults)
-	
+
 	return response, nil
 }
 
@@ -358,13 +360,13 @@ func (m *MockAdapter) GenerateAndExecuteTools(
 type MockToolExecutor struct {
 	// Predefined results
 	Results map[string]interface{}
-	
+
 	// Execution tracking
 	ExecutedCalls []ToolCall
-	
+
 	// Error simulation
 	ErrorOn string
-	
+
 	// Available tools
 	Tools []Tool
 }
@@ -388,7 +390,7 @@ func NewMockToolExecutor() *MockToolExecutor {
 func (e *MockToolExecutor) ExecuteTool(ctx context.Context, call ToolCall, config ToolExecutionConfig) (ToolResult, error) {
 	// Track execution
 	e.ExecutedCalls = append(e.ExecutedCalls, call)
-	
+
 	// Check for error simulation
 	if e.ErrorOn == call.Name {
 		return ToolResult{
@@ -398,7 +400,7 @@ func (e *MockToolExecutor) ExecuteTool(ctx context.Context, call ToolCall, confi
 			Error:      "simulated error",
 		}, fmt.Errorf("simulated error for tool: %s", call.Name)
 	}
-	
+
 	// Return configured result or generate mock
 	result := ToolResult{
 		ToolCallID: call.ID,
@@ -406,14 +408,14 @@ func (e *MockToolExecutor) ExecuteTool(ctx context.Context, call ToolCall, confi
 		Success:    true,
 		Metadata:   map[string]interface{}{"mock": true},
 	}
-	
+
 	if res, ok := e.Results[call.Name]; ok {
 		resultJSON, _ := json.Marshal(res)
 		result.Result = json.RawMessage(resultJSON)
 	} else {
 		result.Result = json.RawMessage(`{"status": "executed", "mock": true}`)
 	}
-	
+
 	return result, nil
 }
 
@@ -439,7 +441,7 @@ func (e *MockToolExecutor) GetAvailableTools() []Tool {
 func (m *MockAdapter) GetCallCount(method string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	count := 0
 	for _, call := range m.CallHistory {
 		if call.Method == method {
@@ -453,7 +455,7 @@ func (m *MockAdapter) GetCallCount(method string) int {
 func (m *MockAdapter) GetLastCall(method string) *MockCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	for i := len(m.CallHistory) - 1; i >= 0; i-- {
 		if m.CallHistory[i].Method == method {
 			call := m.CallHistory[i]
@@ -467,7 +469,7 @@ func (m *MockAdapter) GetLastCall(method string) *MockCall {
 func (m *MockAdapter) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.CallHistory = []MockCall{}
 	m.responseIndex = 0
 	m.ErrorOn = ""
@@ -478,7 +480,7 @@ func (m *MockAdapter) Reset() {
 func (m *MockAdapter) SetResponse(response Response) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.Responses = append(m.Responses, response)
 }
 
@@ -486,7 +488,7 @@ func (m *MockAdapter) SetResponse(response Response) {
 func (m *MockAdapter) SetError(method, message string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.ErrorOn = method
 	m.ErrorMessage = message
 	if m.ErrorMessage == "" {
