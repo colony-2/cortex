@@ -1,19 +1,17 @@
 {
   "name": "${localWorkspaceFolderBasename}",
-  "image": "golang:1.24-bookworm",
+  "image": "debian-dev:dev",
+  "capAdd": ["NET_ADMIN"],
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {},
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0.5": {}
   },
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/src",
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
-    "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,readonly",
     "source=${localEnv:HOME}/.cache/go-build,target=/go/pkg,type=bind",
     "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind",
-    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.codex,target=/home/devuser/.codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached"
   ],
-  "remoteUser": "vscode",
-  "postCreateCommand": "go version"
+  "remoteUser": "devuser",
+  "postCreateCommand": "/usr/local/sbin/bootstrap-proxy.sh"
 }

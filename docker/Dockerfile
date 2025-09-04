@@ -38,7 +38,7 @@ RUN set -eux; \
        bzip2 zip nano vim-tiny less lsb-release apt-transport-https dialog \
        libc6 libgcc1 libkrb5-3 libgssapi-krb5-2 libstdc++6 zlib1g locales sudo \
        ncdu man-db strace manpages manpages-dev init-system-helpers libssl3 iptables \
-       supervisor inotify-tools tinyproxy zsh \
+       supervisor inotify-tools tinyproxy dnsmasq zsh \
        "$icu_pkg" "$lttng_pkg"; \
     rm -rf /var/lib/apt/lists/*
 
@@ -62,6 +62,17 @@ RUN set -euxo pipefail && \
     printf '\nFilter "/etc/tinyproxy/allowlist.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
 COPY tinyproxy-allowlist.conf /etc/tinyproxy/allowlist.conf
 RUN set -euxo pipefail && chown -R tinyproxy:tinyproxy /etc/tinyproxy || true
+ # dnsmasq base config (forward only allowed domains; others SERVFAIL)
+RUN set -euxo pipefail && printf '%s\n' \
+    'no-resolv' \
+    'bind-interfaces' \
+    'listen-address=127.0.0.1' \
+    'conf-dir=/etc/dnsmasq.d,*.conf' \
+    > /etc/dnsmasq.conf
+RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d
+COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
+RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh && \
+    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/tinyproxy/allowlist.conf /etc/dnsmasq.d/allowlist.conf
 
 # (moved supervisord + egress setup copies to later layer)
 
@@ -109,7 +120,7 @@ RUN set -euxo pipefail && python3 -m pip --version
 # - OpenAI CLI
 # - Google Gemini CLI
 # - Claude Code CLI
-RUN set -euxo pipefail && npm -g install openai @google/gemini-cli claude-code && npm cache clean --force
+RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code && npm cache clean --force
 
 ## Users, shells, bootstrap, workspace (late config layer)
 RUN set -euxo pipefail && useradd -m -u 1000 -s /bin/bash devuser
@@ -126,7 +137,10 @@ RUN set -euxo pipefail && \
     git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/devuser/.oh-my-zsh && \
     cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc && \
     chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc && \
-    printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1\n' >> /home/devuser/.zshrc
+    printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc
+RUN set -euxo pipefail && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc && chown devuser:devuser /home/devuser/.bashrc
+RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh && chmod 0644 /etc/profile.d/10-proxy.sh
+RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv
 # Bootstrap proxy on root interactive shells
 COPY scripts/bootstrap-proxy.sh /usr/local/sbin/bootstrap-proxy.sh
 RUN chmod +x /usr/local/sbin/bootstrap-proxy.sh
@@ -222,7 +236,12 @@ RUN set -euxo pipefail \
     && git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/devuser/.oh-my-zsh \
     && cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc \
     && chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc \
-    && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1\n' >> /home/devuser/.zshrc \
+    && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc \
+    && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc \
+    && chown devuser:devuser /home/devuser/.bashrc \
+    && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh \
+    && chmod 0644 /etc/profile.d/10-proxy.sh \
+    && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv \
     && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf \
     && if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
          sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \

@@ -23,8 +23,35 @@ fi
 if command -v iptables >/dev/null 2>&1; then
   iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null || \
     iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT
+  # DNS local resolver
+  # Redirect all devuser DNS to local dnsmasq, regardless of /etc/resolv.conf
+  iptables -t nat -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || \
+    iptables -t nat -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || \
+    iptables -t nat -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport 53 -j REDIRECT --to-ports 53
+  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d 127.0.0.1 --dport 53 -j ACCEPT 2>/dev/null || \
+    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d 127.0.0.1 --dport 53 -j ACCEPT
+  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport 53 -j ACCEPT 2>/dev/null || \
+    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport 53 -j ACCEPT
   iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT 2>/dev/null || \
     iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
 fi
+
+# IPv6: block all egress for dev UID except ::1 (proxy/DNS)
+if command -v ip6tables >/dev/null 2>&1; then
+  # Allow proxy on ::1:8888 (TCP)
+  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null || \
+    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$PROXY_PORT" -j ACCEPT
+  # Allow local DNS on ::1:53 (TCP/UDP)
+  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d ::1 --dport 53 -j ACCEPT 2>/dev/null || \
+    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d ::1 --dport 53 -j ACCEPT
+  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport 53 -j ACCEPT 2>/dev/null || \
+    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport 53 -j ACCEPT
+  # Reject all other IPv6 egress for dev UID
+  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT 2>/dev/null || \
+    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
+fi
+
+# No resolv.conf changes; DNS redirection is per-UID via iptables NAT
 
 exit 0
