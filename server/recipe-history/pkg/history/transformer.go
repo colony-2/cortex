@@ -224,44 +224,70 @@ func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutio
 }
 
 // extractActivityName extracts user-friendly activity name
-func (t *Transformer) extractActivityName(temporalName string, recipe *recipe.Recipe) string {
-	// If we have recipe metadata, try to map to original activity name
-	if recipe != nil && recipe.Recipe != nil {
-		// Check sequence nodes for matching activity names
-		for _, node := range recipe.Recipe.Sequence {
-			// Check if Temporal name contains the node op or ID
-			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.Op)) ||
-			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.ID)) {
-				return node.Op
-			}
-		}
-		
-		// Check parallel nodes
-		for _, node := range recipe.Recipe.Parallel {
-			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.Op)) ||
-			   strings.Contains(strings.ToLower(temporalName), strings.ToLower(node.ID)) {
-				return node.Op
-			}
-		}
-		
-		// Check shared nodes
-		for name, sharedNode := range recipe.Recipe.Shared {
-			// Check if Temporal name contains the shared node name or op
-			if strings.Contains(strings.ToLower(temporalName), strings.ToLower(name)) ||
-			   (sharedNode.Op != "" && strings.Contains(strings.ToLower(temporalName), strings.ToLower(sharedNode.Op))) {
-				return name
-			}
-		}
-	}
+func (t *Transformer) extractActivityName(temporalName string, r *recipe.Recipe) string {
+    // Attempt to derive a friendly name by scanning the recipe structure
+    if r != nil && r.RecipeImpl != nil {
+        // Collect possible op names and IDs from the recipe tree
+        candidates := make([]string, 0, 8)
 
-	// Otherwise, clean up the Temporal name
-	// Remove common prefixes/suffixes
-	name := temporalName
-	name = strings.TrimPrefix(name, "Activity")
-	name = strings.TrimSuffix(name, "Activity")
+        // Helper to add a candidate if non-empty
+        add := func(s string) { if s != "" { candidates = append(candidates, s) } }
 
-	// Convert from camelCase to kebab-case
-	return toKebabCase(name)
+        // Walk the recipe using the public interfaces
+        switch rec := r.RecipeImpl.(type) {
+        case *recipe.RecipeOp:
+            add(rec.Op)
+            add(rec.ID)
+        case *recipe.RecipeSequence:
+            for _, n := range rec.Sequence {
+                switch nn := n.NodeImpl.(type) {
+                case *recipe.NodeOp:
+                    add(nn.Op)
+                    add(nn.ID)
+                case *recipe.NodeSequence:
+                    for _, cn := range nn.Sequence {
+                        if nop, ok := cn.NodeImpl.(*recipe.NodeOp); ok {
+                            add(nop.Op)
+                            add(nop.ID)
+                        }
+                    }
+                case *recipe.NodeState:
+                    if nn.States != nil {
+                        for _, st := range nn.States.States {
+                            if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
+                                add(nop.Op)
+                                add(nop.ID)
+                            }
+                        }
+                    }
+                }
+            }
+        case *recipe.RecipeState:
+            if rec.States != nil {
+                for _, st := range rec.States.States {
+                    if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
+                        add(nop.Op)
+                        add(nop.ID)
+                    }
+                }
+            }
+        }
+
+        // Try to match Temporal activity name against collected candidates
+        tname := strings.ToLower(temporalName)
+        for _, c := range candidates {
+            lc := strings.ToLower(c)
+            if lc != "" && strings.Contains(tname, lc) {
+                return c
+            }
+        }
+    }
+
+    // Fallback: normalize the Temporal name
+    name := temporalName
+    name = strings.TrimPrefix(name, "Activity")
+    name = strings.TrimSuffix(name, "Activity")
+    return toKebabCase(name)
 }
 
 // pendingActivityToExecution converts pending activity to execution

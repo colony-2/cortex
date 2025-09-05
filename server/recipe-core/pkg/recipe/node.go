@@ -10,11 +10,17 @@ import (
 )
 
 type Node struct {
-	NodeImpl
+    NodeImpl
 }
 
 func (n Node) GetMetadata() NodeMetadata {
-	return n.NodeImpl.GetMetadata()
+    return n.NodeImpl.GetMetadata()
+}
+
+// MarshalYAML ensures Node marshals to the same shape expected by UnmarshalYAML
+// by delegating directly to the underlying concrete implementation.
+func (n Node) MarshalYAML() (interface{}, error) {
+    return n.NodeImpl, nil
 }
 
 func (Node) JSONSchema() *jsonschema.Schema {

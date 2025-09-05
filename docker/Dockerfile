@@ -59,9 +59,10 @@ RUN set -euxo pipefail && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyprox
 RUN set -euxo pipefail && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
 RUN set -euxo pipefail && \
     grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || \
-    printf '\nFilter "/etc/tinyproxy/allowlist.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
-COPY tinyproxy-allowlist.conf /etc/tinyproxy/allowlist.conf
-RUN set -euxo pipefail && chown -R tinyproxy:tinyproxy /etc/tinyproxy || true
+    printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
+RUN set -euxo pipefail && mkdir -p /etc/shai
+COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
+RUN set -euxo pipefail && chown -R tinyproxy:tinyproxy /etc/shai || true
  # dnsmasq base config (forward only allowed domains; others SERVFAIL)
 RUN set -euxo pipefail && printf '%s\n' \
     'no-resolv' \
@@ -72,7 +73,7 @@ RUN set -euxo pipefail && printf '%s\n' \
 RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d
 COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
 RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh && \
-    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/tinyproxy/allowlist.conf /etc/dnsmasq.d/allowlist.conf
+    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf
 
 # (moved supervisord + egress setup copies to later layer)
 
@@ -137,8 +138,14 @@ RUN set -euxo pipefail && \
     git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/devuser/.oh-my-zsh && \
     cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc && \
     chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc && \
-    printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc
-RUN set -euxo pipefail && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc && chown devuser:devuser /home/devuser/.bashrc
+    printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc && \
+    printf '\n# Auto-cd to /src for interactive zsh\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.zshrc && \
+    printf '# Auto-cd to /src for login zsh\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.zprofile && \
+    chown devuser:devuser /home/devuser/.zprofile
+RUN set -euxo pipefail && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc && \
+    printf '\n# Auto-cd to /src for interactive bash\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.bashrc && \
+    printf '# Auto-cd to /src for login bash\nif [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.bash_profile && \
+    chown devuser:devuser /home/devuser/.bashrc /home/devuser/.bash_profile
 RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh && chmod 0644 /etc/profile.d/10-proxy.sh
 RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv
 # Bootstrap proxy on root interactive shells
@@ -156,6 +163,17 @@ COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
 # Workspace
 RUN set -euxo pipefail && mkdir -p /src && chown -R 1000:1000 /src
 WORKDIR /src
+
+# Ensure toolchains are on PATH and add global symlinks (dev stage)
+RUN set -euxo pipefail && \
+    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
+    chmod 0644 /etc/profile.d/10-lang-paths.sh && \
+    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt && \
+    ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo && \
+    ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc && \
+    ln -sf /usr/local/cargo/bin/rustup /usr/local/bin/rustup
 
 # Default user remains root as requested (devuser also available)
 # To switch default user, uncomment the next line:
@@ -237,11 +255,20 @@ RUN set -euxo pipefail \
     && cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc \
     && chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc \
     && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc \
+    && printf '\n# Auto-cd to /src for interactive zsh\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.zshrc \
+    && printf '# Auto-cd to /src for login zsh\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.zprofile \
     && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc \
-    && chown devuser:devuser /home/devuser/.bashrc \
+    && printf '\n# Auto-cd to /src for interactive bash\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.bashrc \
+    && printf '# Auto-cd to /src for login bash\nif [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.bash_profile \
+    && chown devuser:devuser /home/devuser/.bashrc /home/devuser/.bash_profile /home/devuser/.zprofile \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh \
     && chmod 0644 /etc/profile.d/10-proxy.sh \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv \
+    && printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh \
+    && chmod 0644 /etc/profile.d/10-lang-paths.sh \
+    && printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv \
+    && printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc \
+    && printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc \
     && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf \
     && if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
          sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
@@ -251,10 +278,15 @@ RUN set -euxo pipefail \
     && grep -qE '^[# ]*Allow 127\.0\.0\.1' /etc/tinyproxy/tinyproxy.conf || printf 'Allow 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf \
     && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true \
     && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true \
-    && grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || printf '\nFilter "/etc/tinyproxy/allowlist.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf \
-    && chown -R tinyproxy:tinyproxy /etc/tinyproxy || true \
+    && grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf \
+    && mkdir -p /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true \
     && mkdir -p /var/log/tinyproxy && chown tinyproxy:tinyproxy /var/log/tinyproxy \
     && sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf \
+    && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo \
+    && ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc \
+    && ln -sf /usr/local/cargo/bin/rustup /usr/local/bin/rustup \
     && mkdir -p /src \
     && chown -R 1000:1000 /src \
     && rm -rf /var/lib/apt/lists/* \
@@ -272,6 +304,18 @@ COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
 RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
 COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
 COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
-COPY tinyproxy-allowlist.conf /etc/tinyproxy/allowlist.conf
+COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
 EXPOSE 8888
 ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
+RUN set -euxo pipefail && \
+    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
+    chmod 0644 /etc/profile.d/10-lang-paths.sh && \
+    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
+    printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc && \
+    printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc && \
+    chown devuser:devuser /home/devuser/.bashrc /home/devuser/.zshrc && \
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt && \
+    ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo && \
+    ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc && \
+    ln -sf /usr/local/cargo/bin/rustup /usr/local/bin/rustup

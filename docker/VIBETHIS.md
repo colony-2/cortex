@@ -23,7 +23,7 @@
 
 ## Tinyproxy + Allowlist
 - Config: `/etc/tinyproxy/tinyproxy.conf` (Listen 127.0.0.1; Allow 127.0.0.1; LogFile /var/log/tinyproxy/tinyproxy.log).
-- Allowlist: `/etc/tinyproxy/allowlist.conf` (default includes OpenAI, Anthropic, Gemini, package registries, GitHub Packages, container registries, docs).
+- Allowlist: `/etc/shai/allowed_domains.conf` (default includes OpenAI, Anthropic, Gemini, package registries, GitHub Packages, container registries, docs).
 - Auto-reload on changes via inotify watcher under supervisord.
 - Logs: `/var/log/tinyproxy/*.log`.
 
@@ -47,7 +47,7 @@
 ## Change Rules
 - AI CLI installs: via npm only (no pipx for non-Python tools).
 - If changing proxy port or bind, update all of: tinyproxy.conf, allowlist watcher, bootstrap script, dev-egress-setup (iptables), devuser shell env.
-- If adding domains/registries, edit `/etc/tinyproxy/allowlist.conf` (source file: `tinyproxy-allowlist.conf`).
+- If adding domains/registries, edit `/etc/shai/allowed_domains.conf` (baked default comes from `shai-allowed-domains.conf`).
 - If bumping Node, ensure `npm@latest` engine compatibility (or pin npm instead).
 - Preserve `devuser` uid 1000 and `WORKDIR /src`.
 

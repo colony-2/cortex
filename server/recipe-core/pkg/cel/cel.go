@@ -44,14 +44,15 @@ func (e CELExpr) AlwaysTrue() bool {
 }
 
 func NewCELExpr(expr string) (*CELExpr, error) {
-	program, err := compile(expr)
-	if err != nil {
-		return nil, err
-	}
-	return &CELExpr{
-		expr:    expr,
-		program: program,
-	}, nil
+    // Treat empty expressions as always-true conditions
+    if strings.TrimSpace(expr) == "" {
+        return &CELExpr{expr: "", program: nil}, nil
+    }
+    program, err := compile(expr)
+    if err != nil {
+        return nil, err
+    }
+    return &CELExpr{expr: expr, program: program}, nil
 }
 
 func (e CELExpr) AsBool(inputsMap map[string]interface{}) (bool, error) {
@@ -71,9 +72,12 @@ func (e CELExpr) AsBool(inputsMap map[string]interface{}) (bool, error) {
 }
 
 func (e CELExpr) Evaluate(inputsMap map[string]interface{}) (interface{}, error) {
-	if e.program == nil {
-		panic("expression not compiled")
-	}
+    if e.AlwaysTrue() {
+        return true, nil
+    }
+    if e.program == nil {
+        return nil, fmt.Errorf("expression not compiled")
+    }
 	val, _, err := e.program.Eval(map[string]interface{}{
 		"inputs": &DynamicMapValue{data: inputsMap},
 	})
@@ -89,18 +93,25 @@ func (e CELExpr) MarshalYAML() (interface{}, error) {
 }
 
 func (e *CELExpr) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
+    var s string
+    if err := unmarshal(&s); err != nil {
+        return err
+    }
 
-	program, err := compile(s)
-	if err != nil {
-		return err
-	}
-	e.expr = s
-	e.program = program
-	return nil
+    // Empty expression is allowed and treated as true
+    if strings.TrimSpace(s) == "" {
+        e.expr = ""
+        e.program = nil
+        return nil
+    }
+
+    program, err := compile(s)
+    if err != nil {
+        return err
+    }
+    e.expr = s
+    e.program = program
+    return nil
 }
 
 // Evaluate evaluates a CEL expression with the given data
@@ -283,9 +294,10 @@ func convertToCELValue(val interface{}, path []string) ref.Val {
 	case []byte:
 		return types.Bytes(v)
 
-	default:
-		panic(fmt.Sprintf("unsupported type: %T", val))
-	}
+    default:
+        // Fail fast with a clear error rather than panic
+        return types.NewErr("unsupported type: %T", val)
+    }
 }
 
 type mapIterator struct {

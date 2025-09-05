@@ -10,7 +10,8 @@
     "source=${localEnv:HOME}/.cache/go-build,target=/go/pkg,type=bind",
     "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind",
     "source=${localEnv:HOME}/.codex,target=/home/devuser/.codex,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached"
+    "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/.devcontainer/allowed_domains.conf,target=/etc/shai/allowed_domains.conf,type=bind,consistency=cached,ro"
   ],
   "remoteUser": "devuser",
   "postCreateCommand": "/usr/local/sbin/bootstrap-proxy.sh"

@@ -6,10 +6,7 @@ import (
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-	export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/export"
 	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +14,6 @@ import (
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 
-	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	recipeworkflows "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflows"

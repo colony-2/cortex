@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	opsactivity "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	opsactivity "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

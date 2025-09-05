@@ -63,16 +63,18 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
 func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
-	metadata := activity.GetMetadata()
-	registration := ActivityRegistration{
-		Activity: activity,
-		Metadata: metadata,
-	}
+    metadata := activity.GetMetadata()
+    registration := ActivityRegistration{
+        Activity: activity,
+        Metadata: metadata,
+    }
 
-	// Generate schemas immediately using reflection
-	r.generateSchemasForRegistration(&registration)
-	r.activities[metadata.Type] = registration
-	return nil
+    // Only generate schemas for activities (inline ops are not activities)
+    if activity.ExecuteAsActivity() {
+        r.generateSchemasForRegistration(&registration)
+    }
+    r.activities[metadata.Type] = registration
+    return nil
 }
 
 // Register accepts any generic RegisterableOp from the activity module

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ALLOWLIST_FILE=${1:-/etc/tinyproxy/allowlist.conf}
+ALLOWLIST_FILE=${1:-/etc/shai/allowed_domains.conf}
 OUT_FILE=${2:-/etc/dnsmasq.d/allowlist.conf}
 UPSTREAM4=${UPSTREAM4:-1.1.1.1}
 UPSTREAM4_ALT=${UPSTREAM4_ALT:-9.9.9.9}

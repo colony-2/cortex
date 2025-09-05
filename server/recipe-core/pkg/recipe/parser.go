@@ -18,15 +18,16 @@ func LoadRecipeFromReader(r io.Reader) (*Recipe, error) {
 }
 
 func resolve(recipe *Recipe, err error) (*Recipe, error) {
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode recipe: %w", err)
-	}
-	resolver := NewSharedNodeResolver(recipe.GetMetdata().Defs)
-	walker := NewNodeWalker(resolver)
-	result, err := walker.Walk(*recipe)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
-	}
+    if err != nil {
+        // Return decode errors as-is to preserve exact validation messages
+        return nil, err
+    }
+    resolver := NewSharedNodeResolver(recipe.GetMetdata().Defs)
+    walker := NewNodeWalker(resolver)
+    result, err := walker.Walk(*recipe)
+    if err != nil {
+        return nil, fmt.Errorf("failed to resolve shared nodes: %w", err)
+    }
 
-	return &result, err
+    return &result, err
 }
