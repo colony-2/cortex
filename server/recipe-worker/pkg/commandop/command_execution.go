@@ -54,7 +54,6 @@ func GetOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:           "command_execution",
-			Name:           "Command Execution",
 			Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
 			Version:        "1.0.0",
 			DefaultTimeout: 5 * time.Minute,

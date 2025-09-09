@@ -123,7 +123,6 @@ func GetEnhancedOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:           "llm_inference2",
-			Name:           "llm_inference2",
 			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
 			Version:        "1.0.0",
 			DefaultTimeout: 5 * time.Minute,
@@ -135,7 +134,6 @@ func GetEnhancedOp() ops.RegisterableOp {
 func (a *EnhancedLLMInferenceActivity) GetMetadata() ops.OpMetadata {
 	return ops.OpMetadata{
 		Type:        "llm_inference", // Same type for backward compatibility
-		Name:        "LLM Inference",
 		Description: "Enhanced LLM inference with file and tool support",
 		Version:     "2.0.0",
 	}

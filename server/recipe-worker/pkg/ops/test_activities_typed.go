@@ -12,7 +12,6 @@ func registerTypedTestActivities() {
 	contextLogger := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "context_logger",
-			Name: "context_logger",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
@@ -26,7 +25,6 @@ func registerTypedTestActivities() {
 	batchValidator := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "batch_validator",
-			Name: "batch_validator",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			if input.Items == nil {
@@ -45,7 +43,6 @@ func registerTypedTestActivities() {
 	geminiReport := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "gemini_report_activity",
-			Name: "gemini_report_activity",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
@@ -60,7 +57,6 @@ func registerTypedTestActivities() {
 	llmActivity := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "llm",
-			Name: "llm",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			prompt := input.Message
@@ -81,7 +77,6 @@ func registerTypedTestActivities() {
 	httpActivity := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "http",
-			Name: "http",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
@@ -112,7 +107,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				output := GenericOutput{
@@ -144,7 +138,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Check if we should simulate an error
@@ -174,7 +167,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -213,7 +205,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -277,7 +268,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -316,7 +306,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -361,7 +350,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Simulate errors for certain activities
@@ -395,7 +383,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -421,7 +408,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
@@ -437,7 +423,6 @@ func registerTypedTestActivities() {
 	recipeActivity := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "recipe",
-			Name: "recipe",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			// For test purposes, simulate recipe invocation
@@ -515,7 +500,6 @@ func registerTypedTestActivities() {
 		activity := recipeops.NewActivityMappedOp(
 			recipeops.OpMetadata{
 				Type: name,
-				Name: name,
 			},
 			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{

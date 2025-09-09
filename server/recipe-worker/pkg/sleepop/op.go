@@ -32,7 +32,6 @@ type SleepOutput struct {
 func GetOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOp(ops.OpMetadata{
 		Type:           "sleep",
-		Name:           "Sleep/Delay",
 		Description:    "Pauses execution for a specified duration",
 		Version:        "1.0.0",
 		DefaultTimeout: 24 * time.Hour, // Long timeout to support long sleeps

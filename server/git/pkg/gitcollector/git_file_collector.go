@@ -83,7 +83,6 @@ func GetOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "git_file_collector",
-			Name:        "Git File Collector",
 			Description: "Collects files from a git repository with filtering and metadata",
 			Version:     "1.0.0",
 		},

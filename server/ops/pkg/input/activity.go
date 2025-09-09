@@ -67,7 +67,6 @@ func GetOp() ops.RegisterableOp {
 func (a *InputActivity) GetMetadata() ops.OpMetadata {
 	return ops.OpMetadata{
 		Type:           "input",
-		Name:           "User Input Collection",
 		Description:    "Collects user input through interactive forms with support for various field types",
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,

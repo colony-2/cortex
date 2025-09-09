@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestProviderInput and TestProviderOutput types for test activities
@@ -29,7 +29,6 @@ func init() {
 	httpActivityOp := ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "http-activity",
-			Name:        "http-activity",  // Name must match what's in YAML op field
 			Description: "Test HTTP activity for provider integration",
 			Version:     "1.0.0",
 		},
@@ -45,7 +44,6 @@ func init() {
 	grpcActivityOp := ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "grpc-activity",
-			Name:        "grpc-activity",  // Name must match what's in YAML op field
 			Description: "Test gRPC activity for provider integration",
 			Version:     "1.0.0",
 		},
@@ -115,12 +113,12 @@ func TestProviderIntegration_Basic(t *testing.T) {
 	assert.NotNil(t, testRecipe.Recipe)
 	recipeSeq := testRecipe.Recipe.RecipeImpl.(*recipe.RecipeSequence)
 	assert.Len(t, recipeSeq.Sequence, 2)
-	
+
 	// Test the nodes have the expected configuration
 	httpNode := recipeSeq.Sequence[0].NodeImpl.(*recipe.NodeOp)
 	assert.Equal(t, "http-activity", httpNode.Op)
 	assert.Equal(t, "http", httpNode.NodeMetadata.Inputs["type"])
-	
+
 	grpcNode := recipeSeq.Sequence[1].NodeImpl.(*recipe.NodeOp)
 	assert.Equal(t, "grpc-activity", grpcNode.Op)
 	assert.Equal(t, "grpc", grpcNode.NodeMetadata.Inputs["type"])

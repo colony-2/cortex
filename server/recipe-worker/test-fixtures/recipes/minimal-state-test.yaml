@@ -2,7 +2,7 @@ id: minimal_state_test
 desc: Minimal state machine test
 version: 1.0.0
 state:
-  initial_state: start
+  initial: start
   states:
     start:
       op: echo_activity

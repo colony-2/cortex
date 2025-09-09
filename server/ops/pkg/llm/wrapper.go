@@ -40,7 +40,6 @@ func GetOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:           "llm_inference",
-			Name:           "llm_inference",
 			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
 			Version:        "1.0.0",
 			DefaultTimeout: 5 * time.Minute,

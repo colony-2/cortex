@@ -15,9 +15,6 @@ func TestCommandExecutionActivity_GetMetadata(t *testing.T) {
 	if metadata.Type != "command_execution" {
 		t.Errorf("Expected type 'command_execution', got '%s'", metadata.Type)
 	}
-	if metadata.Name != "Command Execution" {
-		t.Errorf("Expected name 'Command Execution', got '%s'", metadata.Name)
-	}
 	if metadata.Version != "1.0.0" {
 		t.Errorf("Expected version '1.0.0', got '%s'", metadata.Version)
 	}

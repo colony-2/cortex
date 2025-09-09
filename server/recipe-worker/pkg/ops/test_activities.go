@@ -65,7 +65,6 @@ func registerTestActivities() {
 	echoActivity := recipeops.NewActivityMappedOp(
 		recipeops.OpMetadata{
 			Type: "echo_activity",
-			Name: "echo_activity",
 		},
 		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
 			message := input.Message

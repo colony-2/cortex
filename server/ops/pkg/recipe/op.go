@@ -36,7 +36,6 @@ type RecipeActivityWrapper struct {
 func GetOp() ops.RegisterableOp {
 	return ops.NewInlineOp(ops.OpMetadata{
 		Type:           "recipe",
-		Name:           "Recipe Invocation",
 		Description:    "Invokes another recipe as a child workflow with automatic context propagation",
 		Version:        "1.0.0",
 		DefaultTimeout: 35 * time.Minute, // Default timeout, can be overridden

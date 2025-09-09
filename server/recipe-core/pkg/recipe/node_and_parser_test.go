@@ -18,7 +18,7 @@ type testOpOut struct{ Output string `yaml:"output" json:"output"` }
 func registerTestOp() {
     ops.Clear()
     testOp := ops.NewActivityMappedOp(
-        ops.OpMetadata{Type: "echo", Name: "echo"},
+        ops.OpMetadata{Type: "echo"},
         func(ctx context.Context, in testOpIn) (testOpOut, error) { return testOpOut{Output: in.Message}, nil },
     )
     ops.Register(testOp)

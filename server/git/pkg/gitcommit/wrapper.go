@@ -34,7 +34,6 @@ func GetPersistOp() ops.RegisterableOp {
 func (a *PersistCommitActivityWrapper) GetMetadata() ops.OpMetadata {
 	return ops.OpMetadata{
 		Type:        "git_persist_commit",
-		Name:        "Git Persist Commit",
 		Description: "Capture a Git commit and generate a portable thin pack for external storage",
 		Version:     "1.0.0",
 	}
@@ -93,7 +92,6 @@ func GetRestoreOp() ops.RegisterableOp {
 func (a *RestoreCommitActivityWrapper) GetMetadata() ops.OpMetadata {
 	return ops.OpMetadata{
 		Type:        "git_restore_commit",
-		Name:        "Git Restore Commit",
 		Description: "Restore a specific commit state, rebuilding from thin packs if necessary",
 		Version:     "1.0.0",
 	}

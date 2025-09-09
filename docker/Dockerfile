@@ -149,11 +149,11 @@ RUN set -euxo pipefail && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexp
 RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh && chmod 0644 /etc/profile.d/10-proxy.sh
 RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv
 # Bootstrap proxy on root interactive shells
-COPY scripts/bootstrap-proxy.sh /usr/local/sbin/bootstrap-proxy.sh
-RUN chmod +x /usr/local/sbin/bootstrap-proxy.sh
+COPY scripts/bootstrap.sh /usr/local/sbin/bootstrap.sh
+RUN chmod +x /usr/local/sbin/bootstrap.sh
 RUN set -euxo pipefail && \
-    printf '\n# Auto-bootstrap tinyproxy + egress rules (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap-proxy.sh || true; fi\n' >> /etc/zsh/zshrc && \
-    printf '\n# Auto-bootstrap tinyproxy + egress rules (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap-proxy.sh || true; fi\n' >> /etc/bash.bashrc
+    printf '\n# Auto-bootstrap services (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n' >> /etc/zsh/zshrc && \
+    printf '\n# Auto-bootstrap services (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n' >> /etc/bash.bashrc
 # Egress setup and supervisord configs (late)
 COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
 RUN chmod +x /usr/local/sbin/dev-egress-setup.sh

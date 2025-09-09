@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // TestInput and TestOutput types for test activities
@@ -38,7 +38,6 @@ func init() {
 	processDataOp := ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "process-data",
-			Name:        "process-data",  // Name must match what's in YAML op field
 			Description: "Test activity for processing data",
 			Version:     "1.0.0",
 		},
@@ -54,7 +53,6 @@ func init() {
 	prepareDataOp := ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "prepare-data",
-			Name:        "prepare-data",  // Name must match what's in YAML op field
 			Description: "Test activity for preparing data",
 			Version:     "1.0.0",
 		},
@@ -70,7 +68,6 @@ func init() {
 	transformDataOp := ops.NewActivityMappedOp(
 		ops.OpMetadata{
 			Type:        "transform-data",
-			Name:        "transform-data",  // Name must match what's in YAML op field
 			Description: "Test activity for transforming data",
 			Version:     "1.0.0",
 		},
@@ -134,18 +131,18 @@ func (m *MockWorkerManager) GetTaskQueueForRecipe(name string) string {
 func TestRegistryWorkerIntegration(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
-	
+
 	// For integration testing of registry, we'll use a mock manager
 	// that tracks calls without creating real workers
 	manager := &MockWorkerManager{
 		workers: make(map[string]bool),
 		logger:  logger,
 	}
-	
+
 	// Create registry with the mock manager
 	registry, err := NewRegistry(logger, tempDir, manager)
 	require.NoError(t, err)
-	
+
 	// Create a test recipe file - using unified format
 	recipeContent := `
 id: integration-test
@@ -160,29 +157,29 @@ sequence:
       type: function
       timeout: 30s
 `
-	
+
 	recipePath := filepath.Join(tempDir, "integration-test.yaml")
 	err = os.WriteFile(recipePath, []byte(recipeContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Start the registry
 	err = registry.Start()
 	require.NoError(t, err)
 	defer registry.Stop()
-	
+
 	// Give it time to discover and start worker
 	time.Sleep(500 * time.Millisecond)
-	
+
 	// Check if recipe was discovered
 	recipes, err := registry.ListRecipes(nil)
 	require.NoError(t, err)
 	assert.Len(t, recipes, 1)
-	
+
 	// Verify worker was started
 	recipeID := recipes[0].ID
 	status := manager.GetWorkerStatus(recipeID)
 	assert.Equal(t, recipe.WorkerStatusRunning, status)
-	
+
 	// Test recipe update
 	updatedContent := `
 id: integration-test
@@ -215,35 +212,35 @@ sequence:
     outputs:
       result: transformed
 `
-	
+
 	err = os.WriteFile(recipePath, []byte(updatedContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Wait for file watcher to pick up changes
 	time.Sleep(1 * time.Second)
-	
+
 	// Verify recipe was updated
 	updatedRecipe, err := registry.GetRecipe(recipeID)
 	require.NoError(t, err)
 	assert.NotEqual(t, recipes[0].Hash, updatedRecipe.Hash)
-	
+
 	// Test recipe removal
 	err = os.Remove(recipePath)
 	require.NoError(t, err)
-	
+
 	// Wait for file watcher
 	time.Sleep(1 * time.Second)
-	
+
 	// Verify recipe was removed
 	_, err = registry.GetRecipe(recipeID)
 	if assert.Error(t, err) {
 		assert.Contains(t, err.Error(), "not found")
 	}
-	
+
 	// Verify worker was stopped
 	status = manager.GetWorkerStatus(recipeID)
 	assert.Equal(t, recipe.WorkerStatusStopped, status)
-	
+
 	// Cleanup
 	manager.StopAll()
 }
@@ -251,22 +248,22 @@ sequence:
 func TestMultiFileRecipeWorkerCreation(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
-	
+
 	// Use mock manager for testing
 	manager := &MockWorkerManager{
 		workers: make(map[string]bool),
 		logger:  logger,
 	}
-	
+
 	// Create registry
 	registry, err := NewRegistry(logger, tempDir, manager)
 	require.NoError(t, err)
-	
+
 	// Create a multi-file recipe structure
 	recipeDir := filepath.Join(tempDir, "multi-recipe")
 	err = os.MkdirAll(recipeDir, 0755)
 	require.NoError(t, err)
-	
+
 	// Create recipe.yaml with unified format reference
 	recipeManifest := `
 recipe:
@@ -279,7 +276,7 @@ recipe:
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "recipe.yaml"), []byte(recipeManifest), 0644)
 	require.NoError(t, err)
-	
+
 	// Create workflow.yaml using unified format
 	workflowContent := `
 id: multi-file-test
@@ -302,7 +299,7 @@ sequence:
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "workflow.yaml"), []byte(workflowContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Create activities.yaml (can be empty since shared activities are in workflow.yaml)
 	activitiesContent := `
 # Additional activities can be defined here if needed
@@ -310,15 +307,15 @@ sequence:
 `
 	err = os.WriteFile(filepath.Join(recipeDir, "activities.yaml"), []byte(activitiesContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Start the registry
 	err = registry.Start()
 	require.NoError(t, err)
 	defer registry.Stop()
-	
+
 	// Give it time to discover
 	time.Sleep(500 * time.Millisecond)
-	
+
 	// Check if recipe was discovered
 	foundRecipe, err := registry.GetRecipe("multi-file-test")
 	require.NoError(t, err)
@@ -330,15 +327,15 @@ sequence:
 			assert.NotEmpty(t, recipeSeq.Sequence)
 		}
 	}
-	
+
 	// Verify worker was started
 	status := manager.GetWorkerStatus("multi-file-test")
 	assert.Equal(t, recipe.WorkerStatusRunning, status)
-	
+
 	// Verify task queue
 	taskQueue := manager.GetTaskQueueForRecipe("multi-file-test")
 	assert.Equal(t, "ono-recipes-multi-file-test", taskQueue)
-	
+
 	// Cleanup
 	manager.StopAll()
 }
@@ -346,21 +343,21 @@ sequence:
 func TestConcurrentRecipeDiscovery(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
-	
+
 	// Use mock manager for testing
 	manager := &MockWorkerManager{
 		workers: make(map[string]bool),
 		logger:  logger,
 	}
-	
+
 	// Create registry
 	registry, err := NewRegistry(logger, tempDir, manager)
 	require.NoError(t, err)
-	
+
 	// Create multiple recipe files concurrently
 	recipeCount := 5
 	done := make(chan bool, recipeCount)
-	
+
 	for i := 0; i < recipeCount; i++ {
 		go func(index int) {
 			recipeContent := fmt.Sprintf(`
@@ -376,32 +373,32 @@ sequence:
       type: function
       timeout: 30s
 `, index, index, index)
-			
+
 			recipePath := filepath.Join(tempDir, fmt.Sprintf("%d-concurrent.yaml", index))
 			err := os.WriteFile(recipePath, []byte(recipeContent), 0644)
 			assert.NoError(t, err)
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all files to be created
 	for i := 0; i < recipeCount; i++ {
 		<-done
 	}
-	
+
 	// Start the registry
 	err = registry.Start()
 	require.NoError(t, err)
 	defer registry.Stop()
-	
+
 	// Give it time to discover all recipes
 	time.Sleep(1 * time.Second)
-	
+
 	// Check if all recipes were discovered
 	recipes, err := registry.ListRecipes(nil)
 	require.NoError(t, err)
 	assert.Len(t, recipes, recipeCount)
-	
+
 	// Verify all workers were started
 	runningCount := 0
 	for _, r := range recipes {
@@ -410,7 +407,7 @@ sequence:
 		}
 	}
 	assert.Equal(t, recipeCount, runningCount)
-	
+
 	// Cleanup
 	manager.StopAll()
 }

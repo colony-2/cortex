@@ -41,11 +41,10 @@ type HasManagmentService interface {
 
 // OpMetadata describes the activity for registration and documentation
 type OpMetadata struct {
-	Type           string        // Unique identifier for the activity type
-	Name           string        // Human-readable name
-	Description    string        // Detailed description
-	Version        string        // Semantic version
-	DefaultTimeout time.Duration // Default execution timeout
+    Type           string        // Unique identifier for the activity type
+    Description    string        // Detailed description
+    Version        string        // Semantic version
+    DefaultTimeout time.Duration // Default execution timeout
 }
 
 type OpExecutor interface {
@@ -84,9 +83,7 @@ func (c *opSpecImpl[In, Out]) GetInputStruct() interface{} {
 	return reflect.New(c.GetInputType()).Elem().Interface()
 }
 
-func (c *opSpecImpl[In, Out]) GetName() string {
-	return c.metadata.Name
-}
+func (c *opSpecImpl[In, Out]) GetName() string { return c.metadata.Type }
 
 func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
 	return c.managementService

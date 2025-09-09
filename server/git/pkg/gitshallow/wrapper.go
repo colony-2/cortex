@@ -40,7 +40,6 @@ func GetOp() ops.RegisterableOp {
 func (a *GitShallowActivityWrapper) GetMetadata() ops.OpMetadata {
 	return ops.OpMetadata{
 		Type:        "git_shallow_clone",
-		Name:        "Git Shallow Clone",
 		Description: "Performs a shallow clone of a local git repository to another directory at a specific commit",
 		Version:     "1.0.0",
 	}

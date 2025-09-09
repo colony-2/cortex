@@ -16,6 +16,7 @@ import (
     "github.com/docker/docker/api/types/image"
     "github.com/docker/docker/api/types/mount"
     "github.com/docker/docker/client"
+    "github.com/docker/docker/pkg/stdcopy"
     "github.com/moby/term"
     "os/signal"
     "syscall"
@@ -94,6 +95,12 @@ type EphemeralConfig struct {
     NoCache             bool     // Force rebuild
     HideProgressMarkers bool     // Hide progress markers from output
     DebugScript         bool     // Print generated setup script
+    // PostSetupExec runs a command after setup instead of a login shell
+    PostSetupExec       *ExecSpec
+    // Output receives stdout/stderr after USERSWITCH (optional)
+    Output              OutputSink
+    // GracefulStopTimeout for Session.Stop (SIGTERM -> SIGKILL)
+    GracefulStopTimeout time.Duration
 }
 
 // EphemeralProgressCallback is a callback for ephemeral progress updates
@@ -110,6 +117,36 @@ type EphemeralRunner struct {
     // resolvedFeatures are features fetched to local temp dirs for mounting
     resolvedFeatures []ResolvedFeature
     debugScript      bool
+    currentContainerID string
+}
+
+// ExecSpec describes a command to run post-setup.
+type ExecSpec struct {
+    Command []string
+    Env     map[string]string
+    Workdir string
+    // UseTTY requests interactive TTY for the final command (default: true)
+    UseTTY  bool
+}
+
+// OutputSink receives stdout/stderr data after USERSWITCH.
+type OutputSink interface {
+    OnStdout(data []byte)
+    OnStderr(data []byte)
+}
+
+// LineSink adapts a callback to OutputSink, emitting per line.
+func LineSink(cb func(stream, line string)) OutputSink { return &lineSink{cb: cb} }
+
+type lineSink struct{ cb func(stream, line string) }
+func (l *lineSink) OnStdout(b []byte) { l.emit("stdout", b) }
+func (l *lineSink) OnStderr(b []byte) { l.emit("stderr", b) }
+func (l *lineSink) emit(stream string, b []byte) {
+    s := string(b)
+    for _, ln := range strings.Split(s, "\n") {
+        if ln == "" { continue }
+        l.cb(stream, ln)
+    }
 }
 
 // NewEphemeralRunner creates a new ephemeral runner
@@ -207,8 +244,51 @@ func (r *EphemeralRunner) Run(ctx context.Context) error {
         fmt.Println("--- end script ---")
     }
 
-	// Run ephemeral container
-	return r.runEphemeralContainer(ctx, config, setupScript)
+    // Run ephemeral container
+    return r.runEphemeralContainer(ctx, config, setupScript)
+}
+
+// Start launches the container and returns a Session for supervision.
+func (r *EphemeralRunner) Start(ctx context.Context) (*Session, error) {
+    // Ensure features are ready
+    if len(r.resolvedFeatures) > 0 {
+        if err := validateFeatures(r.resolvedFeatures); err != nil { return nil, err }
+    }
+    if r.devContainer != nil && r.devContainer.Features != nil && r.devContainer.Features.AdditionalProperties != nil && len(r.resolvedFeatures)==0 {
+        feats, err := ResolveOCIFeatures(r.devContainer.Features.AdditionalProperties)
+        if err != nil { return nil, fmt.Errorf("failed to resolve features: %w", err) }
+        ordered, err := orderResolvedFeatures(feats)
+        if err != nil { return nil, fmt.Errorf("failed to order features: %w", err) }
+        if err := validateFeatures(ordered); err != nil { return nil, err }
+        r.resolvedFeatures = ordered
+    }
+    // Build config and script
+    cfg, err := r.buildConfig()
+    if err != nil { return nil, fmt.Errorf("failed to build config: %w", err) }
+    script := r.generateSetupScript()
+
+    // Background run
+    sctx, cancel := context.WithCancel(ctx)
+    done := make(chan error, 1)
+    idCh := make(chan string, 1)
+    go func() {
+        done <- r.runEphemeralContainerWithID(sctx, cfg, script, idCh)
+    }()
+
+    // Wait for ID or early exit
+    var cid string
+    select {
+    case cid = <-idCh:
+        r.currentContainerID = cid
+    case err := <-done:
+        cancel()
+        return nil, err
+    case <-time.After(10 * time.Second):
+        cancel()
+        return nil, fmt.Errorf("timeout creating container")
+    }
+
+    return &Session{ContainerID: cid, waitCh: done, cancel: cancel, docker: r.docker, timeout: r.config.GracefulStopTimeout}, nil
 }
 
 // orderResolvedFeatures performs a stable topological sort using InstallsAfter within the provided set.
@@ -326,10 +406,29 @@ fi
 	script = strings.ReplaceAll(script, "%UPDATECONTENT%", r.generateCommandWithProgress(r.devContainer.UpdateContentCommand, "UPDATECONTENT"))
 	script = strings.ReplaceAll(script, "%POSTCREATE%", r.generateCommandWithProgress(r.devContainer.PostCreateCommand, "POSTCREATE"))
 	script = strings.ReplaceAll(script, "%POSTSTART%", r.generateCommandWithProgress(r.devContainer.PostStartCommand, "POSTSTART"))
-	script = strings.ReplaceAll(script, "%POSTATTACH%", r.generateCommandWithProgress(r.devContainer.PostAttachCommand, "POSTATTACH"))
-	script = strings.ReplaceAll(script, "%USER%", targetUser)
+    script = strings.ReplaceAll(script, "%POSTATTACH%", r.generateCommandWithProgress(r.devContainer.PostAttachCommand, "POSTATTACH"))
+    script = strings.ReplaceAll(script, "%USER%", targetUser)
 
-	return script
+    // Replace final shell with PostSetupExec if provided
+    if r.config.PostSetupExec != nil && len(r.config.PostSetupExec.Command) > 0 {
+        // Build env exports
+        var exports []string
+        for k, v := range r.config.PostSetupExec.Env {
+            vv := strings.ReplaceAll(v, "'", "'\\''")
+            exports = append(exports, fmt.Sprintf("export %s='%s'", k, vv))
+        }
+        wd := ""
+        if r.config.PostSetupExec.Workdir != "" {
+            w := strings.ReplaceAll(r.config.PostSetupExec.Workdir, "'", "'\\''")
+            wd = fmt.Sprintf("cd '%s'\n", w)
+        }
+        cmd := strings.Join(r.config.PostSetupExec.Command, " ")
+        replacement := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n" + strings.Join(exports, "\n") + "\n" + wd + "exec " + cmd + "\n"
+        original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER% /bin/bash -l\nelse\n  exec su - %USER% -c 'exec /bin/bash --login'\nfi\n"
+        script = strings.Replace(script, original, replacement, 1)
+    }
+
+    return script
 }
 
 // generateCommandWithProgress wraps a command with progress markers
@@ -471,8 +570,15 @@ func escapeShell(s string) string {
 
 // runEphemeralContainer runs the ephemeral container with setup script
 func (r *EphemeralRunner) runEphemeralContainer(ctx context.Context, config *devcontainer.DockerRunConfig, setupScript string) error {
-	// Create a temporary script file
-	scriptFile, err := os.CreateTemp("", "devcontainer-setup-*.sh")
+    // Wrapper that discards container ID
+    idCh := make(chan string, 1)
+    return r.runEphemeralContainerWithID(ctx, config, setupScript, idCh)
+}
+
+// runEphemeralContainerWithID runs the container and emits its ID via idCh once created.
+func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, config *devcontainer.DockerRunConfig, setupScript string, idCh chan<- string) error {
+    // Create a temporary script file
+    scriptFile, err := os.CreateTemp("", "devcontainer-setup-*.sh")
 	if err != nil {
 		return fmt.Errorf("failed to create setup script: %w", err)
 	}
@@ -486,18 +592,24 @@ func (r *EphemeralRunner) runEphemeralContainer(ctx context.Context, config *dev
 	}
 	scriptFile.Close()
 
-	// Build container configuration
-	containerConfig := &container.Config{
-		Image:        config.Image,
-		Entrypoint:   []string{"/devcontainer-setup.sh"},
-		Tty:          true,
-		AttachStdin:  true,
-		AttachStdout: true,
-		AttachStderr: true,
-		OpenStdin:    true,
-		WorkingDir:   config.WorkspaceFolder,
-		Env:          r.buildEnvVars(config),
-	}
+    // Determine final TTY mode (default true; disable when explicitly requested)
+    useTTY := true
+    if r.config.PostSetupExec != nil && !r.config.PostSetupExec.UseTTY {
+        useTTY = false
+    }
+
+    // Build container configuration
+    containerConfig := &container.Config{
+        Image:        config.Image,
+        Entrypoint:   []string{"/devcontainer-setup.sh"},
+        Tty:          useTTY,
+        AttachStdin:  true,
+        AttachStdout: true,
+        AttachStderr: true,
+        OpenStdin:    true,
+        WorkingDir:   config.WorkspaceFolder,
+        Env:          r.buildEnvVars(config),
+    }
 
 	// Build mounts and validate them
 	mounts := r.buildMounts(config, scriptFile.Name())
@@ -541,6 +653,8 @@ func (r *EphemeralRunner) runEphemeralContainer(ctx context.Context, config *dev
     if err != nil {
         return fmt.Errorf("failed to create container: %w", err)
     }
+    r.currentContainerID = resp.ID
+    select { case idCh <- resp.ID: default: }
 
 	// Attach to container
 	attachOptions := container.AttachOptions{
@@ -600,104 +714,72 @@ func (r *EphemeralRunner) runEphemeralContainer(ctx context.Context, config *dev
 		errCh <- err
 	}()
 
-    // Goroutine to handle stdout/stderr with progress parsing
+    // Goroutine to handle stdout/stderr with progress parsing and sinks
     go func() {
-        reader := bufio.NewReader(hijacked.Reader)
         var outputBuffer strings.Builder
-        passThrough := false // after USERSWITCH we pass all output through
+        userSwitched := false
 
-        for {
-            line, err := reader.ReadString('\n')
-            if err != nil {
-                if err != io.EOF {
-                    errCh <- err
-                } else {
-                    // Send the buffer when done reading
-                    outputCh <- outputBuffer.String()
-                }
-                break
+        forward := func(stream string, data []byte) {
+            if r.config.Output != nil {
+                if stream == "stderr" { r.config.Output.OnStderr(data) } else { r.config.Output.OnStdout(data) }
+            } else if useTTY {
+                os.Stdout.Write(data)
+            } else {
+                outputBuffer.Write(data)
             }
+        }
 
-            // Buffer all output (for potential error display)
-            outputBuffer.WriteString(line)
-
-            if passThrough {
-                // After user switch, show all output to the user
-                fmt.Print(line)
-                continue
-            }
-
-            // Check for progress markers
-            if strings.HasPrefix(line, "::DEVCONTAINER::") {
-                if progress := parseProgressMarker(line); progress != nil {
-                    // If switching to user, enable pass-through and stream the rest byte-wise
-                    if strings.EqualFold(progress.Phase, "USERSWITCH") && strings.EqualFold(progress.Status, "START") {
-                        // Move to a fresh line to ensure left-aligned prompt
-                        fmt.Print("\n")
-                        // Enable raw mode now so interactive keys work for the user shell
-                        var saved *term.State
-                        if term.IsTerminal(fd) {
-                            if st, err := term.MakeRaw(fd); err == nil {
-                                saved = st
-                                defer term.RestoreTerminal(fd, saved)
-                            }
-                        }
-                        // Pass-through streaming with filtering of noisy logout lines
-                        var tail bytes.Buffer
-                        buf := make([]byte, 2048)
-                        for {
-                            n, err := reader.Read(buf)
-                            if n > 0 {
-                                data := buf[:n]
-                                // Append to tail and process full lines
-                                tail.Write(data)
-                                b := tail.Bytes()
-                                // Find last newline
-                                idx := bytes.LastIndexByte(b, '\n')
-                                if idx >= 0 {
-                                    lines := bytes.Split(b[:idx], []byte{'\n'})
-                                    for _, ln := range lines {
-                                        s := string(ln)
-                                        if strings.Contains(s, "Session terminated, killing shell") || strings.Contains(s, "...killed.") {
-                                            continue
-                                        }
-                                        fmt.Println(s)
+        if useTTY {
+            reader := bufio.NewReader(hijacked.Reader)
+            for {
+                line, err := reader.ReadString('\n')
+                if line != "" {
+                    outputBuffer.WriteString(line)
+                    if !userSwitched && strings.HasPrefix(line, "::DEVCONTAINER::") {
+                        if progress := parseProgressMarker(line); progress != nil {
+                            if strings.EqualFold(progress.Phase, "USERSWITCH") && strings.EqualFold(progress.Status, "START") {
+                                fmt.Print("\n")
+                                userSwitched = true
+                                if r.config.Output == nil {
+                                    var saved *term.State
+                                    if term.IsTerminal(fd) {
+                                        if st, e := term.MakeRaw(fd); e == nil { saved = st; defer term.RestoreTerminal(fd, saved) }
                                     }
-                                    // Remainder (possibly prompt without newline)
-                                    tail.Reset()
-                                    tail.Write(b[idx+1:])
                                 }
-                                // Print partial (e.g., prompt) without newline immediately
-                                if tail.Len() > 0 {
-                                    os.Stdout.Write(tail.Bytes())
-                                    tail.Reset()
-                                }
-                            }
-                            if err != nil {
-                                if err != io.EOF {
-                                    errCh <- err
-                                }
-                                break
+                                // Continue; remaining bytes will be handled in loop
+                                line = ""
+                            } else {
+                                select { case progressCh <- *progress: default: }
+                                line = ""
                             }
                         }
-                        // Done with this goroutine
-                        outputCh <- outputBuffer.String()
-                        errCh <- nil
+                    }
+                    if userSwitched && line != "" {
+                        forward("stdout", []byte(line))
+                    }
+                }
+                if err != nil { if err != io.EOF { errCh <- err }; break }
+            }
+        } else {
+            // Non-TTY: demux
+            stdoutW := &progressAwareWriter{onLine: func(s string) {
+                if !userSwitched && strings.HasPrefix(s, "::DEVCONTAINER::") {
+                    if progress := parseProgressMarker(s+"\n"); progress != nil {
+                        if strings.EqualFold(progress.Phase, "USERSWITCH") && strings.EqualFold(progress.Status, "START") {
+                            userSwitched = true
+                            return
+                        }
+                        select { case progressCh <- *progress: default: }
                         return
                     }
-                    select {
-                    case progressCh <- *progress:
-                    default: // Don't block if channel is full
-                    }
                 }
-                // Hide progress markers from direct output
-                continue
-            }
-
-            // Prior to pass-through, suppress non-marker output to keep logs clean
-            // (We still buffer it for error reporting.)
+                if userSwitched { forward("stdout", []byte(s+"\n")) } else { outputBuffer.WriteString(s+"\n") }
+            }}
+            stderrW := &progressAwareWriter{onLine: func(s string) {
+                if userSwitched { forward("stderr", []byte(s+"\n")) } else { outputBuffer.WriteString(s+"\n") }
+            }}
+            if _, err := stdcopy.StdCopy(stdoutW, stderrW, hijacked.Reader); err != nil { errCh <- err }
         }
-        // Always send buffer at the end
         outputCh <- outputBuffer.String()
         errCh <- nil
     }()
@@ -794,6 +876,22 @@ func (r *EphemeralRunner) ensureImageNoSpinner(ctx context.Context, imageName st
         return fmt.Errorf("failed to complete image pull: %w", err)
     }
     return nil
+}
+
+// progressAwareWriter splits input by newline and invokes callback per line.
+type progressAwareWriter struct{ buf bytes.Buffer; onLine func(string) }
+
+func (w *progressAwareWriter) Write(p []byte) (int, error) {
+    n, _ := w.buf.Write(p)
+    for {
+        b := w.buf.Bytes()
+        i := bytes.IndexByte(b, '\n')
+        if i < 0 { break }
+        line := string(b[:i])
+        w.onLine(line)
+        w.buf.Next(i+1)
+    }
+    return n, nil
 }
 
 // validateMounts checks that bind mount source directories exist
@@ -965,3 +1063,33 @@ func (r *EphemeralRunner) Close() error {
     }
     return nil
 }
+
+// Session represents a running ephemeral container session.
+type Session struct {
+    ContainerID string
+    waitCh      <-chan error
+    cancel      context.CancelFunc
+    docker      *client.Client
+    timeout     time.Duration
+}
+
+// Wait waits for the session to end.
+func (s *Session) Wait(ctx context.Context) error {
+    select {
+    case err := <-s.waitCh:
+        return err
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+
+// Stop tries to gracefully stop the container.
+func (s *Session) Stop(ctx context.Context) error {
+    if s.cancel != nil { s.cancel() }
+    to := int(10)
+    if s.timeout > 0 { to = int(s.timeout / time.Second) }
+    return s.docker.ContainerStop(ctx, s.ContainerID, container.StopOptions{Timeout: &to})
+}
+
+// Close releases resources for the session (no-op).
+func (s *Session) Close() error { return nil }

@@ -1,115 +1,107 @@
 id: nested_composition_demo
-desc: Demonstrates deeply nested sequential, parallel, and conditional compositions
+desc: Demonstrates nested composition using supported schema nodes
 version: 1.0.0
 inputs:
   data: ''
 outputs:
-  final_result: '{{ sequence.processor.outputs.result }}'
+  final_result: Executed state_machine
 sequence:
 - id: processor
-  name: Nested Composition Processor
-  op: state_machine
-  config:
-    initial_state: orchestration
+  state:
+    initial: validate
     states:
-      orchestration:
-        sequential:
-        - id: stage1
-          name: Data Preparation Stage
-          parallel:
-          - id: clean
-            op: data_cleaner
-            inputs:
-              data: '{{ inputs.data }}'
-          - id: validate
-            op: data_validator
-            inputs:
-              data: '{{ inputs.data }}'
-          - id: metadata
-            sequential:
-            - id: extract_meta
-              op: metadata_extractor
-              inputs:
-                data: '{{ inputs.data }}'
-            - id: enrich_meta
-              op: metadata_enricher
-              inputs:
-                metadata: '{{ sequence.extract_meta.outputs.outputs  }}'
-        - id: stage2
-          name: Processing Stage
-          conditional:
-          - when: sequence.stage1.outputs.validate.is_valid == true
-            sequential:
-            - id: transform
+      validate:
+        sequence:
+        - id: clean
+          op: data_cleaner
+          inputs:
+            data: '{{ inputs.data }}'
+        - id: validate
+          op: data_validator
+          inputs:
+            data: '{{ inputs.data }}'
+        transitions:
+        - to: process
+          when: sequence.validate.outputs.valid == true
+        - to: failure
+      process:
+        state:
+          initial: transform
+          states:
+            transform:
               op: data_transformer
               inputs:
-                clean_data: '{{ sequence.stage1.outputs.clean.data }}'
-                metadata: '{{ sequence.stage1.outputs.metadata.enrich_meta }}'
-            - id: analyze
-              parallel:
+                clean_data: '{{ states.validate.outputs.clean.data }}'
+                metadata: '{{ states.validate.outputs.validate }}'
+              transitions:
+              - to: ml_advanced
+                when: states.transform.outputs.data_quality > 0.8
+              - to: ml_basic
+                when: states.transform.outputs.data_quality <= 0.8
+            ml_advanced:
+              op: advanced_ml_analyzer
+              inputs:
+                data: '{{ states.transform.outputs.outputs }}'
+              transitions:
+              - to: stats
+            ml_basic:
+              op: basic_ml_analyzer
+              inputs:
+                data: '{{ states.transform.outputs.outputs }}'
+              transitions:
+              - to: stats
+            stats:
+              sequence:
               - id: statistical
                 op: statistical_analyzer
                 inputs:
-                  data: '{{ sequence.transform.outputs.outputs  }}'
-              - id: ml_analysis
-                conditional:
-                - when: sequence.transform.outputs.data_quality > 0.8
-                  op: advanced_ml_analyzer
-                  inputs:
-                    data: '{{ sequence.transform.outputs.outputs  }}'
-                - default: true
-                  op: basic_ml_analyzer
-                  inputs:
-                    data: '{{ sequence.transform.outputs.outputs  }}'
+                  data: '{{ states.transform.outputs.outputs }}'
               - id: pattern
                 op: pattern_detector
                 inputs:
-                  data: '{{ sequence.transform.outputs.outputs  }}'
-            - id: aggregate
-              op: result_aggregator
-              inputs:
-                statistical: '{{ sequence.analyze.outputs.statistical }}'
-                ml: '{{ sequence.analyze.outputs.ml_analysis }}'
-                patterns: '{{ sequence.analyze.outputs.pattern }}'
-          - default: true
-            op: error_handler
-            inputs:
-              validation_errors: '{{ sequence.stage1.outputs.validate.errors }}'
-        - id: stage3
-          name: Finalization Stage
-          parallel:
-          - id: format_output
-            op: output_formatter
-            inputs:
-              results: '{{ sequence.stage2.outputs.outputs  }}'
-          - id: generate_report
-            sequential:
-            - id: create_summary
-              op: summary_generator
-              inputs:
-                data: '{{ sequence.stage2.outputs.outputs  }}'
-            - id: add_charts
-              op: chart_generator
-              inputs:
-                summary: '{{ sequence.create_summary.outputs.outputs  }}'
-                data: '{{ sequence.stage2.outputs.outputs  }}'
-          - id: store_results
-            op: result_storage
-            inputs:
-              data: '{{ sequence.stage2.outputs.outputs  }}'
+                  data: '{{ states.transform.outputs.outputs }}'
+              - id: aggregate
+                op: result_aggregator
+                inputs:
+                  statistical: '{{ sequence.statistical.outputs }}'
+                  ml: '{{ states.ml_advanced.outputs != null ? states.ml_advanced.outputs : states.ml_basic.outputs }}'
+                  patterns: '{{ sequence.pattern.outputs }}'
+              transitions:
+              - to: finalize
+      finalize:
+        sequence:
+        - id: format_output
+          op: output_formatter
+          inputs:
+            results: '{{ states.process.outputs.aggregate }}'
+        - id: create_summary
+          op: summary_generator
+          inputs:
+            data: '{{ states.process.outputs.aggregate }}'
+        - id: add_charts
+          op: chart_generator
+          inputs:
+            summary: '{{ sequence.create_summary.outputs.outputs }}'
+            data: '{{ states.process.outputs.aggregate }}'
+        - id: store_results
+          op: result_storage
+          inputs:
+            data: '{{ states.process.outputs.aggregate }}'
         transitions:
         - to: success
-          when: outputs.stage3 != null
-        - to: failure
       success:
         terminal: true
+        op: echo_activity
+        inputs:
+          message: completed
         outputs:
-          final_result: '{{ states.orchestration.outputs.stage3.format_output }}'
-          report: '{{ states.orchestration.outputs.stage3.generate_report }}'
-          storage_id: '{{ states.orchestration.outputs.stage3.store_results.id }}'
+          final_result: '{{ states.finalize.outputs.format_output }}'
+          report: '{{ states.finalize.outputs.create_summary }}'
+          storage_id: '{{ states.finalize.outputs.store_results.id }}'
           status: .completed
       failure:
         terminal: true
+        op: error_handler
+        inputs:
+          message: Validation failed
         error: Processing failed
-        outputs:
-          error: .Processing failed at orchestration stage

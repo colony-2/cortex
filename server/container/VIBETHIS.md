@@ -24,6 +24,102 @@ Container orchestration and devcontainer lifecycle management system for vibethi
 - **MountBuilder**: Selective read-write path mounting for workspace isolation
 - **ProgressDisplay**: Clean spinner/checkmark UI with error output on failure only
 
+## Programmatic Usage
+
+Shai exposes a generic API to run any process inside an ephemeral devcontainer after standard devcontainer setup (features + lifecycle). This is entrypoint‑agnostic and works for diverse consumers (CLIs, services, tools) without changing the `shai` CLI.
+
+### Key Types (pkg/shai)
+- **EphemeralRunner + EphemeralConfig**: Orchestrates ephemeral lifecycle and setup.
+- **ExecSpec**: Post-setup command to run inside the container (entrypoint-agnostic).
+- **OutputSink**: Optional streaming callbacks for stdout/stderr after setup.
+- **Session**: Handle from `Start` for non-blocking supervision (wait/stop/close).
+
+### API Surface
+```go
+type ExecSpec struct {
+    Command []string          // argv to exec after setup
+    Env     map[string]string // extra env vars
+    Workdir string            // container cwd; default: workspaceFolder
+    UseTTY  bool              // default true; false => demuxed logs
+}
+
+type OutputSink interface {
+    OnStdout([]byte)
+    OnStderr([]byte)
+}
+
+// Adapter: callback per line with stream name ("stdout"/"stderr")
+func LineSink(func(stream, line string)) OutputSink
+
+type Session struct {
+    ContainerID string
+    Wait(ctx context.Context) error
+    Stop(ctx context.Context) error  // SIGTERM then SIGKILL after timeout
+    Close() error
+}
+
+type EphemeralConfig struct {
+    WorkingDir          string
+    ReadWritePaths      []string
+    HideProgressMarkers bool
+    DebugScript         bool
+    PostSetupExec       *ExecSpec
+    Output              OutputSink
+    GracefulStopTimeout time.Duration
+}
+
+// Blocking mode
+func (r *EphemeralRunner) Run(ctx context.Context) error
+
+// Non-blocking mode
+func (r *EphemeralRunner) Start(ctx context.Context) (*Session, error)
+```
+
+### Behavior
+- Devcontainer setup phases run fully (FEATURES, ONCREATE, UPDATECONTENT, POSTCREATE, POSTSTART, POSTATTACH).
+- If `PostSetupExec` is nil: switch to target user and exec a login shell (CLI behavior unchanged).
+- If `PostSetupExec` is set: export `Env`, optional `cd Workdir`, then `exec Command` as the target user.
+- Output after setup:
+  - `UseTTY=true` and no `Output`: attached to caller’s TTY (interactive).
+  - `UseTTY=false`: stdout/stderr demuxed and streamed to `Output` if provided; otherwise buffered and included on error.
+- Mounting: `/workspace` is read-only by default; entries in `ReadWritePaths` become RW overlays (use `.` to make the whole workspace RW).
+
+### Example: Run a custom entrypoint
+```go
+import (
+  "context"
+  shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+)
+
+func startProcess(ctx context.Context, repoRoot string) (*shai.Session, error) {
+  cfg := shai.EphemeralConfig{
+    WorkingDir:          repoRoot,
+    ReadWritePaths:      []string{".vibethis", ".cache"},
+    HideProgressMarkers: true,
+    PostSetupExec: &shai.ExecSpec{
+      Command: []string{"./bin/worker", "--name", "example"},
+      UseTTY: false, // structured logs
+    },
+    Output: shai.LineSink(func(stream, line string) {
+      // Forward logs to your application logging or events
+    }),
+  }
+
+  runner, err := shai.NewEphemeralRunner(cfg)
+  if err != nil { return nil, err }
+  sess, err := runner.Start(ctx)
+  if err != nil { _ = runner.Close(); return nil, err }
+  return sess, nil
+}
+```
+
+### Integration Checklist
+- Locate repo root containing `.devcontainer/devcontainer.json`.
+- Choose `ReadWritePaths` for directories that must be writable (e.g., `.vibethis`, caches).
+- Define `ExecSpec` for your entrypoint; set `UseTTY=false` for structured logs.
+- Optionally, use `LineSink` to stream logs into your application.
+- Use `Start` to supervise and `Stop` to terminate gracefully.
+
 ### Core Components
 ```
 Manager (interface) -> devcontainer.Manager -> DockerClient -> Docker SDK

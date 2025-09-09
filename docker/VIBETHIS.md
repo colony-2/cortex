@@ -15,11 +15,9 @@
 
 ## Run Modes
 - Default (ENTRYPOINT supervisord): `docker run -d --cap-add NET_ADMIN --name devbox debian-dev:dev`
-- Root shell (bootstrap auto-starts proxy + rules):
-  - `docker run --rm -it --cap-add NET_ADMIN --entrypoint /bin/zsh debian-dev:dev`
-  - or `--entrypoint /bin/bash`
+- Root shell: `docker run --rm -it --cap-add NET_ADMIN --entrypoint /bin/zsh debian-dev:dev`
 - Overriding to non-shell commands will NOT auto-bootstrap; chain it if needed:
-  - `--entrypoint /bin/sh -lc 'bootstrap-proxy.sh && exec <cmd>'`
+  - `--entrypoint /bin/sh -lc 'bootstrap.sh && exec <cmd>'`
 
 ## Tinyproxy + Allowlist
 - Config: `/etc/tinyproxy/tinyproxy.conf` (Listen 127.0.0.1; Allow 127.0.0.1; LogFile /var/log/tinyproxy/tinyproxy.log).
@@ -28,8 +26,8 @@
 - Logs: `/var/log/tinyproxy/*.log`.
 
 ## Egress Control (devuser)
-- Enforced by `/usr/local/sbin/dev-egress-setup.sh` using iptables.
-- Applies at container start under supervisord and on root interactive shells via `/usr/local/sbin/bootstrap-proxy.sh`.
+- Enforced by `/usr/local/sbin/bootstrap.sh` (iptables rules applied) using iptables.
+- Applies at container start under supervisord and on root interactive shells via `/usr/local/sbin/bootstrap.sh`.
 - Requires: `--cap-add NET_ADMIN` when running the container.
 
 ## Node/Package Managers
@@ -37,7 +35,18 @@
 - After Node extract, runs a single global install: `npm@latest`, `yarn`, `pnpm`.
 - AI CLIs installed via a single `npm -g install`.
 
-## Layering Rules (keep rebuilds fast)
+## Workspace Mounting Pattern
+- Mount the host workspace read-only at `/src`.
+- For each writable path `rw` given to shai, mount that host subpath at the corresponding `/src/<subpath>` with `:rw`.
+- Result: `/src` tree is read-only except the specific subpaths you mounted as `:rw` (unless you explicitly set `./` as a writable path, which makes `/src` itself writable).
+- No `/workspace` directory is used.
+
+Example (manual Docker):
+- `-v "$PWD:/src:ro" -v "$PWD/subdir:/src/subdir:rw" -v "$HOME/.cache:/src/.cache:rw"`
+
+Notes:
+- Do not mount `/src` as `:rw` unless you intend to allow full-tree writes (equivalent to passing `./` as `rw`).
+- This pattern requires no extra overlay scripts in the container.
 - Keep “installs” early; put “configuration” (users, shells, supervisord files, proxy rules, allowlist) as late layers.
 - Collapse package manager calls:
   - apt: single `apt-get update` + single `apt-get install` in one RUN.
@@ -58,5 +67,21 @@
 - Verify rules: `iptables -S OUTPUT | grep owner`.
 
 ## Limitations
-- ENTRYPOINT overrides to non-shell processes bypass bootstrap; either chain `bootstrap-proxy.sh` or enforce egress at the Docker network/host level.
+- ENTRYPOINT overrides to non-shell processes bypass bootstrap; either chain `bootstrap.sh` or enforce egress at the Docker network/host level.
 - Tinyproxy listens only on localhost (by design); not exposed to host.
+
+## Tests
+- Integration script: `tests/integration/test_image.sh`
+  - Builds the dev target, runs the container with NET_ADMIN, bootstraps services, and verifies:
+    - Toolchains on PATH for devuser (`go`, `cargo`)
+    - DNS allow/deny from `/etc/shai/allowed_domains.conf`
+    - HTTP via proxy works; direct bypass is blocked
+    - Auto-reload when the allowlist is updated
+- CI: GitHub Actions workflow at `.github/workflows/ci.yml` runs the integration test.
+
+## Moonrepo
+- Project file: `moon.yml` (in this directory)
+- Tasks:
+  - `build`: builds the Docker dev image (`docker build -t debian-dev:dev --target dev .`).
+  - `integration`: runs `tests/integration/test_image.sh` (depends on `build`).
+- If you override ENTRYPOINT, run `bootstrap.sh` as a postcreate step (no other scripts are required). The workspace mount pattern above is handled entirely by how you invoke Docker/shai.
