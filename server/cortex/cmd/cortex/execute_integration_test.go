@@ -37,27 +37,25 @@ func TestExecuteCommandBasic(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create a simple test recipe
-	recipeContent := `
+recipeContent := `
+id: test-basic
 name: test-basic
 description: Basic test recipe
 version: "1.0"
 
-inputs:
-  - name: message
+input_schema:
+  message:
     type: string
     required: true
 
-outputs:
-  - name: result
-    type: string
-
-steps:
+sequence:
   - id: echo
-    uses: command_execution
+    op: command_execution
     inputs:
-      run: "echo {{ .Inputs.message }}"
-    outputs:
-      stdout: result
+      run: "echo {{ inputs.message }}"
+
+outputs:
+  result: "{{ sequence.echo.outputs.stdout }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-basic.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -97,33 +95,31 @@ func TestExecuteCommandWithInputFile(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create test recipe
-	recipeContent := `
+recipeContent := `
+id: test-input-file
 name: test-input-file
 description: Test with input file
 version: "1.0"
 
-inputs:
-  - name: user_prompt
+input_schema:
+  user_prompt:
     type: string
     required: true
-  - name: max_tokens
+  max_tokens:
     type: number
-    default: 100
-  - name: data
+    default_value: 100
+  data:
     type: object
     required: true
 
-outputs:
-  - name: processed
-    type: object
-
-steps:
+sequence:
   - id: process
-    uses: command_execution
+    op: command_execution
     inputs:
-      run: "echo Processing: {{ .Inputs.user_prompt }}"
-    outputs:
-      stdout: processed
+      run: "echo Processing: {{ inputs.user_prompt }}"
+
+outputs:
+  processed: "{{ sequence.process.outputs.stdout }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-input-file.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -167,27 +163,25 @@ func TestExecuteCommandWithYAMLInput(t *testing.T) {
 	
 	// Create test recipe
 	recipeFile := filepath.Join(tempDir, "test-yaml-input.yaml")
-	recipeContent := `
+recipeContent := `
+id: test-yaml
 name: test-yaml
 description: Test with YAML input
 version: "1.0"
 
-inputs:
-  - name: config
+input_schema:
+  config:
     type: object
     required: true
 
-outputs:
-  - name: result
-    type: string
-
-steps:
+sequence:
   - id: process
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo Config loaded"
-    outputs:
-      stdout: result
+
+outputs:
+  result: "{{ sequence.process.outputs.stdout }}"
 `
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
 	
@@ -235,39 +229,34 @@ func TestExecuteCommandDryRun(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create valid recipe
-	validRecipe := `
+validRecipe := `
+id: test-dryrun
 name: test-dryrun
 description: Test dry run
 version: "1.0"
 
-inputs:
-  - name: required_input
+input_schema:
+  required_input:
     type: string
     required: true
 
-outputs:
-  - name: result
-    type: string
-
-steps:
+sequence:
   - id: step1
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo test"
-    outputs:
-      stdout: result
+
+outputs:
+  result: "{{ sequence.step1.outputs.stdout }}"
 `
 	validFile := filepath.Join(tempDir, "valid.yaml")
 	require.NoError(t, os.WriteFile(validFile, []byte(validRecipe), 0644))
 	
 	// Create invalid recipe (missing required field)
-	invalidRecipe := `
-description: Invalid recipe without name
+invalidRecipe := `
+description: Invalid recipe missing root node
 version: "1.0"
-
-steps:
-  - id: step1
-    uses: command_execution
+name: invalid
 `
 	invalidFile := filepath.Join(tempDir, "invalid.yaml")
 	require.NoError(t, os.WriteFile(invalidFile, []byte(invalidRecipe), 0644))
@@ -320,29 +309,26 @@ func TestExecuteCommandOutputFormats(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create test recipe
-	recipeContent := `
+recipeContent := `
+id: test-formats
 name: test-formats
 description: Test output formats
 version: "1.0"
 
-inputs:
-  - name: test
+input_schema:
+  test:
     type: string
-    default: "value"
+    default_value: "value"
 
-outputs:
-  - name: result
-    type: string
-  - name: metadata
-    type: object
-
-steps:
+sequence:
   - id: process
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo Success"
-    outputs:
-      stdout: result
+
+outputs:
+  result: "{{ sequence.process.outputs.stdout }}"
+  metadata: "{{ 'input: ' + inputs.test }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-formats.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -394,22 +380,20 @@ func TestExecuteCommandTimeout(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create recipe that would take 10 seconds
-	recipeContent := `
+recipeContent := `
+id: test-timeout
 name: test-timeout
 description: Test timeout
 version: "1.0"
 
-outputs:
-  - name: result
-    type: string
-
-steps:
+sequence:
   - id: sleep
-    uses: sleep
+    op: sleep
     inputs:
       duration: "10s"
-    outputs:
-      actual_duration: result
+
+outputs:
+  result: "{{ sequence.sleep.outputs.actual_duration }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-timeout.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -453,22 +437,20 @@ func TestExecuteCommandInterruption(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create recipe with a long-running command
-	recipeContent := `
+recipeContent := `
+id: test-interrupt
 name: test-interrupt
 description: Test interruption
 version: "1.0"
 
-outputs:
-  - name: result
-    type: string
-
-steps:
+sequence:
   - id: sleep
-    uses: sleep
+    op: sleep
     inputs:
       duration: "30s"
-    outputs:
-      actual_duration: result
+
+outputs:
+  result: "{{ sequence.sleep.outputs.actual_duration }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-interrupt.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -528,27 +510,25 @@ func TestExecuteCommandLogging(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create test recipe
-	recipeContent := `
+recipeContent := `
+id: test-logging
 name: test-logging
 description: Test logging
 version: "1.0"
 
-inputs:
-  - name: message
+input_schema:
+  message:
     type: string
-    default: "test"
+    default_value: "test"
+
+sequence:
+  - id: echo
+    op: command_execution
+    inputs:
+      run: "echo {{ inputs.message }}"
 
 outputs:
-  - name: result
-    type: string
-
-steps:
-  - id: echo
-    uses: command_execution
-    inputs:
-      run: "echo {{ .Inputs.message }}"
-    outputs:
-      stdout: result
+  result: "{{ sequence.echo.outputs.stdout }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-logging.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
@@ -613,38 +593,34 @@ func TestExecuteCommandComplexInputs(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create test recipe
-	recipeContent := `
+recipeContent := `
+id: test-complex
 name: test-complex
 description: Test complex inputs
 version: "1.0"
 
-inputs:
-  - name: simple
+input_schema:
+  simple:
     type: string
     required: true
-  - name: number
+  number:
     type: number
     required: true
-  - name: bool
+  bool:
     type: boolean
     required: true
-  - name: array
+  array:
     type: array
     required: true
-  - name: nested
+  nested:
     type: object
     required: true
 
-outputs:
-  - name: result
-    type: object
-
-steps:
+sequence:
   - id: process
-    uses: command_execution
+    op: command_execution
     inputs:
       run: "echo Processed"
-    outputs:
       stdout: result
 `
 	recipeFile := filepath.Join(tempDir, "test-complex.yaml")
@@ -789,21 +765,22 @@ func TestExecuteCommandErrorHandling(t *testing.T) {
 	// We expect an error
 	
 	// Test missing required input
-	recipeContent := `
+recipeContent := `
+id: test-missing-input
 name: test-missing-input
 description: Test missing input
 version: "1.0"
 
-inputs:
-  - name: required_field
+input_schema:
+  required_field:
     type: string
     required: true
 
-steps:
+sequence:
   - id: step1
-    uses: command_execution
+    op: command_execution
     inputs:
-      run: "echo {{ .Inputs.required_field }}"
+      run: "echo {{ inputs.required_field }}"
 `
 	recipeFile := filepath.Join(tempDir, "missing-input.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))

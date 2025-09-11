@@ -20,19 +20,17 @@ tasks:
     description: 'Build the shai CLI binary'
 
   integration:
-    command: './scripts/test-integration.sh'
+    command: 'go test -v -tags=integration ./...'
     deps:
       - 'build-shai'
     inputs:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
-      - 'scripts/test-integration.sh'
-      - 'scripts/test-shai-container.sh'
     platform: 'system'
     options:
       runInCI: false
-    description: 'Run end-to-end tests that create real Docker containers'
+    description: 'Run integration-tagged tests (Docker required)'
 
   install:
     script: |

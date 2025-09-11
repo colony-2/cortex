@@ -60,9 +60,8 @@ sequence:
 	require.NoError(t, err)
 	
 	// Create a validator for testing
-	logger := zap.NewNop()
-	rm, _ := shared.NewRegistryManager(logger)
-	validator := shared.NewRecipeValidator(rm)
+    _ = zap.NewNop()
+    validator := shared.NewRecipeValidator()
 	
 	// Test valid file
 	result := validateFile(validFile, schema, false, validator)

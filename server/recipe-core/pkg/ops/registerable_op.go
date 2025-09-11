@@ -154,11 +154,13 @@ func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 }
 
 func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {
-	if c.handler != nil {
-		return reflect.ValueOf(c.handler).Type().In(1)
-	} else {
-		return reflect.ValueOf(c.inlineHandler).Type().In(1)
-	}
+    if c.handler != nil {
+        return reflect.ValueOf(c.handler).Type().In(1)
+    } else {
+        // Inline handler signature: func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+        // The input type is the 4th parameter (index 3)
+        return reflect.ValueOf(c.inlineHandler).Type().In(3)
+    }
 }
 
 func (c *opSpecImpl[In, Out]) GetOutputType() reflect.Type {

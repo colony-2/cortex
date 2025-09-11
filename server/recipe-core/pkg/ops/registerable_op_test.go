@@ -1,9 +1,10 @@
 package ops
 
 import (
-	"context"
-	"testing"
-	"time"
+    "context"
+    "testing"
+    "time"
+    "reflect"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,5 +60,18 @@ func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	// Nil contexts handled gracefully in operations [pkg/ops/registerable_op.go]
 	out, err := actOnly.Execute(nil, map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
-	assert.NotNil(t, out)
+    assert.NotNil(t, out)
+}
+
+func TestRegisterableOp_GetInputType_Inline_Is_ActualInput(t *testing.T) {
+    type inlineIn struct{ X string `json:"x"` }
+    type inlineOut struct{ Y string `json:"y"` }
+
+    inline := NewInlineOp[inlineIn, inlineOut](OpMetadata{Type: "inline-check"}, func(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in inlineIn) (inlineOut, error) {
+        return inlineOut{Y: in.X}, nil
+    })
+
+    // Ensure GetInputType returns the typed input (not time.Duration)
+    got := inline.GetInputType()
+    require.Equal(t, reflect.TypeOf(inlineIn{}), got)
 }

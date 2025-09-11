@@ -1,6 +1,4 @@
-project:
-  name: docker
-  type: tool
+id: shai-docker
 
 tasks:
   build:

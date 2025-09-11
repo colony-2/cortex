@@ -100,8 +100,9 @@ func NewServer(config Config, deps Dependencies) *Server {
 		handler = middleware.CORS(config.CORSOrigins, handler)
 	}
 
-	handler = middleware.Logging(handler)
-	handler = middleware.Recovery(handler)
+    handler = middleware.RouteLogging(handler)
+    handler = middleware.Logging(handler)
+    handler = middleware.Recovery(handler)
 
 	return &Server{
 		config:   config,

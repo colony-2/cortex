@@ -1,11 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
-	"net/http"
-	"os"
-	"path/filepath"
-	"strings"
+    "encoding/json"
+    "log"
+    "net/http"
+    "os"
+    "path/filepath"
+    "strings"
+    "time"
 
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
@@ -49,44 +51,44 @@ func (h *Handlers) SetupRoutes(staticHandler http.Handler) *mux.Router {
 
 // SetupRoutesWithExtensions configures all HTTP routes including extensions
 func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensions []ExtensionRoute) *mux.Router {
-	r := mux.NewRouter()
+    r := mux.NewRouter()
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 
 	// Graph endpoints
-	api.HandleFunc("/graph", h.GetGraph).Methods("GET")
+    api.HandleFunc("/graph", withHandlerLog("core:GetGraph", h.GetGraph)).Methods("GET")
 
 	// Position endpoints
-	api.HandleFunc("/positions", h.GetPositions).Methods("GET")
-	api.HandleFunc("/positions", h.SavePositions).Methods("POST")
+    api.HandleFunc("/positions", withHandlerLog("core:GetPositions", h.GetPositions)).Methods("GET")
+    api.HandleFunc("/positions", withHandlerLog("core:SavePositions", h.SavePositions)).Methods("POST")
 
 	// Cell endpoints
-	api.HandleFunc("/cells/{cellId}/files", h.GetFiles).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", h.GetFile).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", h.PutFile).Methods("PUT")
+    api.HandleFunc("/cells/{cellId}/files", withHandlerLog("core:GetFiles", h.GetFiles)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", withHandlerLog("core:GetFile", h.GetFile)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", withHandlerLog("core:PutFile", h.PutFile)).Methods("PUT")
 
 	// Git endpoints
-	api.HandleFunc("/cells/{cellId}/git/status", h.GetGitStatus).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/diff", h.GetGitDiff).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/history", h.GetGitHistory).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/commit", h.CreateGitCommit).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/git/status", withHandlerLog("core:GetGitStatus", h.GetGitStatus)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/git/diff", withHandlerLog("core:GetGitDiff", h.GetGitDiff)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/git/history", withHandlerLog("core:GetGitHistory", h.GetGitHistory)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/git/commit", withHandlerLog("core:CreateGitCommit", h.CreateGitCommit)).Methods("POST")
 
 	// Container endpoints
-	api.HandleFunc("/cells/{cellId}/container/status", h.GetContainerStatus).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/container/create", h.CreateContainer).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/start", h.StartContainer).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/stop", h.StopContainer).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/restart", h.RestartContainer).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/reset", h.ResetContainer).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/devcontainer", h.UpdateDevcontainer).Methods("PUT")
+    api.HandleFunc("/cells/{cellId}/container/status", withHandlerLog("core:GetContainerStatus", h.GetContainerStatus)).Methods("GET")
+    api.HandleFunc("/cells/{cellId}/container/create", withHandlerLog("core:CreateContainer", h.CreateContainer)).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/container/start", withHandlerLog("core:StartContainer", h.StartContainer)).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/container/stop", withHandlerLog("core:StopContainer", h.StopContainer)).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/container/restart", withHandlerLog("core:RestartContainer", h.RestartContainer)).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/container/reset", withHandlerLog("core:ResetContainer", h.ResetContainer)).Methods("POST")
+    api.HandleFunc("/cells/{cellId}/container/devcontainer", withHandlerLog("core:UpdateDevcontainer", h.UpdateDevcontainer)).Methods("PUT")
 
 	// Add extension routes if provided
-	if extensions != nil {
-		for _, ext := range extensions {
-			api.HandleFunc(ext.Path, ext.Handler).Methods(ext.Method)
-		}
-	}
+    if extensions != nil {
+        for _, ext := range extensions {
+            api.HandleFunc(ext.Path, withHandlerLog("ext:"+ext.Path, ext.Handler)).Methods(ext.Method)
+        }
+    }
 
 	// Static files and SPA routes (everything not under /api)
 	if staticHandler != nil {
@@ -95,6 +97,28 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 	}
 
 	return r
+}
+
+// withHandlerLog wraps a handler to log entry/exit with status for identifying which handler responded.
+func withHandlerLog(tag string, fn http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        lrw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
+        start := time.Now()
+        log.Printf("HANDLER_LOG: enter tag=%s method=%s path=%s", tag, r.Method, r.URL.Path)
+        fn(lrw, r)
+        dur := time.Since(start)
+        log.Printf("HANDLER_LOG: exit tag=%s status=%d dur=%s", tag, lrw.status, dur)
+    }
+}
+
+type logResponseWriter struct {
+    http.ResponseWriter
+    status int
+}
+
+func (l *logResponseWriter) WriteHeader(code int) {
+    l.status = code
+    l.ResponseWriter.WriteHeader(code)
 }
 
 // GetPositions handles GET /api/positions

@@ -1,9 +1,10 @@
 package recipe
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
+    "encoding/json"
+    "fmt"
+    "log"
+    "reflect"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
@@ -67,6 +68,13 @@ func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
         local.Properties.Set("op", opType)
         local.Type = "object"
         // Default inputs schema from reflected input struct
+        // Guard: ensure ops report a struct or pointer-to-struct input type to avoid schema panics
+        inT := op.GetInputType()
+        if inT.Kind() != reflect.Struct {
+            if !(inT.Kind() == reflect.Pointer && inT.Elem().Kind() == reflect.Struct) {
+                return nil, fmt.Errorf("op %q inputs must be a struct, got %s", op.GetName(), inT.String())
+            }
+        }
         inputsSchema := stripSchema(r.Reflect(op.GetInputStruct()))
 
         // Tighten required fields for certain well-known ops without changing unmarshalling

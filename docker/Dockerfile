@@ -118,10 +118,11 @@ RUN set -euxo pipefail && rustc --version && cargo --version
 RUN set -euxo pipefail && python3 -m pip --version
 
 ## AI CLIs via npm (global)
-# - OpenAI CLI
+# - OpenAI Codex CLI
 # - Google Gemini CLI
 # - Claude Code CLI
-RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code && npm cache clean --force
+# - Moonrepo CLI
+RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli claude-code @moonrepo/cli && npm cache clean --force
 
 ## Users, shells, bootstrap, workspace (late config layer)
 RUN set -euxo pipefail && useradd -m -u 1000 -s /bin/bash devuser
@@ -152,8 +153,8 @@ RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexpor
 COPY scripts/bootstrap.sh /usr/local/sbin/bootstrap.sh
 RUN chmod +x /usr/local/sbin/bootstrap.sh
 RUN set -euxo pipefail && \
-    printf '\n# Auto-bootstrap services (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n' >> /etc/zsh/zshrc && \
-    printf '\n# Auto-bootstrap services (root interactive shells)\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n' >> /etc/bash.bashrc
+    printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/zsh/zshrc && \
+    printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/bash.bashrc
 # Egress setup and supervisord configs (late)
 COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
 RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
@@ -161,7 +162,7 @@ COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
 COPY supervisord/supervisord-daemon.conf /etc/supervisor/supervisord-daemon.conf
 COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
 # Workspace
-RUN set -euxo pipefail && mkdir -p /src && chown -R 1000:1000 /src
+RUN set -euxo pipefail && mkdir -p /src
 WORKDIR /src
 
 # Ensure toolchains are on PATH and add global symlinks (dev stage)
@@ -188,7 +189,7 @@ RUN set -euxo pipefail && python3 --version
 RUN set -euxo pipefail && java -version || true
 RUN set -euxo pipefail && git --version
 RUN set -euxo pipefail && jq --version
-RUN set -euxo pipefail && openai -h >/dev/null 2>&1 || true
+RUN set -euxo pipefail && codex -h >/dev/null 2>&1 || true
 RUN set -euxo pipefail && gemini -h >/dev/null 2>&1 || true
 RUN set -euxo pipefail && claude -h >/dev/null 2>&1 || claude-code -h >/dev/null 2>&1 || true
 
@@ -236,7 +237,7 @@ RUN set -euxo pipefail \
     && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
     && rm -f /tmp/node.tar.xz \
     && npm -g install npm@latest yarn pnpm \
-    && npm -g install openai @google/gemini-cli claude-code \
+    && npm -g install @openai/codex @google/gemini-cli claude-code @moonrepo/cli \
     && npm cache clean --force \
     && icu_pkg=$(apt-cache search -n '^libicu[0-9][0-9]$' | awk '{print $1}' | sort -V | tail -n1) \
     && lttng_pkg=$(apt-cache search -n '^liblttng-ust[0-9].*$' | awk '{print $1}' | sort -V | tail -n1) \
@@ -288,7 +289,6 @@ RUN set -euxo pipefail \
     && ln -sf /usr/local/cargo/bin/rustc /usr/local/bin/rustc \
     && ln -sf /usr/local/cargo/bin/rustup /usr/local/bin/rustup \
     && mkdir -p /src \
-    && chown -R 1000:1000 /src \
     && rm -rf /var/lib/apt/lists/* \
     && node --version && npm --version && yarn --version && pnpm --version \
     && go version \
@@ -296,7 +296,7 @@ RUN set -euxo pipefail \
     && python3 --version \
     && java -version || true \
     && git --version && jq --version \
-    && openai -h >/dev/null 2>&1 || true \
+    && codex -h >/dev/null 2>&1 || true \
     && gemini -h >/dev/null 2>&1 || true \
     && claude -h >/dev/null 2>&1 || claude-code -h >/dev/null 2>&1 || true
 

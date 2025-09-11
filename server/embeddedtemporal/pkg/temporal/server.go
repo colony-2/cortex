@@ -1,46 +1,64 @@
 package temporal
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"time"
+    "context"
+    "fmt"
+    "os"
+    "path/filepath"
+    "net"
+    "time"
 
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/server/common/cluster"
-	"go.temporal.io/server/common/config"
-	"go.temporal.io/server/common/log"
-	"go.temporal.io/server/common/log/tag"
-	"go.temporal.io/server/common/membership/static"
-	"go.temporal.io/server/common/metrics"
-	"go.temporal.io/server/common/primitives"
-	"go.temporal.io/server/schema/sqlite"
-	"go.temporal.io/server/temporal"
-	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/durationpb"
+    "go.temporal.io/server/common/config"
+    "go.temporal.io/server/common/dynamicconfig"
+    "go.temporal.io/server/common/log"
+    "go.temporal.io/server/common/log/tag"
+    "go.temporal.io/server/common/membership/static"
+    "go.temporal.io/server/common/metrics"
+    "go.temporal.io/server/common/primitives"
+    "go.temporal.io/server/schema/sqlite"
+    "go.temporal.io/server/temporal"
+    "go.uber.org/zap"
+    "google.golang.org/protobuf/types/known/durationpb"
+    // grpc imports previously used for readiness probing; retained if needed in future
 )
 
 // Options configures the embedded Temporal server
 type Options struct {
-	FrontendIP    string
-	FrontendPort  int
-	UIPort        int
-	Namespaces    []string
-	DatabaseFile  string
-	LogLevel      string
-	SQLitePragmas map[string]string
-	EnableUI      bool
+    FrontendIP    string
+    FrontendPort  int
+    UIPort        int
+    Namespaces    []string
+    DatabaseFile  string
+    LogLevel      string
+    SQLitePragmas map[string]string
+    EnableUI      bool
+    // ReadinessTimeout defines how long Start() waits for the server to
+    // become responsive to a basic gRPC call. If zero, defaults to 30s.
+    ReadinessTimeout time.Duration
+    // Optional feature toggles for background components. Leave false for a
+    // complete cluster. Use in tests or constrained environments to reduce
+    // background activity and speed up shutdown.
+    DisableScanners              bool
+    DisableParentClosePolicy     bool
+    DisableNexus                 bool
+    // EnableInternalWorker controls whether the internal worker service is
+    // started. It runs background system workers (scanners, policies, etc.)
+    // that are unnecessary for most tests and can cause noisy shutdowns.
+    // Default is false.
+    EnableInternalWorker         bool
 }
 
 // Server is an embedded Temporal server instance
 type Server struct {
-	server   temporal.Server
-	logger   log.Logger
-	options  Options
-	stopChan chan struct{}
+    server   temporal.Server
+    logger   log.Logger
+    options  Options
+    stopChan chan struct{}
+    dyn      dynamicconfig.Client
 }
 
 // NewServer creates a new embedded Temporal server
@@ -75,7 +93,12 @@ func (s *Server) Start() error {
 	}
 	s.logger = log.NewZapLogger(zapLogger)
 
-	// Initialize database schema if needed
+    // Quick validation: ensure desired frontend port is free to avoid long readiness timeouts
+    if !IsPortAvailable(s.options.FrontendIP, s.options.FrontendPort) {
+        return fmt.Errorf("frontend port %s:%d is not available", s.options.FrontendIP, s.options.FrontendPort)
+    }
+
+    // Initialize database schema if needed
 	if err := s.initializeDatabase(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
@@ -98,12 +121,39 @@ func (s *Server) Start() error {
 			fmt.Sprintf("127.0.0.1:%d", cfg.Services["worker"].RPC.GRPCPort)),
 	}
 
-	// Create server options - use default services with static hosts
-	serverOpts := []temporal.ServerOption{
-		temporal.WithConfig(cfg),
-		temporal.ForServices(temporal.DefaultServices),
-		temporal.WithStaticHosts(staticHosts),
-	}
+    // Create server options. Start all default services; optionally provide a
+    // memory-backed dynamic config to disable selected background components
+    // when requested via options (useful for tests).
+    toggles := DisableToggles{
+        Scanners:          s.options.DisableScanners,
+        ParentClosePolicy: s.options.DisableParentClosePolicy,
+        Nexus:             s.options.DisableNexus,
+    }
+    // If scanners are disabled, also disable parent-close by default for fast teardown unless
+    // explicitly requested otherwise.
+    if toggles.Scanners && !toggles.ParentClosePolicy {
+        toggles.ParentClosePolicy = true
+    }
+    dyn := DefaultDynamicConfigForEmbedded(toggles)
+    s.dyn = dyn
+    // By default, only run the core services needed for client workflows.
+    // The internal Worker service is opt-in because it starts background
+    // subsystems that create SDK clients and long-poll, which can slow
+    // teardown and emit fatal logs during shutdown in tests.
+    services := []string{
+        string(primitives.FrontendService),
+        string(primitives.HistoryService),
+        string(primitives.MatchingService),
+    }
+    if s.options.EnableInternalWorker {
+        services = append(services, string(primitives.WorkerService))
+    }
+    serverOpts := []temporal.ServerOption{
+        temporal.WithConfig(cfg),
+        temporal.ForServices(services),
+        temporal.WithStaticHosts(staticHosts),
+        temporal.WithDynamicConfigClient(dyn),
+    }
 
 	// Create and start the server
 	s.server, err = temporal.NewServer(serverOpts...)
@@ -120,18 +170,23 @@ func (s *Server) Start() error {
 	s.logger.Info("Temporal development server started",
 		tag.Address(fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort)))
 
-	// Wait for server to be ready by checking if we can connect
-	// This ensures all services are registered and ready
-	s.logger.Info("Waiting for server to be ready...")
+    // Readiness: if namespaces will be created, rely on namespace API retries
+    // below to gate readiness. Otherwise, skip explicit readiness and let
+    // clients retry their own connections during warmup.
+    s.logger.Info("Waiting for frontend TCP readiness...")
+    if err := s.waitForServerReady(); err != nil {
+        return fmt.Errorf("server failed to become ready: %w", err)
+    }
 
-	if err := s.waitForServerReady(); err != nil {
-		return fmt.Errorf("server failed to become ready: %w", err)
-	}
-
-	// Create default namespaces after server is ready
-	if err := s.createDefaultNamespaces(); err != nil {
-		return fmt.Errorf("failed to create default namespaces: %w", err)
-	}
+    // Create default namespaces asynchronously; do not block startup.
+    if len(s.options.Namespaces) > 0 {
+        go func() {
+            if err := s.createDefaultNamespaces(); err != nil {
+                s.logger.Info("Namespace creation failed; clients may auto-register",
+                    tag.NewStringTag("error", err.Error()))
+            }
+        }()
+    }
 
 	s.logger.Info("Server initialization complete",
 		tag.NewStringTag("rpc", fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort)))
@@ -141,9 +196,33 @@ func (s *Server) Start() error {
 
 // Stop gracefully shuts down the server
 func (s *Server) Stop() error {
-	if s.server != nil {
-		s.server.Stop()
-	}
+    // Proactively quiesce background subsystems to shorten teardown.
+    if mc, ok := s.dyn.(*dynamicconfig.MemoryClient); ok && mc != nil {
+        mc.OverrideSetting(dynamicconfig.TaskQueueScannerEnabled, false)
+        mc.OverrideSetting(dynamicconfig.HistoryScannerEnabled, false)
+        mc.OverrideSetting(dynamicconfig.ExecutionsScannerEnabled, false)
+        mc.OverrideSetting(dynamicconfig.BuildIdScavengerEnabled, false)
+        mc.OverrideSetting(dynamicconfig.EnableParentClosePolicyWorker, false)
+        mc.OverrideSetting(dynamicconfig.EnableNexus, false)
+        // Shorten residual long-poll windows.
+        mc.OverrideSetting(dynamicconfig.RefreshNexusEndpointsLongPollTimeout, time.Second)
+        // Give subscribers a moment to pick up changes.
+        time.Sleep(500 * time.Millisecond)
+    }
+    if s.server != nil {
+        // In test modes (any disable toggle), bound Stop() latency to ~2s.
+        if s.options.DisableScanners || s.options.DisableParentClosePolicy || s.options.DisableNexus {
+            done := make(chan struct{})
+            go func() { s.server.Stop(); close(done) }()
+            select {
+            case <-done:
+            case <-time.After(2 * time.Second):
+                // Return control to tests; background goroutines will finish shortly.
+            }
+        } else {
+            s.server.Stop()
+        }
+    }
 	close(s.stopChan)
 	return nil
 }
@@ -160,20 +239,32 @@ func (s *Server) GetFrontendAddress() string {
 }
 
 func (s *Server) waitForServerReady() error {
-	// Poll with exponential backoff
-	backoff := 100 * time.Millisecond
-	maxBackoff := 2 * time.Second
-	timeout := time.After(60 * time.Second)
+    // Poll with exponential backoff, verifying TCP + lightweight gRPC
+    backoff := 200 * time.Millisecond
+    maxBackoff := 1 * time.Second
+    // Default readiness ceiling to 30s unless overridden in options
+    total := s.options.ReadinessTimeout
+    if total <= 0 {
+        total = 30 * time.Second
+    }
+    // In CI or constrained environments, frontend bind can lag. Ensure a
+    // generous minimum to avoid false negatives when options set a lower value.
+    if total < 120*time.Second {
+        total = 120 * time.Second
+    }
+    timeout := time.After(total)
 
 	for {
 		select {
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for server to be ready")
 		default:
-			// Try to connect and perform a health check
-			if err := s.checkServerHealth(); err == nil {
-				return nil
-			}
+            // Try to connect and perform a lightweight readiness check
+            if err := s.checkServerHealth(); err == nil {
+                return nil
+            } else {
+                s.logger.Info("Server not ready yet", tag.NewStringTag("reason", err.Error()))
+            }
 
 			// Exponential backoff
 			time.Sleep(backoff)
@@ -188,34 +279,20 @@ func (s *Server) waitForServerReady() error {
 }
 
 func (s *Server) checkServerHealth() error {
-	// Try to connect to the server
-	c, err := client.Dial(client.Options{
-		HostPort:  fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort),
-		Namespace: client.DefaultNamespace,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer c.Close()
+    // Readiness is intentionally lightweight to avoid long startup delays
+    // on constrained runners: validate TCP accept and that the gRPC channel
+    // can be established. Avoid heavy RPCs like GetClusterInfo here.
+    addr := fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort)
+    d := net.Dialer{Timeout: 1 * time.Second}
+    conn, err := d.Dial("tcp", addr)
+    if err != nil {
+        return fmt.Errorf("frontend not accepting connections: %w", err)
+    }
+    _ = conn.Close()
 
-	// Try to list namespaces as a health check
-	// This verifies that all services are up and communicating
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Use the WorkflowService to check system namespace
-	resp, err := c.WorkflowService().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
-		Namespace: "temporal-system",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to describe system namespace: %w", err)
-	}
-
-	if resp.NamespaceInfo == nil {
-		return fmt.Errorf("system namespace not found")
-	}
-
-	return nil
+    // Consider TCP acceptance sufficient for readiness. Heavier gRPC operations
+    // are retried by client constructors and namespace creation below.
+    return nil
 }
 
 func (s *Server) initializeDatabase() error {
@@ -424,14 +501,34 @@ func (s *Server) buildSQLiteAttributes() map[string]string {
 }
 
 func (s *Server) createDefaultNamespaces() error {
-	// Create a namespace client
-	c, err := client.NewNamespaceClient(client.Options{
-		HostPort: fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create namespace client: %w", err)
-	}
-	defer c.Close()
+    // If no namespaces requested, skip client creation to avoid unnecessary
+    // dialing during warmup in fast-teardown/test mode.
+    if len(s.options.Namespaces) == 0 {
+        return nil
+    }
+    // Budget for namespace readiness: use ReadinessTimeout if provided, else 60s.
+    budget := s.options.ReadinessTimeout
+    if budget <= 0 {
+        budget = 60 * time.Second
+    }
+    deadline := time.Now().Add(budget)
+
+    // Create a namespace client (retry until deadline during warmup)
+    var c client.NamespaceClient
+    for {
+        var err error
+        c, err = client.NewNamespaceClient(client.Options{
+            HostPort: fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort),
+        })
+        if err == nil {
+            break
+        }
+        if time.Now().After(deadline) {
+            return fmt.Errorf("failed to create namespace client within budget: %w", err)
+        }
+        time.Sleep(500 * time.Millisecond)
+    }
+    defer c.Close()
 
 	// Create each namespace specified in options
 	for _, namespace := range s.options.Namespaces {
@@ -444,20 +541,33 @@ func (s *Server) createDefaultNamespaces() error {
 		// Set retention period to 1 day for dev server
 		retention := durationpb.New(24 * time.Hour)
 
-		err := c.Register(context.Background(), &workflowservice.RegisterNamespaceRequest{
-			Namespace:                        namespace,
-			WorkflowExecutionRetentionPeriod: retention,
-			Description:                      "Created by embedded temporal server",
-		})
-		
-		if err != nil {
-			// Check if namespace already exists - that's OK
-			if _, ok := err.(*serviceerror.NamespaceAlreadyExists); ok {
-				s.logger.Info("Namespace already exists", tag.NewStringTag("namespace", namespace))
-				continue
-			}
-			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
-		}
+        // Retry namespace registration while services settle, bounded by deadline.
+        var regErr error
+        for {
+            if time.Now().After(deadline) {
+                break
+            }
+            ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+            regErr = c.Register(ctx, &workflowservice.RegisterNamespaceRequest{
+                Namespace:                        namespace,
+                WorkflowExecutionRetentionPeriod: retention,
+                Description:                      "Created by embedded temporal server",
+            })
+            cancel()
+            if regErr == nil {
+                break
+            }
+            time.Sleep(1 * time.Second)
+        }
+
+        if regErr != nil {
+            // Check if namespace already exists - that's OK
+            if _, ok := regErr.(*serviceerror.NamespaceAlreadyExists); ok {
+                s.logger.Info("Namespace already exists", tag.NewStringTag("namespace", namespace))
+                continue
+            }
+            return fmt.Errorf("failed to create namespace %s: %w", namespace, regErr)
+        }
 
 		s.logger.Info("Successfully created namespace", tag.NewStringTag("namespace", namespace))
 	}

@@ -39,13 +39,13 @@ func TestEphemeralContainerFullLifecycle(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "docs"), 0755))
 
 	// Create a devcontainer.json with lifecycle commands
-	devcontainerJSON := `{
-		"image": "alpine:latest",
-		"postCreateCommand": "echo 'PostCreate executed' > /tmp/postcreate.txt",
-		"postStartCommand": "echo 'PostStart executed' > /tmp/poststart.txt",
-		"workspaceFolder": "/workspace",
-		"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
-	}`
+    devcontainerJSON := `{
+        "image": "alpine:latest",
+        "postCreateCommand": "echo 'PostCreate executed' > /tmp/postcreate.txt",
+        "postStartCommand": "echo 'PostStart executed' > /tmp/poststart.txt",
+        "workspaceFolder": "/src",
+        "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind"
+    }`
 
 	err = os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644)
 	require.NoError(t, err)
@@ -136,14 +136,14 @@ func TestMountPermissionsIntegration(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docs", "readonly.txt"), []byte("original"), 0644))
 
 	// Create devcontainer.json that tests mount permissions
-	devcontainerJSON := `{
-		"image": "alpine:latest",
-		"postCreateCommand": [
-			"sh", "-c",
-			"echo 'modified' > /workspace/src/writable.txt && echo 'Write to src: OK' || echo 'Write to src: FAILED'; echo 'test' > /workspace/docs/readonly.txt && echo 'Write to docs: FAILED' || echo 'Write to docs: OK (blocked)'"
-		],
-		"workspaceFolder": "/workspace"
-	}`
+    devcontainerJSON := `{
+        "image": "alpine:latest",
+        "postCreateCommand": [
+            "sh", "-c",
+            "echo 'modified' > /src/src/writable.txt && echo 'Write to src: OK' || echo 'Write to src: FAILED'; echo 'test' > /src/docs/readonly.txt && echo 'Write to docs: FAILED' || echo 'Write to docs: OK (blocked)'"
+        ],
+        "workspaceFolder": "/src"
+    }`
 
 	err = os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644)
 	require.NoError(t, err)
@@ -211,20 +211,20 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
 
 	// Create devcontainer with all lifecycle commands
-	devcontainerJSON := `{
-		"image": "alpine:latest",
-		"onCreateCommand": "echo 'onCreate running'",
-		"updateContentCommand": "echo 'updateContent running'",
-		"postCreateCommand": "echo 'postCreate running'",
-		"postStartCommand": "echo 'postStart running'",
-		"postAttachCommand": "echo 'postAttach running'",
-		"workspaceFolder": "/workspace"
-	}`
+    devcontainerJSON := `{
+        "image": "alpine:latest",
+        "onCreateCommand": "echo 'onCreate running'",
+        "updateContentCommand": "echo 'updateContent running'",
+        "postCreateCommand": "echo 'postCreate running'",
+        "postStartCommand": "echo 'postStart running'",
+        "postAttachCommand": "echo 'postAttach running'",
+        "workspaceFolder": "/src"
+    }`
 
 	err = os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644)
 	require.NoError(t, err)
 
-	t.Run("all lifecycle phases report progress", func(t *testing.T) {
+    t.Run("all lifecycle phases report progress", func(t *testing.T) {
 		runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
 			WorkingDir:          tmpDir,
 			ReadWritePaths:      []string{"."},
@@ -247,11 +247,11 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 			done <- runner.Run(ctx)
 		}()
 
-		select {
-		case <-done:
-		case <-ctx.Done():
-			t.Fatal("Test timed out")
-		}
+        select {
+        case <-done:
+        case <-ctx.Done():
+            t.Fatal("Test timed out")
+        }
 
 		// Verify we saw all expected phases
 		expectedPhases := []string{"INIT", "ONCREATE", "UPDATECONTENT", "POSTCREATE", "POSTSTART", "POSTATTACH"}
@@ -262,7 +262,97 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 				assert.Contains(t, statuses, "COMPLETE", "Phase %s should have COMPLETE status", phase)
 			}
 		}
-	})
+    })
+
+    t.Run("postCreate status markers appear", func(t *testing.T) {
+        runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+            WorkingDir:          tmpDir,
+            ReadWritePaths:      []string{"."},
+            HideProgressMarkers: false,
+        })
+        require.NoError(t, err)
+        defer runner.Close()
+
+        var statuses []string
+        runner.OnProgress(func(update shai.ProgressUpdate) {
+            if update.Phase == "POSTCREATE" {
+                statuses = append(statuses, update.Status)
+            }
+        })
+
+        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+        defer cancel()
+        _ = runner.Run(ctx)
+
+        assert.Contains(t, statuses, "START")
+        assert.Contains(t, statuses, "COMPLETE")
+    })
+}
+
+// TestInteractivePromptEcho verifies prompt visibility and character echo in TTY mode
+func TestInteractivePromptEcho(t *testing.T) {
+    if !isDockerAvailable() {
+        t.Skip("Docker not available, skipping integration test")
+    }
+
+    tmpDir, err := os.MkdirTemp("", "shai-tty-test-*")
+    require.NoError(t, err)
+    defer os.RemoveAll(tmpDir)
+    require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
+
+    // Minimal devcontainer; we'll rely on shell prompt behavior after USERSWITCH
+    devcontainerJSON := `{"image":"alpine:latest","workspaceFolder":"/src"}`
+    require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644))
+
+    runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+        WorkingDir:     tmpDir,
+        ReadWritePaths: []string{"."},
+        // default interactive behavior (no PostSetupExec)
+    })
+    require.NoError(t, err)
+    defer runner.Close()
+
+    // Capture stdout and provide stdin to simulate user typing
+    oldStdout := os.Stdout
+    oldStdin := os.Stdin
+    rOut, wOut, _ := os.Pipe()
+    rIn, wIn, _ := os.Pipe()
+    os.Stdout = wOut
+    os.Stdin = rIn
+    defer func() {
+        os.Stdout = oldStdout
+        os.Stdin = oldStdin
+    }()
+
+    ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+    defer cancel()
+
+    // Run container; it will switch to shell; we then type a command
+    done := make(chan error, 1)
+    var outBuf bytes.Buffer
+    go func() { io.Copy(&outBuf, rOut) }()
+    go func() { done <- runner.Run(ctx) }()
+
+    // Wait a moment for shell to initialize and print a prompt
+    time.Sleep(2 * time.Second)
+    // Type a command: print marker without newline first, then read/echo characters, then newline
+    _, _ = wIn.Write([]byte("echo HELLO\n"))
+    // Allow output to flush
+    time.Sleep(1 * time.Second)
+
+    // Close input to terminate shell
+    _ = wIn.Close()
+    select {
+    case <-done:
+    case <-time.After(10 * time.Second):
+        t.Fatal("TTY test timed out")
+    }
+    _ = wOut.Close()
+
+    got := outBuf.String()
+    // We expect to see the typed command echoed and the output HELLO
+    assert.Contains(t, got, "echo HELLO")
+    assert.Contains(t, got, "HELLO")
 }
 
 // TestCleanShutdown tests graceful shutdown behavior
@@ -279,11 +369,11 @@ func TestCleanShutdown(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
 
 	// Create devcontainer with a long-running command
-	devcontainerJSON := `{
-		"image": "alpine:latest",
-		"postCreateCommand": "sleep 60",
-		"workspaceFolder": "/workspace"
-	}`
+    devcontainerJSON := `{
+        "image": "alpine:latest",
+        "postCreateCommand": "sleep 60",
+        "workspaceFolder": "/src"
+    }`
 
 	err = os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644)
 	require.NoError(t, err)

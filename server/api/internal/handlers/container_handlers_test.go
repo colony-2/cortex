@@ -15,10 +15,10 @@ import (
 
 // mockContainerManager implements container.Manager for testing
 type mockContainerManager struct {
-	createCalled   bool
-	receivedPath   string
-	containerIDRet string
-	createError    error
+    createCalled   bool
+    receivedPath   string
+    containerIDRet string
+    createError    error
 }
 
 func (m *mockContainerManager) Create(ctx context.Context, nodePath string) (containerID string, err error) {
@@ -56,7 +56,12 @@ func (m *mockContainerManager) Exec(ctx context.Context, containerID string, com
 }
 
 func (m *mockContainerManager) AttachWebSocket(ctx context.Context, containerID string) (container.TerminalConnection, error) {
-	return nil, nil
+    return nil, nil
+}
+
+// Satisfy updated interface with ConfigureMounts
+func (m *mockContainerManager) ConfigureMounts(mounts []container.Mount) error {
+    return nil
 }
 
 func TestCreateContainer_CellIDToPathTranslation(t *testing.T) {

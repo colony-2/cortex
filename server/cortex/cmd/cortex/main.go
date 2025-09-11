@@ -95,8 +95,10 @@ managing dependencies, and working with development containers.`,
 	serverCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
 	// Add subcommands
-	rootCmd.AddCommand(serverCmd)
-	rootCmd.AddCommand(executeCmd)
+    rootCmd.AddCommand(serverCmd)
+    rootCmd.AddCommand(executeCmd)
+    rootCmd.AddCommand(validateCmd)
+    rootCmd.AddCommand(schemaCmd)
 
 	return rootCmd.Execute()
 }

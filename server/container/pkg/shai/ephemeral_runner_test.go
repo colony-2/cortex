@@ -268,6 +268,82 @@ func TestProcessReplacement(t *testing.T) {
 	})
 }
 
+// TestPostSetupExecReplacement ensures that a provided post-setup command replaces the user shell
+// and is executed as the target user with env and workdir applied.
+func TestPostSetupExecReplacement(t *testing.T) {
+    dc := &devcontainer.DevContainer{
+        ImageContainer: &devcontainer.ImageContainer{ Image: "ubuntu:22.04" },
+        DevContainerCommon: devcontainer.DevContainerCommon{
+            RemoteUser: stringPtr("nobody"),
+        },
+    }
+
+    runner := &EphemeralRunner{
+        config: EphemeralConfig{
+            PostSetupExec: &ExecSpec{
+                Command: []string{"echo", "HELLO", "world"},
+                Env:     map[string]string{"FOO": "BAR"},
+                Workdir: "/src/sub dir",
+            },
+        },
+        devContainer: dc,
+    }
+
+    script := runner.generateSetupScript()
+
+    // Must not leave placeholders
+    if strings.Contains(script, "%USER%") {
+        t.Fatalf("script still contains %%USER%% placeholder: %s", script)
+    }
+
+    // Must include the sudo path with bash -lc and inner commands
+    if !strings.Contains(script, "exec sudo -iu nobody /bin/bash -lc") {
+        t.Fatalf("missing sudo bash -lc exec: %s", script)
+    }
+    // Ensure env export, working directory, and quoted command args are present inside the single-quoted payload
+    if !strings.Contains(script, "export FOO=") || !strings.Contains(script, "BAR") {
+        t.Fatalf("missing env export in payload: %s", script)
+    }
+    if !(strings.Contains(script, "cd ") && strings.Contains(script, "/src/sub dir")) {
+        t.Fatalf("missing workdir change in payload: %s", script)
+    }
+    if !(strings.Contains(script, "exec ") && strings.Contains(script, "echo") && strings.Contains(script, "HELLO") && strings.Contains(script, "world")) {
+        t.Fatalf("missing command payload: %s", script)
+    }
+    // Fallback su path should also exist
+    if !strings.Contains(script, "exec su - nobody -c '") {
+        t.Fatalf("missing su -c fallback: %s", script)
+    }
+}
+
+func TestInteractiveShellExportsContainerEnv(t *testing.T) {
+    dc := &devcontainer.DevContainer{
+        ImageContainer: &devcontainer.ImageContainer{ Image: "ubuntu:22.04" },
+        DevContainerCommon: devcontainer.DevContainerCommon{
+            RemoteUser: stringPtr("nobody"),
+            ContainerEnv: map[string]string{
+                "FOO": "BAR",
+                // unresolved localEnv should be skipped
+                "SKIP_ME": "${localEnv:DOES_NOT_EXIST}",
+            },
+        },
+    }
+
+    runner := &EphemeralRunner{ devContainer: dc }
+    script := runner.generateSetupScript()
+
+    // Expect env injection in both sudo and su branches
+    if !strings.Contains(script, "exec sudo -iu nobody env FOO=") {
+        t.Fatalf("missing env injection for sudo branch: %s", script)
+    }
+    if !strings.Contains(script, "exec su - nobody -c 'env FOO=") {
+        t.Fatalf("missing env injection for su branch: %s", script)
+    }
+    if strings.Contains(script, "SKIP_ME") {
+        t.Fatalf("unresolved localEnv should be skipped: %s", script)
+    }
+}
+
 // TestMountPermissions tests selective mount permissions
 func TestMountPermissions(t *testing.T) {
 	t.Run("selective read-write mounts configured correctly", func(t *testing.T) {

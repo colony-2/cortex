@@ -5,14 +5,21 @@
   "features": {
   },
   "workspaceFolder": "/src",
+  "containerEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}"
+  },
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
     "source=${localEnv:HOME}/.cache/go-build,target=/go/pkg,type=bind",
     "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind",
+    "source=${localEnv:HOME}/.proto,target=/home/devuser/.proto,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.codex,target=/home/devuser/.codex,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached",
-    "source=${localWorkspaceFolder}/.devcontainer/allowed_domains.conf,target=/etc/shai/allowed_domains.conf,type=bind,consistency=cached,ro"
+    "source=${localEnv:HOME}/.claude.json,target=/home/devuser/.claude.json,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.claude.json.backup,target=/home/devuser/.claude.json.backup,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder}/.devcontainer/shai,target=/etc/shai,type=bind,consistency=cached,ro",
+    "source=${localWorkspaceFolder}/.moon,target=/src/.moon,type=bind,consistency=cached"
   ],
   "remoteUser": "devuser",
-  "postCreateCommand": "/usr/local/sbin/bootstrap-proxy.sh"
+  "postCreateCommand": "/usr/local/sbin/bootstrap.sh"
 }

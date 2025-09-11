@@ -341,15 +341,19 @@ func (r *EphemeralRunner) buildConfig() (*devcontainer.DockerRunConfig, error) {
         return nil, err
     }
 
-	// Apply custom mounts
-	dockerMounts := r.mountBuilder.BuildMounts()
-	for _, m := range dockerMounts {
-		mountStr := fmt.Sprintf("type=%s,source=%s,target=%s", m.Type, m.Source, m.Target)
-		if m.ReadOnly {
-			mountStr += ",readonly"
-		}
-		config.Mounts = append(config.Mounts, mountStr)
-	}
+    // Force workspace to /src and let Shai manage mounts (avoid devcontainer default workspace mount)
+    config.WorkspaceFolder = "/src"
+    config.WorkspaceMount = "none"
+
+    // Apply custom mounts
+    dockerMounts := r.mountBuilder.BuildMounts()
+    for _, m := range dockerMounts {
+        mountStr := fmt.Sprintf("type=%s,source=%s,target=%s", m.Type, m.Source, m.Target)
+        if m.ReadOnly {
+            mountStr += ",readonly"
+        }
+        config.Mounts = append(config.Mounts, mountStr)
+    }
 
     return config, nil
 }
@@ -409,23 +413,102 @@ fi
     script = strings.ReplaceAll(script, "%POSTATTACH%", r.generateCommandWithProgress(r.devContainer.PostAttachCommand, "POSTATTACH"))
     script = strings.ReplaceAll(script, "%USER%", targetUser)
 
-    // Replace final shell with PostSetupExec if provided
+    // Replace final shell with PostSetupExec if provided. Ensure it runs as the target user.
     if r.config.PostSetupExec != nil && len(r.config.PostSetupExec.Command) > 0 {
-        // Build env exports
-        var exports []string
+        // Build exports inside the user shell: containerEnv (expanded) + ExecSpec.Env overrides
+        // Start with container env from devcontainer (already expanded during buildConfig)
+        mergedEnv := map[string]string{}
+        if r.devContainer != nil && r.devContainer.ContainerEnv != nil {
+            for k, v := range r.devContainer.ContainerEnv {
+                // Skip unresolved ${localEnv:...} placeholders
+                if strings.Contains(v, "${localEnv:") { continue }
+                mergedEnv[k] = v
+            }
+        }
+        // Overlay ExecSpec env
         for k, v := range r.config.PostSetupExec.Env {
+            mergedEnv[k] = v
+        }
+        var exports []string
+        for k, v := range mergedEnv {
             vv := strings.ReplaceAll(v, "'", "'\\''")
             exports = append(exports, fmt.Sprintf("export %s='%s'", k, vv))
         }
-        wd := ""
+        // Optional working directory inside the user session
+        wdCmd := ""
         if r.config.PostSetupExec.Workdir != "" {
             w := strings.ReplaceAll(r.config.PostSetupExec.Workdir, "'", "'\\''")
-            wd = fmt.Sprintf("cd '%s'\n", w)
+            wdCmd = fmt.Sprintf("cd '%s'", w)
         }
-        cmd := strings.Join(r.config.PostSetupExec.Command, " ")
-        replacement := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n" + strings.Join(exports, "\n") + "\n" + wd + "exec " + cmd + "\n"
+        // Quote each argument safely for shell
+        var qargs []string
+        for _, a := range r.config.PostSetupExec.Command {
+            qa := strings.ReplaceAll(a, "'", "'\\''")
+            qargs = append(qargs, "'"+qa+"'")
+        }
+        userCmd := strings.Join(qargs, " ")
+        // Build inner payload to run inside user's login shell
+        var parts []string
+        parts = append(parts, exports...)
+        if wdCmd != "" { parts = append(parts, wdCmd) }
+        parts = append(parts, "exec "+userCmd)
+        inner := strings.Join(parts, "; ")
+        innerEsc := strings.ReplaceAll(inner, "'", "'\\''")
+
+        replacement := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n" +
+            "if command -v sudo >/dev/null 2>&1; then\n" +
+            "  exec sudo -iu %USER% /bin/bash -lc '" + innerEsc + "'\n" +
+            "else\n" +
+            "  exec su - %USER% -c '" + innerEsc + "'\n" +
+            "fi\n"
+
         original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER% /bin/bash -l\nelse\n  exec su - %USER% -c 'exec /bin/bash --login'\nfi\n"
+        // Ensure placeholders are replaced with actual user for matching and replacement content
+        replacement = strings.ReplaceAll(replacement, "%USER%", targetUser)
+        original = strings.ReplaceAll(original, "%USER%", targetUser)
         script = strings.Replace(script, original, replacement, 1)
+    } else {
+        // Interactive shell path: inject containerEnv so login shell sees it.
+        // Build merged env from devcontainer (expanded values only)
+        merged := map[string]string{}
+        if r.devContainer != nil && r.devContainer.ContainerEnv != nil {
+            for k, v := range r.devContainer.ContainerEnv {
+                if strings.Contains(v, "${localEnv:") { continue }
+                merged[k] = v
+            }
+        }
+        if len(merged) > 0 {
+            // Build sudo and su variants
+            var sudoEnvParts []string
+            for k, v := range merged {
+                vv := strings.ReplaceAll(v, "'", "'\\''")
+                sudoEnvParts = append(sudoEnvParts, fmt.Sprintf("%s='%s'", k, vv))
+            }
+            sudoEnv := "env " + strings.Join(sudoEnvParts, " ") + " "
+
+            var suEnvParts []string
+            for k, v := range merged {
+                vv := strings.ReplaceAll(v, "'", "'\\''")
+                suEnvParts = append(suEnvParts, fmt.Sprintf("%s='%s'", k, vv))
+            }
+            suEnv := "env " + strings.Join(suEnvParts, " ") + " "
+
+            // Original block with concrete user
+            original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER% /bin/bash -l\nelse\n  exec su - %USER% -c 'exec /bin/bash --login'\nfi\n"
+            original = strings.ReplaceAll(original, "%USER%", targetUser)
+
+            // Replacement that injects env for both branches
+            replacement := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n" +
+                "\n# Replace this process with user shell with injected environment.\n" +
+                "if command -v sudo >/dev/null 2>&1; then\n" +
+                "  exec sudo -iu %USER% " + sudoEnv + "/bin/bash -l\n" +
+                "else\n" +
+                "  exec su - %USER% -c '" + suEnv + " /bin/bash --login'\n" +
+                "fi\n"
+            replacement = strings.ReplaceAll(replacement, "%USER%", targetUser)
+
+            script = strings.Replace(script, original, replacement, 1)
+        }
     }
 
     return script
@@ -738,6 +821,7 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
                     if !userSwitched && strings.HasPrefix(line, "::DEVCONTAINER::") {
                         if progress := parseProgressMarker(line); progress != nil {
                             if strings.EqualFold(progress.Phase, "USERSWITCH") && strings.EqualFold(progress.Status, "START") {
+                                // Move to fresh line and switch to byte-wise pass-through for interactive TTY
                                 fmt.Print("\n")
                                 userSwitched = true
                                 if r.config.Output == nil {
@@ -746,10 +830,48 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
                                         if st, e := term.MakeRaw(fd); e == nil { saved = st; defer term.RestoreTerminal(fd, saved) }
                                     }
                                 }
-                                // Continue; remaining bytes will be handled in loop
-                                line = ""
+                                // Start pass-through loop reading raw bytes so prompts and input echo correctly
+                                var tail bytes.Buffer
+                                buf := make([]byte, 2048)
+                                for {
+                                    n, e := reader.Read(buf)
+                                    if n > 0 {
+                                        data := buf[:n]
+                                        // Append to tail and emit full lines while filtering noisy logout lines
+                                        tail.Write(data)
+                                        b := tail.Bytes()
+                                        idx := bytes.LastIndexByte(b, '\n')
+                                        if idx >= 0 {
+                                            lines := bytes.Split(b[:idx], []byte{'\n'})
+                                            for _, ln := range lines {
+                                                s := string(ln)
+                                                if strings.Contains(s, "Session terminated, killing shell") || strings.Contains(s, "...killed.") {
+                                                    continue
+                                                }
+                                                os.Stdout.WriteString(s)
+                                                os.Stdout.WriteString("\n")
+                                            }
+                                            tail.Reset()
+                                            tail.Write(b[idx+1:])
+                                        }
+                                        // Emit partial promptly (e.g., shell prompt without newline)
+                                        if tail.Len() > 0 {
+                                            os.Stdout.Write(tail.Bytes())
+                                            tail.Reset()
+                                        }
+                                    }
+                                    if e != nil {
+                                        if e != io.EOF { errCh <- e }
+                                        break
+                                    }
+                                }
+                                // Done; forward buffered output and exit goroutine
+                                outputCh <- outputBuffer.String()
+                                errCh <- nil
+                                return
                             } else {
                                 select { case progressCh <- *progress: default: }
+                                // Swallow progress line
                                 line = ""
                             }
                         }

@@ -3,6 +3,13 @@
 ## Overview
 Cortex is a CLI-based recipe management and visualization tool that provides validation, schema generation, and execution capabilities for YAML-based recipes. It combines a web server for visualization with command-line tools for CI/CD integration and standalone recipe operations.
 
+### Quick Commands
+
+- Print schema: `cortex schema > recipe-schema.json`
+- Validate recipe: `cortex validate path/to/recipe.yaml`
+
+On validation failure, Cortex prints a human-readable list of errors and exits non‑zero; on success it prints “<file> is valid.”
+
 ## Architecture
 
 ### Core Components

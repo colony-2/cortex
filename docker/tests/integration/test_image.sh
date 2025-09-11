@@ -43,4 +43,14 @@ sleep 1
 docker exec -u devuser devbox-test sh -lc "getent hosts $BLOCKED" >/dev/null
 docker exec -u devuser devbox-test sh -lc "curl -I -m 10 https://$BLOCKED" >/dev/null
 
+echo "[check] TTY echo and prompt readiness"
+# Verify stty reports echo enabled in an interactive root zsh session
+docker exec -it devbox-test zsh -ic 'stty -a' | tr -s ' ' | grep -q ' echo ' || { echo "stty echo not enabled" >&2; exit 1; }
+
+echo "[check] /workspace not present and /src not writable by devuser"
+# No /workspace directory should exist
+if docker exec devbox-test sh -lc '[ -d /workspace ]'; then echo "/workspace should not exist" >&2; exit 1; fi
+# devuser cannot write to /src by default
+if docker exec -u devuser devbox-test sh -lc 'echo test >/src/.writetest'; then echo "/src should not be writable by devuser" >&2; exit 1; fi
+
 echo "ok"

@@ -13,7 +13,7 @@ import (
 func TestEphemeralIgnoresSIGINT(t *testing.T) {
     // Reset any prior signal handlers to avoid interference
     signal.Reset(syscall.SIGINT, syscall.SIGTERM)
-    ctx, cancel := setupSignals(true)
+    ctx, cancel := setupSignals()
     defer func() {
         cancel()
         signal.Reset(syscall.SIGINT, syscall.SIGTERM)

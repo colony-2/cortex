@@ -58,15 +58,15 @@ func NewMountBuilder(workingDir string, rwPaths []string) (*MountBuilder, error)
 // BuildMounts creates Docker mount specifications
 // Base directory is read-only, specific paths are read-write
 func (m *MountBuilder) BuildMounts() []mount.Mount {
-	mounts := []mount.Mount{
-		// Base mount: read-only
-		{
-			Type:     mount.TypeBind,
-			Source:   m.WorkingDir,
-			Target:   "/workspace",
-			ReadOnly: true,
-		},
-	}
+    mounts := []mount.Mount{
+        // Base mount: read-only
+        {
+            Type:     mount.TypeBind,
+            Source:   m.WorkingDir,
+            Target:   "/src",
+            ReadOnly: true,
+        },
+    }
 	
 	// Add read-write overlays
 	// These will override the read-only base mount for specific paths
@@ -76,14 +76,14 @@ func (m *MountBuilder) BuildMounts() []mount.Mount {
 			// Override the base mount to be read-write
 			mounts[0].ReadOnly = false
 		} else {
-			mounts = append(mounts, mount.Mount{
-				Type:     mount.TypeBind,
-				Source:   filepath.Join(m.WorkingDir, rwPath),
-				Target:   filepath.Join("/workspace", rwPath),
-				ReadOnly: false,
-			})
-		}
-	}
+            mounts = append(mounts, mount.Mount{
+                Type:     mount.TypeBind,
+                Source:   filepath.Join(m.WorkingDir, rwPath),
+                Target:   filepath.Join("/src", rwPath),
+                ReadOnly: false,
+            })
+        }
+    }
 	
 	return mounts
 }
@@ -135,27 +135,27 @@ func (m *MountBuilder) BuildMountStrings() []string {
 	var mountStrings []string
 	
 	// Base mount
-	mountStrings = append(mountStrings, fmt.Sprintf(
-		"%s:/workspace:ro",
-		m.WorkingDir,
-	))
+    mountStrings = append(mountStrings, fmt.Sprintf(
+        "%s:/src:ro",
+        m.WorkingDir,
+    ))
 	
 	// Read-write mounts
 	for _, rwPath := range m.ReadWritePaths {
 		if rwPath == "." {
 			// Override base mount to be read-write
-			mountStrings[0] = fmt.Sprintf(
-				"%s:/workspace:rw",
-				m.WorkingDir,
-			)
-		} else {
-			mountStrings = append(mountStrings, fmt.Sprintf(
-				"%s:/workspace/%s:rw",
-				filepath.Join(m.WorkingDir, rwPath),
-				rwPath,
-			))
-		}
-	}
+            mountStrings[0] = fmt.Sprintf(
+                "%s:/src:rw",
+                m.WorkingDir,
+            )
+        } else {
+            mountStrings = append(mountStrings, fmt.Sprintf(
+                "%s:/src/%s:rw",
+                filepath.Join(m.WorkingDir, rwPath),
+                rwPath,
+            ))
+        }
+    }
 	
 	return mountStrings
 }

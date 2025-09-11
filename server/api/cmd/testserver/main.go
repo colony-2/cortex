@@ -8,19 +8,21 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/spf13/cobra"
+	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+    embeddedtemporal "github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
+    "net"
 )
 
 var (
@@ -116,23 +118,70 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	})
 	containerManager := container.NewManager(container.Config{})
 
-	// Create input management service
-	inputService := input.NewInputManagementService()
-	inputService.Initialize(input.ServiceDependencies{})
+	// Setup ops management services (input manager etc.)
+	depContainer := opssetup.NewServiceDeps()
+	// Provide SSE manager
+	depContainer.Set("sse", inputops.NewSimpleSSEManager())
+    // Do not set a placeholder temporal client; only set when a real client is available
 
-	// Convert input service routes to extension routes
-	var extensionRoutes []web.ExtensionRoute
-	for _, route := range inputService.GetRoutes() {
-		path := route.Path
-		if strings.HasPrefix(path, "/api") {
-			path = strings.TrimPrefix(path, "/api")
-		}
-		extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
-			Method:  route.Method,
-			Path:    path,
-			Handler: route.Handler,
-		})
-	}
+	// Start embedded Temporal server for testserver to power input manager
+    // Choose a free ephemeral port for Temporal frontend to avoid collisions
+    var temporalPort int
+    if ln, lerr := net.Listen("tcp", "127.0.0.1:0"); lerr == nil {
+        if addr, ok := ln.Addr().(*net.TCPAddr); ok {
+            temporalPort = addr.Port
+        }
+        _ = ln.Close()
+    } else {
+        temporalPort = 7233
+    }
+
+    temporalSrv, err := embeddedtemporal.NewServer(embeddedtemporal.Options{
+        FrontendIP:               "127.0.0.1",
+        FrontendPort:             temporalPort,
+        DatabaseFile:             filepath.Join(os.TempDir(), "vibethis-temporal.db"),
+        LogLevel:                 "error",
+        DisableScanners:          true,
+        DisableNexus:             true,
+        DisableParentClosePolicy: true,
+    })
+    if err != nil {
+        return fmt.Errorf("failed to create embedded Temporal server: %w", err)
+    }
+    // Start server and wait up to 30s for a client to be ready
+    if startErr := temporalSrv.Start(); startErr != nil {
+        _ = temporalSrv.Stop()
+        return fmt.Errorf("failed to start embedded Temporal server: %w", startErr)
+    }
+    defer temporalSrv.Stop()
+
+    hostPort := temporalSrv.GetFrontendAddress()
+    var clientReady interface{}
+    var lastDialErr error
+    deadline := time.Now().Add(30 * time.Second)
+    for time.Now().Before(deadline) {
+        cli, dialErr := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{HostPort: hostPort})
+        if dialErr == nil {
+            clientReady = cli
+            break
+        }
+        lastDialErr = dialErr
+        time.Sleep(500 * time.Millisecond)
+    }
+    if clientReady == nil {
+        return fmt.Errorf("timed out waiting for Temporal client (last error: %v)", lastDialErr)
+    }
+    depContainer.Set("temporal_client", clientReady)
+    defer func() {
+        if c, ok := clientReady.(interface{ Close() error }); ok {
+            _ = c.Close()
+        }
+    }()
+
+    extensionRoutes, _, err := opssetup.SetupOps(depContainer)
+    if err != nil {
+        return fmt.Errorf("ops setup failed: %w", err)
+    }
 
 	// Create server configuration
 	config := web.Config{

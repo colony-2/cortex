@@ -1,12 +1,15 @@
 package shared
 
 import (
-	"fmt"
-	"testing"
+    "context"
+    "testing"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+    workerexec "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+    workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+    "go.uber.org/zap"
 )
 
 // ExecutionScope represents the execution context with nested scopes
@@ -238,65 +241,37 @@ func resolveVariable(varName string, scope *ExecutionScope) (interface{}, bool) 
 
 // TestNestedCompositionExecution tests deeply nested composition execution
 func TestNestedCompositionExecution(t *testing.T) {
-	// Create a deeply nested composition structure
-	rootComposition := &yamlpkg.Node{
-		ID: "root",
-		Sequence: []yamlpkg.Node{
-			{
-				ID: "step1",
-				Op: "op1",
-			},
-			{
-				ID: "nested_parallel",
-				Parallel: []yamlpkg.Node{
-					{
-						ID: "parallel1",
-						Sequence: []yamlpkg.Node{
-							{ID: "p1s1", Op: "op2"},
-							{ID: "p1s2", Op: "op3"},
-						},
-					},
-					{
-						ID: "parallel2",
-						States: &yamlpkg.StateMap{
-							Initial: "state1",
-							States: map[string]yamlpkg.State{
-								"state1": {
-									Op: "op4",
-									Transitions: []yamlpkg.Transition{
-										{To: "state2"},
-									},
-								},
-								"state2": {
-									Op: "op5",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+    // Build a real recipe (no simulation): two command steps and map outputs
+    r := recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
+        RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "test-recipe"}},
+        SequenceData: recipe.SequenceData{
+            Sequence: []recipe.Node{
+                {NodeImpl: &recipe.NodeOp{
+                    NodeMetadata: recipe.NodeMetadata{ID: "a", Inputs: recipe.InputMap{"run": "echo hello"}},
+                    OpData:       recipe.OpData{Op: "command_execution"},
+                }},
+                {NodeImpl: &recipe.NodeOp{
+                    NodeMetadata: recipe.NodeMetadata{ID: "b", Inputs: recipe.InputMap{"run": "echo world"}},
+                    OpData:       recipe.OpData{Op: "command_execution"},
+                }},
+            },
+            Outputs: recipe.OutputMap{
+                "a_stdout": "{{ sequence.a.outputs.stdout }}",
+                "b_stdout": "{{ sequence.b.outputs.stdout }}",
+            },
+        },
+    }}
 
-	// Test scope creation for nested structure
-	rootScope := createExecutionScope("root", nil)
+    // Execute via worker executor
+    reg, err := workerops.NewActivityRegistry()
+    require.NoError(t, err)
+    exec, err := workerexec.NewStandaloneExecutor(reg, zap.NewNop())
+    require.NoError(t, err)
+    out, err := exec.Execute(context.Background(), r, map[string]interface{}{})
+    require.NoError(t, err)
 
-	// Execute and create scopes
-	scopes := executeNestedComposition(rootComposition, rootScope)
-
-	// Verify scope hierarchy
-	assert.NotNil(t, scopes["root"])
-	assert.NotNil(t, scopes["step1"])
-	assert.NotNil(t, scopes["nested_parallel"])
-	assert.NotNil(t, scopes["parallel1"])
-	assert.NotNil(t, scopes["p1s1"])
-	assert.NotNil(t, scopes["p1s2"])
-	assert.NotNil(t, scopes["parallel2"])
-
-	// Verify parent-child relationships
-	assert.Equal(t, scopes["root"], scopes["step1"].Parent)
-	assert.Equal(t, scopes["nested_parallel"], scopes["parallel1"].Parent)
-	assert.Equal(t, scopes["parallel1"], scopes["p1s1"].Parent)
+    assert.Equal(t, "hello", out["a_stdout"])
+    assert.Equal(t, "world", out["b_stdout"])
 }
 
 // createExecutionScope creates a new execution scope
@@ -317,41 +292,7 @@ func createExecutionScope(id string, parent *ExecutionScope) *ExecutionScope {
 }
 
 // executeNestedComposition simulates execution of nested compositions
-func executeNestedComposition(node *yamlpkg.Node, parentScope *ExecutionScope) map[string]*ExecutionScope {
-	scopes := make(map[string]*ExecutionScope)
-
-	// Create scope for current node
-	nodeScope := createExecutionScope(node.ID, parentScope)
-	scopes[node.ID] = nodeScope
-
-	// Process based on node type
-	if node.Op != "" {
-		// Leaf operation node
-		nodeScope.Outputs["result"] = fmt.Sprintf("Result from %s", node.Op)
-	} else if len(node.Sequence) > 0 {
-		// Sequential composition
-		for _, child := range node.Sequence {
-			childScopes := executeNestedComposition(&child, nodeScope)
-			for id, scope := range childScopes {
-				scopes[id] = scope
-			}
-		}
-	} else if len(node.Parallel) > 0 {
-		// Parallel composition
-		for _, child := range node.Parallel {
-			childScopes := executeNestedComposition(&child, nodeScope)
-			for id, scope := range childScopes {
-				scopes[id] = scope
-			}
-		}
-	} else if node.States != nil {
-		// State machine composition
-		// Simplified - just mark as executed
-		nodeScope.Outputs["final_state"] = "completed"
-	}
-
-	return scopes
-}
+// (Removed simulated executeNestedComposition; replaced with real execution in TestNestedCompositionExecution)
 
 // TestScopedCELEvaluation tests CEL expression evaluation with scoped contexts
 func TestScopedCELEvaluation(t *testing.T) {

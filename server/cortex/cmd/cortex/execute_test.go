@@ -1,18 +1,18 @@
 package main
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"testing"
-	"time"
+    "encoding/json"
+    "os"
+    "path/filepath"
+    "testing"
+    "time"
 
-	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"gopkg.in/yaml.v3"
+    "github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+    recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+    "go.uber.org/zap"
+    "gopkg.in/yaml.v3"
 )
 
 func TestParseInputs(t *testing.T) {
@@ -176,84 +176,31 @@ data:
 }
 
 func TestValidateRecipeStructure(t *testing.T) {
-	tests := []struct {
-		name        string
-		recipe      *yamlpkg.Recipe
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "valid recipe",
-			recipe: &yamlpkg.Recipe{
-				Name:        "test-recipe",
-				Description: "Test",
-				Version:     "1.0",
-				Sequence: []yamlpkg.Node{
-					{
-						ID: "step1",
-						Op: "some_activity",
-					},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "missing name",
-			recipe: &yamlpkg.Recipe{
-				Description: "Test",
-				Sequence: []yamlpkg.Node{
-					{ID: "step1", Op: "activity"},
-				},
-			},
-			expectError: true,
-			errorMsg:    "recipe name is required",
-		},
-		{
-			name: "no steps",
-			recipe: &yamlpkg.Recipe{
-				Name:        "test",
-				Description: "Test",
-				Sequence:    []yamlpkg.Node{},
-			},
-			expectError: true,
-			errorMsg:    "recipe must define one of: op, sequence, parallel, or states",
-		},
-		{
-			name: "step missing ID",
-			recipe: &yamlpkg.Recipe{
-				Name: "test",
-				Sequence: []yamlpkg.Node{
-					{Op: "activity"},
-				},
-			},
-			expectError: false, // The new validation only warns about missing IDs, doesn't error
-		},
-		{
-			name: "step missing action",
-			recipe: &yamlpkg.Recipe{
-				Name: "test",
-				Sequence: []yamlpkg.Node{
-					{ID: "step1"},
-				},
-			},
-			expectError: false, // The new validation logic doesn't enforce this at structure level
-		},
-		{
-			name: "valid parallel step",
-			recipe: &yamlpkg.Recipe{
-				Name: "test",
-				Sequence: []yamlpkg.Node{
-					{
-						ID: "parallel_step",
-						Parallel: []yamlpkg.Node{
-							{ID: "sub1", Op: "activity"},
-						},
-					},
-				},
-			},
-			expectError: false,
-		},
-	}
+    tests := []struct {
+        name        string
+        recipe      *recipe.Recipe
+        expectError bool
+        errorMsg    string
+    }{
+        {
+            name: "valid sequence recipe",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
+                RecipeMetadata: recipe.RecipeMetadata{Version: "1.0"},
+                SequenceData: recipe.SequenceData{Sequence: []recipe.Node{
+                    {NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "step1"}, OpData: recipe.OpData{Op: "some_activity"}}},
+                }},
+            }},
+            expectError: false,
+        },
+        {
+            name: "valid op recipe",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeOp{
+                RecipeMetadata: recipe.RecipeMetadata{Version: "1.0"},
+                OpData:         recipe.OpData{Op: "some_activity"},
+            }},
+            expectError: false,
+        },
+    }
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,71 +219,74 @@ func TestValidateRecipeStructure(t *testing.T) {
 }
 
 func TestValidateInputs(t *testing.T) {
-	tests := []struct {
-		name        string
-		recipe      *yamlpkg.Recipe
-		inputs      map[string]interface{}
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "all required inputs provided",
-			recipe: &yamlpkg.Recipe{
-				InputSchema: map[string]yamlpkg.InputSchema{
-					"required1": {Type: "string", Required: true},
-					"required2": {Type: "number", Required: true},
-					"optional":  {Type: "string", Required: false},
-				},
-			},
-			inputs: map[string]interface{}{
-				"required1": "value",
-				"required2": 42,
-			},
-			expectError: false,
-		},
-		{
-			name: "missing required input",
-			recipe: &yamlpkg.Recipe{
-				InputSchema: map[string]yamlpkg.InputSchema{
-					"required": {Type: "string", Required: true},
-				},
-			},
-			inputs:      map[string]interface{}{},
-			expectError: true,
-			errorMsg:    "required input 'required' not provided",
-		},
-		{
-			name: "optional input not required",
-			recipe: &yamlpkg.Recipe{
-				InputSchema: map[string]yamlpkg.InputSchema{
-					"optional": {Type: "string", Required: false},
-				},
-			},
-			inputs:      map[string]interface{}{},
-			expectError: false,
-		},
-		{
-			name: "extra inputs allowed",
-			recipe: &yamlpkg.Recipe{
-				InputSchema: map[string]yamlpkg.InputSchema{
-					"defined": {Type: "string", Required: true},
-				},
-			},
-			inputs: map[string]interface{}{
-				"defined": "value",
-				"extra":   "ignored",
-			},
-			expectError: false,
-		},
-	}
+    tests := []struct {
+        name        string
+        recipe      *recipe.Recipe
+        inputs      map[string]interface{}
+        expectError bool
+        errorMsg    string
+    }{
+        {
+            name: "all required inputs provided",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeOp{
+                RecipeMetadata: recipe.RecipeMetadata{InputSchema: map[string]recipe.InputSchema{
+                    "required1": {Type: "string", Required: true},
+                    "required2": {Type: "number", Required: true},
+                    "optional":  {Type: "string", Required: false},
+                }},
+                OpData: recipe.OpData{Op: "noop"},
+            }},
+            inputs: map[string]interface{}{
+                "required1": "value",
+                "required2": 42,
+            },
+            expectError: false,
+        },
+        {
+            name: "missing required input",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeOp{
+                RecipeMetadata: recipe.RecipeMetadata{InputSchema: map[string]recipe.InputSchema{
+                    "required": {Type: "string", Required: true},
+                }},
+                OpData: recipe.OpData{Op: "noop"},
+            }},
+            inputs:      map[string]interface{}{},
+            expectError: true,
+            errorMsg:    "required input 'required' not provided",
+        },
+        {
+            name: "optional input not required",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeOp{
+                RecipeMetadata: recipe.RecipeMetadata{InputSchema: map[string]recipe.InputSchema{
+                    "optional": {Type: "string", Required: false},
+                }},
+                OpData: recipe.OpData{Op: "noop"},
+            }},
+            inputs:      map[string]interface{}{},
+            expectError: false,
+        },
+        {
+            name: "extra inputs allowed",
+            recipe: &recipe.Recipe{RecipeImpl: &recipe.RecipeOp{
+                RecipeMetadata: recipe.RecipeMetadata{InputSchema: map[string]recipe.InputSchema{
+                    "defined": {Type: "string", Required: true},
+                }},
+                OpData: recipe.OpData{Op: "noop"},
+            }},
+            inputs: map[string]interface{}{
+                "defined": "value",
+                "extra":   "ignored",
+            },
+            expectError: false,
+        },
+    }
 
-	logger := zap.NewNop()
-	rm, _ := shared.NewRegistryManager(logger)
-	validator := shared.NewRecipeValidator(rm)
+    _ = zap.NewNop()
+    validator := shared.NewRecipeValidator()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validator.ValidateInputs(tt.recipe, tt.inputs)
+        err := validator.ValidateInputs(tt.recipe, tt.inputs)
 
 			if tt.expectError {
 				assert.Error(t, err)

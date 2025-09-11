@@ -3,7 +3,7 @@
 ## Overview
 - Base: Debian bookworm-slim.
 - Languages/Tools: Go 1.24, Rust (stable via rustup), Python 3, Node v22.9.0 (+ yarn, pnpm), C/C++ toolchain, Java (default-jdk), git, jq.
-- AI CLIs (npm): `openai`, `@google/gemini-cli`, `claude-code`.
+- AI CLIs (npm): `openai`, `@google/gemini-cli`, `claude-code`, `@moonrepo/cli`.
 - Shells: `zsh` default for root and `devuser` (uid 1000) with Oh My Zsh.
 - Proxy: tinyproxy bound to `127.0.0.1:8888`, supervised; allowlist-based egress.
 - Network guard: iptables restricts `devuser` to `127.0.0.1:8888` (requires `NET_ADMIN`).
@@ -12,6 +12,7 @@
 ## Build Targets
 - Dev (split logic, faster iteration): `docker build -t debian-dev:dev --target dev .`
 - Prod (collapsed steps): `docker build -t debian-dev:prod --target prod .`
+- Parity requirement: Dev and Prod targets must remain functionally identical (same tools, versions, configs). Only layering differs. Any change to installs or configuration in one target must be mirrored in the other.
 
 ## Run Modes
 - Default (ENTRYPOINT supervisord): `docker run -d --cap-add NET_ADMIN --name devbox debian-dev:dev`
@@ -39,7 +40,7 @@
 - Mount the host workspace read-only at `/src`.
 - For each writable path `rw` given to shai, mount that host subpath at the corresponding `/src/<subpath>` with `:rw`.
 - Result: `/src` tree is read-only except the specific subpaths you mounted as `:rw` (unless you explicitly set `./` as a writable path, which makes `/src` itself writable).
-- No `/workspace` directory is used.
+- No `/workspace` directory is used. `/src` inside the image is root-owned and not writable by `devuser` unless you mount a `:rw` path over it.
 
 Example (manual Docker):
 - `-v "$PWD:/src:ro" -v "$PWD/subdir:/src/subdir:rw" -v "$HOME/.cache:/src/.cache:rw"`

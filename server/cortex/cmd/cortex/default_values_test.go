@@ -32,30 +32,28 @@ func TestDefaultInputValues(t *testing.T) {
 	tempDir := t.TempDir()
 	
 	// Create a recipe with a default value
-	recipeContent := `
+recipeContent := `
+id: test-defaults
 name: test-defaults
 description: Test default values
 version: "1.0"
 
-inputs:
-  - name: greeting
+input_schema:
+  greeting:
     type: string
-    default: "Hello"
-  - name: name
+    default_value: "Hello"
+  name:
     type: string
-    default: "World"
+    default_value: "World"
+
+sequence:
+  - id: greet
+    op: command_execution
+    inputs:
+      run: "echo {{ inputs.greeting }} {{ inputs.name }}"
 
 outputs:
-  - name: result
-    type: string
-
-steps:
-  - id: greet
-    uses: command_execution
-    inputs:
-      run: "echo {{ .Inputs.greeting }} {{ .Inputs.name }}"
-    outputs:
-      stdout: result
+  result: "{{ sequence.greet.outputs.stdout }}"
 `
 	recipeFile := filepath.Join(tempDir, "test-defaults.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))

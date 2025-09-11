@@ -112,13 +112,13 @@ func TestBuildMounts(t *testing.T) {
 				{
 					Type:     mount.TypeBind,
 					Source:   tempDir,
-					Target:   "/workspace",
+                    Target:   "/src",
 					ReadOnly: true,
 				},
 				{
 					Type:     mount.TypeBind,
 					Source:   filepath.Join(tempDir, "dir1"),
-					Target:   "/workspace/dir1",
+                    Target:   "/src/dir1",
 					ReadOnly: false,
 				},
 			},
@@ -130,19 +130,19 @@ func TestBuildMounts(t *testing.T) {
 				{
 					Type:     mount.TypeBind,
 					Source:   tempDir,
-					Target:   "/workspace",
+                    Target:   "/src",
 					ReadOnly: true,
 				},
 				{
 					Type:     mount.TypeBind,
 					Source:   filepath.Join(tempDir, "dir1"),
-					Target:   "/workspace/dir1",
+                    Target:   "/src/dir1",
 					ReadOnly: false,
 				},
 				{
 					Type:     mount.TypeBind,
 					Source:   filepath.Join(tempDir, "dir2"),
-					Target:   "/workspace/dir2",
+                    Target:   "/src/dir2",
 					ReadOnly: false,
 				},
 			},
@@ -267,8 +267,8 @@ func TestBuildMountStrings(t *testing.T) {
 
 	mountStrings := mb.BuildMountStrings()
 	expected := []string{
-		tempDir + ":/workspace:ro",
-		filepath.Join(tempDir, "dir1") + ":/workspace/dir1:rw",
+        tempDir + ":/src:ro",
+        filepath.Join(tempDir, "dir1") + ":/src/dir1:rw",
 	}
 
 	if !reflect.DeepEqual(mountStrings, expected) {

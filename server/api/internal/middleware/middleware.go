@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 // CORS adds CORS headers to responses
@@ -52,6 +54,26 @@ func Logging(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		log.Printf("%s %s - %d (%v)", r.Method, r.URL.Path, rw.statusCode, duration)
 	})
+}
+
+// RouteLogging logs the matched route template and method for debugging
+func RouteLogging(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if strings.HasPrefix(r.URL.Path, "/api") {
+            route := mux.CurrentRoute(r)
+            if route != nil {
+                if tpl, err := route.GetPathTemplate(); err == nil {
+                    log.Printf("ROUTE_LOG: method=%s path=%s template=%s", r.Method, r.URL.Path, tpl)
+                } else {
+                    log.Printf("ROUTE_LOG: method=%s path=%s template_err=%v", r.Method, r.URL.Path, err)
+                }
+            } else {
+                // Route not yet available (middleware wrapping the router); avoid panic
+                log.Printf("ROUTE_LOG: method=%s path=%s template=unmatched", r.Method, r.URL.Path)
+            }
+        }
+        next.ServeHTTP(w, r)
+    })
 }
 
 // Recovery recovers from panics

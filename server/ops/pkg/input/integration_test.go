@@ -37,10 +37,11 @@ func InputActivityExecute(ctx context.Context, config Config, input Input) (Outp
 
 // MockTemporalClient implements a minimal Temporal client for testing
 type MockTemporalClient struct {
-	client.Client
-	workflows      map[string]*WorkflowExecution
-	mu             sync.RWMutex
-	signalHandlers map[string]chan interface{}
+    client.Client
+    workflows      map[string]*WorkflowExecution
+    mu             sync.RWMutex
+    signalHandlers map[string]chan interface{}
+    describeCalls  int
 }
 
 type WorkflowExecution struct {
@@ -71,15 +72,16 @@ func (m *MockTemporalClient) SignalWorkflow(ctx context.Context, workflowID, run
 }
 
 func (m *MockTemporalClient) DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*workflowservice.DescribeWorkflowExecutionResponse, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+    m.mu.RLock()
+    defer m.mu.RUnlock()
 
-	if _, exists := m.workflows[workflowID]; exists {
-		// Return a mock description
-		// In a real implementation, this would return actual workflow details
-		return &workflowservice.DescribeWorkflowExecutionResponse{}, nil
-	}
-	return nil, fmt.Errorf("workflow %s not found", workflowID)
+    m.describeCalls++
+    if _, exists := m.workflows[workflowID]; exists {
+        // Return a mock description
+        // In a real implementation, this would return actual workflow details
+        return &workflowservice.DescribeWorkflowExecutionResponse{}, nil
+    }
+    return nil, fmt.Errorf("workflow %s not found", workflowID)
 }
 
 func (m *MockTemporalClient) CancelWorkflow(ctx context.Context, workflowID, runID string) error {
@@ -272,15 +274,15 @@ func TestInputManagementServiceAPI(t *testing.T) {
 	})
 
 	// Test 2: Submit response to workflow
-	t.Run("SubmitResponse", func(t *testing.T) {
-		// Register a mock workflow
-		workflowID := "test-workflow-123"
-		signalChan := make(chan interface{}, 1)
-		mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
-			ID:            workflowID,
-			Status:        "running",
-			SignalChannel: signalChan,
-		})
+    t.Run("SubmitResponse", func(t *testing.T) {
+        // Register a mock workflow
+        workflowID := "test-workflow-123"
+        signalChan := make(chan interface{}, 1)
+        mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
+            ID:            workflowID,
+            Status:        "running",
+            SignalChannel: signalChan,
+        })
 
 		// Prepare response submission
 		submission := map[string]interface{}{
@@ -299,9 +301,9 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		req.Header.Set("X-User-ID", "test-user-789")
 		rec := httptest.NewRecorder()
 
-		router.ServeHTTP(rec, req)
+        router.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
+        assert.Equal(t, http.StatusOK, rec.Code)
 
 		// Verify response
 		var response map[string]interface{}
@@ -311,15 +313,21 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 		// Verify signal was sent
 		select {
-		case signal := <-signalChan:
-			userResponse := signal.(UserResponseSignal)
-			assert.Equal(t, "test-user-789", userResponse.UserID)
-			assert.Equal(t, "yes", userResponse.Fields["approval"])
-			assert.Equal(t, "Looks good to me", userResponse.Fields["comments"])
-		case <-time.After(1 * time.Second):
-			t.Fatal("Expected signal not received")
-		}
-	})
+        case signal := <-signalChan:
+            userResponse := signal.(UserResponseSignal)
+            assert.Equal(t, "test-user-789", userResponse.UserID)
+            assert.Equal(t, "yes", userResponse.Fields["approval"])
+            assert.Equal(t, "Looks good to me", userResponse.Fields["comments"])
+        case <-time.After(1 * time.Second):
+            t.Fatal("Expected signal not received")
+        }
+
+        // Verify a post-signal Describe was attempted
+        mockClient.mu.RLock()
+        calls := mockClient.describeCalls
+        mockClient.mu.RUnlock()
+        assert.GreaterOrEqual(t, calls, 1, "expected at least one describe call after signaling")
+    })
 
 	// Test 3: Cancel workflow
 	t.Run("CancelWorkflow", func(t *testing.T) {
@@ -348,6 +356,69 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		mockClient.mu.RUnlock()
 		assert.Equal(t, "cancelled", wf.Status)
 	})
+}
+
+// Additional tests for management service behaviors
+func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
+    // Create mock temporal client and SSE manager
+    mockClient := NewMockTemporalClient()
+    sseManager := NewSimpleSSEManager()
+
+    // Create management service
+    service := newInputManagementService()
+    service.Initialize(ServiceDependencies{
+        TemporalClient: mockClient,
+        SSEManager:     sseManager,
+    })
+
+    // Create test router
+    router := chi.NewRouter()
+    routes := service.GetRoutes()
+    for _, route := range routes {
+        router.Method(route.Method, route.Path, route.Handler)
+    }
+
+    // Register a mock workflow for SSE test
+    workflowID := "sse-workflow-1"
+    signalChan := make(chan interface{}, 1)
+    mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
+        ID:            workflowID,
+        Status:        "running",
+        SignalChannel: signalChan,
+    })
+
+    // Subscribe to SSE before submitting response
+    events := sseManager.Subscribe("test-client-sse")
+    defer sseManager.Unsubscribe("test-client-sse")
+
+    // Submit a response
+    submission := map[string]interface{}{
+        "fields": map[string]interface{}{"approval": "yes"},
+        "metadata": map[string]interface{}{"submitted_via": "api-test"},
+    }
+    body, _ := json.Marshal(submission)
+    req := httptest.NewRequest("POST", "/api/user-inputs/"+workflowID+"/respond", bytes.NewReader(body))
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-User-ID", "user-sse-1")
+    rec := httptest.NewRecorder()
+    router.ServeHTTP(rec, req)
+    require.Equal(t, http.StatusOK, rec.Code)
+
+    // Expect an SSE event broadcast
+    select {
+    case evt := <-events:
+        assert.Equal(t, "input_completed", evt.Type)
+        assert.Equal(t, workflowID, evt.Data["workflow_id"]) 
+        assert.Equal(t, "user-sse-1", evt.Data["user_id"]) 
+    case <-time.After(1 * time.Second):
+        t.Fatal("expected SSE event not received")
+    }
+
+    // GetDetails for unknown workflow should be 404
+    req404 := httptest.NewRequest("GET", "/api/user-inputs/unknown-workflow", nil)
+    rec404 := httptest.NewRecorder()
+    router.ServeHTTP(rec404, req404)
+    assert.Equal(t, http.StatusNotFound, rec404.Code)
 }
 
 // TestSSEEventBroadcasting tests the SSE event system
