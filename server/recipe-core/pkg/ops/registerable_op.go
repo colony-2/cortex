@@ -182,7 +182,7 @@ type ManagementService interface {
     GetRoutes() []Route
 
     // Initialize with injected dependencies
-    Initialize(deps ServiceDependencies) error
+    Initialize(deps ServiceDependencies2) error
     Close()
 }
 

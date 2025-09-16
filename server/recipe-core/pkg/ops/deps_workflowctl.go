@@ -1,16 +1,18 @@
 package ops
 
-import "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+import (
+    "fmt"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+)
 
-// WorkflowControlDepName re-exports the well-known dependency name
-// so callers in ops can reference it without importing workflowctl directly
-// if they prefer using constants.
-const WorkflowControlDepName = workflowctl.DependencyName
+// Note: A string key for workflow control is no longer used.
 
 // GetWorkflowControl retrieves the workflow control interface from the provided
 // ServiceDependencies container using the well-known key. A typed helper is
 // provided for convenience.
-func GetWorkflowControl(deps ServiceDependencies) (workflowctl.WorkflowControl, error) {
-    return workflowctl.From(deps)
+func GetWorkflowControl(deps ServiceDependencies2) (workflowctl.WorkflowControl, error) {
+    if ctl, ok := deps.WorkflowControl(); ok && ctl != nil {
+        return ctl, nil
+    }
+    return nil, fmt.Errorf("workflow control not available")
 }
-

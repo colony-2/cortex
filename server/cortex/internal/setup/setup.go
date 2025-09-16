@@ -14,6 +14,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 )
 
 type svc struct {
@@ -22,6 +23,9 @@ type svc struct {
 func (s *svc) Get(name string) (interface{}, error) {
 	return nil, fmt.Errorf("service not found: %s", name)
 }
+
+// WorkflowControl implements ops.ServiceDependencies2 by returning none in this context.
+func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {

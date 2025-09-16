@@ -26,6 +26,7 @@ import (
 	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	inputpkg "github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/stretchr/testify/require"
 	sdkclient "go.temporal.io/sdk/client"
@@ -34,8 +35,8 @@ import (
 
 // depsImpl implements ops.ServiceDependencies for tests
 type depsImpl struct {
-	sse    coreops.SSEManager
-	client sdkclient.Client
+    sse    coreops.SSEManager
+    client sdkclient.Client
 }
 
 func (d depsImpl) Get(name string) (interface{}, error) {
@@ -49,6 +50,11 @@ func (d depsImpl) Get(name string) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("service not found: %s", name)
 	}
+}
+
+// WorkflowControl implements ops.ServiceDependencies2 for tests.
+func (d depsImpl) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+    return nil, false
 }
 
 func buildTestServer(t *testing.T) (*web.Server, coreops.SSEManager) {

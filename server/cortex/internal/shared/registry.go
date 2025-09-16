@@ -25,7 +25,7 @@ func RegisterOps() []ops2.RegisterableOp {
 }
 
 // SetupOps sets up all ops and returns the management service routes
-func SetupOps(context ops2.ServiceDependencies) (routes []web.ExtensionRoute, cleanupFunctions []func(), err error) {
+func SetupOps(context ops2.ServiceDependencies2) (routes []web.ExtensionRoute, cleanupFunctions []func(), err error) {
 	cleanup := []func(){}
 	opImpls := RegisterOps()
 	// find any management services and initialize them

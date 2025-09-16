@@ -3,6 +3,7 @@ package input
 import (
     "fmt"
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
     "go.temporal.io/sdk/client"
 )
 
@@ -11,6 +12,8 @@ type ServiceDependencies struct {
     TemporalClient client.Client
     SSEManager     ops.SSEManager
     TemporalNamespace string
+    // Optional typed workflow controller for tests; may be nil.
+    WorkflowCtl workflowctl.WorkflowControl
 }
 
 func (d ServiceDependencies) Get(name string) (interface{}, error) {
@@ -33,4 +36,12 @@ func (d ServiceDependencies) Get(name string) (interface{}, error) {
     default:
         return nil, fmt.Errorf("dependency not found: %s", name)
     }
+}
+
+// WorkflowControl implements ops.ServiceDependencies2 for tests.
+func (d ServiceDependencies) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+    if d.WorkflowCtl != nil {
+        return d.WorkflowCtl, true
+    }
+    return nil, false
 }

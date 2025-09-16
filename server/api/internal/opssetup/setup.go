@@ -8,12 +8,15 @@ import (
     gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
     opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
     workerexport "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 )
 
 // ServiceDeps is a simple map-backed implementation of ops.ServiceDependencies
 type ServiceDeps struct {
-    items map[string]interface{}
+    items      map[string]interface{}
+    // Optional typed workflow controller; prefer this over stringly keys.
+    workflowCtl workflowctl.WorkflowControl
 }
 
 // NewServiceDeps creates a new dependency container
@@ -37,6 +40,18 @@ func (d *ServiceDeps) Get(name string) (interface{}, error) {
     return v, nil
 }
 
+// WorkflowControl implements ops.ServiceDependencies2 by returning a typed
+// workflow controller when one has been registered under the well-known key.
+func (d *ServiceDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+    if d == nil {
+        return nil, false
+    }
+    if d.workflowCtl != nil {
+        return d.workflowCtl, true
+    }
+    return nil, false
+}
+
 // RegisterOps registers all known ops into the registry and returns the list
 func RegisterOps() []ops.RegisterableOp {
     impls := opsexport.GetAll()
@@ -53,12 +68,17 @@ func RegisterOps() []ops.RegisterableOp {
 // temporal client when the dependency is truly missing.
 type shimDeps struct{ base ops.ServiceDependencies }
 
-func (s shimDeps) Get(name string) (interface{}, error) {
-    // Pass-through; do not mask missing dependencies
-    return s.base.Get(name)
+func (s shimDeps) Get(name string) (interface{}, error) { return s.base.Get(name) }
+
+// WorkflowControl implements ops.ServiceDependencies2 by delegating to the base when possible.
+func (s shimDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+    if v2, ok := any(s.base).(ops.ServiceDependencies2); ok {
+        return v2.WorkflowControl()
+    }
+    return nil, false
 }
 
-func SetupOps(deps ops.ServiceDependencies) (routes []web.ExtensionRoute, cleanup []func(), err error) {
+func SetupOps(deps ops.ServiceDependencies2) (routes []web.ExtensionRoute, cleanup []func(), err error) {
     wrapped := shimDeps{base: deps}
     cleanupFuncs := []func(){}
     var extensionRoutes []web.ExtensionRoute

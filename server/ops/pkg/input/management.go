@@ -34,7 +34,12 @@ func newInputManagementService() *inputManagementService {
 }
 
 // Initialize sets up the service with dependencies
-func (s *inputManagementService) Initialize(deps ops.ServiceDependencies) error {
+func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error {
+    // Optional typed accessor for workflow control if available
+    if ctl, ok := deps.WorkflowControl(); ok && ctl != nil {
+        // Currently unused, but presence enables typed interactions in the future.
+        _ = ctl
+    }
     sse, err := deps.Get("sse")
     if err != nil {
         log.Printf("input_mgmt.initialize: missing_sse_manager error=%v", err)
