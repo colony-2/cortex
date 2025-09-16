@@ -2,9 +2,12 @@ package input
 
 import (
     "context"
+    "fmt"
     "time"
 
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "go.temporal.io/sdk/temporal"
+    "go.temporal.io/sdk/workflow"
 )
 
 // Config represents the configuration for the input activity
@@ -56,7 +59,54 @@ func newInputActivity() *InputActivity {
 
 func GetOp() ops.RegisterableOp {
     a := newInputActivity()
-    return ops.NewActivityMappedOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
+    // Run inline within the workflow: wait on user-response signal
+    return ops.NewInlineOpWithManagement[Input, Output](
+        a.GetMetadata(),
+        func(ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
+            // Build form from config for validation and metadata
+            form := a.buildForm(in.Config, in)
+
+            // Record pending status and basic metadata
+            _ = workflow.UpsertTypedSearchAttributes(ctx,
+                temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
+                temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(form.Title),
+                temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(in.BoxID),
+                temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(workflow.Now(ctx)),
+                temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(workflow.Now(ctx).Add(form.Timeout)),
+            )
+
+            // Wait for signal or timeout
+            responseChan := workflow.GetSignalChannel(ctx, "user-response")
+            tctx, cancel := workflow.WithCancel(ctx)
+            workflow.Go(tctx, func(c workflow.Context) {
+                // Use provided timeout if non-zero; otherwise default
+                to := form.Timeout
+                if to == 0 {
+                    to = 5 * time.Minute
+                }
+                workflow.Sleep(c, to)
+                cancel()
+            })
+
+            var sig UserResponseSignal
+            responseChan.Receive(tctx, &sig)
+            if tctx.Err() != nil {
+                _ = workflow.UpsertTypedSearchAttributes(ctx,
+                    temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
+                )
+                return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
+            }
+
+            _ = workflow.UpsertTypedSearchAttributes(ctx,
+                temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
+                temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(sig.UserID),
+                temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(sig.RespondedAt),
+            )
+
+            return Output{Fields: sig.Fields, UserID: sig.UserID, Metadata: sig.Metadata}, nil
+        },
+        a.managementService,
+    )
 }
 
 // GetMetadata returns activity metadata for registration
@@ -71,19 +121,13 @@ func (a *InputActivity) GetMetadata() ops.OpMetadata {
 
 // Execute runs the input activity using configuration provided within input
 func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error) {
-    // Build the form from the embedded config
+    // Build the form from the embedded config (validation only)
     _ = a.buildForm(input.Config, input)
 
-    // Set default timeout if not specified
-    timeout := time.Duration(input.Config.Timeout) * time.Second
-    if timeout == 0 {
-        timeout = 5 * time.Minute
-    }
-
-    // For now, return a mock response consistent with configuration
-    // (Actual collection is handled via management service endpoints.)
-    _ = timeout
-    return a.executeMockResponse(input.Config)
+    // Activities should not collect input directly. This operation must run inline
+    // within a workflow that waits on the "user-response" signal, and the signal
+    // should be sent via the management service using a typed WorkflowControl.
+    return Output{}, fmt.Errorf("input activity execution is not supported outside workflows; run inline and signal via management service")
 }
 
 // (No Temporal context or workflow execution in activity code)
@@ -125,50 +169,4 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 	return form
 }
 
-// executeWithWorkflow executes the input collection using a child workflow
-// Removed executeWithWorkflow as activities should not invoke workflows directly.
-
-// executeMockResponse returns a mock response for testing
-func (a *InputActivity) executeMockResponse(config Config) (Output, error) {
-	output := Output{
-		UserID: "test-user",
-		Metadata: map[string]interface{}{
-			"test": true,
-		},
-	}
-
-	if config.Question != "" {
-		// Single question mock response
-		switch config.Type {
-		case FieldTypeMultipleChoice:
-			if len(config.Options) > 0 {
-				output.Response = config.Options[0].Value
-			}
-		case FieldTypeLinearScale:
-			if config.Scale != nil {
-				output.Response = (config.Scale.Min + config.Scale.Max) / 2
-			}
-		default:
-			output.Response = "test response"
-		}
-	} else if len(config.Fields) > 0 {
-		// Multi-field mock response
-		output.Fields = make(map[string]interface{})
-		for _, field := range config.Fields {
-			switch field.Type {
-			case FieldTypeMultipleChoice:
-				if len(field.Options) > 0 {
-					output.Fields[field.ID] = field.Options[0].Value
-				}
-			case FieldTypeLinearScale:
-				if field.Scale != nil {
-					output.Fields[field.ID] = (field.Scale.Min + field.Scale.Max) / 2
-				}
-			default:
-				output.Fields[field.ID] = "test response"
-			}
-		}
-	}
-
-	return output, nil
-}
+// executeWithWorkflow was intentionally removed: activities must not start workflows.

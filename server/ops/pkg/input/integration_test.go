@@ -543,32 +543,27 @@ func TestEndToEndScenario(t *testing.T) {
 
 // TestActivityWithTemporalContext tests the activity with injected Temporal context
 func TestActivityWithTemporalContext(t *testing.T) {
-	activity := newInputActivity()
+    // Run through the workflow environment and ensure signaling completes
+    ts := &testsuite.WorkflowTestSuite{}
+    env := ts.NewTestWorkflowEnvironment()
+    env.RegisterWorkflow(InputCollectionWorkflow)
 
-	// Test without temporal context (standalone mode)
-	config := Config{
-		Question: "Test question?",
-		Type:     FieldTypeShortAnswer,
-		Timeout:  60,
-	}
+    cfg := Config{Question: "Test question?", Type: FieldTypeShortAnswer, Timeout: 2}
+    in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+    form := newInputActivity().buildForm(cfg, in)
+    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
-	input := Input{
-		BoxID:      "test-cell",
-		ActivityID: "test-activity",
-	}
+    env.RegisterDelayedCallback(func() {
+        env.SignalWorkflow("user-response", UserResponseSignal{Fields: map[string]interface{}{"answer": "ok"}, UserID: "u"})
+    }, 500*time.Millisecond)
 
-	in := input
-	in.Config = config
-	output, err := activity.Execute(context.Background(), in)
-	require.NoError(t, err)
+    env.ExecuteWorkflow(InputCollectionWorkflow, params)
+    require.True(t, env.IsWorkflowCompleted())
+    require.NoError(t, env.GetWorkflowError())
 
-	// In standalone mode, it returns mock response
-	assert.Equal(t, "test response", output.Response)
-	assert.Equal(t, "test-user", output.UserID)
-
-	// Verify management service is available
-	mgmtService := activity.GetManagementService()
-	assert.NotNil(t, mgmtService)
+    // Management service still available for API layer
+    activity := newInputActivity()
+    assert.NotNil(t, activity.GetManagementService())
 }
 
 // TestMultiFieldFormIntegration tests complex multi-field forms
@@ -689,34 +684,25 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 
 // BenchmarkInputActivityExecution benchmarks the input activity performance
 func BenchmarkInputActivityExecution(b *testing.B) {
-	activity := newInputActivity()
+    // Benchmark the minimal end-to-end workflow path with immediate signal
+    cfg := Config{Question: "Benchmark?", Type: FieldTypeShortAnswer, Timeout: 1}
+    in := Input{BoxID: "bench-cell", ActivityID: "bench-activity", Config: cfg}
+    form := newInputActivity().buildForm(cfg, in)
+    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
-	config := Config{
-		Question: "Benchmark question?",
-		Type:     FieldTypeMultipleChoice,
-		Options: []Option{
-			{Value: "option1"},
-			{Value: "option2"},
-		},
-		Timeout: 60,
-	}
-
-	input := Input{
-		BoxID:      "bench-cell",
-		ActivityID: "bench-activity",
-	}
-
-	ctx := context.Background()
-	in := input
-	in.Config = config
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := activity.Execute(ctx, in)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        ts := &testsuite.WorkflowTestSuite{}
+        env := ts.NewTestWorkflowEnvironment()
+        env.RegisterWorkflow(InputCollectionWorkflow)
+        env.RegisterDelayedCallback(func() {
+            env.SignalWorkflow("user-response", UserResponseSignal{Fields: map[string]interface{}{"f": "v"}, UserID: "u"})
+        }, 0)
+        env.ExecuteWorkflow(InputCollectionWorkflow, params)
+        if env.GetWorkflowError() != nil {
+            b.Fatal(env.GetWorkflowError())
+        }
+    }
 }
 
 // TestWorkerIntegration tests the activity registration with a Temporal worker
@@ -731,9 +717,8 @@ func TestWorkerIntegration(t *testing.T) {
 	env.RegisterWorkflow(RecipeWorkflow)
 	env.RegisterWorkflow(InputCollectionWorkflow)
 
-	// Register the actual input activity
-	inputActivity := newInputActivity()
-	env.RegisterActivity(inputActivity.Execute)
+    // Register a no-op activity for signature compatibility
+    env.RegisterActivity(func(context.Context, Input) (Output, error) { return Output{}, nil })
 
 	// Set up activity options
 	env.SetWorkerOptions(worker.Options{

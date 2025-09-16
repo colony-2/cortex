@@ -50,11 +50,21 @@ type OpMetadata struct {
 type OpExecutor interface {
 }
 
+// (V2 handler types removed in revert)
+
 func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)) RegisterableOp {
-	return &opSpecImpl[In, Out]{
-		metadata:      metadata,
-		inlineHandler: handler,
-	}
+    return &opSpecImpl[In, Out]{
+        metadata:      metadata,
+        inlineHandler: handler,
+    }
+}
+
+func NewInlineOpWithManagement[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), service ManagementService) RegisterableOp {
+    return &opSpecImpl[In, Out]{
+        metadata:          metadata,
+        inlineHandler:     handler,
+        managementService: service,
+    }
 }
 
 func NewActivityMappedOp[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error)) RegisterableOp {
@@ -72,11 +82,15 @@ func NewActivityMappedOpWithManagement[In any, Out any](metadata OpMetadata, han
 	}
 }
 
+// V2 constructors bind handlers that accept explicit Invocation context.
+// For now, they wrap into V1 execution paths using a zero Invocation.
+// (V2 constructors removed in revert)
+
 type opSpecImpl[In any, Out any] struct {
-	metadata          OpMetadata
-	handler           func(context.Context, In) (Out, error)
-	inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
-	managementService ManagementService
+    metadata          OpMetadata
+    handler           func(context.Context, In) (Out, error)
+    inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+    managementService ManagementService
 }
 
 func (c *opSpecImpl[In, Out]) GetInputStruct() interface{} {
@@ -89,27 +103,18 @@ func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
 	return c.managementService
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool {
-	return c.handler != nil
-}
+func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool { return c.handler != nil }
 
 func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
 func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
-	if c.handler == nil {
-		panic("this must be run inline, not as an activity")
-	}
-
-	var input In
-	if err := decodeWithJsonTags(inputMap, &input); err != nil {
-		return nil, err
-	}
-	objResult, err := c.handler(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("error executing handler: %w", err)
-	}
+    if c.handler == nil { panic("this must be run inline, not as an activity") }
+    var input In
+    if err := decodeWithJsonTags(inputMap, &input); err != nil { return nil, err }
+    objResult, err := c.handler(ctx, input)
+    if err != nil { return nil, fmt.Errorf("error executing handler: %w", err) }
 
 	s := structs.New(objResult)
 	s.TagName = "json" // Use JSON tags instead of default "structs" tags
@@ -117,18 +122,11 @@ func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]i
 }
 
 func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
-	if c.inlineHandler == nil {
-		panic("this must be run as an activity, not inline")
-	}
-
-	var input In
-	if err := decodeWithJsonTags(inputMap, &input); err != nil {
-		return nil, err
-	}
-	objResult, err := c.inlineHandler(ctx, timeout, retry, input)
-	if err != nil {
-		return nil, fmt.Errorf("error executing handler: %w", err)
-	}
+    if c.inlineHandler == nil { panic("this must be run as an activity, not inline") }
+    var input In
+    if err := decodeWithJsonTags(inputMap, &input); err != nil { return nil, err }
+    objResult, err := c.inlineHandler(ctx, timeout, retry, input)
+    if err != nil { return nil, fmt.Errorf("error executing handler: %w", err) }
 
 	s := structs.New(objResult)
 	s.TagName = "json" // Use JSON tags instead of default "structs" tags
@@ -157,19 +155,19 @@ func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {
     if c.handler != nil {
         return reflect.ValueOf(c.handler).Type().In(1)
     } else {
-        // Inline handler signature: func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
-        // The input type is the 4th parameter (index 3)
         return reflect.ValueOf(c.inlineHandler).Type().In(3)
     }
 }
 
 func (c *opSpecImpl[In, Out]) GetOutputType() reflect.Type {
-	if c.handler != nil {
-		return reflect.ValueOf(c.handler).Type().Out(0)
-	} else {
-		return reflect.ValueOf(c.inlineHandler).Type().Out(0)
-	}
+    if c.handler != nil {
+        return reflect.ValueOf(c.handler).Type().Out(0)
+    } else {
+        return reflect.ValueOf(c.inlineHandler).Type().Out(0)
+    }
 }
+
+// (V2 Execute methods removed in revert)
 
 func (c *opSpecImpl[In, Out]) isOpSpec() {}
 

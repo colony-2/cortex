@@ -189,7 +189,7 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 		}
 		retry := ToTemporalRetryPolicy(metadata.Retry)
 		return executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
-			return opImpl.Activity.ExecuteInline(ctx, timeout, retry, inputs)
+			return opImpl.Activity.ExecuteInline(inner, timeout, retry, inputs)
 		})
 	}
 
