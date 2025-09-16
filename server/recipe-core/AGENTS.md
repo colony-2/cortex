@@ -14,7 +14,9 @@ Module path: `github.com/divisive-ai/vibethis/server/recipe-core`.
 
 - `pkg/recipe`: Core types, YAML parsing, JSON Schema, validation, visitors, hashing.
 - `pkg/ops`: Op interface + registry, metadata, management service hooks.
+- `pkg/ops/service_deps2.go`: Backward-compatible `ServiceDependencies2` extension and wrapper.
 - `pkg/cel`: Small wrapper and helpers around `cel-go` for conditional expressions.
+- `pkg/workflowctl`: Minimal, SDK-agnostic workflow control interface (Describe/Signal/Cancel) and dependency helper.
 
 ## Core Types
 
@@ -106,6 +108,9 @@ Notes:
   - `ops.NewInlineOp[In,Out](metadata, func(workflow.Context, In) (Out, error))`.
 - Registry API: `ops.Register(op...)`, `ops.Get(name)`, `ops.List()`, `ops.Clear()`, `ops.Size()`.
 - Optional `ManagementService` for HTTP routes used by surrounding systems.
+- Backward-compatible dependencies extension:
+  - `ops.ServiceDependencies2` extends `ServiceDependencies` with `WorkflowControl() (workflowctl.WorkflowControl, bool)`.
+  - `ops.WithWorkflowControl(base, ctl)` produces a wrapper that implements both interfaces so callers can pass it where `ServiceDependencies` is expected and callees can type-assert to `ServiceDependencies2`.
 
 Example op registration:
 
@@ -127,6 +132,19 @@ var Echo = ops.NewActivityMappedOp[EchoIn, EchoOut](
 
 func init() { ops.Register(Echo) }
 ```
+
+## Workflow Control (pkg/workflowctl)
+
+- `workflowctl.WorkflowControl`: Normalized control-plane API for runtimes (Describe, Signal, Cancel).
+- `workflowctl.ExecutionRef`, `workflowctl.WorkflowStatus`, `workflowctl.WorkflowSummary`: Portable types with no SDK coupling.
+- `workflowctl.DependencyName`: Well-known key for dependency containers.
+- `workflowctl.From(deps)`: Helper to retrieve a `WorkflowControl` from `ops.ServiceDependencies`-style containers.
+
+Migration plan for typed workflow control
+- Phase 1: Introduce `ServiceDependencies2` and wrappers (done here); do not change Initialize signatures.
+- Phase 2: Callers start passing a value implementing `ServiceDependencies2` (e.g., using `ops.WithWorkflowControl`).
+- Phase 3: Callees type-assert to `ServiceDependencies2` when they want the typed accessor.
+- Phase 4: Optionally update Initialize signatures to accept `ServiceDependencies2` once adoption is complete.
 
 ## CEL Integration (pkg/cel)
 

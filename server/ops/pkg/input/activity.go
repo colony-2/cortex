@@ -1,13 +1,10 @@
 package input
 
 import (
-	"context"
-	"fmt"
-	"time"
+    "context"
+    "time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // Config represents the configuration for the input activity
@@ -30,9 +27,10 @@ type Config struct {
 
 // Input represents the inputs passed to the input activity
 type Input struct {
-	BoxID      string                 `json:"box_id" jsonschema:"required,description=Box identifier"`
-	ActivityID string                 `json:"activity_id" jsonschema:"required,description=Activity identifier"`
-	Context    map[string]interface{} `json:"context,omitempty" jsonschema:"description=Additional context data"`
+    BoxID      string                 `json:"box_id" jsonschema:"required,description=Box identifier"`
+    ActivityID string                 `json:"activity_id" jsonschema:"required,description=Activity identifier"`
+    Context    map[string]interface{} `json:"context,omitempty" jsonschema:"description=Additional context data"`
+    Config     Config                 `json:"config,omitempty" jsonschema:"description=Form configuration"`
 }
 
 // Output represents the output from the input activity
@@ -45,10 +43,8 @@ type Output struct {
 
 // InputActivity is a RegisterableOp that collects user input via forms
 type InputActivity struct {
-	// This will be injected by the framework when running in a workflow context
-	temporalContext workflow.Context
-	// Management service for HTTP endpoints
-	managementService ops.ManagementService
+    // Management service for HTTP endpoints
+    managementService ops.ManagementService
 }
 
 // newInputActivity creates a new input activity instance
@@ -59,8 +55,8 @@ func newInputActivity() *InputActivity {
 }
 
 func GetOp() ops.RegisterableOp {
-	a := newInputActivity()
-	return ops.NewActivityMappedOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
+    a := newInputActivity()
+    return ops.NewActivityMappedOpWithManagement(a.GetMetadata(), a.Execute, a.managementService)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -73,32 +69,24 @@ func (a *InputActivity) GetMetadata() ops.OpMetadata {
 	}
 }
 
-// Execute runs the input activity
+// Execute runs the input activity using configuration provided within input
 func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error) {
-	// Build the form from config
-	form := a.buildForm(Config{}, input)
+    // Build the form from the embedded config
+    _ = a.buildForm(input.Config, input)
 
-	// Set default timeout if not specified
-	timeout := time.Duration(Config{}.Timeout) * time.Second
-	if timeout == 0 {
-		timeout = 5 * time.Minute
-	}
+    // Set default timeout if not specified
+    timeout := time.Duration(input.Config.Timeout) * time.Second
+    if timeout == 0 {
+        timeout = 5 * time.Minute
+    }
 
-	// If we have a temporal context (running in workflow), use child workflow
-	// Otherwise, we're in standalone mode for testing
-	if a.temporalContext != nil {
-		return a.executeWithWorkflow(form, timeout, Config{}, input)
-	}
-
-	// Standalone mode - just return a mock response for testing
-	return a.executeMockResponse(Config{})
+    // For now, return a mock response consistent with configuration
+    // (Actual collection is handled via management service endpoints.)
+    _ = timeout
+    return a.executeMockResponse(input.Config)
 }
 
-// SetTemporalContext sets the workflow context for the activity
-// This is called by the framework when the activity is registered
-func (a *InputActivity) SetTemporalContext(ctx workflow.Context) {
-	a.temporalContext = ctx
-}
+// (No Temporal context or workflow execution in activity code)
 
 // GetManagementService returns the management service for HTTP endpoints
 // This implements the ManagementServiceProvider interface
@@ -138,69 +126,7 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 }
 
 // executeWithWorkflow executes the input collection using a child workflow
-func (a *InputActivity) executeWithWorkflow(form InputForm, timeout time.Duration, config Config, input Input) (Output, error) {
-	// Generate unique workflow ID
-	childID := fmt.Sprintf("input-%s-%d", workflow.GetInfo(a.temporalContext).WorkflowExecution.ID, time.Now().Unix())
-
-	// Configure child workflow options
-	childOptions := workflow.ChildWorkflowOptions{
-		WorkflowID: childID,
-		TaskQueue:  "input-handlers",
-		SearchAttributes: map[string]interface{}{
-			"InputWorkflowType": "user-input",
-			"ParentWorkflowID":  workflow.GetInfo(a.temporalContext).WorkflowExecution.ID,
-			"InputStatus":       "pending",
-		},
-	}
-
-	wfCtx := workflow.WithChildOptions(a.temporalContext, childOptions)
-
-	// Prepare workflow parameters
-	inputParams := InputWorkflowParams{
-		Form:       form,
-		Timeout:    timeout,
-		BoxID:      input.BoxID,
-		ActivityID: input.ActivityID,
-	}
-
-	// Execute child workflow and wait for result
-	var result InputWorkflowResult
-	err := workflow.ExecuteChildWorkflow(wfCtx, "InputCollectionWorkflow", inputParams).Get(wfCtx, &result)
-
-	if err != nil {
-		// Handle timeout with default value if configured
-		if config.DefaultOnTimeout != nil && temporal.IsTimeoutError(err) {
-			if config.Question != "" {
-				// Single question format
-				return Output{Response: config.DefaultOnTimeout}, nil
-			}
-			// Multi-field format - return default as fields
-			if fields, ok := config.DefaultOnTimeout.(map[string]interface{}); ok {
-				return Output{Fields: fields}, nil
-			}
-		}
-		return Output{}, err
-	}
-
-	// Convert workflow result to activity output
-	output := Output{
-		UserID:   result.UserID,
-		Metadata: result.Metadata,
-	}
-
-	// Determine if it's single question or multi-field response
-	if config.Question != "" {
-		// Single question - extract single response value
-		if val, ok := result.FormResponse["response"]; ok {
-			output.Response = val
-		}
-	} else {
-		// Multi-field - return all fields
-		output.Fields = result.FormResponse
-	}
-
-	return output, nil
-}
+// Removed executeWithWorkflow as activities should not invoke workflows directly.
 
 // executeMockResponse returns a mock response for testing
 func (a *InputActivity) executeMockResponse(config Config) (Output, error) {

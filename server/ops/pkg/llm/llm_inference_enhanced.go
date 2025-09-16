@@ -13,7 +13,7 @@ import (
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
 )
 
-type LLMInferenceConfig = LLMInferenceInput
+// Note: All configuration is provided via LLMInferenceInput.
 
 // LLMInferenceInput defines enhanced input (backward compatible)
 type LLMInferenceInput struct {
@@ -115,19 +115,21 @@ type EnhancedLLMInferenceActivity struct {
 	registry     llmadapters.Registry
 	toolExecutor *FileToolExecutor
 	sandbox      *SecuritySandbox
-	config       *LLMInferenceConfig
 }
 
+// NewEnhancedLLMInferenceActivity constructs a new activity instance for tests and registration.
+func NewEnhancedLLMInferenceActivity() *EnhancedLLMInferenceActivity { return &EnhancedLLMInferenceActivity{} }
+
 func GetEnhancedOp() ops.RegisterableOp {
-	e := &EnhancedLLMInferenceActivity{}
-	return ops.NewActivityMappedOp(
-		ops.OpMetadata{
-			Type:           "llm_inference2",
-			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
-			Version:        "1.0.0",
-			DefaultTimeout: 5 * time.Minute,
-		},
-		e.Execute)
+    e := &EnhancedLLMInferenceActivity{}
+    return ops.NewActivityMappedOp(
+        ops.OpMetadata{
+            Type:           "llm_inference2",
+            Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
+            Version:        "1.0.0",
+            DefaultTimeout: 5 * time.Minute,
+        },
+        e.Execute)
 }
 
 // GetMetadata returns activity metadata
@@ -139,28 +141,23 @@ func (a *EnhancedLLMInferenceActivity) GetMetadata() ops.OpMetadata {
 	}
 }
 
-// Execute runs the enhanced LLM inference activity
+// Execute runs the enhanced LLM inference activity (input carries all config)
 func (a *EnhancedLLMInferenceActivity) Execute(
-	ctx context.Context,
-	input LLMInferenceInput,
+    ctx context.Context,
+    input LLMInferenceInput,
 ) (LLMInferenceOutput, error) {
 
-	config := LLMInferenceConfig{}
-	startTime := time.Now()
+    startTime := time.Now()
 
-	// Store config for use in other methods
-	conf := LLMInferenceConfig(input)
-	a.config = &conf
-
-	// Validate input
-	if err := a.validateInput(input, config); err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("validation failed: %w", err)
-	}
+    // Validate input
+    if err := a.validateInput(input); err != nil {
+        return LLMInferenceOutput{}, fmt.Errorf("validation failed: %w", err)
+    }
 
 	// Initialize components
-	if err := a.initializeComponents(input, config); err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
-	}
+    if err := a.initializeComponents(input); err != nil {
+        return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
+    }
 
 	// Get adapter from registry
 	adapter, err := a.registry.Get(input.Provider)
@@ -198,7 +195,7 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 }
 
 // validateInput validates the input parameters
-func (a *EnhancedLLMInferenceActivity) validateInput(input LLMInferenceInput, config LLMInferenceConfig) error {
+func (a *EnhancedLLMInferenceActivity) validateInput(input LLMInferenceInput) error {
 	// Validate provider
 	if input.Provider == "" {
 		return fmt.Errorf("provider is required")
@@ -220,7 +217,7 @@ func (a *EnhancedLLMInferenceActivity) validateInput(input LLMInferenceInput, co
 			input.ToolWorkingDir = "."
 		}
 
-		if !config.EnableToolExecution {
+		if !input.EnableToolExecution {
 			return fmt.Errorf("tool execution is disabled in configuration")
 		}
 
@@ -232,14 +229,14 @@ func (a *EnhancedLLMInferenceActivity) validateInput(input LLMInferenceInput, co
 	}
 
 	// Validate file handling
-	if len(input.Files) > 0 && config.MaxFileContextSize > 0 {
+	if len(input.Files) > 0 && input.MaxFileContextSize > 0 {
 		totalSize := 0
 		for _, file := range input.Files {
 			totalSize += len(file.Content)
 		}
 
-		if totalSize > config.MaxFileContextSize {
-			return fmt.Errorf("total file size %d exceeds limit %d", totalSize, config.MaxFileContextSize)
+		if totalSize > input.MaxFileContextSize {
+			return fmt.Errorf("total file size %d exceeds limit %d", totalSize, input.MaxFileContextSize)
 		}
 	}
 
@@ -268,12 +265,12 @@ func (a *EnhancedLLMInferenceActivity) validateToolDefinition(tool ToolDefinitio
 }
 
 // initializeComponents initializes tool executor and sandbox
-func (a *EnhancedLLMInferenceActivity) initializeComponents(input LLMInferenceInput, config LLMInferenceConfig) error {
+func (a *EnhancedLLMInferenceActivity) initializeComponents(input LLMInferenceInput) error {
 	// Initialize sandbox if enabled
-	if config.EnableSandbox {
+	if input.EnableSandbox {
 		a.sandbox = NewSecuritySandbox(SandboxConfig{
-			AllowedPaths:    config.AllowedPaths,
-			RestrictedPaths: config.RestrictedPaths,
+			AllowedPaths:    input.AllowedPaths,
+			RestrictedPaths: input.RestrictedPaths,
 		})
 	}
 

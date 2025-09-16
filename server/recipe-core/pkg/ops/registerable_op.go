@@ -2,16 +2,16 @@
 package ops
 
 import (
-	"context"
-	"fmt"
-	"net/http"
-	"reflect"
-	"time"
+    "context"
+    "fmt"
+    "net/http"
+    "reflect"
+    "time"
 
-	"github.com/fatih/structs"
-	"github.com/mitchellh/mapstructure"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
+    "github.com/fatih/structs"
+    "github.com/mitchellh/mapstructure"
+    "go.temporal.io/sdk/temporal"
+    "go.temporal.io/sdk/workflow"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
@@ -178,16 +178,16 @@ var _ RegisterableOp = &opSpecImpl[string, string]{}
 
 // ManagementService provides HTTP endpoints for managing input requests
 type ManagementService interface {
-	// GetRoutes returns HTTP routes this service provides
-	GetRoutes() []Route
+    // GetRoutes returns HTTP routes this service provides
+    GetRoutes() []Route
 
-	// Initialize with injected dependencies
-	Initialize(deps ServiceDependencies) error
-	Close()
+    // Initialize with injected dependencies
+    Initialize(deps ServiceDependencies) error
+    Close()
 }
 
 type ServiceDependencies interface {
-	Get(name string) (interface{}, error)
+    Get(name string) (interface{}, error)
 }
 
 // SSEManager interface for Server-Sent Events

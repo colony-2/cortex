@@ -121,7 +121,8 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 			
 			// Execute the input activity
 			var output Output
-			err := workflow.ExecuteActivity(ctx, InputActivityExecute, activityConfig, activityInput).Get(ctx, &output)
+            activityInput.Config = activityConfig
+            err := workflow.ExecuteActivity(ctx, InputActivityExecute, activityInput).Get(ctx, &output)
 			if err != nil {
 				logger.Error("Input activity failed", "step", stepName, "error", err)
 				result["status"] = "failed"
@@ -163,12 +164,12 @@ func TestRecipeWithSingleInputActivity(t *testing.T) {
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
 	
 	// Mock the input activity to return a specific response
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			// Verify the activity received the correct configuration
-			assert.Equal(t, "Do you want to proceed with deployment?", config.Question)
-			assert.Equal(t, FieldTypeMultipleChoice, config.Type)
-			assert.Len(t, config.Options, 2)
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            // Verify the activity received the correct configuration
+            assert.Equal(t, "Do you want to proceed with deployment?", input.Config.Question)
+            assert.Equal(t, FieldTypeMultipleChoice, input.Config.Type)
+            assert.Len(t, input.Config.Options, 2)
 			
 			// Return a mock response
 			return Output{
@@ -251,11 +252,11 @@ func TestRecipeWithMultiFieldInput(t *testing.T) {
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
 	
 	// Mock the input activity for multi-field form
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			// Verify multi-field configuration
-			assert.Equal(t, "Deployment Configuration", config.Title)
-			assert.Len(t, config.Fields, 3)
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            // Verify multi-field configuration
+            assert.Equal(t, "Deployment Configuration", input.Config.Title)
+            assert.Len(t, input.Config.Fields, 3)
 			
 			return Output{
 				Fields: map[string]interface{}{
@@ -381,7 +382,7 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 	env.RegisterWorkflow(conditionalRecipeWorkflow)
 	
 	// Mock input activity to return emergency response
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
 		Output{
 			Response: "emergency",
 			UserID:   "emergency-approver",
@@ -435,16 +436,16 @@ func TestRecipeWithInputTimeout(t *testing.T) {
 	// Mock input activity to simulate timeout by returning default value
 	// The activity should immediately return the default value without error
 	// to avoid retries
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			// When there's a default on timeout, return it immediately as success
-			// This simulates the activity handling the timeout gracefully
-			if config.DefaultOnTimeout != nil {
-				return Output{
-					Response: config.DefaultOnTimeout,
-					UserID:   "system-timeout",
-					Metadata: map[string]interface{}{
-						"reason": "timeout",
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            // When there's a default on timeout, return it immediately as success
+            // This simulates the activity handling the timeout gracefully
+            if input.Config.DefaultOnTimeout != nil {
+                return Output{
+                    Response: input.Config.DefaultOnTimeout,
+                    UserID:   "system-timeout",
+                    Metadata: map[string]interface{}{
+                        "reason": "timeout",
 					},
 				}, nil
 			}
@@ -499,13 +500,13 @@ func TestRecipeWithMultipleInputSteps(t *testing.T) {
 	// Track which input activities were called
 	callOrder := []string{}
 	
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			callOrder = append(callOrder, input.ActivityID)
-			
-			// Return different responses based on the activity
-			switch input.ActivityID {
-			case "initial_approval":
+env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+    func(ctx context.Context, input Input) (Output, error) {
+        callOrder = append(callOrder, input.ActivityID)
+        
+        // Return different responses based on the activity
+        switch input.ActivityID {
+        case "initial_approval":
 				return Output{Response: "approve", UserID: "approver-1"}, nil
 			case "technical_review":
 				return Output{

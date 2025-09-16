@@ -454,11 +454,25 @@ func outputResult(result ExecutionResult, format string) error {
 
     switch format {
     case "json":
-        // Always emit the full structure for machine parsing
-        output, err = json.MarshalIndent(result, "", "  ")
+        // On success, emit only outputs; on error emit full structure
+        if result.Success && result.Error == nil {
+            if result.Outputs == nil {
+                result.Outputs = map[string]interface{}{}
+            }
+            output, err = json.MarshalIndent(result.Outputs, "", "  ")
+        } else {
+            output, err = json.MarshalIndent(result, "", "  ")
+        }
     case "yaml":
-        // Emit the full structure for machine parsing
-        output, err = yaml.Marshal(result)
+        // On success, emit only outputs; on error emit full structure
+        if result.Success && result.Error == nil {
+            if result.Outputs == nil {
+                result.Outputs = map[string]interface{}{}
+            }
+            output, err = yaml.Marshal(result.Outputs)
+        } else {
+            output, err = yaml.Marshal(result)
+        }
     case "text":
         // Human-readable formatting
         output = []byte(formatTextResult(result))

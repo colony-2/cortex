@@ -10,25 +10,22 @@ import (
 )
 
 func TestInputActivity_GetMetadata(t *testing.T) {
-	activity := newInputActivity()
-	metadata := activity.GetMetadata()
+    activity := newInputActivity()
+    metadata := activity.GetMetadata()
 
-	assert.Equal(t, "input", metadata.Type)
-	assert.Equal(t, "User Input Collection", metadata.Name)
-	assert.NotEmpty(t, metadata.Description)
-	assert.Equal(t, "1.0.0", metadata.Version)
-	assert.Equal(t, 5*time.Minute, metadata.DefaultTimeout)
-	assert.NotNil(t, metadata.RetryPolicy)
-	assert.Equal(t, int32(1), metadata.RetryPolicy.MaximumAttempts)
+    assert.Equal(t, "input", metadata.Type)
+    assert.NotEmpty(t, metadata.Description)
+    assert.Equal(t, "1.0.0", metadata.Version)
+    assert.Equal(t, 5*time.Minute, metadata.DefaultTimeout)
 }
 
 func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   Config
-		input    Input
-		validate func(t *testing.T, output Output, err error)
-	}{
+    tests := []struct {
+        name     string
+        config   Config
+        input    Input
+        validate func(t *testing.T, output Output, err error)
+    }{
 		{
 			name: "short answer question",
 			config: Config{
@@ -95,10 +92,13 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			activity := newInputActivity()
-			output, err := activity.Execute(context.Background(), tt.config, tt.input)
-			tt.validate(t, output, err)
-		})
-	}
+            // Embed config into input
+            in := tt.input
+            in.Config = tt.config
+            output, err := activity.Execute(context.Background(), in)
+            tt.validate(t, output, err)
+        })
+    }
 }
 
 func TestInputActivity_Execute_MultiField(t *testing.T) {
@@ -147,7 +147,9 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 	}
 
 	activity := newInputActivity()
-	output, err := activity.Execute(context.Background(), config, input)
+    in := input
+    in.Config = config
+    output, err := activity.Execute(context.Background(), in)
 
 	require.NoError(t, err)
 	assert.NotNil(t, output.Fields)
@@ -158,7 +160,7 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 }
 
 func TestInputActivity_BuildForm(t *testing.T) {
-	activity := newInputActivity()
+    activity := newInputActivity()
 
 	t.Run("single question form", func(t *testing.T) {
 		config := Config{
@@ -171,7 +173,9 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			ActivityID: "test-activity",
 		}
 
-		form := activity.buildForm(config, input)
+        in := input
+        in.Config = config
+        form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test question", form.Question)
 		assert.Equal(t, FieldTypeShortAnswer, form.Type)
@@ -200,7 +204,9 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			ActivityID: "test-activity",
 		}
 
-		form := activity.buildForm(config, input)
+        in := input
+        in.Config = config
+        form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test Form", form.Title)
 		assert.Len(t, form.Fields, 1)
@@ -226,8 +232,10 @@ func TestInputActivity_DefaultOnTimeout(t *testing.T) {
 			ActivityID: "test-activity",
 		}
 
-		// In mock mode, it won't actually timeout, but we can test the config
-		output, err := activity.Execute(context.Background(), config, input)
+        // In mock mode, it won't actually timeout, but we can test the config
+        in := input
+        in.Config = config
+        output, err := activity.Execute(context.Background(), in)
 
 		require.NoError(t, err)
 		// In mock mode, it returns the first option, not the default

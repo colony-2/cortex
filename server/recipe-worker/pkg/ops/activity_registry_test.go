@@ -41,18 +41,18 @@ type BadInput struct {
 
 // testActivity is a mock RegisterableOp for testing
 var testActivity = recipeops.NewActivityMappedOp(
-    recipeops.OpMetadata{
-        Type:           "test_registry_activity",
-        Description:    "A test activity for unit testing",
-        Version:        "1.0.0",
-        DefaultTimeout: 30 * time.Second,
-    },
+	recipeops.OpMetadata{
+		Type:           "test_registry_activity",
+		Description:    "A test activity for unit testing",
+		Version:        "1.0.0",
+		DefaultTimeout: 30 * time.Second,
+	},
 	func(ctx context.Context, input TestInput) (TestOutput, error) {
 		return testExecute(ctx, TestConfig{}, input)
 	},
 )
 
-func testExecute(ctx context.Context, config TestConfig, input TestInput) (TestOutput, error) {
+func testExecute(ctx context.Context, input TestInput) (TestOutput, error) {
 	return TestOutput{
 		Result:  input.Data + " processed",
 		Success: true,
@@ -100,7 +100,7 @@ func (a *BadActivity) GetMetadata() recipeops.OpMetadata {
 	}
 }
 
-func (a *BadActivity) Execute(ctx context.Context, config BadConfig, input BadInput) (TestOutput, error) {
+func (a *BadActivity) Execute(ctx context.Context, input BadInput) (TestOutput, error) {
 	return TestOutput{}, nil
 }
 

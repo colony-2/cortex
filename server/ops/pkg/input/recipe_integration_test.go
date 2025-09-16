@@ -101,7 +101,8 @@ func DeploymentRecipeWorkflow(ctx workflow.Context, params map[string]interface{
 		},
 	}
 	
-	err := workflow.ExecuteActivity(ctx, InputActivityExecute, approvalConfig, approvalInput).Get(ctx, &approvalOutput)
+        approvalInput.Config = approvalConfig
+        err := workflow.ExecuteActivity(ctx, InputActivityExecute, approvalInput).Get(ctx, &approvalOutput)
 	if err != nil {
 		logger.Error("Failed to get approval", "error", err)
 		result["error"] = err.Error()
@@ -160,7 +161,8 @@ func DeploymentRecipeWorkflow(ctx workflow.Context, params map[string]interface{
 		},
 	}
 	
-	err = workflow.ExecuteActivity(ctx, InputActivityExecute, verificationConfig, verificationInput).Get(ctx, &verificationOutput)
+        verificationInput.Config = verificationConfig
+        err = workflow.ExecuteActivity(ctx, InputActivityExecute, verificationInput).Get(ctx, &verificationOutput)
 	if err != nil {
 		logger.Warn("Verification timeout or error", "error", err)
 		result["verification_status"] = "timeout"
@@ -202,9 +204,9 @@ func TestDeploymentRecipeWithUserInput(t *testing.T) {
 	activityCalls := []string{}
 	
 	// Mock the InputActivity to simulate user responses
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			activityCalls = append(activityCalls, input.ActivityID)
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            activityCalls = append(activityCalls, input.ActivityID)
 			
 			// Return different responses based on the activity
 			switch input.ActivityID {
@@ -293,11 +295,11 @@ func TestDeploymentRecipeRejection(t *testing.T) {
 	env.RegisterWorkflow(DeploymentRecipeWorkflow)
 	
 	// Mock activity to reject deployment
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			if input.ActivityID == "deployment-approval" {
-				return Output{
-					Fields: map[string]interface{}{
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            if input.ActivityID == "deployment-approval" {
+                return Output{
+                    Fields: map[string]interface{}{
 						"approval_decision": "reject",
 						"approval_notes":    "Changes need more testing",
 						"risk_assessment":   4,
@@ -347,9 +349,9 @@ func TestDeploymentRecipeTimeout(t *testing.T) {
 	
 	// Mock activity to simulate timeout on approval
 	callCount := 0
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			callCount++
+    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+        func(ctx context.Context, input Input) (Output, error) {
+            callCount++
 			if input.ActivityID == "deployment-approval" {
 				// Simulate timeout - return default value
 				return Output{
@@ -394,9 +396,9 @@ func TestDeploymentRecipeWithRollback(t *testing.T) {
 	env.RegisterWorkflow(DeploymentRecipeWorkflow)
 	
 	// Mock activities for approval and failed verification
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			switch input.ActivityID {
+env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+    func(ctx context.Context, input Input) (Output, error) {
+        switch input.ActivityID {
 			case "deployment-approval":
 				return Output{
 					Fields: map[string]interface{}{
@@ -472,7 +474,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			ActivityID: "tech-approval",
 		}
 		
-		err := workflow.ExecuteActivity(ctx, InputActivityExecute, techConfig, techInput).Get(ctx, &techApproval)
+        techInput.Config = techConfig
+        err := workflow.ExecuteActivity(ctx, InputActivityExecute, techInput).Get(ctx, &techApproval)
 		if err != nil {
 			return nil, err
 		}
@@ -494,7 +497,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			ActivityID: "security-approval",
 		}
 		
-		err = workflow.ExecuteActivity(ctx, InputActivityExecute, secConfig, secInput).Get(ctx, &secApproval)
+        secInput.Config = secConfig
+        err = workflow.ExecuteActivity(ctx, InputActivityExecute, secInput).Get(ctx, &secApproval)
 		if err != nil {
 			return nil, err
 		}
@@ -517,7 +521,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 				ActivityID: "management-approval",
 			}
 			
-			err = workflow.ExecuteActivity(ctx, InputActivityExecute, mgmtConfig, mgmtInput).Get(ctx, &mgmtApproval)
+                mgmtInput.Config = mgmtConfig
+                err = workflow.ExecuteActivity(ctx, InputActivityExecute, mgmtInput).Get(ctx, &mgmtApproval)
 			if err != nil {
 				return nil, err
 			}
@@ -534,14 +539,14 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 	})
 	
 	// Mock all approvals as successful
-	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything, mock.Anything).Return(
-		func(ctx context.Context, config Config, input Input) (Output, error) {
-			return Output{
-				Response: "yes",
-				UserID:   "approver-" + input.ActivityID,
-			}, nil
-		},
-	)
+env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+    func(ctx context.Context, input Input) (Output, error) {
+        return Output{
+            Response: "yes",
+            UserID:   "approver-" + input.ActivityID,
+        }, nil
+    },
+)
 	
 	// Execute the workflow using the anonymous function directly
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
@@ -565,7 +570,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			ActivityID: "tech-approval",
 		}
 		
-		err := workflow.ExecuteActivity(ctx, InputActivityExecute, techConfig, techInput).Get(ctx, &techApproval)
+techInput.Config = techConfig
+err := workflow.ExecuteActivity(ctx, InputActivityExecute, techInput).Get(ctx, &techApproval)
 		if err != nil {
 			return nil, err
 		}
@@ -587,7 +593,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 			ActivityID: "security-approval",
 		}
 		
-		err = workflow.ExecuteActivity(ctx, InputActivityExecute, secConfig, secInput).Get(ctx, &secApproval)
+secInput.Config = secConfig
+err = workflow.ExecuteActivity(ctx, InputActivityExecute, secInput).Get(ctx, &secApproval)
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +617,8 @@ func TestMultiStageApprovalWorkflow(t *testing.T) {
 				ActivityID: "management-approval",
 			}
 			
-			err = workflow.ExecuteActivity(ctx, InputActivityExecute, mgmtConfig, mgmtInput).Get(ctx, &mgmtApproval)
+mgmtInput.Config = mgmtConfig
+err = workflow.ExecuteActivity(ctx, InputActivityExecute, mgmtInput).Get(ctx, &mgmtApproval)
 			if err != nil {
 				return nil, err
 			}

@@ -112,7 +112,7 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 			CommitHash: commitHash,
 		}
 
-		output, err := wrapper.Execute(ctx, config, input)
+		output, err := wrapper.Execute(ctx, input)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
@@ -136,18 +136,18 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 	t.Run("test interface implementation", func(t *testing.T) {
 		// This test ensures the wrapper properly implements the RegisterableActivity interface
 		wrapper := &GitShallowActivityWrapper{}
-		
+
 		// Test that we can call all interface methods
 		_ = wrapper.GetMetadata()
-		
+
 		config := GitShallowConfig{}
 		input := GitShallowInput{
 			SourceDir:  sourceDir,
 			TargetDir:  filepath.Join(tempDir, "interface-test"),
 			CommitHash: commitHash,
 		}
-		
-		_, err := wrapper.Execute(ctx, config, input)
+
+		_, err := wrapper.Execute(ctx, input)
 		if err != nil {
 			t.Fatalf("Interface method Execute failed: %v", err)
 		}

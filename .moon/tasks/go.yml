@@ -16,7 +16,7 @@ tasks:
       outputStyle: buffer-only-failure
 
   test:
-    command: 'gotestsum -- -v ./...'
+    command: 'go test -v ./...'
     deps:
       - "^:build"
     inputs:

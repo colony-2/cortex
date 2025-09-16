@@ -1,23 +1,27 @@
 package shared
 
 import (
-	"fmt"
-	"strings"
+    "fmt"
+    "strings"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/export"
-	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
+    "github.com/divisive-ai/vibethis/server/api/pkg/web"
+    export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
+    "github.com/divisive-ai/vibethis/server/ops/pkg/export"
+    ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 )
 
 // RegisterOps registers all ops with the ops registry
 func RegisterOps() []ops2.RegisterableOp {
-	opImpls := export.GetAll()
-	opImpls = append(opImpls, export2.GetAll()...)
-	opImpls = append(opImpls, export3.GetAll()...)
-	ops2.Register(opImpls...)
-	return opImpls
+    // Ensure a clean registry to avoid leaking test-only ops that may
+    // have been registered via init() in transitive imports.
+    ops2.Clear()
+
+    opImpls := export.GetAll()
+    opImpls = append(opImpls, export2.GetAll()...)
+    opImpls = append(opImpls, export3.GetAll()...)
+    ops2.Register(opImpls...)
+    return opImpls
 }
 
 // SetupOps sets up all ops and returns the management service routes

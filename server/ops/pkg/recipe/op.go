@@ -28,8 +28,8 @@ type RecipeMetadata struct {
 }
 
 // RecipeActivityWrapper implements the RegisterableOp interface
-type RecipeActivityWrapper struct {
-	isWorkflowContext bool // Indicates if running in workflow context
+type recipeInlineAdapter struct {
+    isWorkflowContext bool // Indicates if running in workflow context
 }
 
 // NewRecipeActivity creates a new recipe activity that implements RegisterableOp

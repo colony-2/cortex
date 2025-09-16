@@ -3,6 +3,7 @@ module github.com/divisive-ai/vibethis/server/embeddedtemporal
 go 1.24.1
 
 require (
+	github.com/stretchr/testify v1.10.0
 	go.temporal.io/api v1.50.0
 	go.temporal.io/sdk v1.34.0
 	go.temporal.io/server v1.28.0
@@ -101,7 +102,6 @@ require (
 	github.com/sony/gobreaker v1.0.0 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/temporalio/ringpop-go v0.0.0-20250130211428-b97329e994f7 // indirect
 	github.com/temporalio/sqlparser v0.0.0-20231115171017-f4060bcfa6cb // indirect
 	github.com/temporalio/tchannel-go v1.22.1-0.20240528171429-1db37fdea938 // indirect
