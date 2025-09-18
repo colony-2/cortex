@@ -1,50 +1,66 @@
 package setup
 
 import (
-	"context"
-	"fmt"
-	"os"
+    "context"
+    "fmt"
+    "os"
+    "path/filepath"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/container/pkg/container"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
-	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+    "github.com/divisive-ai/vibethis/server/api/pkg/web"
+    "github.com/divisive-ai/vibethis/server/container/pkg/container"
+    "github.com/divisive-ai/vibethis/server/cortex/internal/config"
+    "github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+    "github.com/divisive-ai/vibethis/server/cortex/internal/static"
+    "github.com/divisive-ai/vibethis/server/files/pkg/files"
+    "github.com/divisive-ai/vibethis/server/git/pkg/git"
+    "github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+    "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+    inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+    temporalclient "go.temporal.io/sdk/client"
 )
 
-type svc struct {
-}
+type svc struct { sse interface{} }
 
 func (s *svc) Get(name string) (interface{}, error) {
-	return nil, fmt.Errorf("service not found: %s", name)
+    switch name {
+    case "sse":
+        if s.sse != nil {
+            return s.sse, nil
+        }
+        return nil, fmt.Errorf("service not found: %s", name)
+    case "temporal_client":
+        var c temporalclient.Client = nil
+        return c, nil
+    default:
+        return nil, fmt.Errorf("service not found: %s", name)
+    }
 }
 
-// WorkflowControl implements ops.ServiceDependencies2 by returning none in this context.
+// WorkflowControl implements ops.ServiceDependencies2. No controller available here.
 func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
 	var cleanup []func()
 
-	// Initialize storage with default database path
-	databasePath := cfg.RootPath + "/.vibethis"
+    // Initialize storage with default database path, allow override for tests/CI
+    dbDir := os.Getenv("VIBETHIS_DB_DIR")
+    if dbDir == "" {
+        dbDir = filepath.Join(cfg.RootPath, ".vibethis")
+    }
 
-	// Ensure database directory exists if CreateNew flag is set
-	if cfg.CreateNew {
-		if err := os.MkdirAll(databasePath, 0755); err != nil {
-			return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
-		}
-	}
+    // Ensure database directory exists when creating new or when overridden via env
+    if cfg.CreateNew || os.Getenv("VIBETHIS_DB_DIR") != "" {
+        if err := os.MkdirAll(dbDir, 0755); err != nil {
+            return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
+        }
+    }
 
-	storageImpl, err := storage.NewBoltStorage(storage.Config{
-		DatabasePath: databasePath,
-		ReadOnly:     false,
-	})
+    storageImpl, err := storage.NewBoltStorage(storage.Config{
+        DatabasePath: dbDir,
+        ReadOnly:     false,
+    })
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
@@ -62,9 +78,11 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		DefaultEmail:  "github.com/divisive-ai/vibethis/server@example.com",
 	})
 
-	// Initialize container manager
-	containerMgr := container.NewManager(container.Config{})
-	svcContext := &svc{}
+    // Initialize container manager
+    containerMgr := container.NewManager(container.Config{})
+    // Provide a basic SSE manager so input management routes can initialize
+    sseMgr := inputops.NewSimpleSSEManager()
+    svcContext := &svc{sse: sseMgr}
 
 	extensionRoutes, cleanup, err := shared.SetupOps(svcContext)
 	if err != nil {

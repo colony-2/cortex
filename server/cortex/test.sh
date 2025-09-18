@@ -1,14 +1,21 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")"
+
 # Kill any existing cortex processes that might be holding the database lock
 echo "Cleaning up any existing cortex processes..."
 pkill -f "cortex-test" 2>/dev/null || true
 pkill -f "cortex -n" 2>/dev/null || true
 sleep 1
 
-# First run Go tests
-gotestsum -- -v ./...
+# First run Go tests (fall back if gotestsum is not available)
+if command -v gotestsum >/dev/null 2>&1; then
+  gotestsum -- -v ./...
+else
+  echo "gotestsum not found; falling back to 'go test -v ./...'"
+  go test -v ./...
+fi
 
 # Build the server first to avoid issues with go run
 echo "Building cortex server..."
@@ -34,6 +41,10 @@ cleanup() {
     echo "Warning: Server did not stop gracefully after 5 seconds"
     # Don't use SIGKILL per user request
   fi
+  # Remove temporary DB directory if created
+  if [ -n "$DB_TMP_DIR" ] && [ -d "$DB_TMP_DIR" ]; then
+    rm -rf "$DB_TMP_DIR"
+  fi
 }
 
 # Set up trap to ensure cleanup on exit
@@ -41,6 +52,9 @@ trap cleanup EXIT
 
 # Start cortex server in the background for integration tests
 echo "Starting cortex server for integration tests..."
+# Create a temporary DB directory and point cortex to it
+DB_TMP_DIR="$(mktemp -d)"
+export VIBETHIS_DB_DIR="$DB_TMP_DIR"
 ./build/cortex-test -n ../../ &
 SERVER_PID=$!
 

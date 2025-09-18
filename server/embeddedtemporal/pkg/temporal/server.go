@@ -170,13 +170,10 @@ func (s *Server) Start() error {
 	s.logger.Info("Temporal development server started",
 		tag.Address(fmt.Sprintf("%s:%d", s.options.FrontendIP, s.options.FrontendPort)))
 
-    // Readiness: if namespaces will be created, rely on namespace API retries
-    // below to gate readiness. Otherwise, skip explicit readiness and let
-    // clients retry their own connections during warmup.
-    s.logger.Info("Waiting for frontend TCP readiness...")
-    if err := s.waitForServerReady(); err != nil {
-        return fmt.Errorf("server failed to become ready: %w", err)
-    }
+    // Readiness: perform a best‑effort, short TCP readiness probe, but do not
+    // fail startup if it doesn’t succeed immediately. Clients and the
+    // namespace creation routine below already include their own retries.
+    _ = s.waitForServerReady()
 
     // Create default namespaces asynchronously; do not block startup.
     if len(s.options.Namespaces) > 0 {
@@ -239,43 +236,31 @@ func (s *Server) GetFrontendAddress() string {
 }
 
 func (s *Server) waitForServerReady() error {
-    // Poll with exponential backoff, verifying TCP + lightweight gRPC
+    // Poll with exponential backoff, validating only that the TCP listener
+    // is accepting connections. Keep this lightweight and time‑bounded.
     backoff := 200 * time.Millisecond
     maxBackoff := 1 * time.Second
-    // Default readiness ceiling to 30s unless overridden in options
+    // Default readiness ceiling to 15s unless overridden in options.
     total := s.options.ReadinessTimeout
     if total <= 0 {
-        total = 30 * time.Second
+        total = 15 * time.Second
     }
-    // In CI or constrained environments, frontend bind can lag. Ensure a
-    // generous minimum to avoid false negatives when options set a lower value.
-    if total < 120*time.Second {
-        total = 120 * time.Second
-    }
-    timeout := time.After(total)
+    deadline := time.Now().Add(total)
 
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("timeout waiting for server to be ready")
-		default:
-            // Try to connect and perform a lightweight readiness check
-            if err := s.checkServerHealth(); err == nil {
-                return nil
-            } else {
-                s.logger.Info("Server not ready yet", tag.NewStringTag("reason", err.Error()))
+    for time.Now().Before(deadline) {
+        if err := s.checkServerHealth(); err == nil {
+            return nil
+        }
+        time.Sleep(backoff)
+        if backoff < maxBackoff {
+            backoff *= 2
+            if backoff > maxBackoff {
+                backoff = maxBackoff
             }
-
-			// Exponential backoff
-			time.Sleep(backoff)
-			if backoff < maxBackoff {
-				backoff *= 2
-				if backoff > maxBackoff {
-					backoff = maxBackoff
-				}
-			}
-		}
-	}
+        }
+    }
+    // Do not treat failure as fatal; report for visibility only.
+    return fmt.Errorf("timeout waiting for server to be ready")
 }
 
 func (s *Server) checkServerHealth() error {

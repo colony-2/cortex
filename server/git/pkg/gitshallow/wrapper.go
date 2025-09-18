@@ -1,21 +1,16 @@
 package gitshallow
 
 import (
-	"context"
+    "context"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
-
-// GitShallowConfig defines the configuration for git shallow clone activities - ALL fields MUST have json tags
-type GitShallowConfig struct {
-	// No configuration needed for this activity
-}
 
 // GitShallowInput defines the input for git shallow clone activities - ALL fields MUST have json tags
 type GitShallowInput struct {
-	SourceDir  string `json:"source_dir"`  // Required: path to source git repository
-	TargetDir  string `json:"target_dir"`  // Required: path where to clone
-	CommitHash string `json:"commit_hash"` // Required: commit hash to checkout
+    SourceDir  string `json:"source_dir"`  // Required: path to source git repository
+    TargetDir  string `json:"target_dir"`  // Required: path where to clone
+    CommitHash string `json:"commit_hash"` // Required: commit hash to checkout
 }
 
 // GitShallowOutput defines the output from git shallow clone activities - ALL fields MUST have json tags

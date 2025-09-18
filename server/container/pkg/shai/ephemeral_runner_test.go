@@ -370,15 +370,29 @@ func TestMountPermissions(t *testing.T) {
 		// We should have mounts for workspace (RO) and specified RW paths
 		assert.True(t, len(mounts) > 0)
 
-		// Verify RW paths are mounted as read-write
-		rwFound := 0
-		for _, mount := range mounts {
-			if strings.Contains(mount.Target, "/src") || strings.Contains(mount.Target, "/tests") {
-				assert.False(t, mount.ReadOnly, "RW path should not be read-only: %s", mount.Target)
-				rwFound++
-			}
-		}
-		assert.Equal(t, 2, rwFound, "Should have 2 RW mounts")
+    // Verify base workspace mount exists and is read-only
+    var baseFound bool
+    for _, m := range mounts {
+        if m.Target == "/src" {
+            baseFound = true
+            assert.True(t, m.ReadOnly, "Base workspace mount should be read-only")
+            break
+        }
+    }
+    assert.True(t, baseFound, "expected base /src mount to be present")
+
+    // Verify the two specific RW overlay mounts are present and writable
+    rwTargets := map[string]bool{"/src/src": false, "/src/tests": false}
+    for _, m := range mounts {
+        if _, ok := rwTargets[m.Target]; ok {
+            assert.False(t, m.ReadOnly, "RW path should not be read-only: %s", m.Target)
+            rwTargets[m.Target] = true
+        }
+    }
+    // Ensure both overlays were found
+    for tgt, found := range rwTargets {
+        assert.True(t, found, "expected RW mount for %s to be present", tgt)
+    }
 	})
 }
 

@@ -14,6 +14,8 @@ import (
     "time"
 
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    invschema "github.com/invopop/jsonschema"
+    jsonschemav6 "github.com/santhosh-tekuri/jsonschema/v6"
     yaml "gopkg.in/yaml.v3"
 )
 
@@ -52,6 +54,66 @@ type runtimeCtx struct {
     projectRoot string
     opDir       string
     spec        ExtensionOpSpec
+    // compiled schemas (optional)
+    compiledInput  *jsonschemav6.Schema
+    compiledOutput *jsonschemav6.Schema
+    // retained for docs/introspection
+    inputSchemaDoc  *invschema.Schema
+    outputSchemaDoc *invschema.Schema
+}
+
+// extInputsWrapper is the per-op input wrapper that:
+// - supplies JSON Schema for schema generation
+// - validates YAML inputs at parse-time via UnmarshalYAML
+// - captures arbitrary input keys via yaml:",inline"
+type extInputsWrapper struct {
+    // Data captures all keys
+    Data map[string]interface{} `yaml:",inline" json:"-"`
+
+    // Schema (not marshaled) used for JSON Schema and validation
+    schemaDoc      *invschema.Schema       `yaml:"-" json:"-"`
+    compiledSchema *jsonschemav6.Schema    `yaml:"-" json:"-"`
+}
+
+// JSONSchema provides the extension's input JSON Schema to the reflector.
+func (w extInputsWrapper) JSONSchema() *invschema.Schema {
+    if w.schemaDoc != nil {
+        return w.schemaDoc
+    }
+    // Permissive fallback
+    return &invschema.Schema{Type: "object"}
+}
+
+// JSONSchemaExtend allows the reflector to apply the provided schema document directly.
+func (w extInputsWrapper) JSONSchemaExtend(s *invschema.Schema) {
+    if w.schemaDoc != nil {
+        // Shallow copy of the schema document into s
+        *s = *w.schemaDoc
+        return
+    }
+    s.Type = "object"
+}
+
+// UnmarshalYAML validates inputs against the compiled schema if present.
+func (w *extInputsWrapper) UnmarshalYAML(n *yaml.Node) error {
+    var m map[string]interface{}
+    if err := n.Decode(&m); err != nil {
+        return err
+    }
+    if w.compiledSchema != nil {
+        if err := w.compiledSchema.Validate(m); err != nil {
+            return err
+        }
+    } else if w.schemaDoc != nil && len(w.schemaDoc.Required) > 0 {
+        // Fallback: enforce required keys from schemaDoc when no compiled validator
+        for _, req := range w.schemaDoc.Required {
+            if _, ok := m[req]; !ok {
+                return fmt.Errorf("missing required field: %s", req)
+            }
+        }
+    }
+    w.Data = m
+    return nil
 }
 
 // buildCmd constructs the exec.Cmd based on spec.
@@ -193,8 +255,29 @@ func Discover(startDir string) ([]ops.RegisterableOp, error) {
             opDir:       opDir,
             spec:        spec,
         }
-        // Build a RegisterableOp using the generic activity wrapper with map IO
-        op := ops.NewActivityMappedOp[map[string]interface{}, map[string]interface{}](md, func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+        // Parse/compile schemas if provided (best effort)
+        if is := spec.InputSchema; is != nil {
+            if doc, compiled, err := parseSchema(is); err == nil {
+                rctx.inputSchemaDoc = doc
+                rctx.compiledInput = compiled
+            }
+        }
+        if oschema := spec.OutputSchema; oschema != nil {
+            if doc, compiled, err := parseSchema(oschema); err == nil {
+                rctx.outputSchemaDoc = doc
+                rctx.compiledOutput = compiled
+            }
+        }
+        // Build a RegisterableOp using the provider constructor to supply a
+        // per-op input wrapper instance with JSON Schema + YAML validation.
+        op := ops.NewActivityMappedOpWithProvider[map[string]interface{}, map[string]interface{}](md, func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+            // Optional input validation
+            if rctx.compiledInput != nil {
+                if err := rctx.compiledInput.Validate(input); err != nil {
+                    return nil, fmt.Errorf("extension op '%s' input failed schema validation: %w", rctx.name, err)
+                }
+            }
+
             // Determine timeout from spec, if any
             var cancel context.CancelFunc
             if d, err := parseDurationOrZero(rctx.spec.Timeout); err == nil && d > 0 {
@@ -241,7 +324,17 @@ func Discover(startDir string) ([]ops.RegisterableOp, error) {
             if err := dec.Decode(&outMap); err != nil && !errors.Is(err, io.EOF) {
                 return nil, fmt.Errorf("extension op '%s' produced invalid JSON on stdout: %w; raw: %s", rctx.name, err, strings.TrimSpace(stdout.String()))
             }
+            if rctx.compiledOutput != nil {
+                if vErr := rctx.compiledOutput.Validate(outMap); vErr != nil {
+                    return nil, fmt.Errorf("extension op '%s' output failed schema validation: %w", rctx.name, vErr)
+                }
+            }
             return outMap, nil
+        }, func() interface{} {
+            return &extInputsWrapper{
+                schemaDoc:      rctx.inputSchemaDoc,
+                compiledSchema: rctx.compiledInput,
+            }
         })
         out = append(out, op)
     }
@@ -284,3 +377,52 @@ func orDefault[T ~string](v T, d T) T {
     }
     return v
 }
+
+// parseSchema converts a YAML-parsed schema (map[string]any) into both an
+// invopop schema (for documentation) and a compiled jsonschema/v6 validator.
+func parseSchema(m map[string]any) (*invschema.Schema, *jsonschemav6.Schema, error) {
+    // Marshal to JSON then unmarshal into invopop and compile with v6
+    b, err := json.Marshal(m)
+    if err != nil {
+        return nil, nil, fmt.Errorf("marshal schema: %w", err)
+    }
+    // invopop schema doc (best-effort)
+    var doc invschema.Schema
+    if err := json.Unmarshal(b, &doc); err != nil {
+        // continue without doc if malformed
+        doc = invschema.Schema{}
+    }
+    // Ensure 'required' is captured even if unmarshalling missed it
+    if rv, ok := m["required"]; ok {
+        switch rr := rv.(type) {
+        case []any:
+            var req []string
+            for _, it := range rr {
+                if s, ok := it.(string); ok {
+                    req = append(req, s)
+                }
+            }
+            if len(req) > 0 {
+                doc.Required = req
+            }
+        case []string:
+            if len(rr) > 0 {
+                doc.Required = rr
+            }
+        }
+    }
+    comp := jsonschemav6.NewCompiler()
+    comp.DefaultDraft(jsonschemav6.Draft2020)
+    if err := comp.AddResource("inmem://op-schema.json", bytes.NewReader(b)); err != nil {
+        return &doc, nil, fmt.Errorf("add resource: %w", err)
+    }
+    compiled, err := comp.Compile("inmem://op-schema.json")
+    if err != nil {
+        return &doc, nil, fmt.Errorf("compile schema: %w", err)
+    }
+    return &doc, compiled, nil
+}
+
+// Note: We purposely do not implement ops.RegisterableOp directly here,
+// because that interface uses a sealed pattern. We construct it via
+// ops.NewActivityMappedOp below to maintain compatibility.

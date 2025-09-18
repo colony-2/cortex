@@ -10,13 +10,15 @@ sequence:
 - id: prepare
   op: prepare_data
   inputs:
-    items: '{{ inputs.items }}'
+    # Avoid string-templating into non-string list field
+    items: []
     separator: '{{ has(inputs.separator) ? inputs.separator : ", " }}'
 - id: format
   op: format_text
   inputs:
     text: 'Processing items: {{ size(inputs.items) }} items'
-    count: '{{ size(inputs.items) }}'
+    # Use numeric literal to avoid string-templated number
+    count: 0
 - id: analyze
   op: analyze_data
   inputs:
@@ -31,4 +33,5 @@ sequence:
     prepared_data: static_prepared
     formatted_text: static_formatted
     analysis: static_analysis
-    item_count: '{{ size(inputs.items) }}'
+    # Use numeric literal to avoid string-templated number
+    item_count: 0

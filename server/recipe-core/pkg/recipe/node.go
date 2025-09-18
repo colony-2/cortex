@@ -1,12 +1,13 @@
 package recipe
 
 import (
-	"fmt"
+    "fmt"
+    "reflect"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/invopop/jsonschema"
-	yamlv3 "gopkg.in/yaml.v3"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "github.com/invopop/jsonschema"
+    yamlv3 "gopkg.in/yaml.v3"
 )
 
 type Node struct {
@@ -67,20 +68,29 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 }
 
 func checkOpInputs(opName string, inputs map[string]interface{}, line int, col int) error {
-	op, exists := ops.Get(opName)
-	if !exists {
-		return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
-	}
-	concreteInputType := op.GetInputStruct()
+    op, exists := ops.Get(opName)
+    if !exists {
+        return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
+    }
+    // Unmarshal into a pointer to the concrete input value so that any
+    // type-provided UnmarshalYAML (e.g., validation wrappers) is invoked.
+    inputVal := op.GetInputStruct()
+    var dest interface{}
+    rv := reflect.ValueOf(inputVal)
+    if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+        dest = inputVal
+    } else {
+        dest = reflect.New(rv.Type()).Interface()
+    }
 
-	data, err := yamlv3.Marshal(inputs)
-	if err != nil {
-		return err
-	}
-	if err := yamlv3.Unmarshal(data, &concreteInputType); err != nil {
-		return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
-	}
-	return nil
+    data, err := yamlv3.Marshal(inputs)
+    if err != nil {
+        return err
+    }
+    if err := yamlv3.Unmarshal(data, dest); err != nil {
+        return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
+    }
+    return nil
 }
 
 type NodeImpl interface {

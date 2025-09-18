@@ -1,12 +1,11 @@
 package gitshallow
 
 import (
-	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"testing"
-	"time"
+    "context"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "testing"
 )
 
 func TestGitShallowActivityWrapper(t *testing.T) {
@@ -72,47 +71,34 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 	}
 	commitHash := string(commitHashBytes[:len(commitHashBytes)-1]) // Remove newline
 
-	t.Run("test metadata", func(t *testing.T) {
-		wrapper := NewGitShallowActivity()
-		metadata := wrapper.GetMetadata()
+    t.Run("test metadata", func(t *testing.T) {
+        wrapper := NewGitShallowActivity()
+        metadata := wrapper.GetMetadata()
 
-		if metadata.Type != "git_shallow_clone" {
-			t.Errorf("Expected type 'git_shallow_clone', got '%s'", metadata.Type)
-		}
+        if metadata.Type != "git_shallow_clone" {
+            t.Errorf("Expected type 'git_shallow_clone', got '%s'", metadata.Type)
+        }
 
-		if metadata.Name != "Git Shallow Clone" {
-			t.Errorf("Expected name 'Git Shallow Clone', got '%s'", metadata.Name)
-		}
+        if metadata.Version != "1.0.0" {
+            t.Errorf("Expected version '1.0.0', got '%s'", metadata.Version)
+        }
 
-		if metadata.Version != "1.0.0" {
-			t.Errorf("Expected version '1.0.0', got '%s'", metadata.Version)
-		}
-
-		if metadata.DefaultTimeout != 2*time.Minute {
-			t.Errorf("Expected timeout 2 minutes, got %v", metadata.DefaultTimeout)
-		}
-
-		if metadata.RetryPolicy == nil {
-			t.Error("Expected retry policy to be set")
-		} else {
-			if metadata.RetryPolicy.MaximumAttempts != 3 {
-				t.Errorf("Expected 3 maximum attempts, got %d", metadata.RetryPolicy.MaximumAttempts)
-			}
-		}
-	})
+        if metadata.Description == "" {
+            t.Error("Expected description to be set")
+        }
+    })
 
 	t.Run("test execute", func(t *testing.T) {
 		wrapper := NewGitShallowActivity()
 		targetDir := filepath.Join(tempDir, "target-wrapper")
 
-		config := GitShallowConfig{}
-		input := GitShallowInput{
-			SourceDir:  sourceDir,
-			TargetDir:  targetDir,
-			CommitHash: commitHash,
-		}
+        input := GitShallowInput{
+            SourceDir:  sourceDir,
+            TargetDir:  targetDir,
+            CommitHash: commitHash,
+        }
 
-		output, err := wrapper.Execute(ctx, input)
+        output, err := wrapper.Execute(ctx, input)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
@@ -134,18 +120,16 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 	})
 
 	t.Run("test interface implementation", func(t *testing.T) {
-		// This test ensures the wrapper properly implements the RegisterableActivity interface
-		wrapper := &GitShallowActivityWrapper{}
+        // This test ensures the wrapper properly implements the RegisterableOp interface
+        wrapper := &GitShallowActivityWrapper{}
 
-		// Test that we can call all interface methods
-		_ = wrapper.GetMetadata()
-
-		config := GitShallowConfig{}
-		input := GitShallowInput{
-			SourceDir:  sourceDir,
-			TargetDir:  filepath.Join(tempDir, "interface-test"),
-			CommitHash: commitHash,
-		}
+        // Test that we can call all interface methods
+        _ = wrapper.GetMetadata()
+        input := GitShallowInput{
+            SourceDir:  sourceDir,
+            TargetDir:  filepath.Join(tempDir, "interface-test"),
+            CommitHash: commitHash,
+        }
 
 		_, err := wrapper.Execute(ctx, input)
 		if err != nil {

@@ -2,16 +2,16 @@
 package ops
 
 import (
-    "context"
-    "fmt"
-    "net/http"
-    "reflect"
-    "time"
+	"context"
+	"fmt"
+	"net/http"
+	"reflect"
+	"time"
 
-    "github.com/fatih/structs"
-    "github.com/mitchellh/mapstructure"
-    "go.temporal.io/sdk/temporal"
-    "go.temporal.io/sdk/workflow"
+	"github.com/fatih/structs"
+	"github.com/mitchellh/mapstructure"
+	"go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/workflow"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
@@ -41,10 +41,10 @@ type HasManagmentService interface {
 
 // OpMetadata describes the activity for registration and documentation
 type OpMetadata struct {
-    Type           string        // Unique identifier for the activity type
-    Description    string        // Detailed description
-    Version        string        // Semantic version
-    DefaultTimeout time.Duration // Default execution timeout
+	Type           string        // Unique identifier for the activity type
+	Description    string        // Detailed description
+	Version        string        // Semantic version
+	DefaultTimeout time.Duration // Default execution timeout
 }
 
 type OpExecutor interface {
@@ -53,18 +53,18 @@ type OpExecutor interface {
 // (V2 handler types removed in revert)
 
 func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)) RegisterableOp {
-    return &opSpecImpl[In, Out]{
-        metadata:      metadata,
-        inlineHandler: handler,
-    }
+	return &opSpecImpl[In, Out]{
+		metadata:      metadata,
+		inlineHandler: handler,
+	}
 }
 
 func NewInlineOpWithManagement[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), service ManagementService) RegisterableOp {
-    return &opSpecImpl[In, Out]{
-        metadata:          metadata,
-        inlineHandler:     handler,
-        managementService: service,
-    }
+	return &opSpecImpl[In, Out]{
+		metadata:          metadata,
+		inlineHandler:     handler,
+		managementService: service,
+	}
 }
 
 func NewActivityMappedOp[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error)) RegisterableOp {
@@ -82,18 +82,30 @@ func NewActivityMappedOpWithManagement[In any, Out any](metadata OpMetadata, han
 	}
 }
 
+func NewActivityMappedOpWithProvider[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
+	return &opSpecImpl[In, Out]{
+		metadata:      metadata,
+		handler:       handler,
+		inputProvider: getInputStruct,
+	}
+}
+
 // V2 constructors bind handlers that accept explicit Invocation context.
 // For now, they wrap into V1 execution paths using a zero Invocation.
 // (V2 constructors removed in revert)
 
 type opSpecImpl[In any, Out any] struct {
-    metadata          OpMetadata
-    handler           func(context.Context, In) (Out, error)
-    inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
-    managementService ManagementService
+	metadata          OpMetadata
+	handler           func(context.Context, In) (Out, error)
+	inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+	managementService ManagementService
+	inputProvider     func() interface{}
 }
 
 func (c *opSpecImpl[In, Out]) GetInputStruct() interface{} {
+	if c.inputProvider != nil {
+		return c.inputProvider()
+	}
 	return reflect.New(c.GetInputType()).Elem().Interface()
 }
 
@@ -110,11 +122,17 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 }
 
 func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
-    if c.handler == nil { panic("this must be run inline, not as an activity") }
-    var input In
-    if err := decodeWithJsonTags(inputMap, &input); err != nil { return nil, err }
-    objResult, err := c.handler(ctx, input)
-    if err != nil { return nil, fmt.Errorf("error executing handler: %w", err) }
+	if c.handler == nil {
+		panic("this must be run inline, not as an activity")
+	}
+	var input In
+	if err := decodeWithJsonTags(inputMap, &input); err != nil {
+		return nil, err
+	}
+	objResult, err := c.handler(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("error executing handler: %w", err)
+	}
 
 	s := structs.New(objResult)
 	s.TagName = "json" // Use JSON tags instead of default "structs" tags
@@ -122,11 +140,17 @@ func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]i
 }
 
 func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
-    if c.inlineHandler == nil { panic("this must be run as an activity, not inline") }
-    var input In
-    if err := decodeWithJsonTags(inputMap, &input); err != nil { return nil, err }
-    objResult, err := c.inlineHandler(ctx, timeout, retry, input)
-    if err != nil { return nil, fmt.Errorf("error executing handler: %w", err) }
+	if c.inlineHandler == nil {
+		panic("this must be run as an activity, not inline")
+	}
+	var input In
+	if err := decodeWithJsonTags(inputMap, &input); err != nil {
+		return nil, err
+	}
+	objResult, err := c.inlineHandler(ctx, timeout, retry, input)
+	if err != nil {
+		return nil, fmt.Errorf("error executing handler: %w", err)
+	}
 
 	s := structs.New(objResult)
 	s.TagName = "json" // Use JSON tags instead of default "structs" tags
@@ -152,22 +176,28 @@ func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 }
 
 func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {
-    if c.handler != nil {
-        return reflect.ValueOf(c.handler).Type().In(1)
-    } else {
-        return reflect.ValueOf(c.inlineHandler).Type().In(3)
-    }
+	if c.inputProvider != nil {
+		t := reflect.TypeOf(c.inputProvider())
+		if t.Kind() == reflect.Ptr {
+			return t.Elem()
+		}
+		return t
+	}
+	if c.handler != nil {
+		return reflect.ValueOf(c.handler).Type().In(1)
+	}
+	// Inline handler signature: func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+	// The input type is the 4th parameter (index 3)
+	return reflect.ValueOf(c.inlineHandler).Type().In(3)
 }
 
 func (c *opSpecImpl[In, Out]) GetOutputType() reflect.Type {
-    if c.handler != nil {
-        return reflect.ValueOf(c.handler).Type().Out(0)
-    } else {
-        return reflect.ValueOf(c.inlineHandler).Type().Out(0)
-    }
+	if c.handler != nil {
+		return reflect.ValueOf(c.handler).Type().Out(0)
+	} else {
+		return reflect.ValueOf(c.inlineHandler).Type().Out(0)
+	}
 }
-
-// (V2 Execute methods removed in revert)
 
 func (c *opSpecImpl[In, Out]) isOpSpec() {}
 
@@ -176,16 +206,16 @@ var _ RegisterableOp = &opSpecImpl[string, string]{}
 
 // ManagementService provides HTTP endpoints for managing input requests
 type ManagementService interface {
-    // GetRoutes returns HTTP routes this service provides
-    GetRoutes() []Route
+	// GetRoutes returns HTTP routes this service provides
+	GetRoutes() []Route
 
-    // Initialize with injected dependencies
-    Initialize(deps ServiceDependencies2) error
-    Close()
+	// Initialize with injected dependencies
+	Initialize(deps ServiceDependencies2) error
+	Close()
 }
 
 type ServiceDependencies interface {
-    Get(name string) (interface{}, error)
+	Get(name string) (interface{}, error)
 }
 
 // SSEManager interface for Server-Sent Events

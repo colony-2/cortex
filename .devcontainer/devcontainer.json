@@ -12,7 +12,6 @@
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
     "source=${localEnv:HOME}/.cache/go-build,target=/go/pkg,type=bind",
     "source=${localEnv:HOME}/.cache/go-mod,target=/go/mod,type=bind",
-    "source=${localEnv:HOME}/.proto,target=/home/devuser/.proto,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.codex,target=/home/devuser/.codex,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude.json,target=/home/devuser/.claude.json,type=bind,consistency=cached",

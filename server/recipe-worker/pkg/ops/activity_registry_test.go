@@ -47,9 +47,9 @@ var testActivity = recipeops.NewActivityMappedOp(
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
 	},
-	func(ctx context.Context, input TestInput) (TestOutput, error) {
-		return testExecute(ctx, TestConfig{}, input)
-	},
+    func(ctx context.Context, input TestInput) (TestOutput, error) {
+        return testExecute(ctx, input)
+    },
 )
 
 func testExecute(ctx context.Context, input TestInput) (TestOutput, error) {

@@ -1,20 +1,20 @@
 package llmadapters
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"testing"
-	"time"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "net/http"
+    "net/http/httptest"
+    "os"
+    "testing"
+    "time"
 
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+    "github.com/openai/openai-go"
+    "github.com/openai/openai-go/option"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
 )
 
 func TestNewOpenAIAdapter(t *testing.T) {
@@ -68,53 +68,53 @@ func TestNewOpenAIAdapter(t *testing.T) {
 }
 
 func TestOpenAIAdapter_Generate(t *testing.T) {
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify request
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "/chat/completions", r.URL.Path)
-		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+    // Create test server
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Verify request
+        assert.Equal(t, "POST", r.Method)
+        assert.Equal(t, "/chat/completions", r.URL.Path)
+        assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 
-		// Parse request body
-		var req map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
+        // Parse request body
+        var req map[string]interface{}
+        err := json.NewDecoder(r.Body).Decode(&req)
+        require.NoError(t, err)
 
-		// Send response
-		resp := map[string]interface{}{
-			"id":      "chatcmpl-123",
-			"object":  "chat.completion",
-			"created": time.Now().Unix(),
-			"model":   req["model"],
-			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"message": map[string]interface{}{
-						"role":    "assistant",
-						"content": "Test response",
-					},
-					"finish_reason": "stop",
-				},
-			},
-			"usage": map[string]interface{}{
-				"prompt_tokens":     10,
-				"completion_tokens": 5,
-				"total_tokens":      15,
-			},
-		}
+        // Send response
+        resp := map[string]interface{}{
+            "id":      "chatcmpl-123",
+            "object":  "chat.completion",
+            "created": time.Now().Unix(),
+            "model":   req["model"],
+            "choices": []map[string]interface{}{
+                {
+                    "index": 0,
+                    "message": map[string]interface{}{
+                        "role":    "assistant",
+                        "content": "Test response",
+                    },
+                    "finish_reason": "stop",
+                },
+            },
+            "usage": map[string]interface{}{
+                "prompt_tokens":     10,
+                "completion_tokens": 5,
+                "total_tokens":      15,
+            },
+        }
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(resp)
+    }))
+    defer server.Close()
 
-	// Create adapter with test server
-	adapter := &OpenAIAdapter{
-		client: openai.NewClient(
-			option.WithAPIKey("test-key"),
-			option.WithBaseURL(server.URL),
-		),
-	}
+    // Create adapter with test server
+    adapter := &OpenAIAdapter{
+        client: openai.NewClient(
+            option.WithAPIKey("test-key"),
+            option.WithBaseURL(server.URL),
+        ),
+    }
 
 	config := Config{
 		Model:        "gpt-3.5-turbo",
@@ -134,52 +134,52 @@ func TestOpenAIAdapter_Generate(t *testing.T) {
 }
 
 func TestOpenAIAdapter_Generate_JSONMode(t *testing.T) {
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse request body
-		var req map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
+    // Create test server
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Parse request body
+        var req map[string]interface{}
+        err := json.NewDecoder(r.Body).Decode(&req)
+        require.NoError(t, err)
 
-		// Verify JSON mode is set
-		responseFormat := req["response_format"].(map[string]interface{})
-		assert.Equal(t, "json_object", responseFormat["type"])
+        // Verify JSON mode is set
+        responseFormat := req["response_format"].(map[string]interface{})
+        assert.Equal(t, "json_object", responseFormat["type"])
 
-		// Send response
-		resp := map[string]interface{}{
-			"id":      "chatcmpl-123",
-			"object":  "chat.completion",
-			"created": time.Now().Unix(),
-			"model":   req["model"],
-			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"message": map[string]interface{}{
-						"role":    "assistant",
-						"content": `{"result": "test"}`,
-					},
-					"finish_reason": "stop",
-				},
-			},
-			"usage": map[string]interface{}{
-				"prompt_tokens":     10,
-				"completion_tokens": 5,
-				"total_tokens":      15,
-			},
-		}
+        // Send response
+        resp := map[string]interface{}{
+            "id":      "chatcmpl-123",
+            "object":  "chat.completion",
+            "created": time.Now().Unix(),
+            "model":   req["model"],
+            "choices": []map[string]interface{}{
+                {
+                    "index": 0,
+                    "message": map[string]interface{}{
+                        "role":    "assistant",
+                        "content": `{"result": "test"}`,
+                    },
+                    "finish_reason": "stop",
+                },
+            },
+            "usage": map[string]interface{}{
+                "prompt_tokens":     10,
+                "completion_tokens": 5,
+                "total_tokens":      15,
+            },
+        }
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(resp)
+    }))
+    defer server.Close()
 
-	// Create adapter with test server
-	adapter := &OpenAIAdapter{
-		client: openai.NewClient(
-			option.WithAPIKey("test-key"),
-			option.WithBaseURL(server.URL),
-		),
-	}
+    // Create adapter with test server
+    adapter := &OpenAIAdapter{
+        client: openai.NewClient(
+            option.WithAPIKey("test-key"),
+            option.WithBaseURL(server.URL),
+        ),
+    }
 
 	config := Config{
 		Model:          "gpt-3.5-turbo",
@@ -194,62 +194,62 @@ func TestOpenAIAdapter_Generate_JSONMode(t *testing.T) {
 }
 
 func TestOpenAIAdapter_GenerateWithTools(t *testing.T) {
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse request body
-		var req map[string]interface{}
-		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
+    // Create test server
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Parse request body
+        var req map[string]interface{}
+        err := json.NewDecoder(r.Body).Decode(&req)
+        require.NoError(t, err)
 
-		// Verify tools are present
-		tools := req["tools"].([]interface{})
-		assert.Len(t, tools, 1)
+        // Verify tools are present
+        tools := req["tools"].([]interface{})
+        assert.Len(t, tools, 1)
 
-		// Send response with tool call
-		resp := map[string]interface{}{
-			"id":      "chatcmpl-123",
-			"object":  "chat.completion",
-			"created": time.Now().Unix(),
-			"model":   req["model"],
-			"choices": []map[string]interface{}{
-				{
-					"index": 0,
-					"message": map[string]interface{}{
-						"role":    "assistant",
-						"content": "",
-						"tool_calls": []map[string]interface{}{
-							{
-								"id": "call_123",
-								"type": "function",
-								"function": map[string]interface{}{
-									"name":      "get_weather",
-									"arguments": `{"location": "San Francisco"}`,
-								},
-							},
-						},
-					},
-					"finish_reason": "tool_calls",
-				},
-			},
-			"usage": map[string]interface{}{
-				"prompt_tokens":     10,
-				"completion_tokens": 5,
-				"total_tokens":      15,
-			},
-		}
+        // Send response with tool call
+        resp := map[string]interface{}{
+            "id":      "chatcmpl-123",
+            "object":  "chat.completion",
+            "created": time.Now().Unix(),
+            "model":   req["model"],
+            "choices": []map[string]interface{}{
+                {
+                    "index": 0,
+                    "message": map[string]interface{}{
+                        "role":    "assistant",
+                        "content": "",
+                        "tool_calls": []map[string]interface{}{
+                            {
+                                "id": "call_123",
+                                "type": "function",
+                                "function": map[string]interface{}{
+                                    "name":      "get_weather",
+                                    "arguments": `{"location": "San Francisco"}`,
+                                },
+                            },
+                        },
+                    },
+                    "finish_reason": "tool_calls",
+                },
+            },
+            "usage": map[string]interface{}{
+                "prompt_tokens":     10,
+                "completion_tokens": 5,
+                "total_tokens":      15,
+            },
+        }
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(resp)
+    }))
+    defer server.Close()
 
-	// Create adapter with test server
-	adapter := &OpenAIAdapter{
-		client: openai.NewClient(
-			option.WithAPIKey("test-key"),
-			option.WithBaseURL(server.URL),
-		),
-	}
+    // Create adapter with test server
+    adapter := &OpenAIAdapter{
+        client: openai.NewClient(
+            option.WithAPIKey("test-key"),
+            option.WithBaseURL(server.URL),
+        ),
+    }
 
 	tools := []Tool{
 		{
@@ -280,49 +280,49 @@ func TestOpenAIAdapter_GenerateWithTools(t *testing.T) {
 }
 
 func TestOpenAIAdapter_StreamGenerate(t *testing.T) {
-	// Create test server that sends SSE
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+    // Create test server that sends SSE
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "text/event-stream")
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("Connection", "keep-alive")
 
-		// Send chunks
-		chunks := []string{"Hello", " ", "World"}
-		for i, chunk := range chunks {
-			data := map[string]interface{}{
-				"id":      fmt.Sprintf("chatcmpl-%d", i),
-				"object":  "chat.completion.chunk",
-				"created": time.Now().Unix(),
-				"model":   "gpt-3.5-turbo",
-				"choices": []map[string]interface{}{
-					{
-						"index": 0,
-						"delta": map[string]interface{}{
-							"content": chunk,
-						},
-						"finish_reason": nil,
-					},
-				},
-			}
+        // Send chunks
+        chunks := []string{"Hello", " ", "World"}
+        for i, chunk := range chunks {
+            data := map[string]interface{}{
+                "id":      fmt.Sprintf("chatcmpl-%d", i),
+                "object":  "chat.completion.chunk",
+                "created": time.Now().Unix(),
+                "model":   "gpt-3.5-turbo",
+                "choices": []map[string]interface{}{
+                    {
+                        "index": 0,
+                        "delta": map[string]interface{}{
+                            "content": chunk,
+                        },
+                        "finish_reason": nil,
+                    },
+                },
+            }
 
-			jsonData, _ := json.Marshal(data)
-			fmt.Fprintf(w, "data: %s\n\n", jsonData)
-			w.(http.Flusher).Flush()
-		}
+            jsonData, _ := json.Marshal(data)
+            fmt.Fprintf(w, "data: %s\n\n", jsonData)
+            w.(http.Flusher).Flush()
+        }
 
-		// Send done
-		fmt.Fprintf(w, "data: [DONE]\n\n")
-		w.(http.Flusher).Flush()
-	}))
-	defer server.Close()
+        // Send done
+        fmt.Fprintf(w, "data: [DONE]\n\n")
+        w.(http.Flusher).Flush()
+    }))
+    defer server.Close()
 
-	// Create adapter with test server
-	adapter := &OpenAIAdapter{
-		client: openai.NewClient(
-			option.WithAPIKey("test-key"),
-			option.WithBaseURL(server.URL),
-		),
-	}
+    // Create adapter with test server
+    adapter := &OpenAIAdapter{
+        client: openai.NewClient(
+            option.WithAPIKey("test-key"),
+            option.WithBaseURL(server.URL),
+        ),
+    }
 
 	config := Config{
 		Model:       "gpt-3.5-turbo",

@@ -154,7 +154,7 @@ func TestBuildMounts(t *testing.T) {
 				{
 					Type:     mount.TypeBind,
 					Source:   tempDir,
-					Target:   "/workspace",
+					Target:   "/src",
 					ReadOnly: false,
 				},
 			},

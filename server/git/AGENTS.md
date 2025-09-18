@@ -27,7 +27,7 @@ Common Utilities (validation, execution)
 
 Activity System
     ↓
-RegisterableActivity Interface
+RegisterableOp Interface
     ↓
 Recipe Worker Integration
 ```
@@ -66,7 +66,12 @@ type GitFileCollectorInput struct {
     IncludeMetadata  bool     `json:"include_metadata,omitempty"`
 }
 
-func NewGitFileCollectorActivity() RegisterableActivity[GitFileCollectorConfig, GitFileCollectorInput, GitFileCollectorOutput]
+// Registerable operation for recipe-core
+func GetOp() ops.RegisterableOp
+
+// Internal typed execution (for direct calls)
+// use: activity := &gitcollector.gitFileCollectorActivity{}
+//       output, err := activity.Execute(ctx, input)
 ```
 
 ### Commit Persistence Activities
@@ -90,8 +95,19 @@ type RestoreCommitInput struct {
     Timeout         time.Duration `json:"timeout,omitempty"`
 }
 
-func NewPersistCommitActivity() RegisterableActivity[PersistCommitConfig, PersistCommitInput, PersistCommitOutput]
-func NewRestoreCommitActivity() RegisterableActivity[RestoreCommitConfig, RestoreCommitInput, RestoreCommitOutput]
+// Registerable operations for recipe-core
+func GetPersistOp() ops.RegisterableOp
+func GetRestoreOp() ops.RegisterableOp
+
+// Typed wrappers for direct calls
+type PersistCommitActivityWrapper struct{}
+// Execute(ctx, input) (no separate config struct)
+func (a *PersistCommitActivityWrapper) Execute(ctx context.Context, input PersistCommitInput) (PersistCommitOutput, error)
+
+type RestoreCommitActivityWrapper struct{}
+func NewRestoreCommitActivity() *RestoreCommitActivityWrapper
+// Execute(ctx, input) (no separate config struct)
+func (a *RestoreCommitActivityWrapper) Execute(ctx context.Context, input RestoreCommitInput) (RestoreCommitOutput, error)
 ```
 
 ### Shallow Clone Activity
@@ -103,7 +119,14 @@ type GitShallowInput struct {
     CommitHash string `json:"commit_hash"`
 }
 
-func NewGitShallowActivity() RegisterableActivity[GitShallowConfig, GitShallowInput, GitShallowOutput]
+// Registerable operation for recipe-core
+func GetOp() ops.RegisterableOp
+
+// Typed wrapper for direct calls
+type GitShallowActivityWrapper struct{}
+func NewGitShallowActivity() *GitShallowActivityWrapper
+// Execute(ctx, input) (no separate config struct)
+func (a *GitShallowActivityWrapper) Execute(ctx context.Context, input GitShallowInput) (GitShallowOutput, error)
 ```
 
 ### Common Utilities
@@ -163,8 +186,11 @@ activities:
 ```
 
 ```go
-// Programmatic usage
-activity := gitcollector.NewGitFileCollectorActivity()
+// Registration for recipe-core
+ops.Register(gitcollector.GetOp())
+
+// Programmatic usage (direct typed execution within this module)
+activity := &gitcollector.gitFileCollectorActivity{}
 input := gitcollector.GitFileCollectorInput{
     ContextDir:      "/workspace/project",
     FilePatterns:    []string{"*.go", "*.yaml"},
@@ -175,7 +201,7 @@ input := gitcollector.GitFileCollectorInput{
     AutoDetectType:  true,
 }
 
-output, err := activity.Execute(ctx, config, input)
+output, err := activity.Execute(ctx, input)
 ```
 
 ### Commit Persistence Workflow
@@ -201,6 +227,10 @@ output, err := activity.Execute(ctx, config, input)
 ### Shallow Repository Clone
 
 ```go
+// Registration for recipe-core
+ops.Register(gitshallow.GetOp())
+
+// Programmatic usage (typed)
 activity := gitshallow.NewGitShallowActivity()
 input := gitshallow.GitShallowInput{
     SourceDir:  "/original/repo",
@@ -208,48 +238,21 @@ input := gitshallow.GitShallowInput{
     CommitHash: "abc123def456",
 }
 
-output, err := activity.Execute(ctx, config, input)
+output, err := activity.Execute(ctx, input)
 if err != nil {
     return err
 }
 // Repository cloned to output.ClonedPath
 ```
 
-## Configuration
-
-### Git File Collector Configuration
-
-Configuration file: `config/activities.yaml`
-
-```yaml
-git_file_collector:
-  default_max_file_size: 100000      # 100KB per file
-  default_max_total_size: 10485760   # 10MB total
-  default_include_staged: true       # Include staged files
-  default_include_untracked: false   # Exclude untracked files
-  default_use_gitignore: true        # Respect .gitignore
-  default_exclude_binary: true       # Skip binary files
-```
-
-### Activity Registration
+## Activity Registration
 
 ```go
-// Get all available git activities
-activities := activity.GetAll()
-
-// Individual activity registration
-gitFileCollector := gitcollector.NewGitFileCollectorActivity()
-persistCommit := gitcommit.NewPersistCommitActivity()
-restoreCommit := gitcommit.NewRestoreCommitActivity()
-shallowClone := gitshallow.NewGitShallowActivity()
-```
-
-### Common Git Configuration
-
-```go
-type GitConfig struct {
-    Author  string        `json:"author,omitempty"`
-    Email   string        `json:"email,omitempty"`
-    Timeout time.Duration `json:"timeout,omitempty"`
-}
+// Register available git operations with the ops registry (no separate config types)
+ops.Register(
+    gitcollector.GetOp(),
+    gitcommit.GetPersistOp(),
+    gitcommit.GetRestoreOp(),
+    gitshallow.GetOp(),
+)
 ```
