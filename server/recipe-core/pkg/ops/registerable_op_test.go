@@ -25,7 +25,7 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 	inline := NewInlineOpV2[rIn, rOut](OpMetadata{Type: "i1"}, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in rIn) (rOut, error) {
 		return rOut{Echo: in.Msg}, nil
 	})
-	out, err := inline.ExecuteInline(nil, time.Second, nil, map[string]interface{}{"msg": "hi"})
+	out, err := inline.ExecuteInlineV2(Invocation{}, nil, time.Second, nil, map[string]interface{}{"msg": "hi"})
 	require.NoError(t, err)
 	assert.Equal(t, "hi", out["echo"]) // JSON-tagged structs decode from input maps correctly
 
@@ -33,7 +33,7 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a1"}, func(_ Invocation, ctx context.Context, in rIn) (rOut, error) {
 		return rOut{Echo: in.Msg}, nil
 	})
-	out2, err := act.Execute(context.Background(), map[string]interface{}{"msg": "yo"})
+	out2, err := act.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.Equal(t, "yo", out2["echo"]) // Output data converts to maps preserving field names
 }
@@ -41,7 +41,7 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	// Invalid input data fails operation with clear errors [pkg/ops/registerable_op.go]
 	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a2"}, func(_ Invocation, ctx context.Context, in rIn) (rOut, error) { return rOut{}, nil })
-	_, err := act.Execute(context.Background(), map[string]interface{}{"msg": 123})
+	_, err := act.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": 123})
 	assert.Error(t, err)
 
 	// Missing handlers fail fast with clear panic messages [pkg/ops/registerable_op.go]
@@ -49,16 +49,16 @@ func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 		return rOut{}, nil
 	})
 	assert.PanicsWithValue(t, "this must be run inline, not as an activity", func() {
-		_, _ = inlineOnly.Execute(context.Background(), map[string]interface{}{"msg": "x"})
+		_, _ = inlineOnly.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": "x"})
 	})
 
 	actOnly := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "act-only"}, func(_ Invocation, ctx context.Context, in rIn) (rOut, error) { return rOut{}, nil })
 	assert.PanicsWithValue(t, "this must be run as an activity, not inline", func() {
-		_, _ = actOnly.ExecuteInline(nil, time.Second, nil, map[string]interface{}{"msg": "x"})
+		_, _ = actOnly.ExecuteInlineV2(Invocation{}, nil, time.Second, nil, map[string]interface{}{"msg": "x"})
 	})
 
 	// Nil contexts handled gracefully in operations [pkg/ops/registerable_op.go]
-	out, err := actOnly.Execute(nil, map[string]interface{}{"msg": "ok"})
+	out, err := actOnly.ExecuteV2(Invocation{}, nil, map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
 	assert.NotNil(t, out)
 }
@@ -103,10 +103,6 @@ func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, inlineInvoked)
 
-	// Legacy execution path still works via zero-value Invocation shim.
-	_, err = inline.ExecuteInline(nil, time.Second, nil, map[string]interface{}{"msg": "hi"})
-	require.NoError(t, err)
-
 	activityInvoked := false
 	activity := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "activity-v2"}, func(inv Invocation, ctx context.Context, in rIn) (rOut, error) {
 		activityInvoked = inv.NodePath == "node" && inv.InvokeSeq == 7
@@ -116,7 +112,4 @@ func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
 	_, err = activity.ExecuteV2(Invocation{NodePath: "node", InvokeSeq: 7}, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.True(t, activityInvoked)
-
-	_, err = activity.Execute(context.Background(), map[string]interface{}{"msg": "yo"})
-	require.NoError(t, err)
 }

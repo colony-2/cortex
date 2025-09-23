@@ -93,7 +93,13 @@ bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "func\s+N
 
 - Detect (no output means done):
 ```
-bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "Invocation-less|LegacyInvocation|V1Invocation|New(InlineOp|ActivityMappedOp)(WithManagement)?\s*\[" server/recipe-core server/recipe-worker server/ops server/activity server/api api/openapi server/openapi web/openapi || true'
+bash -lc 'grep -RIn \
+  --exclude-dir vendor \
+  --exclude-dir node_modules \
+  --exclude INVOCATION_API_MIGRATION.md \
+  --exclude INVOCATION_API_MIGRATION.json \
+  -E "Invocation-less|LegacyInvocation|V1Invocation|New(InlineOp|ActivityMappedOp)(WithManagement)?\s*\[" \
+  server/recipe-core server/recipe-worker server/ops server/api api/openapi server/openapi web/openapi || true'
 ```
 
 ---

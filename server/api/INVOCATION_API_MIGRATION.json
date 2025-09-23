@@ -11,13 +11,13 @@
       "id": "core-add-v2-api",
       "name": "Add Invocation + V2 constructors (recipe-core)",
       "description": "In recipe-core, add ops.Invocation struct with fields {RecipeID, NodePath, InvokeSeq, BoxID, ActivityID, ID} and method Key(). Add new handler types InlineHandlerV2 and ActivityHandlerV2 that take (inv Invocation, ...). Add constructors NewInlineOpV2 and NewActivityMappedOpV2 that bind these handler types.",
-      "detect": "bash -lc '(! grep -RIl --exclude-dir vendor --exclude-dir node_modules -E "type\\s+Invocation\\s+struct" . >/dev/null) || (! grep -RIl --exclude-dir vendor --exclude-dir node_modules -E "New(InlineOpV2|ActivityMappedOpV2)\\s*\\[" . >/dev/null) && echo core_v2_api_missing'"
+      "detect": "bash -lc '(! grep -RIl --exclude-dir vendor --exclude-dir node_modules --exclude INVOCATION_API_MIGRATION.md --exclude INVOCATION_API_MIGRATION.json -E "type\\s+Invocation\\s+struct" . >/dev/null) || (! grep -RIl --exclude-dir vendor --exclude-dir node_modules --exclude INVOCATION_API_MIGRATION.md --exclude INVOCATION_API_MIGRATION.json -E "New(InlineOpV2|ActivityMappedOpV2)\\s*\\[" . >/dev/null) && echo core_v2_api_missing'"
     },
     {
       "id": "worker-pass-invocation",
       "name": "Worker passes Invocation to ops",
       "description": "In recipe-worker, compute Invocation {RecipeID, NodePath, InvokeSeq, BoxID, ActivityID, ID=Key()} per call and invoke ops via V2 signatures: InlineHandlerV2(inv, workflow.Context, ...) and ActivityHandlerV2(inv, context.Context, ...). Remove any Invocation-less calls.",
-      "detect": "bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "ExecuteInline\\(\\s*ctx\\s*,|Execute\\(\\s*ctx\\s*," . || true'"
+      "detect": "bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules --exclude INVOCATION_API_MIGRATION.md --exclude INVOCATION_API_MIGRATION.json -E "ExecuteInline\\(\\s*ctx\\s*,|Execute\\(\\s*ctx\\s*," . || true'"
     },
     {
       "id": "ops-use-v2-constructors",
@@ -47,7 +47,7 @@
       "id": "cleanup-dead-code",
       "name": "Eliminate deprecated code",
       "description": "Remove any remaining adapters, legacy invocation paths, or shims related to V1 invocation. Ensure no references to V1 constructors or Invocation-less signatures remain.",
-      "detect": "bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "Invocation-less|LegacyInvocation|V1Invocation|New(InlineOp|ActivityMappedOp)(WithManagement)?\\s*\\[" . || true'"
+      "detect": "bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules --exclude INVOCATION_API_MIGRATION.md --exclude INVOCATION_API_MIGRATION.json -E "Invocation-less|LegacyInvocation|V1Invocation|New(InlineOp|ActivityMappedOp)(WithManagement)?\\s*\\[" . || true'"
     }
   ]
 }
