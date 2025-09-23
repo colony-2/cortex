@@ -98,6 +98,7 @@ tasks:
       - '~:build-frontend-copy'
       - '^:build'
       - '~:npm-install'
+      - '~:playwright-install'
     inputs:
       - '**/*.go'
       - 'go.mod'
@@ -106,6 +107,13 @@ tasks:
       - 'package.json'
       - 'playwright.config.ts'
     platform: 'system'
+    options:
+      runInCI: true
+  playwright-install:
+    script: npx playwright install chromium
+    deps:
+      - '~:npm-install'
+    platform: system
     options:
       runInCI: true
       outputStyle: buffer-only-failure

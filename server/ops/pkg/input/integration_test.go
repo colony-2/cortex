@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -15,8 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/api/workflowservice/v1"
-	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -33,71 +30,8 @@ func InputActivityExecute(ctx context.Context, input Input) (Output, error) {
 	}, nil
 }
 
-// MockTemporalClient implements a minimal Temporal client for testing
-type MockTemporalClient struct {
-	client.Client
-	workflows      map[string]*WorkflowExecution
-	mu             sync.RWMutex
-	signalHandlers map[string]chan interface{}
-	describeCalls  int
-}
-
-type WorkflowExecution struct {
-	ID               string
-	Status           string
-	SearchAttributes map[string]interface{}
-	SignalChannel    chan interface{}
-}
-
-func NewMockTemporalClient() *MockTemporalClient {
-	return &MockTemporalClient{
-		workflows:      make(map[string]*WorkflowExecution),
-		signalHandlers: make(map[string]chan interface{}),
-	}
-}
-
-func (m *MockTemporalClient) SignalWorkflow(ctx context.Context, workflowID, runID, signalName string, arg interface{}) error {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if wf, exists := m.workflows[workflowID]; exists {
-		if wf.SignalChannel != nil {
-			wf.SignalChannel <- arg
-		}
-		return nil
-	}
-	return fmt.Errorf("workflow %s not found", workflowID)
-}
-
-func (m *MockTemporalClient) DescribeWorkflowExecution(ctx context.Context, workflowID, runID string) (*workflowservice.DescribeWorkflowExecutionResponse, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	m.describeCalls++
-	if _, exists := m.workflows[workflowID]; exists {
-		// Return a mock description
-		// In a real implementation, this would return actual workflow details
-		return &workflowservice.DescribeWorkflowExecutionResponse{}, nil
-	}
-	return nil, fmt.Errorf("workflow %s not found", workflowID)
-}
-
-func (m *MockTemporalClient) CancelWorkflow(ctx context.Context, workflowID, runID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if wf, exists := m.workflows[workflowID]; exists {
-		wf.Status = "cancelled"
-		return nil
-	}
-	return fmt.Errorf("workflow %s not found", workflowID)
-}
-
-func (m *MockTemporalClient) RegisterWorkflow(workflowID string, execution *WorkflowExecution) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.workflows[workflowID] = execution
-}
+// Legacy MockTemporalClient and related types removed from active usage.
+// Tests now mock the workflow control interface directly.
 
 // RecipeWorkflow simulates a recipe workflow that uses the input activity
 func RecipeWorkflow(ctx workflow.Context, recipeID string) (map[string]interface{}, error) {
@@ -212,18 +146,15 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 
 // TestInputManagementServiceAPI tests the REST API endpoints
 func TestInputManagementServiceAPI(t *testing.T) {
-	// Create mock temporal client
-	mockClient := NewMockTemporalClient()
-
 	// Create SSE manager
 	sseManager := NewSimpleSSEManager()
 
+	// Provide a mock workflow control that succeeds on Signal/Cancel and returns a summary on Describe
+	mctl := &mockWorkflowControl{}
+
 	// Create management service
 	service := newInputManagementService()
-	service.Initialize(ServiceDependencies{
-		TemporalClient: mockClient,
-		SSEManager:     sseManager,
-	})
+	require.NoError(t, service.Initialize(ServiceDependencies{SSEManager: sseManager, WorkflowCtl: mctl}))
 
 	// Create test router
 	router := chi.NewRouter()
@@ -247,16 +178,9 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		assert.Empty(t, pending)
 	})
 
-	// Test 2: Submit response to workflow
+	// Test 2: Submit response to workflow (signal success; SSE broadcast)
 	t.Run("SubmitResponse", func(t *testing.T) {
-		// Register a mock workflow
 		workflowID := "test-workflow-123"
-		signalChan := make(chan interface{}, 1)
-		mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
-			ID:            workflowID,
-			Status:        "running",
-			SignalChannel: signalChan,
-		})
 
 		// Prepare response submission
 		submission := map[string]interface{}{
@@ -285,31 +209,17 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, response["success"].(bool))
 
-		// Verify signal was sent
-		select {
-		case signal := <-signalChan:
-			userResponse := signal.(UserResponseSignal)
-			assert.Equal(t, "test-user-789", userResponse.UserID)
-			assert.Equal(t, "yes", userResponse.Fields["approval"])
-			assert.Equal(t, "Looks good to me", userResponse.Fields["comments"])
-		case <-time.After(1 * time.Second):
-			t.Fatal("Expected signal not received")
-		}
-
-		// Verify a post-signal Describe was attempted
-		mockClient.mu.RLock()
-		calls := mockClient.describeCalls
-		mockClient.mu.RUnlock()
-		assert.GreaterOrEqual(t, calls, 1, "expected at least one describe call after signaling")
+		// Verify mock workflow control recorded the signal
+		mrsp, ok := mctl.LastSignalArg.(UserResponseSignal)
+		require.True(t, ok)
+		assert.Equal(t, "test-user-789", mrsp.UserID)
+		assert.Equal(t, "yes", mrsp.Fields["approval"])
+		assert.Equal(t, "Looks good to me", mrsp.Fields["comments"])
 	})
 
-	// Test 3: Cancel workflow
+	// Test 3: Cancel workflow (cancel success)
 	t.Run("CancelWorkflow", func(t *testing.T) {
 		workflowID := "test-workflow-456"
-		mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
-			ID:     workflowID,
-			Status: "running",
-		})
 
 		cancelRequest := map[string]string{
 			"reason": "User cancelled the operation",
@@ -324,26 +234,20 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 
-		// Verify workflow was cancelled
-		mockClient.mu.RLock()
-		wf := mockClient.workflows[workflowID]
-		mockClient.mu.RUnlock()
-		assert.Equal(t, "cancelled", wf.Status)
+		// Verify cancel was recorded by mock control
+		assert.Equal(t, workflowID, mctl.LastCancelRef.WorkflowID)
 	})
 }
 
 // Additional tests for management service behaviors
 func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
-	// Create mock temporal client and SSE manager
-	mockClient := NewMockTemporalClient()
+	// Create SSE manager and mock workflow control that errors on Describe (to force 404)
 	sseManager := NewSimpleSSEManager()
+	mctl := &mockWorkflowControl{DescribeErr: fmt.Errorf("not found")}
 
 	// Create management service
 	service := newInputManagementService()
-	service.Initialize(ServiceDependencies{
-		TemporalClient: mockClient,
-		SSEManager:     sseManager,
-	})
+	require.NoError(t, service.Initialize(ServiceDependencies{SSEManager: sseManager, WorkflowCtl: mctl}))
 
 	// Create test router
 	router := chi.NewRouter()
@@ -352,14 +256,7 @@ func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
 		router.Method(route.Method, route.Path, route.Handler)
 	}
 
-	// Register a mock workflow for SSE test
 	workflowID := "sse-workflow-1"
-	signalChan := make(chan interface{}, 1)
-	mockClient.RegisterWorkflow(workflowID, &WorkflowExecution{
-		ID:            workflowID,
-		Status:        "running",
-		SignalChannel: signalChan,
-	})
 
 	// Subscribe to SSE before submitting response
 	events := sseManager.Subscribe("test-client-sse")

@@ -3,10 +3,12 @@
 ## Overview
 - Base: Debian bookworm-slim.
 - Languages/Tools: Go 1.24, Rust (stable via rustup), Python 3, Node v22.9.0 (+ yarn, pnpm), C/C++ toolchain, Java (default-jdk), git, jq.
+ - Languages/Tools: Go 1.24, Rust (stable via rustup), Python 3, Node v22.9.0 (+ yarn, pnpm), C/C++ toolchain, Java (default-jdk), git, jq.
+ - Browsers/Automation: Playwright CLI with Chromium preinstalled.
 - AI CLIs (npm): `openai`, `@google/gemini-cli`, `claude-code`, `@moonrepo/cli`.
 - Shells: `zsh` default for root and `devuser` (uid 1000) with Oh My Zsh.
 - Proxy: tinyproxy bound to `127.0.0.1:8888`, supervised; allowlist-based egress.
-- Network guard: iptables restricts `devuser` to `127.0.0.1:8888` (requires `NET_ADMIN`).
+- Network guard: iptables restricts `devuser` egress to tinyproxy and loopback (requires `NET_ADMIN`).
 - WORKDIR: `/src`.
 
 ## Build Targets
@@ -21,20 +23,40 @@
   - `--entrypoint /bin/sh -lc 'bootstrap.sh && exec <cmd>'`
 
 ## Tinyproxy + Allowlist
-- Config: `/etc/tinyproxy/tinyproxy.conf` (Listen 127.0.0.1; Allow 127.0.0.1; LogFile /var/log/tinyproxy/tinyproxy.log).
+- Config: `/etc/tinyproxy/tinyproxy.conf` (Listen 127.0.0.1; Allow 127.0.0.1; LogFile `/var/log/tinyproxy/tinyproxy.log`).
 - Allowlist: `/etc/shai/allowed_domains.conf` (default includes OpenAI, Anthropic, Gemini, package registries, GitHub Packages, container registries, docs).
-- Auto-reload on changes via inotify watcher under supervisord.
+- Auto-reload on changes via allowlist watcher under supervisord:
+  - Uses inotify when available and polls as a fallback, to handle bind mounts.
+  - Script: `/usr/local/sbin/allowlist-watcher.sh`.
 - Logs: `/var/log/tinyproxy/*.log`.
 
 ## Egress Control (devuser)
-- Enforced by `/usr/local/sbin/bootstrap.sh` (iptables rules applied) using iptables.
+- Enforced by `/usr/local/sbin/bootstrap.sh` and `scripts/dev-egress-setup.sh` using iptables.
 - Applies at container start under supervisord and on root interactive shells via `/usr/local/sbin/bootstrap.sh`.
 - Requires: `--cap-add NET_ADMIN` when running the container.
+- Defaults:
+  - HTTP(S) egress only via tinyproxy on `127.0.0.1:$PROXY_PORT` (default 8888).
+  - DNS forced to local resolver and allowed.
+  - All loopback egress allowed for `devuser` (interface `lo`).
+  - All other egress REJECTed for `devuser`.
+- Config (env vars):
+  - `PROXY_PORT` (default `8888`): tinyproxy port to allow.
+  - `ALLOW_LOOPBACK` (default `1`): allow all loopback egress when `1`; set to `0` to disable.
+- Rule order: loopback rule is appended before the final REJECT; verify with `iptables -S OUTPUT | grep -E "owner| -o lo |dport"`.
+
+Notes:
+- Loopback allow means processes can talk to services on `127.0.0.1:<any>` inside the container (e.g., dev servers).
+- This does not permit outbound traffic to the internet without going through the proxy; non-loopback egress remains blocked.
+- Host-to-container published ports are unaffected by these OUTPUT rules.
 
 ## Node/Package Managers
 - Node installed from official tarball (ARG `NODE_VERSION`, pinned to 22.9.0).
 - After Node extract, runs a single global install: `npm@latest`, `yarn`, `pnpm`.
 - AI CLIs installed via a single `npm -g install`.
+- Playwright: globally installed as `playwright`; Chromium browser is preinstalled into `$PLAYWRIGHT_BROWSERS_PATH`.
+  - `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
+  - Example: `playwright --version` and `node -e "require('playwright'); console.log('ok')"`.
+  - Use headless mode by default; add `--headless=new` or rely on Playwright defaults.
 
 ## Workspace Mounting Pattern
 - Mount the host workspace read-only at `/src`.
@@ -63,8 +85,11 @@ Notes:
 
 ## Supervision & Diagnostics
 - Process manager: supervisord (ENTRYPOINT for default runs; daemonized by bootstrap in shell runs).
-- Check status: `supervisorctl status`.
-- Logs: `/var/log/supervisor/supervisord.log`, `/var/log/tinyproxy/*.log`.
+- Check status: `supervisorctl status` (requires control socket; otherwise check processes/ports).
+- Logs:
+  - tinyproxy internal: `/var/log/tinyproxy/tinyproxy.log` (written by tinyproxy).
+  - supervisord capture: `/var/log/tinyproxy/tinyproxy.out.log` (stdout), `/var/log/tinyproxy/tinyproxy.err.log` (stderr).
+  - Supervisor core: `/var/log/supervisor/supervisord.log`.
 - Verify rules: `iptables -S OUTPUT | grep owner`.
 
 ## Limitations

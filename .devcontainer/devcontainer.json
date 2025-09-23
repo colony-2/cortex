@@ -16,7 +16,7 @@
     "source=${localEnv:HOME}/.claude,target=/home/devuser/.claude,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude.json,target=/home/devuser/.claude.json,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.claude.json.backup,target=/home/devuser/.claude.json.backup,type=bind,consistency=cached",
-    "source=${localWorkspaceFolder}/.devcontainer/shai,target=/etc/shai,type=bind,consistency=cached,ro",
+    "source=${localWorkspaceFolder}/.devcontainer/shai,target=/etc/shai,type=bind,ro",
     "source=${localWorkspaceFolder}/.moon,target=/src/.moon,type=bind,consistency=cached"
   ],
   "remoteUser": "devuser",

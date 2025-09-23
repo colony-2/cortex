@@ -2,8 +2,7 @@
   "name": "cortex-tests",
   "private": true,
   "scripts": {
-    "test": "playwright test --reporter=list",
-    "postinstall": "playwright install chromium"
+    "test": "playwright test --reporter=list"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.0"

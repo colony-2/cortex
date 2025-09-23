@@ -29,7 +29,8 @@ Notes
 ## 1) core-add-v2-api (server/recipe-core)
 
 - Change (LLM concise):
-  - Add ops.Invocation {RecipeID, NodePath, InvokeSeq, BoxID, ActivityID, ID} with method Key().
+  - Add ops.Invocation {RecipeID, NodePath, InvokeSeq, BoxID, ActivityID, ID} with method InvocationContext().
+  - Add Invocation.Hash() which is a short deterministic hash of the invocation object.
   - Add V2 handler types that accept Invocation explicitly (arguments, not context injection):
     - InlineHandlerV2(inv Invocation, wctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in In) (Out, error)
     - ActivityHandlerV2(inv Invocation, actx context.Context, in In) (Out, error)
@@ -45,8 +46,8 @@ bash -lc '(! grep -RIl --exclude-dir vendor --exclude-dir node_modules -E "type\
 ## 2) worker-pass-invocation (server/recipe-worker)
 
 - Change (LLM concise):
-  - Compute Invocation {RecipeID, NodePath, InvokeSeq, BoxID, ActivityID} per op call (deterministic).
-  - Optionally precompute inv.ID = inv.Key().
+  - Compute Invocation based on Invocation.Hash()
+  - Optionally precompute inv.ID = inv.Hash().
   - Invoke ops via V2 signatures and V2 execution methods on RegisterableOp (compiler passes extra arg):
     - Inline: handler(inv, workflow.Context, ...)
     - Activity: handler(inv, context.Context, ...)

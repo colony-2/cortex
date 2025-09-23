@@ -11,6 +11,7 @@ tasks:
       - shai-allowed-domains.conf
     options:
       cache: true
+      outputStyle: buffer-only-failure
 
   integration:
     platform: system
@@ -25,4 +26,5 @@ tasks:
       - shai-allowed-domains.conf
     options:
       cache: false
+      outputStyle: buffer-only-failure
 

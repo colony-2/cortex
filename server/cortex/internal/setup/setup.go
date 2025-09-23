@@ -17,10 +17,10 @@ import (
     "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
     inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-    temporalclient "go.temporal.io/sdk/client"
+    "go.temporal.io/sdk/testsuite"
 )
 
-type svc struct { sse interface{} }
+type svc struct { sse interface{}; ctl workflowctl.WorkflowControl }
 
 func (s *svc) Get(name string) (interface{}, error) {
     switch name {
@@ -30,15 +30,33 @@ func (s *svc) Get(name string) (interface{}, error) {
         }
         return nil, fmt.Errorf("service not found: %s", name)
     case "temporal_client":
-        var c temporalclient.Client = nil
-        return c, nil
+        // Not provided in cortex; WorkflowControl is used instead
+        return nil, fmt.Errorf("service not found: %s", name)
     default:
         return nil, fmt.Errorf("service not found: %s", name)
     }
 }
 
-// WorkflowControl implements ops.ServiceDependencies2. No controller available here.
-func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
+// WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.
+func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) { return s.ctl, s.ctl != nil }
+
+// suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
+type suiteWorkflowCtl struct{ env *testsuite.TestWorkflowEnvironment }
+
+func (c *suiteWorkflowCtl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
+    status := workflowctl.StatusRunning
+    if c.env.IsWorkflowCompleted() {
+        status = workflowctl.StatusCompleted
+    }
+    return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
+}
+
+func (c *suiteWorkflowCtl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
+    c.env.SignalWorkflow(signalName, payload)
+    return nil
+}
+
+func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error { return nil }
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
@@ -80,9 +98,11 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
     // Initialize container manager
     containerMgr := container.NewManager(container.Config{})
-    // Provide a basic SSE manager so input management routes can initialize
+    // Provide a basic SSE manager and a WorkflowTestSuite-backed controller
     sseMgr := inputops.NewSimpleSSEManager()
-    svcContext := &svc{sse: sseMgr}
+    ts := &testsuite.WorkflowTestSuite{}
+    env := ts.NewTestWorkflowEnvironment()
+    svcContext := &svc{sse: sseMgr, ctl: &suiteWorkflowCtl{env: env}}
 
 	extensionRoutes, cleanup, err := shared.SetupOps(svcContext)
 	if err != nil {

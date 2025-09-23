@@ -42,40 +42,7 @@ RUN set -eux; \
        "$icu_pkg" "$lttng_pkg"; \
     rm -rf /var/lib/apt/lists/*
 
-# Tinyproxy (managed by supervisord)
-RUN set -euxo pipefail && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && mkdir -p /var/log/tinyproxy /var/log/supervisor && chown tinyproxy:tinyproxy /var/log/tinyproxy
-RUN set -euxo pipefail && sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && \
-    if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
-      sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
-    else \
-      printf '\nListen 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf; \
-    fi
-RUN set -euxo pipefail && \
-    grep -qE '^[# ]*Allow 127\.0\.0\.1' /etc/tinyproxy/tinyproxy.conf || \
-    printf 'Allow 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
-RUN set -euxo pipefail && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
-RUN set -euxo pipefail && \
-    grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || \
-    printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && mkdir -p /etc/shai
-COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
-RUN set -euxo pipefail && chown -R tinyproxy:tinyproxy /etc/shai || true
- # dnsmasq base config (forward only allowed domains; others SERVFAIL)
-RUN set -euxo pipefail && printf '%s\n' \
-    'no-resolv' \
-    'bind-interfaces' \
-    'listen-address=127.0.0.1' \
-    'conf-dir=/etc/dnsmasq.d,*.conf' \
-    > /etc/dnsmasq.conf
-RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d
-COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
-RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh && \
-    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf
-
-# (moved supervisord + egress setup copies to later layer)
+ # (config moved later to speed rebuilds)
 
 # Locales configuration
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 LANGUAGE=en_US:en
@@ -95,6 +62,14 @@ RUN set -eux; \
     node --version; \
     npm -g install npm@latest yarn pnpm; \
     npm cache clean --force
+
+# Playwright + Chromium (browsers path global and readable for all users)
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN set -euxo pipefail && \
+    mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" && chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH" && \
+    npm -g install playwright && \
+    npx playwright install --with-deps chromium && \
+    chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH"
 
 # Go 1.24 (system-wide in /usr/local/go)
 ENV PATH="/usr/local/go/bin:${PATH}"
@@ -155,6 +130,45 @@ RUN chmod +x /usr/local/sbin/bootstrap.sh
 RUN set -euxo pipefail && \
     printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/zsh/zshrc && \
     printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/bash.bashrc
+# Tinyproxy/dnsmasq config and allowlist (late)
+RUN set -euxo pipefail && \
+    mkdir -p /var/log/tinyproxy /var/log/supervisor && \
+    touch /var/log/tinyproxy/tinyproxy.log && \
+    chown tinyproxy:tinyproxy /var/log/tinyproxy /var/log/tinyproxy/tinyproxy.log && \
+    chmod 0644 /var/log/tinyproxy/tinyproxy.log
+RUN set -euxo pipefail && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf
+RUN set -euxo pipefail && \
+    if grep -qE '^[# ]*LogFile ' /etc/tinyproxy/tinyproxy.conf; then \
+      sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf; \
+    else \
+      printf '\nLogFile "/var/log/tinyproxy/tinyproxy.log"\n' >> /etc/tinyproxy/tinyproxy.conf; \
+    fi
+RUN set -euxo pipefail && \
+    if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
+      sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
+    else \
+      printf '\nListen 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf; \
+    fi
+RUN set -euxo pipefail && \
+    grep -qE '^[# ]*Allow 127\.0\.0\.1' /etc/tinyproxy/tinyproxy.conf || \
+    printf 'Allow 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf
+RUN set -euxo pipefail && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
+RUN set -euxo pipefail && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
+RUN set -euxo pipefail && \
+    grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || \
+    printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
+RUN set -euxo pipefail && printf '%s\n' \
+    'no-resolv' \
+    'bind-interfaces' \
+    'listen-address=127.0.0.1' \
+    'conf-dir=/etc/dnsmasq.d,*.conf' \
+    > /etc/dnsmasq.conf
+RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true
+COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
+COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
+COPY scripts/allowlist-watcher.sh /usr/local/sbin/allowlist-watcher.sh
+RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh /usr/local/sbin/allowlist-watcher.sh && \
+    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf
 # Egress setup and supervisord configs (late)
 COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
 RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
@@ -239,6 +253,8 @@ RUN set -euxo pipefail \
     && npm -g install npm@latest yarn pnpm \
     && npm -g install @openai/codex @google/gemini-cli claude-code @moonrepo/cli \
     && npm cache clean --force \
+    && npm -g install playwright \
+    && npx playwright install --with-deps chromium \
     && icu_pkg=$(apt-cache search -n '^libicu[0-9][0-9]$' | awk '{print $1}' | sort -V | tail -n1) \
     && lttng_pkg=$(apt-cache search -n '^liblttng-ust[0-9].*$' | awk '{print $1}' | sort -V | tail -n1) \
     && echo "Installing ICU package: $icu_pkg, LTTng package: $lttng_pkg" \
@@ -281,8 +297,10 @@ RUN set -euxo pipefail \
     && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true \
     && grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf \
     && mkdir -p /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true \
-    && mkdir -p /var/log/tinyproxy && chown tinyproxy:tinyproxy /var/log/tinyproxy \
-    && sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf \
+    && mkdir -p /var/log/tinyproxy && touch /var/log/tinyproxy/tinyproxy.log \
+    && chown tinyproxy:tinyproxy /var/log/tinyproxy /var/log/tinyproxy/tinyproxy.log \
+    && chmod 0644 /var/log/tinyproxy/tinyproxy.log \
+    && if grep -qE '^[# ]*LogFile ' /etc/tinyproxy/tinyproxy.conf; then sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf; else printf '\nLogFile "/var/log/tinyproxy/tinyproxy.log"\n' >> /etc/tinyproxy/tinyproxy.conf; fi \
     && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
     && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
     && ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo \
@@ -305,8 +323,12 @@ RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
 COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
 COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
 COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
+COPY scripts/allowlist-watcher.sh /usr/local/sbin/allowlist-watcher.sh
+RUN chmod +x /usr/local/sbin/allowlist-watcher.sh
 EXPOSE 8888
 ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN set -euxo pipefail && mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" && chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH"
 RUN set -euxo pipefail && \
     printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
     chmod 0644 /etc/profile.d/10-lang-paths.sh && \

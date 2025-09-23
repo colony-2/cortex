@@ -17,11 +17,17 @@ import (
 // RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
-	// Execute will be execute this op as a Temporal Activity
+	// Execute runs the op as a Temporal Activity using legacy invocation semantics.
 	Execute(ctx context.Context, input map[string]interface{}) (output map[string]interface{}, err error)
 
-	// ExecuteInline will execute the op inline within a workflow.
+	// ExecuteInline runs the op inline within a workflow using legacy invocation semantics.
 	ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input map[string]interface{}) (output map[string]interface{}, err error)
+
+	// ExecuteV2 runs the op as a Temporal Activity with an explicit invocation descriptor.
+	ExecuteV2(inv Invocation, ctx context.Context, input map[string]interface{}) (output map[string]interface{}, err error)
+
+	// ExecuteInlineV2 runs the op inline with an explicit invocation descriptor.
+	ExecuteInlineV2(inv Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -50,16 +56,33 @@ type OpMetadata struct {
 type OpExecutor interface {
 }
 
-// (V2 handler types removed in revert)
+// InlineHandlerV2 defines the signature for inline handlers that accept an invocation descriptor.
+type InlineHandlerV2[In any, Out any] func(inv Invocation, wctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in In) (Out, error)
+
+// ActivityHandlerV2 defines the signature for activity handlers that accept an invocation descriptor.
+type ActivityHandlerV2[In any, Out any] func(inv Invocation, actx context.Context, in In) (Out, error)
 
 func NewInlineOp[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)) RegisterableOp {
-	return &opSpecImpl[In, Out]{
-		metadata:      metadata,
-		inlineHandler: handler,
-	}
+	return NewInlineOpV2(metadata, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in In) (Out, error) {
+		return handler(ctx, timeout, retry, in)
+	})
 }
 
 func NewInlineOpWithManagement[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), service ManagementService) RegisterableOp {
+	return NewInlineOpWithManagementV2(metadata, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in In) (Out, error) {
+		return handler(ctx, timeout, retry, in)
+	}, service)
+}
+
+func NewInlineOpV2[In any, Out any](metadata OpMetadata, handler InlineHandlerV2[In, Out]) RegisterableOp {
+	return newInlineOpV2(metadata, handler, nil)
+}
+
+func NewInlineOpWithManagementV2[In any, Out any](metadata OpMetadata, handler InlineHandlerV2[In, Out], service ManagementService) RegisterableOp {
+	return newInlineOpV2(metadata, handler, service)
+}
+
+func newInlineOpV2[In any, Out any](metadata OpMetadata, handler InlineHandlerV2[In, Out], service ManagementService) RegisterableOp {
 	return &opSpecImpl[In, Out]{
 		metadata:          metadata,
 		inlineHandler:     handler,
@@ -68,36 +91,48 @@ func NewInlineOpWithManagement[In any, Out any](metadata OpMetadata, handler fun
 }
 
 func NewActivityMappedOp[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error)) RegisterableOp {
-	return &opSpecImpl[In, Out]{
-		metadata: metadata,
-		handler:  handler,
-	}
+	return NewActivityMappedOpV2(metadata, func(_ Invocation, ctx context.Context, in In) (Out, error) {
+		return handler(ctx, in)
+	})
 }
 
 func NewActivityMappedOpWithManagement[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), service ManagementService) RegisterableOp {
-	return &opSpecImpl[In, Out]{
-		metadata:          metadata,
-		handler:           handler,
-		managementService: service,
-	}
+	return NewActivityMappedOpWithManagementV2(metadata, func(_ Invocation, ctx context.Context, in In) (Out, error) {
+		return handler(ctx, in)
+	}, service)
 }
 
 func NewActivityMappedOpWithProvider[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
+	return NewActivityMappedOpWithProviderV2(metadata, func(_ Invocation, ctx context.Context, in In) (Out, error) {
+		return handler(ctx, in)
+	}, getInputStruct)
+}
+
+func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out]) RegisterableOp {
+	return newActivityMappedOpV2(metadata, handler, nil, nil)
+}
+
+func NewActivityMappedOpWithManagementV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], service ManagementService) RegisterableOp {
+	return newActivityMappedOpV2(metadata, handler, service, nil)
+}
+
+func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], getInputStruct func() interface{}) RegisterableOp {
+	return newActivityMappedOpV2(metadata, handler, nil, getInputStruct)
+}
+
+func newActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], service ManagementService, provider func() interface{}) RegisterableOp {
 	return &opSpecImpl[In, Out]{
-		metadata:      metadata,
-		handler:       handler,
-		inputProvider: getInputStruct,
+		metadata:          metadata,
+		activityHandler:   handler,
+		managementService: service,
+		inputProvider:     provider,
 	}
 }
 
-// V2 constructors bind handlers that accept explicit Invocation context.
-// For now, they wrap into V1 execution paths using a zero Invocation.
-// (V2 constructors removed in revert)
-
 type opSpecImpl[In any, Out any] struct {
 	metadata          OpMetadata
-	handler           func(context.Context, In) (Out, error)
-	inlineHandler     func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+	activityHandler   ActivityHandlerV2[In, Out]
+	inlineHandler     InlineHandlerV2[In, Out]
 	managementService ManagementService
 	inputProvider     func() interface{}
 }
@@ -115,21 +150,25 @@ func (c *opSpecImpl[In, Out]) GetManagementService() ManagementService {
 	return c.managementService
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool { return c.handler != nil }
+func (c *opSpecImpl[In, Out]) ExecuteAsActivity() bool { return c.activityHandler != nil }
 
 func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
-	if c.handler == nil {
+func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]interface{}) (map[string]interface{}, error) {
+	return c.ExecuteV2(Invocation{}, ctx, inputMap)
+}
+
+func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, inputMap map[string]interface{}) (map[string]interface{}, error) {
+	if c.activityHandler == nil {
 		panic("this must be run inline, not as an activity")
 	}
 	var input In
 	if err := decodeWithJsonTags(inputMap, &input); err != nil {
 		return nil, err
 	}
-	objResult, err := c.handler(ctx, input)
+	objResult, err := c.activityHandler(inv, ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing handler: %w", err)
 	}
@@ -139,7 +178,11 @@ func (c *opSpecImpl[In, Out]) Execute(ctx context.Context, inputMap map[string]i
 	return s.Map(), nil
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (output map[string]interface{}, err error) {
+func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (map[string]interface{}, error) {
+	return c.ExecuteInlineV2(Invocation{}, ctx, timeout, retry, inputMap)
+}
+
+func (c *opSpecImpl[In, Out]) ExecuteInlineV2(inv Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, inputMap map[string]interface{}) (map[string]interface{}, error) {
 	if c.inlineHandler == nil {
 		panic("this must be run as an activity, not inline")
 	}
@@ -147,7 +190,7 @@ func (c *opSpecImpl[In, Out]) ExecuteInline(ctx workflow.Context, timeout time.D
 	if err := decodeWithJsonTags(inputMap, &input); err != nil {
 		return nil, err
 	}
-	objResult, err := c.inlineHandler(ctx, timeout, retry, input)
+	objResult, err := c.inlineHandler(inv, ctx, timeout, retry, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing handler: %w", err)
 	}
@@ -183,20 +226,25 @@ func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {
 		}
 		return t
 	}
-	if c.handler != nil {
-		return reflect.ValueOf(c.handler).Type().In(1)
+	if c.activityHandler != nil {
+		return reflect.ValueOf(c.activityHandler).Type().In(2)
 	}
-	// Inline handler signature: func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
-	// The input type is the 4th parameter (index 3)
-	return reflect.ValueOf(c.inlineHandler).Type().In(3)
+	if c.inlineHandler != nil {
+		// Inline handler signature: func(inv Invocation, workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error)
+		// The input type is the 5th parameter (index 4)
+		return reflect.ValueOf(c.inlineHandler).Type().In(4)
+	}
+	panic("op has no handler to derive input type")
 }
 
 func (c *opSpecImpl[In, Out]) GetOutputType() reflect.Type {
-	if c.handler != nil {
-		return reflect.ValueOf(c.handler).Type().Out(0)
-	} else {
+	if c.activityHandler != nil {
+		return reflect.ValueOf(c.activityHandler).Type().Out(0)
+	}
+	if c.inlineHandler != nil {
 		return reflect.ValueOf(c.inlineHandler).Type().Out(0)
 	}
+	panic("op has no handler to derive output type")
 }
 
 func (c *opSpecImpl[In, Out]) isOpSpec() {}

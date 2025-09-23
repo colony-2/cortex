@@ -17,6 +17,7 @@ tasks:
     platform: 'system'
     options:
       runInCI: true
+      outputStyle: buffer-only-failure
     description: 'Build the shai CLI binary'
 
   integration:
@@ -30,6 +31,7 @@ tasks:
     platform: 'system'
     options:
       runInCI: false
+      outputStyle: buffer-only-failure
     description: 'Run integration-tagged tests (Docker required)'
 
   install:

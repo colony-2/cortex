@@ -1,7 +1,6 @@
 package input
 
 import (
-    "context"
     "encoding/json"
     "fmt"
     "log"
@@ -15,16 +14,12 @@ import (
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
     "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
     "github.com/go-chi/chi/v5"
-    "go.temporal.io/sdk/client"
-    "google.golang.org/grpc/status"
-    
 )
 
 // inputManagementService implements ManagementService for input activities
 type inputManagementService struct {
     workflowType string
     sse          ops.SSEManager
-    client       client.Client
     namespace    string
     ctl          workflowctl.WorkflowControl
 }
@@ -38,9 +33,12 @@ func newInputManagementService() *inputManagementService {
 
 // Initialize sets up the service with dependencies
 func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error {
-    // Optional typed accessor for workflow control if available
+    // Require a typed WorkflowControl; fail if not provided
     if ctl, ok := deps.WorkflowControl(); ok && ctl != nil {
         s.ctl = ctl
+    } else {
+        log.Printf("input_mgmt.initialize: missing_workflow_control error=workflow control dependency not provided")
+        return fmt.Errorf("workflow control dependency not provided")
     }
     sse, err := deps.Get("sse")
     if err != nil {
@@ -48,17 +46,6 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
         return err
     }
     s.sse = sse.(ops.SSEManager)
-    c, err := deps.Get("temporal_client")
-    if err != nil {
-        if s.ctl != nil {
-            log.Printf("input_mgmt.initialize: temporal_client_not_provided note=using workflow control for operations")
-        } else {
-            log.Printf("input_mgmt.initialize: temporal_client_not_provided note=HTTP endpoints depending on Temporal may fail")
-            return err
-        }
-    } else {
-        s.client = c.(client.Client)
-    }
     // Best-effort namespace detection via deps or env
     if ns, err := deps.Get("temporal_namespace"); err == nil {
         if v, ok := ns.(string); ok && v != "" {
@@ -71,15 +58,12 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
     if s.namespace == "" {
         s.namespace = "unknown"
     }
-    log.Printf("input_mgmt.initialize: initialized temporal_client_present=%t sse_present=%t namespace=%s", s.client != nil, s.sse != nil, s.namespace)
+    log.Printf("input_mgmt.initialize: initialized sse_present=%t namespace=%s", s.sse != nil, s.namespace)
     return nil
 }
 
 func (s *inputManagementService) Close() {
-	if s.client != nil {
-		s.client.Close()
-		s.client = nil
-	}
+    // No-op: service depends on external WorkflowControl lifetime
 }
 
 // GetRoutes returns the HTTP routes provided by this service
@@ -151,6 +135,10 @@ func (s *inputManagementService) MarkPending(w http.ResponseWriter, r *http.Requ
 
 // GetDetails returns details about a specific input request
 func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Request) {
+    if s.ctl == nil {
+        http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
+        return
+    }
     // Extract from chi if available, otherwise parse from URL path segments.
     workflowID := chi.URLParam(r, "workflowID")
     if workflowID == "" {
@@ -168,33 +156,20 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
     if hdr := r.Header.Get("X-Temporal-Namespace"); hdr != "" {
         ns = hdr
     }
-    log.Printf("input_mgmt.get_details: entry workflow_id=%s client_nil=%t namespace=%s", workflowID, s.client == nil, ns)
+    log.Printf("input_mgmt.get_details: entry workflow_id=%s namespace=%s", workflowID, ns)
 
     // Describe the workflow execution to get current state
     var status interface{}
     var start interface{}
-    if s.ctl != nil {
-        sum, err := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID})
-        if err != nil {
-            log.Printf("input_mgmt.get_details: describe_failed workflow_id=%s error=%v", workflowID, err)
-            http.Error(w, err.Error(), http.StatusNotFound)
-            return
-        }
-        status = sum.Status
-        if sum.StartTime != nil {
-            start = sum.StartTime
-        }
-    } else {
-        desc, err := s.client.DescribeWorkflowExecution(context.Background(), workflowID, "")
-        if err != nil {
-            log.Printf("input_mgmt.get_details: describe_failed workflow_id=%s error=%v", workflowID, err)
-            http.Error(w, err.Error(), http.StatusNotFound)
-            return
-        }
-        if desc.WorkflowExecutionInfo != nil {
-            status = desc.WorkflowExecutionInfo.Status.String()
-            start = desc.WorkflowExecutionInfo.StartTime
-        }
+    sum, err := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID})
+    if err != nil {
+        log.Printf("input_mgmt.get_details: describe_failed workflow_id=%s error=%v", workflowID, err)
+        http.Error(w, err.Error(), http.StatusNotFound)
+        return
+    }
+    status = sum.Status
+    if sum.StartTime != nil {
+        start = sum.StartTime
     }
 
     // Extract workflow info and search attributes
@@ -219,6 +194,10 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 
 // SubmitResponse handles user form submission
 func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.Request) {
+    if s.ctl == nil {
+        http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
+        return
+    }
     workflowID := chi.URLParam(r, "workflowID")
     if workflowID == "" {
         parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -255,8 +234,8 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
         ns = hdr
     }
     log.Printf(
-        "input_mgmt.submit_response: entry workflow_id=%s user_id=%s field_keys=%s client_nil=%t namespace=%s",
-        workflowID, userID, strings.Join(sortedMapKeys(submission.Fields), ","), s.client == nil, ns,
+        "input_mgmt.submit_response: entry workflow_id=%s user_id=%s field_keys=%s namespace=%s",
+        workflowID, userID, strings.Join(sortedMapKeys(submission.Fields), ","), ns,
     )
 
     // Send signal to workflow
@@ -273,51 +252,18 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
         workflowID, "", ns, reflect.TypeOf(payload).String(), checksumForFieldsAndMeta(submission.Fields, submission.Metadata),
     )
 
-    var err error
-    if s.ctl != nil {
-        err = s.ctl.Signal(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, "user-response", payload)
-    } else {
-        err = s.client.SignalWorkflow(
-            context.Background(),
-            workflowID,
-            "",
-            "user-response",
-            payload,
-        )
-    }
-
-    if err != nil {
-        if st, ok := status.FromError(err); ok {
-            log.Printf("input_mgmt.submit_response: signal_failed workflow_id=%s run_id=%s namespace=%s grpc_code=%s error=%v", workflowID, "", ns, st.Code().String(), err)
-        } else {
-            log.Printf("input_mgmt.submit_response: signal_failed workflow_id=%s run_id=%s namespace=%s error=%v", workflowID, "", ns, err)
-        }
+    if err := s.ctl.Signal(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, "user-response", payload); err != nil {
+        log.Printf("input_mgmt.submit_response: signal_failed workflow_id=%s run_id=%s namespace=%s error=%v", workflowID, "", ns, err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
     log.Printf("input_mgmt.submit_response: signal_ok workflow_id=%s run_id=%s namespace=%s", workflowID, "", ns)
 
     // Optional: short post-signal verification
-    if s.ctl != nil {
-        if sum, derr := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}); derr != nil {
-            log.Printf("input_mgmt.submit_response: post_describe_failed workflow_id=%s namespace=%s error=%v", workflowID, ns, derr)
-        } else {
-            log.Printf("input_mgmt.submit_response: post_describe_ok workflow_id=%s namespace=%s status=%s", workflowID, ns, sum.Status)
-        }
+    if sum, derr := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}); derr != nil {
+        log.Printf("input_mgmt.submit_response: post_describe_failed workflow_id=%s namespace=%s error=%v", workflowID, ns, derr)
     } else {
-        if s.client != nil {
-            desc, derr := s.client.DescribeWorkflowExecution(context.Background(), workflowID, "")
-            if derr != nil {
-                log.Printf("input_mgmt.submit_response: post_describe_failed workflow_id=%s namespace=%s error=%v", workflowID, ns, derr)
-            } else if desc != nil && desc.WorkflowExecutionInfo != nil {
-                log.Printf(
-                    "input_mgmt.submit_response: post_describe_ok workflow_id=%s namespace=%s status=%s start_time=%v",
-                    workflowID, ns,
-                    desc.WorkflowExecutionInfo.Status.String(),
-                    desc.WorkflowExecutionInfo.StartTime,
-                )
-            }
-        }
+        log.Printf("input_mgmt.submit_response: post_describe_ok workflow_id=%s namespace=%s status=%s", workflowID, ns, sum.Status)
     }
 
     // Notify via SSE if available
@@ -347,6 +293,10 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 
 // Cancel handles cancellation of a pending input request
 func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) {
+    if s.ctl == nil {
+        http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
+        return
+    }
     workflowID := chi.URLParam(r, "workflowID")
     if workflowID == "" {
         parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -372,18 +322,9 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
     log.Printf("input_mgmt.cancel: entry workflow_id=%s reason=%q", workflowID, cancelRequest.Reason)
 
 	// Cancel the workflow
-    var err error
-    if s.ctl != nil {
-        err = s.ctl.Cancel(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, cancelRequest.Reason)
-    } else {
-        err = s.client.CancelWorkflow(context.Background(), workflowID, "")
-    }
+    err := s.ctl.Cancel(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, cancelRequest.Reason)
     if err != nil {
-        if st, ok := status.FromError(err); ok {
-            log.Printf("input_mgmt.cancel: cancel_failed workflow_id=%s grpc_code=%s error=%v", workflowID, st.Code().String(), err)
-        } else {
-            log.Printf("input_mgmt.cancel: cancel_failed workflow_id=%s error=%v", workflowID, err)
-        }
+        log.Printf("input_mgmt.cancel: cancel_failed workflow_id=%s error=%v", workflowID, err)
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
