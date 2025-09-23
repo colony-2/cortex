@@ -1,15 +1,16 @@
 package gitcollector
 
 import (
-    "context"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "testing"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
 
-    "github.com/divisive-ai/vibethis/server/git/internal/commands"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
+	"github.com/divisive-ai/vibethis/server/git/internal/commands"
+	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // setupTestGitRepo creates a temporary git repository for testing
@@ -64,15 +65,15 @@ func setupTestGitRepo(t *testing.T, files map[string]string) string {
 
 func TestGitFileCollectorActivity(t *testing.T) {
 
-    t.Run("Metadata", func(t *testing.T) {
-        wrap := GetOp()
-        metadata := wrap.GetMetadata()
-        assert.Equal(t, "git_file_collector", metadata.Type)
-        assert.Equal(t, "1.0.0", metadata.Version)
-        assert.NotEmpty(t, metadata.Description)
-    })
+	t.Run("Metadata", func(t *testing.T) {
+		wrap := GetOp()
+		metadata := wrap.GetMetadata()
+		assert.Equal(t, "git_file_collector", metadata.Type)
+		assert.Equal(t, "1.0.0", metadata.Version)
+		assert.NotEmpty(t, metadata.Description)
+	})
 
-    activity := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
+	activity := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
 	t.Run("CollectTrackedFiles", func(t *testing.T) {
 		tmpDir := setupTestGitRepo(t, map[string]string{
 			"main.go":     "package main\n\nfunc main() {}\n",
@@ -81,12 +82,12 @@ func TestGitFileCollectorActivity(t *testing.T) {
 		})
 		defer os.RemoveAll(tmpDir)
 
-        input := GitFileCollectorInput{
-            ContextDir: tmpDir,
-        }
+		input := GitFileCollectorInput{
+			ContextDir: tmpDir,
+		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 		assert.Equal(t, 3, output.FileCount)
 		assert.NotEmpty(t, output.Repository.CommitHash)
 		assert.Equal(t, 3, len(output.Files))
@@ -116,8 +117,8 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			ExcludePatterns: []string{"*_test.go"},
 		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 		assert.Equal(t, 2, output.FileCount) // main.go and lib/util.go
 
 		// Verify the correct files were collected
@@ -155,14 +156,14 @@ func TestGitFileCollectorActivity(t *testing.T) {
 		err = cmd.Run()
 		require.NoError(t, err)
 
-        input := GitFileCollectorInput{
-            ContextDir:    tmpDir,
-            IncludeStaged: true,
-            ExcludeBinary: true,
-        }
+		input := GitFileCollectorInput{
+			ContextDir:    tmpDir,
+			IncludeStaged: true,
+			ExcludeBinary: true,
+		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 
 		// Should only have text files
 		assert.Equal(t, 2, output.FileCount) // main.go and README.md
@@ -189,8 +190,8 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			MaxFileSize: 100, // Only allow files up to 100 bytes
 		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 		assert.Equal(t, 1, output.FileCount) // Only small.txt
 		assert.Equal(t, 1, output.Statistics.SkippedFiles)
 		assert.Equal(t, 1, output.Statistics.SkippedReasons["too_large"])
@@ -213,16 +214,16 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			IncludeUntracked: false,
 		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 		assert.Equal(t, 1, output.FileCount) // Only tracked.go
 
-        // Test with including untracked
-        input.IncludeUntracked = true
-        output, err = activity.Execute(context.Background(), input)
-        require.NoError(t, err)
-        assert.Equal(t, 2, output.FileCount) // tracked.go and untracked.go
-    })
+		// Test with including untracked
+		input.IncludeUntracked = true
+		output, err = activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
+		assert.Equal(t, 2, output.FileCount) // tracked.go and untracked.go
+	})
 
 	t.Run("GitignoreRespect", func(t *testing.T) {
 		tmpDir := setupTestGitRepo(t, map[string]string{
@@ -250,8 +251,8 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			UseGitignore:     true,
 		}
 
-        output, err := activity.Execute(context.Background(), input)
-        require.NoError(t, err)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		require.NoError(t, err)
 
 		// Should have main.go, .gitignore, and new.go (but not debug.log or build/output.bin)
 		assert.Equal(t, 3, output.FileCount)
@@ -376,18 +377,18 @@ func TestFileTypeDetection(t *testing.T) {
 			expectedType: "config",
 			expectedMime: "application/x-yaml",
 		},
-        {
-            name:         "Plain text file",
-            path:         "notes.txt",
-            expectedType: "txt",
-            expectedMime: "text/plain",
-        },
-        {
-            name:         "Unknown extension",
-            path:         "file.xyz",
-            expectedType: "txt",
-            expectedMime: "text/plain",
-        },
+		{
+			name:         "Plain text file",
+			path:         "notes.txt",
+			expectedType: "txt",
+			expectedMime: "text/plain",
+		},
+		{
+			name:         "Unknown extension",
+			path:         "file.xyz",
+			expectedType: "txt",
+			expectedMime: "text/plain",
+		},
 	}
 
 	for _, tt := range tests {

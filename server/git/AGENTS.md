@@ -67,11 +67,13 @@ type GitFileCollectorInput struct {
 }
 
 // Registerable operation for recipe-core
-func GetOp() ops.RegisterableOp
+func GetOp() ops.RegisterableOp {
+    return ops.NewActivityMappedOpV2[GitFileCollectorInput, GitFileCollectorOutput](/* metadata */, /* handler */)
+}
 
 // Internal typed execution (for direct calls)
 // use: activity := &gitcollector.gitFileCollectorActivity{}
-//       output, err := activity.Execute(ctx, input)
+//       output, err := activity.Execute(ops.Invocation{}, ctx, input)
 ```
 
 ### Commit Persistence Activities
@@ -101,13 +103,13 @@ func GetRestoreOp() ops.RegisterableOp
 
 // Typed wrappers for direct calls
 type PersistCommitActivityWrapper struct{}
-// Execute(ctx, input) (no separate config struct)
-func (a *PersistCommitActivityWrapper) Execute(ctx context.Context, input PersistCommitInput) (PersistCommitOutput, error)
+// Execute(inv, ctx, input) (no separate config struct)
+func (a *PersistCommitActivityWrapper) Execute(inv ops.Invocation, ctx context.Context, input PersistCommitInput) (PersistCommitOutput, error)
 
 type RestoreCommitActivityWrapper struct{}
 func NewRestoreCommitActivity() *RestoreCommitActivityWrapper
-// Execute(ctx, input) (no separate config struct)
-func (a *RestoreCommitActivityWrapper) Execute(ctx context.Context, input RestoreCommitInput) (RestoreCommitOutput, error)
+// Execute(inv, ctx, input) (no separate config struct)
+func (a *RestoreCommitActivityWrapper) Execute(inv ops.Invocation, ctx context.Context, input RestoreCommitInput) (RestoreCommitOutput, error)
 ```
 
 ### Shallow Clone Activity
@@ -120,13 +122,15 @@ type GitShallowInput struct {
 }
 
 // Registerable operation for recipe-core
-func GetOp() ops.RegisterableOp
+func GetOp() ops.RegisterableOp {
+    return ops.NewActivityMappedOpV2[GitShallowInput, GitShallowOutput](/* metadata */, /* handler */)
+}
 
 // Typed wrapper for direct calls
 type GitShallowActivityWrapper struct{}
 func NewGitShallowActivity() *GitShallowActivityWrapper
-// Execute(ctx, input) (no separate config struct)
-func (a *GitShallowActivityWrapper) Execute(ctx context.Context, input GitShallowInput) (GitShallowOutput, error)
+// Execute(inv, ctx, input) (no separate config struct)
+func (a *GitShallowActivityWrapper) Execute(inv ops.Invocation, ctx context.Context, input GitShallowInput) (GitShallowOutput, error)
 ```
 
 ### Common Utilities

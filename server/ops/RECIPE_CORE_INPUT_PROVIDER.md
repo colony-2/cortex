@@ -14,8 +14,8 @@ Goals
 
 API Changes (additive)
 1) New constructors (mirroring existing ones):
-- `NewActivityMappedOpWithProvider[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp`
-- `NewInlineOpWithProvider[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), getInputStruct func() interface{}) RegisterableOp`
+- `NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, handler func(ops.Invocation, context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp`
+- `NewInlineOpWithProviderV2[In any, Out any](metadata OpMetadata, handler func(ops.Invocation, workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), getInputStruct func() interface{}) RegisterableOp`
 
 2) Internals: extend opSpecImpl
 - Add field: `inputProvider func() interface{}`
@@ -73,22 +73,22 @@ index 1111111..2222222 100644
  }
 
 @@
- func NewActivityMappedOpWithProvider[In any, Out any](metadata OpMetadata, handler func(context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
-     return &opSpecImpl[In, Out]{
-         metadata:      metadata,
-         handler:       handler,
-         inputProvider: getInputStruct,
-     }
- }
+func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, handler func(ops.Invocation, context.Context, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
+    return &opSpecImpl[In, Out]{
+        metadata:      metadata,
+        handler:       handler,
+        inputProvider: getInputStruct,
+    }
+}
 
 @@
- func NewInlineOpWithProvider[In any, Out any](metadata OpMetadata, handler func(workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
-     return &opSpecImpl[In, Out]{
-         metadata:      metadata,
-         inlineHandler: handler,
-         inputProvider: getInputStruct,
-     }
- }
+func NewInlineOpWithProviderV2[In any, Out any](metadata OpMetadata, handler func(ops.Invocation, workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error), getInputStruct func() interface{}) RegisterableOp {
+    return &opSpecImpl[In, Out]{
+        metadata:      metadata,
+        inlineHandler: handler,
+        inputProvider: getInputStruct,
+    }
+}
 ```
 
 Companion Change (already proposed and accepted)
@@ -100,7 +100,7 @@ Backwards Compatibility
 
 Testing Plan (recipe-core)
 1) New constructor behavior
-- Create a dummy op using `NewActivityMappedOpWithProvider` with a provider returning a struct `W` that implements `JSONSchema()`.
+- Create a dummy op using `NewActivityMappedOpWithProviderV2` with a provider returning a struct `W` that implements `JSONSchema()`.
 - Verify `GetInputStruct()` returns a `*W` and `GetInputType()` matches `W`.
 - Ensure schema generation (`recipe.GenerateSchemaString()`) reflects `W.JSONSchema()`.
 
@@ -116,9 +116,12 @@ Testing Plan (recipe-core)
 Server/Ops Integration (reference)
 - Extension ops will pass an input provider that returns a wrapper instance carrying per-op schemas:
 ```go
-op := ops.NewActivityMappedOpWithProvider[map[string]interface{}, map[string]interface{}](
+op := ops.NewActivityMappedOpWithProviderV2[map[string]interface{}, map[string]interface{}](
     md,
-    handler,
+    func(inv ops.Invocation, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+        // handler logic (inv carries recipe/node identifiers for tracing)
+        return runExtension(inv, ctx, input)
+    },
     func() interface{} {
         return &extInputsWrapper{
             schemaDoc:      rctx.inputSchemaDoc,
@@ -128,4 +131,3 @@ op := ops.NewActivityMappedOpWithProvider[map[string]interface{}, map[string]int
 )
 ```
 - This makes per-op input schemas visible in the generated JSON Schema and enforces YAML parse-time validation via `UnmarshalYAML` on the wrapper.
-

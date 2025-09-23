@@ -78,9 +78,9 @@ type gitFileCollectorActivity struct {
 // NewGitFileCollectorActivity creates a new activity instance
 func GetOp() ops.RegisterableOp {
 
-    act := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
+	act := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
 
-	return ops.NewActivityMappedOp(
+	return ops.NewActivityMappedOpV2[GitFileCollectorInput, GitFileCollectorOutput](
 		ops.OpMetadata{
 			Type:        "git_file_collector",
 			Description: "Collects files from a git repository with filtering and metadata",
@@ -91,6 +91,7 @@ func GetOp() ops.RegisterableOp {
 
 // Execute runs the git file collection
 func (a *gitFileCollectorActivity) Execute(
+	_ ops.Invocation,
 	ctx context.Context,
 	input GitFileCollectorInput,
 ) (GitFileCollectorOutput, error) {
@@ -204,30 +205,30 @@ func (a *gitFileCollectorActivity) validateInput(input GitFileCollectorInput) er
 
 // listGitFiles lists files from the git repository
 func (a *gitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFileCollectorInput, gitRoot string) ([]string, error) {
-    var files []string
+	var files []string
 
-    // Calculate relative path from git root to context directory
-    // Resolve symlinks to avoid mismatches between gitRoot and ContextDir
-    resolvedRoot, err := filepath.EvalSymlinks(gitRoot)
-    if err != nil {
-        resolvedRoot = gitRoot
-    }
-    resolvedContext, err := filepath.EvalSymlinks(input.ContextDir)
-    if err != nil {
-        resolvedContext = input.ContextDir
-    }
+	// Calculate relative path from git root to context directory
+	// Resolve symlinks to avoid mismatches between gitRoot and ContextDir
+	resolvedRoot, err := filepath.EvalSymlinks(gitRoot)
+	if err != nil {
+		resolvedRoot = gitRoot
+	}
+	resolvedContext, err := filepath.EvalSymlinks(input.ContextDir)
+	if err != nil {
+		resolvedContext = input.ContextDir
+	}
 
-    relPath, err := filepath.Rel(resolvedRoot, resolvedContext)
-    if err != nil {
-        return nil, fmt.Errorf("failed to get relative path: %w", err)
-    }
+	relPath, err := filepath.Rel(resolvedRoot, resolvedContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get relative path: %w", err)
+	}
 
-    // If we're at the git root, relPath will be "."
-    // If relPath escapes the root (starts with ".."), treat as root to avoid false negatives on symlinked mounts
-    if relPath == "" {
-        relPath = "."
-    }
-    restrictToSubdir := !(relPath == "." || strings.HasPrefix(relPath, ".."))
+	// If we're at the git root, relPath will be "."
+	// If relPath escapes the root (starts with ".."), treat as root to avoid false negatives on symlinked mounts
+	if relPath == "" {
+		relPath = "."
+	}
+	restrictToSubdir := !(relPath == "." || strings.HasPrefix(relPath, ".."))
 
 	// Get tracked files using common.ExecuteGitCommand from git root
 	output, err := common.ExecuteGitCommand(ctx, gitRoot, "ls-files")
@@ -235,49 +236,49 @@ func (a *gitFileCollectorActivity) listGitFiles(ctx context.Context, input GitFi
 		return nil, fmt.Errorf("git ls-files failed: %w", err)
 	}
 
-    for _, line := range strings.Split(string(output), "\n") {
-        if line != "" {
-            // Filter files to those under the context directory if applicable
-            if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
-                files = append(files, line)
-            }
-        }
-    }
+	for _, line := range strings.Split(string(output), "\n") {
+		if line != "" {
+			// Filter files to those under the context directory if applicable
+			if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
+				files = append(files, line)
+			}
+		}
+	}
 
 	// Get staged files if requested
-    if input.IncludeStaged {
-        output, err = common.ExecuteGitCommand(ctx, gitRoot, "diff", "--staged", "--name-only")
-        if err == nil && len(output) > 0 {
-            for _, line := range strings.Split(string(output), "\n") {
-                if line != "" {
-                    // Filter to context directory if applicable
-                    if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
-                        files = append(files, line)
-                    }
-                }
-            }
-        }
-    }
+	if input.IncludeStaged {
+		output, err = common.ExecuteGitCommand(ctx, gitRoot, "diff", "--staged", "--name-only")
+		if err == nil && len(output) > 0 {
+			for _, line := range strings.Split(string(output), "\n") {
+				if line != "" {
+					// Filter to context directory if applicable
+					if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
+						files = append(files, line)
+					}
+				}
+			}
+		}
+	}
 
 	// Get untracked files if requested
-    if input.IncludeUntracked {
-        args := []string{"ls-files", "--others"}
-        if input.UseGitignore {
-            args = append(args, "--exclude-standard")
-        }
+	if input.IncludeUntracked {
+		args := []string{"ls-files", "--others"}
+		if input.UseGitignore {
+			args = append(args, "--exclude-standard")
+		}
 
-        output, err = common.ExecuteGitCommand(ctx, gitRoot, args...)
-        if err == nil && len(output) > 0 {
-            for _, line := range strings.Split(string(output), "\n") {
-                if line != "" {
-                    // Filter to context directory if applicable
-                    if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
-                        files = append(files, line)
-                    }
-                }
-            }
-        }
-    }
+		output, err = common.ExecuteGitCommand(ctx, gitRoot, args...)
+		if err == nil && len(output) > 0 {
+			for _, line := range strings.Split(string(output), "\n") {
+				if line != "" {
+					// Filter to context directory if applicable
+					if !restrictToSubdir || strings.HasPrefix(line, relPath+"/") {
+						files = append(files, line)
+					}
+				}
+			}
+		}
+	}
 
 	return a.deduplicateFiles(files), nil
 }

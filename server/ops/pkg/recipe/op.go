@@ -29,12 +29,12 @@ type RecipeMetadata struct {
 
 // RecipeActivityWrapper implements the RegisterableOp interface
 type recipeInlineAdapter struct {
-    isWorkflowContext bool // Indicates if running in workflow context
+	isWorkflowContext bool // Indicates if running in workflow context
 }
 
 // NewRecipeActivity creates a new recipe activity that implements RegisterableOp
 func GetOp() ops.RegisterableOp {
-	return ops.NewInlineOp(ops.OpMetadata{
+	return ops.NewInlineOpV2[RecipeInput, RecipeOutput](ops.OpMetadata{
 		Type:           "recipe",
 		Description:    "Invokes another recipe as a child workflow with automatic context propagation",
 		Version:        "1.0.0",
@@ -43,7 +43,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput) (RecipeOutput, error) {
+func execute(_ ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput) (RecipeOutput, error) {
 	//startTime := time.Now()
 
 	cwo := workflow.ChildWorkflowOptions{

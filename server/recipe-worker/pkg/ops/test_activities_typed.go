@@ -9,11 +9,11 @@ import (
 
 func registerTypedTestActivities() {
 	// Register context_logger activity
-	contextLogger := recipeops.NewActivityMappedOp(
+	contextLogger := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "context_logger",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Logged: true,
 			}, nil
@@ -22,11 +22,11 @@ func registerTypedTestActivities() {
 	recipeops.Register(contextLogger)
 
 	// Register batch_validator activity
-	batchValidator := recipeops.NewActivityMappedOp(
+	batchValidator := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "batch_validator",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			if input.Items == nil {
 				return GenericOutput{}, fmt.Errorf("items array is required")
 			}
@@ -40,11 +40,11 @@ func registerTypedTestActivities() {
 	recipeops.Register(batchValidator)
 
 	// Register gemini_report_activity
-	geminiReport := recipeops.NewActivityMappedOp(
+	geminiReport := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "gemini_report_activity",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Report: "Generated report",
 				Status: "complete",
@@ -54,11 +54,11 @@ func registerTypedTestActivities() {
 	recipeops.Register(geminiReport)
 
 	// Register llm activity (for tests that reference it)
-	llmActivity := recipeops.NewActivityMappedOp(
+	llmActivity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "llm",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			prompt := input.Message
 			if prompt == "" && input.Extra != nil {
 				if p, ok := input.Extra["prompt"].(string); ok {
@@ -74,11 +74,11 @@ func registerTypedTestActivities() {
 	recipeops.Register(llmActivity)
 
 	// Register http activity (for tests that reference it)
-	httpActivity := recipeops.NewActivityMappedOp(
+	httpActivity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "http",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Status: "200",
 				Body:   "HTTP response",
@@ -104,11 +104,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range dataActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				output := GenericOutput{
 					Status: "processed",
 				}
@@ -135,11 +135,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range testActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Check if we should simulate an error
 				if name == "error-activity" && input.Error {
 					return GenericOutput{}, fmt.Errorf("simulated error")
@@ -164,11 +164,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range workflowActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Status: "success",
 					Action: name,
@@ -202,11 +202,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range mlActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result:     fmt.Sprintf("ML analysis from %s", name),
 					Status:     "analyzed",
@@ -265,11 +265,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range processingActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Processed by %s", name),
 					Status: "processed",
@@ -303,11 +303,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range reportActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Report: fmt.Sprintf("Report from %s", name),
 					Status: "generated",
@@ -347,11 +347,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range errorActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Simulate errors for certain activities
 				if input.Error {
 					return GenericOutput{}, fmt.Errorf("simulated error in %s", name)
@@ -380,11 +380,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range processorActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result:    fmt.Sprintf("Processed by %s", name),
 					Status:    "success",
@@ -405,11 +405,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range searchActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Found by %s", name),
 					Status: "found",
@@ -420,11 +420,11 @@ func registerTypedTestActivities() {
 	}
 
 	// Register recipe invocation activity
-	recipeActivity := recipeops.NewActivityMappedOp(
+	recipeActivity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "recipe",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			// For test purposes, simulate recipe invocation
 			recipeName := ""
 			if input.Extra != nil {
@@ -497,11 +497,11 @@ func registerTypedTestActivities() {
 
 	for _, activityName := range miscActivities {
 		name := activityName // capture for closure
-		activity := recipeops.NewActivityMappedOp(
+		activity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Executed %s", name),
 					Status: "success",

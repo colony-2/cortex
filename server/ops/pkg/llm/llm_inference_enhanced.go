@@ -118,18 +118,20 @@ type EnhancedLLMInferenceActivity struct {
 }
 
 // NewEnhancedLLMInferenceActivity constructs a new activity instance for tests and registration.
-func NewEnhancedLLMInferenceActivity() *EnhancedLLMInferenceActivity { return &EnhancedLLMInferenceActivity{} }
+func NewEnhancedLLMInferenceActivity() *EnhancedLLMInferenceActivity {
+	return &EnhancedLLMInferenceActivity{}
+}
 
 func GetEnhancedOp() ops.RegisterableOp {
-    e := &EnhancedLLMInferenceActivity{}
-    return ops.NewActivityMappedOp(
-        ops.OpMetadata{
-            Type:           "llm_inference2",
-            Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
-            Version:        "1.0.0",
-            DefaultTimeout: 5 * time.Minute,
-        },
-        e.Execute)
+	e := &EnhancedLLMInferenceActivity{}
+	return ops.NewActivityMappedOpV2[LLMInferenceInput, LLMInferenceOutput](
+		ops.OpMetadata{
+			Type:           "llm_inference2",
+			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
+			Version:        "1.0.0",
+			DefaultTimeout: 5 * time.Minute,
+		},
+		e.Execute)
 }
 
 // GetMetadata returns activity metadata
@@ -143,21 +145,22 @@ func (a *EnhancedLLMInferenceActivity) GetMetadata() ops.OpMetadata {
 
 // Execute runs the enhanced LLM inference activity (input carries all config)
 func (a *EnhancedLLMInferenceActivity) Execute(
-    ctx context.Context,
-    input LLMInferenceInput,
+	_ ops.Invocation,
+	ctx context.Context,
+	input LLMInferenceInput,
 ) (LLMInferenceOutput, error) {
 
-    startTime := time.Now()
+	startTime := time.Now()
 
-    // Validate input
-    if err := a.validateInput(input); err != nil {
-        return LLMInferenceOutput{}, fmt.Errorf("validation failed: %w", err)
-    }
+	// Validate input
+	if err := a.validateInput(input); err != nil {
+		return LLMInferenceOutput{}, fmt.Errorf("validation failed: %w", err)
+	}
 
 	// Initialize components
-    if err := a.initializeComponents(input); err != nil {
-        return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
-    }
+	if err := a.initializeComponents(input); err != nil {
+		return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
+	}
 
 	// Get adapter from registry
 	adapter, err := a.registry.Get(input.Provider)

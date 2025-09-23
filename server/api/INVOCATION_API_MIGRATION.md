@@ -19,10 +19,8 @@ Notes
 | 1 | core-add-v2-api | Add Invocation type + V2 constructors/signatures | server/recipe-core |
 | 2 | worker-pass-invocation | Pass Invocation to ops (inline/activity) | server/recipe-worker |
 | 3 | ops-use-v2-constructors | Migrate ops to V2 constructors/signatures | server/ops, server/activity, server/git |
-| 4 | api-tests-require-id | Require id in respond/cancel test bodies | server/api |
-| 5 | core-remove-v1-api | Remove legacy V1 constructors/signatures | server/recipe-core |
-| 6 | openapi-update-schemas | Require id in respond/cancel schemas/clients | api/openapi, server/openapi, web/openapi |
-| 7 | cleanup-dead-code | Remove remaining V1/deprecated code | server/recipe-core, server/recipe-worker, server/ops, server/activity, server/git, server/api, api/openapi, server/openapi, web/openapi |
+| 4 | core-remove-v1-api | Remove legacy V1 constructors/signatures | server/recipe-core |
+| 5 | cleanup-dead-code | Remove remaining V1/deprecated code | server/recipe-core, server/recipe-worker, server/ops, server/activity, server/git, server/api, api/openapi, server/openapi, web/openapi |
 
 ---
 
@@ -75,20 +73,7 @@ bash -lc '( grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "ops\.N
 
 ---
 
-## 4) api-tests-require-id (server/api)
-
-- Change (LLM concise):
-  - Ensure POST /api/user-inputs/{workflowID}/respond and /cancel request bodies include an "id" field in all tests.
-  - Remove or fix tests that post without id.
-
-- Detect (no output means done):
-```
-bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "/api/user-inputs/.+/respond|/api/user-inputs/.+/cancel" server/api | grep -v ""id"" || true'
-```
-
----
-
-## 5) core-remove-v1-api (server/recipe-core)
+## 4) core-remove-v1-api (server/recipe-core)
 
 - Change (LLM concise):
   - Remove legacy V1 constructors (NewInlineOp, NewActivityMappedOp) and any V1 handler types.
@@ -98,23 +83,9 @@ bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "/api/use
 ```
 bash -lc 'grep -RIn --exclude-dir vendor --exclude-dir node_modules -E "func\s+New(InlineOp|ActivityMappedOp)\[|type\s+InlineHandler\s*func|type\s+ActivityHandler\s*func" server/recipe-core || true'
 ```
-
 ---
 
-## 6) openapi-update-schemas (api/openapi, server/openapi, web/openapi)
-
-- Change (LLM concise):
-  - Update OpenAPI respond/cancel request schemas to require "id".
-  - Regenerate server/openapi (oapi-codegen) and web/openapi (TS client) and api/openapi if applicable.
-
-- Detect (no output means done):
-```
-bash -lc 'grep -RIn --exclude-dir node_modules --exclude-dir vendor -E "user-inputs/.+/respond|user-inputs/.+/cancel" api/openapi server/openapi web/openapi | grep -v ""id"" || true'
-```
-
----
-
-## 7) cleanup-dead-code (all components)
+## 5) cleanup-dead-code (all components)
 
 - Change (LLM concise):
   - Remove any remaining adapters, legacy invocation paths, or shims related to V1 invocation.

@@ -37,7 +37,7 @@ type LLMOutput struct {
 }
 
 func GetOp() ops.RegisterableOp {
-	return ops.NewActivityMappedOp(
+	return ops.NewActivityMappedOpV2[LLMInput, LLMOutput](
 		ops.OpMetadata{
 			Type:           "llm_inference",
 			Description:    "Executes LLM inference with various providers (OpenAI, Anthropic, Gemini)",
@@ -48,7 +48,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(ctx context.Context, input LLMInput) (LLMOutput, error) {
+func execute(_ ops.Invocation, ctx context.Context, input LLMInput) (LLMOutput, error) {
 	// Ensure registry is initialized
 	if globalRegistry == nil {
 		if err := InitializeRegistry(); err != nil {

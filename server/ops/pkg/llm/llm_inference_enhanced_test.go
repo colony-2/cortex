@@ -9,13 +9,14 @@ import (
 
 	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 	// Setup
-    activity := NewEnhancedLLMInferenceActivity()
+	activity := NewEnhancedLLMInferenceActivity()
 
 	// Create mock registry
 	mockRegistry := llmadapters.NewRegistry()
@@ -32,18 +33,18 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 	})
 	mockRegistry.Register("openai", mockAdapter)
 
-    // Replace registry in activity
-    activity.registry = mockRegistry
+	// Replace registry in activity
+	activity.registry = mockRegistry
 
 	t.Run("OldFormatWithModelName", func(t *testing.T) {
 		// Test old format with modelName and adapterName fields
-        input := LLMInferenceInput{
-            Prompt:   "Hello",
-            Model:    "gpt-3.5-turbo",
-            Provider: "openai",
-        }
+		input := LLMInferenceInput{
+			Prompt:   "Hello",
+			Model:    "gpt-3.5-turbo",
+			Provider: "openai",
+		}
 
-        output, err := activity.Execute(context.Background(), input)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check output
@@ -65,7 +66,7 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 			Provider: "openai",
 		}
 
-        output, err := activity.Execute(context.Background(), input)
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check output
@@ -83,10 +84,10 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 			Prompt: "Hello",
 		}
 
-        // Provide provider and model directly in input since config is removed
-        input.Provider = "openai"
-        input.Model = "gpt-3.5-turbo"
-        output, err := activity.Execute(context.Background(), input)
+		// Provide provider and model directly in input since config is removed
+		input.Provider = "openai"
+		input.Model = "gpt-3.5-turbo"
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, output.Response)
@@ -101,15 +102,15 @@ func TestEnhancedLLMInferenceActivity_WithFiles(t *testing.T) {
 	// Create mock registry with file support
 	mockRegistry := llmadapters.NewRegistry()
 	mockAdapter := llmadapters.NewMockAdapter()
-    mockAdapter.FileCapabilities = llmadapters.FileCapabilities{
-        SupportedTypes: []f2.FileType{
-            f2.FileTypeText,
-            f2.FileTypeCode,
-        },
-        MaxFileSize:    1024 * 1024,
-        MaxFileCount:   10,
-        TotalSizeLimit: 10 * 1024 * 1024,
-    }
+	mockAdapter.FileCapabilities = llmadapters.FileCapabilities{
+		SupportedTypes: []f2.FileType{
+			f2.FileTypeText,
+			f2.FileTypeCode,
+		},
+		MaxFileSize:    1024 * 1024,
+		MaxFileCount:   10,
+		TotalSizeLimit: 10 * 1024 * 1024,
+	}
 	mockAdapter.SetResponse(llmadapters.Response{
 		Content:      "Analyzed the files",
 		Model:        "gpt-4",
@@ -122,30 +123,30 @@ func TestEnhancedLLMInferenceActivity_WithFiles(t *testing.T) {
 	})
 	mockRegistry.Register("openai", mockAdapter)
 
-    activity.registry = mockRegistry
+	activity.registry = mockRegistry
 
 	t.Run("FilesWithNativeHandling", func(t *testing.T) {
-        input := LLMInferenceInput{
-            Prompt:   "Analyze these files",
-            Provider: "openai",
-            Model:    "gpt-4",
-            Files: []f2.File{
-                {
-                    Path:    "main.go",
-                    Content: []byte("package main\n\nfunc main() {}"),
-                    Type:    f2.FileTypeCode,
-                },
-                {
-                    Path:    "README.md",
-                    Content: []byte("# Test Project"),
-                    Type:    f2.FileTypeMarkdown,
-                },
-            },
-            FileHandling: "native",
-        }
+		input := LLMInferenceInput{
+			Prompt:   "Analyze these files",
+			Provider: "openai",
+			Model:    "gpt-4",
+			Files: []f2.File{
+				{
+					Path:    "main.go",
+					Content: []byte("package main\n\nfunc main() {}"),
+					Type:    f2.FileTypeCode,
+				},
+				{
+					Path:    "README.md",
+					Content: []byte("# Test Project"),
+					Type:    f2.FileTypeMarkdown,
+				},
+			},
+			FileHandling: "native",
+		}
 
-        input.MaxFileContextSize = 10 * 1024 * 1024
-        output, err := activity.Execute(context.Background(), input)
+		input.MaxFileContextSize = 10 * 1024 * 1024
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, output.Response)
@@ -158,7 +159,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Setup
-    activity := NewEnhancedLLMInferenceActivity()
+	activity := NewEnhancedLLMInferenceActivity()
 
 	// Create mock registry
 	mockRegistry := llmadapters.NewRegistry()
@@ -199,7 +200,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 	}
 	mockRegistry.Register("openai", mockAdapter)
 
-    activity.registry = mockRegistry
+	activity.registry = mockRegistry
 
 	t.Run("ExecuteFileWriteTool", func(t *testing.T) {
 		input := LLMInferenceInput{
@@ -212,10 +213,10 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 			MaxToolRounds:  1, // Limit to 1 round
 		}
 
-            input.EnableToolExecution = true
-            input.EnableSandbox = true
-            input.AllowedPaths = []string{tmpDir}
-            output, err := activity.Execute(context.Background(), input)
+		input.EnableToolExecution = true
+		input.EnableSandbox = true
+		input.AllowedPaths = []string{tmpDir}
+		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check response
@@ -272,7 +273,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 
 		// Create new activity with fresh registry
 		activity2 := NewEnhancedLLMInferenceActivity()
-    activity2.registry = mockRegistry2
+		activity2.registry = mockRegistry2
 
 		input := LLMInferenceInput{
 			Prompt:         "List all files in the directory",
@@ -289,7 +290,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 		input.EnableSandbox = true
 		input.AllowedPaths = []string{tmpDir2}
 
-        output, err := activity2.Execute(context.Background(), input)
+		output, err := activity2.Execute(recipeops.Invocation{}, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check tool results - should have exactly 1

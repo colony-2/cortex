@@ -51,7 +51,7 @@ func newCommandExecutionActivity() ops.RegisterableOp {
 
 // NewCommandExecutionActivity creates a new command execution activity that implements RegisterableOp
 func GetOp() ops.RegisterableOp {
-	return ops.NewActivityMappedOp(
+	return ops.NewActivityMappedOpV2[CommandExecutionInput, CommandExecutionOutput](
 		ops.OpMetadata{
 			Type:           "command_execution",
 			Description:    "Executes arbitrary shell commands with GitHub Actions-style configuration",
@@ -61,7 +61,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(ctx context.Context, input CommandExecutionInput) (CommandExecutionOutput, error) {
+func execute(_ ops.Invocation, ctx context.Context, input CommandExecutionInput) (CommandExecutionOutput, error) {
 	// Validate inputs
 	if input.Run == "" {
 		return CommandExecutionOutput{}, fmt.Errorf("run command is required")

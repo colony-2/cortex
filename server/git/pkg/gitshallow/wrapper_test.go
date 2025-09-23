@@ -1,11 +1,13 @@
 package gitshallow
 
 import (
-    "context"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "testing"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 func TestGitShallowActivityWrapper(t *testing.T) {
@@ -71,34 +73,34 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 	}
 	commitHash := string(commitHashBytes[:len(commitHashBytes)-1]) // Remove newline
 
-    t.Run("test metadata", func(t *testing.T) {
-        wrapper := NewGitShallowActivity()
-        metadata := wrapper.GetMetadata()
+	t.Run("test metadata", func(t *testing.T) {
+		wrapper := NewGitShallowActivity()
+		metadata := wrapper.GetMetadata()
 
-        if metadata.Type != "git_shallow_clone" {
-            t.Errorf("Expected type 'git_shallow_clone', got '%s'", metadata.Type)
-        }
+		if metadata.Type != "git_shallow_clone" {
+			t.Errorf("Expected type 'git_shallow_clone', got '%s'", metadata.Type)
+		}
 
-        if metadata.Version != "1.0.0" {
-            t.Errorf("Expected version '1.0.0', got '%s'", metadata.Version)
-        }
+		if metadata.Version != "1.0.0" {
+			t.Errorf("Expected version '1.0.0', got '%s'", metadata.Version)
+		}
 
-        if metadata.Description == "" {
-            t.Error("Expected description to be set")
-        }
-    })
+		if metadata.Description == "" {
+			t.Error("Expected description to be set")
+		}
+	})
 
 	t.Run("test execute", func(t *testing.T) {
 		wrapper := NewGitShallowActivity()
 		targetDir := filepath.Join(tempDir, "target-wrapper")
 
-        input := GitShallowInput{
-            SourceDir:  sourceDir,
-            TargetDir:  targetDir,
-            CommitHash: commitHash,
-        }
+		input := GitShallowInput{
+			SourceDir:  sourceDir,
+			TargetDir:  targetDir,
+			CommitHash: commitHash,
+		}
 
-        output, err := wrapper.Execute(ctx, input)
+		output, err := wrapper.Execute(recipeops.Invocation{}, ctx, input)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
@@ -120,18 +122,18 @@ func TestGitShallowActivityWrapper(t *testing.T) {
 	})
 
 	t.Run("test interface implementation", func(t *testing.T) {
-        // This test ensures the wrapper properly implements the RegisterableOp interface
-        wrapper := &GitShallowActivityWrapper{}
+		// This test ensures the wrapper properly implements the RegisterableOp interface
+		wrapper := &GitShallowActivityWrapper{}
 
-        // Test that we can call all interface methods
-        _ = wrapper.GetMetadata()
-        input := GitShallowInput{
-            SourceDir:  sourceDir,
-            TargetDir:  filepath.Join(tempDir, "interface-test"),
-            CommitHash: commitHash,
-        }
+		// Test that we can call all interface methods
+		_ = wrapper.GetMetadata()
+		input := GitShallowInput{
+			SourceDir:  sourceDir,
+			TargetDir:  filepath.Join(tempDir, "interface-test"),
+			CommitHash: commitHash,
+		}
 
-		_, err := wrapper.Execute(ctx, input)
+		_, err := wrapper.Execute(recipeops.Invocation{}, ctx, input)
 		if err != nil {
 			t.Fatalf("Interface method Execute failed: %v", err)
 		}

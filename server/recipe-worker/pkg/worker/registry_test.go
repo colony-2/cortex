@@ -26,13 +26,13 @@ type TestRegistryOutput struct {
 
 func init() {
 	// Register test-activity for registry tests
-	testActivityOp := ops.NewActivityMappedOp(
+	testActivityOp := ops.NewActivityMappedOpV2[TestRegistryInput, TestRegistryOutput](
 		ops.OpMetadata{
 			Type:        "test-activity",
 			Description: "Test activity for registry tests",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestRegistryInput) (TestRegistryOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestRegistryInput) (TestRegistryOutput, error) {
 			return TestRegistryOutput{
 				Result: "success",
 			}, nil

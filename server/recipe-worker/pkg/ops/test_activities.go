@@ -62,11 +62,11 @@ func registerTestActivities() {
 	recipeops.Register(sleepop.GetOp())
 
 	// Register echo_activity
-	echoActivity := recipeops.NewActivityMappedOp(
+	echoActivity := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{
 			Type: "echo_activity",
 		},
-		func(ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			message := input.Message
 			if message == "" {
 				message = "Hello, World!"

@@ -18,24 +18,24 @@ type dummyOut struct {
 func TestOps_Register_Get_List_Clear(t *testing.T) {
 	Clear()
 	// Operations register globally for workflow access [pkg/ops/ops.go]
-    op := NewActivityMappedOp(OpMetadata{Type: "t1"}, func(ctx context.Context, in dummyIn) (dummyOut, error) {
-        return dummyOut{B: in.A}, nil
-    })
-    Register(op)
+	op := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ Invocation, ctx context.Context, in dummyIn) (dummyOut, error) {
+		return dummyOut{B: in.A}, nil
+	})
+	Register(op)
 
-    // Registry lookups find operations by name correctly [pkg/ops/ops.go]
-    got, ok := Get("t1")
-    assert.True(t, ok)
-    assert.Equal(t, "t1", got.GetMetadata().Type)
+	// Registry lookups find operations by name correctly [pkg/ops/ops.go]
+	got, ok := Get("t1")
+	assert.True(t, ok)
+	assert.Equal(t, "t1", got.GetMetadata().Type)
 
 	// Duplicate operation names replace existing registrations [pkg/ops/ops.go]
-    op2 := NewActivityMappedOp(OpMetadata{Type: "t1"}, func(ctx context.Context, in dummyIn) (dummyOut, error) {
-        return dummyOut{B: "new"}, nil
-    })
-    Register(op2)
-    got2, ok := Get("t1")
-    assert.True(t, ok)
-    assert.Equal(t, got2, op2)
+	op2 := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ Invocation, ctx context.Context, in dummyIn) (dummyOut, error) {
+		return dummyOut{B: "new"}, nil
+	})
+	Register(op2)
+	got2, ok := Get("t1")
+	assert.True(t, ok)
+	assert.Equal(t, got2, op2)
 
 	// Missing operations return clear not-found indication [pkg/ops/ops.go]
 	_, ok = Get("missing")
@@ -56,7 +56,7 @@ func TestOps_ThreadSafety(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			name := "op-" + string(rune('a'+(i%26)))
-			Register(NewActivityMappedOp(OpMetadata{Type: name}, func(ctx context.Context, in dummyIn) (dummyOut, error) {
+			Register(NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: name}, func(_ Invocation, ctx context.Context, in dummyIn) (dummyOut, error) {
 				return dummyOut{B: in.A}, nil
 			}))
 		}()

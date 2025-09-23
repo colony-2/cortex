@@ -29,15 +29,15 @@ type EchoOut struct {
 }
 
 func registerOp() {
-    echoActivity := ops.NewActivityMappedOp(
-        ops.OpMetadata{Type: "echo"},
-        func(ctx context.Context, input EchoIn) (EchoOut, error) {
-            message := input.Message
-            return EchoOut{
-                Output: message,
-            }, nil
-        },
-    )
+	echoActivity := ops.NewActivityMappedOpV2[EchoIn, EchoOut](
+		ops.OpMetadata{Type: "echo"},
+		func(_ ops.Invocation, ctx context.Context, input EchoIn) (EchoOut, error) {
+			message := input.Message
+			return EchoOut{
+				Output: message,
+			}, nil
+		},
+	)
 	ops.Register(echoActivity)
 }
 

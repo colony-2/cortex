@@ -1,13 +1,13 @@
 package input
 
 import (
-    "context"
-    "fmt"
-    "time"
+	"context"
+	"fmt"
+	"time"
 
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-    "go.temporal.io/sdk/temporal"
-    "go.temporal.io/sdk/workflow"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/workflow"
 )
 
 // Config represents the configuration for the input activity
@@ -30,10 +30,10 @@ type Config struct {
 
 // Input represents the inputs passed to the input activity
 type Input struct {
-    BoxID      string                 `json:"box_id" jsonschema:"required,description=Box identifier"`
-    ActivityID string                 `json:"activity_id" jsonschema:"required,description=Activity identifier"`
-    Context    map[string]interface{} `json:"context,omitempty" jsonschema:"description=Additional context data"`
-    Config     Config                 `json:"config,omitempty" jsonschema:"description=Form configuration"`
+	BoxID      string                 `json:"box_id" jsonschema:"required,description=Box identifier"`
+	ActivityID string                 `json:"activity_id" jsonschema:"required,description=Activity identifier"`
+	Context    map[string]interface{} `json:"context,omitempty" jsonschema:"description=Additional context data"`
+	Config     Config                 `json:"config,omitempty" jsonschema:"description=Form configuration"`
 }
 
 // Output represents the output from the input activity
@@ -46,8 +46,8 @@ type Output struct {
 
 // InputActivity is a RegisterableOp that collects user input via forms
 type InputActivity struct {
-    // Management service for HTTP endpoints
-    managementService ops.ManagementService
+	// Management service for HTTP endpoints
+	managementService ops.ManagementService
 }
 
 // newInputActivity creates a new input activity instance
@@ -58,55 +58,56 @@ func newInputActivity() *InputActivity {
 }
 
 func GetOp() ops.RegisterableOp {
-    a := newInputActivity()
-    // Run inline within the workflow: wait on user-response signal
-    return ops.NewInlineOpWithManagement[Input, Output](
-        a.GetMetadata(),
-        func(ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
-            // Build form from config for validation and metadata
-            form := a.buildForm(in.Config, in)
+	a := newInputActivity()
+	// Run inline within the workflow: wait on user-response signal
+	// NewInlineOpWithManagementV2 builds on ops.NewInlineOpV2[Input, Output] to attach management endpoints.
+	return ops.NewInlineOpWithManagementV2[Input, Output](
+		a.GetMetadata(),
+		func(_ ops.Invocation, ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
+			// Build form from config for validation and metadata
+			form := a.buildForm(in.Config, in)
 
-            // Record pending status and basic metadata
-            _ = workflow.UpsertTypedSearchAttributes(ctx,
-                temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
-                temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(form.Title),
-                temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(in.BoxID),
-                temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(workflow.Now(ctx)),
-                temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(workflow.Now(ctx).Add(form.Timeout)),
-            )
+			// Record pending status and basic metadata
+			_ = workflow.UpsertTypedSearchAttributes(ctx,
+				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
+				temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(form.Title),
+				temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(in.BoxID),
+				temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(workflow.Now(ctx)),
+				temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(workflow.Now(ctx).Add(form.Timeout)),
+			)
 
-            // Wait for signal or timeout
-            responseChan := workflow.GetSignalChannel(ctx, "user-response")
-            tctx, cancel := workflow.WithCancel(ctx)
-            workflow.Go(tctx, func(c workflow.Context) {
-                // Use provided timeout if non-zero; otherwise default
-                to := form.Timeout
-                if to == 0 {
-                    to = 5 * time.Minute
-                }
-                workflow.Sleep(c, to)
-                cancel()
-            })
+			// Wait for signal or timeout
+			responseChan := workflow.GetSignalChannel(ctx, "user-response")
+			tctx, cancel := workflow.WithCancel(ctx)
+			workflow.Go(tctx, func(c workflow.Context) {
+				// Use provided timeout if non-zero; otherwise default
+				to := form.Timeout
+				if to == 0 {
+					to = 5 * time.Minute
+				}
+				workflow.Sleep(c, to)
+				cancel()
+			})
 
-            var sig UserResponseSignal
-            responseChan.Receive(tctx, &sig)
-            if tctx.Err() != nil {
-                _ = workflow.UpsertTypedSearchAttributes(ctx,
-                    temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
-                )
-                return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
-            }
+			var sig UserResponseSignal
+			responseChan.Receive(tctx, &sig)
+			if tctx.Err() != nil {
+				_ = workflow.UpsertTypedSearchAttributes(ctx,
+					temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
+				)
+				return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
+			}
 
-            _ = workflow.UpsertTypedSearchAttributes(ctx,
-                temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
-                temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(sig.UserID),
-                temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(sig.RespondedAt),
-            )
+			_ = workflow.UpsertTypedSearchAttributes(ctx,
+				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
+				temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(sig.UserID),
+				temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(sig.RespondedAt),
+			)
 
-            return Output{Fields: sig.Fields, UserID: sig.UserID, Metadata: sig.Metadata}, nil
-        },
-        a.managementService,
-    )
+			return Output{Fields: sig.Fields, UserID: sig.UserID, Metadata: sig.Metadata}, nil
+		},
+		a.managementService,
+	)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -121,13 +122,13 @@ func (a *InputActivity) GetMetadata() ops.OpMetadata {
 
 // Execute runs the input activity using configuration provided within input
 func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error) {
-    // Build the form from the embedded config (validation only)
-    _ = a.buildForm(input.Config, input)
+	// Build the form from the embedded config (validation only)
+	_ = a.buildForm(input.Config, input)
 
-    // Activities should not collect input directly. This operation must run inline
-    // within a workflow that waits on the "user-response" signal, and the signal
-    // should be sent via the management service using a typed WorkflowControl.
-    return Output{}, fmt.Errorf("input activity execution is not supported outside workflows; run inline and signal via management service")
+	// Activities should not collect input directly. This operation must run inline
+	// within a workflow that waits on the "user-response" signal, and the signal
+	// should be sent via the management service using a typed WorkflowControl.
+	return Output{}, fmt.Errorf("input activity execution is not supported outside workflows; run inline and signal via management service")
 }
 
 // (No Temporal context or workflow execution in activity code)

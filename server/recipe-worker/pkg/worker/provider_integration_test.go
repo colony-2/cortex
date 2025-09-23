@@ -26,13 +26,13 @@ type TestProviderOutput struct {
 func init() {
 	// Register test activities for provider integration tests
 	// Note: Name field is what's used for lookup when op: is specified in YAML
-	httpActivityOp := ops.NewActivityMappedOp(
+	httpActivityOp := ops.NewActivityMappedOpV2[TestProviderInput, TestProviderOutput](
 		ops.OpMetadata{
 			Type:        "http-activity",
 			Description: "Test HTTP activity for provider integration",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestProviderInput) (TestProviderOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestProviderInput) (TestProviderOutput, error) {
 			return TestProviderOutput{
 				Result:   "http_success",
 				Response: "HTTP response for " + input.URL,
@@ -41,13 +41,13 @@ func init() {
 	)
 	ops.Register(httpActivityOp)
 
-	grpcActivityOp := ops.NewActivityMappedOp(
+	grpcActivityOp := ops.NewActivityMappedOpV2[TestProviderInput, TestProviderOutput](
 		ops.OpMetadata{
 			Type:        "grpc-activity",
 			Description: "Test gRPC activity for provider integration",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestProviderInput) (TestProviderOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestProviderInput) (TestProviderOutput, error) {
 			return TestProviderOutput{
 				Result:   "grpc_success",
 				Response: "gRPC response from " + input.Host,

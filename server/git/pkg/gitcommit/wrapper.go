@@ -1,17 +1,17 @@
 package gitcommit
 
 import (
-    "context"
-    "time"
+	"context"
+	"time"
 
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // PersistCommitInput defines the input for persist commit activities - ALL fields MUST have json tags
 type PersistCommitInput struct {
-    RepoPath        string        `json:"repo_path"`                // Required: path to the local Git repository
-    StorageLocation string        `json:"storage_location"`         // Required: directory path where thin packs will be stored
-    RootHash        string        `json:"root_hash"`                // Required: base commit hash this set was built upon
+	RepoPath        string        `json:"repo_path"`                // Required: path to the local Git repository
+	StorageLocation string        `json:"storage_location"`         // Required: directory path where thin packs will be stored
+	RootHash        string        `json:"root_hash"`                // Required: base commit hash this set was built upon
 	CommitMessage   string        `json:"commit_message,omitempty"` // Optional: message for the commit
 	Author          string        `json:"author,omitempty"`         // Optional: author name and email
 	Timeout         time.Duration `json:"timeout,omitempty"`        // Optional: operation timeout
@@ -22,7 +22,7 @@ type PersistCommitActivityWrapper struct{}
 
 func GetPersistOp() ops.RegisterableOp {
 	p := &PersistCommitActivityWrapper{}
-	return ops.NewActivityMappedOp(p.GetMetadata(), p.Execute)
+	return ops.NewActivityMappedOpV2[PersistCommitInput, PersistCommitOutput](p.GetMetadata(), p.Execute)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -35,7 +35,7 @@ func (a *PersistCommitActivityWrapper) GetMetadata() ops.OpMetadata {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *PersistCommitActivityWrapper) Execute(ctx context.Context, input PersistCommitInput) (PersistCommitOutput, error) {
+func (a *PersistCommitActivityWrapper) Execute(_ ops.Invocation, ctx context.Context, input PersistCommitInput) (PersistCommitOutput, error) {
 	// Build the persist input
 	persistInput := PersistCommitActivity{
 		RepoPath:        input.RepoPath,
@@ -57,9 +57,9 @@ func (a *PersistCommitActivityWrapper) Execute(ctx context.Context, input Persis
 
 // RestoreCommitInput defines the input for restore commit activities - ALL fields MUST have json tags
 type RestoreCommitInput struct {
-    RepoPath        string        `json:"repo_path"`         // Required: path to the local Git repository
-    TargetCommit    string        `json:"target_commit"`     // Required: commit hash to restore to
-    RootHash        string        `json:"root_hash"`         // Required: root commit hash for this set
+	RepoPath        string        `json:"repo_path"`         // Required: path to the local Git repository
+	TargetCommit    string        `json:"target_commit"`     // Required: commit hash to restore to
+	RootHash        string        `json:"root_hash"`         // Required: root commit hash for this set
 	StorageLocation string        `json:"storage_location"`  // Required: directory containing thin packs
 	Force           bool          `json:"force,omitempty"`   // Optional: force checkout even with uncommitted changes
 	Timeout         time.Duration `json:"timeout,omitempty"` // Optional: operation timeout
@@ -75,7 +75,7 @@ func NewRestoreCommitActivity() *RestoreCommitActivityWrapper {
 
 func GetRestoreOp() ops.RegisterableOp {
 	r := &RestoreCommitActivityWrapper{}
-	return ops.NewActivityMappedOp(r.GetMetadata(), r.Execute)
+	return ops.NewActivityMappedOpV2[RestoreCommitInput, RestoreCommitOutput](r.GetMetadata(), r.Execute)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -88,7 +88,7 @@ func (a *RestoreCommitActivityWrapper) GetMetadata() ops.OpMetadata {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *RestoreCommitActivityWrapper) Execute(ctx context.Context, input RestoreCommitInput) (RestoreCommitOutput, error) {
+func (a *RestoreCommitActivityWrapper) Execute(_ ops.Invocation, ctx context.Context, input RestoreCommitInput) (RestoreCommitOutput, error) {
 	// Build the restore input
 	restoreInput := RestoreCommitActivity{
 		RepoPath:        input.RepoPath,

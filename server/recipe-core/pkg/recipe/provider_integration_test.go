@@ -52,12 +52,12 @@ func TestProvider_SchemaReflection_And_YAMLValidation(t *testing.T) {
 		Description: "provider-based test op",
 		Version:     "1.0.0",
 	}
-	handler := func(_ctx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+	handler := func(_ rops.Invocation, _ context.Context, in map[string]interface{}) (map[string]interface{}, error) {
 		// Echo input; runtime execution not under test here.
 		return in, nil
 	}
 	// Use the new provider constructor to supply our wrapper input
-	op := rops.NewActivityMappedOpWithProvider[map[string]interface{}, map[string]interface{}](
+	op := rops.NewActivityMappedOpWithProviderV2[map[string]interface{}, map[string]interface{}](
 		md,
 		handler,
 		func() interface{} { return &wrapperInput{} },

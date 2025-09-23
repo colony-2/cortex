@@ -416,7 +416,7 @@ assert.Equal(t, "http-activity", httpNode.Op)
 2. **Name vs Type**: The `Name` field in `OpMetadata` is what's used for lookup when `op:` is specified in YAML
 3. **Registration Pattern**:
    ```go
-   testOp := ops.NewActivityMappedOp(
+   testOp := ops.NewActivityMappedOpV2[Input, Output](
        ops.OpMetadata{
            Type: "test-op",
            Name: "test-op",  // Must match YAML op field

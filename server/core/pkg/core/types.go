@@ -10,6 +10,8 @@ type Cell struct {
 	Dependencies []string `json:"dependencies"` // List of cell IDs this cell depends on
 }
 
+type CellName string
+
 // Edge represents a directed edge in the dependency graph.
 type Edge struct {
 	ID     string `json:"id"`

@@ -35,13 +35,13 @@ type TestOutput struct {
 func init() {
 	// Register test activities for integration tests
 	// Note: Name field is what's used for lookup when op: is specified in YAML
-	processDataOp := ops.NewActivityMappedOp(
+	processDataOp := ops.NewActivityMappedOpV2[TestInput, TestOutput](
 		ops.OpMetadata{
 			Type:        "process-data",
 			Description: "Test activity for processing data",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestInput) (TestOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
 			return TestOutput{
 				Result:    "processed",
 				Processed: input.Data + "_processed",
@@ -50,13 +50,13 @@ func init() {
 	)
 	ops.Register(processDataOp)
 
-	prepareDataOp := ops.NewActivityMappedOp(
+	prepareDataOp := ops.NewActivityMappedOpV2[TestInput, TestOutput](
 		ops.OpMetadata{
 			Type:        "prepare-data",
 			Description: "Test activity for preparing data",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestInput) (TestOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
 			return TestOutput{
 				Data:     "prepared_data",
 				Prepared: input.Source + "_prepared",
@@ -65,13 +65,13 @@ func init() {
 	)
 	ops.Register(prepareDataOp)
 
-	transformDataOp := ops.NewActivityMappedOp(
+	transformDataOp := ops.NewActivityMappedOpV2[TestInput, TestOutput](
 		ops.OpMetadata{
 			Type:        "transform-data",
 			Description: "Test activity for transforming data",
 			Version:     "1.0.0",
 		},
-		func(ctx context.Context, input TestInput) (TestOutput, error) {
+		func(_ ops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
 			return TestOutput{
 				Result: "transformed",
 				Data:   input.Data + "_transformed",

@@ -40,19 +40,19 @@ type BadInput struct {
 }
 
 // testActivity is a mock RegisterableOp for testing
-var testActivity = recipeops.NewActivityMappedOp(
+var testActivity = recipeops.NewActivityMappedOpV2[TestInput, TestOutput](
 	recipeops.OpMetadata{
 		Type:           "test_registry_activity",
 		Description:    "A test activity for unit testing",
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
 	},
-	func(ctx context.Context, input TestInput) (TestOutput, error) {
-		return runTestActivity(ctx, input)
+	func(inv recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
+		return runTestActivity(inv, ctx, input)
 	},
 )
 
-func runTestActivity(ctx context.Context, input TestInput) (TestOutput, error) {
+func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
 	return TestOutput{
 		Result:  input.Data + " processed",
 		Success: true,

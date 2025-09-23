@@ -30,7 +30,7 @@ type SleepOutput struct {
 }
 
 func GetOp() ops.RegisterableOp {
-	return ops.NewActivityMappedOp(ops.OpMetadata{
+	return ops.NewActivityMappedOpV2[SleepInput, SleepOutput](ops.OpMetadata{
 		Type:           "sleep",
 		Description:    "Pauses execution for a specified duration",
 		Version:        "1.0.0",
@@ -39,7 +39,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func executeSleep(ctx context.Context, input SleepInput) (SleepOutput, error) {
+func executeSleep(_ ops.Invocation, ctx context.Context, input SleepInput) (SleepOutput, error) {
 	// Determine duration to use
 	durationStr := input.Duration
 	config := SleepConfig{}

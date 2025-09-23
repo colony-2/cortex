@@ -1,16 +1,16 @@
 package gitshallow
 
 import (
-    "context"
+	"context"
 
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // GitShallowInput defines the input for git shallow clone activities - ALL fields MUST have json tags
 type GitShallowInput struct {
-    SourceDir  string `json:"source_dir"`  // Required: path to source git repository
-    TargetDir  string `json:"target_dir"`  // Required: path where to clone
-    CommitHash string `json:"commit_hash"` // Required: commit hash to checkout
+	SourceDir  string `json:"source_dir"`  // Required: path to source git repository
+	TargetDir  string `json:"target_dir"`  // Required: path where to clone
+	CommitHash string `json:"commit_hash"` // Required: commit hash to checkout
 }
 
 // GitShallowOutput defines the output from git shallow clone activities - ALL fields MUST have json tags
@@ -28,7 +28,7 @@ func NewGitShallowActivity() *GitShallowActivityWrapper {
 
 func GetOp() ops.RegisterableOp {
 	a := NewGitShallowActivity()
-	return ops.NewActivityMappedOp(a.GetMetadata(), a.Execute)
+	return ops.NewActivityMappedOpV2[GitShallowInput, GitShallowOutput](a.GetMetadata(), a.Execute)
 }
 
 // GetMetadata returns activity metadata for registration
@@ -41,7 +41,7 @@ func (a *GitShallowActivityWrapper) GetMetadata() ops.OpMetadata {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func (a *GitShallowActivityWrapper) Execute(ctx context.Context, input GitShallowInput) (GitShallowOutput, error) {
+func (a *GitShallowActivityWrapper) Execute(_ ops.Invocation, ctx context.Context, input GitShallowInput) (GitShallowOutput, error) {
 	// Build the clone input
 	cloneInput := GitShallowCloneInput{
 		SourceDir:  input.SourceDir,

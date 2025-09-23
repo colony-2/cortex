@@ -104,8 +104,8 @@ Notes:
   - `Execute(ctx)`, `ExecuteInline(workflowCtx)`, `GetInputStruct()`, `GetInputType()`, `GetOutputType()`, `ExecuteAsActivity()`.
   - `GetMetadata()` returns `OpMetadata{Name, Type, Description, Version, DefaultTimeout}`.
 - Constructors:
-  - `ops.NewActivityMappedOp[In,Out](metadata, func(context.Context, In) (Out, error))`.
-  - `ops.NewInlineOp[In,Out](metadata, func(workflow.Context, In) (Out, error))`.
+  - `ops.NewActivityMappedOpV2[In,Out](metadata, func(ops.Invocation, context.Context, In) (Out, error))`.
+  - `ops.NewInlineOpV2[In,Out](metadata, func(ops.Invocation, workflow.Context, time.Duration, *temporal.RetryPolicy, In) (Out, error))`.
 - Registry API: `ops.Register(op...)`, `ops.Get(name)`, `ops.List()`, `ops.Clear()`, `ops.Size()`.
 - Optional `ManagementService` for HTTP routes used by surrounding systems.
 - Backward-compatible dependencies extension:
@@ -124,9 +124,12 @@ import (
 type EchoIn struct { Message string `json:"message"` }
 type EchoOut struct { Echoed string `json:"echoed"` }
 
-var Echo = ops.NewActivityMappedOp[EchoIn, EchoOut](
+var Echo = ops.NewActivityMappedOpV2[EchoIn, EchoOut](
     ops.OpMetadata{Type: "echo", Name: "echo", Description: "Echo a message", Version: "1.0.0"},
-    func(ctx context.Context, in EchoIn) (EchoOut, error) { return EchoOut{Echoed: in.Message}, nil },
+    func(inv ops.Invocation, ctx context.Context, in EchoIn) (EchoOut, error) {
+        _ = inv // invocation metadata available for tracing/logging
+        return EchoOut{Echoed: in.Message}, nil
+    },
 )
 
 func init() { ops.Register(Echo) }
