@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 
@@ -8,6 +9,12 @@ import (
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
 )
+
+// ActivityInvocationRequest wraps the invocation metadata and original input payload.
+type ActivityInvocationRequest struct {
+	Invocation ops.Invocation         `json:"invocation"`
+	Input      map[string]interface{} `json:"input"`
+}
 
 // ActivityRegistration holds the activity and its generated schemas
 type ActivityRegistration struct {
@@ -53,7 +60,14 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 	for k, v := range r.activities {
 		// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
 		if v.Activity.ExecuteAsActivity() {
-			worker.RegisterActivityWithOptions(v.Activity.Execute, activity.RegisterOptions{
+			activityOp := v.Activity
+			worker.RegisterActivityWithOptions(func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+				input := req.Input
+				if input == nil {
+					input = map[string]interface{}{}
+				}
+				return activityOp.ExecuteV2(req.Invocation, ctx, input)
+			}, activity.RegisterOptions{
 				Name: k,
 			})
 		}
@@ -63,18 +77,18 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
 func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
-    metadata := activity.GetMetadata()
-    registration := ActivityRegistration{
-        Activity: activity,
-        Metadata: metadata,
-    }
+	metadata := activity.GetMetadata()
+	registration := ActivityRegistration{
+		Activity: activity,
+		Metadata: metadata,
+	}
 
-    // Only generate schemas for activities (inline ops are not activities)
-    if activity.ExecuteAsActivity() {
-        r.generateSchemasForRegistration(&registration)
-    }
-    r.activities[metadata.Type] = registration
-    return nil
+	// Only generate schemas for activities (inline ops are not activities)
+	if activity.ExecuteAsActivity() {
+		r.generateSchemasForRegistration(&registration)
+	}
+	r.activities[metadata.Type] = registration
+	return nil
 }
 
 // Register accepts any generic RegisterableOp from the activity module

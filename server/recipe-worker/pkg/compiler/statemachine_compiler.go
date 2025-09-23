@@ -4,19 +4,19 @@ import (
 	"fmt"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/workflow"
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format
-func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, stateMap *recipe.StateMap, inputs map[string]interface{}) (map[string]interface{}, error) {
+func executeStateMachine(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, stateMap *recipe.StateMap, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Create resolution context for the state machine
 	resCtx, err := NewResolutionContext("state_machine", "sm-root")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
 	resCtx.TemplateData.Inputs = inputs
-	
+
 	// Initialize state tracking
 	currentState := stateMap.Initial
 	stateAttempts := make(map[string]int)
@@ -29,10 +29,13 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 			return nil, fmt.Errorf("state '%s' not found", currentState)
 		}
 
+		stateMeta := stateDef.Node.GetMetadata()
+		stateTracker := tracker.child(segmentForMetadata(stateMeta, currentState))
+
 		// Create a child context for the state if it's a sequence
 		var stateOutputs map[string]interface{}
 		var stateResCtx *ResolutionContext
-		
+
 		// Check if state is a sequence that needs its own scope
 		switch stateDef.NodeImpl.(type) {
 		case *recipe.NodeSequence:
@@ -42,12 +45,12 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 				return nil, fmt.Errorf("failed to create state context: %w", err)
 			}
 			// Execute state with child context that can see parent states
-			stateOutputs, err = executeStateNode(ctx, activityRegistry, &stateDef.Node, stateResCtx)
+			stateOutputs, err = executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, stateResCtx, currentState)
 		default:
 			// For non-sequence states, use parent context directly
-			stateOutputs, err = executeStateNode(ctx, activityRegistry, &stateDef.Node, resCtx)
+			stateOutputs, err = executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, resCtx, currentState)
 		}
-		
+
 		if err != nil {
 			// Handle retry if configured
 			return nil, fmt.Errorf("state '%s' execution failed: %w", currentState, err)
@@ -55,7 +58,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 
 		// Debug: Log what we got from state execution
 		workflow.GetLogger(ctx).Debug("State execution result", "state", currentState, "outputs", stateOutputs)
-		
+
 		// Store state outputs in parent context
 		resCtx.AddStateOutput(currentState, stateOutputs)
 
@@ -75,7 +78,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 
 	// Return final outputs
 	finalState := stateMap.States[currentState]
-	
+
 	// First check if we have output templates on NodeState or NodeSequence
 	var outputTemplates map[string]interface{}
 	switch t := finalState.NodeImpl.(type) {
@@ -84,7 +87,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *ops.ActivityReg
 	case *recipe.NodeSequence:
 		outputTemplates = t.Outputs
 	}
-	
+
 	// If there are output templates on the state definition, resolve them
 	if len(finalState.Transitions) == 0 && outputTemplates != nil {
 		resolvedOutputs := make(map[string]interface{})
@@ -135,7 +138,7 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, currentOutp
 		TemplateData: resCtx.TemplateData,
 		CELEnv:       resCtx.CELEnv,
 	}
-	
+
 	// If current state was a sequence, add its nodes to the sequence context for transition evaluation
 	if currentOutputs != nil {
 		// Check if outputs contain node references (from a sequence)
@@ -145,7 +148,7 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, currentOutp
 			}
 		}
 	}
-	
+
 	for _, transition := range transitions {
 		shouldTransition, err := evalCtx.EvaluateCEL(transition.When.String())
 		if err != nil {
@@ -160,15 +163,15 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, currentOutp
 }
 
 // executeStateNode executes a node within a state with proper context
-func executeStateNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, node *recipe.Node, resCtx *ResolutionContext) (map[string]interface{}, error) {
+func executeStateNode(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, node *recipe.Node, resCtx *ResolutionContext, fallback string) (map[string]interface{}, error) {
 	metadata := node.GetMetadata()
-	
+
 	// Resolve the node's inputs if any
 	resolvedInputs := make(map[string]interface{})
 	for k, v := range resCtx.TemplateData.Inputs {
 		resolvedInputs[k] = v
 	}
-	
+
 	if metadata.Inputs != nil {
 		for k, v := range metadata.Inputs {
 			resolved, err := resCtx.ResolveValue(v)
@@ -178,7 +181,7 @@ func executeStateNode(ctx workflow.Context, activityRegistry *ops.ActivityRegist
 			resolvedInputs[k] = resolved
 		}
 	}
-	
+
 	// Execute based on node type
 	switch t := node.NodeImpl.(type) {
 	case *recipe.NodeSequence:
@@ -186,13 +189,13 @@ func executeStateNode(ctx workflow.Context, activityRegistry *ops.ActivityRegist
 		nodeOutputs := make(map[string]interface{})
 		for i, seqNode := range t.SequenceData.Sequence {
 			seqMeta := seqNode.GetMetadata()
-			
+
 			// Prepare inputs for this node
 			nodeInputs := make(map[string]interface{})
 			for k, v := range resolvedInputs {
 				nodeInputs[k] = v
 			}
-			
+
 			// Resolve node's input templates if any
 			if seqMeta.Inputs != nil {
 				for k, v := range seqMeta.Inputs {
@@ -203,20 +206,20 @@ func executeStateNode(ctx workflow.Context, activityRegistry *ops.ActivityRegist
 					nodeInputs[k] = resolved
 				}
 			}
-			
+
 			// Execute the node
-			outputs, err := executeNode(ctx, activityRegistry, &seqNode, nodeInputs)
+			outputs, err := executeNode(ctx, activityRegistry, tracker, &seqNode, nodeInputs, fmt.Sprintf("%s.seq[%d]", fallback, i))
 			if err != nil {
 				return nil, fmt.Errorf("sequence node %d failed: %w", i, err)
 			}
-			
+
 			// Store outputs with node's ID
 			if seqMeta.ID != "" {
 				resCtx.AddSequenceNode(seqMeta.ID, outputs)
 				nodeOutputs[seqMeta.ID] = outputs
 			}
 		}
-		
+
 		// Process sequence outputs if defined
 		if t.SequenceData.Outputs != nil {
 			resolvedOutputs := make(map[string]interface{})
@@ -231,13 +234,13 @@ func executeStateNode(ctx workflow.Context, activityRegistry *ops.ActivityRegist
 			resolvedOutputs["__sequence_nodes__"] = resCtx.TemplateData.Sequence
 			return resolvedOutputs, nil
 		}
-		
+
 		// Return node outputs with sequence nodes for transition evaluation
 		nodeOutputs["__sequence_nodes__"] = resCtx.TemplateData.Sequence
 		return nodeOutputs, nil
-		
+
 	default:
 		// For other node types, execute normally
-		return executeNode(ctx, activityRegistry, node, resolvedInputs)
+		return executeNode(ctx, activityRegistry, tracker, node, resolvedInputs, fallback)
 	}
 }

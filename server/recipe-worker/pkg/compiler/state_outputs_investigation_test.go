@@ -37,7 +37,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 							},
 						},
 						OpData: recipe.OpData{
-							Op: "echo_activity",  // Use the test activity that exists
+							Op: "echo_activity", // Use the test activity that exists
 						},
 					},
 				},
@@ -54,7 +54,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 
 	// Execute and capture what happens
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		// Create resolution context 
+		// Create resolution context
 		resCtx, err := NewResolutionContext("state_machine", "test-sm")
 		if err != nil {
 			return nil, err
@@ -62,26 +62,27 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 		resCtx.TemplateData.Inputs = inputs
 
 		// Execute the state
+		tracker := newInvocationTracker(recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "test-investigation"}})
 		state := stateMap.States["simple_state"]
-		
+
 		// This should execute the activity and return outputs
-		stateOutputs, err := executeStateNode(ctx, registry, &state.Node, resCtx)
+		stateOutputs, err := executeStateNode(ctx, registry, tracker, &state.Node, resCtx, "simple_state")
 		if err != nil {
 			return nil, err
 		}
-		
+
 		t.Logf("executeStateNode returned: %+v", stateOutputs)
-		
+
 		// Store outputs like the state machine does
 		resCtx.AddStateOutput("simple_state", stateOutputs)
-		
+
 		// Check what's stored
 		if storedState, ok := resCtx.TemplateData.States["simple_state"]; ok {
 			t.Logf("Stored state outputs: %+v", storedState.Outputs)
 		} else {
 			t.Log("No state stored!")
 		}
-		
+
 		// Try to retrieve like the state machine does
 		if lastState, ok := resCtx.TemplateData.States["simple_state"]; ok {
 			t.Logf("Retrieved outputs: %+v", lastState.Outputs)
@@ -89,7 +90,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 				return lastState.Outputs, nil
 			}
 		}
-		
+
 		return map[string]interface{}{"error": "no outputs found"}, nil
 	})
 
@@ -101,7 +102,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Logf("Final result: %+v", result)
-	
+
 	// We expect to see the echo activity outputs
 	if _, hasError := result["error"]; hasError {
 		t.Error("Failed to retrieve stored outputs!")

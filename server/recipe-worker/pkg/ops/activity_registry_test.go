@@ -47,12 +47,12 @@ var testActivity = recipeops.NewActivityMappedOp(
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
 	},
-    func(ctx context.Context, input TestInput) (TestOutput, error) {
-        return testExecute(ctx, input)
-    },
+	func(ctx context.Context, input TestInput) (TestOutput, error) {
+		return runTestActivity(ctx, input)
+	},
 )
 
-func testExecute(ctx context.Context, input TestInput) (TestOutput, error) {
+func runTestActivity(ctx context.Context, input TestInput) (TestOutput, error) {
 	return TestOutput{
 		Result:  input.Data + " processed",
 		Success: true,
@@ -219,7 +219,7 @@ func TestSchemaGeneration(t *testing.T) {
 // 			"size": 100,
 // 		}
 //
-// 		result, err := provider.Execute(ctx, config, input)
+// 		result, err := provider.Run(ctx, config, input)
 // 		assert.NoError(t, err)
 //
 // 		output, ok := result.(map[string]interface{})

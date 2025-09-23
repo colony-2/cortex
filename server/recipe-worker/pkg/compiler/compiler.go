@@ -6,21 +6,25 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
-func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
+func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
+	tracker := newInvocationTracker(r.GetMetdata())
+
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		outputs, err := executeStateMachine(ctx, activityRegistry, t.StateData.States, inputs)
+		stateTracker := tracker.child(segmentForMetadata(t.RecipeMetadata.NodeMetadata, "recipe-state"))
+		outputs, err := executeStateMachine(ctx, activityRegistry, stateTracker, t.StateData.States, inputs)
 		return processNodeOutputs(outputs, t.StateData.Outputs, inputs, err)
 	case *recipe.RecipeOp:
-		return executeOp(ctx, activityRegistry, t.RecipeMetadata.NodeMetadata, t.OpData.Op, t.RecipeMetadata.NodeMetadata.Inputs, inputs)
+		return executeOp(ctx, activityRegistry, tracker.child(segmentForMetadata(t.RecipeMetadata.NodeMetadata, "recipe-op")), t.RecipeMetadata.NodeMetadata, t.OpData.Op, t.RecipeMetadata.NodeMetadata.Inputs, inputs)
 
 	case *recipe.RecipeSequence:
-		outputs, modifiedInputs, err := executeSequence(ctx, activityRegistry, t.RecipeMetadata.NodeMetadata, t.SequenceData.Sequence, inputs)
+		seqTracker := tracker.child(segmentForMetadata(t.RecipeMetadata.NodeMetadata, "recipe-sequence"))
+		outputs, modifiedInputs, err := executeSequence(ctx, activityRegistry, seqTracker, t.RecipeMetadata.NodeMetadata, "recipe-sequence", t.SequenceData.Sequence, inputs)
 		return processNodeOutputs(outputs, t.SequenceData.Outputs, modifiedInputs, err)
 	default:
 		return nil, fmt.Errorf("unsupported recipe type: %T", t)
@@ -28,16 +32,18 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 }
 
 // ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes
-func executeNode(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, n *recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
+func executeNode(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, n *recipe.Node, inputs map[string]interface{}, fallback string) (map[string]interface{}, error) {
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return executeStateMachine(ctx, activityRegistry, t.StateData.States, inputs)
+		stateTracker := tracker.child(segmentForMetadata(t.NodeMetadata, fallback))
+		return executeStateMachine(ctx, activityRegistry, stateTracker, t.StateData.States, inputs)
 
 	case *recipe.NodeOp:
-		return executeOp(ctx, activityRegistry, t.NodeMetadata, t.OpData.Op, nil, inputs)
+		return executeOp(ctx, activityRegistry, tracker.child(segmentForMetadata(t.NodeMetadata, fallback)), t.NodeMetadata, t.OpData.Op, nil, inputs)
 
 	case *recipe.NodeSequence:
-		outputs, _, err := executeSequence(ctx, activityRegistry, t.NodeMetadata, t.SequenceData.Sequence, inputs)
+		seqTracker := tracker.child(segmentForMetadata(t.NodeMetadata, fallback))
+		outputs, _, err := executeSequence(ctx, activityRegistry, seqTracker, t.NodeMetadata, fallback, t.SequenceData.Sequence, inputs)
 		return outputs, err
 
 	default:
@@ -138,7 +144,7 @@ type StepResult struct {
 }
 
 // executeOperation executes a single operation node
-func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
+func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, metadata recipe.NodeMetadata, op string, nodeInputs map[string]interface{}, workflowInputs map[string]interface{}) (map[string]interface{}, error) {
 	var resolvedNodeInputs map[string]interface{}
 
 	// If nodeInputs is nil, it means the inputs are already resolved (from sequence context)
@@ -181,6 +187,10 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 		return nil, fmt.Errorf("op type %q not found", op)
 	}
 
+	boxID := extractFirstString(inputs, "box_id", "boxId", "BoxID")
+	activityID := extractFirstString(inputs, "activity_id", "activityId", "ActivityID")
+	inv := tracker.nextInvocation(boxID, activityID)
+
 	// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
 	if !opImpl.Activity.ExecuteAsActivity() {
 		timeout := time.Duration(metadata.Timeout)
@@ -189,7 +199,7 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 		}
 		retry := ToTemporalRetryPolicy(metadata.Retry)
 		return executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
-			return opImpl.Activity.ExecuteInline(inner, timeout, retry, inputs)
+			return opImpl.Activity.ExecuteInlineV2(inv, inner, timeout, retry, inputs)
 		})
 	}
 
@@ -208,7 +218,10 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 	// Execute the operation
 	var outputs map[string]interface{}
 
-	err := workflow.ExecuteActivity(ctx, op, inputs).Get(ctx, &outputs)
+	err := workflow.ExecuteActivity(ctx, op, workerops.ActivityInvocationRequest{
+		Invocation: inv,
+		Input:      inputs,
+	}).Get(ctx, &outputs)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +229,7 @@ func executeOp(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, met
 	return outputs, nil
 }
 
-func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
+func innerSequence(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
 	// Create resolution context for this sequence
 	resCtx, err := NewResolutionContext("sequence", metadata.ID)
 	if err != nil {
@@ -248,7 +261,7 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 		}
 
 		// Execute the node
-		outputs, err := executeNode(ctx, activityRegistry, &node, nodeInputs)
+		outputs, err := executeNode(ctx, activityRegistry, tracker, &node, nodeInputs, fmt.Sprintf("seq[%d]", i))
 		if err != nil {
 			return nil, fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
@@ -267,13 +280,14 @@ func innerSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry,
 }
 
 // executeSequenceNodes executes nodes in sequence
-func executeSequence(ctx workflow.Context, activityRegistry *ops.ActivityRegistry, metadata recipe.NodeMetadata, sequence []recipe.Node, nodeInputs map[string]interface{}) (map[string]interface{}, map[string]interface{}, error) {
+func executeSequence(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, metadata recipe.NodeMetadata, fallback string, sequence []recipe.Node, nodeInputs map[string]interface{}) (map[string]interface{}, map[string]interface{}, error) {
 	timeout := time.Duration(metadata.Timeout)
 	if timeout == 0 {
 		timeout = 30 * time.Second // Default timeout
 	}
+	sequenceTracker := tracker.child(segmentForMetadata(metadata, fallback))
 	outputs, err := executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), timeout, func(inner workflow.Context) (map[string]interface{}, error) {
-		return innerSequence(inner, activityRegistry, metadata, sequence, nodeInputs)
+		return innerSequence(inner, activityRegistry, sequenceTracker, metadata, sequence, nodeInputs)
 	})
 	// Return outputs, modified inputs (with nodes), and error
 	return outputs, nodeInputs, err

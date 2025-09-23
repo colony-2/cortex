@@ -14,7 +14,7 @@ import (
 // TestStateOutputsDebug shows the exact issue with the user's recipe
 func TestStateOutputsDebug(t *testing.T) {
 	t.Log("=== DEBUGGING USER'S RECIPE ===")
-	
+
 	// This is the exact recipe the user provided
 	userRecipeYAML := `
 id: state_outputs_test
@@ -42,63 +42,65 @@ outputs:
 	// Parse the recipe
 	r, err := recipe.LoadRecipeFromString([]byte(userRecipeYAML))
 	require.NoError(t, err)
-	
+
 	rs := r.RecipeImpl.(*recipe.RecipeState)
-	
+
 	t.Log("Parsed Recipe:")
 	t.Logf("- Type: %T", r.RecipeImpl)
 	t.Logf("- Initial state: %s", rs.StateData.States.Initial)
 	t.Logf("- Recipe-level outputs: %+v", rs.StateData.Outputs)
 	t.Log("")
-	
+
 	// Setup test environment
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
-	
+
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
-	
+
 	inputs := map[string]interface{}{
 		"message": "test",
 	}
-	
+
 	// Test 1: What does executeStateMachine return?
 	t.Log("Test 1: Direct state machine execution")
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return executeStateMachine(ctx, registry, rs.StateData.States, inputs)
+		tracker := newInvocationTracker(rs.RecipeMetadata)
+		stateTracker := tracker.child(segmentForMetadata(rs.RecipeMetadata.NodeMetadata, "recipe-state"))
+		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs)
 	})
-	
+
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	var stateMachineResult map[string]interface{}
 	err = env.GetWorkflowResult(&stateMachineResult)
 	require.NoError(t, err)
-	
+
 	t.Logf("executeStateMachine returns: %+v", stateMachineResult)
 	if len(stateMachineResult) == 0 {
 		t.Log("❌ PROBLEM: State machine returns empty map!")
 		t.Log("   Expected: The echo_activity output or something meaningful")
 	}
 	t.Log("")
-	
+
 	// Test 2: What does the full recipe execution return?
 	t.Log("Test 2: Full recipe execution (through ExecuteRecipe)")
 	env2 := testSuite.NewTestWorkflowEnvironment()
 	defer env2.AssertExpectations(t)
-	
+
 	env2.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
 		return ExecuteRecipe(ctx, registry, *r, inputs)
 	})
-	
+
 	require.True(t, env2.IsWorkflowCompleted())
 	require.NoError(t, env2.GetWorkflowError())
-	
+
 	var recipeResult map[string]interface{}
 	err = env2.GetWorkflowResult(&recipeResult)
 	require.NoError(t, err)
-	
+
 	t.Logf("ExecuteRecipe returns: %+v", recipeResult)
 	if val, ok := recipeResult["result"]; ok {
 		t.Logf("✓ Recipe outputs work: result = %v", val)
@@ -107,7 +109,7 @@ outputs:
 		t.Log("❌ Recipe outputs don't work")
 	}
 	t.Log("")
-	
+
 	t.Log("=== ISSUE SUMMARY ===")
 	t.Log("The user expects: {'result': 'test'}")
 	t.Log("")
