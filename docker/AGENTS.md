@@ -41,7 +41,6 @@
   - All other egress REJECTed for `devuser`.
 - Config (env vars):
   - `PROXY_PORT` (default `8888`): tinyproxy port to allow.
-  - `ALLOW_LOOPBACK` (default `1`): allow all loopback egress when `1`; set to `0` to disable.
 - Rule order: loopback rule is appended before the final REJECT; verify with `iptables -S OUTPUT | grep -E "owner| -o lo |dport"`.
 
 Notes:

@@ -3,23 +3,46 @@ set -euo pipefail
 
 DEV_UID=${DEV_UID:-1000}
 PROXY_PORT=${PROXY_PORT:-8888}
-# Egress relaxations
-# ALLOW_LOOPBACK=1 enables all loopback egress on lo (default)
-# Set ALLOW_LOOPBACK=0 to disable
-ALLOW_LOOPBACK=${ALLOW_LOOPBACK:-1}
+DNS_PORT=${DNS_PORT:-53}
+
+ensure_rule() {
+  local table=$1
+  shift
+  if ! iptables -t "$table" -C "$@" 2>/dev/null; then
+    iptables -t "$table" -A "$@"
+  fi
+}
+
+ensure_rule6() {
+  local table=$1
+  shift
+  if ! ip6tables -t "$table" -C "$@" 2>/dev/null; then
+    ip6tables -t "$table" -A "$@"
+  fi
+}
 
 if command -v iptables >/dev/null 2>&1; then
-  # Allow full loopback egress if enabled
-  if [ "${ALLOW_LOOPBACK}" = "1" ]; then
-    iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -o lo -j ACCEPT 2>/dev/null || \
-      iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -o lo -j ACCEPT
-  fi
+  # Allow full loopback egress for dev UID
+  ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -o lo -j ACCEPT
+
   # Allow tinyproxy access
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT
+  ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT
+
+  # Force DNS through the local resolver
+  ensure_rule nat OUTPUT -m owner --uid-owner "$DEV_UID" -p udp --dport "$DNS_PORT" -j REDIRECT --to-ports "$DNS_PORT"
+  ensure_rule nat OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport "$DNS_PORT" -j REDIRECT --to-ports "$DNS_PORT"
+
+  # Allow DNS responses to localhost
+  ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d 127.0.0.1 --dport "$DNS_PORT" -j ACCEPT
+  ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$DNS_PORT" -j ACCEPT
+
   # Reject all other egress for dev UID
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
+  ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
 fi
 
-## IPv6 rules intentionally omitted
+if command -v ip6tables >/dev/null 2>&1; then
+  ensure_rule6 filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$PROXY_PORT" -j ACCEPT
+  ensure_rule6 filter OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d ::1 --dport "$DNS_PORT" -j ACCEPT
+  ensure_rule6 filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$DNS_PORT" -j ACCEPT
+  ensure_rule6 filter OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
+fi

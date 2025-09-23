@@ -20,33 +20,6 @@ if ! [ -f "$SUP_PIDFILE" ] || ! kill -0 "$(cat "$SUP_PIDFILE" 2>/dev/null)" 2>/d
 fi
 
 # Apply iptables egress restrictions for dev UID (requires NET_ADMIN)
-if command -v iptables >/dev/null 2>&1; then
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$PROXY_PORT" -j ACCEPT
-  # DNS local resolver (v4): redirect and allow
-  iptables -t nat -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || \
-    iptables -t nat -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp --dport 53 -j REDIRECT --to-ports 53
-  iptables -t nat -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport 53 -j REDIRECT --to-ports 53 2>/dev/null || \
-    iptables -t nat -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport 53 -j REDIRECT --to-ports 53
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d 127.0.0.1 --dport 53 -j ACCEPT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d 127.0.0.1 --dport 53 -j ACCEPT
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport 53 -j ACCEPT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport 53 -j ACCEPT
-  iptables -C OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT 2>/dev/null || \
-    iptables -A OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
-fi
-
-# IPv6: block all egress for dev UID except ::1 (proxy/DNS)
-if command -v ip6tables >/dev/null 2>&1; then
-  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$PROXY_PORT" -j ACCEPT 2>/dev/null || \
-    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport "$PROXY_PORT" -j ACCEPT
-  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d ::1 --dport 53 -j ACCEPT 2>/dev/null || \
-    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p udp -d ::1 --dport 53 -j ACCEPT
-  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport 53 -j ACCEPT 2>/dev/null || \
-    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d ::1 --dport 53 -j ACCEPT
-  ip6tables -C OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT 2>/dev/null || \
-    ip6tables -A OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
-fi
+/usr/local/sbin/dev-egress-setup.sh || true
 
 exit 0
-
