@@ -1,6 +1,6 @@
 # Deterministic Input Key + Keyed Signal Routing (Final State)
 
-This spec defines a deterministic key for input coordination and a keyed-signal routing model across workflow, ops, and API layers. This is the final, non‑backward‑compatible state.
+This spec defines a deterministic key for input coordination and a keyed-signal routing model across workflow, ops, and API layers. This corrects the current problem that inputs are not keyed.
 
 ## Overview
 
@@ -13,23 +13,9 @@ This spec defines a deterministic key for input coordination and a keyed-signal 
 ## Deterministic Key
 
 - Inputs must be deterministically reproducible across replay; no random UUIDs.
-- Construct a base tuple from deterministic components:
-  - `recipeId`: Stable logical recipe identifier (or run’s recipe metadata id).
-  - `nodePath`: Stable path to this node in the recipe tree.
-    - Prefer concatenated `NodeMetadata.ID` along the path.
-    - For nodes lacking IDs, use structural indices: e.g., `seq[2]`, `state[approved]`.
-  - `invokeSeq`: Deterministic per-path monotonic counter incremented each time this node path invokes an input within the workflow execution.
-  - Optional qualifiers that are stable in inputs: `boxId`, `activityId`.
-- Compute `id` as a short hash (base32 lowercase) over the tuple string:
-
-```
-inputKeyMaterial := recipeId + "|" + nodePath + "|" + strconv.Itoa(invokeSeq) + "|" + boxId + "|" + activityId
-sha := SHA-256(inputKeyMaterial)
-id := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sha[:16]) // 128-bit truncation
-```
+- Use Invocation.Hash() from server/recipe-core as the input key (deterministically reproducible across replay)
 
 - Determinism notes:
-  - `nodePath` and `invokeSeq` are derived only from the recipe structure and workflow-local state.
   - No non-deterministic inputs (time/uuid) are used to generate `id`.
 
 ## Workflow Behavior
@@ -92,7 +78,6 @@ id := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sha[:16]) 
 
 - Respond and cancel endpoints validate presence of `id` and reject if missing.
 - Signals are only sent to `user-response:<id>`; no generic channels.
-- `id` is unguessable (128-bit hash) yet deterministic; do not treat as secret. Use auth middleware for user identity.
 
 ## Testing Matrix
 
@@ -115,50 +100,14 @@ This section enumerates concrete code changes required across `server/*` project
     - `input_completed` on response, include `id` and `fields`.
     - `input_cancelled` on cancel, include `id`.
   - Respond and cancel endpoints must require `id` in the request body.
-- Utilities (new, package‑internal or shared)
-  - Hash helper to produce `id` from `(recipeId, nodePath, invokeSeq, boxId, activityId)` using SHA‑256 → base32 (no padding, 128‑bit truncation).
   - Encapsulate typed search attribute upserts for readability.
 
-### server/recipe-worker
-
-- Populate deterministic invocation context for ops using recipe‑core APIs (no direct dependency on server/ops):
-  - Compute:
-    - `nodePath`: stable path for the current node (`NodeMetadata.ID` chain; fallback to structural indices like `seq[2]`, `state[approved]`).
-    - `invokeSeq`: deterministic per‑`nodePath` counter in workflow‑local state.
-    - `recipeId`: from recipe metadata.
-  - Create `ops.InvocationContext` (from recipe‑core) and attach to `workflow.Context` via `ops.WithInvocationContext(ctx, inv)` before invoking the op’s inline handler.
-  - Optionally precompute `id` via `ops.ComputeDeterministicKey(...)` and set it on the invocation context to avoid duplication at the op.
-  - This is a general mechanism for all ops, not input‑specific.
-
-### server/recipe-core
-
-- Define shared deterministic invocation context (consumed by both recipe‑worker and server/ops):
-  - `type InvocationContext struct { RecipeID string; NodePath string; InvokeSeq int; ID string; BoxID string; ActivityID string }`
-  - Accessors for Temporal workflow context:
-    - `func WithInvocationContext(ctx workflow.Context, inv *InvocationContext) workflow.Context`
-    - `func GetInvocationContext(ctx workflow.Context) (*InvocationContext, bool)`
-  - Accessors for standard context (activities), for completeness:
-    - `func WithInvocationContextStd(ctx context.Context, inv *InvocationContext) context.Context`
-    - `func GetInvocationContextStd(ctx context.Context) (*InvocationContext, bool)`
-- Provide a reusable helper for key generation:
-  - `ops.ComputeDeterministicKey(recipeId, nodePath string, invokeSeq int, boxId, activityId string) string` → base32(SHA‑256) over tuple (128‑bit truncation).
-  - This centralizes hashing/encoding so worker and ops never diverge on the formula.
 
 ### server/api
 
-- Management service endpoints already exist; update to final keyed contract:
-  - Require `id` in bodies for `POST /respond` and `POST /cancel`.
-  - `POST /pending` must accept `id` and broadcast `input_pending` including `id`.
-  - Ensure tests cover keyed routing (no single‑channel fallbacks).
 - Integration tests
   - Update WorkflowTestSuite‑based tests to include `id` in respond/cancel bodies and verify signal routing to `user-response:<id>`.
   - Cover concurrent prompts to validate correct correlation.
-
-### Dependency Boundaries
-
-- server/recipe-core exposes neutral APIs and types (InvocationContext, key helper) used by both server/recipe-worker and server/ops.
-- server/recipe-worker is responsible for computing deterministic values and attaching them to workflow.Context; it does not depend on server/ops.
-- server/ops consumes the context via recipe-core accessors in its inline handler to get `ID` (or compute it once if `ID` is not prefilled), and routes signals / SAs accordingly.
 
 ### OpenAPI generation (api/openapi, server/openapi, be-openapi, fe-openapi)
 
@@ -167,4 +116,4 @@ This section enumerates concrete code changes required across `server/*` project
 
 ### Optional: Querying pending
 
-- If we add a control/list API in `workflowctl`, implement `GET /pending` by querying typed search attributes for `InputStatus=pending` and return `{ workflow_id, id, title?, box_id?, expires_at? }`.
+- Implement `GET /pending` by querying typed search attributes for `InputStatus=pending` via workflowctrl and return `{ workflow_id, id, title?, box_id?, expires_at? }`.
