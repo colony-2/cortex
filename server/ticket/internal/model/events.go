@@ -195,6 +195,7 @@ type TicketEventFilter struct {
 	Types        []string
 	Since        *time.Time
 	Until        *time.Time
+	At           *time.Time
 	IncludeReset bool
 }
 

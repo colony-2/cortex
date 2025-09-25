@@ -17,3 +17,4 @@ type SearchFilter struct {
 	CreatedAfter  *time.Time
 	CreatedBefore *time.Time
 }
+

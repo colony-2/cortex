@@ -58,6 +58,8 @@ type Ticket struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time
+	ValidFrom   time.Time `gorm:"type:timestamp"`
+	ValidUntil  time.Time `gorm:"type:timestamp"`
 }
 
 type ActorPatch struct {

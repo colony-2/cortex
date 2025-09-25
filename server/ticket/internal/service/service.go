@@ -131,6 +131,8 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	if ticket.Stage == model.CompletedStage {
 		ticket.CompletedAt = ptrTime(now)
 	}
+	ticket.ValidFrom = now
+	ticket.ValidUntil = temporalInfinity()
 
 	if err := s.store.Create(ctx, ticket); err != nil {
 		return nil, err
@@ -293,6 +295,10 @@ func (s *service) applyActorPatch(existing model.Actor, patch model.ActorPatch) 
 		return model.Actor{}, err
 	}
 	return actor, nil
+}
+
+func temporalInfinity() time.Time {
+	return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 }
 
 func ptrTime(t time.Time) *time.Time {

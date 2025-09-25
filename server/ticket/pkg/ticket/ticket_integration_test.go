@@ -252,16 +252,20 @@ func TestStoreWithTransaction(t *testing.T) {
 	gen := ticket.NewBase58Generator(ticket.DefaultIDLength)
 	id, err := gen.NewID()
 	require.NoError(t, err)
+	now := time.Now().UTC()
+	infinity := time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 
 	newTicket := &ticket.Ticket{
-		ID:        ticket.ID(id),
-		CellName:  "cell-a",
-		Title:     "Draft",
-		Stage:     ticket.Stage("triage"),
-		State:     ticket.StateWorking,
-		Creator:   ticket.NewUserActor("author@example.com"),
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
+		ID:         ticket.ID(id),
+		CellName:   "cell-a",
+		Title:      "Draft",
+		Stage:      ticket.Stage("triage"),
+		State:      ticket.StateWorking,
+		Creator:    ticket.NewUserActor("author@example.com"),
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		ValidFrom:  now,
+		ValidUntil: infinity,
 	}
 
 	err = store.WithTx(ctx, func(ctx context.Context, txStore ticket.Store) error {
