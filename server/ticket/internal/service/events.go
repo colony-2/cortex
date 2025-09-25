@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
+	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	"gorm.io/plugin/optimisticlock"
 )
 
 func (s *service) AppendWorkflowEvent(ctx context.Context, id model.ID, input WorkflowEventInput) (*model.TicketEvent, error) {
@@ -97,11 +99,7 @@ func (s *service) ListEvents(ctx context.Context, id model.ID, filter model.Tick
 	return &hydrateIterator{inner: iter}, nil
 }
 
-func (s *service) ResetEvents(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error) {
-	if _, err := s.store.Get(ctx, id); err != nil {
-		return nil, err
-	}
-
+func (s *service) ResetTicket(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error) {
 	sanitized := input
 	sanitized.Actor = sanitizeActorFields(input.Actor)
 	sanitized.Reason = strings.TrimSpace(input.Reason)
@@ -119,67 +117,175 @@ func (s *service) ResetEvents(ctx context.Context, id model.ID, input TicketRese
 		return nil, err
 	}
 
-	iter, err := s.events.ListByTicket(ctx, id, model.TicketEventFilter{IncludeReset: true})
-	if err != nil {
-		return nil, err
-	}
-	defer iter.Close(ctx)
+	var resetResult *model.TicketReset
 
-	var (
-		anchorFound bool
-		toReset     []model.TicketEventID
-	)
-
-	for {
-		evt, err := iter.Next(ctx)
-		if errors.Is(err, store.ErrIteratorDone) {
-			break
-		}
+	err = s.store.WithTx(ctx, func(ctx context.Context, st store.Store) error {
+		ticketCurrent, err := st.Get(ctx, id)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if sanitized.LastValidEvent != nil && evt.ID == *sanitized.LastValidEvent {
-			anchorFound = true
-			continue
+
+		txDB := st.DB()
+		if txDB == nil {
+			return errors.New("ticket: missing transaction db")
 		}
-		if evt.ResetID != nil {
-			continue
+
+		evtStore, err := eventstore.NewWithDB(txDB)
+		if err != nil {
+			return err
 		}
-		if sanitized.LastValidEvent == nil {
+
+		iter, err := evtStore.ListByTicket(ctx, id, model.TicketEventFilter{IncludeReset: true})
+		if err != nil {
+			return err
+		}
+		defer iter.Close(ctx)
+
+		var (
+			anchorEvent *model.TicketEvent
+			toReset     []model.TicketEventID
+		)
+
+		for {
+			evt, err := iter.Next(ctx)
+			if errors.Is(err, store.ErrIteratorDone) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if evt.ResetID != nil {
+				continue
+			}
+			if sanitized.LastValidEvent != nil {
+				if evt.ID == *sanitized.LastValidEvent {
+					anchorEvent = evt
+					continue
+				}
+				if anchorEvent != nil {
+					toReset = append(toReset, evt.ID)
+				}
+				continue
+			}
 			toReset = append(toReset, evt.ID)
-			continue
 		}
-		if anchorFound {
-			toReset = append(toReset, evt.ID)
+
+		if sanitized.LastValidEvent != nil && anchorEvent == nil {
+			return ErrEventNotFound
 		}
-	}
 
-	if sanitized.LastValidEvent != nil && !anchorFound {
-		return nil, ErrEventNotFound
-	}
+		if len(toReset) == 0 {
+			return ErrResetNoEvents
+		}
 
-	if len(toReset) == 0 {
-		return nil, ErrResetNoEvents
-	}
+		resetTime := s.clock.Now().UTC()
+		if anchorEvent != nil {
+			resetTime = anchorEvent.EventTime.UTC()
+		}
 
-	resetID, err := s.eventIDGen.NewID()
+		if !ticketCurrent.ValidFrom.Before(resetTime) {
+			resetTime = ticketCurrent.ValidFrom.Add(time.Microsecond)
+		}
+
+		closeSlice := *ticketCurrent
+		closeSlice.ValidUntil = resetTime
+		closeSlice.UpdatedAt = resetTime
+		if err := st.Update(ctx, &closeSlice, "ValidUntil", "UpdatedAt"); err != nil {
+			if errors.Is(err, store.ErrOptimisticLock) {
+				return ErrVersionConflict
+			}
+			return err
+		}
+
+		var sourceTicket *model.Ticket
+		if anchorEvent != nil {
+			historical, err := st.GetAt(ctx, id, anchorEvent.EventTime)
+			if err != nil {
+				return err
+			}
+			sourceTicket = historical
+		} else {
+			copyCurrent := *ticketCurrent
+			sourceTicket = &copyCurrent
+		}
+
+		restored := *sourceTicket
+		restored.ValidFrom = resetTime
+		restored.ValidUntil = temporalInfinity()
+		restored.UpdatedAt = resetTime
+		restored.Version = optimisticlock.Version{Int64: ticketCurrent.Version.Int64 + 1, Valid: true}
+
+		if err := st.Create(ctx, &restored); err != nil {
+			return err
+		}
+
+		resetID, err := s.eventIDGen.NewID()
+		if err != nil {
+			return errors.Join(ErrIDGeneration, err)
+		}
+
+		reset := &model.TicketReset{
+			ID:        model.TicketResetID(resetID),
+			TicketID:  id,
+			Actor:     actor,
+			Reason:    sanitized.Reason,
+			CreatedAt: resetTime,
+		}
+
+		if err := txDB.WithContext(ctx).Create(reset).Error; err != nil {
+			return err
+		}
+
+		if len(toReset) > 0 {
+			if err := txDB.WithContext(ctx).
+				Model(&model.TicketEvent{}).
+				Where("ticket_id = ?", id).
+				Where("id IN ?", toReset).
+				Where("reset_id IS NULL").
+				Updates(map[string]any{"reset_id": reset.ID}).Error; err != nil {
+				return err
+			}
+		}
+
+		resetEventID, err := s.eventIDGen.NewID()
+		if err != nil {
+			return errors.Join(ErrIDGeneration, err)
+		}
+
+		var anchorEventID *model.TicketEventID
+		if anchorEvent != nil {
+			idCopy := anchorEvent.ID
+			anchorEventID = &idCopy
+		}
+
+		resetPayload := &model.TicketResetEventPayload{
+			ResetID:       reset.ID,
+			AnchorEventID: anchorEventID,
+			Reason:        sanitized.Reason,
+		}
+
+		resetEvent := &model.TicketEvent{
+			ID:        model.TicketEventID(resetEventID),
+			TicketID:  id,
+			Kind:      model.TicketEventKindReset,
+			Actor:     actor,
+			EventTime: resetTime,
+			CreatedAt: s.clock.Now(),
+		}
+		resetEvent.SetPayload(model.TicketEventKindReset, model.TicketEventBody{Reset: resetPayload})
+
+		if err := txDB.WithContext(ctx).Create(resetEvent).Error; err != nil {
+			return err
+		}
+
+		resetResult = reset
+		return nil
+	})
 	if err != nil {
-		return nil, errors.Join(ErrIDGeneration, err)
-	}
-
-	reset := &model.TicketReset{
-		ID:        model.TicketResetID(resetID),
-		TicketID:  id,
-		Actor:     actor,
-		Reason:    sanitized.Reason,
-		CreatedAt: s.clock.Now(),
-	}
-
-	if err := s.events.MarkReset(ctx, id, reset, toReset); err != nil {
 		return nil, err
 	}
 
-	return reset, nil
+	return resetResult, nil
 }
 
 func validateEventPayload(kind model.TicketEventKind, body model.TicketEventBody) error {
@@ -224,6 +330,13 @@ func validateEventPayload(kind model.TicketEventKind, body model.TicketEventBody
 			return ErrInvalidEventPayload
 		}
 		if strings.TrimSpace(body.ChangeSet.Path) == "" || body.ChangeSet.Type == "" {
+			return ErrInvalidEventPayload
+		}
+	case model.TicketEventKindReset:
+		if body.Reset == nil {
+			return ErrInvalidEventPayload
+		}
+		if body.Reset.ResetID == "" {
 			return ErrInvalidEventPayload
 		}
 	default:

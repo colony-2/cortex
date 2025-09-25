@@ -44,7 +44,7 @@ type Service interface {
 	AppendMarkdownEvent(ctx context.Context, id model.ID, input MarkdownEventInput) (*model.TicketEvent, error)
 	AppendChangeSetEvent(ctx context.Context, id model.ID, input ChangeSetEventInput) (*model.TicketEvent, error)
 	ListEvents(ctx context.Context, id model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
-	ResetEvents(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
+	ResetTicket(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
 }
 
 type ServiceConfig struct {

@@ -15,6 +15,14 @@ type fixedClock struct{ now time.Time }
 
 func (f fixedClock) Now() time.Time { return f.now }
 
+type stepClock struct{ current time.Time }
+
+func (s *stepClock) Now() time.Time {
+	now := s.current
+	s.current = s.current.Add(time.Second)
+	return now
+}
+
 func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
@@ -183,7 +191,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.NotNil(t, beforeReset[0].Payload.MarkdownDoc)
 	require.NotNil(t, beforeReset[1].Payload.Workflow)
 
-	reset, err := svc.ResetEvents(ctx, created.ID, ticket.TicketResetInput{
+	reset, err := svc.ResetTicket(ctx, created.ID, ticket.TicketResetInput{
 		Actor:          creator,
 		Reason:         "rollback",
 		LastValidEvent: &changeEvent.ID,
@@ -205,11 +213,17 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		active = append(active, evt)
 	}
-	require.Len(t, active, 1)
+	require.Len(t, active, 2)
 	require.Equal(t, changeEvent.ID, active[0].ID)
 	require.Nil(t, active[0].ResetID)
 	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, active[0].PayloadType)
 	require.NotNil(t, active[0].Payload.MarkdownDoc)
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, active[1].PayloadType)
+	require.NotNil(t, active[1].Payload.Reset)
+	require.Equal(t, reset.ID, active[1].Payload.Reset.ResetID)
+	require.NotNil(t, active[1].Payload.Reset.AnchorEventID)
+	require.Equal(t, changeEvent.ID, *active[1].Payload.Reset.AnchorEventID)
+	require.Equal(t, "rollback", active[1].Payload.Reset.Reason)
 
 	allIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
@@ -224,13 +238,184 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		all = append(all, evt)
 	}
-	require.Len(t, all, 2)
-	require.NotNil(t, all[1].ResetID)
-	require.Equal(t, reset.ID, *all[1].ResetID)
+	require.Len(t, all, 3)
 	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, all[0].PayloadType)
-	require.Equal(t, ticket.TicketEventPayloadTypeWorkflow, all[1].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, all[1].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeWorkflow, all[2].PayloadType)
 	require.NotNil(t, all[0].Payload.MarkdownDoc)
-	require.NotNil(t, all[1].Payload.Workflow)
+	require.NotNil(t, all[1].Payload.Reset)
+	require.NotNil(t, all[2].Payload.Workflow)
+	require.NotNil(t, all[2].ResetID)
+	require.Equal(t, reset.ID, *all[2].ResetID)
+
+	at := now.Add(30 * time.Second)
+	snapshotIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{At: &at})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, snapshotIter)
+
+	var snapshot []*ticket.TicketEvent
+	for {
+		evt, err := snapshotIter.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		snapshot = append(snapshot, evt)
+	}
+	require.Len(t, snapshot, 2)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, snapshot[0].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, snapshot[1].PayloadType)
+}
+
+func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
+	pg := testutil.StartEmbeddedPostgres(t)
+	t.Cleanup(func() { pg.Close(t) })
+
+	store, err := ticket.NewStore(pg.DB)
+	require.NoError(t, err)
+
+	eventStore, err := ticket.NewEventStore(pg.DB)
+	require.NoError(t, err)
+
+	now := time.Date(2024, 9, 12, 8, 0, 0, 0, time.UTC)
+	clock := &stepClock{current: now}
+	svc, err := ticket.NewService(ticket.ServiceConfig{
+		Store:      store,
+		EventStore: eventStore,
+		Clock:      clock,
+		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
+		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	creator := ticket.NewUserActor("stage@example.com")
+
+	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+		Cell:  "cell-stage",
+		Title: "Stage reset",
+		Stage: ticket.Stage("triage"),
+		State: ticket.StateWorking,
+		Actor: creator,
+	})
+	require.NoError(t, err)
+
+	firstUpdate, err := svc.UpdateTicket(ctx, created.ID, ticket.UpdateInput{
+		ExpectedVersion: created.Version,
+		Stage:           ticket.StagePtr(ticket.CompletedStage),
+	})
+	require.NoError(t, err)
+	require.Equal(t, ticket.CompletedStage, firstUpdate.Stage)
+
+	iter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, iter)
+
+	var initialEvents []*ticket.TicketEvent
+	for {
+		evt, err := iter.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		initialEvents = append(initialEvents, evt)
+	}
+	require.Len(t, initialEvents, 1)
+	anchorEvent := initialEvents[0]
+
+	reviewStage := ticket.Stage("review")
+	secondUpdate, err := svc.UpdateTicket(ctx, created.ID, ticket.UpdateInput{
+		ExpectedVersion: firstUpdate.Version,
+		Stage:           &reviewStage,
+	})
+	require.NoError(t, err)
+	require.Equal(t, reviewStage, secondUpdate.Stage)
+
+	iterBeforeReset, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, iterBeforeReset)
+
+	var preResetEvents []*ticket.TicketEvent
+	for {
+		evt, err := iterBeforeReset.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		preResetEvents = append(preResetEvents, evt)
+	}
+	require.Len(t, preResetEvents, 2)
+	require.Equal(t, anchorEvent.ID, preResetEvents[0].ID)
+	stageReviewEvent := preResetEvents[1]
+	require.Equal(t, ticket.TicketEventPayloadTypeTicket, stageReviewEvent.PayloadType)
+
+	reset, err := svc.ResetTicket(ctx, created.ID, ticket.TicketResetInput{
+		Actor:          creator,
+		Reason:         "rewind stage",
+		LastValidEvent: &anchorEvent.ID,
+	})
+	require.NoError(t, err)
+	require.NotZero(t, reset.ID)
+
+	postIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, postIter)
+
+	var postEvents []*ticket.TicketEvent
+	for {
+		evt, err := postIter.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		postEvents = append(postEvents, evt)
+	}
+	require.Len(t, postEvents, 2)
+	require.Equal(t, anchorEvent.ID, postEvents[0].ID)
+	resetEvent := postEvents[1]
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, resetEvent.PayloadType)
+	require.NotNil(t, resetEvent.Payload.Reset)
+
+	iterWithReset, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, iterWithReset)
+
+	var (
+		withReset   []*ticket.TicketEvent
+		stageReset  bool
+		resetLogged bool
+	)
+	for {
+		evt, err := iterWithReset.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		withReset = append(withReset, evt)
+		switch evt.PayloadType {
+		case ticket.TicketEventPayloadTypeTicket:
+			if evt.ID != anchorEvent.ID {
+				require.NotNil(t, evt.ResetID)
+				require.Equal(t, reset.ID, *evt.ResetID)
+				stageReset = true
+			}
+		case ticket.TicketEventPayloadTypeReset:
+			resetLogged = true
+		}
+	}
+	require.Len(t, withReset, 3)
+	require.True(t, stageReset)
+	require.True(t, resetLogged)
+
+	beforeResetTime := stageReviewEvent.EventTime
+	stateBeforeReset, err := svc.GetTicketAt(ctx, created.ID, beforeResetTime)
+	require.NoError(t, err)
+	require.Equal(t, reviewStage, stateBeforeReset.Stage)
+
+	afterResetTime := resetEvent.EventTime.Add(2 * time.Microsecond)
+	stateAfterReset, err := svc.GetTicketAt(ctx, created.ID, afterResetTime)
+	require.NoError(t, err)
+	require.Equal(t, ticket.CompletedStage, stateAfterReset.Stage)
 }
 
 func TestStoreWithTransaction(t *testing.T) {

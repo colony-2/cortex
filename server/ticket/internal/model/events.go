@@ -28,6 +28,7 @@ const (
 	TicketEventKindWorkflow    TicketEventKind = "workflow"
 	TicketEventKindMarkdownDoc TicketEventKind = "markdown_doc"
 	TicketEventKindChangeSet   TicketEventKind = "changeset"
+	TicketEventKindReset       TicketEventKind = "ticket_reset"
 )
 
 type TicketEventPayloadType string
@@ -37,6 +38,7 @@ const (
 	TicketEventPayloadTypeWorkflow    TicketEventPayloadType = "workflow"
 	TicketEventPayloadTypeMarkdownDoc TicketEventPayloadType = "markdown_doc"
 	TicketEventPayloadTypeChangeSet   TicketEventPayloadType = "changeset"
+	TicketEventPayloadTypeReset       TicketEventPayloadType = "ticket_reset"
 )
 
 type TicketFieldChangeList []TicketFieldChange
@@ -120,6 +122,7 @@ type TicketEvent struct {
 	WorkflowData  WorkflowEventPayload    `gorm:"embedded;embeddedPrefix:workflow_" json:"-"`
 	MarkdownData  MarkdownDocEventPayload `gorm:"embedded;embeddedPrefix:markdown_" json:"-"`
 	ChangeSetData ChangeSetEventPayload   `gorm:"embedded;embeddedPrefix:changeset_" json:"-"`
+	ResetData     TicketResetEventPayload `gorm:"embedded;embeddedPrefix:reset_" json:"-"`
 
 	Payload TicketEventBody `gorm:"-"`
 }
@@ -129,6 +132,7 @@ type TicketEventBody struct {
 	Workflow    *WorkflowEventPayload    `json:"workflow,omitempty"`
 	MarkdownDoc *MarkdownDocEventPayload `json:"markdown_doc,omitempty"`
 	ChangeSet   *ChangeSetEventPayload   `json:"changeset,omitempty"`
+	Reset       *TicketResetEventPayload `json:"reset,omitempty"`
 }
 
 type TicketEventPayload struct {
@@ -181,6 +185,12 @@ type ChangeSetEventPayload struct {
 	TipGitHash    string             `json:"tip_git_hash"`
 }
 
+type TicketResetEventPayload struct {
+	ResetID       TicketResetID  `json:"reset_id" gorm:"type:char(26)"`
+	AnchorEventID *TicketEventID `json:"anchor_event_id,omitempty" gorm:"type:char(26)"`
+	Reason        string         `json:"reason,omitempty"`
+}
+
 type TicketReset struct {
 	ID        TicketResetID `gorm:"primaryKey;type:char(26)"`
 	TicketID  ID            `gorm:"type:char(26);index"`
@@ -216,6 +226,7 @@ func (e *TicketEvent) SetPayload(kind TicketEventKind, body TicketEventBody) {
 	e.WorkflowData = WorkflowEventPayload{}
 	e.MarkdownData = MarkdownDocEventPayload{}
 	e.ChangeSetData = ChangeSetEventPayload{}
+	e.ResetData = TicketResetEventPayload{}
 
 	switch e.PayloadType {
 	case TicketEventPayloadTypeTicket:
@@ -234,6 +245,10 @@ func (e *TicketEvent) SetPayload(kind TicketEventKind, body TicketEventBody) {
 	case TicketEventPayloadTypeChangeSet:
 		if body.ChangeSet != nil {
 			e.ChangeSetData = *body.ChangeSet
+		}
+	case TicketEventPayloadTypeReset:
+		if body.Reset != nil {
+			e.ResetData = *body.Reset
 		}
 	}
 
@@ -274,6 +289,11 @@ func (e *TicketEvent) HydratePayload() {
 			payload := e.ChangeSetData
 			e.Payload.ChangeSet = &payload
 		}
+	case TicketEventPayloadTypeReset:
+		if e.ResetData.ResetID != "" || e.ResetData.Reason != "" || e.ResetData.AnchorEventID != nil {
+			payload := e.ResetData
+			e.Payload.Reset = &payload
+		}
 	}
 }
 
@@ -287,6 +307,8 @@ func payloadTypeFromKind(kind TicketEventKind) TicketEventPayloadType {
 		return TicketEventPayloadTypeMarkdownDoc
 	case TicketEventKindChangeSet:
 		return TicketEventPayloadTypeChangeSet
+	case TicketEventKindReset:
+		return TicketEventPayloadTypeReset
 	default:
 		return TicketEventPayloadType(kind)
 	}

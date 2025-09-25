@@ -36,6 +36,7 @@ type (
 	ChangeSetEventType      = model.ChangeSetEventType
 	ChangeSetEventPayload   = model.ChangeSetEventPayload
 	TicketReset             = model.TicketReset
+	TicketResetEventPayload = model.TicketResetEventPayload
 	TicketEventFilter       = model.TicketEventFilter
 	SearchFilter            = model.SearchFilter
 	Service                 = internalservice.Service
@@ -64,10 +65,12 @@ const (
 	TicketEventKindWorkflow           = model.TicketEventKindWorkflow
 	TicketEventKindMarkdownDoc        = model.TicketEventKindMarkdownDoc
 	TicketEventKindChangeSet          = model.TicketEventKindChangeSet
+	TicketEventKindReset              = model.TicketEventKindReset
 	TicketEventPayloadTypeTicket      = model.TicketEventPayloadTypeTicket
 	TicketEventPayloadTypeWorkflow    = model.TicketEventPayloadTypeWorkflow
 	TicketEventPayloadTypeMarkdownDoc = model.TicketEventPayloadTypeMarkdownDoc
 	TicketEventPayloadTypeChangeSet   = model.TicketEventPayloadTypeChangeSet
+	TicketEventPayloadTypeReset       = model.TicketEventPayloadTypeReset
 	WorkflowEventRunning              = model.WorkflowEventRunning
 	WorkflowEventCompleted            = model.WorkflowEventCompleted
 	WorkflowEventFailed               = model.WorkflowEventFailed

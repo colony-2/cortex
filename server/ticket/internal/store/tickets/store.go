@@ -20,6 +20,7 @@ type Store interface {
 	Search(ctx context.Context, filter model.SearchFilter) (Iterator[*model.Ticket], error)
 	SearchStages(ctx context.Context, filter model.SearchFilter) (Iterator[model.Stage], error)
 	Update(ctx context.Context, ticket *model.Ticket, fields ...string) error
+	DB() *gorm.DB
 }
 
 type store struct {
@@ -46,6 +47,13 @@ func (s *store) WithTx(ctx context.Context, fn func(ctx context.Context, store S
 		nested := &store{db: tx}
 		return fn(ctx, nested)
 	})
+}
+
+func (s *store) DB() *gorm.DB {
+	if s == nil {
+		return nil
+	}
+	return s.db
 }
 
 func (s *store) Create(ctx context.Context, ticket *model.Ticket) error {

@@ -120,6 +120,12 @@ type ChangeSetEventPayload struct {
     TipGitHash      string             `json:"tip_git_hash"`
 }
 
+type TicketResetEventPayload struct {
+    ResetID       TicketResetID   `json:"reset_id"`
+    AnchorEventID *TicketEventID  `json:"anchor_event_id,omitempty"`
+    Reason        string          `json:"reason,omitempty"`
+}
+
 type TicketReset struct {
     ID        TicketResetID `gorm:"primaryKey;type:char(26)"`
     TicketID  ticket.ID     `gorm:"type:char(26);index"`
@@ -140,6 +146,7 @@ type TicketReset struct {
 - **Workflow events** represent lifecycle updates for Temporal workflows associated with the ticket. `running` is emitted when the workflow connection is established, replacing the prior separate "linked" concept. Additional workflow updates (completed/failed) append new events with the same workflow identifiers.
 - **Markdown document events** track artifact attachment to the ticket. Override and removal events reference the relevant display `name` and filesystem `path` so consumers can determine the active document.
 - **Change set events** mirror markdown semantics but point to a persisted change set path. Git hashes allow reconstructing before/after context without extra lookups.
+- **Reset events** (`ticket_reset`) summarise rewind operations. The payload carries the `TicketReset` identifier, anchor event (if any), and contextual reason so consumers can render the action inline with the timeline.
 - Events are never deleted or mutated. Current ticket state or artifact attachments are derived by replaying the log and ignoring entries marked with a non-null `ResetID`.
 
 ## Event Log Storage
@@ -164,7 +171,7 @@ type Service interface {
     AppendMarkdownEvent(ctx context.Context, id ticket.ID, input MarkdownEventInput) (*model.TicketEvent, error)
     AppendChangeSetEvent(ctx context.Context, id ticket.ID, input ChangeSetEventInput) (*model.TicketEvent, error)
     ListEvents(ctx context.Context, id ticket.ID, filter TicketEventFilter) (ticket.Iterator[*model.TicketEvent], error)
-    ResetEvents(ctx context.Context, id ticket.ID, input TicketResetInput) (*model.TicketReset, error)
+    ResetTicket(ctx context.Context, id ticket.ID, input TicketResetInput) (*model.TicketReset, error)
 }
 
 type WorkflowEventInput struct {
@@ -202,7 +209,8 @@ type TicketResetInput struct {
 }
 ```
 - The append helpers validate actors and payloads, stamp missing `EventTime` values with `time.Now()`, and persist the event alongside its `PayloadType`.
-- `ResetEvents` performs a transactional reset: it creates the reset record and updates each affected event’s `ResetID` within a single transaction. When `LastValidEvent` is set, all later events without a `ResetID` are reset; when nil, every non-reset event for the ticket is reset. Services may emit a follow-up ticket event describing the reset, but historical rows remain untouched.
+- `ResetTicket` coordinates ticket rewinds in one transaction: it inserts the reset record, closes the active ticket slice, reconstructs the anchor slice, emits a `ticket_reset` event, and assigns `ResetID` to superseded events. When `LastValidEvent` is set, all later events without a `ResetID` are reset; when nil, all active events are rewound.
+- `TicketEventFilter.At` enables point-in-time projections: queries return events with `event_time <= At` where any associated reset occurs after `At`, ensuring the event stream lines up with temporal ticket slices.
 - Event iterators behave like the prior activity iterators; callers must close them and treat `ticket.ErrIteratorDone` as a normal termination signal.
 - `TicketEventFilter.PayloadTypes` filters on the discriminator column, while `TicketEventFilter.Types` continues to match payload-specific subtype values (e.g. workflow status or artifact lifecycle transitions).
 

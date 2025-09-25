@@ -102,6 +102,22 @@ func TestStoreAppendListReset(t *testing.T) {
 	require.Len(t, withReset, 2)
 	require.NotNil(t, withReset[1].ResetID)
 	require.Equal(t, reset.ID, *withReset[1].ResetID)
+
+	atBefore := now.Add(90 * time.Second)
+	iterAtBefore, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{At: &atBefore})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, iterAtBefore)
+	snapshotBefore := collectEvents(t, ctx, iterAtBefore)
+	require.Len(t, snapshotBefore, 2)
+	require.Equal(t, second.ID, snapshotBefore[1].ID)
+
+	atAfter := now.Add(3 * time.Minute)
+	iterAtAfter, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{At: &atAfter})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, iterAtAfter)
+	snapshotAfter := collectEvents(t, ctx, iterAtAfter)
+	require.Len(t, snapshotAfter, 1)
+	require.Equal(t, first.ID, snapshotAfter[0].ID)
 }
 
 func collectEvents(t testing.TB, ctx context.Context, iter store.Iterator[*model.TicketEvent]) []*model.TicketEvent {

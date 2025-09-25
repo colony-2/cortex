@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
+	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
 )
 
@@ -93,6 +96,8 @@ func (s *stubStore) Update(ctx context.Context, ticket *model.Ticket, fields ...
 	}
 	return nil
 }
+
+func (s *stubStore) DB() *gorm.DB { return nil }
 
 func (s *stubEventStore) Append(ctx context.Context, event *model.TicketEvent) error {
 	if s == nil {
@@ -323,40 +328,39 @@ func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 	}
 }
 
-func TestResetEventsMissingAnchor(t *testing.T) {
-	ticketID := model.ID("ticket-evt-000000000000000001")
-	anchorID := model.TicketEventID("evt-anchor")
-	otherID := model.TicketEventID("evt-other")
+func TestResetTicketMissingAnchor(t *testing.T) {
+	pg := testutil.StartEmbeddedPostgres(t)
+	t.Cleanup(func() { pg.Close(t) })
 
-	st := &stubStore{
-		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
-			return &model.Ticket{ID: id}, nil
-		},
-	}
+	ticketStore, err := store.New(pg.DB)
+	require.NoError(t, err)
 
-	eventsToReturn := []*model.TicketEvent{
-		{ID: otherID, TicketID: ticketID, Kind: model.TicketEventKindTicket},
-	}
+	evtStore, err := eventstore.New(pg.DB)
+	require.NoError(t, err)
 
-	evtStore := &stubEventStore{
-		listFunc: func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error) {
-			return &sliceIterator[*model.TicketEvent]{items: eventsToReturn}, nil
-		},
-	}
-
+	now := time.Now().UTC()
 	svc, err := New(ServiceConfig{
-		Store:      st,
+		Store:      ticketStore,
 		EventStore: evtStore,
-		Clock:      fixedClock{now: time.Now().UTC()},
-		IDGen:      stubIDGen{id: string(ticketID)},
-		EventIDGen: stubIDGen{id: "reset-id"},
+		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
 
-	_, err = svc.ResetEvents(context.Background(), ticketID, TicketResetInput{
+	ctx := context.Background()
+	created, err := svc.CreateTicket(ctx, CreateInput{
+		Cell:  "cell-reset",
+		Title: "Rollback",
+		Stage: model.Stage("triage"),
+		State: model.StateWorking,
+		Actor: NewUserActor("owner@example.com"),
+	})
+	require.NoError(t, err)
+
+	missing := model.TicketEventID("evt-missing")
+	_, err = svc.ResetTicket(ctx, created.ID, TicketResetInput{
 		Actor:          NewUserActor("owner@example.com"),
 		Reason:         "cleanup",
-		LastValidEvent: &anchorID,
+		LastValidEvent: &missing,
 	})
 	require.ErrorIs(t, err, ErrEventNotFound)
 }

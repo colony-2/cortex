@@ -31,6 +31,13 @@ func New(db *gorm.DB) (Store, error) {
 	return &store{db: db}, nil
 }
 
+func NewWithDB(db *gorm.DB) (Store, error) {
+	if db == nil {
+		return nil, errors.New("ticket events store: nil db")
+	}
+	return &store{db: db}, nil
+}
+
 func (s *store) Append(ctx context.Context, event *model.TicketEvent) error {
 	if event == nil {
 		return errors.New("ticket events store: nil event")
@@ -58,7 +65,7 @@ func (s *store) AppendBatch(ctx context.Context, ticketID model.ID, events []*mo
 
 func (s *store) ListByTicket(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (ticketstore.Iterator[*model.TicketEvent], error) {
 	var events []*model.TicketEvent
-	query := s.db.WithContext(ctx).Where("ticket_id = ?", ticketID)
+	query := s.db.WithContext(ctx).Model(&model.TicketEvent{}).Where("ticket_events.ticket_id = ?", ticketID)
 	query = applyFilter(query, filter)
 	if err := query.Order("event_time ASC, id ASC").Find(&events).Error; err != nil {
 		return nil, err
@@ -92,20 +99,25 @@ func (s *store) MarkReset(ctx context.Context, ticketID model.ID, reset *model.T
 }
 
 func applyFilter(db *gorm.DB, filter model.TicketEventFilter) *gorm.DB {
-	if !filter.IncludeReset {
+	if filter.At != nil {
+		at := *filter.At
+		db = db.Select("ticket_events.*").Joins("LEFT JOIN ticket_resets ON ticket_resets.id = ticket_events.reset_id")
+		db = db.Where("ticket_events.event_time <= ?", at)
+		db = db.Where("ticket_events.reset_id IS NULL OR ticket_resets.created_at > ?", at)
+	} else if !filter.IncludeReset {
 		db = db.Where("reset_id IS NULL")
 	}
 	if len(filter.Kinds) > 0 {
-		db = db.Where("kind IN ?", filter.Kinds)
+		db = db.Where("ticket_events.kind IN ?", filter.Kinds)
 	}
 	if len(filter.PayloadTypes) > 0 {
-		db = db.Where("payload_type IN ?", filter.PayloadTypes)
+		db = db.Where("ticket_events.payload_type IN ?", filter.PayloadTypes)
 	}
 	if filter.Since != nil {
-		db = db.Where("event_time >= ?", *filter.Since)
+		db = db.Where("ticket_events.event_time >= ?", *filter.Since)
 	}
 	if filter.Until != nil {
-		db = db.Where("event_time <= ?", *filter.Until)
+		db = db.Where("ticket_events.event_time <= ?", *filter.Until)
 	}
 	if len(filter.Types) > 0 {
 		db = db.Where(
