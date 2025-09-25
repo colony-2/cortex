@@ -11,6 +11,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/ticket/internal/idgen"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
+	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
 	"github.com/go-playground/validator/v10"
 	"github.com/imdario/mergo"
@@ -18,12 +19,16 @@ import (
 )
 
 var (
-	ErrInvalidState    = errors.New("ticket: invalid state")
-	ErrInvalidActor    = errors.New("ticket: invalid actor")
-	ErrEmptyTitle      = errors.New("ticket: title is required")
-	ErrEmptyStage      = errors.New("ticket: stage is required")
-	ErrIDGeneration    = errors.New("ticket: id generation failed")
-	ErrVersionConflict = errors.New("ticket: version conflict")
+	ErrInvalidState        = errors.New("ticket: invalid state")
+	ErrInvalidActor        = errors.New("ticket: invalid actor")
+	ErrEmptyTitle          = errors.New("ticket: title is required")
+	ErrEmptyStage          = errors.New("ticket: stage is required")
+	ErrIDGeneration        = errors.New("ticket: id generation failed")
+	ErrVersionConflict     = errors.New("ticket: version conflict")
+	ErrInvalidEventKind    = errors.New("ticket: invalid event kind")
+	ErrInvalidEventPayload = errors.New("ticket: invalid event payload")
+	ErrEventNotFound       = errors.New("ticket: event not found")
+	ErrResetNoEvents       = errors.New("ticket: no events to reset")
 )
 
 type Clock interface {
@@ -36,24 +41,34 @@ type Service interface {
 	SearchTickets(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error)
 	SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error)
 	GetStates(ctx context.Context) ([]model.State, error)
+	AppendEvent(ctx context.Context, id model.ID, input TicketEventInput) (*model.TicketEvent, error)
+	ListEvents(ctx context.Context, id model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
+	ResetEvents(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
 }
 
 type ServiceConfig struct {
-	Store store.Store
-	Clock Clock
-	IDGen model.ShortIDGenerator
+	Store      store.Store
+	EventStore eventstore.Store
+	Clock      Clock
+	IDGen      model.ShortIDGenerator
+	EventIDGen model.ShortIDGenerator
 }
 
 type service struct {
-	store    store.Store
-	clock    Clock
-	idGen    model.ShortIDGenerator
-	validate *validator.Validate
+	store      store.Store
+	events     eventstore.Store
+	clock      Clock
+	idGen      model.ShortIDGenerator
+	eventIDGen model.ShortIDGenerator
+	validate   *validator.Validate
 }
 
 func New(config ServiceConfig) (Service, error) {
 	if config.Store == nil {
 		return nil, errors.New("ticket service: store is required")
+	}
+	if config.EventStore == nil {
+		return nil, errors.New("ticket service: event store is required")
 	}
 	if config.Clock == nil {
 		config.Clock = systemClock{}
@@ -61,15 +76,20 @@ func New(config ServiceConfig) (Service, error) {
 	if config.IDGen == nil {
 		config.IDGen = idgen.NewBase58Generator(idgen.DefaultIDLength)
 	}
+	if config.EventIDGen == nil {
+		config.EventIDGen = config.IDGen
+	}
 	validate, err := newValidator()
 	if err != nil {
 		return nil, err
 	}
 	return &service{
-		store:    config.Store,
-		clock:    config.Clock,
-		idGen:    config.IDGen,
-		validate: validate,
+		store:      config.Store,
+		events:     config.EventStore,
+		clock:      config.Clock,
+		idGen:      config.IDGen,
+		eventIDGen: config.EventIDGen,
+		validate:   validate,
 	}, nil
 }
 
@@ -292,6 +312,7 @@ func newValidator() (*validator.Validate, error) {
 		return nil, err
 	}
 	v.RegisterStructValidation(actorStructValidation, model.Actor{})
+	v.RegisterStructValidation(ticketEventInputValidation, TicketEventInput{})
 	return v, nil
 }
 
@@ -361,6 +382,55 @@ func actorStructValidation(sl validator.StructLevel) {
 	}
 }
 
+func ticketEventInputValidation(sl validator.StructLevel) {
+	input, ok := sl.Current().Interface().(TicketEventInput)
+	if !ok {
+		return
+	}
+	body := input.Payload
+	setCount := 0
+	if body.Ticket != nil {
+		setCount++
+	}
+	if body.Workflow != nil {
+		setCount++
+	}
+	if body.MarkdownDoc != nil {
+		setCount++
+	}
+	if body.ChangeSet != nil {
+		setCount++
+	}
+	if setCount != 1 {
+		sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
+		return
+	}
+
+	switch input.Kind {
+	case model.TicketEventKindTicket:
+		if body.Ticket == nil {
+			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
+		}
+	case model.TicketEventKindWorkflow:
+		wf := body.Workflow
+		if wf == nil || wf.Type == "" || wf.WorkflowID == "" || wf.RunID == "" {
+			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
+		}
+	case model.TicketEventKindMarkdownDoc:
+		doc := body.MarkdownDoc
+		if doc == nil || doc.Type == "" || strings.TrimSpace(doc.Name) == "" || strings.TrimSpace(doc.Path) == "" {
+			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
+		}
+	case model.TicketEventKindChangeSet:
+		cs := body.ChangeSet
+		if cs == nil || cs.Type == "" || strings.TrimSpace(cs.Path) == "" {
+			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
+		}
+	default:
+		sl.ReportError(input.Kind, "Kind", "Kind", "ticket_event_kind", "")
+	}
+}
+
 func mapValidationError(err error) error {
 	if err == nil {
 		return nil
@@ -376,6 +446,10 @@ func mapValidationError(err error) error {
 				return ErrInvalidState
 			case "Actor":
 				return ErrInvalidActor
+			case "Kind":
+				return ErrInvalidEventKind
+			case "Payload":
+				return ErrInvalidEventPayload
 			case "ExpectedVersion":
 				return ErrVersionConflict
 			}

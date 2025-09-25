@@ -24,3 +24,16 @@ type UpdateInput struct {
 	CompletedAt     *time.Time
 	Actor           *model.ActorPatch
 }
+
+type TicketEventInput struct {
+	Kind      model.TicketEventKind `validate:"required"`
+	Actor     model.Actor           `validate:"required"`
+	Payload   model.TicketEventBody
+	EventTime time.Time
+}
+
+type TicketResetInput struct {
+	Actor          model.Actor `validate:"required"`
+	Reason         string      `validate:"required"`
+	LastValidEvent *model.TicketEventID
+}

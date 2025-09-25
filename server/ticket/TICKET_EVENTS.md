@@ -33,15 +33,34 @@ type WorkflowRef struct {
     RunID      WorkflowRunID
 }
 
+type TicketEventPayloadType string
+
+const (
+    TicketEventPayloadTypeTicket      TicketEventPayloadType = "ticket"
+    TicketEventPayloadTypeWorkflow    TicketEventPayloadType = "workflow"
+    TicketEventPayloadTypeMarkdownDoc TicketEventPayloadType = "markdown_doc"
+    TicketEventPayloadTypeChangeSet   TicketEventPayloadType = "changeset"
+)
+
+type TicketFieldChangeList []TicketFieldChange
+
 type TicketEvent struct {
-    ID        TicketEventID                       `gorm:"primaryKey;type:char(26)"`
-    TicketID  ticket.ID                           `gorm:"type:char(26);index"`
-    Kind      TicketEventKind                     `gorm:"type:text"`
-    Actor     ticket.Actor                        `gorm:"embedded;embeddedPrefix:actor_"`
-    Payload   datatypes.JSONType[TicketEventBody] `gorm:"type:jsonb"`
-    EventTime time.Time                           `gorm:"index"`
-    CreatedAt time.Time
-    ResetID   *TicketResetID                      `gorm:"type:char(26);index"`
+    ID          TicketEventID           `gorm:"primaryKey;type:char(26)"`
+    TicketID    ticket.ID               `gorm:"type:char(26);index"`
+    Kind        TicketEventKind         `gorm:"type:text"`
+    PayloadType TicketEventPayloadType  `gorm:"column:payload_type;type:text;index"`
+    Actor       ticket.Actor            `gorm:"embedded;embeddedPrefix:actor_"`
+    EventTime   time.Time               `gorm:"index"`
+    CreatedAt   time.Time
+    ResetID     *TicketResetID          `gorm:"type:char(26);index"`
+
+    TicketData    TicketEventPayload      `gorm:"embedded;embeddedPrefix:ticket_"`
+    TicketChanges TicketFieldChangeList   `gorm:"column:ticket_changes;type:jsonb"`
+    WorkflowData  WorkflowEventPayload    `gorm:"embedded;embeddedPrefix:workflow_"`
+    MarkdownData  MarkdownDocEventPayload `gorm:"embedded;embeddedPrefix:markdown_"`
+    ChangeSetData ChangeSetEventPayload   `gorm:"embedded;embeddedPrefix:changeset_"`
+
+    Payload TicketEventBody `gorm:"-"`
 }
 
 type TicketEventBody struct {
@@ -52,7 +71,7 @@ type TicketEventBody struct {
 }
 
 type TicketEventPayload struct {
-    Changes []TicketFieldChange `json:"changes"`
+    Changes []TicketFieldChange `json:"changes" gorm:"-"`
     Notes   string              `json:"notes,omitempty"`
 }
 
@@ -110,7 +129,8 @@ type TicketReset struct {
 }
 ```
 - Ticket event IDs reuse the base58 scheme and scan/valuer contracts defined alongside tickets.
-- `TicketEventBody` is a one-of envelope enforced by the service layer; exactly one payload pointer must be non-nil.
+- `TicketEventBody` remains a one-of envelope enforced by the service layer; exactly one payload pointer is materialised at query time based on `PayloadType`.
+- `TicketEventPayloadType` is a discriminator column written alongside the event record, making it trivial to determine which embedded payload columns (`ticket_*`, `workflow_*`, etc.) hold data.
 - Ticket field mutations are expressed as `field -> from/to` changes. Consumers fold these deltas to compute current values.
 - `EventTime` captures the effective time of the event; `CreatedAt` records persistence time in storage.
 - Reset-aware columns make it possible to mark ranges of events as superseded without deleting them. The event records remain immutable, with `ResetID` referencing the corresponding `TicketReset` entry when present.
@@ -154,6 +174,7 @@ type TicketEventInput struct {
 
 type TicketEventFilter struct {
     Kinds        []TicketEventKind
+    PayloadTypes []TicketEventPayloadType
     Types        []string
     Since        *time.Time
     Until        *time.Time
@@ -166,9 +187,10 @@ type TicketResetInput struct {
     LastValidEvent *TicketEventID
 }
 ```
-- `AppendEvent` enforces the one-of payload structure, stamps missing `EventTime` with `time.Now()`, and persists the event.
+- `AppendEvent` uses the shared validator to enforce the discriminator/one-of payload rules, stamps missing `EventTime` with `time.Now()`, and persists the event alongside its `PayloadType`.
 - `ResetEvents` performs a transactional reset: it creates the reset record and updates each affected event’s `ResetID` within a single transaction. When `LastValidEvent` is set, all later events without a `ResetID` are reset; when nil, every non-reset event for the ticket is reset. Services may emit a follow-up ticket event describing the reset, but historical rows remain untouched.
 - Event iterators behave like the prior activity iterators; callers must close them and treat `ticket.ErrIteratorDone` as a normal termination signal.
+- `TicketEventFilter.PayloadTypes` filters on the discriminator column, while `TicketEventFilter.Types` continues to match payload-specific subtype values (e.g. workflow status or artifact lifecycle transitions).
 
 ## Usage Example
 ```go

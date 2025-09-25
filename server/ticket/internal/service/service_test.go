@@ -20,6 +20,30 @@ type stubStore struct {
 	searchStagesFunc func(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error)
 }
 
+type stubEventStore struct {
+	appendFunc      func(ctx context.Context, event *model.TicketEvent) error
+	appendBatchFunc func(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error
+	listFunc        func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
+	markResetFunc   func(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
+}
+
+type sliceIterator[T any] struct {
+	items []T
+	idx   int
+}
+
+func (it *sliceIterator[T]) Next(ctx context.Context) (T, error) {
+	var zero T
+	if it.idx >= len(it.items) {
+		return zero, store.ErrIteratorDone
+	}
+	item := it.items[it.idx]
+	it.idx++
+	return item, nil
+}
+
+func (it *sliceIterator[T]) Close(ctx context.Context) error { return nil }
+
 func (s *stubStore) WithTx(ctx context.Context, fn func(ctx context.Context, st store.Store) error) error {
 	if s == nil {
 		return errors.New("nil store")
@@ -62,6 +86,46 @@ func (s *stubStore) Update(ctx context.Context, ticket *model.Ticket, fields ...
 	return nil
 }
 
+func (s *stubEventStore) Append(ctx context.Context, event *model.TicketEvent) error {
+	if s == nil {
+		return errors.New("nil event store")
+	}
+	if s.appendFunc != nil {
+		return s.appendFunc(ctx, event)
+	}
+	return nil
+}
+
+func (s *stubEventStore) AppendBatch(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error {
+	if s == nil {
+		return errors.New("nil event store")
+	}
+	if s.appendBatchFunc != nil {
+		return s.appendBatchFunc(ctx, ticketID, events)
+	}
+	return nil
+}
+
+func (s *stubEventStore) ListByTicket(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error) {
+	if s == nil {
+		return nil, errors.New("nil event store")
+	}
+	if s.listFunc != nil {
+		return s.listFunc(ctx, ticketID, filter)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubEventStore) MarkReset(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error {
+	if s == nil {
+		return errors.New("nil event store")
+	}
+	if s.markResetFunc != nil {
+		return s.markResetFunc(ctx, ticketID, reset, eventIDs)
+	}
+	return nil
+}
+
 type fixedClock struct{ now time.Time }
 
 func (f fixedClock) Now() time.Time { return f.now }
@@ -87,9 +151,10 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	}
 	now := time.Date(2024, 9, 10, 12, 0, 0, 0, time.UTC)
 	svc, err := New(ServiceConfig{
-		Store: st,
-		Clock: fixedClock{now: now},
-		IDGen: stubIDGen{id: "abc"},
+		Store:      st,
+		EventStore: &stubEventStore{},
+		Clock:      fixedClock{now: now},
+		IDGen:      stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
@@ -112,9 +177,10 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 
 func TestCreateTicketInvalidState(t *testing.T) {
 	svc, err := New(ServiceConfig{
-		Store: &stubStore{},
-		Clock: fixedClock{now: time.Now()},
-		IDGen: stubIDGen{id: "abc"},
+		Store:      &stubStore{},
+		EventStore: &stubEventStore{},
+		Clock:      fixedClock{now: time.Now()},
+		IDGen:      stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
@@ -142,8 +208,9 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 				}, nil
 			},
 		},
-		Clock: fixedClock{now: now},
-		IDGen: stubIDGen{id: "abc"},
+		EventStore: &stubEventStore{},
+		Clock:      fixedClock{now: now},
+		IDGen:      stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
@@ -174,9 +241,10 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 		},
 	}
 	svc, err := New(ServiceConfig{
-		Store: st,
-		Clock: fixedClock{now: now},
-		IDGen: stubIDGen{id: "abc"},
+		Store:      st,
+		EventStore: &stubEventStore{},
+		Clock:      fixedClock{now: now},
+		IDGen:      stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
@@ -187,4 +255,102 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, updated.CompletedAt)
 	require.WithinDuration(t, now, updated.CompletedAt.UTC(), time.Millisecond)
+}
+func TestAppendEventStoresPayload(t *testing.T) {
+	now := time.Date(2024, 9, 12, 9, 0, 0, 0, time.UTC)
+	ticketID := model.ID("ticket-1234567890123456789012")
+
+	st := &stubStore{
+		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
+			return &model.Ticket{ID: id}, nil
+		},
+	}
+
+	appended := make(chan *model.TicketEvent, 1)
+	evtStore := &stubEventStore{
+		appendFunc: func(ctx context.Context, event *model.TicketEvent) error {
+			appended <- event
+			return nil
+		},
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:      st,
+		EventStore: evtStore,
+		Clock:      fixedClock{now: now},
+		IDGen:      stubIDGen{id: string(ticketID)},
+		EventIDGen: stubIDGen{id: "event-123456789012345678901"},
+	})
+	require.NoError(t, err)
+
+	actor := NewUserActor("owner@example.com")
+	change := model.TicketFieldChange{Field: model.TicketFieldName("stage"), From: "triage", To: "analysis"}
+
+	event, err := svc.AppendEvent(context.Background(), ticketID, TicketEventInput{
+		Kind:  model.TicketEventKindTicket,
+		Actor: actor,
+		Payload: model.TicketEventBody{
+			Ticket: &model.TicketEventPayload{
+				Changes: []model.TicketFieldChange{change},
+				Notes:   "updated",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, model.TicketEventID("event-123456789012345678901"), event.ID)
+	require.Equal(t, ticketID, event.TicketID)
+	require.Equal(t, model.TicketEventPayloadTypeTicket, event.PayloadType)
+	require.Len(t, event.Payload.Ticket.Changes, 1)
+	require.Equal(t, "updated", event.Payload.Ticket.Notes)
+
+	select {
+	case captured := <-appended:
+		require.Equal(t, model.TicketEventKindTicket, captured.Kind)
+		require.Equal(t, model.TicketEventPayloadTypeTicket, captured.PayloadType)
+		require.NotNil(t, captured.Payload.Ticket)
+		require.Len(t, captured.Payload.Ticket.Changes, 1)
+		require.Equal(t, change, captured.Payload.Ticket.Changes[0])
+		require.Equal(t, "updated", captured.TicketData.Notes)
+		require.Equal(t, []model.TicketFieldChange{change}, []model.TicketFieldChange(captured.TicketChanges))
+	default:
+		t.Fatal("expected event to be appended")
+	}
+}
+
+func TestResetEventsMissingAnchor(t *testing.T) {
+	ticketID := model.ID("ticket-evt-000000000000000001")
+	anchorID := model.TicketEventID("evt-anchor")
+	otherID := model.TicketEventID("evt-other")
+
+	st := &stubStore{
+		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
+			return &model.Ticket{ID: id}, nil
+		},
+	}
+
+	eventsToReturn := []*model.TicketEvent{
+		{ID: otherID, TicketID: ticketID, Kind: model.TicketEventKindTicket},
+	}
+
+	evtStore := &stubEventStore{
+		listFunc: func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error) {
+			return &sliceIterator[*model.TicketEvent]{items: eventsToReturn}, nil
+		},
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:      st,
+		EventStore: evtStore,
+		Clock:      fixedClock{now: time.Now().UTC()},
+		IDGen:      stubIDGen{id: string(ticketID)},
+		EventIDGen: stubIDGen{id: "reset-id"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.ResetEvents(context.Background(), ticketID, TicketResetInput{
+		Actor:          NewUserActor("owner@example.com"),
+		Reason:         "cleanup",
+		LastValidEvent: &anchorID,
+	})
+	require.ErrorIs(t, err, ErrEventNotFound)
 }
