@@ -1,88 +1,89 @@
 package input
 
 import (
-    "testing"
-    "time"
+	"fmt"
+	"testing"
+	"time"
 
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
-    "go.temporal.io/sdk/testsuite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/testsuite"
 )
 
 func TestInputActivity_GetMetadata(t *testing.T) {
-    activity := newInputActivity()
-    metadata := activity.GetMetadata()
+	activity := newInputActivity()
+	metadata := activity.GetMetadata()
 
-    assert.Equal(t, "input", metadata.Type)
-    assert.NotEmpty(t, metadata.Description)
-    assert.Equal(t, "1.0.0", metadata.Version)
-    assert.Equal(t, 5*time.Minute, metadata.DefaultTimeout)
+	assert.Equal(t, "input", metadata.Type)
+	assert.NotEmpty(t, metadata.Description)
+	assert.Equal(t, "1.0.0", metadata.Version)
+	assert.Equal(t, 5*time.Minute, metadata.DefaultTimeout)
 }
 
 func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
-    ts := &testsuite.WorkflowTestSuite{}
-    env := ts.NewTestWorkflowEnvironment()
-    env.RegisterWorkflow(InputCollectionWorkflow)
-    cfg := Config{Question: "What is your name?", Type: FieldTypeShortAnswer, Timeout: 2}
-    in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
-    form := newInputActivity().buildForm(cfg, in)
-    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(InputCollectionWorkflow)
+	cfg := Config{Question: "What is your name?", Type: FieldTypeShortAnswer, Timeout: 2}
+	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+	form := newInputActivity().buildForm(cfg, in)
+	params := InputWorkflowParams{ID: "single-question-id", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
-    // Signal response shortly after start
-    env.RegisterDelayedCallback(func() {
-        env.SignalWorkflow("user-response", UserResponseSignal{
-            Fields:      map[string]interface{}{"field1": "Alice"},
-            UserID:      "u-1",
-            RespondedAt: time.Now(),
-        })
-    }, time.Second)
+	// Signal response shortly after start
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(fmt.Sprintf("user-response:%s", params.ID), UserResponseSignal{
+			Fields:      map[string]interface{}{"field1": "Alice"},
+			UserID:      "u-1",
+			RespondedAt: time.Now(),
+		})
+	}, time.Second)
 
-    env.ExecuteWorkflow(InputCollectionWorkflow, params)
-    require.True(t, env.IsWorkflowCompleted())
-    require.NoError(t, env.GetWorkflowError())
-    var out InputWorkflowResult
-    require.NoError(t, env.GetWorkflowResult(&out))
-    assert.Equal(t, "u-1", out.UserID)
-    // Short-answer stores response in Fields map via workflow result normalization
+	env.ExecuteWorkflow(InputCollectionWorkflow, params)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	var out InputWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&out))
+	assert.Equal(t, "u-1", out.UserID)
+	// Short-answer stores response in Fields map via workflow result normalization
 }
 
 func TestInputActivity_Execute_MultiField(t *testing.T) {
-    ts := &testsuite.WorkflowTestSuite{}
-    env := ts.NewTestWorkflowEnvironment()
-    env.RegisterWorkflow(InputCollectionWorkflow)
-    config := Config{
-        Title: "Deployment Configuration",
-        Fields: []FormField{
-            {ID: "strategy", Type: FieldTypeMultipleChoice, Question: "Select deployment strategy", Required: true, Options: []Option{{Value: "blue_green"}, {Value: "canary"}}},
-            {ID: "urgency", Type: FieldTypeLinearScale, Question: "How urgent is this?", Required: true, Scale: &LinearScale{Min: 1, Max: 5}},
-            {ID: "notes", Type: FieldTypeParagraphText, Question: "Additional notes"},
-        },
-        Timeout: 3,
-    }
-    in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: config}
-    form := newInputActivity().buildForm(config, in)
-    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
-    env.RegisterDelayedCallback(func() {
-        env.SignalWorkflow("user-response", UserResponseSignal{
-            Fields: map[string]interface{}{
-                "strategy": "blue_green",
-                "urgency":  3,
-                "notes":    "ship it",
-            },
-            UserID:      "approver-1",
-            RespondedAt: time.Now(),
-        })
-    }, time.Second)
-    env.ExecuteWorkflow(InputCollectionWorkflow, params)
-    require.True(t, env.IsWorkflowCompleted())
-    require.NoError(t, env.GetWorkflowError())
-    var out InputWorkflowResult
-    require.NoError(t, env.GetWorkflowResult(&out))
-    assert.Equal(t, "blue_green", out.FormResponse["strategy"])
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(InputCollectionWorkflow)
+	config := Config{
+		Title: "Deployment Configuration",
+		Fields: []FormField{
+			{ID: "strategy", Type: FieldTypeMultipleChoice, Question: "Select deployment strategy", Required: true, Options: []Option{{Value: "blue_green"}, {Value: "canary"}}},
+			{ID: "urgency", Type: FieldTypeLinearScale, Question: "How urgent is this?", Required: true, Scale: &LinearScale{Min: 1, Max: 5}},
+			{ID: "notes", Type: FieldTypeParagraphText, Question: "Additional notes"},
+		},
+		Timeout: 3,
+	}
+	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: config}
+	form := newInputActivity().buildForm(config, in)
+	params := InputWorkflowParams{ID: "multi-field-id", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(fmt.Sprintf("user-response:%s", params.ID), UserResponseSignal{
+			Fields: map[string]interface{}{
+				"strategy": "blue_green",
+				"urgency":  3,
+				"notes":    "ship it",
+			},
+			UserID:      "approver-1",
+			RespondedAt: time.Now(),
+		})
+	}, time.Second)
+	env.ExecuteWorkflow(InputCollectionWorkflow, params)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+	var out InputWorkflowResult
+	require.NoError(t, env.GetWorkflowResult(&out))
+	assert.Equal(t, "blue_green", out.FormResponse["strategy"])
 }
 
 func TestInputActivity_BuildForm(t *testing.T) {
-    activity := newInputActivity()
+	activity := newInputActivity()
 
 	t.Run("single question form", func(t *testing.T) {
 		config := Config{
@@ -95,9 +96,9 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			ActivityID: "test-activity",
 		}
 
-        in := input
-        in.Config = config
-        form := activity.buildForm(config, in)
+		in := input
+		in.Config = config
+		form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test question", form.Question)
 		assert.Equal(t, FieldTypeShortAnswer, form.Type)
@@ -126,9 +127,9 @@ func TestInputActivity_BuildForm(t *testing.T) {
 			ActivityID: "test-activity",
 		}
 
-        in := input
-        in.Config = config
-        form := activity.buildForm(config, in)
+		in := input
+		in.Config = config
+		form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test Form", form.Title)
 		assert.Len(t, form.Fields, 1)
@@ -139,16 +140,16 @@ func TestInputActivity_BuildForm(t *testing.T) {
 }
 
 func TestInputActivity_DefaultOnTimeout(t *testing.T) {
-    ts := &testsuite.WorkflowTestSuite{}
-    env := ts.NewTestWorkflowEnvironment()
-    env.RegisterWorkflow(InputCollectionWorkflow)
-    cfg := Config{Question: "Approve?", Type: FieldTypeMultipleChoice, Options: []Option{{Value: "yes"}, {Value: "no"}}, Timeout: 1}
-    in2 := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
-    form2 := newInputActivity().buildForm(cfg, in2)
-    params2 := InputWorkflowParams{Form: form2, Timeout: form2.Timeout, BoxID: in2.BoxID, ActivityID: in2.ActivityID}
-    env.ExecuteWorkflow(InputCollectionWorkflow, params2)
-    require.True(t, env.IsWorkflowCompleted())
-    require.Error(t, env.GetWorkflowError())
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(InputCollectionWorkflow)
+	cfg := Config{Question: "Approve?", Type: FieldTypeMultipleChoice, Options: []Option{{Value: "yes"}, {Value: "no"}}, Timeout: 1}
+	in2 := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+	form2 := newInputActivity().buildForm(cfg, in2)
+	params2 := InputWorkflowParams{ID: "timeout-id", Form: form2, Timeout: form2.Timeout, BoxID: in2.BoxID, ActivityID: in2.ActivityID}
+	env.ExecuteWorkflow(InputCollectionWorkflow, params2)
+	require.True(t, env.IsWorkflowCompleted())
+	require.Error(t, env.GetWorkflowError())
 }
 
 func TestInputActivity_ManagementService(t *testing.T) {
@@ -162,17 +163,17 @@ func TestInputActivity_ManagementService(t *testing.T) {
 	mgmtService := service.(*inputManagementService)
 	routes := mgmtService.GetRoutes()
 
-    assert.Len(t, routes, 6)
+	assert.Len(t, routes, 6)
 
 	// Verify route paths
-    expectedPaths := []string{
-        "/api/user-inputs/pending",
-        "/api/user-inputs/stream",
-        "/api/user-inputs/{workflowID}",
-        "/api/user-inputs/{workflowID}/pending",
-        "/api/user-inputs/{workflowID}/respond",
-        "/api/user-inputs/{workflowID}/cancel",
-    }
+	expectedPaths := []string{
+		"/api/user-inputs/pending",
+		"/api/user-inputs/stream",
+		"/api/user-inputs/{workflowID}",
+		"/api/user-inputs/{workflowID}/pending",
+		"/api/user-inputs/{workflowID}/respond",
+		"/api/user-inputs/{workflowID}/cancel",
+	}
 
 	for i, route := range routes {
 		assert.Equal(t, expectedPaths[i], route.Path)

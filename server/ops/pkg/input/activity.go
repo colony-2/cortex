@@ -63,42 +63,51 @@ func GetOp() ops.RegisterableOp {
 	// NewInlineOpWithManagementV2 builds on ops.NewInlineOpV2[Input, Output] to attach management endpoints.
 	return ops.NewInlineOpWithManagementV2[Input, Output](
 		a.GetMetadata(),
-		func(_ ops.Invocation, ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
+		func(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
+			// Derive deterministic identifier for this invocation and channel name.
+			id := inv.Hash()
+			signalName := userResponseSignalName(id)
+
 			// Build form from config for validation and metadata
 			form := a.buildForm(in.Config, in)
 
+			// Determine timeout window and timestamps up-front for reuse.
+			waitTimeout := form.Timeout
+			if waitTimeout == 0 {
+				waitTimeout = 5 * time.Minute
+			}
+			createdAt := workflow.Now(ctx)
+			expiresAt := createdAt.Add(waitTimeout)
+
 			// Record pending status and basic metadata
-			_ = workflow.UpsertTypedSearchAttributes(ctx,
+			upsertInputSearchAttributes(ctx,
+				temporal.NewSearchAttributeKeyKeyword("InputKey").ValueSet(id),
 				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
 				temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(form.Title),
 				temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(in.BoxID),
-				temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(workflow.Now(ctx)),
-				temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(workflow.Now(ctx).Add(form.Timeout)),
+				temporal.NewSearchAttributeKeyString("InputActivityID").ValueSet(in.ActivityID),
+				temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(createdAt),
+				temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(expiresAt),
 			)
 
-			// Wait for signal or timeout
-			responseChan := workflow.GetSignalChannel(ctx, "user-response")
+			// Wait for signal or timeout using keyed channel
+			responseChan := workflow.GetSignalChannel(ctx, signalName)
 			tctx, cancel := workflow.WithCancel(ctx)
 			workflow.Go(tctx, func(c workflow.Context) {
-				// Use provided timeout if non-zero; otherwise default
-				to := form.Timeout
-				if to == 0 {
-					to = 5 * time.Minute
-				}
-				workflow.Sleep(c, to)
+				workflow.Sleep(c, waitTimeout)
 				cancel()
 			})
 
 			var sig UserResponseSignal
 			responseChan.Receive(tctx, &sig)
 			if tctx.Err() != nil {
-				_ = workflow.UpsertTypedSearchAttributes(ctx,
+				upsertInputSearchAttributes(ctx,
 					temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
 				)
 				return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
 			}
 
-			_ = workflow.UpsertTypedSearchAttributes(ctx,
+			upsertInputSearchAttributes(ctx,
 				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
 				temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(sig.UserID),
 				temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(sig.RespondedAt),
@@ -137,6 +146,17 @@ func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error
 // This implements the ManagementServiceProvider interface
 func (a *InputActivity) GetManagementService() ops.ManagementService {
 	return a.managementService
+}
+
+// upsertInputSearchAttributes centralises error handling for typed search attribute updates.
+func upsertInputSearchAttributes(ctx workflow.Context, attrs ...temporal.SearchAttributeUpdate) {
+	if err := workflow.UpsertTypedSearchAttributes(ctx, attrs...); err != nil {
+		workflow.GetLogger(ctx).Error("failed to upsert input search attributes", "error", err)
+	}
+}
+
+func userResponseSignalName(id string) string {
+	return fmt.Sprintf("user-response:%s", id)
 }
 
 // buildForm constructs the InputForm from config and input

@@ -1,6 +1,7 @@
 package input
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -13,9 +14,10 @@ import (
 func TestInputCollectionWorkflow_Success(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Setup workflow parameters
 	params := InputWorkflowParams{
+		ID: "workflow-success-id",
 		Form: InputForm{
 			Title: "Test Form",
 			Fields: []FormField{
@@ -32,10 +34,10 @@ func TestInputCollectionWorkflow_Success(t *testing.T) {
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
-	
+
 	// Setup signal response
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("user-response", UserResponseSignal{
+		env.SignalWorkflow(fmt.Sprintf("user-response:%s", params.ID), UserResponseSignal{
 			Fields: map[string]interface{}{
 				"field1": "test answer",
 			},
@@ -46,18 +48,18 @@ func TestInputCollectionWorkflow_Success(t *testing.T) {
 			},
 		})
 	}, 1*time.Second)
-	
+
 	// Execute workflow
 	env.ExecuteWorkflow(InputCollectionWorkflow, params)
-	
+
 	// Verify workflow completed successfully
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Get the result
 	var result InputWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify result
 	assert.Equal(t, "test-user", result.UserID)
 	assert.Equal(t, "test answer", result.FormResponse["field1"])
@@ -67,9 +69,10 @@ func TestInputCollectionWorkflow_Success(t *testing.T) {
 func TestInputCollectionWorkflow_Timeout(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Setup workflow parameters with short timeout
 	params := InputWorkflowParams{
+		ID: "workflow-timeout-id",
 		Form: InputForm{
 			Title:   "Test Form",
 			Timeout: 1 * time.Second,
@@ -78,17 +81,17 @@ func TestInputCollectionWorkflow_Timeout(t *testing.T) {
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
-	
+
 	// Don't send any signal - let it timeout
-	
+
 	// Execute workflow
 	env.ExecuteWorkflow(InputCollectionWorkflow, params)
-	
+
 	// Verify workflow completed with timeout error
 	require.True(t, env.IsWorkflowCompleted())
 	err := env.GetWorkflowError()
 	require.Error(t, err)
-	
+
 	// Check that it's a timeout error - could be "deadline exceeded" or "TIMEOUT"
 	errStr := err.Error()
 	assert.True(t, strings.Contains(errStr, "TIMEOUT") || strings.Contains(errStr, "deadline exceeded"),
@@ -106,9 +109,10 @@ func TestInputCollectionWorkflow_Timeout(t *testing.T) {
 func TestInputCollectionWorkflow_MultipleFields(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Setup workflow with multiple fields
 	params := InputWorkflowParams{
+		ID: "workflow-multi-field-id",
 		Form: InputForm{
 			Title: "Multi-Field Form",
 			Fields: []FormField{
@@ -144,10 +148,10 @@ func TestInputCollectionWorkflow_MultipleFields(t *testing.T) {
 		BoxID:      "test-cell",
 		ActivityID: "test-activity",
 	}
-	
+
 	// Send response with all fields
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("user-response", UserResponseSignal{
+		env.SignalWorkflow(fmt.Sprintf("user-response:%s", params.ID), UserResponseSignal{
 			Fields: map[string]interface{}{
 				"name":     "John Doe",
 				"approval": "yes",
@@ -157,24 +161,24 @@ func TestInputCollectionWorkflow_MultipleFields(t *testing.T) {
 			RespondedAt: time.Now(),
 		})
 	}, 1*time.Second)
-	
+
 	// Execute workflow
 	env.ExecuteWorkflow(InputCollectionWorkflow, params)
-	
+
 	// Verify workflow completed successfully
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Get the result
 	var result InputWorkflowResult
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify all fields are in the response
 	assert.Equal(t, "John Doe", result.FormResponse["name"])
 	assert.Equal(t, "yes", result.FormResponse["approval"])
 	assert.Equal(t, float64(4), result.FormResponse["rating"])
 }
 
-// Note: MockWorkflowContext was removed as it's not compatible with the 
+// Note: MockWorkflowContext was removed as it's not compatible with the
 // internal Temporal SDK interfaces. Use testsuite.WorkflowTestSuite for
 // all workflow testing instead.

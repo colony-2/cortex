@@ -1,67 +1,71 @@
 package handlers_test
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "log"
-    "net"
-    "net/http"
-    "net/http/httptest"
-    "net/url"
-    "strings"
-    "testing"
-    "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
 
-    "github.com/divisive-ai/vibethis/server/api/pkg/web"
-    "github.com/divisive-ai/vibethis/server/container/pkg/container"
-    "github.com/divisive-ai/vibethis/server/files/pkg/files"
-    "github.com/divisive-ai/vibethis/server/git/pkg/git"
-    "github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-    inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-    inputpkg "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-    coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
-    "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-    "github.com/stretchr/testify/require"
-    "go.temporal.io/sdk/testsuite"
+	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
+	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	inputpkg "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/testsuite"
 )
 
 // depsImpl implements ops.ServiceDependencies for tests
 type depsImpl struct {
-    sse coreops.SSEManager
-    ctl workflowctl.WorkflowControl
+	sse coreops.SSEManager
+	ctl workflowctl.WorkflowControl
 }
 
 func (d depsImpl) Get(name string) (interface{}, error) {
 	switch name {
 	case "sse":
 		return d.sse, nil
-    default:
-        return nil, fmt.Errorf("service not found: %s", name)
-    }
+	default:
+		return nil, fmt.Errorf("service not found: %s", name)
+	}
 }
 
 // WorkflowControl implements ops.ServiceDependencies2 for tests.
 func (d depsImpl) WorkflowControl() (workflowctl.WorkflowControl, bool) { return d.ctl, d.ctl != nil }
 
 // suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
-type suiteWorkflowCtl struct{ env *testsuite.TestWorkflowEnvironment }
+type suiteWorkflowCtl struct {
+	env *testsuite.TestWorkflowEnvironment
+}
 
 func (c *suiteWorkflowCtl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
-    status := workflowctl.StatusRunning
-    if c.env.IsWorkflowCompleted() {
-        status = workflowctl.StatusCompleted
-    }
-    return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
+	status := workflowctl.StatusRunning
+	if c.env.IsWorkflowCompleted() {
+		status = workflowctl.StatusCompleted
+	}
+	return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
 }
 
 func (c *suiteWorkflowCtl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
-    c.env.SignalWorkflow(signalName, payload)
-    return nil
+	c.env.SignalWorkflow(signalName, payload)
+	return nil
 }
 
-func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error { return nil }
+func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
+	return nil
+}
 
 func buildTestServer(t *testing.T) (*web.Server, coreops.SSEManager) {
 	t.Helper()
@@ -119,8 +123,8 @@ func buildServerWithSSEOnly(t *testing.T) (*web.Server, coreops.SSEManager) {
 	sseMgr := inputops.NewSimpleSSEManager()
 	op := inputops.GetOp()
 	mgmt := op.GetManagementService()
-    // initialize with SSE only and no workflow control
-    err := mgmt.Initialize(depsImpl{sse: sseMgr, ctl: nil})
+	// initialize with SSE only and no workflow control
+	err := mgmt.Initialize(depsImpl{sse: sseMgr, ctl: nil})
 	require.NoError(t, err)
 
 	var routes []web.ExtensionRoute
@@ -195,7 +199,6 @@ func TestInputRoutes_SSEConnect(t *testing.T) {
 	require.Contains(t, body, "event: error")
 }
 
-
 func TestInputRoutes_SimpleInputCycle(t *testing.T) {
 	// Use WorkflowTestSuite (no external server)
 	ts := &testsuite.WorkflowTestSuite{}
@@ -204,7 +207,9 @@ func TestInputRoutes_SimpleInputCycle(t *testing.T) {
 
 	// Start a workflow instance that waits for user-response signal
 	wfID := fmt.Sprintf("test-input-%d", time.Now().UnixNano())
+	id := "api-input-id"
 	params := inputpkg.InputWorkflowParams{
+		ID:         id,
 		Form:       inputpkg.InputForm{Question: "Approve?", Type: inputpkg.FieldTypeMultipleChoice, Options: []inputpkg.Option{{Value: "yes"}, {Value: "no"}}, Timeout: 20 * time.Second},
 		Timeout:    20 * time.Second,
 		BoxID:      "test-cell",
@@ -238,10 +243,10 @@ func TestInputRoutes_SimpleInputCycle(t *testing.T) {
 	deps := web.Dependencies{Storage: store, Graph: gb, Files: fb, Git: gr, Container: cm, ExtensionRoutes: routes}
 	api := web.NewServer(web.Config{Port: 0, CORSOrigins: []string{}}, deps)
 
-    // Submit response to trigger workflow signal via workflow control
-    t.Logf("POST respond for workflowID=%s", wfID)
-    body := strings.NewReader(`{"fields":{"approval":"yes"},"metadata":{"via":"api-test"}}`)
-    postPath := "/api/user-inputs/" + wfID + "/respond"
+	// Submit response to trigger workflow signal via workflow control
+	t.Logf("POST respond for workflowID=%s", wfID)
+	body := strings.NewReader(`{"id":"` + id + `","user_id":"tester","fields":{"approval":"yes"},"metadata":{"via":"api-test"}}`)
+	postPath := "/api/user-inputs/" + wfID + "/respond"
 	t.Logf("TEST_WRAPPER: posting respond path=%s", postPath)
 	rec := httptest.NewRecorder()
 	postReq := httptest.NewRequest(http.MethodPost, postPath, body)

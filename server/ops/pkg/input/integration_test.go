@@ -102,7 +102,7 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 
 	// Setup signal to respond to the input request
 	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow("user-response", UserResponseSignal{
+		env.SignalWorkflow("user-response:child-workflow-id", UserResponseSignal{
 			Fields: map[string]interface{}{
 				"response": "yes",
 			},
@@ -116,6 +116,7 @@ func TestInputActivityWithChildWorkflow(t *testing.T) {
 
 	// Execute the InputCollectionWorkflow directly
 	params := InputWorkflowParams{
+		ID: "child-workflow-id",
 		Form: InputForm{
 			Question: "Do you approve?",
 			Type:     FieldTypeMultipleChoice,
@@ -184,6 +185,8 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 		// Prepare response submission
 		submission := map[string]interface{}{
+			"id":      "input-respond-1",
+			"user_id": "test-user-789",
 			"fields": map[string]interface{}{
 				"approval": "yes",
 				"comments": "Looks good to me",
@@ -196,7 +199,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		body, _ := json.Marshal(submission)
 		req := httptest.NewRequest("POST", "/api/user-inputs/"+workflowID+"/respond", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-User-ID", "test-user-789")
+		req.Header.Set("X-User-ID", "header-user")
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -207,7 +210,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
 		require.NoError(t, err)
-		assert.True(t, response["success"].(bool))
+		assert.True(t, response["ok"].(bool))
 
 		// Verify mock workflow control recorded the signal
 		mrsp, ok := mctl.LastSignalArg.(UserResponseSignal)
@@ -215,6 +218,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		assert.Equal(t, "test-user-789", mrsp.UserID)
 		assert.Equal(t, "yes", mrsp.Fields["approval"])
 		assert.Equal(t, "Looks good to me", mrsp.Fields["comments"])
+		assert.Equal(t, "user-response:input-respond-1", mctl.LastSignalName)
 	})
 
 	// Test 3: Cancel workflow (cancel success)
@@ -222,6 +226,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		workflowID := "test-workflow-456"
 
 		cancelRequest := map[string]string{
+			"id":     "input-respond-1",
 			"reason": "User cancelled the operation",
 		}
 
@@ -234,8 +239,13 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 
+		var resp map[string]interface{}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		assert.True(t, resp["ok"].(bool))
+
 		// Verify cancel was recorded by mock control
 		assert.Equal(t, workflowID, mctl.LastCancelRef.WorkflowID)
+		assert.Equal(t, "User cancelled the operation", mctl.LastCancelReason)
 	})
 }
 
@@ -264,22 +274,29 @@ func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
 
 	// Submit a response
 	submission := map[string]interface{}{
+		"id":       "input-sse-1",
+		"user_id":  "user-sse-1",
 		"fields":   map[string]interface{}{"approval": "yes"},
 		"metadata": map[string]interface{}{"submitted_via": "api-test"},
 	}
 	body, _ := json.Marshal(submission)
 	req := httptest.NewRequest("POST", "/api/user-inputs/"+workflowID+"/respond", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-User-ID", "user-sse-1")
+	req.Header.Set("X-User-ID", "header-user")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.True(t, resp["ok"].(bool))
 
 	// Expect an SSE event broadcast
 	select {
 	case evt := <-events:
 		assert.Equal(t, "input_completed", evt.Type)
 		assert.Equal(t, workflowID, evt.Data["workflow_id"])
+		assert.Equal(t, "input-sse-1", evt.Data["id"])
 		assert.Equal(t, "user-sse-1", evt.Data["user_id"])
 	case <-time.After(1 * time.Second):
 		t.Fatal("expected SSE event not received")
@@ -305,6 +322,7 @@ func TestSSEEventBroadcasting(t *testing.T) {
 		Type: "input_completed",
 		Data: map[string]interface{}{
 			"workflow_id": "test-123",
+			"id":          "event-1",
 			"user_id":     "user-456",
 		},
 	}
@@ -413,6 +431,7 @@ func TestEndToEndScenario(t *testing.T) {
 
 		// Execute workflow with very short timeout
 		params := InputWorkflowParams{
+			ID: "timeout-scenario",
 			Form: InputForm{
 				Question: "Quick decision needed",
 				Type:     FieldTypeMultipleChoice,
@@ -440,27 +459,27 @@ func TestEndToEndScenario(t *testing.T) {
 
 // TestActivityWithTemporalContext tests the activity with injected Temporal context
 func TestActivityWithTemporalContext(t *testing.T) {
-    // Run through the workflow environment and ensure signaling completes
-    ts := &testsuite.WorkflowTestSuite{}
-    env := ts.NewTestWorkflowEnvironment()
-    env.RegisterWorkflow(InputCollectionWorkflow)
+	// Run through the workflow environment and ensure signaling completes
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	env.RegisterWorkflow(InputCollectionWorkflow)
 
-    cfg := Config{Question: "Test question?", Type: FieldTypeShortAnswer, Timeout: 2}
-    in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
-    form := newInputActivity().buildForm(cfg, in)
-    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
+	cfg := Config{Question: "Test question?", Type: FieldTypeShortAnswer, Timeout: 2}
+	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+	form := newInputActivity().buildForm(cfg, in)
+	params := InputWorkflowParams{ID: "temporal-context", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
-    env.RegisterDelayedCallback(func() {
-        env.SignalWorkflow("user-response", UserResponseSignal{Fields: map[string]interface{}{"answer": "ok"}, UserID: "u"})
-    }, 500*time.Millisecond)
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow("user-response:temporal-context", UserResponseSignal{Fields: map[string]interface{}{"answer": "ok"}, UserID: "u"})
+	}, 500*time.Millisecond)
 
-    env.ExecuteWorkflow(InputCollectionWorkflow, params)
-    require.True(t, env.IsWorkflowCompleted())
-    require.NoError(t, env.GetWorkflowError())
+	env.ExecuteWorkflow(InputCollectionWorkflow, params)
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
 
-    // Management service still available for API layer
-    activity := newInputActivity()
-    assert.NotNil(t, activity.GetManagementService())
+	// Management service still available for API layer
+	activity := newInputActivity()
+	assert.NotNil(t, activity.GetManagementService())
 }
 
 // TestMultiFieldFormIntegration tests complex multi-field forms
@@ -581,25 +600,25 @@ func TestMultiFieldFormIntegration(t *testing.T) {
 
 // BenchmarkInputActivityExecution benchmarks the input activity performance
 func BenchmarkInputActivityExecution(b *testing.B) {
-    // Benchmark the minimal end-to-end workflow path with immediate signal
-    cfg := Config{Question: "Benchmark?", Type: FieldTypeShortAnswer, Timeout: 1}
-    in := Input{BoxID: "bench-cell", ActivityID: "bench-activity", Config: cfg}
-    form := newInputActivity().buildForm(cfg, in)
-    params := InputWorkflowParams{Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
+	// Benchmark the minimal end-to-end workflow path with immediate signal
+	cfg := Config{Question: "Benchmark?", Type: FieldTypeShortAnswer, Timeout: 1}
+	in := Input{BoxID: "bench-cell", ActivityID: "bench-activity", Config: cfg}
+	form := newInputActivity().buildForm(cfg, in)
+	params := InputWorkflowParams{ID: "benchmark-id", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        ts := &testsuite.WorkflowTestSuite{}
-        env := ts.NewTestWorkflowEnvironment()
-        env.RegisterWorkflow(InputCollectionWorkflow)
-        env.RegisterDelayedCallback(func() {
-            env.SignalWorkflow("user-response", UserResponseSignal{Fields: map[string]interface{}{"f": "v"}, UserID: "u"})
-        }, 0)
-        env.ExecuteWorkflow(InputCollectionWorkflow, params)
-        if env.GetWorkflowError() != nil {
-            b.Fatal(env.GetWorkflowError())
-        }
-    }
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ts := &testsuite.WorkflowTestSuite{}
+		env := ts.NewTestWorkflowEnvironment()
+		env.RegisterWorkflow(InputCollectionWorkflow)
+		env.RegisterDelayedCallback(func() {
+			env.SignalWorkflow("user-response:benchmark-id", UserResponseSignal{Fields: map[string]interface{}{"f": "v"}, UserID: "u"})
+		}, 0)
+		env.ExecuteWorkflow(InputCollectionWorkflow, params)
+		if env.GetWorkflowError() != nil {
+			b.Fatal(env.GetWorkflowError())
+		}
+	}
 }
 
 // TestWorkerIntegration tests the activity registration with a Temporal worker
@@ -614,8 +633,8 @@ func TestWorkerIntegration(t *testing.T) {
 	env.RegisterWorkflow(RecipeWorkflow)
 	env.RegisterWorkflow(InputCollectionWorkflow)
 
-    // Register a no-op activity for signature compatibility
-    env.RegisterActivity(func(context.Context, Input) (Output, error) { return Output{}, nil })
+	// Register a no-op activity for signature compatibility
+	env.RegisterActivity(func(context.Context, Input) (Output, error) { return Output{}, nil })
 
 	// Set up activity options
 	env.SetWorkerOptions(worker.Options{

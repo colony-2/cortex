@@ -8,17 +8,17 @@ import (
 type FieldType string
 
 const (
-	FieldTypeShortAnswer       FieldType = "short_answer"
-	FieldTypeParagraphText     FieldType = "paragraph_text"
-	FieldTypeMultipleChoice    FieldType = "multiple_choice"
-	FieldTypeCheckboxes        FieldType = "checkboxes"
-	FieldTypeDropdown          FieldType = "dropdown"
-	FieldTypeLinearScale       FieldType = "linear_scale"
+	FieldTypeShortAnswer        FieldType = "short_answer"
+	FieldTypeParagraphText      FieldType = "paragraph_text"
+	FieldTypeMultipleChoice     FieldType = "multiple_choice"
+	FieldTypeCheckboxes         FieldType = "checkboxes"
+	FieldTypeDropdown           FieldType = "dropdown"
+	FieldTypeLinearScale        FieldType = "linear_scale"
 	FieldTypeMultipleChoiceGrid FieldType = "multiple_choice_grid"
-	FieldTypeCheckboxGrid      FieldType = "checkbox_grid"
-	FieldTypeDate              FieldType = "date"
-	FieldTypeTime              FieldType = "time"
-	FieldTypeFileUpload        FieldType = "file_upload"
+	FieldTypeCheckboxGrid       FieldType = "checkbox_grid"
+	FieldTypeDate               FieldType = "date"
+	FieldTypeTime               FieldType = "time"
+	FieldTypeFileUpload         FieldType = "file_upload"
 )
 
 // Option represents a choice option for fields like multiple choice, dropdown, etc.
@@ -58,9 +58,9 @@ type FormField struct {
 
 // FormContext represents context information for the form
 type FormContext struct {
-	Artifacts         []Artifact `json:"artifacts,omitempty" jsonschema:"description=Static artifact references"`
-	ArtifactsFromOutput string   `json:"artifacts_from_output,omitempty" jsonschema:"description=Reference to artifacts from previous activity output"`
-	ArtifactsGlob     []GlobPattern `json:"artifacts_glob,omitempty" jsonschema:"description=Glob patterns for artifact discovery"`
+	Artifacts           []Artifact    `json:"artifacts,omitempty" jsonschema:"description=Static artifact references"`
+	ArtifactsFromOutput string        `json:"artifacts_from_output,omitempty" jsonschema:"description=Reference to artifacts from previous activity output"`
+	ArtifactsGlob       []GlobPattern `json:"artifacts_glob,omitempty" jsonschema:"description=Glob patterns for artifact discovery"`
 }
 
 // Artifact represents a static artifact reference
@@ -76,15 +76,15 @@ type GlobPattern struct {
 // InputForm represents the complete form structure
 type InputForm struct {
 	// Single question fields
-	Question string    `json:"question,omitempty" jsonschema:"description=Single question text"`
-	Type     FieldType `json:"type,omitempty" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Field type for single question"`
-	Options  []Option  `json:"options,omitempty" jsonschema:"description=Options for single choice field"`
+	Question string       `json:"question,omitempty" jsonschema:"description=Single question text"`
+	Type     FieldType    `json:"type,omitempty" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Field type for single question"`
+	Options  []Option     `json:"options,omitempty" jsonschema:"description=Options for single choice field"`
 	Scale    *LinearScale `json:"scale,omitempty" jsonschema:"description=Configuration for linear scale fields"`
-	
+
 	// Multi-field form
-	Title   string      `json:"title,omitempty" jsonschema:"description=Form title"`
-	Fields  []FormField `json:"fields,omitempty" jsonschema:"description=Form fields for multi-field form"`
-	
+	Title  string      `json:"title,omitempty" jsonschema:"description=Form title"`
+	Fields []FormField `json:"fields,omitempty" jsonschema:"description=Form fields for multi-field form"`
+
 	// Common fields
 	Context FormContext   `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
 	Timeout time.Duration `json:"timeout,omitempty" jsonschema:"default=300,description=Timeout in seconds"`
@@ -94,14 +94,15 @@ type InputForm struct {
 type FormResponse struct {
 	ActivityID     string                 `json:"activity_id"`
 	UserID         string                 `json:"user_id"`
-	Response       interface{}            `json:"response,omitempty"`        // For single question
-	Fields         map[string]interface{} `json:"fields,omitempty"`          // For multi-field
+	Response       interface{}            `json:"response,omitempty"` // For single question
+	Fields         map[string]interface{} `json:"fields,omitempty"`   // For multi-field
 	SubmittedAt    time.Time              `json:"submitted_at"`
 	TimeToComplete int                    `json:"time_to_complete"`
 }
 
 // InputWorkflowParams represents parameters for the input collection workflow
 type InputWorkflowParams struct {
+	ID         string        `json:"id"`
 	Form       InputForm     `json:"form"`
 	Timeout    time.Duration `json:"timeout"`
 	BoxID      string        `json:"box_id"`
@@ -125,6 +126,7 @@ type UserResponseSignal struct {
 
 // PendingInput represents a pending input request
 type PendingInput struct {
+	ID         string `json:"id"`
 	WorkflowID string `json:"workflow_id"`
 	BoxID      string `json:"box_id"`
 	FormTitle  string `json:"form_title"`
