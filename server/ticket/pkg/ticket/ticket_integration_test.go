@@ -120,19 +120,14 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	changeEvent, err := svc.AppendEvent(ctx, created.ID, ticket.TicketEventInput{
-		Kind:      ticket.TicketEventKindTicket,
-		Actor:     creator,
-		EventTime: now,
-		Payload: ticket.TicketEventBody{
-			Ticket: &ticket.TicketEventPayload{
-				Changes: []ticket.TicketFieldChange{{
-					Field: ticket.TicketFieldName("stage"),
-					From:  "triage",
-					To:    "analysis",
-				}},
-			},
+	changeEvent, err := svc.AppendMarkdownEvent(ctx, created.ID, ticket.MarkdownEventInput{
+		Actor: creator,
+		Payload: ticket.MarkdownDocEventPayload{
+			Type: ticket.MarkdownDocAttached,
+			Name: "design",
+			Path: "docs/design.md",
 		},
+		EventTime: now,
 	})
 	require.NoError(t, err)
 	require.Equal(t, created.ID, changeEvent.TicketID)
@@ -153,20 +148,17 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	}
 	require.Len(t, listed, 1)
 	require.Equal(t, changeEvent.ID, listed[0].ID)
-	require.Equal(t, ticket.TicketEventPayloadTypeTicket, listed[0].PayloadType)
-	require.NotNil(t, listed[0].Payload.Ticket)
-	require.Len(t, listed[0].Payload.Ticket.Changes, 1)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, listed[0].PayloadType)
+	require.NotNil(t, listed[0].Payload.MarkdownDoc)
+	require.Equal(t, "design", listed[0].Payload.MarkdownDoc.Name)
 
-	workflowEvent, err := svc.AppendEvent(ctx, created.ID, ticket.TicketEventInput{
-		Kind:      ticket.TicketEventKindWorkflow,
+	workflowEvent, err := svc.AppendWorkflowEvent(ctx, created.ID, ticket.WorkflowEventInput{
 		Actor:     ticket.NewAgentActor("cell-a", "recipe", "exec-1", "hash-1"),
 		EventTime: now.Add(time.Minute),
-		Payload: ticket.TicketEventBody{
-			Workflow: &ticket.WorkflowEventPayload{
-				Type:       ticket.WorkflowEventRunning,
-				WorkflowID: ticket.WorkflowID("wf-123"),
-				RunID:      ticket.WorkflowRunID("run-1"),
-			},
+		Payload: ticket.WorkflowEventPayload{
+			Type:       ticket.WorkflowEventRunning,
+			WorkflowID: ticket.WorkflowID("wf-123"),
+			RunID:      ticket.WorkflowRunID("run-1"),
 		},
 	})
 	require.NoError(t, err)
@@ -186,9 +178,9 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 		beforeReset = append(beforeReset, evt)
 	}
 	require.Len(t, beforeReset, 2)
-	require.Equal(t, ticket.TicketEventPayloadTypeTicket, beforeReset[0].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, beforeReset[0].PayloadType)
 	require.Equal(t, ticket.TicketEventPayloadTypeWorkflow, beforeReset[1].PayloadType)
-	require.NotNil(t, beforeReset[0].Payload.Ticket)
+	require.NotNil(t, beforeReset[0].Payload.MarkdownDoc)
 	require.NotNil(t, beforeReset[1].Payload.Workflow)
 
 	reset, err := svc.ResetEvents(ctx, created.ID, ticket.TicketResetInput{
@@ -216,8 +208,8 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.Len(t, active, 1)
 	require.Equal(t, changeEvent.ID, active[0].ID)
 	require.Nil(t, active[0].ResetID)
-	require.Equal(t, ticket.TicketEventPayloadTypeTicket, active[0].PayloadType)
-	require.NotNil(t, active[0].Payload.Ticket)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, active[0].PayloadType)
+	require.NotNil(t, active[0].Payload.MarkdownDoc)
 
 	allIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
@@ -235,9 +227,9 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.Len(t, all, 2)
 	require.NotNil(t, all[1].ResetID)
 	require.Equal(t, reset.ID, *all[1].ResetID)
-	require.Equal(t, ticket.TicketEventPayloadTypeTicket, all[0].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, all[0].PayloadType)
 	require.Equal(t, ticket.TicketEventPayloadTypeWorkflow, all[1].PayloadType)
-	require.NotNil(t, all[0].Payload.Ticket)
+	require.NotNil(t, all[0].Payload.MarkdownDoc)
 	require.NotNil(t, all[1].Payload.Workflow)
 }
 

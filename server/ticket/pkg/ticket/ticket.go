@@ -43,7 +43,9 @@ type (
 	Clock                   = internalservice.Clock
 	CreateInput             = internalservice.CreateInput
 	UpdateInput             = internalservice.UpdateInput
-	TicketEventInput        = internalservice.TicketEventInput
+	WorkflowEventInput      = internalservice.WorkflowEventInput
+	MarkdownEventInput      = internalservice.MarkdownEventInput
+	ChangeSetEventInput     = internalservice.ChangeSetEventInput
 	TicketResetInput        = internalservice.TicketResetInput
 	Iterator[T any]         = internalstore.Iterator[T]
 	Store                   = internalstore.Store

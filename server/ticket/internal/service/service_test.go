@@ -15,6 +15,7 @@ import (
 type stubStore struct {
 	createFunc       func(ctx context.Context, ticket *model.Ticket) error
 	getFunc          func(ctx context.Context, id model.ID) (*model.Ticket, error)
+	getAtFunc        func(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error)
 	updateFunc       func(ctx context.Context, ticket *model.Ticket, fields ...string) error
 	searchFunc       func(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error)
 	searchStagesFunc func(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error)
@@ -63,6 +64,13 @@ func (s *stubStore) Get(ctx context.Context, id model.ID) (*model.Ticket, error)
 		return s.getFunc(ctx, id)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (s *stubStore) GetAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error) {
+	if s.getAtFunc != nil {
+		return s.getAtFunc(ctx, id, at)
+	}
+	return s.Get(ctx, id)
 }
 
 func (s *stubStore) Search(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error) {
@@ -256,7 +264,7 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	require.NotNil(t, updated.CompletedAt)
 	require.WithinDuration(t, now, updated.CompletedAt.UTC(), time.Millisecond)
 }
-func TestAppendEventStoresPayload(t *testing.T) {
+func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 	now := time.Date(2024, 9, 12, 9, 0, 0, 0, time.UTC)
 	ticketID := model.ID("ticket-1234567890123456789012")
 
@@ -284,34 +292,32 @@ func TestAppendEventStoresPayload(t *testing.T) {
 	require.NoError(t, err)
 
 	actor := NewUserActor("owner@example.com")
-	change := model.TicketFieldChange{Field: model.TicketFieldName("stage"), From: "triage", To: "analysis"}
 
-	event, err := svc.AppendEvent(context.Background(), ticketID, TicketEventInput{
-		Kind:  model.TicketEventKindTicket,
+	event, err := svc.AppendWorkflowEvent(context.Background(), ticketID, WorkflowEventInput{
 		Actor: actor,
-		Payload: model.TicketEventBody{
-			Ticket: &model.TicketEventPayload{
-				Changes: []model.TicketFieldChange{change},
-				Notes:   "updated",
-			},
+		Payload: model.WorkflowEventPayload{
+			Type:       model.WorkflowEventRunning,
+			WorkflowID: model.WorkflowID("wf-1"),
+			RunID:      model.WorkflowRunID("run-1"),
 		},
 	})
 	require.NoError(t, err)
 	require.Equal(t, model.TicketEventID("event-123456789012345678901"), event.ID)
 	require.Equal(t, ticketID, event.TicketID)
-	require.Equal(t, model.TicketEventPayloadTypeTicket, event.PayloadType)
-	require.Len(t, event.Payload.Ticket.Changes, 1)
-	require.Equal(t, "updated", event.Payload.Ticket.Notes)
+	require.Equal(t, model.TicketEventPayloadTypeWorkflow, event.PayloadType)
+	require.NotNil(t, event.Payload.Workflow)
+	require.Equal(t, model.WorkflowEventRunning, event.Payload.Workflow.Type)
+	require.Equal(t, model.WorkflowID("wf-1"), event.Payload.Workflow.WorkflowID)
+	require.Equal(t, model.WorkflowRunID("run-1"), event.Payload.Workflow.RunID)
 
 	select {
 	case captured := <-appended:
-		require.Equal(t, model.TicketEventKindTicket, captured.Kind)
-		require.Equal(t, model.TicketEventPayloadTypeTicket, captured.PayloadType)
-		require.NotNil(t, captured.Payload.Ticket)
-		require.Len(t, captured.Payload.Ticket.Changes, 1)
-		require.Equal(t, change, captured.Payload.Ticket.Changes[0])
-		require.Equal(t, "updated", captured.TicketData.Notes)
-		require.Equal(t, []model.TicketFieldChange{change}, []model.TicketFieldChange(captured.TicketChanges))
+		require.Equal(t, model.TicketEventKindWorkflow, captured.Kind)
+		require.Equal(t, model.TicketEventPayloadTypeWorkflow, captured.PayloadType)
+		require.NotNil(t, captured.Payload.Workflow)
+		require.Equal(t, model.WorkflowEventRunning, captured.Payload.Workflow.Type)
+		require.Equal(t, model.WorkflowID("wf-1"), captured.Payload.Workflow.WorkflowID)
+		require.Equal(t, model.WorkflowRunID("run-1"), captured.Payload.Workflow.RunID)
 	default:
 		t.Fatal("expected event to be appended")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	"gorm.io/gorm"
@@ -15,6 +16,7 @@ type Store interface {
 	WithTx(ctx context.Context, fn func(ctx context.Context, store Store) error) error
 	Create(ctx context.Context, ticket *model.Ticket) error
 	Get(ctx context.Context, id model.ID) (*model.Ticket, error)
+	GetAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error)
 	Search(ctx context.Context, filter model.SearchFilter) (Iterator[*model.Ticket], error)
 	SearchStages(ctx context.Context, filter model.SearchFilter) (Iterator[model.Stage], error)
 	Update(ctx context.Context, ticket *model.Ticket, fields ...string) error
@@ -47,12 +49,32 @@ func (s *store) WithTx(ctx context.Context, fn func(ctx context.Context, store S
 }
 
 func (s *store) Create(ctx context.Context, ticket *model.Ticket) error {
+	if ticket.ValidFrom.IsZero() {
+		ticket.ValidFrom = time.Now().UTC()
+	}
+	if ticket.ValidUntil.IsZero() {
+		ticket.ValidUntil = temporalInfinity()
+	}
 	return s.db.WithContext(ctx).Create(ticket).Error
 }
 
 func (s *store) Get(ctx context.Context, id model.ID) (*model.Ticket, error) {
 	var ticket model.Ticket
-	err := s.db.WithContext(ctx).First(&ticket, "id = ?", id).Error
+	err := s.db.WithContext(ctx).
+		Where("id = ? AND valid_until = ?", id, temporalInfinity()).
+		First(&ticket).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ticket, nil
+}
+
+func (s *store) GetAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error) {
+	var ticket model.Ticket
+	err := s.db.WithContext(ctx).
+		Where("id = ? AND valid_from <= ? AND ? < valid_until", id, at, at).
+		Order("valid_from DESC").
+		First(&ticket).Error
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +117,12 @@ func (s *store) SearchStages(ctx context.Context, filter model.SearchFilter) (It
 func applyFilter(db *gorm.DB, filter model.SearchFilter) *gorm.DB {
 	if db == nil {
 		return db
+	}
+	if filter.At != nil {
+		at := *filter.At
+		db = db.Where("valid_from <= ? AND ? < valid_until", at, at)
+	} else {
+		db = db.Where("valid_until = ?", temporalInfinity())
 	}
 	if len(filter.StageAny) > 0 {
 		db = db.Where("stage IN ?", filter.StageAny)
@@ -139,6 +167,12 @@ func ensureTemporalSetup(db *gorm.DB) error {
 	if err := backfillTemporalColumns(db); err != nil {
 		return err
 	}
+	if err := db.Exec("ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_pkey").Error; err != nil {
+		return fmt.Errorf("tickets store: drop primary key: %w", err)
+	}
+	if err := db.Exec("ALTER TABLE tickets ADD PRIMARY KEY (id, valid_from)").Error; err != nil {
+		return fmt.Errorf("tickets store: add composite primary key: %w", err)
+	}
 	if !db.Migrator().HasConstraint(&model.Ticket{}, temporalRangeConstraint) {
 		stmt := "ALTER TABLE tickets ADD CONSTRAINT " + temporalRangeConstraint + " EXCLUDE USING gist (id WITH =, tsrange(valid_from, valid_until) WITH &&)"
 		if err := db.Exec(stmt).Error; err != nil {
@@ -156,4 +190,8 @@ func backfillTemporalColumns(db *gorm.DB) error {
 		return fmt.Errorf("tickets store: backfill valid_until: %w", err)
 	}
 	return nil
+}
+
+func temporalInfinity() time.Time {
+	return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 }

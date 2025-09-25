@@ -25,10 +25,21 @@ type UpdateInput struct {
 	Actor           *model.ActorPatch
 }
 
-type TicketEventInput struct {
-	Kind      model.TicketEventKind `validate:"required"`
-	Actor     model.Actor           `validate:"required"`
-	Payload   model.TicketEventBody
+type WorkflowEventInput struct {
+	Actor     model.Actor
+	Payload   model.WorkflowEventPayload
+	EventTime time.Time
+}
+
+type MarkdownEventInput struct {
+	Actor     model.Actor
+	Payload   model.MarkdownDocEventPayload
+	EventTime time.Time
+}
+
+type ChangeSetEventInput struct {
+	Actor     model.Actor
+	Payload   model.ChangeSetEventPayload
 	EventTime time.Time
 }
 

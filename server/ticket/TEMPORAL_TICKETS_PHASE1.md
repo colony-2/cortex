@@ -8,10 +8,10 @@
 
 ## Tasks
 1. ALTER TABLE `tickets` to add `valid_from` & `valid_until` (defaulting to `now()` and `'infinity'` during migration/backfill).
-2. Enable `btree_gist` extension (no-op if already present).
-3. Add constraint: `EXCLUDE USING gist (id WITH =, tsrange(valid_from, valid_until) WITH &&)`.
-4. Update GORM model definitions to include new columns (read/write support only; no behavioural change yet).
-5. Add minimal tests confirming migration/backfill logic runs (e.g. verifying constraint exists).
+2. Drop the legacy single-column primary key and add a composite primary key over `(id, valid_from)` to permit multiple temporal slices per ticket.
+3. Enable `btree_gist` extension (no-op if already present).
+4. Add constraint: `EXCLUDE USING gist (id WITH =, tsrange(valid_from, valid_until) WITH &&)`.
+5. Update GORM model definitions to include the new columns/primary key (read/write support only; no behavioural change yet).
+6. Add minimal tests confirming migration/backfill logic runs (e.g. verifying constraint exists).
 
 Phase 1 lays the groundwork for subsequent service changes.
-

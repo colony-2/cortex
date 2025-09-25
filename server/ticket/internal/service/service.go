@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"maps"
 	"reflect"
-	"slices"
 	"strings"
 	"time"
 
@@ -41,7 +39,10 @@ type Service interface {
 	SearchTickets(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error)
 	SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error)
 	GetStates(ctx context.Context) ([]model.State, error)
-	AppendEvent(ctx context.Context, id model.ID, input TicketEventInput) (*model.TicketEvent, error)
+	GetTicketAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error)
+	AppendWorkflowEvent(ctx context.Context, id model.ID, input WorkflowEventInput) (*model.TicketEvent, error)
+	AppendMarkdownEvent(ctx context.Context, id model.ID, input MarkdownEventInput) (*model.TicketEvent, error)
+	AppendChangeSetEvent(ctx context.Context, id model.ID, input ChangeSetEventInput) (*model.TicketEvent, error)
 	ListEvents(ctx context.Context, id model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
 	ResetEvents(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
 }
@@ -164,58 +165,78 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		}
 
 		now := s.clock.Now()
-		fieldSet := map[string]struct{}{"UpdatedAt": {}}
-		existing.UpdatedAt = now
-
-		prevStage := existing.Stage
-		stageChanged := false
-		if normalized.Stage != nil {
-			if existing.Stage != *normalized.Stage {
-				stageChanged = true
-			}
-			existing.Stage = *normalized.Stage
-			fieldSet["Stage"] = struct{}{}
+		if !existing.ValidFrom.Before(now) {
+			now = existing.ValidFrom.Add(time.Microsecond)
 		}
 
-		if normalized.State != nil {
-			existing.State = *normalized.State
-			fieldSet["State"] = struct{}{}
-		}
-
-		if normalized.Actor != nil {
-			actor, err := s.applyActorPatch(existing.Creator, *normalized.Actor)
-			if err != nil {
-				return err
-			}
-			existing.Creator = actor
-			fieldSet["Creator"] = struct{}{}
-		}
-
-		var completedExplicit bool
-		if normalized.CompletedAt != nil {
-			existing.CompletedAt = normalized.CompletedAt
-			fieldSet["CompletedAt"] = struct{}{}
-			completedExplicit = true
-		}
-
-		if existing.Stage == model.CompletedStage && existing.CompletedAt == nil {
-			existing.CompletedAt = ptrTime(now)
-			fieldSet["CompletedAt"] = struct{}{}
-		}
-
-		if stageChanged && prevStage == model.CompletedStage && existing.Stage != model.CompletedStage && !completedExplicit {
-			existing.CompletedAt = nil
-			fieldSet["CompletedAt"] = struct{}{}
-		}
-
-		fields := slices.Collect(maps.Keys(fieldSet))
-		if err := st.Update(ctx, existing, fields...); err != nil {
+		original := *existing
+		closeSlice := *existing
+		closeSlice.ValidUntil = now
+		closeSlice.UpdatedAt = now
+		if err := st.Update(ctx, &closeSlice, "ValidUntil", "UpdatedAt"); err != nil {
 			if errors.Is(err, store.ErrOptimisticLock) {
 				return ErrVersionConflict
 			}
 			return err
 		}
-		updated = existing
+
+		next := original
+		next.ValidFrom = now
+		next.ValidUntil = temporalInfinity()
+		next.UpdatedAt = now
+		next.Version = optimisticlock.Version{Int64: original.Version.Int64 + 1, Valid: true}
+
+		var changes []model.TicketFieldChange
+
+		if normalized.Stage != nil {
+			if next.Stage != *normalized.Stage {
+				changes = append(changes, model.TicketFieldChange{Field: model.TicketFieldName("stage"), From: string(next.Stage), To: string(*normalized.Stage)})
+			}
+			next.Stage = *normalized.Stage
+		}
+
+		if normalized.State != nil {
+			if next.State != *normalized.State {
+				changes = append(changes, model.TicketFieldChange{Field: model.TicketFieldName("state"), From: string(next.State), To: string(*normalized.State)})
+			}
+			next.State = *normalized.State
+		}
+
+		if normalized.Actor != nil {
+			actor, err := s.applyActorPatch(next.Creator, *normalized.Actor)
+			if err != nil {
+				return err
+			}
+			if actorSummary(next.Creator) != actorSummary(actor) {
+				changes = append(changes, model.TicketFieldChange{Field: model.TicketFieldName("creator"), From: actorSummary(next.Creator), To: actorSummary(actor)})
+			}
+			next.Creator = actor
+		}
+
+		var completedExplicit bool
+		if normalized.CompletedAt != nil {
+			next.CompletedAt = normalized.CompletedAt
+			completedExplicit = true
+		}
+
+		if next.Stage == model.CompletedStage && next.CompletedAt == nil {
+			next.CompletedAt = ptrTime(now)
+		}
+
+		if original.Stage == model.CompletedStage && next.Stage != model.CompletedStage && !completedExplicit {
+			next.CompletedAt = nil
+		}
+
+		if err := st.Create(ctx, &next); err != nil {
+			return err
+		}
+		updated = &next
+
+		if len(changes) > 0 {
+			if _, err := s.appendTicketEvent(ctx, id, next.Creator, changes, now); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -236,6 +257,10 @@ func (s *service) SearchStages(ctx context.Context, filter model.SearchFilter) (
 func (s *service) GetStates(ctx context.Context) ([]model.State, error) {
 	_ = ctx
 	return model.BuiltinStates(), nil
+}
+
+func (s *service) GetTicketAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error) {
+	return s.store.GetAt(ctx, id, at)
 }
 
 func (s *service) validateCreateInput(input CreateInput) error {
@@ -306,6 +331,20 @@ func ptrTime(t time.Time) *time.Time {
 	return &tt
 }
 
+func actorSummary(actor model.Actor) string {
+	switch actor.Type {
+	case model.ActorTypeUser:
+		if actor.User != nil {
+			return string(actor.User.Email)
+		}
+	case model.ActorTypeAgent:
+		if actor.Agent != nil {
+			return strings.Join([]string{actor.Agent.CellName, actor.Agent.WorkflowName, actor.Agent.ExecutionID}, ":")
+		}
+	}
+	return string(actor.Type)
+}
+
 func newValidator() (*validator.Validate, error) {
 	v := validator.New()
 	if err := v.RegisterValidation("stage", stageValidator); err != nil {
@@ -318,7 +357,6 @@ func newValidator() (*validator.Validate, error) {
 		return nil, err
 	}
 	v.RegisterStructValidation(actorStructValidation, model.Actor{})
-	v.RegisterStructValidation(ticketEventInputValidation, TicketEventInput{})
 	return v, nil
 }
 
@@ -385,55 +423,6 @@ func actorStructValidation(sl validator.StructLevel) {
 		}
 	default:
 		sl.ReportError(actor.Type, "Actor", "Actor", "type", "")
-	}
-}
-
-func ticketEventInputValidation(sl validator.StructLevel) {
-	input, ok := sl.Current().Interface().(TicketEventInput)
-	if !ok {
-		return
-	}
-	body := input.Payload
-	setCount := 0
-	if body.Ticket != nil {
-		setCount++
-	}
-	if body.Workflow != nil {
-		setCount++
-	}
-	if body.MarkdownDoc != nil {
-		setCount++
-	}
-	if body.ChangeSet != nil {
-		setCount++
-	}
-	if setCount != 1 {
-		sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
-		return
-	}
-
-	switch input.Kind {
-	case model.TicketEventKindTicket:
-		if body.Ticket == nil {
-			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
-		}
-	case model.TicketEventKindWorkflow:
-		wf := body.Workflow
-		if wf == nil || wf.Type == "" || wf.WorkflowID == "" || wf.RunID == "" {
-			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
-		}
-	case model.TicketEventKindMarkdownDoc:
-		doc := body.MarkdownDoc
-		if doc == nil || doc.Type == "" || strings.TrimSpace(doc.Name) == "" || strings.TrimSpace(doc.Path) == "" {
-			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
-		}
-	case model.TicketEventKindChangeSet:
-		cs := body.ChangeSet
-		if cs == nil || cs.Type == "" || strings.TrimSpace(cs.Path) == "" {
-			sl.ReportError(body, "Payload", "Payload", "ticket_event_payload", "")
-		}
-	default:
-		sl.ReportError(input.Kind, "Kind", "Kind", "ticket_event_kind", "")
 	}
 }
 

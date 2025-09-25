@@ -47,7 +47,7 @@ type Actor struct {
 }
 
 type Ticket struct {
-	ID          ID                     `gorm:"primaryKey;type:char(26)"`
+	ID          ID                     `gorm:"type:char(26);index"`
 	Version     optimisticlock.Version `gorm:"column:version"`
 	CellName    core.CellName
 	Title       string
@@ -58,7 +58,7 @@ type Ticket struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time
-	ValidFrom   time.Time `gorm:"type:timestamp"`
+	ValidFrom   time.Time `gorm:"primaryKey;type:timestamp"`
 	ValidUntil  time.Time `gorm:"type:timestamp"`
 }
 

@@ -160,15 +160,28 @@ type EventStore interface {
 
 // pkg/ticket additions
 type Service interface {
-    AppendEvent(ctx context.Context, id ticket.ID, input TicketEventInput) (*model.TicketEvent, error)
+    AppendWorkflowEvent(ctx context.Context, id ticket.ID, input WorkflowEventInput) (*model.TicketEvent, error)
+    AppendMarkdownEvent(ctx context.Context, id ticket.ID, input MarkdownEventInput) (*model.TicketEvent, error)
+    AppendChangeSetEvent(ctx context.Context, id ticket.ID, input ChangeSetEventInput) (*model.TicketEvent, error)
     ListEvents(ctx context.Context, id ticket.ID, filter TicketEventFilter) (ticket.Iterator[*model.TicketEvent], error)
     ResetEvents(ctx context.Context, id ticket.ID, input TicketResetInput) (*model.TicketReset, error)
 }
 
-type TicketEventInput struct {
-    Kind    TicketEventKind
-    Actor   ticket.Actor
-    Payload TicketEventBody
+type WorkflowEventInput struct {
+    Actor     ticket.Actor
+    Payload   ticket.WorkflowEventPayload
+    EventTime time.Time
+}
+
+type MarkdownEventInput struct {
+    Actor     ticket.Actor
+    Payload   ticket.MarkdownDocEventPayload
+    EventTime time.Time
+}
+
+type ChangeSetEventInput struct {
+    Actor     ticket.Actor
+    Payload   ticket.ChangeSetEventPayload
     EventTime time.Time
 }
 
@@ -178,6 +191,7 @@ type TicketEventFilter struct {
     Types        []string
     Since        *time.Time
     Until        *time.Time
+    At           *time.Time
     IncludeReset bool
 }
 
@@ -187,38 +201,30 @@ type TicketResetInput struct {
     LastValidEvent *TicketEventID
 }
 ```
-- `AppendEvent` uses the shared validator to enforce the discriminator/one-of payload rules, stamps missing `EventTime` with `time.Now()`, and persists the event alongside its `PayloadType`.
+- The append helpers validate actors and payloads, stamp missing `EventTime` values with `time.Now()`, and persist the event alongside its `PayloadType`.
 - `ResetEvents` performs a transactional reset: it creates the reset record and updates each affected event’s `ResetID` within a single transaction. When `LastValidEvent` is set, all later events without a `ResetID` are reset; when nil, every non-reset event for the ticket is reset. Services may emit a follow-up ticket event describing the reset, but historical rows remain untouched.
 - Event iterators behave like the prior activity iterators; callers must close them and treat `ticket.ErrIteratorDone` as a normal termination signal.
 - `TicketEventFilter.PayloadTypes` filters on the discriminator column, while `TicketEventFilter.Types` continues to match payload-specific subtype values (e.g. workflow status or artifact lifecycle transitions).
 
 ## Usage Example
 ```go
-_ , _ = svc.AppendEvent(ctx, ticketID, ticket.TicketEventInput{
-    Kind:  ticket.TicketEventKindTicket,
-    Actor: ticket.AutomationActor("stage-sync", cellRef),
+_, _ = svc.AppendMarkdownEvent(ctx, ticketID, ticket.MarkdownEventInput{
+    Actor: ticket.AutomationActor("docs-sync", cellRef),
     EventTime: time.Now(),
-    Payload: ticket.TicketEventBody{
-        Ticket: &ticket.TicketEventPayload{
-            Changes: []ticket.TicketFieldChange{{
-                Field: ticket.FieldStage,
-                From:  string(oldStage),
-                To:    string(newStage),
-            }},
-        },
+    Payload: ticket.MarkdownDocEventPayload{
+        Type: ticket.MarkdownDocAttached,
+        Name: "design",
+        Path: "docs/design.md",
     },
 })
 
-_, _ = svc.AppendEvent(ctx, ticketID, ticket.TicketEventInput{
-    Kind:  ticket.TicketEventKindWorkflow,
+_, _ = svc.AppendWorkflowEvent(ctx, ticketID, ticket.WorkflowEventInput{
     Actor: ticket.AutomationActor("recipe-worker", cellRef),
     EventTime: time.Now(),
-    Payload: ticket.TicketEventBody{
-        Workflow: &ticket.WorkflowEventPayload{
-            Type:       ticket.WorkflowEventRunning,
-            WorkflowID: ticket.WorkflowID(run.WorkflowID),
-            RunID:      ticket.WorkflowRunID(run.RunID),
-        },
+    Payload: ticket.WorkflowEventPayload{
+        Type:       ticket.WorkflowEventRunning,
+        WorkflowID: ticket.WorkflowID(run.WorkflowID),
+        RunID:      ticket.WorkflowRunID(run.RunID),
     },
 })
 
