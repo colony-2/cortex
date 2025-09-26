@@ -9,6 +9,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	"gorm.io/gorm/clause"
 	"gorm.io/plugin/optimisticlock"
 )
 
@@ -34,9 +35,44 @@ func (s *service) appendTicketEvent(ctx context.Context, id model.ID, actor mode
 	return s.appendEvent(ctx, id, actor, model.TicketEventKindTicket, body, eventTime)
 }
 
+func (s *service) appendTicketEventInTx(ctx context.Context, st store.Store, snapshot *model.Ticket, id model.ID, actor model.Actor, changes []model.TicketFieldChange, eventTime time.Time) (*model.TicketEvent, error) {
+	body := model.TicketEventBody{
+		Ticket: &model.TicketEventPayload{Changes: changes},
+	}
+	return s.appendEventInTx(ctx, st, snapshot, id, actor, model.TicketEventKindTicket, body, eventTime)
+}
+
 func (s *service) appendEvent(ctx context.Context, id model.ID, rawActor model.Actor, kind model.TicketEventKind, body model.TicketEventBody, eventTime time.Time) (*model.TicketEvent, error) {
-	if _, err := s.store.Get(ctx, id); err != nil {
+	snapshot, err := s.store.Get(ctx, id)
+	if err != nil {
 		return nil, err
+	}
+	if err := s.attachLastReset(ctx, snapshot); err != nil {
+		return nil, err
+	}
+
+	var appended *model.TicketEvent
+	err = s.store.WithTx(ctx, func(ctx context.Context, st store.Store) error {
+		event, err := s.appendEventInTx(ctx, st, snapshot, id, rawActor, kind, body, eventTime)
+		if err != nil {
+			return err
+		}
+		appended = event
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return appended, nil
+}
+
+func (s *service) appendEventInTx(ctx context.Context, st store.Store, snapshot *model.Ticket, id model.ID, rawActor model.Actor, kind model.TicketEventKind, body model.TicketEventBody, eventTime time.Time) (*model.TicketEvent, error) {
+	if st == nil {
+		return nil, errors.New("ticket: nil transactional store")
+	}
+	if snapshot == nil {
+		return nil, errors.New("ticket: nil snapshot for append")
 	}
 
 	sanitizedActor := sanitizeActorFields(rawActor)
@@ -56,23 +92,65 @@ func (s *service) appendEvent(ctx context.Context, id model.ID, rawActor model.A
 		eventTime = s.clock.Now()
 	}
 	eventTime = eventTime.UTC()
+	createdAt := s.clock.Now()
 
 	eventID, err := s.eventIDGen.NewID()
 	if err != nil {
 		return nil, errors.Join(ErrIDGeneration, err)
 	}
 
-	event := &model.TicketEvent{
-		ID:        model.TicketEventID(eventID),
-		TicketID:  id,
-		Kind:      kind,
-		Actor:     actor,
-		EventTime: eventTime,
-		CreatedAt: s.clock.Now(),
+	txDB := st.DB()
+	baselineResetID := snapshot.LastResetID
+	baselineResetAt := snapshot.LastResetAt
+	buildEvent := func(resetID *model.TicketResetID) *model.TicketEvent {
+		event := &model.TicketEvent{
+			ID:        model.TicketEventID(eventID),
+			TicketID:  id,
+			Kind:      kind,
+			Actor:     actor,
+			EventTime: eventTime,
+			CreatedAt: createdAt,
+			ResetID:   resetID,
+		}
+		event.SetPayload(kind, body)
+		return event
 	}
-	event.SetPayload(kind, body)
 
-	if err := s.events.Append(ctx, event); err != nil {
+	if txDB == nil {
+		event := buildEvent(nil)
+		if err := s.events.Append(ctx, event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	}
+
+	lock := clause.Locking{Strength: "UPDATE"}
+	if err := txDB.WithContext(ctx).
+		Clauses(lock).
+		Where("id = ? AND valid_until = ?", id, temporalInfinity()).
+		First(&model.Ticket{}).Error; err != nil {
+		return nil, err
+	}
+
+	txEvents, err := eventstore.NewWithDB(txDB)
+	if err != nil {
+		return nil, err
+	}
+
+	latestReset, err := txEvents.LatestReset(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var resetID *model.TicketResetID
+	if resetMetadataChanged(baselineResetID, baselineResetAt, latestReset) {
+		idCopy := latestReset.ID
+		resetID = &idCopy
+	}
+
+	event := buildEvent(resetID)
+
+	if err := txEvents.Append(ctx, event); err != nil {
 		return nil, err
 	}
 	return event, nil
@@ -368,4 +446,17 @@ func (h *hydrateIterator) Close(ctx context.Context) error {
 		return nil
 	}
 	return h.inner.Close(ctx)
+}
+
+func resetMetadataChanged(baselineID *model.TicketResetID, baselineAt *time.Time, latest *model.TicketReset) bool {
+	if latest == nil {
+		return false
+	}
+	if baselineID == nil || baselineAt == nil {
+		return true
+	}
+	if *baselineID != latest.ID {
+		return true
+	}
+	return !latest.CreatedAt.UTC().Equal(baselineAt.UTC())
 }

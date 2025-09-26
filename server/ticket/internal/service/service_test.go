@@ -29,6 +29,7 @@ type stubEventStore struct {
 	appendBatchFunc func(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error
 	listFunc        func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
 	markResetFunc   func(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
+	latestResetFunc func(ctx context.Context, ticketID model.ID) (*model.TicketReset, error)
 }
 
 type sliceIterator[T any] struct {
@@ -137,6 +138,16 @@ func (s *stubEventStore) MarkReset(ctx context.Context, ticketID model.ID, reset
 		return s.markResetFunc(ctx, ticketID, reset, eventIDs)
 	}
 	return nil
+}
+
+func (s *stubEventStore) LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error) {
+	if s == nil {
+		return nil, errors.New("nil event store")
+	}
+	if s.latestResetFunc != nil {
+		return s.latestResetFunc(ctx, ticketID)
+	}
+	return nil, nil
 }
 
 type fixedClock struct{ now time.Time }

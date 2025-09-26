@@ -15,6 +15,7 @@ type Store interface {
 	AppendBatch(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error
 	ListByTicket(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (ticketstore.Iterator[*model.TicketEvent], error)
 	MarkReset(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
+	LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error)
 }
 
 type store struct {
@@ -96,6 +97,26 @@ func (s *store) MarkReset(ctx context.Context, ticketID model.ID, reset *model.T
 			Updates(map[string]any{"reset_id": reset.ID})
 		return result.Error
 	})
+}
+
+func (s *store) LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error) {
+	if s == nil {
+		return nil, errors.New("ticket events store: nil store")
+	}
+	var reset model.TicketReset
+	query := s.db.WithContext(ctx).
+		Model(&model.TicketReset{}).
+		Select("id", "ticket_id", "created_at").
+		Where("ticket_id = ?", ticketID).
+		Order("created_at DESC").
+		Limit(1)
+	if err := query.Take(&reset).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &reset, nil
 }
 
 func applyFilter(db *gorm.DB, filter model.TicketEventFilter) *gorm.DB {

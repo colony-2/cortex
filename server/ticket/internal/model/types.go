@@ -58,8 +58,10 @@ type Ticket struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	CompletedAt *time.Time
-	ValidFrom   time.Time `gorm:"primaryKey;type:timestamp"`
-	ValidUntil  time.Time `gorm:"type:timestamp"`
+	ValidFrom   time.Time      `gorm:"primaryKey;type:timestamp"`
+	ValidUntil  time.Time      `gorm:"type:timestamp"`
+	LastResetID *TicketResetID `gorm:"-"`
+	LastResetAt *time.Time     `gorm:"-"`
 }
 
 type ActorPatch struct {

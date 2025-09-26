@@ -139,6 +139,10 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		return nil, err
 	}
 
+	if err := s.attachLastReset(ctx, ticket); err != nil {
+		return nil, err
+	}
+
 	return ticket, nil
 }
 
@@ -162,6 +166,9 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		}
 		if existing.Version != normalized.ExpectedVersion {
 			return ErrVersionConflict
+		}
+		if err := s.attachLastReset(ctx, existing); err != nil {
+			return err
 		}
 
 		now := s.clock.Now()
@@ -233,7 +240,7 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		updated = &next
 
 		if len(changes) > 0 {
-			if _, err := s.appendTicketEvent(ctx, id, next.Creator, changes, now); err != nil {
+			if _, err := s.appendTicketEventInTx(ctx, st, &original, id, next.Creator, changes, now); err != nil {
 				return err
 			}
 		}
@@ -243,11 +250,19 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		return nil, err
 	}
 
+	if err := s.attachLastReset(ctx, updated); err != nil {
+		return nil, err
+	}
+
 	return updated, nil
 }
 
 func (s *service) SearchTickets(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error) {
-	return s.store.Search(ctx, filter)
+	iter, err := s.store.Search(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return &ticketResetIterator{inner: iter, svc: s}, nil
 }
 
 func (s *service) SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error) {
@@ -260,7 +275,14 @@ func (s *service) GetStates(ctx context.Context) ([]model.State, error) {
 }
 
 func (s *service) GetTicketAt(ctx context.Context, id model.ID, at time.Time) (*model.Ticket, error) {
-	return s.store.GetAt(ctx, id, at)
+	ticket, err := s.store.GetAt(ctx, id, at)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.attachLastReset(ctx, ticket); err != nil {
+		return nil, err
+	}
+	return ticket, nil
 }
 
 func (s *service) validateCreateInput(input CreateInput) error {
@@ -343,6 +365,61 @@ func actorSummary(actor model.Actor) string {
 		}
 	}
 	return string(actor.Type)
+}
+
+type ticketResetIterator struct {
+	inner store.Iterator[*model.Ticket]
+	svc   *service
+}
+
+func (it *ticketResetIterator) Next(ctx context.Context) (*model.Ticket, error) {
+	if it == nil || it.inner == nil {
+		return nil, store.ErrIteratorDone
+	}
+	ticket, err := it.inner.Next(ctx)
+	if err != nil {
+		return ticket, err
+	}
+	if ticket != nil {
+		if err := it.svc.attachLastReset(ctx, ticket); err != nil {
+			return nil, err
+		}
+	}
+	return ticket, nil
+}
+
+func (it *ticketResetIterator) Close(ctx context.Context) error {
+	if it == nil || it.inner == nil {
+		return nil
+	}
+	return it.inner.Close(ctx)
+}
+
+func (s *service) attachLastReset(ctx context.Context, ticket *model.Ticket) error {
+	if ticket == nil {
+		return nil
+	}
+	reset, err := s.events.LatestReset(ctx, ticket.ID)
+	if err != nil {
+		return err
+	}
+	applyTicketResetMetadata(ticket, reset)
+	return nil
+}
+
+func applyTicketResetMetadata(ticket *model.Ticket, reset *model.TicketReset) {
+	if ticket == nil {
+		return
+	}
+	if reset == nil {
+		ticket.LastResetID = nil
+		ticket.LastResetAt = nil
+		return
+	}
+	idCopy := reset.ID
+	ticket.LastResetID = &idCopy
+	atCopy := reset.CreatedAt.UTC()
+	ticket.LastResetAt = &atCopy
 }
 
 func newValidator() (*validator.Validate, error) {

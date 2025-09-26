@@ -3,6 +3,7 @@ package ticket_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +22,38 @@ func (s *stepClock) Now() time.Time {
 	now := s.current
 	s.current = s.current.Add(time.Second)
 	return now
+}
+
+type blockingEventIDGen struct {
+	ids      []string
+	blockAt  int
+	wait     chan struct{}
+	release  chan struct{}
+	calls    int
+	mu       sync.Mutex
+	waitOnce sync.Once
+}
+
+func (g *blockingEventIDGen) NewID() (string, error) {
+	g.mu.Lock()
+	g.calls++
+	block := g.blockAt > 0 && g.calls == g.blockAt
+	if len(g.ids) == 0 {
+		g.mu.Unlock()
+		return "", errors.New("ticket: exhausted ids")
+	}
+	id := g.ids[0]
+	g.ids = g.ids[1:]
+	g.mu.Unlock()
+
+	if block && g.wait != nil {
+		g.waitOnce.Do(func() { close(g.wait) })
+		if g.release != nil {
+			<-g.release
+		}
+	}
+
+	return id, nil
 }
 
 func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
@@ -70,6 +103,8 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	}
 	require.Len(t, tickets, 1)
 	require.Equal(t, created.ID, tickets[0].ID)
+	require.Nil(t, tickets[0].LastResetID)
+	require.Nil(t, tickets[0].LastResetAt)
 
 	updated, err := svc.UpdateTicket(ctx, created.ID, ticket.UpdateInput{
 		ExpectedVersion: created.Version,
@@ -200,6 +235,11 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.NotZero(t, reset.ID)
 	require.Equal(t, created.ID, reset.TicketID)
 
+	currentTicket, err := svc.GetTicketAt(ctx, created.ID, now.Add(2*time.Minute))
+	require.NoError(t, err)
+	require.NotNil(t, currentTicket.LastResetID)
+	require.NotNil(t, currentTicket.LastResetAt)
+
 	activeIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
 	defer testutil.MustCloseIterator(t, activeIter)
@@ -265,6 +305,148 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.Len(t, snapshot, 2)
 	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, snapshot[0].PayloadType)
 	require.Equal(t, ticket.TicketEventPayloadTypeReset, snapshot[1].PayloadType)
+}
+
+func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
+	pg := testutil.StartEmbeddedPostgres(t)
+	t.Cleanup(func() { pg.Close(t) })
+
+	store, err := ticket.NewStore(pg.DB)
+	require.NoError(t, err)
+
+	eventStore, err := ticket.NewEventStore(pg.DB)
+	require.NoError(t, err)
+
+	wait := make(chan struct{})
+	release := make(chan struct{})
+	gen := &blockingEventIDGen{
+		ids: []string{
+			"evtA2345678901234567890123",
+			"evtB2345678901234567890123",
+			"rstC2345678901234567890123",
+			"evtD2345678901234567890123",
+		},
+		blockAt: 2,
+		wait:    wait,
+		release: release,
+	}
+
+	now := time.Date(2024, 9, 12, 9, 0, 0, 0, time.UTC)
+	svc, err := ticket.NewService(ticket.ServiceConfig{
+		Store:      store,
+		EventStore: eventStore,
+		Clock:      fixedClock{now: now},
+		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
+		EventIDGen: gen,
+	})
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	actor := ticket.NewUserActor("owner@example.com")
+
+	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+		Cell:  "cell-reset",
+		Title: "Concurrent",
+		Stage: ticket.Stage("triage"),
+		State: ticket.StateWorking,
+		Actor: actor,
+	})
+	require.NoError(t, err)
+	require.Nil(t, created.LastResetID)
+	require.Nil(t, created.LastResetAt)
+
+	changeEvent, err := svc.AppendMarkdownEvent(ctx, created.ID, ticket.MarkdownEventInput{
+		Actor:     actor,
+		EventTime: now,
+		Payload: ticket.MarkdownDocEventPayload{
+			Type: ticket.MarkdownDocAttached,
+			Name: "design",
+			Path: "docs/design.md",
+		},
+	})
+	require.NoError(t, err)
+
+	appendResult := make(chan struct {
+		event *ticket.TicketEvent
+		err   error
+	}, 1)
+
+	go func() {
+		evt, err := svc.AppendWorkflowEvent(ctx, created.ID, ticket.WorkflowEventInput{
+			Actor:     actor,
+			EventTime: now.Add(5 * time.Minute),
+			Payload: ticket.WorkflowEventPayload{
+				Type:       ticket.WorkflowEventRunning,
+				WorkflowID: ticket.WorkflowID("wf-concurrent"),
+				RunID:      ticket.WorkflowRunID("run-concurrent"),
+			},
+		})
+		appendResult <- struct {
+			event *ticket.TicketEvent
+			err   error
+		}{event: evt, err: err}
+	}()
+
+	<-wait
+
+	reset, err := svc.ResetTicket(ctx, created.ID, ticket.TicketResetInput{
+		Actor:  actor,
+		Reason: "concurrent reset",
+	})
+	require.NoError(t, err)
+	release <- struct{}{}
+
+	res := <-appendResult
+	require.NoError(t, res.err)
+	workflowEvt := res.event
+	require.NotNil(t, workflowEvt)
+	require.NotNil(t, workflowEvt.ResetID)
+	require.Equal(t, reset.ID, *workflowEvt.ResetID)
+	require.True(t, workflowEvt.EventTime.After(reset.CreatedAt) || workflowEvt.EventTime.Equal(reset.CreatedAt))
+
+	activeIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, activeIter)
+
+	var active []*ticket.TicketEvent
+	for {
+		evt, err := activeIter.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		active = append(active, evt)
+	}
+	require.Len(t, active, 1)
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, active[0].PayloadType)
+
+	allIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
+	require.NoError(t, err)
+	defer testutil.MustCloseIterator(t, allIter)
+
+	var all []*ticket.TicketEvent
+	for {
+		evt, err := allIter.Next(ctx)
+		if errors.Is(err, ticket.ErrIteratorDone) {
+			break
+		}
+		require.NoError(t, err)
+		all = append(all, evt)
+	}
+	require.Len(t, all, 3)
+	require.Equal(t, changeEvent.ID, all[0].ID)
+	require.Equal(t, ticket.TicketEventPayloadTypeMarkdownDoc, all[0].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeReset, all[1].PayloadType)
+	require.Equal(t, ticket.TicketEventPayloadTypeWorkflow, all[2].PayloadType)
+	require.NotNil(t, all[2].ResetID)
+	require.Equal(t, reset.ID, *all[2].ResetID)
+	require.NotNil(t, all[0].ResetID)
+	require.Equal(t, reset.ID, *all[0].ResetID)
+
+	current, err := svc.GetTicketAt(ctx, created.ID, now.Add(10*time.Minute))
+	require.NoError(t, err)
+	require.NotNil(t, current.LastResetID)
+	require.NotNil(t, current.LastResetAt)
 }
 
 func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
@@ -411,11 +593,15 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 	stateBeforeReset, err := svc.GetTicketAt(ctx, created.ID, beforeResetTime)
 	require.NoError(t, err)
 	require.Equal(t, reviewStage, stateBeforeReset.Stage)
+	require.NotNil(t, stateBeforeReset.LastResetID)
+	require.NotNil(t, stateBeforeReset.LastResetAt)
 
 	afterResetTime := resetEvent.EventTime.Add(2 * time.Microsecond)
 	stateAfterReset, err := svc.GetTicketAt(ctx, created.ID, afterResetTime)
 	require.NoError(t, err)
 	require.Equal(t, ticket.CompletedStage, stateAfterReset.Stage)
+	require.NotNil(t, stateAfterReset.LastResetID)
+	require.NotNil(t, stateAfterReset.LastResetAt)
 }
 
 func TestStoreWithTransaction(t *testing.T) {

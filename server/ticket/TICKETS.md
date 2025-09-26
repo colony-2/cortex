@@ -54,17 +54,21 @@ type Actor struct {
 }
 
 type Ticket struct {
-    ID         ID                        `gorm:"primaryKey;type:char(26)"`
-    Version    optimisticlock.Version    `gorm:"column:version"`
-    CellName    core.CellName
-    Title      string
-    Description string
-    Stage      Stage
-    State      State
+    ID           ID                        `gorm:"primaryKey;type:char(26)"`
+    Version      optimisticlock.Version    `gorm:"column:version"`
+    CellName     core.CellName
+    Title        string
+    Description  string
+    Stage        Stage
+    State        State
     Creator      Actor                     `gorm:"embedded;embeddedPrefix:creator_"`
-    CreatedAt  time.Time
-    UpdatedAt  time.Time
-    CompletedAt *time.Time
+    CreatedAt    time.Time
+    UpdatedAt    time.Time
+    CompletedAt  *time.Time
+    ValidFrom    time.Time                 `gorm:"primaryKey;type:timestamp"`
+    ValidUntil   time.Time                 `gorm:"type:timestamp"`
+    LastResetID  *model.TicketResetID      `gorm:"-"`
+    LastResetAt  *time.Time                `gorm:"-"`
 }
 
 type ActorPatch struct {
