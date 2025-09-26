@@ -166,8 +166,7 @@ RUN set -euxo pipefail && printf '%s\n' \
 RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true
 COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
 COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
-COPY scripts/allowlist-watcher.sh /usr/local/sbin/allowlist-watcher.sh
-RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh /usr/local/sbin/allowlist-watcher.sh && \
+RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh && \
     /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf
 # Egress setup and supervisord configs (late)
 COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
@@ -323,8 +322,6 @@ RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
 COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
 COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
 COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
-COPY scripts/allowlist-watcher.sh /usr/local/sbin/allowlist-watcher.sh
-RUN chmod +x /usr/local/sbin/allowlist-watcher.sh
 EXPOSE 8888
 ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright

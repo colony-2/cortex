@@ -24,8 +24,12 @@ echo "# Forward only listed domains; all others have no upstream and will SERVFA
     [ -z "$line" ] && continue
     # Normalize: remove schema, lower-case, strip leading dot or wildcard.
     d="$line"
-    d="${d#http://}"; d="${d#https://}"
-    d="${d#.}"; d="${d#*.}"
+    d="${d#http://}"
+    d="${d#https://}"
+    d="${d#.}"
+    if [[ $d == \*.* ]]; then
+      d="${d#\*.}"
+    fi
     d=$(printf '%s' "$d" | tr 'A-Z' 'a-z')
     [ -z "$d" ] && continue
     printf "server=/%s/%s\n" "$d" "$UPSTREAM4" >> "$tmp"

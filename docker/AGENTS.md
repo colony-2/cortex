@@ -25,9 +25,7 @@
 ## Tinyproxy + Allowlist
 - Config: `/etc/tinyproxy/tinyproxy.conf` (Listen 127.0.0.1; Allow 127.0.0.1; LogFile `/var/log/tinyproxy/tinyproxy.log`).
 - Allowlist: `/etc/shai/allowed_domains.conf` (default includes OpenAI, Anthropic, Gemini, package registries, GitHub Packages, container registries, docs).
-- Auto-reload on changes via allowlist watcher under supervisord:
-  - Uses inotify when available and polls as a fallback, to handle bind mounts.
-  - Script: `/usr/local/sbin/allowlist-watcher.sh`.
+- Allowlist updates are manual: run `/usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf` and send `pkill -HUP -x dnsmasq` (and tinyproxy) inside the container, or restart the container.
 - Logs: `/var/log/tinyproxy/*.log`.
 
 ## Egress Control (devuser)
@@ -77,7 +75,7 @@ Notes:
 
 ## Change Rules
 - AI CLI installs: via npm only (no pipx for non-Python tools).
-- If changing proxy port or bind, update all of: tinyproxy.conf, allowlist watcher, bootstrap script, dev-egress-setup (iptables), devuser shell env.
+- If changing proxy port or bind, update all of: tinyproxy.conf, scripts/bootstrap.sh, scripts/dev-egress-setup.sh (iptables), supervisord/tinyproxy.conf, and the documented defaults.
 - If adding domains/registries, edit `/etc/shai/allowed_domains.conf` (baked default comes from `shai-allowed-domains.conf`).
 - If bumping Node, ensure `npm@latest` engine compatibility (or pin npm instead).
 - Preserve `devuser` uid 1000 and `WORKDIR /src`.
@@ -101,7 +99,6 @@ Notes:
     - Toolchains on PATH for devuser (`go`, `cargo`)
     - DNS allow/deny from `/etc/shai/allowed_domains.conf`
     - HTTP via proxy works; direct bypass is blocked
-    - Auto-reload when the allowlist is updated
 - CI: GitHub Actions workflow at `.github/workflows/ci.yml` runs the integration test.
 
 ## Moonrepo

@@ -25,27 +25,39 @@ echo "[check] toolchains on path for devuser"
 docker exec -u devuser devbox-test sh -lc 'command -v go && go version && command -v cargo && cargo --version' >/dev/null
 
 echo "[check] dns allow resolves"
-docker exec -u devuser devbox-test sh -lc "getent hosts $ALLOWED" >/dev/null
+for attempt in $(seq 1 5); do
+  if docker exec -u devuser devbox-test sh -lc "getent hosts $ALLOWED" >/dev/null; then
+    break
+  fi
+  if [ "$attempt" -eq 5 ]; then
+    echo "failed to resolve $ALLOWED within startup window" >&2
+    exit 1
+  fi
+  sleep 1
+done
 echo "[check] dns block fails"
 if docker exec -u devuser devbox-test sh -lc "getent hosts $BLOCKED"; then
   echo "expected DNS block for $BLOCKED" >&2; exit 1; fi
 
 echo "[check] http allowed via proxy"
-docker exec -u devuser devbox-test sh -lc "curl -I -m 10 https://$ALLOWED" >/dev/null
+for attempt in $(seq 1 5); do
+  if docker exec -u devuser devbox-test sh -lc "curl -I -m 10 https://$ALLOWED" >/dev/null; then
+    break
+  fi
+  if [ "$attempt" -eq 5 ]; then
+    echo "failed to reach $ALLOWED via proxy" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 echo "[check] http bypass blocked"
 if docker exec -u devuser devbox-test sh -lc "curl --noproxy '*' -4 -I -m 5 https://$ALLOWED"; then
   echo "expected http bypass to be blocked" >&2; exit 1; fi
 
-echo "[check] autoreload: allow example.org"
-docker exec devbox-test sh -lc "echo $BLOCKED >> /etc/shai/allowed_domains.conf"
-sleep 1
-docker exec -u devuser devbox-test sh -lc "getent hosts $BLOCKED" >/dev/null
-docker exec -u devuser devbox-test sh -lc "curl -I -m 10 https://$BLOCKED" >/dev/null
-
 echo "[check] TTY echo and prompt readiness"
 # Verify stty reports echo enabled in an interactive root zsh session
-docker exec -it devbox-test zsh -ic 'stty -a' | tr -s ' ' | grep -q ' echo ' || { echo "stty echo not enabled" >&2; exit 1; }
+docker exec -t devbox-test zsh -ic 'stty -a' | tr -s ' ' | grep -q ' echo ' || { echo "stty echo not enabled" >&2; exit 1; }
 
 echo "[check] /workspace not present and /src not writable by devuser"
 # No /workspace directory should exist
