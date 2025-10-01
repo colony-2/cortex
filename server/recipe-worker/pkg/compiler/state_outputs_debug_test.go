@@ -59,9 +59,9 @@ outputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	inputs := map[string]interface{}{
+	inputs := withRequiredGitInputs(map[string]interface{}{
 		"message": "test",
-	}
+	})
 
 	// Test 1: What does executeStateMachine return?
 	t.Log("Test 1: Direct state machine execution")

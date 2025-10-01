@@ -12,6 +12,12 @@ import (
 )
 
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs)
+	if err != nil {
+		return nil, err
+	}
+
 	tracker := newInvocationTracker(r.GetMetdata())
 
 	switch t := r.RecipeImpl.(type) {

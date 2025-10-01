@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 )
@@ -54,13 +54,13 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(s.T(), err)
-	
+
 	// Register a test activity function
 	testActivityFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "test_output"}, nil
 	}
 	s.env.RegisterActivity(testActivityFunc)
-	
+
 	// Define workflow that uses ExecuteRecipe
 	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
 		testRecipe := &recipe.Recipe{
@@ -71,20 +71,20 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 				OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
 			},
 		}
-		return ExecuteRecipe(ctx, registry, *testRecipe, map[string]interface{}{
+		return ExecuteRecipe(ctx, registry, *testRecipe, withRequiredGitInputs(map[string]interface{}{
 			"param1": "test_value",
-		})
+		}))
 	}
-	
+
 	s.env.RegisterWorkflow(testWorkflow)
-	
+
 	// Execute workflow
 	s.env.OnActivity("test_activity", mock.Anything, mock.Anything).Return(
 		map[string]interface{}{"result": "test_output"}, nil,
 	)
-	
+
 	s.env.ExecuteWorkflow(testWorkflow)
-	
+
 	require.True(s.T(), s.env.IsWorkflowCompleted())
 	require.NoError(s.T(), s.env.GetWorkflowError())
 }
@@ -186,7 +186,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(s.T(), err)
-	
+
 	// Register test activity functions
 	activityAFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "output_a"}, nil
@@ -196,7 +196,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	}
 	s.env.RegisterActivity(activityAFunc)
 	s.env.RegisterActivity(activityBFunc)
-	
+
 	// Define workflow that uses ExecuteRecipe
 	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
 		testRecipe := &recipe.Recipe{
@@ -207,11 +207,11 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 				SequenceData: node.NodeImpl.(*recipe.NodeSequence).SequenceData,
 			},
 		}
-		return ExecuteRecipe(ctx, registry, *testRecipe, map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, *testRecipe, withRequiredGitInputs(map[string]interface{}{}))
 	}
-	
+
 	s.env.RegisterWorkflow(testWorkflow)
-	
+
 	// Mock activities
 	s.env.OnActivity("activity_a", mock.Anything, mock.Anything).Return(
 		map[string]interface{}{"result": "output_a"}, nil,
@@ -219,9 +219,9 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	s.env.OnActivity("activity_b", mock.Anything, mock.Anything).Return(
 		map[string]interface{}{"result": "output_b"}, nil,
 	)
-	
+
 	s.env.ExecuteWorkflow(testWorkflow)
-	
+
 	require.True(s.T(), s.env.IsWorkflowCompleted())
 	require.NoError(s.T(), s.env.GetWorkflowError())
 }
@@ -232,7 +232,7 @@ func TestActivityRegistry(t *testing.T) {
 
 	// Test that registry exists and can be created
 	assert.NotNil(t, registry)
-	
+
 	// List activities (should be empty or have defaults)
 	activities := registry.List()
 	assert.NotNil(t, activities)
@@ -277,7 +277,7 @@ func (s *CompilerTestSuite) TestRecipeWithSharedActivities() {
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(s.T(), err)
-	
+
 	// For now just verify structure is correct
 	assert.NotNil(s.T(), recipeDef)
 	assert.NotNil(s.T(), registry)

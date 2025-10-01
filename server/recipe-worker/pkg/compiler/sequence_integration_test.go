@@ -51,7 +51,7 @@ outputs:
 	// Create test activity registry - it comes pre-loaded with test activities
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
-	
+
 	// The registry already has echo_activity registered
 	// echo_activity returns: {result: message, output: message}
 	// test_activity is not pre-registered, so we'll use echo_activity instead
@@ -60,7 +60,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
-	
+
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
 
@@ -69,7 +69,7 @@ outputs:
 		inputs := map[string]interface{}{
 			"base_value": 10,
 		}
-		return ExecuteRecipe(ctx, registry, r, inputs)
+		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(inputs))
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -126,12 +126,12 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
-	
+
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -177,16 +177,16 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
-	
+
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
-	
+
 	// Should have an error due to missing node reference
 	err = env.GetWorkflowError()
 	require.Error(t, err)
@@ -229,12 +229,12 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
-	
+
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
 	})
 
 	require.True(t, env.IsWorkflowCompleted())

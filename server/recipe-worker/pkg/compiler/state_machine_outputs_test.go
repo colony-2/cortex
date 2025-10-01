@@ -64,7 +64,7 @@ outputs:
 
 	// Test the recipe execution
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, *r, inputs)
+		return ExecuteRecipe(ctx, registry, *r, withRequiredGitInputs(inputs))
 	})
 
 	require.True(t, env.IsWorkflowCompleted())

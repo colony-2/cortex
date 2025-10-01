@@ -65,9 +65,9 @@ outputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	inputs := map[string]interface{}{
+	inputs := withRequiredGitInputs(map[string]interface{}{
 		"message": "test",
-	}
+	})
 
 	// Test state machine execution directly
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {

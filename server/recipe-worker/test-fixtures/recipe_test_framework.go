@@ -30,6 +30,28 @@ type TestCases struct {
 	Tests []TestCase `yaml:"tests"`
 }
 
+func ensureGitInputs(inputs map[string]interface{}) map[string]interface{} {
+	clone := make(map[string]interface{}, len(inputs)+4)
+	for k, v := range inputs {
+		clone[k] = v
+	}
+
+	if _, ok := clone["basegitrepo"]; !ok {
+		clone["basegitrepo"] = "/tmp/vibethis/test-repo"
+	}
+	if _, ok := clone["basegithash"]; !ok {
+		clone["basegithash"] = "0000000000000000000000000000000000000000"
+	}
+	if _, ok := clone["ticketid"]; !ok {
+		clone["ticketid"] = "TEST-TICKET"
+	}
+	if _, ok := clone["cellname"]; !ok {
+		clone["cellname"] = "test-cell"
+	}
+
+	return clone
+}
+
 // equalWithTypeFlexibility compares two values with flexibility for numeric types.
 // It treats int and float64 as equivalent when they represent the same numeric value,
 // but only as a fallback after exact comparison fails.
@@ -38,46 +60,46 @@ func equalWithTypeFlexibility(expected, actual interface{}) bool {
 	if reflect.DeepEqual(expected, actual) {
 		return true
 	}
-	
+
 	// If exact comparison failed, try with type flexibility
-	
+
 	// Handle maps recursively
 	if expectedMap, ok := expected.(map[string]interface{}); ok {
 		actualMap, ok := actual.(map[string]interface{})
 		if !ok {
 			return false
 		}
-		
+
 		// Check if both maps have the same keys
 		if len(expectedMap) != len(actualMap) {
 			return false
 		}
-		
+
 		// Compare each key-value pair with type flexibility
 		for key, expectedValue := range expectedMap {
 			actualValue, exists := actualMap[key]
 			if !exists {
 				return false
 			}
-			
+
 			if !equalWithTypeFlexibility(expectedValue, actualValue) {
 				return false
 			}
 		}
 		return true
 	}
-	
+
 	// Handle slices recursively
 	if expectedSlice, ok := expected.([]interface{}); ok {
 		actualSlice, ok := actual.([]interface{})
 		if !ok {
 			return false
 		}
-		
+
 		if len(expectedSlice) != len(actualSlice) {
 			return false
 		}
-		
+
 		for i := range expectedSlice {
 			if !equalWithTypeFlexibility(expectedSlice[i], actualSlice[i]) {
 				return false
@@ -85,15 +107,15 @@ func equalWithTypeFlexibility(expected, actual interface{}) bool {
 		}
 		return true
 	}
-	
+
 	// Handle numeric comparisons with type flexibility only as fallback
 	expectedNum, expectedIsNum := toFloat64(expected)
 	actualNum, actualIsNum := toFloat64(actual)
-	
+
 	if expectedIsNum && actualIsNum {
 		return expectedNum == actualNum
 	}
-	
+
 	// Values are not equal even with type flexibility
 	return false
 }
@@ -135,7 +157,7 @@ func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, 
 	if equalWithTypeFlexibility(expected, actual) {
 		return true
 	}
-	
+
 	// If not equal, use standard assert.Equal to get nice diff output
 	// This will fail but provide good diagnostic information
 	return assert.Equal(t, expected, actual, msgAndArgs...)
@@ -191,7 +213,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 					result, err := exec.Execute(
 						context.Background(),
 						recipeDef,
-						tc.Inputs,
+						ensureGitInputs(tc.Inputs),
 						executor.ExecutionOptions{
 							SuppressLogs: true, // Keep tests clean
 						},

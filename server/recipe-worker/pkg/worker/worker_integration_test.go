@@ -4,17 +4,36 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
 	"go.uber.org/zap/zaptest"
 )
+
+func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{} {
+	if inputs == nil {
+		inputs = make(map[string]interface{})
+	}
+	if _, ok := inputs["basegitrepo"]; !ok {
+		inputs["basegitrepo"] = "/tmp/vibethis/test-repo"
+	}
+	if _, ok := inputs["basegithash"]; !ok {
+		inputs["basegithash"] = "0000000000000000000000000000000000000000"
+	}
+	if _, ok := inputs["ticketid"]; !ok {
+		inputs["ticketid"] = "TEST-TICKET"
+	}
+	if _, ok := inputs["cellname"]; !ok {
+		inputs["cellname"] = "test-cell"
+	}
+	return inputs
+}
 
 type WorkerIntegrationTestSuite struct {
 	suite.Suite
@@ -76,7 +95,7 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -92,7 +111,7 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	)
 
 	// Execute the workflow with empty inputs since the text is hardcoded
-	s.env.ExecuteWorkflow("test-recipe", map[string]interface{}{})
+	s.env.ExecuteWorkflow("test-recipe", withRequiredGitInputs(map[string]interface{}{}))
 
 	// Verify the result
 	s.True(s.env.IsWorkflowCompleted())
@@ -169,7 +188,7 @@ func (s *WorkerIntegrationTestSuite) TestSequenceWorkflowExecution() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -260,7 +279,7 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -331,7 +350,7 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
