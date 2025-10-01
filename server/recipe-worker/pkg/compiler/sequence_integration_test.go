@@ -1,6 +1,11 @@
 package compiler
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,8 +14,9 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"gopkg.in/yaml.v3"
 
+	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 )
 
 func TestSequenceOutputIntegration(t *testing.T) {
@@ -49,7 +55,7 @@ outputs:
 	require.NoError(t, err)
 
 	// Create test activity registry - it comes pre-loaded with test activities
-	registry, err := ops.NewActivityRegistry()
+	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 
 	// The registry already has echo_activity registered
@@ -119,7 +125,7 @@ outputs:
 	err := yaml.Unmarshal([]byte(recipeYAML), &r)
 	require.NoError(t, err)
 
-	registry, err := ops.NewActivityRegistry()
+	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 
 	// Execute in test environment
@@ -170,7 +176,7 @@ outputs:
 	err := yaml.Unmarshal([]byte(recipeYAML), &r)
 	require.NoError(t, err)
 
-	registry, err := ops.NewActivityRegistry()
+	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	// echo_activity is already registered in the registry
 
@@ -222,7 +228,7 @@ outputs:
 	err := yaml.Unmarshal([]byte(recipeYAML), &r)
 	require.NoError(t, err)
 
-	registry, err := ops.NewActivityRegistry()
+	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	// echo_activity is already registered in the registry
 
@@ -250,4 +256,153 @@ outputs:
 	assert.Equal(t, "first step", result["command_output"])
 	assert.Equal(t, "second step", result["step2_result"])
 	assert.Equal(t, "Step 3 complete", result["final_output"])
+}
+
+func TestNestedRecipeGitContextPropagation(t *testing.T) {
+	parentYAML := `
+id: parent-nested
+desc: Parent recipe invoking child recipe
+version: '1.0'
+sequence:
+- id: init_parent
+  op: test_write_file
+  inputs:
+    path: '{{ inputs.context.worktree }}/parent.txt'
+    content: 'parent'
+- id: nested_child
+  op: recipe
+  inputs:
+    name: child-workflow
+    inputs: {}
+outputs:
+  child_git_hash: '{{ sequence.nested_child.outputs.git_persist_hash }}'
+  final_parent_hash: '{{ sequence.nested_child.outputs.context.git.persist_hash }}'
+  child_result: '{{ sequence.nested_child.outputs }}'
+`
+
+	childYAML := `
+id: child-nested
+desc: Child recipe reading parent state and writing child file
+version: '1.0'
+sequence:
+- id: read_parent
+  op: test_read_file
+  inputs:
+    path: '{{ inputs.context.worktree }}/parent.txt'
+- id: write_child
+  op: test_write_file
+  inputs:
+    path: '{{ inputs.context.worktree }}/child.txt'
+    content: 'child'
+outputs:
+  parent_stdout: '{{ sequence.read_parent.outputs["content"] }}'
+  write_stdout: '{{ sequence.write_child.outputs["path"] }}'
+`
+
+	ensureNestedTestOpsRegistered()
+
+	var parent recipe.Recipe
+	require.NoError(t, yaml.Unmarshal([]byte(parentYAML), &parent))
+	var child recipe.Recipe
+	require.NoError(t, yaml.Unmarshal([]byte(childYAML), &child))
+
+	registry, err := workerops.NewActivityRegistry()
+	require.NoError(t, err)
+
+	testSuite := &testsuite.WorkflowTestSuite{}
+	env := testSuite.NewTestWorkflowEnvironment()
+	defer env.AssertExpectations(t)
+
+	registry.EnableActivitiesInWorker(env)
+
+	env.RegisterWorkflowWithOptions(func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
+		result, err := ExecuteRecipe(ctx, registry, child, inputs)
+		workflow.GetLogger(ctx).Info("child workflow finished", "result", result)
+		return result, err
+	}, workflow.RegisterOptions{Name: "child-workflow"})
+
+	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
+		return ExecuteRecipe(ctx, registry, parent, withRequiredGitInputs(map[string]interface{}{}))
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result map[string]interface{}
+	require.NoError(t, env.GetWorkflowResult(&result))
+	t.Logf("Parent outputs: %+v", result)
+
+	childHash, _ := result["child_git_hash"].(string)
+	parentHash, _ := result["final_parent_hash"].(string)
+	require.NotEmpty(t, childHash)
+	require.Equal(t, childHash, parentHash)
+	nestedOutputs, ok := result["child_result"].(map[string]interface{})
+	require.True(t, ok)
+	childResult, ok := nestedOutputs["result"].(map[string]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, childResult)
+}
+
+var nestedOpsOnce sync.Once
+
+type testWriteFileInput struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+type testWriteFileOutput struct {
+	Path string `json:"path"`
+}
+
+type testReadFileInput struct {
+	Path string `json:"path"`
+}
+
+type testReadFileOutput struct {
+	Content string `json:"content"`
+}
+
+func ensureNestedTestOpsRegistered() {
+	nestedOpsOnce.Do(func() {
+		writeOp := recipeops.NewActivityMappedOpV2[testWriteFileInput, testWriteFileOutput](
+			recipeops.OpMetadata{
+				Type:        "test_write_file",
+				Description: "writes file into git workspace for testing",
+				Version:     "1.0.0",
+			},
+			func(_ recipeops.Invocation, ctx context.Context, input testWriteFileInput) (testWriteFileOutput, error) {
+				if input.Path == "" {
+					return testWriteFileOutput{}, fmt.Errorf("path is required")
+				}
+				dir := filepath.Dir(input.Path)
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					return testWriteFileOutput{}, err
+				}
+				if err := os.WriteFile(input.Path, []byte(input.Content), 0o644); err != nil {
+					return testWriteFileOutput{}, err
+				}
+				return testWriteFileOutput{Path: input.Path}, nil
+			},
+		)
+
+		readOp := recipeops.NewActivityMappedOpV2[testReadFileInput, testReadFileOutput](
+			recipeops.OpMetadata{
+				Type:        "test_read_file",
+				Description: "reads file contents from git workspace for testing",
+				Version:     "1.0.0",
+			},
+			func(_ recipeops.Invocation, ctx context.Context, input testReadFileInput) (testReadFileOutput, error) {
+				if input.Path == "" {
+					return testReadFileOutput{}, fmt.Errorf("path is required")
+				}
+				data, err := os.ReadFile(input.Path)
+				if err != nil {
+					return testReadFileOutput{}, err
+				}
+				return testReadFileOutput{Content: string(data)}, nil
+			},
+		)
+
+		recipeops.Register(writeOp, readOp)
+	})
 }

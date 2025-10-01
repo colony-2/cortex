@@ -204,9 +204,16 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 			timeout = 30 * time.Second // Default timeout
 		}
 		retry := ToTemporalRetryPolicy(metadata.Retry)
-		return executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
+		outputs, err := executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
 			return opImpl.Activity.ExecuteInlineV2(inv, inner, timeout, retry, inputs)
 		})
+		if err != nil {
+			return nil, err
+		}
+		if outputs != nil {
+			propagateGitOutputs(ctx, workflowInputs, outputs)
+		}
+		return outputs, nil
 	}
 
 	// Configure activity options

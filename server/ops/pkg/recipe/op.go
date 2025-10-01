@@ -1,22 +1,26 @@
 package recipe
 
 import (
+	"time"
+
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
-
-	"time"
 )
 
 // RecipeInput defines the input for recipe activities
 type RecipeInput struct {
 	Name   string                 `json:"name"`
 	Inputs map[string]interface{} `json:"inputs"`
+	Raw    map[string]interface{} `json:"-" mapstructure:",remain"`
 }
 
 // RecipeOutput defines the output from recipe activities
 type RecipeOutput struct {
-	Outputs map[string]interface{} `json:"result"` // Outputs from the executed recipe
+	Outputs        map[string]interface{} `json:"result"`            // Outputs from the executed recipe
+	Context        map[string]interface{} `json:"context,omitempty"` // Propagated git context
+	GitPersistHash string                 `json:"git_persist_hash,omitempty"`
 }
 
 // RecipeMetadata contains execution metadata
@@ -43,35 +47,56 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(_ ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput) (RecipeOutput, error) {
-	//startTime := time.Now()
-
-	cwo := workflow.ChildWorkflowOptions{
-		RetryPolicy:              retry,
-		WorkflowExecutionTimeout: timeout,
+func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput) (RecipeOutput, error) {
+	baseInputs := make(map[string]interface{})
+	for k, v := range input.Raw {
+		baseInputs[k] = v
 	}
 
-	ctx = workflow.WithChildOptions(ctx, cwo)
-	workflowRun := workflow.ExecuteChildWorkflow(
-		ctx,
-		input.Name,
-		input.Inputs,
-	)
-	var result map[string]interface{}
-	err := workflowRun.Get(ctx, &result)
-
+	workspaceResult, err := gitstate.WithInlineWorkspace(ctx, inv, baseInputs, gitstate.InlineWorkspaceOptions{}, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
+		for k, v := range input.Inputs {
+			childInputs[k] = v
+		}
+		workflow.GetLogger(inner).Info("invoking child recipe", "inputs_keys", mapKeys(childInputs))
+		cwo := workflow.ChildWorkflowOptions{
+			RetryPolicy: retry,
+		}
+		if timeout > 0 {
+			cwo.WorkflowRunTimeout = timeout
+			cwo.WorkflowExecutionTimeout = timeout
+		}
+		inner = workflow.WithChildOptions(inner, cwo)
+		workflowRun := workflow.ExecuteChildWorkflow(inner, input.Name, childInputs)
+		var result map[string]interface{}
+		if err := workflowRun.Get(inner, &result); err != nil {
+			return nil, err
+		}
+		if result == nil {
+			result = make(map[string]interface{})
+		}
+		keys := make([]string, 0, len(result))
+		for k := range result {
+			keys = append(keys, k)
+		}
+		workflow.GetLogger(inner).Info("child recipe completed", "keys", keys, "result", result)
+		return result, nil
+	})
 	if err != nil {
 		return RecipeOutput{}, err
 	}
 
-	//endTime := time.Now()
-	//duration := endTime.Sub(startTime)
+	return RecipeOutput{
+		Outputs:        workspaceResult.Result,
+		Context:        workspaceResult.ContextMap,
+		GitPersistHash: workspaceResult.GitContext.PersistHash,
+	}, nil
 
-	// Build output
-	output := &RecipeOutput{
-		Outputs: result,
+}
+
+func mapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-
-	return *output, nil
-
+	return keys
 }
