@@ -2,10 +2,13 @@ package testfixtures
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
@@ -30,17 +33,69 @@ type TestCases struct {
 	Tests []TestCase `yaml:"tests"`
 }
 
+var (
+	fixturesRepoOnce sync.Once
+	fixturesRepoPath string
+	fixturesRepoHash string
+)
+
+func ensureTestRepo() (string, string) {
+	fixturesRepoOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "fixtures-repo-*")
+		if err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "init"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.email", "test@example.com"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.name", "Test User"); err != nil {
+			panic(err)
+		}
+		readme := filepath.Join(dir, "README.md")
+		if err := os.WriteFile(readme, []byte("initial\n"), 0o644); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "add", "."); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "commit", "-m", "init"); err != nil {
+			panic(err)
+		}
+		output, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("rev-parse HEAD failed: %w (%s)", err, output))
+		}
+		fixturesRepoPath = dir
+		fixturesRepoHash = strings.TrimSpace(string(output))
+	})
+	return fixturesRepoPath, fixturesRepoHash
+}
+
+func runGit(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %v failed: %w (%s)", args, err, out)
+	}
+	return nil
+}
+
 func ensureGitInputs(inputs map[string]interface{}) map[string]interface{} {
 	clone := make(map[string]interface{}, len(inputs)+4)
 	for k, v := range inputs {
 		clone[k] = v
 	}
 
+	repo, hash := ensureTestRepo()
 	if _, ok := clone["basegitrepo"]; !ok {
-		clone["basegitrepo"] = "/tmp/vibethis/test-repo"
+		clone["basegitrepo"] = repo
 	}
 	if _, ok := clone["basegithash"]; !ok {
-		clone["basegithash"] = "0000000000000000000000000000000000000000"
+		clone["basegithash"] = hash
 	}
 	if _, ok := clone["ticketid"]; !ok {
 		clone["ticketid"] = "TEST-TICKET"
@@ -152,15 +207,37 @@ func toFloat64(val interface{}) (float64, bool) {
 	}
 }
 
+func normalizeForComparison(value interface{}) interface{} {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		cleaned := make(map[string]interface{}, len(v))
+		for key, val := range v {
+			if key == "context" || key == "git_persist_hash" {
+				continue
+			}
+			cleaned[key] = normalizeForComparison(val)
+		}
+		return cleaned
+	case []interface{}:
+		out := make([]interface{}, len(v))
+		for i, item := range v {
+			out[i] = normalizeForComparison(item)
+		}
+		return out
+	default:
+		return value
+	}
+}
+
 // assertEqualWithTypeFlexibility wraps the comparison with proper test assertion messaging
 func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, msgAndArgs ...interface{}) bool {
-	if equalWithTypeFlexibility(expected, actual) {
+	normalizedExpected := normalizeForComparison(expected)
+	normalizedActual := normalizeForComparison(actual)
+	if equalWithTypeFlexibility(normalizedExpected, normalizedActual) {
 		return true
 	}
 
-	// If not equal, use standard assert.Equal to get nice diff output
-	// This will fail but provide good diagnostic information
-	return assert.Equal(t, expected, actual, msgAndArgs...)
+	return assert.Equal(t, normalizedExpected, normalizedActual, msgAndArgs...)
 }
 
 func RunTestOnAllRecipes(path string, t *testing.T) {

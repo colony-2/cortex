@@ -4,6 +4,7 @@ go 1.24.1
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/cel-go v0.26.0
@@ -24,7 +25,6 @@ require (
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
@@ -54,3 +54,5 @@ require (
 )
 
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
+
+replace github.com/divisive-ai/vibethis/server/git => ../git

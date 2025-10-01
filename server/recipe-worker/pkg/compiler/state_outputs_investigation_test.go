@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -48,9 +50,34 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 		},
 	}
 
+	baseInputs := withRequiredGitInputs(nil)
+	worktree := filepath.Join(os.TempDir(), "state-investigation-worktree")
+	blobStore := "file://" + filepath.Join(os.TempDir(), "state-investigation-blobstore")
 	inputs := map[string]interface{}{
-		"test_input": "test_value",
+		"test_input":  "test_value",
+		"basegitrepo": baseInputs["basegitrepo"],
+		"basegithash": baseInputs["basegithash"],
+		"ticketid":    baseInputs["ticketid"],
+		"cellname":    baseInputs["cellname"],
+		"context": map[string]interface{}{
+			"git": map[string]interface{}{
+				"base_repo":    baseInputs["basegitrepo"],
+				"base_hash":    baseInputs["basegithash"],
+				"persist_hash": baseInputs["basegithash"],
+			},
+			"worktree":  worktree,
+			"blobstore": blobStore,
+			"ticketid":  baseInputs["ticketid"],
+			"cellname":  baseInputs["cellname"],
+			"recipe": map[string]interface{}{
+				"id":              "test-investigation",
+				"workflow_id":     "default-test-workflow-id",
+				"workflow_run_id": "default-test-run-id",
+			},
+		},
 	}
+	inputs["ticket_id"] = baseInputs["ticketid"]
+	inputs["cell_name"] = baseInputs["cellname"]
 
 	// Execute and capture what happens
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {

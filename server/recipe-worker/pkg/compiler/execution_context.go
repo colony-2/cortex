@@ -21,8 +21,8 @@ const (
 // executionContextKey is used to stash the execution context inside the workflow context.
 type executionContextKey struct{}
 
-// executionContext aggregates execution metadata that needs to travel with the workflow.
-type executionContext struct {
+// ExecutionContext aggregates execution metadata that needs to travel with the workflow.
+type ExecutionContext struct {
 	Git       GitContext
 	Worktree  string
 	BlobStore string
@@ -31,17 +31,18 @@ type executionContext struct {
 	Recipe    ExecutionRecipeContext
 }
 
-// GitContext captures core git metadata shared across the recipe lifecycle.
+// GitContext captures git metadata shared across the recipe lifecycle.
 type GitContext struct {
-	BaseRepo    string `json:"base_repo"`
-	BaseHash    string `json:"base_hash"`
-	PersistHash string `json:"persist_hash"`
+	BaseRepo    string
+	BaseHash    string
+	PersistHash string
 }
 
 type ExecutionRecipeContext struct {
 	ID                string
 	Version           string
 	WorkflowID        string
+	WorkflowRunID     string
 	NodePath          string
 	InvocationHash    string
 	InvocationID      string
@@ -50,10 +51,11 @@ type ExecutionRecipeContext struct {
 
 func (rc ExecutionRecipeContext) toMap() map[string]interface{} {
 	m := map[string]interface{}{
-		"id":          rc.ID,
-		"version":     rc.Version,
-		"workflow_id": rc.WorkflowID,
-		"node_path":   rc.NodePath,
+		"id":              rc.ID,
+		"version":         rc.Version,
+		"workflow_id":     rc.WorkflowID,
+		"workflow_run_id": rc.WorkflowRunID,
+		"node_path":       rc.NodePath,
 	}
 	if rc.InvocationHash != "" {
 		m["invocation_hash"] = rc.InvocationHash
@@ -65,15 +67,6 @@ func (rc ExecutionRecipeContext) toMap() map[string]interface{} {
 		m["invocation_attempt"] = rc.InvocationAttempt
 	}
 	return m
-}
-
-// toMap converts the git context to a map for injection into recipe inputs.
-func (gc GitContext) toMap() map[string]interface{} {
-	return map[string]interface{}{
-		"base_repo":    gc.BaseRepo,
-		"base_hash":    gc.BaseHash,
-		"persist_hash": gc.PersistHash,
-	}
 }
 
 // initializeExecutionContext validates inputs, computes workspace/blob paths, and injects context.git.
@@ -117,21 +110,31 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 	blobStoreURI := fmt.Sprintf("%s/%s/%s", strings.TrimRight(blobStoreBase, "/"), cellName, ticketID)
 
 	recipeMetadata := r.GetMetdata()
-	execCtx := &executionContext{
-		Git: GitContext{
-			BaseRepo:    baseRepo,
-			BaseHash:    baseHash,
-			PersistHash: baseHash,
-		},
+	gitCtx := GitContext{
+		BaseRepo:    baseRepo,
+		BaseHash:    baseHash,
+		PersistHash: baseHash,
+	}
+
+	if existingContext, ok := inputs["context"].(map[string]interface{}); ok {
+		if gitMap, ok := existingContext["git"].(map[string]interface{}); ok {
+			if val, ok := gitCtxString(gitMap, "persist_hash"); ok {
+				gitCtx.PersistHash = val
+			}
+		}
+	}
+	execCtx := &ExecutionContext{
+		Git:       gitCtx,
 		Worktree:  worktreePath,
 		BlobStore: blobStoreURI,
 		TicketID:  ticketID,
 		CellName:  cellName,
 		Recipe: ExecutionRecipeContext{
-			ID:         recipeMetadata.ID,
-			Version:    recipeMetadata.Version,
-			WorkflowID: workflowInfo.WorkflowExecution.ID,
-			NodePath:   recipeMetadata.NodeMetadata.ID,
+			ID:            recipeMetadata.ID,
+			Version:       recipeMetadata.Version,
+			WorkflowID:    workflowInfo.WorkflowExecution.ID,
+			WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
+			NodePath:      recipeMetadata.NodeMetadata.ID,
 		},
 	}
 
@@ -146,7 +149,8 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 	contextMap["blobstore"] = execCtx.BlobStore
 	contextMap["ticketid"] = execCtx.TicketID
 	contextMap["cellname"] = execCtx.CellName
-	contextMap["recipe"] = execCtx.Recipe.toMap()
+	recipeMap := execCtx.Recipe.toMap()
+	contextMap["recipe"] = recipeMap
 
 	inputs["context"] = contextMap
 	inputs["ticket_id"] = execCtx.TicketID
@@ -182,4 +186,47 @@ func sideEffectEnvDefault(ctx workflow.Context, key, fallback string) (string, e
 		return "", err
 	}
 	return value, nil
+}
+
+func (gc GitContext) toMap() map[string]interface{} {
+	return map[string]interface{}{
+		"base_repo":    gc.BaseRepo,
+		"base_hash":    gc.BaseHash,
+		"persist_hash": gc.PersistHash,
+	}
+}
+
+func (gc *GitContext) UpdateFromMap(input map[string]interface{}) error {
+	if input == nil {
+		return fmt.Errorf("git context map is missing")
+	}
+
+	if str, ok := gitCtxString(input, "base_repo"); ok {
+		gc.BaseRepo = str
+	} else if gc.BaseRepo == "" {
+		return fmt.Errorf("git context is missing base_repo")
+	}
+
+	if str, ok := gitCtxString(input, "base_hash"); ok {
+		gc.BaseHash = str
+	} else if gc.BaseHash == "" {
+		return fmt.Errorf("git context is missing base_hash")
+	}
+
+	if str, ok := gitCtxString(input, "persist_hash"); ok {
+		gc.PersistHash = str
+	} else if gc.PersistHash == "" {
+		gc.PersistHash = gc.BaseHash
+	}
+
+	return nil
+}
+
+func gitCtxString(m map[string]interface{}, key string) (string, bool) {
+	if val, ok := m[key]; ok {
+		if str, ok := val.(string); ok && str != "" {
+			return str, true
+		}
+	}
+	return "", false
 }

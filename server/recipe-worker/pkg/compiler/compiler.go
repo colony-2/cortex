@@ -232,7 +232,83 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 		return nil, err
 	}
 
+	if outputs != nil {
+		propagateGitOutputs(ctx, workflowInputs, outputs)
+	}
+
 	return outputs, nil
+}
+
+func propagateGitOutputs(ctx workflow.Context, workflowInputs map[string]interface{}, outputs map[string]interface{}) {
+	contextVal, ok := outputs["context"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	gitMap, ok := contextVal["git"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	wfContext, _ := workflowInputs["context"].(map[string]interface{})
+	if wfContext == nil {
+		wfContext = make(map[string]interface{})
+		workflowInputs["context"] = wfContext
+	}
+	wfContext["git"] = gitMap
+	if val, ok := contextVal["worktree"]; ok {
+		wfContext["worktree"] = val
+	}
+	if val, ok := contextVal["blobstore"]; ok {
+		wfContext["blobstore"] = val
+	}
+	if val, ok := contextVal["ticketid"]; ok {
+		wfContext["ticketid"] = val
+		workflowInputs["ticket_id"] = val
+	}
+	if val, ok := contextVal["cellname"]; ok {
+		wfContext["cellname"] = val
+		workflowInputs["cell_name"] = val
+	}
+	if recipeMap, ok := contextVal["recipe"].(map[string]interface{}); ok {
+		wfContext["recipe"] = recipeMap
+	}
+
+	if gitPersist, ok := outputs["git_persist_hash"]; ok {
+		workflowInputs["git_persist_hash"] = gitPersist
+	}
+
+	if execVal := ctx.Value(executionContextKey{}); execVal != nil {
+		if execCtx, ok := execVal.(*ExecutionContext); ok {
+			_ = execCtx.Git.UpdateFromMap(gitMap)
+			if worktree, ok := contextVal["worktree"].(string); ok {
+				execCtx.Worktree = worktree
+			}
+			if blob, ok := contextVal["blobstore"].(string); ok {
+				execCtx.BlobStore = blob
+			}
+			if ticket, ok := contextVal["ticketid"].(string); ok {
+				execCtx.TicketID = ticket
+			}
+			if cell, ok := contextVal["cellname"].(string); ok {
+				execCtx.CellName = cell
+			}
+			if recipeMap, ok := contextVal["recipe"].(map[string]interface{}); ok {
+				if hash, ok := recipeMap["invocation_hash"].(string); ok {
+					execCtx.Recipe.InvocationHash = hash
+				}
+				if id, ok := recipeMap["invocation_id"].(string); ok {
+					execCtx.Recipe.InvocationID = id
+				}
+				if attempt, ok := recipeMap["invocation_attempt"].(int); ok {
+					execCtx.Recipe.InvocationAttempt = attempt
+				} else if attempt64, ok := recipeMap["invocation_attempt"].(int64); ok {
+					execCtx.Recipe.InvocationAttempt = int(attempt64)
+				} else if attemptFloat, ok := recipeMap["invocation_attempt"].(float64); ok {
+					execCtx.Recipe.InvocationAttempt = int(attemptFloat)
+				}
+			}
+		}
+	}
 }
 
 func innerSequence(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {

@@ -2,6 +2,12 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
@@ -16,15 +22,68 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
+var (
+	repoOnce sync.Once
+	repoPath string
+	repoHash string
+)
+
+func ensureTestRepo() (string, string) {
+	repoOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "worker-test-repo-*")
+		if err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "init"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.email", "test@example.com"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.name", "Test User"); err != nil {
+			panic(err)
+		}
+		readme := filepath.Join(dir, "README.md")
+		if err := os.WriteFile(readme, []byte("initial\n"), 0o644); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "add", "."); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "commit", "-m", "init"); err != nil {
+			panic(err)
+		}
+		output, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("rev-parse HEAD failed: %w (%s)", err, output))
+		}
+		repoPath = dir
+		repoHash = strings.TrimSpace(string(output))
+	})
+	return repoPath, repoHash
+}
+
+func runGit(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %v failed: %w (%s)", args, err, out)
+	}
+	return nil
+}
+
 func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{} {
 	if inputs == nil {
 		inputs = make(map[string]interface{})
 	}
+
+	repo, hash := ensureTestRepo()
 	if _, ok := inputs["basegitrepo"]; !ok {
-		inputs["basegitrepo"] = "/tmp/vibethis/test-repo"
+		inputs["basegitrepo"] = repo
 	}
 	if _, ok := inputs["basegithash"]; !ok {
-		inputs["basegithash"] = "0000000000000000000000000000000000000000"
+		inputs["basegithash"] = hash
 	}
 	if _, ok := inputs["ticketid"]; !ok {
 		inputs["ticketid"] = "TEST-TICKET"

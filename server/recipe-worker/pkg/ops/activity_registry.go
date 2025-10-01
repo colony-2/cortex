@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
 )
@@ -26,8 +27,9 @@ type ActivityRegistration struct {
 
 // ActivityRegistry manages all registered activities
 type ActivityRegistry struct {
-	activities map[string]ActivityRegistration
-	generator  SchemaGenerator
+	activities    map[string]ActivityRegistration
+	generator     SchemaGenerator
+	gitController *gitstate.Controller
 }
 
 // SchemaGenerator validates struct tags and generates JSON schemas
@@ -40,8 +42,9 @@ type SchemaGenerator interface {
 // NewActivityRegistry creates a new activity registry
 func NewActivityRegistry() (*ActivityRegistry, error) {
 	a := &ActivityRegistry{
-		activities: make(map[string]ActivityRegistration),
-		generator:  NewDefaultSchemaGenerator(),
+		activities:    make(map[string]ActivityRegistration),
+		generator:     NewDefaultSchemaGenerator(),
+		gitController: gitstate.NewController(nil),
 	}
 	opsList := ops.List()
 	for _, op := range opsList {
@@ -57,20 +60,47 @@ type ActivityRegisterable interface {
 }
 
 func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
-	for k, v := range r.activities {
-		// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
-		if v.Activity.ExecuteAsActivity() {
-			activityOp := v.Activity
-			worker.RegisterActivityWithOptions(func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
-				input := req.Input
-				if input == nil {
-					input = map[string]interface{}{}
-				}
-				return activityOp.ExecuteV2(req.Invocation, ctx, input)
-			}, activity.RegisterOptions{
-				Name: k,
-			})
+	for name, registration := range r.activities {
+		if !registration.Activity.ExecuteAsActivity() {
+			continue
 		}
+		wrapped := withGitWorkspace(registration, r.gitController)
+		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
+	}
+}
+
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+	if controller == nil {
+		controller = gitstate.NewController(nil)
+	}
+	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+		input := req.Input
+		if input == nil {
+			input = map[string]interface{}{}
+		}
+		gitCtx, err := gitstate.ContextFromRequest(req.Invocation, input)
+		if err != nil {
+			return nil, err
+		}
+		if err := controller.PrepareWorkspace(ctx, gitCtx); err != nil {
+			return nil, err
+		}
+		if err := controller.Restore(ctx, gitCtx); err != nil {
+			return nil, err
+		}
+		outputs, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		if outputs == nil {
+			outputs = make(map[string]interface{})
+		}
+		newHash, updatedCtx, err := controller.Persist(ctx, gitCtx)
+		if err != nil {
+			return nil, err
+		}
+		gitstate.InjectPersistResult(outputs, newHash, updatedCtx)
+		return outputs, nil
 	}
 }
 

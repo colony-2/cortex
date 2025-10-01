@@ -2,13 +2,70 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
+
+var (
+	debugRepoOnce sync.Once
+	debugRepoPath string
+	debugRepoHash string
+)
+
+func ensureDebugRepo() (string, string) {
+	debugRepoOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "debug-repo-*")
+		if err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "init"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.email", "test@example.com"); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "config", "user.name", "Test User"); err != nil {
+			panic(err)
+		}
+		readme := filepath.Join(dir, "README.md")
+		if err := os.WriteFile(readme, []byte("initial\n"), 0o644); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "add", "."); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "commit", "-m", "init"); err != nil {
+			panic(err)
+		}
+		output, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("rev-parse HEAD failed: %w (%s)", err, output))
+		}
+		debugRepoPath = dir
+		debugRepoHash = strings.TrimSpace(string(output))
+	})
+	return debugRepoPath, debugRepoHash
+}
+
+func runGit(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git %v failed: %w (%s)", args, err, out)
+	}
+	return nil
+}
 
 func TestDebugExecutor(t *testing.T) {
 	yamlStr := `id: hello_world
@@ -38,14 +95,16 @@ inputs:
 		t.Fatalf("Executor Error: %v", err)
 	}
 
+	repo, hash := ensureDebugRepo()
+
 	// Execute recipe
 	result, err := exec.Execute(
 		context.Background(),
 		r,
 		map[string]interface{}{
 			"name":        "Test",
-			"basegitrepo": "/tmp/vibethis/test-repo",
-			"basegithash": "0000000000000000000000000000000000000000",
+			"basegitrepo": repo,
+			"basegithash": hash,
 			"ticketid":    "TEST-TICKET",
 			"cellname":    "test-cell",
 		},

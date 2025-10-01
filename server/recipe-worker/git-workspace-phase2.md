@@ -47,7 +47,7 @@ func withGitWorkspace(reg ActivityRegistration, gc *gitstate.Controller) activit
 
 - `PrepareWorkspace` lazily performs a shallow clone into the runID-scoped worktree and ensures the blob-store location exists (using adapter-specific calls such as `EnsureLocation`).
 - `Restore` replays thin packs when the current persist hash differs from the target state. The first op after cloning can skip restore if the checkout already matches `PersistHash`.
-- `Persist` captures changes with `gitcommit.PersistCommit`, writing thin packs to `<blobStoreURI>/git/thin-packs` using adapter primitives (`PutBlob`). The helper returns an updated `GitContext` containing the new commit hash and storage metadata.
+- `Persist` captures changes with `gitcommit.PersistCommit`, writing thin packs to `<blobStoreURI>/git/thin-packs` using adapter primitives (`PutBlob`). The helper returns an updated `executionContext` containing the new commit hash and storage metadata.
 - `InjectPersistResult` merges the new state into ordinary outputs by replacing `outputs["context"]["git"]` with the refreshed context (which includes the new `persist_hash`, thin-pack metadata, etc.). For readability we also expose `outputs["git_persist_hash"] = updatedCtx.PersistHash`, but no other alias keys remain.
 - Inline ops remain read-only in this phase; mutating inline flows are handled in Phase 3.
 
