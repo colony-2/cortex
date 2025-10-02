@@ -110,7 +110,9 @@ func Run(ctx context.Context, input ThinpackRebaseInput) (*ThinpackRebaseOutput,
 		UpdatedRef:     updatedRef,
 		RebasedFrom:    rebasedFrom,
 		GitContextPatch: map[string]interface{}{
-			"base_hash": targetBase,
+			"base_hash":     targetBase,
+			"persist_hash":  newHead,
+			"previous_hash": rebasedFrom.PersistHash,
 		},
 	}
 

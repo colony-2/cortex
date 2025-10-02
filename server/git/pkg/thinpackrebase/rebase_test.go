@@ -60,6 +60,8 @@ func TestRunThinpackRebase_ReplaysCommits(t *testing.T) {
 	require.Equal(t, originalPersist, output.RebasedFrom.PersistHash)
 	require.Equal(t, baseHash, output.RebasedFrom.BaseHash)
 	require.Equal(t, targetBase, output.GitContextPatch["base_hash"])
+	require.Equal(t, output.NewPersistHash, output.GitContextPatch["persist_hash"])
+	require.Equal(t, originalPersist, output.GitContextPatch["previous_hash"])
 
 	parent := gitRevParse(t, workspacePath, "HEAD^")
 	require.Equal(t, targetBase, parent)
@@ -152,6 +154,8 @@ func TestRunThinpackRebase_FastForwardWhenNoLocalCommits(t *testing.T) {
 
 	head := gitRevParse(t, workspacePath, "HEAD")
 	require.Equal(t, targetBase, head)
+	require.Equal(t, targetBase, output.GitContextPatch["base_hash"])
+	require.Equal(t, targetBase, output.GitContextPatch["persist_hash"])
 }
 
 func TestRunThinpackRebase_FailsWhenDiverged(t *testing.T) {
