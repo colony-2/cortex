@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
@@ -95,12 +96,48 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 		if outputs == nil {
 			outputs = make(map[string]interface{})
 		}
+		if patch, ok := outputs["git_context_patch"]; ok {
+			if patchMap, ok := patch.(map[string]interface{}); ok {
+				applyGitContextPatch(gitCtx, patchMap)
+			}
+			delete(outputs, "git_context_patch")
+		}
 		newHash, updatedCtx, err := controller.Persist(ctx, gitCtx)
 		if err != nil {
 			return nil, err
 		}
 		gitstate.InjectPersistResult(outputs, newHash, updatedCtx)
 		return outputs, nil
+	}
+}
+
+func applyGitContextPatch(gitCtx *gitstate.Context, patch map[string]interface{}) {
+	if gitCtx == nil || patch == nil {
+		return
+	}
+	for key, raw := range patch {
+		str, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		str = strings.TrimSpace(str)
+		if str == "" {
+			continue
+		}
+		switch strings.ToLower(key) {
+		case "base_hash":
+			gitCtx.BaseHash = str
+		case "persist_hash":
+			gitCtx.PersistHash = str
+		case "previous_hash":
+			gitCtx.PreviousHash = str
+		case "blob_store_uri":
+			gitCtx.BlobStoreURI = str
+		case "thin_pack_path":
+			gitCtx.ThinPackPath = str
+		case "git_author":
+			gitCtx.GitAuthor = str
+		}
 	}
 }
 

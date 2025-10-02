@@ -3,11 +3,16 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,6 +62,119 @@ func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInpu
 		Result:  input.Data + " processed",
 		Success: true,
 	}, nil
+}
+
+func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
+	t.Parallel()
+
+	repoDir, baseHash, nextHash := initTwoCommitRepo(t)
+	blobStore := t.TempDir()
+
+	controller := gitstate.NewController(nil)
+
+	newBase := nextHash
+	patchActivity := recipeops.NewActivityMappedOpV2[struct {
+		Context map[string]interface{} `json:"context,omitempty"`
+	}, struct {
+		GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
+	}](
+		recipeops.OpMetadata{
+			Type:        "test_git_context_patch",
+			Description: "emits git context patch",
+			Version:     "1.0.0",
+		},
+		func(inv recipeops.Invocation, ctx context.Context, input struct {
+			Context map[string]interface{} `json:"context,omitempty"`
+		}) (struct {
+			GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
+		}, error) {
+			return struct {
+				GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
+			}{
+				GitContextPatch: map[string]interface{}{"base_hash": newBase},
+			}, nil
+		},
+	)
+
+	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
+	wrapped := withGitWorkspace(registration, controller)
+
+	inv := recipeops.Invocation{RecipeID: "recipe.test", NodePath: "sequence.node", InvokeSeq: 1}
+	input := map[string]interface{}{
+		"context": map[string]interface{}{
+			"git": map[string]interface{}{
+				"base_repo":      repoDir,
+				"base_hash":      baseHash,
+				"persist_hash":   nextHash,
+				"worktree_path":  repoDir,
+				"blob_store_uri": "file://" + filepath.ToSlash(blobStore),
+			},
+			"worktree":  repoDir,
+			"blobstore": "file://" + filepath.ToSlash(blobStore),
+			"ticketid":  "T-1",
+			"cellname":  "beta",
+		},
+	}
+
+	outputs, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, Input: input})
+	require.NoError(t, err)
+	require.NotNil(t, outputs)
+	require.NotContains(t, outputs, "git_context_patch")
+
+	ctxMap := outputs["context"].(map[string]interface{})
+	gitMap := ctxMap["git"].(map[string]interface{})
+	require.Equal(t, newBase, gitMap["base_hash"])
+	require.Equal(t, outputs["git_persist_hash"], gitMap["persist_hash"])
+	// ensure new thin pack recorded relative to blobstore
+	thinPack, ok := gitMap["thin_pack_path"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, thinPack)
+	stat, err := os.Stat(filepath.Join(blobStore, filepath.FromSlash(thinPack)))
+	require.NoError(t, err)
+	require.True(t, stat.Mode().IsRegular())
+}
+
+func initTwoCommitRepo(t *testing.T) (string, string, string) {
+	t.Helper()
+
+	root := t.TempDir()
+	repoDir := filepath.Join(root, "repo")
+	runGitCmd(t, root, "git", "init", repoDir)
+	runGitCmd(t, repoDir, "git", "config", "user.name", "Tester")
+	runGitCmd(t, repoDir, "git", "config", "user.email", "tester@example.com")
+	writeFile(t, repoDir, "README.md", "first\n")
+	runGitCmd(t, repoDir, "git", "add", "README.md")
+	runGitCmd(t, repoDir, "git", "commit", "-m", "first")
+	baseHash := strings.TrimSpace(runGitCmd(t, repoDir, "git", "rev-parse", "HEAD"))
+	runGitCmd(t, repoDir, "git", "checkout", "-B", "main")
+	writeFile(t, repoDir, "README.md", "second\n")
+	runGitCmd(t, repoDir, "git", "add", "README.md")
+	runGitCmd(t, repoDir, "git", "commit", "-m", "second")
+	nextHash := strings.TrimSpace(runGitCmd(t, repoDir, "git", "rev-parse", "HEAD"))
+	return repoDir, baseHash, nextHash
+}
+
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file failed: %v", err)
+	}
+}
+
+func runGitCmd(t *testing.T, dir string, name string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v (%s)", args, err, output)
+	}
+	return string(output)
 }
 
 func TestActivityRegistration(t *testing.T) {

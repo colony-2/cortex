@@ -4,6 +4,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitcollector"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+	"github.com/divisive-ai/vibethis/server/git/pkg/thinpackrebase"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
@@ -15,5 +16,6 @@ func GetAll() []ops.RegisterableOp {
 		gitshallow.GetOp(),
 		gitcommit.GetPersistOp(),
 		gitcommit.GetRestoreOp(),
+		thinpackrebase.GetOp(),
 	}
 }
