@@ -1,11 +1,11 @@
 # Workflow Control `StartRecipe` Specification
 
 ## Overview
-Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry point so recipe-aware callers can launch new workflow executions without reaching into Temporal SDKs. The new method captures the initiating actor (shared with ticketing) and the logical recipe name, returning a portable execution reference. As part of the change, the reusable `Actor` model will move from `server/ticket` into `recipe-core` so both workflow orchestration and ticketing share a single definition.
+Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry point so recipe-aware callers can launch new workflow executions without reaching into Temporal SDKs. The new method captures the initiating actor (shared with ticketing), the logical recipe name, and the normalized execution context (cell, ticket, Git sources, blob-store roots, etc.), returning a portable execution reference. As part of the change, the reusable `Actor` model will move from `server/ticket` into `recipe-core` so both workflow orchestration and ticketing share a single definition.
 
 ## Goals
 - Provide a runtime-agnostic API to start recipe executions from core/ops packages.
-- Include the initiating actor and recipe name on every start request.
+- Include the initiating actor, recipe name, and execution context (cell, ticket, Git repo/hash, blob-store base) on every start request.
 - Centralize the `Actor` model inside `recipe-core` to avoid ad-hoc copies.
 - Preserve existing ticket storage behaviour while re-exporting the shared actor types.
 
@@ -57,12 +57,27 @@ Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry 
 - Update `server/ticket/internal/model` to import `identity` and alias (`type Actor = identity.Actor`, etc.) so the public ticket API is unchanged. Update helper constructors to delegate to the new package.
 - Adjust go.mod files: add a `require github.com/divisive-ai/vibethis/server/recipe-core v0.0.0` entry in `server/ticket`, with a local `replace` mirroring existing patterns.
 
-### 2. New StartRecipe API Surface
+### 2. New StartRecipe API Surface & Context Contract
 - Extend the interface in `pkg/workflowctl/workflowctl.go`:
   ```go
+  type RecipeStartGitContext struct {
+      BaseRepo    string // remote git repository URL or canonical identifier (required)
+      BaseHash    string // commit SHA used to materialize the workspace (required)
+      PersistHash string // commit SHA to persist back to (defaults to BaseHash when empty)
+  }
+
+  type RecipeStartExecutionContext struct {
+      CellName      string                 // logical cell hosting the run (required)
+      TicketID      string                 // workflow ticket identifier (required)
+      Git           RecipeStartGitContext  // git materialization contract (required)
+      WorkspaceRoot string                 // optional override; defaults to env VIBETHIS_WORKSPACE_ROOT
+      BlobStoreBase string                 // optional override; defaults to env VIBETHIS_BLOBSTORE_BASE
+  }
+
   type RecipeStartRequest struct {
       RecipeName       string
       Actor            identity.Actor
+      Context          RecipeStartExecutionContext
       InvocationID     string            // optional idempotency token
       Input            any               // optional recipe input payload
       SearchAttributes map[string]any    // optional additional index data
@@ -81,15 +96,17 @@ Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry 
       StartRecipe(ctx context.Context, req RecipeStartRequest) (RecipeStartResult, error)
   }
   ```
-- The `Actor` field is required. `RecipeName` is required. Optional fields support future adoption without needing another interface break.
-- Define new canonical errors as needed, e.g. `ErrAlreadyExists` (idempotency collision) and `ErrInvalidRequest` (missing recipe/actor). Implementations map Temporal-specific failures to these errors.
-- Document how `RecipeName` maps to runtime concepts (Temporal workflow type or recipe registry ID) inside the package comments.
+- `RecipeName`, `Actor`, and the required execution-context fields (`CellName`, `TicketID`, `Git.BaseRepo`, `Git.BaseHash`) must be populated before making the call. `PersistHash` defaults to the base hash when omitted so callers are not forced to provide it.
+- `WorkspaceRoot` and `BlobStoreBase` allow orchestration surfaces (API, CLI, tests) to override the defaults used in `recipe-worker` today; leaving them empty preserves the current environment-variable behaviour.
+- Define new canonical errors as needed, e.g. `ErrAlreadyExists` (idempotency collision), `ErrInvalidRequest` (missing actor/recipe/context), and `ErrContextUnavailable` (runtime cannot honour the supplied workspace/blob-store overrides). Temporal-specific failures map to these errors.
+- Document how `RecipeName` maps to runtime concepts (Temporal workflow type or recipe registry ID) inside the package comments, and spell out how each context field maps to inputs consumed by `compiler.initializeExecutionContext` (`basegitrepo`, `basegithash`, `ticketid`, `cellname`, `context.git`, `context.blobstore`, etc.).
 
-### 3. Runtime / Temporal Expectations
 - Temporal-backed implementations (`recipe-worker` control plane) capture actor metadata by:
   - Storing the actor JSON in workflow memo for audit.
   - Optionally indexing `ActorType`/`ActorUser.Email` as search attributes if the namespace allows.
   - Using `InvocationID` for Temporal idempotency keys (`WorkflowID` hashing) when provided.
+  - Lifting `Context` into the workflow inputs map prior to execution, ensuring `basegitrepo`, `basegithash`, `ticketid`, `cellname`, and normalized `context.*` keys match the Git workspace contract (`git-workspace-phase1`).
+  - Respecting `WorkspaceRoot`/`BlobStoreBase` overrides when set, falling back to `VIBETHIS_WORKSPACE_ROOT` and `VIBETHIS_BLOBSTORE_BASE` otherwise.
 - Ensure the implementation returns the assigned `WorkflowID`/`RunID` as `ExecutionRef` and the authoritative start time.
 
 ### 4. Ops & Dependency Integration
@@ -105,12 +122,12 @@ Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry 
 1. Create `pkg/identity` with actor types and constructors; add unit tests.
 2. Update `workflowctl` package to import `identity` and define `RecipeStartRequest`/`RecipeStartResult`; extend the interface and error set; refresh docs.
 3. Refactor `server/ticket` model/helpers to consume `identity` and adjust go.mod/replace entries.
-4. Update Temporal-backed `WorkflowControl` implementation in `recipe-worker` to satisfy the new method, handling actor serialization, idempotency, and error mapping.
-5. Update ops helpers and documentation references; ensure `ServiceDependencies2` guidance mentions the new capability.
-6. Add tests (or mocks) covering successful starts, validation failures, and runtime error translation.
+4. Update Temporal-backed `WorkflowControl` implementation in `recipe-worker` to satisfy the new method, validating the execution context, materialising the Git workspace, honouring overrides, and handling actor serialization, idempotency, and error mapping.
+5. Update ops helpers and documentation references; ensure `ServiceDependencies2` guidance mentions the new capability and details the required context fields.
+6. Add tests (or mocks) covering successful starts, validation failures (missing `CellName`, `Git.BaseRepo`, etc.), context override propagation, and runtime error translation.
 
 ## Open Questions
 - Should `InvocationID` be required for safety, or remain optional with runtime-specific defaults?
 - Do we want to enforce actor presence at compile time (e.g. separate constructors) or keep runtime validation?
 - Which search attributes should be indexed by default for user actors (email, cell) to balance observability and PII safeguards?
-
+- Do we also need to surface additional Git metadata (branch name, workspace refs) or environment hints (container image, devcontainer URI) as part of the initial context?

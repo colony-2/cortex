@@ -1,15 +1,15 @@
 package shared
 
 import (
-    "context"
-    "testing"
+	"context"
+	"testing"
 
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-    workerexec "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-    workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
-    "go.uber.org/zap"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	workerexec "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // ExecutionScope represents the execution context with nested scopes
@@ -241,37 +241,38 @@ func resolveVariable(varName string, scope *ExecutionScope) (interface{}, bool) 
 
 // TestNestedCompositionExecution tests deeply nested composition execution
 func TestNestedCompositionExecution(t *testing.T) {
-    // Build a real recipe (no simulation): two command steps and map outputs
-    r := recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
-        RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "test-recipe"}},
-        SequenceData: recipe.SequenceData{
-            Sequence: []recipe.Node{
-                {NodeImpl: &recipe.NodeOp{
-                    NodeMetadata: recipe.NodeMetadata{ID: "a", Inputs: recipe.InputMap{"run": "echo hello"}},
-                    OpData:       recipe.OpData{Op: "command_execution"},
-                }},
-                {NodeImpl: &recipe.NodeOp{
-                    NodeMetadata: recipe.NodeMetadata{ID: "b", Inputs: recipe.InputMap{"run": "echo world"}},
-                    OpData:       recipe.OpData{Op: "command_execution"},
-                }},
-            },
-            Outputs: recipe.OutputMap{
-                "a_stdout": "{{ sequence.a.outputs.stdout }}",
-                "b_stdout": "{{ sequence.b.outputs.stdout }}",
-            },
-        },
-    }}
+	// Build a real recipe (no simulation): two command steps and map outputs
+	r := recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
+		RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "test-recipe"}},
+		SequenceData: recipe.SequenceData{
+			Sequence: []recipe.Node{
+				{NodeImpl: &recipe.NodeOp{
+					NodeMetadata: recipe.NodeMetadata{ID: "a", Inputs: recipe.InputMap{"run": "echo hello"}},
+					OpData:       recipe.OpData{Op: "command_execution"},
+				}},
+				{NodeImpl: &recipe.NodeOp{
+					NodeMetadata: recipe.NodeMetadata{ID: "b", Inputs: recipe.InputMap{"run": "echo world"}},
+					OpData:       recipe.OpData{Op: "command_execution"},
+				}},
+			},
+			Outputs: recipe.OutputMap{
+				"a_stdout": "{{ sequence.a.outputs.stdout }}",
+				"b_stdout": "{{ sequence.b.outputs.stdout }}",
+			},
+		},
+	}}
 
-    // Execute via worker executor
-    reg, err := workerops.NewActivityRegistry()
-    require.NoError(t, err)
-    exec, err := workerexec.NewStandaloneExecutor(reg, zap.NewNop())
-    require.NoError(t, err)
-    out, err := exec.Execute(context.Background(), r, map[string]interface{}{})
-    require.NoError(t, err)
+	// Execute via worker executor
+	reg, err := workerops.NewActivityRegistry()
+	require.NoError(t, err)
+	exec, err := workerexec.NewStandaloneExecutor(reg, zap.NewNop())
+	require.NoError(t, err)
+	inputs := requiredWorkflowInputs(t)
+	out, err := exec.Execute(context.Background(), r, inputs)
+	require.NoError(t, err)
 
-    assert.Equal(t, "hello", out["a_stdout"])
-    assert.Equal(t, "world", out["b_stdout"])
+	assert.Equal(t, "hello", out["a_stdout"])
+	assert.Equal(t, "world", out["b_stdout"])
 }
 
 // createExecutionScope creates a new execution scope

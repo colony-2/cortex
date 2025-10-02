@@ -107,7 +107,6 @@ replace (
 	github.com/divisive-ai/vibethis/server/api => ../api
 	github.com/divisive-ai/vibethis/server/container => ../container
 	github.com/divisive-ai/vibethis/server/core => ../core
-	github.com/divisive-ai/vibethis/server/embeddedtemporal => ../embeddedtemporal
 	github.com/divisive-ai/vibethis/server/files => ../files
 	github.com/divisive-ai/vibethis/server/git => ../git
 	github.com/divisive-ai/vibethis/server/graph => ../graph
