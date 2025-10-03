@@ -17,6 +17,9 @@ import (
 type InlineWorkspaceOptions struct {
 	// ChildID overrides the generated child workspace identifier used in the worktree path.
 	ChildID string
+	// SkipFinalize skips the persist/injection stages. Useful for async invocations where the caller cannot
+	// safely wait for Git persistence without blocking on the child workflow completing first.
+	SkipFinalize bool
 }
 
 // InlineWorkspaceResult packages the result of executing inline logic within a managed workspace lifecycle.
@@ -69,6 +72,13 @@ func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs ma
 		result = make(map[string]interface{})
 	}
 
+	workspaceResult := &InlineWorkspaceResult{Result: result}
+
+	if opts.SkipFinalize {
+		workspaceResult.GitContext = childCtx
+		return workspaceResult, nil
+	}
+
 	persistOutput, err := runInlinePersistStage(ctx, childCtx)
 	if err != nil {
 		return nil, err
@@ -82,11 +92,10 @@ func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs ma
 
 	contextMap, _ := outputs["context"].(map[string]interface{})
 
-	return &InlineWorkspaceResult{
-		Result:     result,
-		ContextMap: cloneMap(contextMap),
-		GitContext: childCtx,
-	}, nil
+	workspaceResult.ContextMap = cloneMap(contextMap)
+	workspaceResult.GitContext = childCtx
+
+	return workspaceResult, nil
 }
 
 type inlineLifecycleActivity func(context.Context, Context) (Context, error)

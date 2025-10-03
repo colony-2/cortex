@@ -130,3 +130,69 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 	}
 	require.Equal(t, childWorktree, result.ContextMap["worktree"])
 }
+
+func TestWithInlineWorkspaceSkipFinalize(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	workspaceRoot := t.TempDir()
+	blobStore := t.TempDir()
+	parentWorktree := filepath.Join(workspaceRoot, "run-parent", "work")
+
+	inputs := map[string]interface{}{
+		"context": map[string]interface{}{
+			"git": map[string]interface{}{
+				"base_repo":      baseRepo,
+				"base_hash":      baseHash,
+				"persist_hash":   baseHash,
+				"previous_hash":  baseHash,
+				"blob_store_uri": "file://" + filepath.ToSlash(blobStore),
+				"worktree_path":  parentWorktree,
+			},
+			"worktree":  parentWorktree,
+			"blobstore": "file://" + filepath.ToSlash(blobStore),
+		},
+		"git_persist_hash": baseHash,
+	}
+
+	inv := coreops.Invocation{
+		RecipeID:  "recipe.parent",
+		NodePath:  "root.sequence.child",
+		InvokeSeq: 1,
+		ID:        "child-inv",
+	}
+
+	testSuite := &testsuite.WorkflowTestSuite{}
+	env := testSuite.NewTestWorkflowEnvironment()
+	defer env.AssertExpectations(t)
+
+	env.ExecuteWorkflow(func(ctx workflow.Context) (InlineWorkspaceResult, error) {
+		res, err := WithInlineWorkspace(ctx, inv, inputs, InlineWorkspaceOptions{SkipFinalize: true}, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"status":       "skipped",
+				"context_copy": childInputs["context"],
+			}, nil
+		})
+		if err != nil {
+			return InlineWorkspaceResult{}, err
+		}
+		return *res, nil
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result InlineWorkspaceResult
+	require.NoError(t, env.GetWorkflowResult(&result))
+
+	require.Equal(t, "skipped", result.Result["status"])
+	require.Nil(t, result.ContextMap)
+	require.Equal(t, baseHash, result.GitContext.PersistHash)
+	ctxCopy, ok := result.Result["context_copy"].(map[string]interface{})
+	require.True(t, ok)
+	gitCopy, ok := ctxCopy["git"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, baseHash, gitCopy["persist_hash"])
+}

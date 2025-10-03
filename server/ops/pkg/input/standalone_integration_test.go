@@ -2,6 +2,10 @@ package input_test
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +82,7 @@ func TestFullInputActivityLifecycle(t *testing.T) {
 			"timeout":  60,
 		},
 	}
+	inputs = ensureGitInputs(t, inputs)
 	env.ExecuteWorkflow(r.GetMetdata().ID, inputs)
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -92,4 +97,52 @@ func TestFullInputActivityLifecycle(t *testing.T) {
 	fields, ok := outputs["fields"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, "approve", fields["response"])
+}
+
+func ensureGitInputs(t *testing.T, inputs map[string]interface{}) map[string]interface{} {
+	t.Helper()
+	if inputs == nil {
+		inputs = make(map[string]interface{})
+	}
+	if _, ok := inputs["basegitrepo"]; ok {
+		return inputs
+	}
+	repoPath, baseHash := initGitRepo(t)
+	inputs["basegitrepo"] = repoPath
+	inputs["basegithash"] = baseHash
+	if _, ok := inputs["ticketid"]; !ok {
+		inputs["ticketid"] = "TEST-TICKET"
+	}
+	if _, ok := inputs["cellname"]; !ok {
+		inputs["cellname"] = "test-cell"
+	}
+	return inputs
+}
+
+func initGitRepo(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	runGit(t, dir, "git", "init")
+	runGit(t, dir, "git", "config", "user.name", "Test User")
+	runGit(t, dir, "git", "config", "user.email", "test@example.com")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("seed\n"), 0o644))
+	runGit(t, dir, "git", "add", ".")
+	runGit(t, dir, "git", "commit", "-m", "init")
+	output := runGitOutput(t, dir, "git", "rev-parse", "HEAD")
+	return dir, strings.TrimSpace(output)
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	_ = runGitOutput(t, dir, args...)
+}
+
+func runGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(output))
+	return string(output)
 }

@@ -41,12 +41,75 @@ type recipeInlineAdapter struct {
 	isWorkflowContext bool // Indicates if running in workflow context
 }
 
+type gitStateMode int
+
 const (
-	gitStateShared   = "shared"
-	gitStateDiscrete = "discrete"
-	runModeSync      = "sync"
-	runModeAsync     = "async"
+	gitStateModeUnknown gitStateMode = iota
+	gitStateModeShared
+	gitStateModeDiscrete
 )
+
+var gitStateModeNames = map[gitStateMode]string{
+	gitStateModeShared:   "shared",
+	gitStateModeDiscrete: "discrete",
+}
+
+func (m gitStateMode) String() string {
+	if name, ok := gitStateModeNames[m]; ok {
+		return name
+	}
+	return "unknown"
+}
+
+type executionRunMode int
+
+const (
+	runModeUnknown executionRunMode = iota
+	runModeSync
+	runModeAsync
+)
+
+var runModeNames = map[executionRunMode]string{
+	runModeSync:  "sync",
+	runModeAsync: "async",
+}
+
+func (m executionRunMode) String() string {
+	if name, ok := runModeNames[m]; ok {
+		return name
+	}
+	return "unknown"
+}
+
+func parseGitStateMode(raw string) (gitStateMode, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return gitStateModeShared, nil
+	}
+	switch value {
+	case gitStateModeNames[gitStateModeShared]:
+		return gitStateModeShared, nil
+	case gitStateModeNames[gitStateModeDiscrete]:
+		return gitStateModeDiscrete, nil
+	default:
+		return gitStateModeUnknown, fmt.Errorf("invalid git_state: %s", raw)
+	}
+}
+
+func parseRunMode(raw string) (executionRunMode, error) {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return runModeSync, nil
+	}
+	switch value {
+	case runModeNames[runModeSync]:
+		return runModeSync, nil
+	case runModeNames[runModeAsync]:
+		return runModeAsync, nil
+	default:
+		return runModeUnknown, fmt.Errorf("invalid run_mode: %s", raw)
+	}
+}
 
 // NewRecipeActivity creates a new recipe activity that implements RegisterableOp
 func GetOp() ops.RegisterableOp {
@@ -65,151 +128,164 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 		baseInputs[k] = v
 	}
 
-	gitState := strings.ToLower(strings.TrimSpace(input.GitState))
-	if gitState == "" {
-		gitState = gitStateShared
-	}
-	if gitState != gitStateShared && gitState != gitStateDiscrete {
-		return RecipeOutput{}, temporal.NewNonRetryableApplicationError(fmt.Sprintf("invalid git_state: %s", input.GitState), "INVALID_GIT_STATE", nil)
+	gitMode, err := parseGitStateMode(input.GitState)
+	if err != nil {
+		return RecipeOutput{}, temporal.NewNonRetryableApplicationError(err.Error(), "INVALID_GIT_STATE", nil)
 	}
 
-	runMode := strings.ToLower(strings.TrimSpace(input.RunMode))
-	if runMode == "" {
-		runMode = runModeSync
-	}
-	if runMode != runModeSync && runMode != runModeAsync {
-		return RecipeOutput{}, temporal.NewNonRetryableApplicationError(fmt.Sprintf("invalid run_mode: %s", input.RunMode), "INVALID_RUN_MODE", nil)
-	}
-	if gitState == gitStateShared && runMode == runModeAsync {
-		return RecipeOutput{}, temporal.NewNonRetryableApplicationError("run_mode 'async' requires git_state 'discrete'", "INVALID_COMBINATION", nil)
+	rMode, err := parseRunMode(input.RunMode)
+	if err != nil {
+		return RecipeOutput{}, temporal.NewNonRetryableApplicationError(err.Error(), "INVALID_RUN_MODE", nil)
 	}
 
-	switch {
-	case gitState == gitStateShared && runMode == runModeSync:
-		return executeSharedSync(inv, ctx, timeout, retry, input, baseInputs)
-	case gitState == gitStateDiscrete && runMode == runModeSync:
-		return executeDiscreteSync(inv, ctx, timeout, retry, input, baseInputs)
-	case gitState == gitStateDiscrete && runMode == runModeAsync:
-		return executeDiscreteAsync(inv, ctx, timeout, retry, input, baseInputs)
+	executor := childExecutor{
+		invocation: inv,
+		ctx:        ctx,
+		timeout:    timeout,
+		retry:      retry,
+		input:      input,
+		baseInputs: baseInputs,
+	}
+
+	return executor.run(gitMode, rMode)
+}
+
+type childExecutor struct {
+	invocation ops.Invocation
+	ctx        workflow.Context
+	timeout    time.Duration
+	retry      *temporal.RetryPolicy
+	input      RecipeInput
+	baseInputs map[string]interface{}
+}
+
+func (e *childExecutor) run(gitMode gitStateMode, runMode executionRunMode) (RecipeOutput, error) {
+	if gitMode == gitStateModeUnknown || runMode == runModeUnknown {
+		return RecipeOutput{}, temporal.NewNonRetryableApplicationError("unsupported git_state/run_mode combination", "INVALID_COMBINATION", nil)
+	}
+
+	switch gitMode {
+	case gitStateModeShared:
+		return e.runShared(runMode)
+	case gitStateModeDiscrete:
+		return e.runDiscrete(runMode)
 	default:
 		return RecipeOutput{}, temporal.NewNonRetryableApplicationError("unsupported git_state/run_mode combination", "INVALID_COMBINATION", nil)
 	}
 }
 
-func executeSharedSync(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput, baseInputs map[string]interface{}) (RecipeOutput, error) {
-	workspaceResult, err := gitstate.WithInlineWorkspace(ctx, inv, baseInputs, gitstate.InlineWorkspaceOptions{}, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
-		for k, v := range input.Inputs {
-			childInputs[k] = v
+func (e *childExecutor) runShared(runMode executionRunMode) (RecipeOutput, error) {
+	if !hasGitContext(e.baseInputs) {
+		fallbackInputs := copyShallow(e.baseInputs)
+		if fallbackInputs == nil {
+			fallbackInputs = make(map[string]interface{})
 		}
-		workflow.GetLogger(inner).Info("invoking child recipe", "inputs_keys", mapKeys(childInputs))
-		cwo := workflow.ChildWorkflowOptions{
-			RetryPolicy: retry,
+		mergeChildInputs(fallbackInputs, e.input.Inputs)
+		outputs, err := e.startChildWorkflow(e.ctx, runMode, gitStateModeShared, fallbackInputs)
+		if err != nil {
+			return RecipeOutput{}, err
 		}
-		if timeout > 0 {
-			cwo.WorkflowRunTimeout = timeout
-			cwo.WorkflowExecutionTimeout = timeout
-		}
-		inner = workflow.WithChildOptions(inner, cwo)
-		workflowRun := workflow.ExecuteChildWorkflow(inner, input.Name, childInputs)
-		var result map[string]interface{}
-		if err := workflowRun.Get(inner, &result); err != nil {
-			return nil, err
-		}
-		if result == nil {
-			result = make(map[string]interface{})
-		}
-		workflow.GetLogger(inner).Info("child recipe completed", "keys", mapKeys(result), "result", result)
-		return result, nil
+		return RecipeOutput{Outputs: outputs}, nil
+	}
+
+	options := gitstate.InlineWorkspaceOptions{}
+	if runMode == runModeAsync {
+		options.SkipFinalize = true
+	}
+
+	workspaceResult, err := gitstate.WithInlineWorkspace(e.ctx, e.invocation, e.baseInputs, options, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
+		mergeChildInputs(childInputs, e.input.Inputs)
+		return e.startChildWorkflow(inner, runMode, gitStateModeShared, childInputs)
 	})
 	if err != nil {
 		return RecipeOutput{}, err
 	}
 
-	return RecipeOutput{
-		Outputs:        workspaceResult.Result,
-		Context:        workspaceResult.ContextMap,
-		GitPersistHash: workspaceResult.GitContext.PersistHash,
-	}, nil
+	outputs := map[string]interface{}{}
+	if workspaceResult != nil && workspaceResult.Result != nil {
+		outputs = workspaceResult.Result
+	}
+
+	result := RecipeOutput{Outputs: outputs}
+	if runMode == runModeSync && workspaceResult != nil {
+		result.Context = workspaceResult.ContextMap
+		result.GitPersistHash = workspaceResult.GitContext.PersistHash
+	}
+	return result, nil
 }
 
-func executeDiscreteSync(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput, baseInputs map[string]interface{}) (RecipeOutput, error) {
-	childCtx, childInputs, err := prepareDetachedChild(inv, baseInputs)
+func (e *childExecutor) runDiscrete(runMode executionRunMode) (RecipeOutput, error) {
+	childCtx, childInputs, err := gitstate.PlanDetachedWorkspace(e.invocation, e.baseInputs, gitstate.DetachedWorkspaceOptions{})
 	if err != nil {
 		return RecipeOutput{}, err
 	}
-	mergeChildInputs(childInputs, input.Inputs)
+
+	mergeChildInputs(childInputs, e.input.Inputs)
 	ensureDetachedContext(childInputs, childCtx)
 	ensureDetachedGitPersist(childInputs, childCtx)
 	if _, ok := childInputs["context"]; !ok {
 		return RecipeOutput{}, temporal.NewNonRetryableApplicationError("detached workspace missing context", "MISSING_CONTEXT", nil)
 	}
-	workflow.GetLogger(ctx).Info("invoking discrete child recipe", "inputs_keys", mapKeys(childInputs))
-	childOptions := workflow.ChildWorkflowOptions{RetryPolicy: retry}
-	if timeout > 0 {
-		childOptions.WorkflowRunTimeout = timeout
-		childOptions.WorkflowExecutionTimeout = timeout
-	}
-	childCtxWF := workflow.WithChildOptions(ctx, childOptions)
-	workflowRun := workflow.ExecuteChildWorkflow(childCtxWF, input.Name, childInputs)
-	var childResult map[string]interface{}
-	if err := workflowRun.Get(childCtxWF, &childResult); err != nil {
-		return RecipeOutput{}, err
-	}
-	if childResult == nil {
-		childResult = make(map[string]interface{})
-	}
-	workflow.GetLogger(ctx).Info("discrete child recipe completed", "keys", mapKeys(childResult))
-	return RecipeOutput{Outputs: childResult}, nil
-}
 
-func executeDiscreteAsync(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input RecipeInput, baseInputs map[string]interface{}) (RecipeOutput, error) {
-	childCtx, childInputs, err := prepareDetachedChild(inv, baseInputs)
+	outputs, err := e.startChildWorkflow(e.ctx, runMode, gitStateModeDiscrete, childInputs)
 	if err != nil {
 		return RecipeOutput{}, err
 	}
-	mergeChildInputs(childInputs, input.Inputs)
-	ensureDetachedContext(childInputs, childCtx)
-	ensureDetachedGitPersist(childInputs, childCtx)
-	if _, ok := childInputs["context"]; !ok {
-		return RecipeOutput{}, temporal.NewNonRetryableApplicationError("detached workspace missing context", "MISSING_CONTEXT", nil)
-	}
-	workflow.GetLogger(ctx).Info("scheduling async discrete child recipe", "inputs_keys", mapKeys(childInputs))
-	workflow.GetLogger(ctx).Info("async discrete context snapshot", "context", childInputs["context"])
+	return RecipeOutput{Outputs: outputs}, nil
+}
 
-	cwo := workflow.ChildWorkflowOptions{
-		RetryPolicy:           retry,
-		ParentClosePolicy:     enumspb.PARENT_CLOSE_POLICY_ABANDON,
-		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("invoking child recipe", "recipe", e.input.Name, "run_mode", runMode.String(), "git_state", gitMode.String(), "inputs_keys", mapKeys(childInputs))
+
+	childCtx := workflow.WithChildOptions(ctx, e.childWorkflowOptions(runMode))
+	future := workflow.ExecuteChildWorkflow(childCtx, e.input.Name, childInputs)
+
+	if runMode == runModeSync {
+		var result map[string]interface{}
+		if err := future.Get(childCtx, &result); err != nil {
+			return nil, err
+		}
+		if result == nil {
+			result = make(map[string]interface{})
+		}
+		logger.Info("child recipe completed", "recipe", e.input.Name, "keys", mapKeys(result))
+		return result, nil
 	}
-	if timeout > 0 {
-		cwo.WorkflowRunTimeout = timeout
-		cwo.WorkflowExecutionTimeout = timeout
-	}
-	childCtxWF := workflow.WithChildOptions(ctx, cwo)
-	childFuture := workflow.ExecuteChildWorkflow(childCtxWF, input.Name, childInputs)
+
 	var exec workflow.Execution
-	if err := childFuture.GetChildWorkflowExecution().Get(childCtxWF, &exec); err != nil {
-		return RecipeOutput{}, err
+	if err := future.GetChildWorkflowExecution().Get(childCtx, &exec); err != nil {
+		return nil, err
 	}
 	handle := map[string]interface{}{
-		"recipe":           input.Name,
-		"workflow_id":      exec.ID,
-		"run_id":           exec.RunID,
-		"git_state":        gitStateDiscrete,
-		"context":          childInputs["context"],
-		"git_persist_hash": childInputs["git_persist_hash"],
+		"recipe":      e.input.Name,
+		"workflow_id": exec.ID,
+		"run_id":      exec.RunID,
+		"git_state":   gitMode.String(),
 	}
-	return RecipeOutput{Outputs: map[string]interface{}{"async_handle": handle}}, nil
+	if ctxVal, ok := childInputs["context"]; ok {
+		handle["context"] = ctxVal
+	}
+	if hash, ok := childInputs["git_persist_hash"]; ok {
+		handle["git_persist_hash"] = hash
+	}
+	logger.Info("async child recipe scheduled", "recipe", e.input.Name, "workflow_id", exec.ID, "run_id", exec.RunID, "git_state", gitMode.String())
+	return map[string]interface{}{"async_handle": handle}, nil
 }
 
-func prepareDetachedChild(inv ops.Invocation, baseInputs map[string]interface{}) (gitstate.Context, map[string]interface{}, error) {
-	childCtx, childInputs, err := gitstate.PlanDetachedWorkspace(inv, baseInputs, gitstate.DetachedWorkspaceOptions{})
-	if err != nil {
-		return gitstate.Context{}, nil, err
+func (e *childExecutor) childWorkflowOptions(runMode executionRunMode) workflow.ChildWorkflowOptions {
+	options := workflow.ChildWorkflowOptions{
+		RetryPolicy: e.retry,
 	}
-	ensureDetachedContext(childInputs, childCtx)
-	ensureDetachedGitPersist(childInputs, childCtx)
-	return childCtx, childInputs, nil
+	if e.timeout > 0 {
+		options.WorkflowRunTimeout = e.timeout
+		options.WorkflowExecutionTimeout = e.timeout
+	}
+	if runMode == runModeAsync {
+		options.ParentClosePolicy = enumspb.PARENT_CLOSE_POLICY_ABANDON
+		options.WorkflowIDReusePolicy = enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE
+	}
+	return options
 }
 
 func ensureDetachedContext(inputs map[string]interface{}, ctx gitstate.Context) {
@@ -282,4 +358,19 @@ func mapKeys(m map[string]interface{}) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func hasGitContext(inputs map[string]interface{}) bool {
+	if inputs == nil {
+		return false
+	}
+	if ctxVal, ok := inputs["context"].(map[string]interface{}); ok && ctxVal != nil {
+		if _, hasGit := ctxVal["git"].(map[string]interface{}); hasGit {
+			return true
+		}
+	}
+	if _, ok := inputs["basegitrepo"]; ok {
+		return true
+	}
+	return false
 }

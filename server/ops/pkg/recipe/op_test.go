@@ -63,26 +63,43 @@ func TestRecipeOpExecuteChildWorkflow(t *testing.T) {
 	}
 }
 
-func TestRecipeOpRejectsSharedAsync(t *testing.T) {
+func TestRecipeOpSharedAsyncReturnsHandle(t *testing.T) {
 	ts := &testsuite.WorkflowTestSuite{}
 	env := ts.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
 
-	workflowFn := func(ctx workflow.Context) (string, error) {
-		_, err := execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
-			Name:     "child",
-			GitState: gitStateShared,
-			RunMode:  runModeAsync,
-			Raw:      makeRecipeBaseInputs(t),
+	env.RegisterWorkflow(testChildWorkflow)
+
+	baseRaw := makeRecipeBaseInputs(t)
+
+	workflowFn := func(ctx workflow.Context) (RecipeOutput, error) {
+		return execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
+			Name:     "testChildWorkflow",
+			GitState: gitStateModeShared.String(),
+			RunMode:  runModeNames[runModeAsync],
+			Raw:      cloneMapDeep(baseRaw),
 		})
-		return "", err
 	}
 
 	env.RegisterWorkflow(workflowFn)
 	env.ExecuteWorkflow(workflowFn)
+
 	require.True(t, env.IsWorkflowCompleted())
-	require.Error(t, env.GetWorkflowError())
-	require.Contains(t, env.GetWorkflowError().Error(), "requires git_state 'discrete'")
+	require.NoError(t, env.GetWorkflowError())
+
+	var result RecipeOutput
+	require.NoError(t, env.GetWorkflowResult(&result))
+
+	handle, ok := result.Outputs["async_handle"].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, gitStateModeShared.String(), handle["git_state"])
+	require.NotEmpty(t, handle["workflow_id"])
+	require.NotEmpty(t, handle["run_id"])
+	ctxVal, ok := handle["context"].(map[string]interface{})
+	require.True(t, ok)
+	require.NotNil(t, ctxVal["git"])
+	require.Nil(t, result.Context)
+	require.Empty(t, result.GitPersistHash)
 }
 
 func TestRecipeOpDiscreteSyncProvidesContext(t *testing.T) {
@@ -97,8 +114,8 @@ func TestRecipeOpDiscreteSyncProvidesContext(t *testing.T) {
 	workflowFn := func(ctx workflow.Context) (map[string]interface{}, error) {
 		out, err := execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
 			Name:     "discreteContextInspector",
-			GitState: gitStateDiscrete,
-			RunMode:  runModeSync,
+			GitState: gitStateModeDiscrete.String(),
+			RunMode:  runModeNames[runModeSync],
 			Raw:      cloneMapDeep(baseRaw),
 		})
 		if err != nil {
@@ -130,8 +147,8 @@ func TestRecipeOpDiscreteAsyncReturnsHandle(t *testing.T) {
 	workflowFn := func(ctx workflow.Context) (map[string]interface{}, error) {
 		out, err := execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
 			Name:     "testChildWorkflow",
-			GitState: gitStateDiscrete,
-			RunMode:  runModeAsync,
+			GitState: gitStateModeDiscrete.String(),
+			RunMode:  runModeNames[runModeAsync],
 			Raw:      cloneMapDeep(baseRaw),
 		})
 		if err != nil {
@@ -151,7 +168,7 @@ func TestRecipeOpDiscreteAsyncReturnsHandle(t *testing.T) {
 	handle, ok := outputs["async_handle"].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, "testChildWorkflow", handle["recipe"])
-	require.Equal(t, gitStateDiscrete, handle["git_state"])
+	require.Equal(t, gitStateModeDiscrete.String(), handle["git_state"])
 	require.NotEmpty(t, handle["workflow_id"])
 	require.NotEmpty(t, handle["run_id"])
 	ctxVal, ok := handle["context"].(map[string]interface{})
