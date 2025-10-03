@@ -11,9 +11,12 @@ import (
 	"sync"
 	"testing"
 
+	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
+	opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -38,6 +41,11 @@ var (
 	fixturesRepoPath string
 	fixturesRepoHash string
 )
+
+func init() {
+	coreops.Register(opsexport.GetAll()...)
+	coreops.Register(gitexport.GetAll()...)
+}
 
 func ensureTestRepo() (string, string) {
 	fixturesRepoOnce.Do(func() {
@@ -243,7 +251,7 @@ func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, 
 func RunTestOnAllRecipes(path string, t *testing.T) {
 	// Create standalone executor once for all tests
 	logger := zaptest.NewLogger(t)
-	a, err := ops.NewActivityRegistry()
+	a, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	exec, err := executor.NewStandaloneExecutor(a, logger)
 	require.NoError(t, err, "Failed to create standalone executor")

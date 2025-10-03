@@ -14,6 +14,7 @@ type TemplateData struct {
 	Sequence map[string]NodeOutput  `json:"sequence"` // Sibling nodes in sequence
 	States   map[string]StateOutput `json:"states"`   // Completed states in state machine
 	Scope    ScopeMetadata          `json:"scope"`    // Execution metadata
+	Context  map[string]interface{} `json:"context"`  // Execution context (git, worktree, etc.)
 	// Note: No unqualified "outputs" field - outputs always qualified by context
 }
 
@@ -54,7 +55,6 @@ type ResolutionContext struct {
 	// Template data for current scope
 	TemplateData TemplateData
 
-
 	// CEL environment for when expressions
 	CELEnv *cel.Env
 
@@ -72,6 +72,7 @@ func NewResolutionContext(scopeType string, scopeID string) (*ResolutionContext,
 			Inputs:   make(map[string]interface{}),
 			Sequence: make(map[string]NodeOutput),
 			States:   make(map[string]StateOutput),
+			Context:  make(map[string]interface{}),
 			Scope: ScopeMetadata{
 				ExecutionID: generateExecutionID(),
 				Timestamp:   time.Now(),
@@ -79,13 +80,13 @@ func NewResolutionContext(scopeType string, scopeID string) (*ResolutionContext,
 		},
 	}
 
-
 	// Initialize CEL environment
 	env, err := cel.NewEnv(
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("sequence", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("states", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("scope", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("context", cel.MapType(cel.StringType, cel.DynType)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
@@ -103,7 +104,7 @@ func (rc *ResolutionContext) NewChildContext(scopeType string, scopeID string, i
 	}
 
 	child.Parent = rc
-	child.TemplateData.Inputs = inputs
+	child.SetInputs(inputs)
 
 	// Child can see parent's states if in state machine
 	if rc.ScopeType == "state_machine" || rc.ScopeType == "state" {
@@ -113,6 +114,15 @@ func (rc *ResolutionContext) NewChildContext(scopeType string, scopeID string, i
 	return child, nil
 }
 
+// SetInputs updates the resolution context inputs and synchronizes execution context shortcuts.
+func (rc *ResolutionContext) SetInputs(inputs map[string]interface{}) {
+	rc.TemplateData.Inputs = inputs
+	if ctxMap, ok := inputs["context"].(map[string]interface{}); ok {
+		rc.TemplateData.Context = ctxMap
+	} else {
+		rc.TemplateData.Context = map[string]interface{}{}
+	}
+}
 
 // ResolveTemplate handles expression evaluation using CEL with interpolation support
 func (rc *ResolutionContext) ResolveTemplate(expr string) (interface{}, error) {
@@ -130,7 +140,7 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
 	if issues != nil && issues.Err() != nil {
 		return false, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
-	
+
 	program, err := rc.CELEnv.Program(ast)
 	if err != nil {
 		return false, fmt.Errorf("failed to create CEL program: %w", err)
@@ -142,6 +152,7 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
 		"sequence": convertNodeOutputsForCEL(rc.TemplateData.Sequence),
 		"states":   convertStateOutputsForCEL(rc.TemplateData.States),
 		"scope":    convertScopeForCEL(rc.TemplateData.Scope),
+		"context":  rc.TemplateData.Context,
 	})
 	if err != nil {
 		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -162,12 +173,12 @@ func (rc *ResolutionContext) EvaluateCELExpression(expr string) (interface{}, er
 	if expr == "" {
 		return "", nil
 	}
-	
+
 	ast, issues := rc.CELEnv.Compile(expr)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
-	
+
 	program, err := rc.CELEnv.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL program: %w", err)
@@ -179,6 +190,7 @@ func (rc *ResolutionContext) EvaluateCELExpression(expr string) (interface{}, er
 		"sequence": convertNodeOutputsForCEL(rc.TemplateData.Sequence),
 		"states":   convertStateOutputsForCEL(rc.TemplateData.States),
 		"scope":    convertScopeForCEL(rc.TemplateData.Scope),
+		"context":  rc.TemplateData.Context,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
@@ -197,7 +209,7 @@ func (rc *ResolutionContext) AddSequenceNode(nodeID string, outputs map[string]i
 	if rc.TemplateData.Sequence == nil {
 		rc.TemplateData.Sequence = make(map[string]NodeOutput)
 	}
-	
+
 	// If node already exists, add to runs history
 	if existing, ok := rc.TemplateData.Sequence[nodeID]; ok {
 		existing.Runs = append(existing.Runs, RunOutput{
@@ -220,7 +232,7 @@ func (rc *ResolutionContext) AddStateOutput(stateID string, outputs map[string]i
 	if rc.TemplateData.States == nil {
 		rc.TemplateData.States = make(map[string]StateOutput)
 	}
-	
+
 	// If state already exists, add to runs history
 	if existing, ok := rc.TemplateData.States[stateID]; ok {
 		existing.Runs = append(existing.Runs, RunOutput{
@@ -247,7 +259,7 @@ func (rc *ResolutionContext) ValidateTemplateReferences(expr string) error {
 	}
 
 	// Extract and validate the CEL expression
-	innerExpr := strings.TrimSpace(trimmed[2:len(trimmed)-2])
+	innerExpr := strings.TrimSpace(trimmed[2 : len(trimmed)-2])
 	return rc.ValidateCELExpression(innerExpr)
 }
 

@@ -106,7 +106,7 @@ func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[stri
 	}
 
 	// Set inputs
-	resCtx.TemplateData.Inputs = inputs
+	resCtx.SetInputs(inputs)
 
 	// Add all node outputs to sequence context
 	for nodeID, nodeOutput := range outputs {
@@ -142,6 +142,7 @@ type WorkflowState struct {
 	Inputs  map[string]interface{}
 	Steps   map[string]StepResult
 	Outputs map[string]interface{}
+	Context map[string]interface{}
 }
 
 // StepResult stores the result of a workflow step
@@ -161,7 +162,7 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 		if err != nil {
 			return nil, fmt.Errorf("failed to create resolution context: %w", err)
 		}
-		resCtx.TemplateData.Inputs = workflowInputs
+		resCtx.SetInputs(workflowInputs)
 
 		// Resolve templates in node inputs
 		resolvedNodeInputs = make(map[string]interface{})
@@ -324,7 +325,7 @@ func innerSequence(ctx workflow.Context, activityRegistry *workerops.ActivityReg
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
-	resCtx.TemplateData.Inputs = inputs
+	resCtx.SetInputs(inputs)
 
 	// Track all node outputs for return
 	nodeOutputs := make(map[string]interface{})

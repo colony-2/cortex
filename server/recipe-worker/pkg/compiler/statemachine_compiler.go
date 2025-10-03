@@ -15,7 +15,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *workerops.Activ
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
-	resCtx.TemplateData.Inputs = inputs
+	resCtx.SetInputs(inputs)
 
 	// Initialize state tracking
 	currentState := stateMap.Initial

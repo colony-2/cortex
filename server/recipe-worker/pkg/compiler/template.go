@@ -39,7 +39,7 @@ func (r *TemplateResolver) Resolve(expr string) (interface{}, error) {
 	}
 
 	result := buf.String()
-	
+
 	// Try to parse as JSON if it looks like JSON
 	if strings.HasPrefix(strings.TrimSpace(result), "{") || strings.HasPrefix(strings.TrimSpace(result), "[") {
 		var jsonResult interface{}
@@ -76,12 +76,12 @@ func (r *TemplateResolver) getFuncMap() template.FuncMap {
 
 func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
-	
+
 	// Add inputs - use lowercase for compatibility with existing templates
 	data["inputs"] = r.state.Inputs
 	// Also add capital case for backwards compatibility
 	data["Inputs"] = r.state.Inputs
-	
+
 	// Add steps - directly expose outputs at the step level
 	steps := make(map[string]interface{})
 	for stepID, stepResult := range r.state.Steps {
@@ -98,18 +98,22 @@ func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 	data["Steps"] = steps
 	// Also add lowercase steps for compatibility
 	data["steps"] = steps
-	
+
 	// Add environment variables (placeholder for now)
 	data["Env"] = map[string]string{}
 	data["env"] = data["Env"]
-	
-	// Add context (placeholder for now)
-	data["Context"] = map[string]interface{}{
-		"workflowID": "workflow-id",
-		"runID":      "run-id",
+
+	ctxMap := r.state.Context
+	if ctxMap == nil {
+		if fromInputs, ok := r.state.Inputs["context"].(map[string]interface{}); ok {
+			ctxMap = fromInputs
+		} else {
+			ctxMap = map[string]interface{}{}
+		}
 	}
-	data["context"] = data["Context"]
-	
+	data["Context"] = ctxMap
+	data["context"] = ctxMap
+
 	return data
 }
 
@@ -119,12 +123,12 @@ func (r *TemplateResolver) ResolveStepOutput(stepID, outputName string) (interfa
 	if !ok {
 		return nil, fmt.Errorf("step %s not found", stepID)
 	}
-	
+
 	output, ok := step.Outputs[outputName]
 	if !ok {
 		return nil, fmt.Errorf("output %s not found in step %s", outputName, stepID)
 	}
-	
+
 	return output, nil
 }
 
