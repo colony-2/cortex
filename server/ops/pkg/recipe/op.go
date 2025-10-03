@@ -16,8 +16,8 @@ import (
 type RecipeInput struct {
 	Name     string                 `json:"name"`
 	Inputs   map[string]interface{} `json:"inputs"`
-	GitState string                 `json:"git_state,omitempty"`
-	RunMode  string                 `json:"run_mode,omitempty"`
+	GitState GitStateModeName       `json:"git_state,omitempty"`
+	RunMode  ExecutionRunModeName   `json:"run_mode,omitempty"`
 	Raw      map[string]interface{} `json:"-" mapstructure:",remain"`
 }
 
@@ -41,6 +41,16 @@ type recipeInlineAdapter struct {
 	isWorkflowContext bool // Indicates if running in workflow context
 }
 
+type GitStateModeName = string
+type ExecutionRunModeName = string
+
+const (
+	gitStateSharedName   GitStateModeName     = "shared"
+	gitStateDiscreteName GitStateModeName     = "discrete"
+	runModeSyncName      ExecutionRunModeName = "sync"
+	runModeAsyncName     ExecutionRunModeName = "async"
+)
+
 type gitStateMode int
 
 const (
@@ -49,9 +59,9 @@ const (
 	gitStateModeDiscrete
 )
 
-var gitStateModeNames = map[gitStateMode]string{
-	gitStateModeShared:   "shared",
-	gitStateModeDiscrete: "discrete",
+var gitStateModeNames = map[gitStateMode]GitStateModeName{
+	gitStateModeShared:   gitStateSharedName,
+	gitStateModeDiscrete: gitStateDiscreteName,
 }
 
 func (m gitStateMode) String() string {
@@ -69,9 +79,9 @@ const (
 	runModeAsync
 )
 
-var runModeNames = map[executionRunMode]string{
-	runModeSync:  "sync",
-	runModeAsync: "async",
+var runModeNames = map[executionRunMode]ExecutionRunModeName{
+	runModeSync:  runModeSyncName,
+	runModeAsync: runModeAsyncName,
 }
 
 func (m executionRunMode) String() string {
@@ -81,8 +91,8 @@ func (m executionRunMode) String() string {
 	return "unknown"
 }
 
-func parseGitStateMode(raw string) (gitStateMode, error) {
-	value := strings.ToLower(strings.TrimSpace(raw))
+func parseGitStateMode(raw GitStateModeName) (gitStateMode, error) {
+	value := strings.ToLower(strings.TrimSpace(string(raw)))
 	if value == "" {
 		return gitStateModeShared, nil
 	}
@@ -96,8 +106,8 @@ func parseGitStateMode(raw string) (gitStateMode, error) {
 	}
 }
 
-func parseRunMode(raw string) (executionRunMode, error) {
-	value := strings.ToLower(strings.TrimSpace(raw))
+func parseRunMode(raw ExecutionRunModeName) (executionRunMode, error) {
+	value := strings.ToLower(strings.TrimSpace(string(raw)))
 	if value == "" {
 		return runModeSync, nil
 	}

@@ -75,8 +75,8 @@ func TestRecipeOpSharedAsyncReturnsHandle(t *testing.T) {
 	workflowFn := func(ctx workflow.Context) (RecipeOutput, error) {
 		return execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
 			Name:     "testChildWorkflow",
-			GitState: gitStateModeShared.String(),
-			RunMode:  runModeNames[runModeAsync],
+			GitState: gitStateSharedName,
+			RunMode:  runModeAsyncName,
 			Raw:      cloneMapDeep(baseRaw),
 		})
 	}
@@ -92,7 +92,7 @@ func TestRecipeOpSharedAsyncReturnsHandle(t *testing.T) {
 
 	handle, ok := result.Outputs["async_handle"].(map[string]interface{})
 	require.True(t, ok)
-	require.Equal(t, gitStateModeShared.String(), handle["git_state"])
+	require.Equal(t, gitStateSharedName, handle["git_state"])
 	require.NotEmpty(t, handle["workflow_id"])
 	require.NotEmpty(t, handle["run_id"])
 	ctxVal, ok := handle["context"].(map[string]interface{})
@@ -114,8 +114,8 @@ func TestRecipeOpDiscreteSyncProvidesContext(t *testing.T) {
 	workflowFn := func(ctx workflow.Context) (map[string]interface{}, error) {
 		out, err := execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
 			Name:     "discreteContextInspector",
-			GitState: gitStateModeDiscrete.String(),
-			RunMode:  runModeNames[runModeSync],
+			GitState: gitStateDiscreteName,
+			RunMode:  runModeSyncName,
 			Raw:      cloneMapDeep(baseRaw),
 		})
 		if err != nil {
@@ -147,8 +147,8 @@ func TestRecipeOpDiscreteAsyncReturnsHandle(t *testing.T) {
 	workflowFn := func(ctx workflow.Context) (map[string]interface{}, error) {
 		out, err := execute(ops.Invocation{}, ctx, 0, nil, RecipeInput{
 			Name:     "testChildWorkflow",
-			GitState: gitStateModeDiscrete.String(),
-			RunMode:  runModeNames[runModeAsync],
+			GitState: gitStateDiscreteName,
+			RunMode:  runModeAsyncName,
 			Raw:      cloneMapDeep(baseRaw),
 		})
 		if err != nil {
@@ -168,7 +168,7 @@ func TestRecipeOpDiscreteAsyncReturnsHandle(t *testing.T) {
 	handle, ok := outputs["async_handle"].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, "testChildWorkflow", handle["recipe"])
-	require.Equal(t, gitStateModeDiscrete.String(), handle["git_state"])
+	require.Equal(t, gitStateDiscreteName, handle["git_state"])
 	require.NotEmpty(t, handle["workflow_id"])
 	require.NotEmpty(t, handle["run_id"])
 	ctxVal, ok := handle["context"].(map[string]interface{})
