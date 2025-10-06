@@ -4,17 +4,14 @@ go 1.24.1
 
 require (
 	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/invopop/jsonschema v0.13.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/stretchr/testify v1.10.0
 	go.temporal.io/api v1.49.1
 	go.temporal.io/sdk v1.35.0
-	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -58,7 +55,6 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
 	golang.org/x/net v0.40.0 // indirect
@@ -78,7 +74,5 @@ replace github.com/divisive-ai/vibethis/server/llm => ../llm
 replace github.com/divisive-ai/vibethis/server/core => ../core
 
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-
-replace github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 
 replace github.com/divisive-ai/vibethis/server/git => ../git

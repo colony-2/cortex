@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -198,12 +197,12 @@ func (e *childExecutor) runShared(runMode executionRunMode) (RecipeOutput, error
 		return RecipeOutput{Outputs: outputs}, nil
 	}
 
-	options := gitstate.InlineWorkspaceOptions{}
+	options := InlineWorkspaceOptions{}
 	if runMode == runModeAsync {
 		options.SkipFinalize = true
 	}
 
-	workspaceResult, err := gitstate.WithInlineWorkspace(e.ctx, e.invocation, e.baseInputs, options, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
+	workspaceResult, err := withInlineWorkspace(e.ctx, e.invocation, e.baseInputs, options, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
 		mergeChildInputs(childInputs, e.input.Inputs)
 		return e.startChildWorkflow(inner, runMode, gitStateModeShared, childInputs)
 	})
@@ -219,13 +218,15 @@ func (e *childExecutor) runShared(runMode executionRunMode) (RecipeOutput, error
 	result := RecipeOutput{Outputs: outputs}
 	if runMode == runModeSync && workspaceResult != nil {
 		result.Context = workspaceResult.ContextMap
-		result.GitPersistHash = workspaceResult.GitContext.PersistHash
+		if workspaceResult.GitContext != nil {
+			result.GitPersistHash = workspaceResult.GitContext.GetPersistHash()
+		}
 	}
 	return result, nil
 }
 
 func (e *childExecutor) runDiscrete(runMode executionRunMode) (RecipeOutput, error) {
-	childCtx, childInputs, err := gitstate.PlanDetachedWorkspace(e.invocation, e.baseInputs, gitstate.DetachedWorkspaceOptions{})
+	childCtx, childInputs, err := planDetachedWorkspace(e.invocation, e.baseInputs, DetachedWorkspaceOptions{})
 	if err != nil {
 		return RecipeOutput{}, err
 	}
@@ -298,8 +299,8 @@ func (e *childExecutor) childWorkflowOptions(runMode executionRunMode) workflow.
 	return options
 }
 
-func ensureDetachedContext(inputs map[string]interface{}, ctx gitstate.Context) {
-	if inputs == nil {
+func ensureDetachedContext(inputs map[string]interface{}, ctx GitStateContext) {
+	if inputs == nil || ctx == nil {
 		return
 	}
 	contextVal, _ := inputs["context"].(map[string]interface{})
@@ -318,27 +319,27 @@ func ensureDetachedContext(inputs map[string]interface{}, ctx gitstate.Context) 
 		gitMap[k] = v
 	}
 	contextVal["git"] = gitMap
-	if ctx.WorktreePath != "" {
-		contextVal["worktree"] = ctx.WorktreePath
+	if path := ctx.GetWorktreePath(); path != "" {
+		contextVal["worktree"] = path
 	}
-	if ctx.BlobStoreURI != "" {
-		contextVal["blobstore"] = ctx.BlobStoreURI
+	if uri := ctx.GetBlobStoreURI(); uri != "" {
+		contextVal["blobstore"] = uri
 	}
-	if ctx.TicketID != "" {
-		contextVal["ticketid"] = ctx.TicketID
+	if ticket := ctx.GetTicketID(); ticket != "" {
+		contextVal["ticketid"] = ticket
 	}
-	if ctx.CellName != "" {
-		contextVal["cellname"] = ctx.CellName
+	if cell := ctx.GetCellName(); cell != "" {
+		contextVal["cellname"] = cell
 	}
 	inputs["context"] = contextVal
 }
 
-func ensureDetachedGitPersist(inputs map[string]interface{}, ctx gitstate.Context) {
-	if inputs == nil {
+func ensureDetachedGitPersist(inputs map[string]interface{}, ctx GitStateContext) {
+	if inputs == nil || ctx == nil {
 		return
 	}
-	if _, ok := inputs["git_persist_hash"]; !ok && ctx.PersistHash != "" {
-		inputs["git_persist_hash"] = ctx.PersistHash
+	if _, ok := inputs["git_persist_hash"]; !ok && ctx.GetPersistHash() != "" {
+		inputs["git_persist_hash"] = ctx.GetPersistHash()
 	}
 }
 
