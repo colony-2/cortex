@@ -125,7 +125,7 @@ outputs:
 	}
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		tracker := newInvocationTracker(rs.RecipeMetadata)
+		tracker := newInvocationTracker(rs.RecipeMetadata, nil)
 		stateTracker := tracker.child(segmentForMetadata(rs.RecipeMetadata.NodeMetadata, "recipe-state"))
 		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs)
 	})

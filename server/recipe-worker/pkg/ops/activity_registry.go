@@ -31,6 +31,7 @@ type ActivityRegistry struct {
 	activities    map[string]ActivityRegistration
 	generator     SchemaGenerator
 	gitController *gitstate.Controller
+	deps          ops.ServiceDependencies2
 }
 
 // SchemaGenerator validates struct tags and generates JSON schemas
@@ -46,6 +47,7 @@ func NewActivityRegistry() (*ActivityRegistry, error) {
 		activities:    make(map[string]ActivityRegistration),
 		generator:     NewDefaultSchemaGenerator(),
 		gitController: gitstate.NewController(nil),
+		deps:          nil,
 	}
 	opsList := ops.List()
 	for _, op := range opsList {
@@ -60,17 +62,27 @@ type ActivityRegisterable interface {
 	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
 }
 
+// SetDependencies makes a dependency container available for invocations produced by this registry.
+func (r *ActivityRegistry) SetDependencies(deps ops.ServiceDependencies2) {
+	r.deps = deps
+}
+
+// Dependencies exposes the current dependency container (may be nil).
+func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
+	return r.deps
+}
+
 func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
 	for name, registration := range r.activities {
 		if !registration.Activity.ExecuteAsActivity() {
 			continue
 		}
-		wrapped := withGitWorkspace(registration, r.gitController)
+		wrapped := withGitWorkspace(registration, r.gitController, r.deps)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
 	}
 }
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller, deps ops.ServiceDependencies2) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
@@ -88,6 +100,9 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 		}
 		if err := controller.Restore(ctx, gitCtx); err != nil {
 			return nil, err
+		}
+		if req.Invocation.Deps == nil {
+			req.Invocation.Deps = deps
 		}
 		outputs, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
 		if err != nil {

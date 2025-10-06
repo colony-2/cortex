@@ -18,7 +18,7 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityReg
 		return nil, err
 	}
 
-	tracker := newInvocationTracker(r.GetMetdata())
+	tracker := newInvocationTracker(r.GetMetdata(), activityRegistry.Dependencies())
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:

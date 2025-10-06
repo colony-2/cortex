@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,18 +12,21 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
+	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	embeddedtemporal "github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/spf13/cobra"
-	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-    embeddedtemporal "github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
-    "net"
+	enumspb "go.temporal.io/api/enums/v1"
+	serviceerror "go.temporal.io/api/serviceerror"
+	"go.temporal.io/sdk/client"
 )
 
 var (
@@ -65,10 +69,10 @@ Supports memory storage and configurable node directories.`,
 			} else {
 				nodesPath = "."
 			}
-			
+
 			// For testserver, -n always means use memory storage
 			useMemory := createNew || true
-			
+
 			return runServer(port, corsOrigins, staticPath, nodesPath, useMemory, storagePath)
 		},
 	}
@@ -122,66 +126,72 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	depContainer := opssetup.NewServiceDeps()
 	// Provide SSE manager
 	depContainer.Set("sse", inputops.NewSimpleSSEManager())
-    // Do not set a placeholder temporal client; only set when a real client is available
+	// Do not set a placeholder temporal client; only set when a real client is available
 
 	// Start embedded Temporal server for testserver to power input manager
-    // Choose a free ephemeral port for Temporal frontend to avoid collisions
-    var temporalPort int
-    if ln, lerr := net.Listen("tcp", "127.0.0.1:0"); lerr == nil {
-        if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-            temporalPort = addr.Port
-        }
-        _ = ln.Close()
-    } else {
-        temporalPort = 7233
-    }
+	// Choose a free ephemeral port for Temporal frontend to avoid collisions
+	var temporalPort int
+	if ln, lerr := net.Listen("tcp", "127.0.0.1:0"); lerr == nil {
+		if addr, ok := ln.Addr().(*net.TCPAddr); ok {
+			temporalPort = addr.Port
+		}
+		_ = ln.Close()
+	} else {
+		temporalPort = 7233
+	}
 
-    temporalSrv, err := embeddedtemporal.NewServer(embeddedtemporal.Options{
-        FrontendIP:               "127.0.0.1",
-        FrontendPort:             temporalPort,
-        DatabaseFile:             filepath.Join(os.TempDir(), "vibethis-temporal.db"),
-        LogLevel:                 "error",
-        DisableScanners:          true,
-        DisableNexus:             true,
-        DisableParentClosePolicy: true,
-    })
-    if err != nil {
-        return fmt.Errorf("failed to create embedded Temporal server: %w", err)
-    }
-    // Start server and wait up to 30s for a client to be ready
-    if startErr := temporalSrv.Start(); startErr != nil {
-        _ = temporalSrv.Stop()
-        return fmt.Errorf("failed to start embedded Temporal server: %w", startErr)
-    }
-    defer temporalSrv.Stop()
+	temporalSrv, err := embeddedtemporal.NewServer(embeddedtemporal.Options{
+		FrontendIP:               "127.0.0.1",
+		FrontendPort:             temporalPort,
+		DatabaseFile:             filepath.Join(os.TempDir(), "vibethis-temporal.db"),
+		LogLevel:                 "error",
+		DisableScanners:          true,
+		DisableNexus:             true,
+		DisableParentClosePolicy: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create embedded Temporal server: %w", err)
+	}
+	// Start server and wait up to 30s for a client to be ready
+	if startErr := temporalSrv.Start(); startErr != nil {
+		_ = temporalSrv.Stop()
+		return fmt.Errorf("failed to start embedded Temporal server: %w", startErr)
+	}
+	defer temporalSrv.Stop()
 
-    hostPort := temporalSrv.GetFrontendAddress()
-    var clientReady interface{}
-    var lastDialErr error
-    deadline := time.Now().Add(30 * time.Second)
-    for time.Now().Before(deadline) {
-        cli, dialErr := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{HostPort: hostPort})
-        if dialErr == nil {
-            clientReady = cli
-            break
-        }
-        lastDialErr = dialErr
-        time.Sleep(500 * time.Millisecond)
-    }
-    if clientReady == nil {
-        return fmt.Errorf("timed out waiting for Temporal client (last error: %v)", lastDialErr)
-    }
-    depContainer.Set("temporal_client", clientReady)
-    defer func() {
-        if c, ok := clientReady.(interface{ Close() error }); ok {
-            _ = c.Close()
-        }
-    }()
+	hostPort := temporalSrv.GetFrontendAddress()
+	var clientReady interface{}
+	var lastDialErr error
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		cli, dialErr := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{HostPort: hostPort})
+		if dialErr == nil {
+			clientReady = cli
+			break
+		}
+		lastDialErr = dialErr
+		time.Sleep(500 * time.Millisecond)
+	}
+	if clientReady == nil {
+		return fmt.Errorf("timed out waiting for Temporal client (last error: %v)", lastDialErr)
+	}
+	depContainer.Set("temporal_client", clientReady)
+	defer func() {
+		if c, ok := clientReady.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
 
-    extensionRoutes, _, err := opssetup.SetupOps(depContainer)
-    if err != nil {
-        return fmt.Errorf("ops setup failed: %w", err)
-    }
+	if temporalClient, ok := clientReady.(client.Client); ok {
+		ctl := &temporalWorkflowControl{client: temporalClient}
+		depContainer.SetWorkflowControl(ctl)
+		depContainer.Set(workflowctl.DependencyName, ctl)
+	}
+
+	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
+	if err != nil {
+		return fmt.Errorf("ops setup failed: %w", err)
+	}
 
 	// Create server configuration
 	config := web.Config{
@@ -245,4 +255,80 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	}
 
 	return nil
+}
+
+type temporalWorkflowControl struct {
+	client client.Client
+}
+
+func (c *temporalWorkflowControl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
+	if c == nil || c.client == nil {
+		return workflowctl.WorkflowSummary{}, workflowctl.ErrUnavailable
+	}
+	resp, err := c.client.DescribeWorkflowExecution(ctx, ref.WorkflowID, ref.RunID)
+	if err != nil {
+		return workflowctl.WorkflowSummary{}, mapTemporalError(err)
+	}
+	info := resp.GetWorkflowExecutionInfo()
+	if info == nil {
+		return workflowctl.WorkflowSummary{}, workflowctl.ErrUnavailable
+	}
+	summary := workflowctl.WorkflowSummary{
+		WorkflowID: info.GetExecution().GetWorkflowId(),
+		RunID:      info.GetExecution().GetRunId(),
+		Status:     mapTemporalStatus(info.GetStatus()),
+	}
+	if ts := info.GetStartTime(); ts != nil {
+		t := ts.AsTime()
+		summary.StartTime = &t
+	}
+	if ts := info.GetCloseTime(); ts != nil {
+		t := ts.AsTime()
+		summary.CloseTime = &t
+	}
+	return summary, nil
+}
+
+func (c *temporalWorkflowControl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
+	if c == nil || c.client == nil {
+		return workflowctl.ErrUnavailable
+	}
+	return mapTemporalError(c.client.SignalWorkflow(ctx, ref.WorkflowID, ref.RunID, signalName, payload))
+}
+
+func (c *temporalWorkflowControl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
+	if c == nil || c.client == nil {
+		return workflowctl.ErrUnavailable
+	}
+	return mapTemporalError(c.client.CancelWorkflow(ctx, ref.WorkflowID, ref.RunID))
+}
+
+func mapTemporalStatus(status enumspb.WorkflowExecutionStatus) workflowctl.WorkflowStatus {
+	switch status {
+	case enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED:
+		return workflowctl.StatusCompleted
+	case enumspb.WORKFLOW_EXECUTION_STATUS_FAILED:
+		return workflowctl.StatusFailed
+	case enumspb.WORKFLOW_EXECUTION_STATUS_CANCELED:
+		return workflowctl.StatusCanceled
+	case enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED:
+		return workflowctl.StatusTerminated
+	case enumspb.WORKFLOW_EXECUTION_STATUS_TIMED_OUT:
+		return workflowctl.StatusTimedOut
+	case enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING:
+		return workflowctl.StatusRunning
+	default:
+		return workflowctl.StatusUnspecified
+	}
+}
+
+func mapTemporalError(err error) error {
+	switch err.(type) {
+	case *serviceerror.NotFound:
+		return workflowctl.ErrNotFound
+	case *serviceerror.Unavailable:
+		return workflowctl.ErrUnavailable
+	default:
+		return err
+	}
 }

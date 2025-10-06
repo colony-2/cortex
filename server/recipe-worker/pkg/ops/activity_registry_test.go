@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,6 +66,16 @@ func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInpu
 	}, nil
 }
 
+type stubDeps struct{}
+
+func (s *stubDeps) Get(name string) (interface{}, error) {
+	return nil, fmt.Errorf("no dependency: %s", name)
+}
+
+func (s *stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+	return nil, false
+}
+
 func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	t.Parallel()
 
@@ -97,7 +109,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	)
 
 	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
-	wrapped := withGitWorkspace(registration, controller)
+	wrapped := withGitWorkspace(registration, controller, nil)
 
 	inv := recipeops.Invocation{RecipeID: "recipe.test", NodePath: "sequence.node", InvokeSeq: 1}
 	input := map[string]interface{}{
@@ -132,6 +144,39 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	stat, err := os.Stat(filepath.Join(blobStore, filepath.FromSlash(thinPack)))
 	require.NoError(t, err)
 	require.True(t, stat.Mode().IsRegular())
+}
+
+func TestWithGitWorkspaceInjectsDependencies(t *testing.T) {
+	t.Parallel()
+
+	deps := &stubDeps{}
+	repoDir, baseHash, persistHash := initTwoCommitRepo(t)
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	activity := recipeops.NewActivityMappedOpV2[TestInput, TestOutput](
+		recipeops.OpMetadata{Type: "deps_check", Description: "ensure deps present", Version: "1.0.0"},
+		func(inv recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
+			require.NotNil(t, inv.Deps)
+			return runTestActivity(inv, ctx, input)
+		},
+	)
+	registration := ActivityRegistration{Activity: activity, Metadata: activity.GetMetadata()}
+
+	wrapped := withGitWorkspace(registration, nil, deps)
+	input := map[string]interface{}{
+		"context": map[string]interface{}{
+			"git": map[string]interface{}{
+				"base_repo":      repoDir,
+				"base_hash":      baseHash,
+				"persist_hash":   persistHash,
+				"worktree_path":  worktree,
+				"blob_store_uri": "file://" + filepath.ToSlash(blobStore),
+			},
+		},
+	}
+	_, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, Input: input})
+	require.NoError(t, err)
 }
 
 func initTwoCommitRepo(t *testing.T) (string, string, string) {

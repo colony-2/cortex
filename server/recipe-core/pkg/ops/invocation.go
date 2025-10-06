@@ -14,6 +14,8 @@ type Invocation struct {
 	BoxID      string
 	ActivityID string
 	ID         string
+	// Deps carries runtime-scoped services; excluded from serialization/hashing.
+	Deps ServiceDependencies2 `json:"-" yaml:"-" mapstructure:"-"`
 }
 
 // InvocationContext provides a legacy representation of Invocation for context binding APIs.
@@ -24,6 +26,7 @@ type InvocationContext struct {
 	BoxID      string
 	ActivityID string
 	ID         string
+	Deps       ServiceDependencies2 `json:"-" yaml:"-" mapstructure:"-"`
 }
 
 // InvocationContext returns a pointer to a context struct mirroring the invocation fields.
@@ -35,6 +38,7 @@ func (inv Invocation) InvocationContext() *InvocationContext {
 		BoxID:      inv.BoxID,
 		ActivityID: inv.ActivityID,
 		ID:         inv.ID,
+		Deps:       inv.Deps,
 	}
 }
 

@@ -27,6 +27,11 @@ func NewServiceDeps() *ServiceDeps {
 // Set adds a dependency
 func (d *ServiceDeps) Set(name string, v interface{}) { d.items[name] = v }
 
+// SetWorkflowControl registers the typed workflow control implementation.
+func (d *ServiceDeps) SetWorkflowControl(ctl workflowctl.WorkflowControl) {
+    d.workflowCtl = ctl
+}
+
 // Get implements ops.ServiceDependencies
 func (d *ServiceDeps) Get(name string) (interface{}, error) {
     v, ok := d.items[name]

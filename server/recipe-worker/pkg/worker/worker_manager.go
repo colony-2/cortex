@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -37,6 +38,14 @@ func NewWorkerManager(logger *zap.Logger, temporalClient client.Client) *WorkerM
 		taskQueue:        "ono-recipes", // Base task queue
 		activityRegistry: activityRegistry,
 	}
+}
+
+// SetDependencies wires a dependency container into the underlying activity registry.
+func (m *WorkerManager) SetDependencies(deps coreops.ServiceDependencies2) {
+	if m == nil || m.activityRegistry == nil {
+		return
+	}
+	m.activityRegistry.SetDependencies(deps)
 }
 
 // StartWorker starts a new worker for a recipe

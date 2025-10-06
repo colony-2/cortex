@@ -14,6 +14,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	rec "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/google/uuid"
@@ -32,10 +33,18 @@ var (
 	executeTimeout       string
 	executeNoColor       bool
 	executeStateDir      string
-    executeCleanup       bool
-    executeParallelLimit int
-    executeDryRun        bool
+	executeCleanup       bool
+	executeParallelLimit int
+	executeDryRun        bool
 )
+
+type cliServiceDeps struct{}
+
+func (cliServiceDeps) Get(name string) (interface{}, error) {
+	return nil, fmt.Errorf("service %s not available", name)
+}
+
+func (cliServiceDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
 
 // executeCmd executes a rec from the command line
 var executeCmd = &cobra.Command{
@@ -57,8 +66,8 @@ func init() {
 	executeCmd.Flags().BoolVar(&executeNoColor, "no-color", false, "Disable colored output for logs")
 	executeCmd.Flags().StringVar(&executeStateDir, "state-dir", "", "Directory for temporary state files (default: system temp)")
 	executeCmd.Flags().BoolVar(&executeCleanup, "cleanup", true, "Clean up state files after execution")
-    executeCmd.Flags().IntVar(&executeParallelLimit, "parallel-limit", 10, "Maximum number of parallel operations")
-    executeCmd.Flags().BoolVar(&executeDryRun, "dry-run", false, "Validate the recipe and inputs without executing")
+	executeCmd.Flags().IntVar(&executeParallelLimit, "parallel-limit", 10, "Maximum number of parallel operations")
+	executeCmd.Flags().BoolVar(&executeDryRun, "dry-run", false, "Validate the recipe and inputs without executing")
 }
 
 // ExecutionResult represents the result of executing a rec
@@ -109,19 +118,19 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		zap.String("run_id", runID),
 	)
 
-    // Load recipe (new unified format only)
-    recipeData, err := os.ReadFile(recipeFile)
-    if err != nil {
-        return outputError(err, "Failed to read rec file", recipeFile, runID, startTime)
-    }
+	// Load recipe (new unified format only)
+	recipeData, err := os.ReadFile(recipeFile)
+	if err != nil {
+		return outputError(err, "Failed to read rec file", recipeFile, runID, startTime)
+	}
 
-    var recipeDef rec.Recipe
-    if err := yaml.Unmarshal(recipeData, &recipeDef); err != nil {
-        if executeDryRun {
-            return outputError(fmt.Errorf("validation error: %v", err), "Failed to parse rec YAML", recipeFile, runID, startTime)
-        }
-        return outputError(err, "Failed to parse rec YAML", recipeFile, runID, startTime)
-    }
+	var recipeDef rec.Recipe
+	if err := yaml.Unmarshal(recipeData, &recipeDef); err != nil {
+		if executeDryRun {
+			return outputError(fmt.Errorf("validation error: %v", err), "Failed to parse rec YAML", recipeFile, runID, startTime)
+		}
+		return outputError(err, "Failed to parse rec YAML", recipeFile, runID, startTime)
+	}
 
 	// Parse inputs
 	inputs, err := parseInputs(executeInputs, executeInputFile)
@@ -129,49 +138,49 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		return outputError(err, "Failed to parse inputs", recipeFile, runID, startTime)
 	}
 
-    // Apply default values for missing inputs using InputSchema
-    inputSchema := recipeDef.GetMetdata().InputSchema
-    if inputSchema != nil {
-        for name, inputDef := range inputSchema {
-            if _, exists := inputs[name]; !exists && inputDef.Default != nil {
-                inputs[name] = inputDef.Default
-            }
-        }
-    }
+	// Apply default values for missing inputs using InputSchema
+	inputSchema := recipeDef.GetMetdata().InputSchema
+	if inputSchema != nil {
+		for name, inputDef := range inputSchema {
+			if _, exists := inputs[name]; !exists && inputDef.Default != nil {
+				inputs[name] = inputDef.Default
+			}
+		}
+	}
 
-    // Log inputs
-    logger.Info("Recipe inputs loaded",
-        zap.Any("inputs", inputs),
-    )
-    // Emit a debug log when debug level is enabled
-    logger.Debug("Debug mode enabled; inputs prepared", zap.Any("inputs", inputs))
+	// Log inputs
+	logger.Info("Recipe inputs loaded",
+		zap.Any("inputs", inputs),
+	)
+	// Emit a debug log when debug level is enabled
+	logger.Debug("Debug mode enabled; inputs prepared", zap.Any("inputs", inputs))
 
-    // Dry-run mode: validate and exit without executing
-    if executeDryRun {
-        // Basic structure validation: require a name for legacy recipes
-        var raw map[string]interface{}
-        if err := yaml.Unmarshal(recipeData, &raw); err == nil {
-            if _, ok := raw["name"].(string); !ok || raw["name"].(string) == "" {
-                return outputError(fmt.Errorf("validation error: missing required field 'name'"), "Recipe validation failed", recipeFile, runID, startTime)
-            }
-        }
+	// Dry-run mode: validate and exit without executing
+	if executeDryRun {
+		// Basic structure validation: require a name for legacy recipes
+		var raw map[string]interface{}
+		if err := yaml.Unmarshal(recipeData, &raw); err == nil {
+			if _, ok := raw["name"].(string); !ok || raw["name"].(string) == "" {
+				return outputError(fmt.Errorf("validation error: missing required field 'name'"), "Recipe validation failed", recipeFile, runID, startTime)
+			}
+		}
 
-        // Validate required inputs against InputSchema
-        validator := shared.NewRecipeValidator()
-        if err := validator.ValidateInputs(&recipeDef, inputs); err != nil {
-            return outputError(fmt.Errorf("input validation error: %v", err), "Input validation failed", recipeFile, runID, startTime)
-        }
+		// Validate required inputs against InputSchema
+		validator := shared.NewRecipeValidator()
+		if err := validator.ValidateInputs(&recipeDef, inputs); err != nil {
+			return outputError(fmt.Errorf("input validation error: %v", err), "Input validation failed", recipeFile, runID, startTime)
+		}
 
-        // Successful validation
-        res := ExecutionResult{
-            Success:       true,
-            Outputs:       map[string]interface{}{},
-            ExecutionTime: fmt.Sprintf("%.2fs", time.Since(startTime).Seconds()),
-            Recipe:        recipeFile,
-            RunID:         runID,
-        }
-        return outputResult(res, executeOutputFormat)
-    }
+		// Successful validation
+		res := ExecutionResult{
+			Success:       true,
+			Outputs:       map[string]interface{}{},
+			ExecutionTime: fmt.Sprintf("%.2fs", time.Since(startTime).Seconds()),
+			Recipe:        recipeFile,
+			RunID:         runID,
+		}
+		return outputResult(res, executeOutputFormat)
+	}
 
 	// Setup state directory
 	stateDir := executeStateDir
@@ -242,8 +251,8 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-    // Execute rec
-    result, err := executeRecipe(ctx, &recipeDef, inputs, logger, state, stateDir)
+	// Execute rec
+	result, err := executeRecipe(ctx, &recipeDef, inputs, logger, state, stateDir)
 
 	// Update final state
 	state.Status = "completed"
@@ -412,6 +421,7 @@ func executeRecipe(ctx context.Context, recipe *rec.Recipe, inputs map[string]in
 	if err != nil {
 		return nil, fmt.Errorf("failed to create activity registry: %w", err)
 	}
+	registry.SetDependencies(cliServiceDeps{})
 
 	execute, err := executor.NewStandaloneExecutor(registry, logger)
 	if err != nil {
@@ -449,47 +459,47 @@ func saveState(stateDir string, state *ExecutionState) error {
 }
 
 func outputResult(result ExecutionResult, format string) error {
-    var output []byte
-    var err error
+	var output []byte
+	var err error
 
-    switch format {
-    case "json":
-        // On success, emit only outputs; on error emit full structure
-        if result.Success && result.Error == nil {
-            if result.Outputs == nil {
-                result.Outputs = map[string]interface{}{}
-            }
-            output, err = json.MarshalIndent(result.Outputs, "", "  ")
-        } else {
-            output, err = json.MarshalIndent(result, "", "  ")
-        }
-    case "yaml":
-        // On success, emit only outputs; on error emit full structure
-        if result.Success && result.Error == nil {
-            if result.Outputs == nil {
-                result.Outputs = map[string]interface{}{}
-            }
-            output, err = yaml.Marshal(result.Outputs)
-        } else {
-            output, err = yaml.Marshal(result)
-        }
-    case "text":
-        // Human-readable formatting
-        output = []byte(formatTextResult(result))
-    default:
-        return fmt.Errorf("unsupported output format: %s", format)
-    }
+	switch format {
+	case "json":
+		// On success, emit only outputs; on error emit full structure
+		if result.Success && result.Error == nil {
+			if result.Outputs == nil {
+				result.Outputs = map[string]interface{}{}
+			}
+			output, err = json.MarshalIndent(result.Outputs, "", "  ")
+		} else {
+			output, err = json.MarshalIndent(result, "", "  ")
+		}
+	case "yaml":
+		// On success, emit only outputs; on error emit full structure
+		if result.Success && result.Error == nil {
+			if result.Outputs == nil {
+				result.Outputs = map[string]interface{}{}
+			}
+			output, err = yaml.Marshal(result.Outputs)
+		} else {
+			output, err = yaml.Marshal(result)
+		}
+	case "text":
+		// Human-readable formatting
+		output = []byte(formatTextResult(result))
+	default:
+		return fmt.Errorf("unsupported output format: %s", format)
+	}
 
-    if err != nil {
-        return fmt.Errorf("failed to format output: %w", err)
-    }
+	if err != nil {
+		return fmt.Errorf("failed to format output: %w", err)
+	}
 
-    // Write to stdout
-    fmt.Print(string(output))
-    if format != "text" && len(output) > 0 {
-        fmt.Println() // Add newline for json/yaml
-    }
-    return nil
+	// Write to stdout
+	fmt.Print(string(output))
+	if format != "text" && len(output) > 0 {
+		fmt.Println() // Add newline for json/yaml
+	}
+	return nil
 }
 
 // Legacy compatibility removed: recipes must conform to new unified schema (op/sequence/state)
@@ -553,11 +563,11 @@ func outputError(err error, message, recipeFile, runID string, startTime time.Ti
 	outputResult(result, executeOutputFormat)
 
 	// Return appropriate exit code
-    switch {
-    case strings.Contains(err.Error(), "input"):
-        os.Exit(4)
-    case strings.Contains(err.Error(), "validation"):
-        os.Exit(3)
+	switch {
+	case strings.Contains(err.Error(), "input"):
+		os.Exit(4)
+	case strings.Contains(err.Error(), "validation"):
+		os.Exit(3)
 	case strings.Contains(err.Error(), "timeout"):
 		os.Exit(5)
 	case strings.Contains(err.Error(), "interrupted"):

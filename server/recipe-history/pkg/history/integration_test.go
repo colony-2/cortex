@@ -3,12 +3,14 @@ package history
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	serveropsrecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/api/common/v1"
@@ -21,6 +23,14 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type stubDeps struct{}
+
+func (stubDeps) Get(name string) (interface{}, error) {
+	return nil, fmt.Errorf("dependency %s not provided", name)
+}
+
+func (stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
 
 // Integration test using WorkflowTestSuite (no external Temporal server)
 func TestHistoryWithWorkflowTestSuite(t *testing.T) {
@@ -50,6 +60,14 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry init failed: %v", err)
 	}
+	deps := stubDeps{}
+	registry.SetDependencies(deps)
+	baseInputs := map[string]interface{}{
+		"basegitrepo": t.TempDir(),
+		"basegithash": "deadbeef",
+		"ticketid":    "ticket-1",
+		"cellname":    "cell-1",
+	}
 
 	// Temporal test environment
 	suite := &testsuite.WorkflowTestSuite{}
@@ -67,6 +85,9 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 			if input == nil {
 				input = map[string]interface{}{}
 			}
+			if req.Invocation.Deps == nil {
+				req.Invocation.Deps = deps
+			}
 			return activityImpl.ExecuteV2(req.Invocation, ctx, input)
 		}, activity.RegisterOptions{Name: typ})
 	}
@@ -80,7 +101,14 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 		}},
 	}}
 	childWf := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, childRecipe, inputs)
+		childInputs := map[string]interface{}{}
+		for k, v := range baseInputs {
+			childInputs[k] = v
+		}
+		for k, v := range inputs {
+			childInputs[k] = v
+		}
+		return compiler.ExecuteRecipe(ctx, registry, childRecipe, childInputs)
 	}
 	env.RegisterWorkflowWithOptions(childWf, workflow.RegisterOptions{Name: childWorkflowName})
 
@@ -154,7 +182,11 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 	})
 
 	// Execute workflow
-	env.ExecuteWorkflow(wfName, map[string]interface{}{})
+	workflowInputs := map[string]interface{}{}
+	for k, v := range baseInputs {
+		workflowInputs[k] = v
+	}
+	env.ExecuteWorkflow(wfName, workflowInputs)
 	if !env.IsWorkflowCompleted() {
 		t.Fatalf("workflow not completed")
 	}

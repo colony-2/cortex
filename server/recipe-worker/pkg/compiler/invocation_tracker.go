@@ -11,9 +11,10 @@ type invocationTracker struct {
 	recipeID string
 	segments []string
 	counters map[string]int
+	deps     coreops.ServiceDependencies2
 }
 
-func newInvocationTracker(meta recipe.RecipeMetadata) *invocationTracker {
+func newInvocationTracker(meta recipe.RecipeMetadata, deps coreops.ServiceDependencies2) *invocationTracker {
 	recipeID := meta.ID
 	if recipeID == "" {
 		recipeID = meta.Desc
@@ -26,6 +27,7 @@ func newInvocationTracker(meta recipe.RecipeMetadata) *invocationTracker {
 		recipeID: recipeID,
 		segments: make([]string, 0, 8),
 		counters: make(map[string]int),
+		deps:     deps,
 	}
 }
 
@@ -39,6 +41,7 @@ func (t *invocationTracker) child(segment string) *invocationTracker {
 		recipeID: t.recipeID,
 		segments: segments,
 		counters: t.counters,
+		deps:     t.deps,
 	}
 }
 
@@ -64,6 +67,7 @@ func (t *invocationTracker) nextInvocation(boxID, activityID string) coreops.Inv
 	if inv.ID == "" {
 		inv.ID = inv.Hash()
 	}
+	inv.Deps = t.deps
 	return inv
 }
 

@@ -89,7 +89,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 		resCtx.TemplateData.Inputs = inputs
 
 		// Execute the state
-		tracker := newInvocationTracker(recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "test-investigation"}})
+		tracker := newInvocationTracker(recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "test-investigation"}}, nil)
 		state := stateMap.States["simple_state"]
 
 		// This should execute the activity and return outputs

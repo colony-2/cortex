@@ -18,6 +18,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
@@ -62,3 +63,5 @@ replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 replace github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 
 replace github.com/divisive-ai/vibethis/server/ops => ../ops
+
+replace github.com/divisive-ai/vibethis/server/git => ../git
