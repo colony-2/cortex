@@ -218,10 +218,6 @@ type ManagementService interface {
 	Close()
 }
 
-type ServiceDependencies interface {
-	Get(name string) (interface{}, error)
-}
-
 // SSEManager interface for Server-Sent Events
 type SSEManager interface {
 	Broadcast(event SSEEvent)

@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,12 +67,16 @@ func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInpu
 
 type stubDeps struct{}
 
-func (s *stubDeps) Get(name string) (interface{}, error) {
-	return nil, fmt.Errorf("no dependency: %s", name)
-}
-
 func (s *stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
 	return nil, false
+}
+
+func (s *stubDeps) SSEManager() (recipeops.SSEManager, bool) {
+	return nil, false
+}
+
+func (s *stubDeps) TemporalNamespace() (string, bool) {
+	return "", false
 }
 
 func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {

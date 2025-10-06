@@ -14,16 +14,17 @@ type Worker struct {
 }
 
 // NewWorker creates a new recipe worker system
-func NewWorker(logger *zap.Logger, recipesDir string, temporalClient client.Client) (*Worker, error) {
+func NewWorker(logger *zap.Logger, recipesDir string, temporalClient client.Client, namespace string) (*Worker, error) {
 	// Create worker manager
 	workerManager := NewWorkerManager(logger, temporalClient)
-	
+	workerManager.SetDependencies(newWorkerDependencies(temporalClient, namespace))
+
 	// Create registry
 	registry, err := NewRegistry(logger, recipesDir, workerManager)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Worker{
 		logger:        logger,
 		registry:      registry,
@@ -42,10 +43,10 @@ func (w *Worker) Stop() error {
 	if err := w.registry.Stop(); err != nil {
 		w.logger.Error("Failed to stop registry", zap.Error(err))
 	}
-	
+
 	// Stop all workers
 	w.workerManager.StopAll()
-	
+
 	return nil
 }
 

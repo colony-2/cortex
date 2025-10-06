@@ -1,84 +1,98 @@
 package setup
 
 import (
-    "context"
-    "fmt"
-    "os"
-    "path/filepath"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 
-    "github.com/divisive-ai/vibethis/server/api/pkg/web"
-    "github.com/divisive-ai/vibethis/server/container/pkg/container"
-    "github.com/divisive-ai/vibethis/server/cortex/internal/config"
-    "github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-    "github.com/divisive-ai/vibethis/server/cortex/internal/static"
-    "github.com/divisive-ai/vibethis/server/files/pkg/files"
-    "github.com/divisive-ai/vibethis/server/git/pkg/git"
-    "github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-    "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
-    inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-    "go.temporal.io/sdk/testsuite"
+	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	"github.com/divisive-ai/vibethis/server/container/pkg/container"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
+	"github.com/divisive-ai/vibethis/server/files/pkg/files"
+	"github.com/divisive-ai/vibethis/server/git/pkg/git"
+	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"go.temporal.io/sdk/testsuite"
 )
 
-type svc struct { sse interface{}; ctl workflowctl.WorkflowControl }
+type svc struct {
+	sse               coreops.SSEManager
+	ctl               workflowctl.WorkflowControl
+	temporalNamespace string
+}
 
-func (s *svc) Get(name string) (interface{}, error) {
-    switch name {
-    case "sse":
-        if s.sse != nil {
-            return s.sse, nil
-        }
-        return nil, fmt.Errorf("service not found: %s", name)
-    case "temporal_client":
-        // Not provided in cortex; WorkflowControl is used instead
-        return nil, fmt.Errorf("service not found: %s", name)
-    default:
-        return nil, fmt.Errorf("service not found: %s", name)
-    }
+func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+	if s != nil && s.ctl != nil {
+		return s.ctl, true
+	}
+	return nil, false
+}
+
+func (s *svc) SSEManager() (coreops.SSEManager, bool) {
+	if s != nil && s.sse != nil {
+		return s.sse, true
+	}
+	return nil, false
+}
+
+func (s *svc) TemporalNamespace() (string, bool) {
+	if s != nil && s.temporalNamespace != "" {
+		return s.temporalNamespace, true
+	}
+	return "", false
 }
 
 // WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.
-func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) { return s.ctl, s.ctl != nil }
 
 // suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
-type suiteWorkflowCtl struct{ env *testsuite.TestWorkflowEnvironment }
+type suiteWorkflowCtl struct {
+	env *testsuite.TestWorkflowEnvironment
+}
 
 func (c *suiteWorkflowCtl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
-    status := workflowctl.StatusRunning
-    if c.env.IsWorkflowCompleted() {
-        status = workflowctl.StatusCompleted
-    }
-    return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
+	status := workflowctl.StatusRunning
+	if c.env.IsWorkflowCompleted() {
+		status = workflowctl.StatusCompleted
+	}
+	return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
 }
 
 func (c *suiteWorkflowCtl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
-    c.env.SignalWorkflow(signalName, payload)
-    return nil
+	c.env.SignalWorkflow(signalName, payload)
+	return nil
 }
 
-func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error { return nil }
+func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
+	return nil
+}
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
 	var cleanup []func()
 
-    // Initialize storage with default database path, allow override for tests/CI
-    dbDir := os.Getenv("VIBETHIS_DB_DIR")
-    if dbDir == "" {
-        dbDir = filepath.Join(cfg.RootPath, ".vibethis")
-    }
+	// Initialize storage with default database path, allow override for tests/CI
+	dbDir := os.Getenv("VIBETHIS_DB_DIR")
+	if dbDir == "" {
+		dbDir = filepath.Join(cfg.RootPath, ".vibethis")
+	}
 
-    // Ensure database directory exists when creating new or when overridden via env
-    if cfg.CreateNew || os.Getenv("VIBETHIS_DB_DIR") != "" {
-        if err := os.MkdirAll(dbDir, 0755); err != nil {
-            return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
-        }
-    }
+	// Ensure database directory exists when creating new or when overridden via env
+	if cfg.CreateNew || os.Getenv("VIBETHIS_DB_DIR") != "" {
+		if err := os.MkdirAll(dbDir, 0755); err != nil {
+			return web.Dependencies{}, nil, fmt.Errorf("failed to create database directory: %w", err)
+		}
+	}
 
-    storageImpl, err := storage.NewBoltStorage(storage.Config{
-        DatabasePath: dbDir,
-        ReadOnly:     false,
-    })
+	storageImpl, err := storage.NewBoltStorage(storage.Config{
+		DatabasePath: dbDir,
+		ReadOnly:     false,
+	})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to initialize storage: %w", err)
 	}
@@ -96,13 +110,13 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		DefaultEmail:  "github.com/divisive-ai/vibethis/server@example.com",
 	})
 
-    // Initialize container manager
-    containerMgr := container.NewManager(container.Config{})
-    // Provide a basic SSE manager and a WorkflowTestSuite-backed controller
-    sseMgr := inputops.NewSimpleSSEManager()
-    ts := &testsuite.WorkflowTestSuite{}
-    env := ts.NewTestWorkflowEnvironment()
-    svcContext := &svc{sse: sseMgr, ctl: &suiteWorkflowCtl{env: env}}
+	// Initialize container manager
+	containerMgr := container.NewManager(container.Config{})
+	// Provide a basic SSE manager and a WorkflowTestSuite-backed controller
+	sseMgr := inputops.NewSimpleSSEManager()
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	svcContext := &svc{sse: sseMgr, ctl: &suiteWorkflowCtl{env: env}}
 
 	extensionRoutes, cleanup, err := shared.SetupOps(svcContext)
 	if err != nil {

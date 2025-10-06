@@ -40,17 +40,15 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
 		log.Printf("input_mgmt.initialize: missing_workflow_control error=workflow control dependency not provided")
 		return fmt.Errorf("workflow control dependency not provided")
 	}
-	sse, err := deps.Get("sse")
-	if err != nil {
-		log.Printf("input_mgmt.initialize: missing_sse_manager error=%v", err)
-		return err
+	if sse, ok := deps.SSEManager(); ok {
+		s.sse = sse
+	} else {
+		log.Printf("input_mgmt.initialize: missing_sse_manager")
+		return fmt.Errorf("sse manager dependency not provided")
 	}
-	s.sse = sse.(ops.SSEManager)
 	// Best-effort namespace detection via deps or env
-	if ns, err := deps.Get("temporal_namespace"); err == nil {
-		if v, ok := ns.(string); ok && v != "" {
-			s.namespace = v
-		}
+	if ns, ok := deps.TemporalNamespace(); ok && ns != "" {
+		s.namespace = ns
 	}
 	if s.namespace == "" {
 		s.namespace = os.Getenv("TEMPORAL_NAMESPACE")

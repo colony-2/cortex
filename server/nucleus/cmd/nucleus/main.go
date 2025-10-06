@@ -69,7 +69,7 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	defer temporalClient.Close()
 
-	worker, err := recipeworker.NewWorker(logger, cfg.RecipesPath, temporalClient)
+	worker, err := recipeworker.NewWorker(logger, cfg.RecipesPath, temporalClient, cfg.Namespace)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrWorkerCreate, err)
 	}

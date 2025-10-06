@@ -155,7 +155,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 	// Create management service
 	service := newInputManagementService()
-	require.NoError(t, service.Initialize(ServiceDependencies{SSEManager: sseManager, WorkflowCtl: mctl}))
+	require.NoError(t, service.Initialize(ServiceDependencies{SSEMgr: sseManager, WorkflowCtl: mctl}))
 
 	// Create test router
 	router := chi.NewRouter()
@@ -257,7 +257,7 @@ func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
 
 	// Create management service
 	service := newInputManagementService()
-	require.NoError(t, service.Initialize(ServiceDependencies{SSEManager: sseManager, WorkflowCtl: mctl}))
+	require.NoError(t, service.Initialize(ServiceDependencies{SSEMgr: sseManager, WorkflowCtl: mctl}))
 
 	// Create test router
 	router := chi.NewRouter()

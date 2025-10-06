@@ -23,22 +23,32 @@ import (
 	"go.temporal.io/sdk/testsuite"
 )
 
-// depsImpl2 implements typed ServiceDependencies for tests
 type depsImpl2 struct {
-	sse coreops.SSEManager
-	ctl workflowctl.WorkflowControl
+	sse               coreops.SSEManager
+	ctl               workflowctl.WorkflowControl
+	temporalNamespace string
 }
 
-func (d depsImpl2) Get(name string) (interface{}, error) {
-	switch name {
-	case "sse":
-		return d.sse, nil
-	default:
-		return nil, fmt.Errorf("service not found: %s", name)
+func (d depsImpl2) WorkflowControl() (workflowctl.WorkflowControl, bool) {
+	if d.ctl != nil {
+		return d.ctl, true
 	}
+	return nil, false
 }
 
-func (d depsImpl2) WorkflowControl() (workflowctl.WorkflowControl, bool) { return d.ctl, d.ctl != nil }
+func (d depsImpl2) SSEManager() (coreops.SSEManager, bool) {
+	if d.sse != nil {
+		return d.sse, true
+	}
+	return nil, false
+}
+
+func (d depsImpl2) TemporalNamespace() (string, bool) {
+	if d.temporalNamespace != "" {
+		return d.temporalNamespace, true
+	}
+	return "", false
+}
 
 type suiteWorkflowCtl2 struct {
 	env *testsuite.TestWorkflowEnvironment

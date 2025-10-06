@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	rec "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
@@ -40,11 +41,11 @@ var (
 
 type cliServiceDeps struct{}
 
-func (cliServiceDeps) Get(name string) (interface{}, error) {
-	return nil, fmt.Errorf("service %s not available", name)
-}
-
 func (cliServiceDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
+
+func (cliServiceDeps) SSEManager() (coreops.SSEManager, bool) { return nil, false }
+
+func (cliServiceDeps) TemporalNamespace() (string, bool) { return "", false }
 
 // executeCmd executes a rec from the command line
 var executeCmd = &cobra.Command{

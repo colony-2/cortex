@@ -123,10 +123,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	containerManager := container.NewManager(container.Config{})
 
 	// Setup ops management services (input manager etc.)
-	depContainer := opssetup.NewServiceDeps()
-	// Provide SSE manager
-	depContainer.Set("sse", inputops.NewSimpleSSEManager())
-	// Do not set a placeholder temporal client; only set when a real client is available
+	sseManager := inputops.NewSimpleSSEManager()
 
 	// Start embedded Temporal server for testserver to power input manager
 	// Choose a free ephemeral port for Temporal frontend to avoid collisions
@@ -160,33 +157,24 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	defer temporalSrv.Stop()
 
 	hostPort := temporalSrv.GetFrontendAddress()
-	var clientReady interface{}
+	var temporalClient client.Client
 	var lastDialErr error
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		cli, dialErr := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{HostPort: hostPort})
 		if dialErr == nil {
-			clientReady = cli
+			temporalClient = cli
 			break
 		}
 		lastDialErr = dialErr
 		time.Sleep(500 * time.Millisecond)
 	}
-	if clientReady == nil {
+	if temporalClient == nil {
 		return fmt.Errorf("timed out waiting for Temporal client (last error: %v)", lastDialErr)
 	}
-	depContainer.Set("temporal_client", clientReady)
-	defer func() {
-		if c, ok := clientReady.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
+	defer temporalClient.Close()
 
-	if temporalClient, ok := clientReady.(client.Client); ok {
-		ctl := &temporalWorkflowControl{client: temporalClient}
-		depContainer.SetWorkflowControl(ctl)
-		depContainer.Set(workflowctl.DependencyName, ctl)
-	}
+	depContainer := opssetup.NewServiceDeps(sseManager, &temporalWorkflowControl{client: temporalClient}, "")
 
 	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
 	if err != nil {

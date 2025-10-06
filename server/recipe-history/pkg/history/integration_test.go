@@ -3,7 +3,6 @@ package history
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -26,11 +25,11 @@ import (
 
 type stubDeps struct{}
 
-func (stubDeps) Get(name string) (interface{}, error) {
-	return nil, fmt.Errorf("dependency %s not provided", name)
-}
-
 func (stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
+
+func (stubDeps) SSEManager() (coreops.SSEManager, bool) { return nil, false }
+
+func (stubDeps) TemporalNamespace() (string, bool) { return "", false }
 
 // Integration test using WorkflowTestSuite (no external Temporal server)
 func TestHistoryWithWorkflowTestSuite(t *testing.T) {
