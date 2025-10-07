@@ -246,11 +246,9 @@ func (e *childExecutor) runDiscrete(runMode executionRunMode) (RecipeOutput, err
 }
 
 func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
+	future, childCtx := e.scheduleChildWorkflow(ctx, runMode, childInputs)
 	logger := workflow.GetLogger(ctx)
 	logger.Info("invoking child recipe", "recipe", e.input.Name, "run_mode", runMode.String(), "git_state", gitMode.String(), "inputs_keys", mapKeys(childInputs))
-
-	childCtx := workflow.WithChildOptions(ctx, e.childWorkflowOptions(runMode))
-	future := workflow.ExecuteChildWorkflow(childCtx, e.input.Name, childInputs)
 
 	if runMode == runModeSync {
 		var result map[string]interface{}
@@ -282,6 +280,12 @@ func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executi
 	}
 	logger.Info("async child recipe scheduled", "recipe", e.input.Name, "workflow_id", exec.ID, "run_id", exec.RunID, "git_state", gitMode.String())
 	return map[string]interface{}{"async_handle": handle}, nil
+}
+
+func (e *childExecutor) scheduleChildWorkflow(ctx workflow.Context, runMode executionRunMode, childInputs map[string]interface{}) (workflow.ChildWorkflowFuture, workflow.Context) {
+	childCtx := workflow.WithChildOptions(ctx, e.childWorkflowOptions(runMode))
+	future := workflow.ExecuteChildWorkflow(childCtx, e.input.Name, childInputs)
+	return future, childCtx
 }
 
 func (e *childExecutor) childWorkflowOptions(runMode executionRunMode) workflow.ChildWorkflowOptions {
