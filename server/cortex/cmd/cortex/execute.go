@@ -15,7 +15,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	rec "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/google/uuid"
@@ -38,14 +37,6 @@ var (
 	executeParallelLimit int
 	executeDryRun        bool
 )
-
-type cliServiceDeps struct{}
-
-func (cliServiceDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
-
-func (cliServiceDeps) SSEManager() (coreops.SSEManager, bool) { return nil, false }
-
-func (cliServiceDeps) TemporalNamespace() (string, bool) { return "", false }
 
 // executeCmd executes a rec from the command line
 var executeCmd = &cobra.Command{
@@ -422,7 +413,7 @@ func executeRecipe(ctx context.Context, recipe *rec.Recipe, inputs map[string]in
 	if err != nil {
 		return nil, fmt.Errorf("failed to create activity registry: %w", err)
 	}
-	registry.SetDependencies(cliServiceDeps{})
+	registry.SetDependencies(coreops.NewServiceDepsBuilder().Build())
 
 	execute, err := executor.NewStandaloneExecutor(registry, logger)
 	if err != nil {

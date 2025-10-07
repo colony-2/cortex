@@ -3,37 +3,8 @@ package input
 import (
 	"context"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 )
-
-// ServiceDependencies is a test helper to satisfy ops.ServiceDependencies2.
-type ServiceDependencies struct {
-	WorkflowCtl workflowctl.WorkflowControl
-	SSEMgr      ops.SSEManager
-	Namespace   string
-}
-
-func (d ServiceDependencies) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d.WorkflowCtl != nil {
-		return d.WorkflowCtl, true
-	}
-	return nil, false
-}
-
-func (d ServiceDependencies) SSEManager() (ops.SSEManager, bool) {
-	if d.SSEMgr != nil {
-		return d.SSEMgr, true
-	}
-	return nil, false
-}
-
-func (d ServiceDependencies) TemporalNamespace() (string, bool) {
-	if d.Namespace != "" {
-		return d.Namespace, true
-	}
-	return "", false
-}
 
 // mockWorkflowControl is a lightweight test double for workflowctl.WorkflowControl.
 // Methods return configured errors and record the last call for assertions.

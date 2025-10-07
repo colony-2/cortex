@@ -12,7 +12,6 @@ import (
 	"time"
 
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,20 +62,6 @@ func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInpu
 		Result:  input.Data + " processed",
 		Success: true,
 	}, nil
-}
-
-type stubDeps struct{}
-
-func (s *stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	return nil, false
-}
-
-func (s *stubDeps) SSEManager() (recipeops.SSEManager, bool) {
-	return nil, false
-}
-
-func (s *stubDeps) TemporalNamespace() (string, bool) {
-	return "", false
 }
 
 func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
@@ -152,7 +137,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 func TestWithGitWorkspaceInjectsDependencies(t *testing.T) {
 	t.Parallel()
 
-	deps := &stubDeps{}
+	deps := recipeops.NewServiceDepsBuilder().Build()
 	repoDir, baseHash, persistHash := initTwoCommitRepo(t)
 	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")

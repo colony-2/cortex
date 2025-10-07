@@ -1,7 +1,6 @@
 package handlers_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,58 +15,10 @@ import (
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	inputpkg "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/testsuite"
 )
-
-type depsImpl2 struct {
-	sse               coreops.SSEManager
-	ctl               workflowctl.WorkflowControl
-	temporalNamespace string
-}
-
-func (d depsImpl2) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d.ctl != nil {
-		return d.ctl, true
-	}
-	return nil, false
-}
-
-func (d depsImpl2) SSEManager() (coreops.SSEManager, bool) {
-	if d.sse != nil {
-		return d.sse, true
-	}
-	return nil, false
-}
-
-func (d depsImpl2) TemporalNamespace() (string, bool) {
-	if d.temporalNamespace != "" {
-		return d.temporalNamespace, true
-	}
-	return "", false
-}
-
-type suiteWorkflowCtl2 struct {
-	env *testsuite.TestWorkflowEnvironment
-}
-
-func (c *suiteWorkflowCtl2) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
-	status := workflowctl.StatusRunning
-	if c.env.IsWorkflowCompleted() {
-		status = workflowctl.StatusCompleted
-	}
-	return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
-}
-func (c *suiteWorkflowCtl2) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
-	c.env.SignalWorkflow(signalName, payload)
-	return nil
-}
-func (c *suiteWorkflowCtl2) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
-	return nil
-}
 
 // TestInputRoutes_Integration_WorkflowSuite_HTTP verifies the full integration path:
 // Temporal WorkflowTestSuite + REST HTTP call via management service.
@@ -97,8 +48,8 @@ func TestInputRoutes_Integration_WorkflowSuite_HTTP(t *testing.T) {
 	sseMgr := inputops.NewSimpleSSEManager()
 	op := inputops.GetOp()
 	mgmt := op.GetManagementService()
-	ctl := &suiteWorkflowCtl2{env: env}
-	err := mgmt.Initialize(depsImpl2{sse: sseMgr, ctl: ctl})
+	ctl := &suiteWorkflowCtl{env: env}
+	err := mgmt.Initialize(buildDeps(sseMgr, ctl, ""))
 	require.NoError(t, err)
 
 	// Mount the management routes

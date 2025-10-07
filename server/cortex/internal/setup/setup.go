@@ -21,33 +21,6 @@ import (
 	"go.temporal.io/sdk/testsuite"
 )
 
-type svc struct {
-	sse               coreops.SSEManager
-	ctl               workflowctl.WorkflowControl
-	temporalNamespace string
-}
-
-func (s *svc) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if s != nil && s.ctl != nil {
-		return s.ctl, true
-	}
-	return nil, false
-}
-
-func (s *svc) SSEManager() (coreops.SSEManager, bool) {
-	if s != nil && s.sse != nil {
-		return s.sse, true
-	}
-	return nil, false
-}
-
-func (s *svc) TemporalNamespace() (string, bool) {
-	if s != nil && s.temporalNamespace != "" {
-		return s.temporalNamespace, true
-	}
-	return "", false
-}
-
 // WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.
 
 // suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
@@ -116,9 +89,12 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	sseMgr := inputops.NewSimpleSSEManager()
 	ts := &testsuite.WorkflowTestSuite{}
 	env := ts.NewTestWorkflowEnvironment()
-	svcContext := &svc{sse: sseMgr, ctl: &suiteWorkflowCtl{env: env}}
+	depsContainer := coreops.NewServiceDepsBuilder().
+		WithSSEManager(sseMgr).
+		WithWorkflowControl(&suiteWorkflowCtl{env: env}).
+		Build()
 
-	extensionRoutes, cleanup, err := shared.SetupOps(svcContext)
+	extensionRoutes, cleanup, err := shared.SetupOps(depsContainer)
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to setup ops: %w", err)
 	}

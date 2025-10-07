@@ -8,41 +8,12 @@ import (
 	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
 	opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	workerexport "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 )
 
-// serviceDeps is a concrete ServiceDependencies2 used by the API server.
-type serviceDeps struct {
-	workflowCtl workflowctl.WorkflowControl
-	sse         ops.SSEManager
-	namespace   string
-}
-
-// NewServiceDeps constructs a typed dependency bundle for management services.
-func NewServiceDeps(sse ops.SSEManager, ctl workflowctl.WorkflowControl, namespace string) ops.ServiceDependencies2 {
-	return &serviceDeps{workflowCtl: ctl, sse: sse, namespace: namespace}
-}
-
-func (d *serviceDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d == nil || d.workflowCtl == nil {
-		return nil, false
-	}
-	return d.workflowCtl, true
-}
-
-func (d *serviceDeps) SSEManager() (ops.SSEManager, bool) {
-	if d == nil || d.sse == nil {
-		return nil, false
-	}
-	return d.sse, true
-}
-
-func (d *serviceDeps) TemporalNamespace() (string, bool) {
-	if d == nil || d.namespace == "" {
-		return "", false
-	}
-	return d.namespace, true
+// NewDependencyContainer exposes the recipe-core builder so callers can compose dependencies fluently.
+func NewDependencyContainer() *ops.ServiceDepsBuilder {
+	return ops.NewServiceDepsBuilder()
 }
 
 // RegisterOps registers all known ops into the registry and returns the list

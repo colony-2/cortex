@@ -12,42 +12,14 @@ import (
 	"go.temporal.io/sdk/client"
 )
 
-type workerDependencies struct {
-	ctl       workflowctl.WorkflowControl
-	sse       ops.SSEManager
-	namespace string
-}
-
 func newWorkerDependencies(cli client.Client, namespace string) ops.ServiceDependencies2 {
-	deps := &workerDependencies{
-		sse:       noopSSEManager{},
-		namespace: namespace,
-	}
+	builder := ops.NewServiceDepsBuilder().
+		WithSSEManager(noopSSEManager{}).
+		WithTemporalNamespace(namespace)
 	if cli != nil {
-		deps.ctl = &temporalWorkflowControl{client: cli, namespace: namespace}
+		builder = builder.WithWorkflowControl(&temporalWorkflowControl{client: cli, namespace: namespace})
 	}
-	return deps
-}
-
-func (d *workerDependencies) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d == nil || d.ctl == nil {
-		return nil, false
-	}
-	return d.ctl, true
-}
-
-func (d *workerDependencies) SSEManager() (ops.SSEManager, bool) {
-	if d == nil || d.sse == nil {
-		return nil, false
-	}
-	return d.sse, true
-}
-
-func (d *workerDependencies) TemporalNamespace() (string, bool) {
-	if d == nil || d.namespace == "" {
-		return "", false
-	}
-	return d.namespace, true
+	return builder.Build()
 }
 
 type noopSSEManager struct{}

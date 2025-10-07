@@ -21,6 +21,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/spf13/cobra"
@@ -174,7 +175,10 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	}
 	defer temporalClient.Close()
 
-	depContainer := opssetup.NewServiceDeps(sseManager, &temporalWorkflowControl{client: temporalClient}, "")
+	depContainer := ops.NewServiceDepsBuilder().
+		WithSSEManager(sseManager).
+		WithWorkflowControl(&temporalWorkflowControl{client: temporalClient}).
+		Build()
 
 	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
 	if err != nil {

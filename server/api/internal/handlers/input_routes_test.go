@@ -27,31 +27,18 @@ import (
 	"go.temporal.io/sdk/testsuite"
 )
 
-type depsImpl struct {
-	sse               coreops.SSEManager
-	ctl               workflowctl.WorkflowControl
-	temporalNamespace string
-}
-
-func (d depsImpl) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d.ctl != nil {
-		return d.ctl, true
+func buildDeps(sse coreops.SSEManager, ctl workflowctl.WorkflowControl, namespace string) coreops.ServiceDependencies2 {
+	b := coreops.NewServiceDepsBuilder()
+	if sse != nil {
+		b = b.WithSSEManager(sse)
 	}
-	return nil, false
-}
-
-func (d depsImpl) SSEManager() (coreops.SSEManager, bool) {
-	if d.sse != nil {
-		return d.sse, true
+	if ctl != nil {
+		b = b.WithWorkflowControl(ctl)
 	}
-	return nil, false
-}
-
-func (d depsImpl) TemporalNamespace() (string, bool) {
-	if d.temporalNamespace != "" {
-		return d.temporalNamespace, true
+	if namespace != "" {
+		b = b.WithTemporalNamespace(namespace)
 	}
-	return "", false
+	return b.Build()
 }
 
 // suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
@@ -133,7 +120,7 @@ func buildServerWithSSEOnly(t *testing.T) (*web.Server, coreops.SSEManager) {
 	op := inputops.GetOp()
 	mgmt := op.GetManagementService()
 	// initialize with SSE only and no workflow control
-	err := mgmt.Initialize(depsImpl{sse: sseMgr, ctl: nil})
+	err := mgmt.Initialize(buildDeps(sseMgr, nil, ""))
 	require.NoError(t, err)
 
 	var routes []web.ExtensionRoute
@@ -239,7 +226,7 @@ func TestInputRoutes_SimpleInputCycle(t *testing.T) {
 	op := inputops.GetOp()
 	mgmt := op.GetManagementService()
 	ctl := &suiteWorkflowCtl{env: env}
-	err := mgmt.Initialize(depsImpl{sse: sseMgr, ctl: ctl})
+	err := mgmt.Initialize(buildDeps(sseMgr, ctl, ""))
 	require.NoError(t, err)
 	var routes []web.ExtensionRoute
 	for _, r := range mgmt.GetRoutes() {

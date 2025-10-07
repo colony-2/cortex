@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -155,7 +156,7 @@ func TestInputManagementServiceAPI(t *testing.T) {
 
 	// Create management service
 	service := newInputManagementService()
-	require.NoError(t, service.Initialize(ServiceDependencies{SSEMgr: sseManager, WorkflowCtl: mctl}))
+	require.NoError(t, service.Initialize(coreops.NewServiceDepsBuilder().WithSSEManager(sseManager).WithWorkflowControl(mctl).Build()))
 
 	// Create test router
 	router := chi.NewRouter()
@@ -257,7 +258,7 @@ func TestInputManagementServiceAPI_SSEAndGetDetails(t *testing.T) {
 
 	// Create management service
 	service := newInputManagementService()
-	require.NoError(t, service.Initialize(ServiceDependencies{SSEMgr: sseManager, WorkflowCtl: mctl}))
+	require.NoError(t, service.Initialize(coreops.NewServiceDepsBuilder().WithSSEManager(sseManager).WithWorkflowControl(mctl).Build()))
 
 	// Create test router
 	router := chi.NewRouter()
