@@ -280,6 +280,60 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	require.NotNil(t, updated.CompletedAt)
 	require.WithinDuration(t, now, updated.CompletedAt.UTC(), time.Millisecond)
 }
+
+func TestUpdateTicketDescriptionChange(t *testing.T) {
+	now := time.Now().UTC()
+	original := &model.Ticket{
+		ID:          "ticket-desc",
+		Version:     version(3),
+		Stage:       "triage",
+		State:       model.StateWorking,
+		Description: "initial",
+		Creator:     NewUserActor("user@example.com"),
+		UpdatedAt:   now.Add(-time.Hour),
+	}
+	st := &stubStore{
+		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
+			return original, nil
+		},
+		updateFunc: func(ctx context.Context, ticket *model.Ticket, fields ...string) error {
+			return nil
+		},
+		createFunc: func(ctx context.Context, ticket *model.Ticket) error {
+			return nil
+		},
+	}
+	var appended *model.TicketEvent
+	events := &stubEventStore{
+		appendFunc: func(ctx context.Context, event *model.TicketEvent) error {
+			appended = event
+			return nil
+		},
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:      st,
+		EventStore: events,
+		Clock:      fixedClock{now: now},
+	})
+	require.NoError(t, err)
+
+	newDesc := "  refreshed summary  "
+	updated, err := svc.UpdateTicket(context.Background(), model.ID("ticket-desc"), UpdateInput{
+		ExpectedVersion: version(3),
+		Description:     &newDesc,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "refreshed summary", updated.Description)
+	require.NotNil(t, appended)
+	require.Equal(t, model.TicketEventKindTicket, appended.Kind)
+	require.NotNil(t, appended.Payload.Ticket)
+	changes := appended.Payload.Ticket.Changes
+	require.Len(t, changes, 1)
+	require.Equal(t, model.TicketFieldName("description"), changes[0].Field)
+	require.Equal(t, "initial", changes[0].From)
+	require.Equal(t, "refreshed summary", changes[0].To)
+}
 func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 	now := time.Date(2024, 9, 12, 9, 0, 0, 0, time.UTC)
 	ticketID := model.ID("ticket-1234567890123456789012")
@@ -337,6 +391,72 @@ func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 	default:
 		t.Fatal("expected event to be appended")
 	}
+}
+
+func TestAppendTicketEventStoresNotes(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2024, 9, 12, 10, 30, 0, 0, time.UTC)
+	ticketID := model.ID("ticket-note-1")
+
+	store := &stubStore{
+		getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
+			return &model.Ticket{ID: ticketID, ValidUntil: temporalInfinity()}, nil
+		},
+	}
+
+	var appended *model.TicketEvent
+	events := &stubEventStore{
+		appendFunc: func(_ context.Context, evt *model.TicketEvent) error {
+			appended = evt
+			return nil
+		},
+		latestResetFunc: func(context.Context, model.ID) (*model.TicketReset, error) {
+			return nil, nil
+		},
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:      store,
+		EventStore: events,
+		Clock:      fixedClock{now: now},
+	})
+	require.NoError(t, err)
+
+	result, err := svc.AppendTicketEvent(ctx, ticketID, TicketEventInput{
+		Actor:     NewUserActor("notes@example.com"),
+		Notes:     "  captured details  ",
+		EventTime: now.Add(2 * time.Minute),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, appended)
+	require.Equal(t, model.TicketEventKindTicket, result.Kind)
+	require.Equal(t, "captured details", result.Payload.Ticket.Notes)
+	require.Equal(t, result.ID, appended.ID)
+	require.Equal(t, "captured details", appended.Payload.Ticket.Notes)
+	require.WithinDuration(t, now.Add(2*time.Minute), result.EventTime, time.Microsecond)
+}
+
+func TestAppendTicketEventEmptyNotes(t *testing.T) {
+	svc, err := New(ServiceConfig{
+		Store: &stubStore{
+			getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
+				return &model.Ticket{ID: model.ID("ticket-note-1"), ValidUntil: temporalInfinity()}, nil
+			},
+		},
+		EventStore: &stubEventStore{
+			latestResetFunc: func(context.Context, model.ID) (*model.TicketReset, error) {
+				return nil, nil
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.AppendTicketEvent(context.Background(), model.ID("ticket-note-1"), TicketEventInput{
+		Actor: NewUserActor("notes@example.com"),
+		Notes: " ",
+	})
+	require.ErrorIs(t, err, ErrInvalidEventPayload)
 }
 
 func TestResetTicketMissingAnchor(t *testing.T) {

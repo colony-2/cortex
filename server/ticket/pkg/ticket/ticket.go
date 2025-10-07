@@ -27,6 +27,7 @@ type (
 	TicketEvent             = model.TicketEvent
 	TicketEventBody         = model.TicketEventBody
 	TicketEventPayload      = model.TicketEventPayload
+	TicketEventInput        = internalservice.TicketEventInput
 	WorkflowID              = model.WorkflowID
 	WorkflowRunID           = model.WorkflowRunID
 	WorkflowEventType       = model.WorkflowEventType
@@ -36,6 +37,7 @@ type (
 	ChangeSetEventType      = model.ChangeSetEventType
 	ChangeSetEventPayload   = model.ChangeSetEventPayload
 	TicketReset             = model.TicketReset
+	TicketResetID           = model.TicketResetID
 	TicketResetEventPayload = model.TicketResetEventPayload
 	TicketEventFilter       = model.TicketEventFilter
 	SearchFilter            = model.SearchFilter
@@ -98,6 +100,18 @@ var (
 
 func NewService(config ServiceConfig) (Service, error) {
 	return internalservice.New(config)
+}
+
+func NewServiceFromDB(db *gorm.DB) (Service, error) {
+	store, err := NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	eventStore, err := NewEventStore(db)
+	if err != nil {
+		return nil, err
+	}
+	return NewService(ServiceConfig{Store: store, EventStore: eventStore})
 }
 
 func NewStore(db *gorm.DB) (Store, error) {

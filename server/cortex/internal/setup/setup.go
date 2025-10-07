@@ -18,6 +18,7 @@ import (
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -71,6 +72,19 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	}
 	cleanup = append(cleanup, func() { storageImpl.Close() })
 
+	ticketDBPath := filepath.Join(cfg.RootPath, "ticket.db")
+	ticketDB, closeTicketDB, err := database.Open(database.Config{FallbackPath: ticketDBPath})
+	if err != nil {
+		return web.Dependencies{}, nil, fmt.Errorf("failed to open ticket database: %w", err)
+	}
+	cleanup = append(cleanup, func() {
+		if closeTicketDB != nil {
+			if cerr := closeTicketDB(); cerr != nil {
+				fmt.Fprintf(os.Stderr, "ticket database close failed: %v\n", cerr)
+			}
+		}
+	})
+
 	// Initialize graph builder
 	graphBuilder := graph.NewBuilder(cfg.RootPath)
 
@@ -92,6 +106,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	depsContainer := coreops.NewServiceDepsBuilder().
 		WithSSEManager(sseMgr).
 		WithWorkflowControl(&suiteWorkflowCtl{env: env}).
+		WithDatabase(ticketDB).
 		Build()
 
 	extensionRoutes, cleanup, err := shared.SetupOps(depsContainer)

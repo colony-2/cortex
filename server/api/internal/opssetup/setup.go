@@ -9,6 +9,7 @@ import (
 	opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	workerexport "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
+	ticketop "github.com/divisive-ai/vibethis/server/ticket/pkg/op"
 )
 
 // NewDependencyContainer exposes the recipe-core builder so callers can compose dependencies fluently.
@@ -21,6 +22,7 @@ func RegisterOps() []ops.RegisterableOp {
 	impls := opsexport.GetAll()
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, gitexport.GetAll()...)
+	impls = append(impls, ticketop.GetOp())
 	ops.Register(impls...)
 	return impls
 }

@@ -10,12 +10,14 @@ import (
 	"go.temporal.io/api/serviceerror"
 	workflowservice "go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	"gorm.io/gorm"
 )
 
-func newWorkerDependencies(cli client.Client, namespace string) ops.ServiceDependencies2 {
+func newWorkerDependencies(cli client.Client, namespace string, db *gorm.DB) ops.ServiceDependencies2 {
 	builder := ops.NewServiceDepsBuilder().
 		WithSSEManager(noopSSEManager{}).
-		WithTemporalNamespace(namespace)
+		WithTemporalNamespace(namespace).
+		WithDatabase(db)
 	if cli != nil {
 		builder = builder.WithWorkflowControl(&temporalWorkflowControl{client: cli, namespace: namespace})
 	}

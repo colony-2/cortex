@@ -1,0 +1,85 @@
+package ticketop
+
+import (
+	"context"
+	"testing"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
+	"github.com/stretchr/testify/require"
+)
+
+func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
+	pg := testutil.StartEmbeddedPostgres(t)
+	t.Cleanup(func() { pg.Close(t) })
+
+	deps := ops.NewServiceDepsBuilder().WithDatabase(pg.DB).Build()
+	inv := ops.Invocation{
+		RecipeID:   "integration",
+		NodePath:   "flow/0",
+		InvokeSeq:  0,
+		BoxID:      "cell-integration",
+		ActivityID: "ticket-manage",
+		Deps:       deps,
+	}
+
+	input := Input{
+		Actions: []Action{
+			{
+				Type: ActionCreateTicket,
+				Raw: mustMarshal(t, createTicketAction{
+					Cell:  "cell-integration",
+					Title: "Integration Test",
+					Stage: "Triage",
+					State: string(ticket.StateWorking),
+				}),
+			},
+			{
+				Type: ActionUpdateTicket,
+				Raw: mustMarshal(t, updateTicketAction{
+					ExpectedVersion: 1,
+					Stage:           strPtr("Execution"),
+					Description:     strPtr("Shift to execution"),
+				}),
+			},
+			{
+				Type: ActionLinkMarkdown,
+				Raw: mustMarshal(t, markdownAction{
+					Name:   "Design Doc",
+					Path:   "docs/design.md",
+					Reason: "Initial link",
+				}),
+			},
+			{
+				Type: ActionAppendWorkflow,
+				Raw: mustMarshal(t, appendWorkflowAction{
+					WorkflowID: "wf-123",
+					RunID:      "run-abc",
+					Status:     ticket.WorkflowEventRunning,
+				}),
+			},
+			{
+				Type: ActionResetTicket,
+				Raw: mustMarshal(t, resetTicketAction{
+					Reason: "Rewind after workflow",
+				}),
+			},
+		},
+	}
+
+	output, err := execute(inv, context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, output.Results, 5)
+	require.NotNil(t, output.Ticket)
+	require.Equal(t, ticket.Stage("execution"), output.Ticket.Stage)
+	require.Equal(t, "wf-123", output.ContextPatch["ticket.workflow_id"])
+	require.Contains(t, output.ContextPatch, "ticket.last_event_id")
+	require.Contains(t, output.ContextPatch, "ticket.last_reset_id")
+
+	createResult := output.Results[0]
+	require.NotNil(t, createResult.Ticket)
+	ticketID := string(createResult.Ticket.ID)
+	require.NotEmpty(t, ticketID)
+	require.Equal(t, ticketID, output.ContextPatch["ticket.id"])
+}

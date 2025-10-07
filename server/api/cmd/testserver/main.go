@@ -24,6 +24,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
 	"github.com/spf13/cobra"
 	enumspb "go.temporal.io/api/enums/v1"
 	serviceerror "go.temporal.io/api/serviceerror"
@@ -95,12 +96,16 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	}
 
 	// Create storage
-	var store core.Storage
+	var (
+		store          core.Storage
+		absStoragePath string
+	)
 	if useMemory {
 		fmt.Println("Using in-memory storage")
 		store = storage.NewMemoryStorage()
 	} else {
-		absStoragePath, err := filepath.Abs(storagePath)
+		var err error
+		absStoragePath, err = filepath.Abs(storagePath)
 		if err != nil {
 			return fmt.Errorf("failed to resolve storage path: %w", err)
 		}
@@ -113,6 +118,22 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 			return fmt.Errorf("failed to create file storage: %w", err)
 		}
 	}
+
+	ticketFallback := filepath.Join(os.TempDir(), "vibethis-ticket.db")
+	if absStoragePath != "" {
+		ticketFallback = filepath.Join(absStoragePath, "ticket.db")
+	}
+	ticketDB, closeTicketDB, err := database.Open(database.Config{FallbackPath: ticketFallback})
+	if err != nil {
+		return fmt.Errorf("failed to open ticket database: %w", err)
+	}
+	defer func() {
+		if closeTicketDB != nil {
+			if cerr := closeTicketDB(); cerr != nil {
+				fmt.Printf("Warning: ticket database close failed: %v\n", cerr)
+			}
+		}
+	}()
 
 	// Create dependencies
 	graphBuilder := graph.NewBuilder(absNodesPath)
@@ -178,6 +199,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithWorkflowControl(&temporalWorkflowControl{client: temporalClient}).
+		WithDatabase(ticketDB).
 		Build()
 
 	extensionRoutes, _, err := opssetup.SetupOps(depContainer)

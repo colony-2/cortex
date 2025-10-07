@@ -9,9 +9,10 @@ require (
 	github.com/divisive-ai/vibethis/server/git v0.0.0
 	github.com/divisive-ai/vibethis/server/graph v0.0.0
 	github.com/divisive-ai/vibethis/server/ops v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
 	github.com/divisive-ai/vibethis/server/storage v0.0.0
+	github.com/divisive-ai/vibethis/server/ticket v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -39,12 +40,16 @@ require (
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/getkin/kin-openapi v0.132.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.7.0-rc.1 // indirect
@@ -57,12 +62,19 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
+	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/pgx/v5 v5.7.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
+	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect
@@ -103,7 +115,10 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250303144028-a0af3efb3deb // indirect
 	google.golang.org/grpc v1.71.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
-	gorm.io/gorm v1.25.10 // indirect
+	gorm.io/driver/postgres v1.5.11 // indirect
+	gorm.io/driver/sqlite v1.5.7 // indirect
+	gorm.io/gorm v1.25.11 // indirect
+	gorm.io/plugin/optimisticlock v1.3.3 // indirect
 )
 
 replace (
@@ -119,4 +134,6 @@ replace (
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 	github.com/divisive-ai/vibethis/server/storage => ../storage
+	github.com/divisive-ai/vibethis/server/ticket => ../ticket
+	gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 )

@@ -43,6 +43,7 @@ type Service interface {
 	AppendWorkflowEvent(ctx context.Context, id model.ID, input WorkflowEventInput) (*model.TicketEvent, error)
 	AppendMarkdownEvent(ctx context.Context, id model.ID, input MarkdownEventInput) (*model.TicketEvent, error)
 	AppendChangeSetEvent(ctx context.Context, id model.ID, input ChangeSetEventInput) (*model.TicketEvent, error)
+	AppendTicketEvent(ctx context.Context, id model.ID, input TicketEventInput) (*model.TicketEvent, error)
 	ListEvents(ctx context.Context, id model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
 	ResetTicket(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
 }
@@ -153,6 +154,10 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		sanitized := sanitizeActorPatch(*patch.Actor)
 		normalized.Actor = &sanitized
 	}
+	if patch.Description != nil {
+		desc := strings.TrimSpace(*patch.Description)
+		normalized.Description = &desc
+	}
 
 	if err := s.validateUpdateInput(normalized); err != nil {
 		return nil, err
@@ -207,6 +212,14 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 				changes = append(changes, model.TicketFieldChange{Field: model.TicketFieldName("state"), From: string(next.State), To: string(*normalized.State)})
 			}
 			next.State = *normalized.State
+		}
+
+		if normalized.Description != nil {
+			desc := strings.TrimSpace(*normalized.Description)
+			if next.Description != desc {
+				changes = append(changes, model.TicketFieldChange{Field: model.TicketFieldName("description"), From: next.Description, To: desc})
+			}
+			next.Description = desc
 		}
 
 		if normalized.Actor != nil {

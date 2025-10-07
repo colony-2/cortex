@@ -23,6 +23,7 @@ type UpdateInput struct {
 	State           *model.State           `validate:"omitempty,state"`
 	CompletedAt     *time.Time
 	Actor           *model.ActorPatch
+	Description     *string
 }
 
 type WorkflowEventInput struct {
@@ -40,6 +41,12 @@ type MarkdownEventInput struct {
 type ChangeSetEventInput struct {
 	Actor     model.Actor
 	Payload   model.ChangeSetEventPayload
+	EventTime time.Time
+}
+
+type TicketEventInput struct {
+	Actor     model.Actor `validate:"required"`
+	Notes     string      `validate:"required"`
 	EventTime time.Time
 }
 

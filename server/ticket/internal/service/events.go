@@ -28,6 +28,25 @@ func (s *service) AppendChangeSetEvent(ctx context.Context, id model.ID, input C
 	return s.appendEvent(ctx, id, input.Actor, model.TicketEventKindChangeSet, model.TicketEventBody{ChangeSet: &payload}, input.EventTime)
 }
 
+func (s *service) AppendTicketEvent(ctx context.Context, id model.ID, input TicketEventInput) (*model.TicketEvent, error) {
+	sanitizedActor := sanitizeActorFields(input.Actor)
+	if err := s.validate.Struct(sanitizedActor); err != nil {
+		return nil, mapValidationError(err)
+	}
+	actor, err := s.normalizeActor(sanitizedActor)
+	if err != nil {
+		return nil, err
+	}
+	notes := strings.TrimSpace(input.Notes)
+	if notes == "" {
+		return nil, ErrInvalidEventPayload
+	}
+	body := model.TicketEventBody{
+		Ticket: &model.TicketEventPayload{Notes: notes},
+	}
+	return s.appendEvent(ctx, id, actor, model.TicketEventKindTicket, body, input.EventTime)
+}
+
 func (s *service) appendTicketEvent(ctx context.Context, id model.ID, actor model.Actor, changes []model.TicketFieldChange, eventTime time.Time) (*model.TicketEvent, error) {
 	body := model.TicketEventBody{
 		Ticket: &model.TicketEventPayload{Changes: changes},

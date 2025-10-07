@@ -1,27 +1,29 @@
 package shared
 
 import (
-    "fmt"
-    "strings"
+	"fmt"
+	"strings"
 
-    "github.com/divisive-ai/vibethis/server/api/pkg/web"
-    export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
-    "github.com/divisive-ai/vibethis/server/ops/pkg/export"
-    ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-    export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
+	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
+	"github.com/divisive-ai/vibethis/server/ops/pkg/export"
+	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
+	ticketop "github.com/divisive-ai/vibethis/server/ticket/pkg/op"
 )
 
 // RegisterOps registers all ops with the ops registry
 func RegisterOps() []ops2.RegisterableOp {
-    // Ensure a clean registry to avoid leaking test-only ops that may
-    // have been registered via init() in transitive imports.
-    ops2.Clear()
+	// Ensure a clean registry to avoid leaking test-only ops that may
+	// have been registered via init() in transitive imports.
+	ops2.Clear()
 
-    opImpls := export.GetAll()
-    opImpls = append(opImpls, export2.GetAll()...)
-    opImpls = append(opImpls, export3.GetAll()...)
-    ops2.Register(opImpls...)
-    return opImpls
+	opImpls := export.GetAll()
+	opImpls = append(opImpls, export2.GetAll()...)
+	opImpls = append(opImpls, export3.GetAll()...)
+	opImpls = append(opImpls, ticketop.GetOp())
+	ops2.Register(opImpls...)
+	return opImpls
 }
 
 // SetupOps sets up all ops and returns the management service routes
@@ -30,30 +32,30 @@ func SetupOps(context ops2.ServiceDependencies2) (routes []web.ExtensionRoute, c
 	opImpls := RegisterOps()
 	// find any management services and initialize them
 	var extensionRoutes []web.ExtensionRoute
-    for _, op := range opImpls {
-        mgmt := op.GetManagementService()
-        if mgmt != nil {
-            // Initialize management service with provided dependencies
-            if err := mgmt.Initialize(context); err != nil {
-                return []web.ExtensionRoute{}, nil, fmt.Errorf("failed to initialize management service: %w", err)
-            }
-            cleanup = append(cleanup, func() { mgmt.Close() })
+	for _, op := range opImpls {
+		mgmt := op.GetManagementService()
+		if mgmt != nil {
+			// Initialize management service with provided dependencies
+			if err := mgmt.Initialize(context); err != nil {
+				return []web.ExtensionRoute{}, nil, fmt.Errorf("failed to initialize management service: %w", err)
+			}
+			cleanup = append(cleanup, func() { mgmt.Close() })
 
-            // Convert input service routes to extension routes
-            // Strip /api prefix since routes are added to the api subrouter
-            for _, route := range mgmt.GetRoutes() {
-                path := route.Path
-                if strings.HasPrefix(path, "/api") {
-                    path = strings.TrimPrefix(path, "/api")
-                }
-                extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
-                    Method:  route.Method,
-                    Path:    path,
-                    Handler: route.Handler,
-                })
-            }
-        }
-    }
+			// Convert input service routes to extension routes
+			// Strip /api prefix since routes are added to the api subrouter
+			for _, route := range mgmt.GetRoutes() {
+				path := route.Path
+				if strings.HasPrefix(path, "/api") {
+					path = strings.TrimPrefix(path, "/api")
+				}
+				extensionRoutes = append(extensionRoutes, web.ExtensionRoute{
+					Method:  route.Method,
+					Path:    path,
+					Handler: route.Handler,
+				})
+			}
+		}
+	}
 
-    return extensionRoutes, cleanup, nil
+	return extensionRoutes, cleanup, nil
 }
