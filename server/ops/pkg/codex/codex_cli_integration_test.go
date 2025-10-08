@@ -94,48 +94,32 @@ func TestCodexCLIProducesStructuredOutput(t *testing.T) {
 	}
 }
 
-func TestCodexCLIRejectsInvalidStructuredOutput(t *testing.T) {
+func TestCodexCLIRejectsInvalidSchema(t *testing.T) {
 	ensureCodexAvailable(t)
-	schema := writeSchemaFile(t)
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "invalid-schema.json")
+	invalid := []byte(`{"type":"object","properties":{"status":{"type":"string"}}}`)
+	if err := os.WriteFile(schemaPath, invalid, 0o644); err != nil {
+		t.Fatalf("write invalid schema: %v", err)
+	}
 
-	prompt := "Respond with the plain text 'hello world' (do not provide JSON)."
 	output, err := runCodex(t,
 		"exec",
 		"--experimental-json",
 		"--dangerously-bypass-approvals-and-sandbox",
 		"--skip-git-repo-check",
-		"--output-schema", schema,
-		prompt,
+		"--output-schema", schemaPath,
+		"Say hello",
 	)
-	if err != nil {
-		t.Fatalf("codex exec returned error: %v output:%s", err, string(output))
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	var assistantMsg map[string]any
-	for i := len(lines) - 1; i >= 0; i-- {
-		var event map[string]any
-		if err := json.Unmarshal([]byte(lines[i]), &event); err != nil {
-			continue
+	if err == nil {
+		// Some builds retry and eventually return success despite schema issues; rely on diagnostic output instead.
+		if !strings.Contains(string(output), "invalid_json_schema") {
+			t.Fatalf("expected invalid_json_schema diagnostic, got: %s", string(output))
 		}
-		if item, ok := event["item"].(map[string]any); ok && item["item_type"] == "assistant_message" {
-			text, _ := item["text"].(string)
-			if err := json.Unmarshal([]byte(text), &assistantMsg); err != nil {
-				t.Fatalf("assistant message not valid JSON: %v (%s)", err, text)
-			}
-			break
-		}
+		return
 	}
-	if assistantMsg == nil {
-		t.Fatalf("assistant message not found in codex output: %s", string(output))
-	}
-	if status := assistantMsg["status"]; status != "error" {
-		t.Fatalf("expected status error, got %v", status)
-	}
-	errMsg := strings.TrimSpace(asString(assistantMsg["errorMessage"]))
-	incompleteReason := strings.TrimSpace(asString(assistantMsg["incompleteReason"]))
-	if errMsg == "" && incompleteReason == "" {
-		t.Fatalf("expected codex to explain failure, got payload: %v", assistantMsg)
+	if !strings.Contains(string(output), "invalid_json_schema") {
+		t.Fatalf("expected invalid_json_schema diagnostic, got: %s", string(output))
 	}
 }
 

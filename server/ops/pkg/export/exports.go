@@ -1,6 +1,7 @@
 package export
 
 import (
+	"github.com/divisive-ai/vibethis/server/ops/pkg/codex"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/extensions"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
@@ -13,6 +14,7 @@ import (
 // This provides a single entry point for consumers like recipe-worker to discover and register all activities
 func GetAll() []ops.RegisterableOp {
 	base := []ops.RegisterableOp{
+		codex.GetOp(),
 		llm.GetOp(),
 		llm.GetEnhancedOp(),
 		recipe.GetOp(),
