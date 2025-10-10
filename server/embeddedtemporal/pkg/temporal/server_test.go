@@ -1,21 +1,20 @@
 package temporal_test
 
 import (
-    "context"
-    "os"
-    "path/filepath"
-    "testing"
-    "time"
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-    "github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
-    "go.temporal.io/api/workflowservice/v1"
-    "go.temporal.io/sdk/client"
-    "go.temporal.io/server/common/dynamicconfig"
-    tlog "go.temporal.io/server/common/log"
+	"github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
+	"go.temporal.io/api/workflowservice/v1"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/server/common/dynamicconfig"
+	tlog "go.temporal.io/server/common/log"
 )
 
 func TestServerLifecycle(t *testing.T) {
-    t.Skip("Skipping under 1m per-test timeout: server warm-up + client dial can exceed budget")
 	// Create temp directory for database
 	tmpDir, err := os.MkdirTemp("", "embeddedtemporal-test-*")
 	if err != nil {
@@ -82,14 +81,14 @@ func TestServerLifecycle(t *testing.T) {
 		t.Fatal("Test namespace not properly created")
 	}
 
-    // Stop server and ensure it stops quickly (no long teardown)
-    start := time.Now()
-    if err := server.Stop(); err != nil {
-        t.Fatalf("Failed to stop server: %v", err)
-    }
-    if time.Since(start) > 5*time.Second {
-        t.Fatalf("Server.Stop took too long: %s", time.Since(start))
-    }
+	// Stop server and ensure it stops quickly (no long teardown)
+	start := time.Now()
+	if err := server.Stop(); err != nil {
+		t.Fatalf("Failed to stop server: %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("Server.Stop took too long: %s", time.Since(start))
+	}
 
 	// Verify database file was created
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
@@ -114,7 +113,7 @@ func TestServerWithCustomPragmas(t *testing.T) {
 		DatabaseFile: dbPath,
 		LogLevel:     "error",
 		SQLitePragmas: map[string]string{
-			"cache_size": "-64000", // 64MB cache
+			"cache_size": "-64000",    // 64MB cache
 			"mmap_size":  "268435456", // 256MB mmap
 		},
 	}
@@ -130,17 +129,16 @@ func TestServerWithCustomPragmas(t *testing.T) {
 	}
 
 	// Just verify it started successfully with custom pragmas
-    start := time.Now()
-    if err := server.Stop(); err != nil {
-        t.Fatalf("Failed to stop server: %v", err)
-    }
-    if time.Since(start) > 5*time.Second {
-        t.Fatalf("Server.Stop took too long: %s", time.Since(start))
-    }
+	start := time.Now()
+	if err := server.Stop(); err != nil {
+		t.Fatalf("Failed to stop server: %v", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("Server.Stop took too long: %s", time.Since(start))
+	}
 }
 
 func TestServerRestart(t *testing.T) {
-    t.Skip("Skipping under 1m per-test timeout: restart + client dial can exceed budget")
 	// Create temp directory for database
 	tmpDir, err := os.MkdirTemp("", "embeddedtemporal-restart-*")
 	if err != nil {
@@ -169,14 +167,14 @@ func TestServerRestart(t *testing.T) {
 		t.Fatalf("Failed to start first server: %v", err)
 	}
 
-    // Stop first server quickly
-    start1 := time.Now()
-    if err := server1.Stop(); err != nil {
-        t.Fatalf("Failed to stop first server: %v", err)
-    }
-    if time.Since(start1) > 5*time.Second {
-        t.Fatalf("First Server.Stop took too long: %s", time.Since(start1))
-    }
+	// Stop first server quickly
+	start1 := time.Now()
+	if err := server1.Stop(); err != nil {
+		t.Fatalf("Failed to stop first server: %v", err)
+	}
+	if time.Since(start1) > 5*time.Second {
+		t.Fatalf("First Server.Stop took too long: %s", time.Since(start1))
+	}
 
 	// Create second server instance with same database
 	server2, err := temporal.NewServer(opts)
@@ -212,14 +210,14 @@ func TestServerRestart(t *testing.T) {
 		t.Fatal("Persistent namespace not found after restart")
 	}
 
-    // Stop second server quickly
-    start2 := time.Now()
-    if err := server2.Stop(); err != nil {
-        t.Fatalf("Failed to stop second server: %v", err)
-    }
-    if time.Since(start2) > 5*time.Second {
-        t.Fatalf("Second Server.Stop took too long: %s", time.Since(start2))
-    }
+	// Stop second server quickly
+	start2 := time.Now()
+	if err := server2.Stop(); err != nil {
+		t.Fatalf("Failed to stop second server: %v", err)
+	}
+	if time.Since(start2) > 5*time.Second {
+		t.Fatalf("Second Server.Stop took too long: %s", time.Since(start2))
+	}
 }
 
 func TestPortAvailability(t *testing.T) {
@@ -241,33 +239,32 @@ func TestPortAvailability(t *testing.T) {
 }
 
 func TestDefaultDynamicConfigForEmbedded(t *testing.T) {
-    // This test validates that our embedded dynamic config disables components
-    // known to cause shutdown noise without disabling the worker service entirely.
-    dc := dynamicconfig.NewCollection(temporal.DefaultDynamicConfigForEmbedded(temporal.DisableToggles{
-        Scanners:          true,
-        ParentClosePolicy: true,
-        Nexus:             true,
-    }), tlog.NewNoopLogger())
+	// This test validates that our embedded dynamic config disables components
+	// known to cause shutdown noise without disabling the worker service entirely.
+	dc := dynamicconfig.NewCollection(temporal.DefaultDynamicConfigForEmbedded(temporal.DisableToggles{
+		Scanners:          true,
+		ParentClosePolicy: true,
+		Nexus:             true,
+	}), tlog.NewNoopLogger())
 
-    if dynamicconfig.TaskQueueScannerEnabled.Get(dc)() {
-        t.Fatal("TaskQueueScannerEnabled should be false in embedded dynamic config")
-    }
-    if dynamicconfig.HistoryScannerEnabled.Get(dc)() {
-        t.Fatal("HistoryScannerEnabled should be false in embedded dynamic config")
-    }
-    if dynamicconfig.ExecutionsScannerEnabled.Get(dc)() {
-        t.Fatal("ExecutionsScannerEnabled should be false in embedded dynamic config")
-    }
-    if dynamicconfig.EnableParentClosePolicyWorker.Get(dc)() {
-        t.Fatal("EnableParentClosePolicyWorker should be false in embedded dynamic config")
-    }
-    if dynamicconfig.EnableNexus.Get(dc)() {
-        t.Fatal("EnableNexus should be false in embedded dynamic config")
-    }
+	if dynamicconfig.TaskQueueScannerEnabled.Get(dc)() {
+		t.Fatal("TaskQueueScannerEnabled should be false in embedded dynamic config")
+	}
+	if dynamicconfig.HistoryScannerEnabled.Get(dc)() {
+		t.Fatal("HistoryScannerEnabled should be false in embedded dynamic config")
+	}
+	if dynamicconfig.ExecutionsScannerEnabled.Get(dc)() {
+		t.Fatal("ExecutionsScannerEnabled should be false in embedded dynamic config")
+	}
+	if dynamicconfig.EnableParentClosePolicyWorker.Get(dc)() {
+		t.Fatal("EnableParentClosePolicyWorker should be false in embedded dynamic config")
+	}
+	if dynamicconfig.EnableNexus.Get(dc)() {
+		t.Fatal("EnableNexus should be false in embedded dynamic config")
+	}
 }
 
 func TestClientCreation(t *testing.T) {
-    t.Skip("Skipping under 1m per-test timeout: NewClient retry budget ~120s exceeds per-test timeout")
 	// Create temp directory for database
 	tmpDir, err := os.MkdirTemp("", "embeddedtemporal-client-*")
 	if err != nil {
