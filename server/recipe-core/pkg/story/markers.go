@@ -4,18 +4,20 @@ import (
 	"time"
 
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	commonpb "go.temporal.io/api/common/v1"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/workflow"
 )
 
-type markerEnvelope struct {
+type MarkerEnvelope struct {
 	Kind       string           `json:"kind"`
 	Stage      string           `json:"stage"`
 	Path       string           `json:"path,omitempty"`
-	Invocation markerInvocation `json:"invocation"`
+	Invocation MarkerInvocation `json:"invocation"`
 	Payload    interface{}      `json:"payload,omitempty"`
 }
 
-type markerInvocation struct {
+type MarkerInvocation struct {
 	ID       string `json:"id"`
 	NodePath string `json:"node_path,omitempty"`
 	Seq      int    `json:"seq"`
@@ -112,11 +114,11 @@ func RecordInlineLog(ctx workflow.Context, inv coreops.Invocation, payload Inlin
 }
 
 func record(ctx workflow.Context, kind, stage string, inv coreops.Invocation, payload interface{}) {
-	env := markerEnvelope{
+	env := MarkerEnvelope{
 		Kind:  kind,
 		Stage: stage,
 		Path:  inv.NodePath,
-		Invocation: markerInvocation{
+		Invocation: MarkerInvocation{
 			ID:       inv.ID,
 			NodePath: inv.NodePath,
 			Seq:      inv.InvokeSeq,
@@ -130,4 +132,24 @@ func record(ctx workflow.Context, kind, stage string, inv coreops.Invocation, pa
 	workflow.SideEffect(ctx, func(workflow.Context) interface{} {
 		return env
 	})
+}
+
+// DecodeMarkerEnvelope attempts to decode a marker envelope from the SideEffect marker details payload.
+func DecodeMarkerEnvelope(details map[string]*commonpb.Payloads, dc converter.DataConverter) (*MarkerEnvelope, error) {
+	if details == nil {
+		return nil, nil
+	}
+	const dataKey = "data"
+	payloads, ok := details[dataKey]
+	if !ok || payloads == nil {
+		return nil, nil
+	}
+	if dc == nil {
+		dc = converter.GetDefaultDataConverter()
+	}
+	var env MarkerEnvelope
+	if err := dc.FromPayloads(payloads, &env); err != nil {
+		return nil, err
+	}
+	return &env, nil
 }

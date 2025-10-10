@@ -9,7 +9,6 @@ import (
 	serveropsrecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/api/common/v1"
@@ -22,14 +21,6 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-type stubDeps struct{}
-
-func (stubDeps) WorkflowControl() (workflowctl.WorkflowControl, bool) { return nil, false }
-
-func (stubDeps) SSEManager() (coreops.SSEManager, bool) { return nil, false }
-
-func (stubDeps) TemporalNamespace() (string, bool) { return "", false }
 
 // Integration test using WorkflowTestSuite (no external Temporal server)
 func TestHistoryWithWorkflowTestSuite(t *testing.T) {
@@ -59,7 +50,7 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry init failed: %v", err)
 	}
-	deps := stubDeps{}
+	deps := coreops.NewServiceDepsBuilder().Build()
 	registry.SetDependencies(deps)
 	baseInputs := map[string]interface{}{
 		"basegitrepo": t.TempDir(),

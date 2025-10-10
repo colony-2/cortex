@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-history/pkg/storybuilder"
 	"go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Client provides recipe-centric view of execution history
@@ -92,7 +93,7 @@ func (c *Client) GetJob(ctx context.Context, recipeName, jobID string, includeAc
 	if includeActivities && len(desc.PendingActivities) == 0 {
 		activities, err := c.getActivityExecutions(ctx, jobID, recipeName)
 		if err != nil {
-			c.logger.Warn("Failed to get activity executions", 
+			c.logger.Warn("Failed to get activity executions",
 				zap.String("jobID", jobID),
 				zap.Error(err))
 		} else {
@@ -108,7 +109,7 @@ func (c *Client) getActivityExecutions(ctx context.Context, workflowID, recipeNa
 	// Get workflow history
 	iter := c.temporal.GetWorkflowHistory(ctx, workflowID, "", false, 0)
 	var events []*history.HistoryEvent
-	
+
 	for iter.HasNext() {
 		event, err := iter.Next()
 		if err != nil {
@@ -125,13 +126,41 @@ func (c *Client) getActivityExecutions(ctx context.Context, workflowID, recipeNa
 	hist := &history.History{
 		Events: events,
 	}
-	
+
 	activities, err := c.transformer.HistoryToActivityExecutions(hist, recipeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform activity history: %w", err)
 	}
 
 	return activities, nil
+}
+
+// BuildStory reconstructs the execution story for a workflow run.
+func (c *Client) BuildStory(ctx context.Context, recipeName, workflowID string) (*storybuilder.Story, error) {
+	desc, err := c.temporal.DescribeWorkflowExecution(ctx, workflowID, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe workflow execution: %w", err)
+	}
+
+	rec, err := c.transformer.getRecipe(recipeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load recipe %s: %w", recipeName, err)
+	}
+
+	b := storybuilder.New(recipeName, rec)
+	b.SetExecutionInfo(desc)
+
+	iter := c.temporal.GetWorkflowHistory(ctx, workflowID, "", false, 0)
+	for iter.HasNext() {
+		event, err := iter.Next()
+		if err != nil {
+			return nil, fmt.Errorf("failed to iterate workflow history: %w", err)
+		}
+		b.Process(event)
+	}
+
+	story := b.Build()
+	return story, nil
 }
 
 // JobFilter contains filter options for listing jobs
