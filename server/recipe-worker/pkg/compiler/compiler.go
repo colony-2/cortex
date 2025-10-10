@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -205,15 +207,38 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 			timeout = 30 * time.Second // Default timeout
 		}
 		retry := ToTemporalRetryPolicy(metadata.Retry)
+
+		startPayload := story.InlineOpStartPayload{
+			OpType:    op,
+			Inputs:    cloneMap(inputs),
+			StartedAt: workflow.Now(ctx),
+		}
+		story.RecordInlineOpStart(ctx, inv, startPayload)
 		outputs, err := executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
 			return opImpl.Activity.ExecuteInlineV2(inv, inner, timeout, retry, inputs)
 		})
 		if err != nil {
+			now := workflow.Now(ctx)
+			if isTimeoutError(err) {
+				story.RecordInlineOpTimeout(ctx, inv, story.InlineOpTimeoutPayload{
+					OpType:    op,
+					TimeoutAt: now,
+					Duration:  timeout,
+				})
+			} else {
+				recordInlineFailure(ctx, inv, op, now, retry, err)
+			}
 			return nil, err
 		}
 		if outputs != nil {
 			propagateGitOutputs(ctx, workflowInputs, outputs)
 		}
+		story.RecordInlineOpComplete(ctx, inv, story.InlineOpCompletePayload{
+			OpType:      op,
+			Outputs:     cloneMap(outputs),
+			CompletedAt: workflow.Now(ctx),
+			Attempts:    1,
+		})
 		return outputs, nil
 	}
 
@@ -462,4 +487,63 @@ func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolic
 		"MAX_RETRIES_EXCEEDED",
 		lastErr,
 	)
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if temporal.IsCanceledError(err) {
+		return true
+	}
+	var appErr *temporal.ApplicationError
+	if errors.As(err, &appErr) {
+		switch appErr.Type() {
+		case "SEQUENCE_TIMEOUT", "SERVICE_TIMEOUT", "TIMEOUT":
+			return true
+		}
+	}
+	return false
+}
+
+func recordInlineFailure(ctx workflow.Context, inv coreops.Invocation, op string, failedAt time.Time, retry *temporal.RetryPolicy, err error) {
+	payload := story.InlineOpFailPayload{
+		OpType:    op,
+		ErrorType: inlineErrorType(err),
+		Message:   err.Error(),
+		FailedAt:  failedAt,
+		Attempts:  attemptsFromRetry(retry),
+	}
+	story.RecordInlineOpFail(ctx, inv, payload)
+}
+
+func attemptsFromRetry(retry *temporal.RetryPolicy) int {
+	if retry == nil || retry.MaximumAttempts <= 0 {
+		return 1
+	}
+	return int(retry.MaximumAttempts)
+}
+
+func inlineErrorType(err error) string {
+	if err == nil {
+		return ""
+	}
+	var appErr *temporal.ApplicationError
+	if errors.As(err, &appErr) {
+		if t := appErr.Type(); t != "" {
+			return t
+		}
+	}
+	return fmt.Sprintf("%T", err)
+}
+
+func cloneMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

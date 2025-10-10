@@ -7,6 +7,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
@@ -76,8 +77,28 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 
 		var exec workflow.Execution
 		if err := launch.Future.GetChildWorkflowExecution().Get(launch.Ctx, &exec); err != nil {
+			story.RecordChildRecipeResult(launch.Ctx, inv, story.ChildRecipeResultPayload{
+				Status:       "start_failed",
+				CompletedAt:  workflow.Now(launch.Ctx),
+				ErrorMessage: err.Error(),
+				RecipeName:   plan.name,
+				Metadata: map[string]interface{}{
+					"index": plan.index,
+				},
+			})
 			return Output{}, wrapPlanError(plan, err)
 		}
+
+		story.RecordChildRecipeTrigger(launch.Ctx, inv, story.ChildRecipeTriggerPayload{
+			ChildWorkflowID: exec.ID,
+			ChildRunID:      exec.RunID,
+			TriggeredAt:     workflow.Now(launch.Ctx),
+			RecipeName:      plan.name,
+			Inputs:          cloneMap(launch.Inputs),
+			Metadata: map[string]interface{}{
+				"index": plan.index,
+			},
+		})
 
 		logger.Info("recipe_set child scheduled", "index", plan.index, "recipe", plan.name, "workflow_id", exec.ID, "run_id", exec.RunID)
 
@@ -114,8 +135,30 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 		if err != nil {
 			anyFailure = true
 			statuses[child.plan.index] = failureStatus(child.plan.index, child.plan.name, err)
+			story.RecordChildRecipeResult(child.ctx, inv, story.ChildRecipeResultPayload{
+				ChildWorkflowID: child.exec.ID,
+				ChildRunID:      child.exec.RunID,
+				Status:          "failed",
+				CompletedAt:     workflow.Now(child.ctx),
+				ErrorMessage:    err.Error(),
+				RecipeName:      child.plan.name,
+				Metadata: map[string]interface{}{
+					"index": child.plan.index,
+				},
+			})
 		} else {
 			statuses[child.plan.index] = successStatus(child.plan.index, child.plan.name)
+			story.RecordChildRecipeResult(child.ctx, inv, story.ChildRecipeResultPayload{
+				ChildWorkflowID: child.exec.ID,
+				ChildRunID:      child.exec.RunID,
+				Status:          "completed",
+				CompletedAt:     workflow.Now(child.ctx),
+				Outputs:         cloneMap(childResult),
+				RecipeName:      child.plan.name,
+				Metadata: map[string]interface{}{
+					"index": child.plan.index,
+				},
+			})
 		}
 	}
 

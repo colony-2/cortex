@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -250,21 +251,69 @@ func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executi
 	logger := workflow.GetLogger(ctx)
 	logger.Info("invoking child recipe", "recipe", e.input.Name, "run_mode", runMode.String(), "git_state", gitMode.String(), "inputs_keys", mapKeys(childInputs))
 
+	var exec workflow.Execution
+	if err := future.GetChildWorkflowExecution().Get(childCtx, &exec); err != nil {
+		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: "",
+			ChildRunID:      "",
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(childCtx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+			},
+		})
+		return nil, err
+	}
+
+	story.RecordChildRecipeTrigger(childCtx, e.invocation, story.ChildRecipeTriggerPayload{
+		ChildWorkflowID: exec.ID,
+		ChildRunID:      exec.RunID,
+		TriggeredAt:     workflow.Now(childCtx),
+		RecipeName:      e.input.Name,
+		Inputs:          copyShallow(childInputs),
+		Metadata: map[string]interface{}{
+			"run_mode":  runMode.String(),
+			"git_state": gitMode.String(),
+		},
+	})
+
 	if runMode == runModeSync {
 		var result map[string]interface{}
 		if err := future.Get(childCtx, &result); err != nil {
+			story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
+				ChildWorkflowID: exec.ID,
+				ChildRunID:      exec.RunID,
+				Status:          "failed",
+				CompletedAt:     workflow.Now(childCtx),
+				ErrorMessage:    err.Error(),
+				RecipeName:      e.input.Name,
+				Metadata: map[string]interface{}{
+					"run_mode":  runMode.String(),
+					"git_state": gitMode.String(),
+				},
+			})
 			return nil, err
 		}
 		if result == nil {
 			result = make(map[string]interface{})
 		}
 		logger.Info("child recipe completed", "recipe", e.input.Name, "keys", mapKeys(result))
+		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: exec.ID,
+			ChildRunID:      exec.RunID,
+			Status:          "completed",
+			CompletedAt:     workflow.Now(childCtx),
+			Outputs:         copyShallow(result),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+			},
+		})
 		return result, nil
-	}
-
-	var exec workflow.Execution
-	if err := future.GetChildWorkflowExecution().Get(childCtx, &exec); err != nil {
-		return nil, err
 	}
 	handle := map[string]interface{}{
 		"recipe":      e.input.Name,
