@@ -32,14 +32,17 @@ type StoryNode struct {
 
 // NodeRun represents a single invocation of a node (activity or inline op).
 type NodeRun struct {
-	InvocationID string                 `json:"invocation_id"`
-	StartedAt    *time.Time             `json:"started_at,omitempty"`
-	CompletedAt  *time.Time             `json:"completed_at,omitempty"`
-	Status       string                 `json:"status"`
-	Attempt      int                    `json:"attempt"`
-	Inputs       map[string]interface{} `json:"inputs,omitempty"`
-	Outputs      map[string]interface{} `json:"outputs,omitempty"`
-	Error        string                 `json:"error,omitempty"`
+	InvocationID    string                 `json:"invocation_id"`
+	StartedAt       *time.Time             `json:"started_at,omitempty"`
+	CompletedAt     *time.Time             `json:"completed_at,omitempty"`
+	Status          string                 `json:"status"`
+	Attempt         int                    `json:"attempt"`
+	Inputs          map[string]interface{} `json:"inputs,omitempty"`
+	Outputs         map[string]interface{} `json:"outputs,omitempty"`
+	Error           string                 `json:"error,omitempty"`
+	ChildWorkflowID string                 `json:"child_workflow_id,omitempty"`
+	ChildRunID      string                 `json:"child_run_id,omitempty"`
+	ChildRecipeName string                 `json:"child_recipe_name,omitempty"`
 }
 
 // StoryEvent captures notable inline events associated with a node run.

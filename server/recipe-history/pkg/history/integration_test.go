@@ -9,12 +9,14 @@ import (
 	serveropsrecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-history/pkg/storybuilder"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/history/v1"
 	apiwf "go.temporal.io/api/workflow/v1"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/testsuite"
@@ -243,4 +245,33 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 	if job.Duration == nil || *job.Duration <= 0 {
 		t.Fatalf("job duration missing/invalid")
 	}
+
+	// Build full story using the new builder
+	builder := storybuilder.New(parent.ID, &parent.Recipe)
+	builder.SetExecutionInfo(&workflowservice.DescribeWorkflowExecutionResponse{WorkflowExecutionInfo: execInfo})
+	for _, event := range events {
+		builder.Process(event)
+	}
+	story := builder.Build()
+	if story.Metadata.WorkflowID != "wf-1" {
+		t.Fatalf("story workflow id mismatch: %s", story.Metadata.WorkflowID)
+	}
+	totalRuns := countRuns(story.Nodes)
+	if totalRuns != len(acts) {
+		t.Fatalf("story run count %d; expected %d", totalRuns, len(acts))
+	}
+	if len(story.Timeline) == 0 {
+		t.Fatalf("expected timeline entries")
+	}
+}
+
+func countRuns(nodes []*storybuilder.StoryNode) int {
+	total := 0
+	for _, node := range nodes {
+		total += len(node.Runs)
+		if len(node.Children) > 0 {
+			total += countRuns(node.Children)
+		}
+	}
+	return total
 }

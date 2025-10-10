@@ -145,6 +145,9 @@ func TestBuilder_BuildStory(t *testing.T) {
 	require.Len(t, childNode.Runs, 1)
 	childRun := childNode.Runs[0]
 	require.Equal(t, "completed", childRun.Status)
+	require.Equal(t, "child-wf", childRun.ChildWorkflowID)
+	require.Equal(t, "child-run", childRun.ChildRunID)
+	require.NotEmpty(t, childRun.ChildRecipeName)
 	require.Equal(t, "ok", childRun.Outputs["child"])
 	require.NotNil(t, childRun.StartedAt)
 	require.NotNil(t, childRun.CompletedAt)
@@ -158,6 +161,78 @@ func TestBuilder_BuildStory(t *testing.T) {
 		}
 	}
 	require.True(t, foundSignal, "expected input-response entry in timeline")
+}
+
+func TestBuilder_InlineFailureAndTimeout(t *testing.T) {
+	base := time.Now().UTC()
+	rec := recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
+		RecipeMetadata: recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "root"}},
+		SequenceData: recipe.SequenceData{Sequence: []recipe.Node{
+			{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "fail-node"}, OpData: recipe.OpData{Op: "inline"}}},
+			{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "timeout-node"}, OpData: recipe.OpData{Op: "inline"}}},
+		}},
+	}}
+
+	builder := New("root", &rec)
+	builder.SetExecutionInfo(&workflowservice.DescribeWorkflowExecutionResponse{
+		WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+			Execution: &commonpb.WorkflowExecution{WorkflowId: "wf", RunId: "run"},
+			Status:    enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING,
+			StartTime: timestamppb.New(base),
+		},
+	})
+
+	events := []*historypb.HistoryEvent{
+		inlineMarkerEvent(1, base.Add(1*time.Second), story.MarkerEnvelope{
+			Kind:  "inline-op",
+			Stage: "start",
+			Invocation: story.MarkerInvocation{
+				ID:       "inv-fail",
+				NodePath: "root/fail-node",
+			},
+			Payload: story.InlineOpStartPayload{StartedAt: base.Add(1 * time.Second)},
+		}),
+		inlineMarkerEvent(2, base.Add(2*time.Second), story.MarkerEnvelope{
+			Kind:  "inline-op",
+			Stage: "fail",
+			Invocation: story.MarkerInvocation{
+				ID:       "inv-fail",
+				NodePath: "root/fail-node",
+			},
+			Payload: story.InlineOpFailPayload{FailedAt: base.Add(2 * time.Second), Message: "boom"},
+		}),
+		inlineMarkerEvent(3, base.Add(3*time.Second), story.MarkerEnvelope{
+			Kind:  "inline-op",
+			Stage: "start",
+			Invocation: story.MarkerInvocation{
+				ID:       "inv-timeout",
+				NodePath: "root/timeout-node",
+			},
+			Payload: story.InlineOpStartPayload{StartedAt: base.Add(3 * time.Second)},
+		}),
+		inlineMarkerEvent(4, base.Add(4*time.Second), story.MarkerEnvelope{
+			Kind:  "inline-op",
+			Stage: "timeout",
+			Invocation: story.MarkerInvocation{
+				ID:       "inv-timeout",
+				NodePath: "root/timeout-node",
+			},
+			Payload: story.InlineOpTimeoutPayload{TimeoutAt: base.Add(4 * time.Second)},
+		}),
+	}
+
+	for _, e := range events {
+		builder.Process(e)
+	}
+
+	story := builder.Build()
+	failNode := findNode(t, story.Nodes, "root/fail-node")
+	require.Len(t, failNode.Runs, 1)
+	require.Equal(t, "failed", failNode.Runs[0].Status)
+	require.Equal(t, "boom", failNode.Runs[0].Error)
+	timeoutNode := findNode(t, story.Nodes, "root/timeout-node")
+	require.Len(t, timeoutNode.Runs, 1)
+	require.Equal(t, "timed_out", timeoutNode.Runs[0].Status)
 }
 
 func workflowEvent(id int64, ts time.Time, typ enumspb.EventType) *historypb.HistoryEvent {

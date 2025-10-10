@@ -422,6 +422,11 @@ func (b *Builder) handleChildRecipeMarker(event *historypb.HistoryEvent, env *st
 		if len(payload.Inputs) > 0 {
 			run.Inputs = cloneMap(payload.Inputs)
 		}
+		run.ChildWorkflowID = payload.ChildWorkflowID
+		run.ChildRunID = payload.ChildRunID
+		if payload.RecipeName != "" {
+			run.ChildRecipeName = payload.RecipeName
+		}
 		data := map[string]interface{}{
 			"child_workflow_id": payload.ChildWorkflowID,
 			"child_run_id":      payload.ChildRunID,
@@ -447,6 +452,11 @@ func (b *Builder) handleChildRecipeMarker(event *historypb.HistoryEvent, env *st
 		}
 		if len(payload.Outputs) > 0 {
 			run.Outputs = cloneMap(payload.Outputs)
+		}
+		run.ChildWorkflowID = payload.ChildWorkflowID
+		run.ChildRunID = payload.ChildRunID
+		if payload.RecipeName != "" {
+			run.ChildRecipeName = payload.RecipeName
 		}
 		data := map[string]interface{}{
 			"child_workflow_id": payload.ChildWorkflowID,

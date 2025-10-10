@@ -314,6 +314,13 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 	childRun := childNode.Runs[0]
 	require.Equal(t, "completed", childRun.Status)
 	require.NotNil(t, childRun.Outputs)
+	require.NotNil(t, childRun.Inputs)
+	require.NotEmpty(t, childRun.Inputs)
+	require.NotEmpty(t, childRun.ChildWorkflowID)
+	require.NotEmpty(t, childRun.ChildRunID)
+	require.Equal(t, "story-child", childRun.ChildRecipeName)
+	require.NotNil(t, childRun.StartedAt)
+	require.NotNil(t, childRun.CompletedAt)
 	childResult, ok := childRun.Outputs["result"].(map[string]interface{})
 	require.True(t, ok)
 	childInline, ok := childResult["child-inline"].(map[string]interface{})
