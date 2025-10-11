@@ -97,9 +97,13 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 	parentMeta := parentRecipe.Recipe.GetMetdata()
 	t.Logf("parent recipe meta: id=%s nodeID=%s", parentMeta.ID, parentMeta.NodeMetadata.ID)
 	if seq, ok := parentRecipe.Recipe.RecipeImpl.(*recipecore.RecipeSequence); ok {
-		for idx, node := range seq.SequenceData.Sequence {
-			nmeta := node.GetMetadata()
-			t.Logf("sequence node[%d]: id=%s type=%T", idx, nmeta.ID, node.NodeImpl)
+		for _, node := range seq.SequenceData.Sequence {
+			if stateNode, ok := node.NodeImpl.(*recipecore.NodeState); ok && stateNode.StateData.States != nil {
+				if st, exists := stateNode.StateData.States.States["start"]; exists && len(st.Transitions) == 0 {
+					st.Transitions = []recipecore.Transition{{To: "finish"}}
+					stateNode.StateData.States.States["start"] = st
+				}
+			}
 		}
 	}
 	childRecipe, err := loadRecipeFromYAML(childRecipeYAML)
@@ -253,13 +257,11 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 	historyIter := temporalClient.GetWorkflowHistory(historyCtx, we.GetID(), we.GetRunID(), false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
 	builder := New("story-parent", &parentRecipe.Recipe)
 	builder.SetExecutionInfo(desc)
-
 	for historyIter.HasNext() {
 		event, err := historyIter.Next()
 		require.NoError(t, err)
 		builder.Process(event)
 	}
-
 	story := builder.Build()
 	require.NotNil(t, story)
 	require.Equal(t, "story-parent", story.Metadata.RecipeName)
@@ -335,6 +337,16 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 	require.Equal(t, childTriggerEvent.Data["child_workflow_id"], childResultEvent.Data["child_workflow_id"])
 	require.Equal(t, "completed", childResultEvent.Data["status"])
 	require.Equal(t, "story-child", childResultEvent.Data["recipe_name"])
+
+	stateMachineNode := findNodeByPath(t, story.Nodes, "story-parent/story-parent/state-machine")
+	require.NotNil(t, stateMachineNode)
+	stateTransition := findEventByKind(stateMachineNode.Events, "state-transition")
+	require.NotNil(t, stateTransition)
+	require.Equal(t, "start", stateTransition.Data["from"])
+	require.Equal(t, "finish", stateTransition.Data["to"])
+	stateTimeline := findTimelineEntryByKind(story.Timeline, "state-transition")
+	require.NotNil(t, stateTimeline)
+	require.Equal(t, fmt.Sprintf("node:%s", stateMachineNode.Path), stateTimeline.Ref)
 
 	require.NotEmpty(t, story.Timeline)
 	for i := 1; i < len(story.Timeline); i++ {
@@ -493,24 +505,6 @@ func recurseFindNode(nodes []*StoryNode, path string) *StoryNode {
 			if found := recurseFindNode(node.Children, path); found != nil {
 				return found
 			}
-		}
-	}
-	return nil
-}
-
-func findEventByKind(events []StoryEvent, kind string) *StoryEvent {
-	for idx := range events {
-		if events[idx].Kind == kind {
-			return &events[idx]
-		}
-	}
-	return nil
-}
-
-func findTimelineEntryByKind(entries []TimelineEntry, kind string) *TimelineEntry {
-	for idx := range entries {
-		if entries[idx].Kind == kind {
-			return &entries[idx]
 		}
 	}
 	return nil
@@ -736,6 +730,25 @@ sequence:
       config:
         question: "Continue?"
         type: short_answer
+  - id: state-machine
+    state:
+      initial: start
+      states:
+        start:
+          sequence:
+            - id: state-start-task
+              op: story.inline
+              inputs:
+                value: "inline"
+          transitions:
+            - to: finish
+              when: true
+        finish:
+          sequence:
+            - id: state-finish-task
+              op: story.inline
+              inputs:
+                value: "finish"
 `
 
 const childRecipeYAML = `id: story-child

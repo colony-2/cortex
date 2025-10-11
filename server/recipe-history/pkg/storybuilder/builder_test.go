@@ -163,6 +163,112 @@ func TestBuilder_BuildStory(t *testing.T) {
 	require.True(t, foundSignal, "expected input-response entry in timeline")
 }
 
+func TestBuilder_StateMachineTransitions(t *testing.T) {
+	base := time.Now().UTC()
+	if _, exists := ops.Get("story.inline"); !exists {
+		ops.Register(newTestInlineOp())
+	}
+
+	stateOneSeq := &recipe.NodeSequence{
+		NodeMetadata: recipe.NodeMetadata{ID: "state-one"},
+		SequenceData: recipe.SequenceData{Sequence: []recipe.Node{
+			{
+				NodeImpl: &recipe.NodeOp{
+					NodeMetadata: recipe.NodeMetadata{ID: "task"},
+					OpData:       recipe.OpData{Op: "story.inline"},
+				},
+			},
+		}},
+	}
+	stateTwoSeq := &recipe.NodeSequence{
+		NodeMetadata: recipe.NodeMetadata{ID: "state-two"},
+		SequenceData: recipe.SequenceData{Sequence: []recipe.Node{
+			{
+				NodeImpl: &recipe.NodeOp{
+					NodeMetadata: recipe.NodeMetadata{ID: "task"},
+					OpData:       recipe.OpData{Op: "story.inline"},
+				},
+			},
+		}},
+	}
+
+	rec := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeState{
+			RecipeMetadata: recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "sm"}},
+			StateData: recipe.StateData{
+				States: &recipe.StateMap{
+					Initial: "state-one",
+					States: map[string]recipe.State{
+						"state-one": {
+							Node: recipe.Node{NodeImpl: stateOneSeq},
+							SingleStateMetadata: recipe.SingleStateMetadata{
+								Transitions: []recipe.Transition{
+									{To: "state-two"},
+								},
+							},
+						},
+						"state-two": {
+							Node: recipe.Node{NodeImpl: stateTwoSeq},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	builder := New("sm", rec)
+	builder.SetExecutionInfo(&workflowservice.DescribeWorkflowExecutionResponse{WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+		Execution: &commonpb.WorkflowExecution{WorkflowId: "wf", RunId: "run"},
+		Status:    enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED,
+		StartTime: timestamppb.New(base),
+		CloseTime: timestamppb.New(base.Add(5 * time.Second)),
+	}})
+
+	events := []*historypb.HistoryEvent{
+		workflowEvent(1, base, enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED),
+		inlineMarkerEvent(2, base.Add(500*time.Millisecond), story.MarkerEnvelope{
+			Kind:       "inline-op",
+			Stage:      "start",
+			Invocation: story.MarkerInvocation{ID: "state1-task", NodePath: "sm/state-one/task", RecipeID: "sm"},
+			Payload:    story.InlineOpStartPayload{StartedAt: base.Add(500 * time.Millisecond)},
+		}),
+		inlineMarkerEvent(3, base.Add(1*time.Second), story.MarkerEnvelope{
+			Kind:       "inline-op",
+			Stage:      "complete",
+			Invocation: story.MarkerInvocation{ID: "state1-task", NodePath: "sm/state-one/task", RecipeID: "sm"},
+			Payload:    story.InlineOpCompletePayload{CompletedAt: base.Add(1 * time.Second), Outputs: map[string]interface{}{"result": "go"}},
+		}),
+		inlineMarkerEvent(4, base.Add(2*time.Second), story.MarkerEnvelope{
+			Kind:       "inline-op",
+			Stage:      "start",
+			Invocation: story.MarkerInvocation{ID: "state2-task", NodePath: "sm/state-two/task", RecipeID: "sm"},
+			Payload:    story.InlineOpStartPayload{StartedAt: base.Add(2 * time.Second)},
+		}),
+		inlineMarkerEvent(5, base.Add(3*time.Second), story.MarkerEnvelope{
+			Kind:       "inline-op",
+			Stage:      "complete",
+			Invocation: story.MarkerInvocation{ID: "state2-task", NodePath: "sm/state-two/task", RecipeID: "sm"},
+			Payload:    story.InlineOpCompletePayload{CompletedAt: base.Add(3 * time.Second), Outputs: map[string]interface{}{"result": "done"}},
+		}),
+		workflowEvent(6, base.Add(4*time.Second), enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED),
+	}
+
+	for _, e := range events {
+		builder.Process(e)
+	}
+
+	story := builder.Build()
+	smNode := findNode(t, story.Nodes, "sm")
+	require.NotNil(t, smNode)
+	transitionEvent := findEventByKind(smNode.Events, "state-transition")
+	require.NotNil(t, transitionEvent)
+	require.Equal(t, "state-one", transitionEvent.Data["from"])
+	require.Equal(t, "state-two", transitionEvent.Data["to"])
+	entry := findTimelineEntryByKind(story.Timeline, "state-transition")
+	require.NotNil(t, entry)
+	require.Equal(t, fmt.Sprintf("node:%s", smNode.Path), entry.Ref)
+}
+
 func TestBuilder_InlineFailureAndTimeout(t *testing.T) {
 	base := time.Now().UTC()
 	rec := recipe.Recipe{RecipeImpl: &recipe.RecipeSequence{
@@ -337,5 +443,23 @@ func findNode(t *testing.T, nodes []*StoryNode, path string) *StoryNode {
 		}
 	}
 	t.Fatalf("node %s not found", path)
+	return nil
+}
+
+func findEventByKind(events []StoryEvent, kind string) *StoryEvent {
+	for i := range events {
+		if events[i].Kind == kind {
+			return &events[i]
+		}
+	}
+	return nil
+}
+
+func findTimelineEntryByKind(entries []TimelineEntry, kind string) *TimelineEntry {
+	for i := range entries {
+		if entries[i].Kind == kind {
+			return &entries[i]
+		}
+	}
 	return nil
 }

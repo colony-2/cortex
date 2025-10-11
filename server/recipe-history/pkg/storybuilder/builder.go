@@ -9,6 +9,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	enumspb "go.temporal.io/api/enums/v1"
 	historypb "go.temporal.io/api/history/v1"
@@ -27,15 +28,20 @@ type Builder struct {
 	runsByInvocation map[string]*NodeRun
 	runsByScheduleID map[int64]*NodeRun
 
-	timeline  []TimelineEntry
-	metadata  StoryMetadata
-	converter converter.DataConverter
+	timeline         []TimelineEntry
+	metadata         StoryMetadata
+	converter        converter.DataConverter
+	initialInputs    map[string]interface{}
+	syntheticEventID int64
 }
 
 type nodeDescriptor struct {
 	Path        string
 	Type        string
 	DisplayName string
+	stateMap    *recipe.StateMap
+	stateName   string
+	state       *recipe.State
 }
 
 func New(recipeName string, r *recipe.Recipe) *Builder {
@@ -50,6 +56,8 @@ func New(recipeName string, r *recipe.Recipe) *Builder {
 		runsByScheduleID: make(map[int64]*NodeRun),
 		timeline:         make([]TimelineEntry, 0, 64),
 		converter:        converter.GetDefaultDataConverter(),
+		initialInputs:    make(map[string]interface{}),
+		syntheticEventID: -1,
 	}
 	if r != nil {
 		meta := r.GetMetdata()
@@ -86,6 +94,13 @@ func (b *Builder) SetExecutionInfo(info *workflowservice.DescribeWorkflowExecuti
 func (b *Builder) Process(event *historypb.HistoryEvent) {
 	switch event.GetEventType() {
 	case enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED:
+		attrs := event.GetWorkflowExecutionStartedEventAttributes()
+		if attrs != nil && attrs.Input != nil {
+			var inputs map[string]interface{}
+			if err := b.converter.FromPayloads(attrs.Input, &inputs); err == nil {
+				b.initialInputs = inputs
+			}
+		}
 		if b.metadata.StartedAt.IsZero() && event.GetEventTime() != nil {
 			b.metadata.StartedAt = event.GetEventTime().AsTime()
 		}
@@ -114,6 +129,7 @@ func (b *Builder) Process(event *historypb.HistoryEvent) {
 }
 
 func (b *Builder) Build() *Story {
+	b.replayStateMachines()
 	root := b.buildTree()
 	story := &Story{
 		Metadata: b.metadata,
@@ -135,6 +151,201 @@ func (b *Builder) Build() *Story {
 	}
 
 	return story
+}
+
+func (b *Builder) replayStateMachines() {
+	for path, desc := range b.descriptors {
+		if desc.stateMap != nil {
+			b.replayStateMachine(path, desc)
+		}
+	}
+}
+
+func (b *Builder) replayStateMachine(path string, desc *nodeDescriptor) {
+	if desc.stateMap == nil || desc.stateMap.Initial == "" {
+		return
+	}
+	stateDescriptors := make(map[string]*nodeDescriptor)
+	for p, d := range b.descriptors {
+		if d.state != nil && parentPath(p) == path {
+			stateDescriptors[d.stateName] = d
+		}
+	}
+	if len(stateDescriptors) == 0 {
+		return
+	}
+	stateOutputs := b.collectStateOutputs(stateDescriptors)
+	current := desc.stateMap.Initial
+	visited := make(map[string]int)
+	for steps := 0; steps < len(desc.stateMap.States)*4; steps++ {
+		stateDesc := stateDescriptors[current]
+		if stateDesc == nil {
+			break
+		}
+		run := b.firstRun(stateDesc.Path)
+		next := ""
+		var transitionData map[string]interface{}
+		var fallbackData map[string]interface{}
+		fallbackNext := ""
+		stateSpec, ok := desc.stateMap.States[current]
+		if !ok {
+			break
+		}
+		for _, transition := range stateSpec.Transitions {
+			ok, data := b.evaluateStateTransition(path, current, transition, stateDesc, stateOutputs)
+			if data != nil && fallbackData == nil {
+				fallbackData = data
+				fallbackNext = transition.To
+			}
+			if ok {
+				next = transition.To
+				transitionData = data
+				break
+			}
+		}
+		if transitionData == nil && fallbackData != nil {
+			transitionData = fallbackData
+			next = fallbackNext
+		}
+		if transitionData != nil {
+			transitionData["from"] = current
+			if next != "" {
+				transitionData["to"] = next
+			}
+			smPath := b.stateMachineNodePath(path)
+			smNode := b.getOrCreateNode(smPath, "")
+			ts := extractRunTime(run)
+			b.appendStateTransition(smNode, smPath, ts, transitionData)
+		}
+		if next == "" {
+			break
+		}
+		visited[current]++
+		if visited[current] > 2 {
+			break
+		}
+		current = next
+	}
+}
+
+func (b *Builder) collectStateOutputs(stateDescriptors map[string]*nodeDescriptor) map[string]map[string]interface{} {
+	outputs := make(map[string]map[string]interface{}, len(stateDescriptors))
+	for name, desc := range stateDescriptors {
+		if node, ok := b.nodes[desc.Path]; ok && len(node.Runs) > 0 && node.Runs[0].Outputs != nil {
+			outputs[name] = cloneMap(node.Runs[0].Outputs)
+		} else {
+			outputs[name] = make(map[string]interface{})
+		}
+	}
+	return outputs
+}
+
+func (b *Builder) evaluateStateTransition(smPath, current string, transition recipe.Transition, stateDesc *nodeDescriptor, stateOutputs map[string]map[string]interface{}) (bool, map[string]interface{}) {
+	expr := transition.When.String()
+	if strings.TrimSpace(expr) == "" {
+		return true, map[string]interface{}{"expression": expr, "result": true}
+	}
+	inputs := cloneMap(b.initialInputs)
+	if inputs == nil {
+		inputs = make(map[string]interface{})
+	}
+	resCtx, err := compiler.NewResolutionContext("state_machine", current)
+	if err != nil {
+		return false, map[string]interface{}{"expression": expr, "error": err.Error()}
+	}
+	resCtx.SetInputs(inputs)
+	for name, out := range stateOutputs {
+		resCtx.AddStateOutput(name, out)
+	}
+	sequence := b.collectSequenceOutputs(stateDesc.Path)
+	for child, out := range sequence {
+		if out == nil {
+			resCtx.AddSequenceNode(child, map[string]interface{}{})
+			continue
+		}
+		resCtx.AddSequenceNode(child, out)
+	}
+	result, err := resCtx.EvaluateCEL(expr)
+	if err != nil {
+		return false, map[string]interface{}{"expression": expr, "error": err.Error()}
+	}
+	return result, map[string]interface{}{"expression": expr, "result": result}
+}
+
+func (b *Builder) collectSequenceOutputs(statePath string) map[string]map[string]interface{} {
+	seq := make(map[string]map[string]interface{})
+	for path, node := range b.nodes {
+		if parentPath(path) != statePath {
+			continue
+		}
+		child := lastSegment(path)
+		var outputs map[string]interface{}
+		if len(node.Runs) > 0 && node.Runs[0].Outputs != nil {
+			outputs = cloneMap(node.Runs[0].Outputs)
+		} else {
+			outputs = make(map[string]interface{})
+		}
+		seq[child] = outputs
+	}
+	return seq
+}
+
+func (b *Builder) firstRun(path string) *NodeRun {
+	if node, ok := b.nodes[path]; ok && len(node.Runs) > 0 {
+		return node.Runs[0]
+	}
+	return nil
+}
+
+func extractRunTime(run *NodeRun) time.Time {
+	if run == nil {
+		return time.Time{}
+	}
+	if run.CompletedAt != nil {
+		return *run.CompletedAt
+	}
+	if run.StartedAt != nil {
+		return *run.StartedAt
+	}
+	return time.Time{}
+}
+
+func (b *Builder) appendStateTransition(node *StoryNode, path string, at time.Time, data map[string]interface{}) {
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	storyEvent := StoryEvent{Kind: "state-transition", At: at, Data: data}
+	node.Events = append(node.Events, storyEvent)
+	b.addSyntheticTimeline(at, "state-transition", nodeTimelineRef(path), data)
+}
+
+func (b *Builder) addSyntheticTimeline(at time.Time, kind, ref string, data map[string]interface{}) {
+	entry := TimelineEntry{
+		EventID: b.syntheticEventID,
+		At:      at,
+		Kind:    kind,
+		Ref:     ref,
+		Data:    data,
+	}
+	b.syntheticEventID--
+	b.timeline = append(b.timeline, entry)
+}
+
+func (b *Builder) stateMachineNodePath(path string) string {
+	if path == "" {
+		return path
+	}
+	if _, ok := b.nodes[path]; ok {
+		return path
+	}
+	if b.metadata.RecipeName == "" {
+		return path
+	}
+	if path == b.metadata.RecipeName {
+		return path
+	}
+	prefixed := joinPath(b.metadata.RecipeName, path)
+	return prefixed
 }
 
 func (b *Builder) handleWorkflowClosed(event *historypb.HistoryEvent) {
@@ -617,7 +828,7 @@ func buildNodeDescriptors(r *recipe.Recipe) map[string]*nodeDescriptor {
 	case *recipe.RecipeState:
 		segment := segmentForMetadata(recipeMeta.NodeMetadata, "recipe-state")
 		path := segment
-		desc[path] = &nodeDescriptor{Path: path, Type: "state_machine", DisplayName: displayName(recipeMeta.NodeMetadata, path)}
+		desc[path] = &nodeDescriptor{Path: path, Type: "state_machine", DisplayName: displayName(recipeMeta.NodeMetadata, path), stateMap: impl.StateData.States}
 		traverseStateMap(desc, path, impl.StateData.States)
 	}
 	return desc
@@ -636,7 +847,7 @@ func traverseSequence(desc map[string]*nodeDescriptor, parentPath string, nodes 
 			desc[path] = &nodeDescriptor{Path: path, Type: "sequence", DisplayName: displayName(meta, segment)}
 			traverseSequence(desc, path, impl.SequenceData.Sequence)
 		case *recipe.NodeState:
-			desc[path] = &nodeDescriptor{Path: path, Type: "state_machine", DisplayName: displayName(meta, segment)}
+			desc[path] = &nodeDescriptor{Path: path, Type: "state_machine", DisplayName: displayName(meta, segment), stateMap: impl.StateData.States}
 			traverseStateMap(desc, path, impl.StateData.States)
 		}
 	}
@@ -650,7 +861,8 @@ func traverseStateMap(desc map[string]*nodeDescriptor, parentPath string, stateM
 		meta := state.Node.GetMetadata()
 		segment := segmentForMetadata(meta, stateName)
 		path := joinPath(parentPath, segment)
-		desc[path] = &nodeDescriptor{Path: path, Type: "state", DisplayName: displayName(meta, stateName)}
+		stateCopy := state
+		desc[path] = &nodeDescriptor{Path: path, Type: "state", DisplayName: displayName(meta, stateName), stateName: stateName, state: &stateCopy}
 		switch impl := state.Node.NodeImpl.(type) {
 		case *recipe.NodeOp:
 			// Already recorded as state node; op executes as child? For state with op, path used for the op itself.
@@ -689,6 +901,17 @@ func parentPath(path string) string {
 		return ""
 	}
 	return path[:idx]
+}
+
+func lastSegment(path string) string {
+	if path == "" {
+		return ""
+	}
+	idx := strings.LastIndex(path, "/")
+	if idx == -1 {
+		return path
+	}
+	return path[idx+1:]
 }
 
 func displayName(meta recipe.NodeMetadata, fallback string) string {

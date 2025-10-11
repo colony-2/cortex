@@ -67,10 +67,12 @@
   - `children`: nested nodes (sequence entries, state substates, downstream ops).
 - `ops.Invocation` remains the canonical execution key; the story keeps both the hash (`ID`) and the structured fields so other systems can correlate without new identifiers.
 - `StoryEvent` variants:
-  - `op-start` / `op-complete` / `op-fail` (auto-generated from history).
-  - `decision` — derived during story build by replaying the state machine over recorded node outputs and transition definitions.
+  - `activity-*` — lifecycle for activity backed ops (`scheduled`, `started`, `completed`, `failed`, `timedout`).
+  - `inline-*` — inline op markers (`start`, `completed`, `failed`, `timeout`) emitted from worker instrumentation.
+  - `child-trigger` / `child-result` — child workflow launch + completion.
+  - `state-transition` — recorded for each evaluated state transition during replay, including expression metadata and chosen destination.
   - `input-response` — emitted when a corresponding signal is processed.
-  - `log` — optional annotation from inline ops.
+  - `inline-log` — optional annotation from inline ops.
 - `StoryTimelineEntry` — flattened timeline referencing `StoryNode` IDs plus event IDs for notebook playback.
 
 ## Temporal History Mapping
@@ -208,11 +210,11 @@
 ## State-Machine Replay Details
 - The story builder reuses the existing state-machine compiler utilities to re-run transitions offline using the captured node outputs and inline-op payloads.
 - For each state, the replay gathers the same `ResolutionContext` data the workflow had (sequence outputs, state outputs, inline op results) from markers/history and evaluates transition CEL expressions in order.
-- The resulting `decision` story events include:
+- Each completed evaluation produces a `state-transition` story event (and synthetic timeline entry) containing:
   - state name and attempt index,
   - expression string from the recipe definition,
   - resolved value snapshot (basic scalar/JSON data),
-  - boolean outcome and selected target state (if any).
+  - boolean outcome plus `from`/`to` state metadata when a transition fires.
 - Loops and retries are handled by iterating until the recorded execution path matches the observed activities/markers; because inline ops emitted start/complete markers with invocation IDs, we can align each replay step with the real history without additional runtime instrumentation.
 
 ## Recipe and RecipeSet Ops
