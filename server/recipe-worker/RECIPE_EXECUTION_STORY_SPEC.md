@@ -5,12 +5,12 @@
 - History inspection today (`server/recipe-history/pkg/history/transformer.go`) only surfaces activity timelines and ignores inline ops, state transitions, and signal-driven input ops.
 - We want a structured "story" artefact that can power a notebook-style replay showing each op, its inputs/outputs, decision points, and user interactions.
 
-## Goals
-- Produce a deterministic `RecipeExecutionStory` object for a single workflow run using only persisted Temporal history plus the recipe definition.
-- Capture both chronological timeline and recipe-structure hierarchy (recipe → sequences/states → ops).
-- Include resolved inputs, outputs, errors, attempts, durations, and any branching decisions.
-- Represent inline ops (e.g., input await) and Temporal signals alongside activity-based ops.
-- Enable notebook rendering by providing semantically rich event types (op run, decision, user input, log annotations) that can be serialized to JSON.
+## Goals (status)
+- ✅ Produce a deterministic `RecipeExecutionStory` object for a single workflow run using only persisted Temporal history plus the recipe definition.
+- ✅ Capture both chronological timeline and recipe-structure hierarchy (recipe → sequences/states → ops).
+- ✅ Include resolved inputs, outputs, errors, attempts, durations, and branching decisions (inline ops, child workflows, state-machine transitions).
+- ✅ Represent inline ops, Temporal signals, and child workflows alongside activity-based ops via marker + signal ingestion.
+- 🔄 Enable notebook rendering with semantically rich event types; data contract available, notebook UI pending.
 
 ## Non-Goals
 - Building the notebook UI itself.
@@ -87,7 +87,11 @@
 | `MarkerRecorded` (new instrumentation) | Inline op boundaries (start/complete/fail), child-recipe lifecycle, optional logs.
 | `WorkflowExecutionCompleted` / `Failed` etc. | Finalize `StoryMetadata.status` and `completed_at`.
 
-## Required Instrumentation
+## Required Instrumentation (status)
+- ✅ Marker helpers implemented for inline ops, child recipes, and logs.
+- ✅ Worker instrumentation emits required markers/signals (inline, input, child workflows).
+- 🔄 StoryAnnotator hook adoption remains optional backlog.
+
 ### Marker Helpers
 - Provide typed helper functions for each situation we need to record. Each helper accepts fully defined structs so payload schemas stay consistent and self-documenting.
   - `RecordInlineOpStart(ctx workflow.Context, meta InlineOpStartPayload)`
@@ -182,18 +186,18 @@
   ```
 - Payloads are serialized via Temporal’s data converter. Keep payloads under ~10 KB; truncate or summarize large data (store raw artifacts elsewhere if necessary).
 
-## Story Builder Pipeline
-1. **Fetch history**: `client.GetWorkflowHistory` with `history.IterationType=Raw` to obtain all events.
-2. **Seed structures**: load recipe definition via existing `GetRecipeFunc` to build static tree skeleton (node IDs, ordering).
-3. **Replay events**:
+## Story Builder Pipeline (status)
+1. ✅ **Fetch history**: `client.GetWorkflowHistory` with `history.IterationType=Raw` to obtain all events.
+2. ✅ **Seed structures**: load recipe definition via existing `GetRecipeFunc` to build static tree skeleton (node IDs, ordering).
+3. ✅ **Replay events**:
    - Build maps: `scheduledEventID → StoryNode`, `nodePath → StoryNode`, `invocation.ID → StoryNode` using hashes emitted in activity payloads/markers.
    - Apply activity events to nodes.
    - Apply marker events (inline ops, inputs, child recipes) by node path.
    - Merge signal events into matching input nodes using `ActivityID`/`BoxID` from payloads.
-4. **State-machine replay**: walk the recipe states/sequences using recorded node outputs and inline markers to reconstruct transitions; emit `decision` story events for each evaluated guard.
-5. **Finalize hierarchy**: compute durations, status rollups, and attach decision trails to parent states and sequences.
-6. **Generate timeline**: sort collected `StoryEvent`s by Temporal event time, produce flat timeline array referencing node IDs + event IDs for UI playback.
-6. **Serialize**: output `RecipeExecutionStory` (Go struct) with JSON tags for API responses. Provide helper to convert to notebook cells later.
+4. ✅ **State-machine replay**: walk recipe states/sequences using recorded outputs/markers to reconstruct transitions and emit `state-transition` story events.
+5. ✅ **Finalize hierarchy**: compute durations, status rollups, and attach decision trails to parent states and sequences.
+6. ✅ **Generate timeline**: sort collected `StoryEvent`s by Temporal event time (with synthetic state transitions) to produce the playback sequence.
+7. 🔄 **Serialize & expose**: structs exist and integration tests cover them; API/notebook exposure remains to ship.
 
 ## Story-Time Annotations
 - Introduce an optional build-time extension in `recipe-core/pkg/ops`:
