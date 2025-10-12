@@ -113,3 +113,11 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
      - `event_id`: the `NodeRun.ResumeEventID` recorded from the workflow task completion that immediately preceded the op.
      - `recipe_set_index` (optional): included only when present on the `NodeRun` and the parent op is `recipe_set`.
    - The builder must validate that every entry has a populated `run_id` and `event_id`; missing values indicate a gap in history capture and should abort rewind with a descriptive error.
+
+## Implementation Steps
+1. Implement the recipe_run_metadata signal handler and recipe wait with unit/integration tests (leveraging temporal's workflowtestsuite)
+2. Implement the execution-path holder and recipe/recipeset branching (if resume invocation, do reset with event id and run id) with unit/integration tests
+3. Add additional needed properties to story builder with unit/integration tests (including the embeddedtemporal ones)
+4. Implement the execution-path builder with unit/integration tests
+5. Add new embeddedtemporal tests similar to story builder ones entire cycle: run recipe with sub recipe and sub-sub-recipe. Pick a mid op of inner-most recipe and, build rewind execution path and then execute from rewound state. validate that the correct portion of state was replayed at each level.
+
