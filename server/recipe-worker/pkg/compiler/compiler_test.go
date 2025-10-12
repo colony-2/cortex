@@ -22,6 +22,7 @@ type CompilerTestSuite struct {
 
 func (s *CompilerTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
+	primeDefaultMetadataSignal(s.env)
 }
 
 func (s *CompilerTestSuite) AfterTest(suiteName, testName string) {

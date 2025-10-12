@@ -47,6 +47,7 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeRecipeMetadataSignal(env)
 
 	env.RegisterActivity(inlineWriteFileActivity)
 

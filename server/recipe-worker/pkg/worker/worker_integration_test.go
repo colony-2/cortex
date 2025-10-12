@@ -102,6 +102,7 @@ type WorkerIntegrationTestSuite struct {
 
 func (s *WorkerIntegrationTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
+	primeRecipeMetadataSignal(s.env)
 }
 
 func (s *WorkerIntegrationTestSuite) AfterTest(suiteName, testName string) {

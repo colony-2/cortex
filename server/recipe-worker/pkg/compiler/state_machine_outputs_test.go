@@ -16,6 +16,7 @@ func TestStateOutputsIssue(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
@@ -93,6 +94,7 @@ func TestStateMachineInternalExecution(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)

@@ -18,6 +18,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)

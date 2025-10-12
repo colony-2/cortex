@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
@@ -102,6 +103,11 @@ func (e *StandaloneExecutor) Execute(
 
 	// Set context propagators
 	testEnv.SetContextPropagators(options.ContextPropagators)
+
+	// Provide the metadata signal required by recipe execution before starting the workflow.
+	testEnv.RegisterDelayedCallback(func() {
+		testEnv.SignalWorkflow(compiler.RecipeRunMetadataSignalName(), compiler.RecipeRunMetadataSignal{})
+	}, time.Millisecond)
 
 	// Execute workflow
 	testEnv.ExecuteWorkflow(r.GetMetdata().ID, inputs)

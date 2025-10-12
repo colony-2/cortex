@@ -66,6 +66,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
@@ -132,6 +133,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
@@ -183,6 +185,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
@@ -235,6 +238,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	// Register activities from the registry with the test environment
 	registry.EnableActivitiesInWorker(env)
@@ -312,6 +316,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	registry.EnableActivitiesInWorker(env)
 

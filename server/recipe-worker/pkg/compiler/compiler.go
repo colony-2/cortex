@@ -14,8 +14,13 @@ import (
 )
 
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs)
+	metadata, err := waitForRecipeRunMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ctx = withRecipeRunMetadata(ctx, metadata)
+
+	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs, metadata)
 	if err != nil {
 		return nil, err
 	}

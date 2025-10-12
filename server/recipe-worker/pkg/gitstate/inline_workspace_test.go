@@ -72,6 +72,7 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeRecipeMetadataSignal(env)
 
 	env.RegisterActivity(inlineWriteFileActivity)
 
@@ -167,6 +168,7 @@ func TestWithInlineWorkspaceSkipFinalize(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeRecipeMetadataSignal(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (InlineWorkspaceResult, error) {
 		res, err := WithInlineWorkspace(ctx, inv, inputs, InlineWorkspaceOptions{SkipFinalize: true}, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {

@@ -61,6 +61,7 @@ outputs:
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
 	defer env.AssertExpectations(t)
+	primeDefaultMetadataSignal(env)
 
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
@@ -91,6 +92,7 @@ outputs:
 	// Test full recipe execution
 	env2 := testSuite.NewTestWorkflowEnvironment()
 	defer env2.AssertExpectations(t)
+	primeDefaultMetadataSignal(env2)
 
 	env2.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
 		return ExecuteRecipe(ctx, registry, *r, inputs)

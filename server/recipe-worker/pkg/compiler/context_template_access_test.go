@@ -72,6 +72,7 @@ func TestContextShortcutExposesGitMetadata(t *testing.T) {
 	defer env.AssertExpectations(t)
 
 	registry.EnableActivitiesInWorker(env)
+	primeDefaultMetadataSignal(env)
 
 	_, expectedHash := ensureTestRepo()
 
