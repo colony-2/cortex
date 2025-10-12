@@ -1,233 +1,220 @@
-**Temporal-Agnostic Orchestration API (Proposal)**
+**Temporal-Agnostic Orchestration Roadmap**
 
-- Purpose: Define a provider-neutral API surface that covers every Temporal API currently used by non-test code in `server/recipe-history` and `server/recipe-worker` so we can swap providers without invasive changes.
-- Scope: Runtime workflow execution, activity invocation, worker lifecycle, retries/errors, context propagation, and execution history/inspection.
+- Purpose: Define a provider-neutral orchestration surface that matches every Temporal feature used across `server/recipe-worker`, `server/ops`, `server/recipe-core`, `server/recipe-history`, `server/cortex`, `server/nucleus`, and `workflowctl`, enabling us to swap orchestration engines without invasive refactors.
+- Scope: Workflow execution/runtime semantics, local and remote activity invocation, child workflows, signals and external workflow control, deterministic concurrency primitives, search attributes, workflow info/metadata, worker lifecycle, execution history/introspection, local testing, and embedded orchestration services.
 
-**Design Goals**
+**Temporal Usage Inventory (Feb 2025 audit)**
 
-- Minimal surface: only what we actively use today.
-- Deterministic workflow semantics preserved (sleep, timers, cancellation, logging, goroutines).
-- Pluggable provider with clean adapters (Temporal, local/in-memory, other engines).
-- Smooth migration: 1:1 mapping from current usages -> new interfaces.
+- `server/ops/pkg/recipe/op.go`: schedules child workflows, inspects `workflow.Execution`, and relies on Temporal retry/parent-close options.
+- `server/ops/pkg/input/activity.go` & `workflow.go`: use typed search attributes, signal channels, external workflow signaling, cancellable contexts, and deterministic goroutines.
+- `server/recipe-worker/pkg/compiler`: consumes `workflow.SideEffect`, `workflow.GetInfo`, `workflow.WithValue`, and Temporal application errors for validation (`execution_context.go`, `compiler.go`).
+- `server/recipe-worker/pkg/gitstate`: depends on local activities (`workflow.ExecuteLocalActivity`), inline workspace helpers, and `workflow.WithLocalActivityOptions`.
+- `server/recipe-core/pkg/ops` and tests: inline op DSL takes `workflow.Context`, Temporal retry policies, typed channels/selectors (`registerable_op.go`, `registerable_op_test.go`).
+- `server/recipe-history/pkg/history` and `pkg/storybuilder`: use raw gRPC service clients, Temporal proto enums (search attributes, events), and history pagination.
+- `server/cortex/internal/shared` & `server/nucleus/internal/client`: depend on Temporal workers/clients and the workflow testsuite harness.
+- `server/embeddedtemporal`: packages a development Temporal server/client and dynamic config helpers that today leak Temporal options to consumers.
 
-**Modules**
+**Abstraction Layers**
 
-- `orchestration/runtime` — Workflow runtime primitives (context, activities, timers, logging, error/retry types).
-- `orchestration/worker` — Worker lifecycle and registration.
-- `orchestration/history` — Execution listing, description, and history streaming.
+- `orchestration/runtime`: workflow execution primitives, context propagation, deterministic concurrency, side effects, activities (remote & local), child workflows, signals, search attributes, and error helpers.
+- `orchestration/worker`: worker factories, task queue bindings, registration metadata, lifecycle controls, interceptors, and telemetry hooks.
+- `orchestration/history`: execution listing, description, history streaming, marker decoding, and payload conversion to provider-neutral types.
+- `orchestration/control`: control-plane helpers for external signaling/cancellation (`workflowctl` replacement) and introspection utilities used by API handlers.
+- `orchestration/testing`: test environment abstraction that replaces `go.temporal.io/sdk/testsuite` with provider-pluggable deterministic runners.
+- `providers/<vendor>`: adapters that translate the neutral interfaces to Temporal, in-memory/local, or future engines (e.g. Cadence, Argo Workflows runtime shim).
 
-**Core Types & Interfaces**
+**Runtime Interfaces (proposed)**
 
-- `type FlowContext interface {`
-  - `Logger() Logger` — Structured logger.
-  - `WithCancel() (FlowContext, CancelFunc)` — Derive cancelable child context.
-  - `Sleep(d Duration) error` — Deterministic timer.
-  - `Go(fn func(FlowContext))` — Deterministic goroutine/spawn.
-  - `WithActivityOptions(opts ActivityOptions) FlowContext` — Bind activity policy.
-  - `ExecuteActivity(name string, input any) (Future, error)` — Schedule activity; returns future.
-`}`
+```go
+package runtime
 
-- `type Logger interface { Debug(msg string, kv ...any); Info(msg string, kv ...any); Warn(msg string, kv ...any); Error(msg string, kv ...any) }`
+type FlowContext interface {
+    Logger() Logger
+    Now() time.Time
+    Info() WorkflowInfo
 
-- `type Future interface { Get(ctx FlowContext, out any) error }`
+    WithCancel() (FlowContext, CancelFunc)
+    WithDeadline(time.Time) (FlowContext, CancelFunc)
+    WithValue(key any, val any) FlowContext
 
-- `type ActivityOptions struct {`
-  - `StartToClose Timeout`
-  - `Retry       *RetryPolicy`
-`}`
+    Sleep(d time.Duration) error
+    Go(fn func(FlowContext))
+    SideEffect(fn func(FlowContext) (any, error)) (Future, error)
 
-- `type RetryPolicy struct {`
-  - `InitialInterval Duration`
-  - `BackoffCoefficient float64`
-  - `MaximumInterval Duration`
-  - `MaximumAttempts int32`
-  - `NonRetryableErrorTypes []string`
-`}`
+    WithActivityOptions(ActivityOptions) FlowContext
+    ExecuteActivity(name string, input any) (Future, error)
 
-- `func IsCanceled(err error) bool`
-- `func NewError(kind, message string, cause error, opts ...ErrorOption) error`
-- `func IsNonRetryable(err error) bool`
+    WithLocalActivityOptions(LocalActivityOptions) FlowContext
+    ExecuteLocalActivity(name string, input any) (Future, error)
 
-The above cover: activity execution, timers, cancellation, retries, and logging used by the compiler and state machine.
+    WithChildOptions(ChildWorkflowOptions) FlowContext
+    ExecuteChildWorkflow(name string, input any) (ChildWorkflowFuture, error)
 
-**Worker Lifecycle**
+    GetSignal(name string) SignalChannel
+    SignalExternal(ref ExecutionRef, signal string, payload any) (Future, error)
 
-- `type Worker interface {`
-  - `RegisterWorkflow(name string, fn any, opts WorkflowRegistration)`
-  - `RegisterActivity(name string, fn any, opts ActivityRegistration)`
-  - `Start() error`
-  - `Stop()`
-`}`
+    NewChannel(capacity int) Channel
+    Selector() Selector
 
-- `type WorkerOptions struct {`
-  - `MaxWorkflowPollers int`
-  - `MaxActivityPollers int`
-`}`
+    UpsertSearchAttributes(attrs ...SearchAttribute) error
+}
 
-- `type WorkflowRegistration struct { Name string }`
-- `type ActivityRegistration struct { Name string }`
+type Future interface {
+    Get(out any) error
+}
 
-- `type WorkerFactory interface {`
-  - `NewWorker(taskQueue string, opts WorkerOptions) Worker`
-`}`
+// ChildWorkflowFuture mirrors Temporal's handle for child execution metadata.
+type ChildWorkflowFuture interface {
+    Future
+    GetChildExecution(out *WorkflowExecution) error
+}
 
-These cover: `worker.New`, `RegisterWorkflowWithOptions`, `RegisterActivityWithOptions`, `Start/Stop`, and poller limits.
+type Channel interface {
+    Send(ctx FlowContext, val any) error
+    Receive(ctx FlowContext, out any) error
+    Close()
+}
 
-**Local Execution (Standalone)**
+type SignalChannel interface {
+    Receive(ctx FlowContext, out any) error
+}
 
-- `type LocalRuntime interface {`
-  - `NewEnvironment() LocalEnv`
-`}`
+type Selector interface {
+    AddFuture(Future, func(FlowContext) error)
+    AddReceive(Channel, func(FlowContext, any) error)
+    Select(ctx FlowContext) error
+}
 
-- `type LocalEnv interface {`
-  - `RegisterWorkflow(name string, fn any, opts WorkflowRegistration)`
-  - `RegisterActivity(name string, fn any, opts ActivityRegistration)`
-  - `SetContextPropagators(props []ContextPropagator)`
-  - `ExecuteWorkflow(name string, input any)`
-  - `GetWorkflowError() error`
-  - `GetWorkflowResult(out any) error`
-`}`
+// Activity, local activity, and child workflow configuration mirrors Temporal semantics.
+type ActivityOptions struct {
+    StartToClose time.Duration
+    Retry        *RetryPolicy
+    Heartbeat    time.Duration
+}
 
-- `type ContextPropagator interface {`
-  - `Inject(ctx context.Context, carrier map[string]string) error`
-  - `Extract(ctx context.Context, carrier map[string]string) (context.Context, error)`
-`}`
+type LocalActivityOptions struct {
+    StartToClose time.Duration
+    Retry        *RetryPolicy
+}
 
-This replaces `sdk/testsuite` usage for `StandaloneExecutor` and preserves context propagation.
+type ChildWorkflowOptions struct {
+    ID                string
+    TaskQueue         string
+    RunTimeout        time.Duration
+    ExecutionTimeout  time.Duration
+    Retry             *RetryPolicy
+    ParentClosePolicy ParentClosePolicy
+    IDReusePolicy     IDReusePolicy
+}
 
-**Execution History and Introspection**
+type RetryPolicy struct {
+    InitialInterval    time.Duration
+    BackoffCoefficient float64
+    MaximumInterval    time.Duration
+    MaximumAttempts    int32
+    NonRetryableErrors []string
+}
 
-- `type ExecutionService interface {`
-  - `ListExecutions(ctx context.Context, query ExecutionQuery) (ExecutionsPage, error)`
-  - `DescribeExecution(ctx context.Context, workflowID, runID string) (ExecutionDescription, error)`
-  - `History(ctx context.Context, workflowID, runID string, opts HistoryOptions) (HistoryIterator, error)`
-`}`
+// SearchAttribute represents our typed helper (replaces temporal.NewSearchAttributeKey*).
+type SearchAttribute struct {
+    Key   string
+    Type  SearchAttributeType
+    Value any
+}
 
-- `type ExecutionQuery struct {`
-  - `TaskQueue string`
-  - `Status    ExecutionStatusFilter` // running|completed|failed|all
-  - `PageSize  int32`
-`}`
+type SearchAttributeType string
 
-- `type ExecutionsPage struct { Executions []ExecutionInfo; NextPageToken []byte }`
+const (
+    SearchAttributeKeyword  SearchAttributeType = "keyword"
+    SearchAttributeString   SearchAttributeType = "string"
+    SearchAttributeInt      SearchAttributeType = "int"
+    SearchAttributeDouble   SearchAttributeType = "double"
+    SearchAttributeBool     SearchAttributeType = "bool"
+    SearchAttributeDatetime SearchAttributeType = "datetime"
+)
 
-- `type ExecutionInfo struct {`
-  - `WorkflowID string`
-  - `RunID      string`
-  - `Type       string`
-  - `Status     ExecutionStatus`
-  - `StartTime  time.Time`
-  - `CloseTime  *time.Time`
-  - `HistoryLength int64`
-  - `Metadata   map[string]any` // generalized search attributes
-`}`
+type ParentClosePolicy string
 
-- `type ExecutionDescription struct {`
-  - `Info              ExecutionInfo`
-  - `PendingActivities []PendingActivity`
-`}`
+const (
+    ParentClosePolicyTerminate      ParentClosePolicy = "terminate"
+    ParentClosePolicyAbandon        ParentClosePolicy = "abandon"
+    ParentClosePolicyRequestCancel  ParentClosePolicy = "request-cancel"
+)
 
-- `type PendingActivity struct {`
-  - `ActivityType string`
-  - `ActivityID   string`
-  - `State        PendingActivityState` // scheduled|running|canceling
-  - `ScheduledTime time.Time`
-  - `Attempt      int`
-`}`
+type IDReusePolicy string
 
-- `type HistoryOptions struct { LongPoll bool; Filter EventFilter }`
-- `type HistoryIterator interface { HasNext() bool; Next() (HistoryEvent, error) }`
+const (
+    IDReusePolicyAllowDuplicate       IDReusePolicy = "allow-duplicate"
+    IDReusePolicyAllowDuplicateFailed IDReusePolicy = "allow-duplicate-failed"
+    IDReusePolicyRejectDuplicate      IDReusePolicy = "reject-duplicate"
+)
 
-- `type HistoryEvent struct {`
-  - `ID        int64`
-  - `Type      EventType`
-  - `Time      time.Time`
-  - `Attributes any` // one of ActivityScheduled|Started|Completed|Failed|TimedOut
-`}`
+type ExecutionRef struct {
+    WorkflowID string
+    RunID      string
+}
 
-- `type ActivityScheduled struct { ActivityType string }`
-- `type ActivityStarted struct { ScheduledEventID int64 }`
-- `type ActivityCompleted struct { ScheduledEventID int64; Result EncodedData }`
-- `type ActivityFailed struct { ScheduledEventID int64; Message string }`
-- `type ActivityTimedOut struct { ScheduledEventID int64 }`
+type WorkflowExecution struct {
+    WorkflowID string
+    RunID      string
+}
 
-- `type EncodedData struct { Raw []byte; Encoding string }` // provider-neutral payload
+type WorkflowInfo struct {
+    WorkflowID   string
+    RunID        string
+    Attempt      int
+    TaskQueue    string
+    Namespace    string
+    CronSchedule string
+    Memo         map[string]any
+}
+```
 
-- `type ExecutionStatus string` with values: `Running|Completed|Failed|Canceled|Terminated|ContinuedAsNew|TimedOut|Unknown`
-- `type PendingActivityState string` with values: `Scheduled|Running|CancelRequested|Unknown`
-- `type EventType string` with values: `ActivityTaskScheduled|ActivityTaskStarted|ActivityTaskCompleted|ActivityTaskFailed|ActivityTaskTimedOut`
+Helpers retained from the original draft (`Logger`, `IsCanceled`, `NewError`, `IsNonRetryable`, `EncodedData`) continue to apply but now work across the expanded surface.
 
-These cover the exact history/introspection data path used by `server/recipe-history`.
+**History & Introspection Interfaces**
+
+Reuse the neutral types from the earlier draft (`ExecutionService`, `ExecutionsPage`, `ExecutionDescription`, `HistoryIterator`, `HistoryEvent`, etc.) and extend event coverage to include signal markers and workflow metadata fields surfaced by `recipe-history` (`server/recipe-history/pkg/history/transformer.go`). Side effect markers remain represented via `EncodedData` so `server/recipe-core/pkg/story/markers.go` can deserialize provider-specific payloads.
+
+**Worker & Control Plane Interfaces**
+
+- `WorkerFactory`, `Worker`, `WorkflowRegistration`, and `ActivityRegistration` remain but add hooks for typed interceptors and middleware (used today by `server/recipe-worker/pkg/worker/worker_integration_test.go`).
+- `ExecutionRef` in `orchestration/control` provides `{WorkflowID, RunID}` handles for external signaling/cancellation, matching `workflowctl.ExecutionRef` usage in `server/ops/pkg/input/management.go`.
+- Control plane also exposes `Signal(ctx, ExecutionRef, signal string, payload any)` and `Cancel(ctx, ExecutionRef)` for API handlers.
+
+**Testing & Local Execution**
+
+- `LocalRuntime` / `LocalEnv` abstraction stays, but gains deterministic channel/signal mocks and the ability to pre-register search attribute factories so that tests such as `server/ops/pkg/input/keyed_routing_test.go` and `server/recipe-worker/pkg/compiler/sequence_integration_test.go` run without the Temporal testsuite.
+- Provide a `FakeClock` option to advance timers deterministically, mirroring how the Temporal testsuite drives time.
 
 **Provider Adapters**
 
-- TemporalAdapter implements:
-  - `WorkerFactory` by wrapping `worker.New` and mapping `WorkerOptions`/registrations.
-  - `FlowContext` by delegating to `workflow.Context` for timers, cancellation, futures, logging.
-  - `Future` wrapping Temporal future `Get`.
-  - `ExecutionService` by delegating to `client.Client` methods (`ListWorkflowExecutions`, `DescribeWorkflowExecution`, `GetWorkflowHistory`) and converting enums/structs to neutral types.
-  - Error mapping between `temporal.ApplicationError` and `NewError` + `IsNonRetryable`.
+- `TemporalAdapter`: implements the expanded interfaces by delegating to `workflow.Context`, `workflow.ExecuteActivity`, `workflow.ExecuteLocalActivity`, `workflow.ExecuteChildWorkflow`, `workflow.GetSignalChannel`, `workflow.UpsertTypedSearchAttributes`, selectors/channels, and search attribute builders. It also maps `workflow.SideEffect` futures (without context) into the `Future` contract.
+- `LocalInMemoryAdapter`: offers an in-memory deterministic runtime for unit tests and CLI simulations. Supports signals, child workflow stubs, and typed search attribute storage.
+- Future adapters (e.g. Cadence) must implement the same contracts; everything beyond the adapter remains provider-neutral.
 
-- LocalInMemoryAdapter implements:
-  - `LocalRuntime` for serverless execution (replacement for `sdk/testsuite`).
-  - Optionally a `WorkerFactory` for embedded, test-only workers.
+**Migration Plan**
 
-**Migration Map (Current Usage -> Proposed)**
+1. Introduce the new `orchestration` packages along with Temporal and in-memory adapters. Ship behind experimental build tags but maintain Temporal as the default provider.
+2. Update `workflowctl` (`server/recipe-core/pkg/workflowctl`) to use `orchestration/control` so API layers stop importing Temporal client types directly.
+3. Migrate `server/ops` inline ops and workflows:
+   - Replace `workflow.Context` usage with `runtime.FlowContext`.
+   - Swap `temporal.NewSearchAttributeKey*` with neutral `SearchAttribute` helpers.
+   - Rewrite signal handling to use `SignalChannel`, `Selector`, and `ExecutionRef` interfaces.
+4. Port `server/recipe-worker` compiler/runtime:
+   - Replace direct calls to `workflow.SideEffect`, local activities, and child workflows with wrapper methods defined above.
+   - Update `ActivityRegistry` to register via `orchestration/worker.Worker`.
+5. Migrate `server/recipe-core` DSL and tests to depend on interfaces only, removing `go.temporal` imports from production code.
+6. Refactor `server/recipe-history` to consume `orchestration/history.ExecutionService` instead of `sdk/client` + proto enums; ensure converters cover markers, search attributes, child workflow events, and signal history.
+7. Switch `server/cortex` and `server/nucleus` CLIs to request workers/clients through the neutral factories. Delete Temporal-specific configuration structs once adapters land.
+8. Rework `server/embeddedtemporal` so it implements the neutral provider contract (exposing an adapter plus dev server utilities) instead of leaking Temporal APIs.
+9. Once consumers compile against the neutral surface, gate the Temporal adapter behind a feature flag and validate alternative runtimes.
 
-- Runtime (compiler, state machine):
-  - `workflow.Context` -> `FlowContext`
-  - `workflow.ActivityOptions` + `workflow.WithActivityOptions` -> `ActivityOptions` + `FlowContext.WithActivityOptions`
-  - `workflow.ExecuteActivity(...).Get(...)` -> `FlowContext.ExecuteActivity(...).Get(...)`
-  - `workflow.GetLogger` -> `FlowContext.Logger()`
-  - `workflow.WithCancel` -> `FlowContext.WithCancel()`
-  - `workflow.Sleep` -> `FlowContext.Sleep()`
-  - `workflow.Go` -> `FlowContext.Go()`
-  - `temporal.RetryPolicy` -> `RetryPolicy`
-  - `temporal.IsCanceledError` -> `IsCanceled`
-  - `temporal.NewApplicationError`/`ApplicationError.NonRetryable()` -> `NewError(..., NonRetryable())` + `IsNonRetryable`
+**Open Questions / Follow-Ups**
 
-- Worker lifecycle:
-  - `worker.New(client, taskQueue, worker.Options)` -> `WorkerFactory.NewWorker(taskQueue, WorkerOptions)`
-  - `RegisterWorkflowWithOptions` -> `Worker.RegisterWorkflow(name, fn, WorkflowRegistration)`
-  - `RegisterActivityWithOptions` -> `Worker.RegisterActivity(name, fn, ActivityRegistration)`
-  - `Start/Stop` -> `Start/Stop`
+- Do we need a typed payload codec abstraction for custom data converters (`server/recipe-history/pkg/storybuilder` currently depends on Temporal's converter API)?
+- Should selectors expose a strongly typed API or stick with `any` payloads? Audit usage to decide (currently only used in tests).
+- Assess performance implications of wrapping search attributes and futures; benchmark before flipping defaults.
+- Investigate whether we need explicit support for Temporal features not yet used (signals with headers, queries) to future-proof the design.
 
-- Local execution (StandaloneExecutor):
-  - `testsuite.*` calls -> `LocalRuntime.NewEnvironment()` + `LocalEnv.*` methods
-  - `SetContextPropagators([]workflow.ContextPropagator)` -> `SetContextPropagators([]ContextPropagator)`
-
-- History/inspection (recipe-history):
-  - `client.WorkflowService().ListWorkflowExecutions` -> `ExecutionService.ListExecutions`
-  - `client.DescribeWorkflowExecution` -> `ExecutionService.DescribeExecution`
-  - `client.GetWorkflowHistory` -> `ExecutionService.History`
-  - `api enums/types` -> provider-neutral `ExecutionInfo`, `ExecutionStatus`, `PendingActivity`, `HistoryEvent`, etc.
-
-**Incremental Adoption Plan**
-
-1) Introduce new packages with adapters but keep Temporal as the backing provider.
-2) Replace `activity_registry` registration signatures to accept `Worker` instead of the SDK-specific interface (it already abstracts via `ActivityRegisterable`).
-3) Wrap `workflow.*` calls in small shim helpers (or directly switch to `FlowContext` where touched):
-   - Start with `compiler` package: migrate timers, activities, retries.
-4) Swap `worker_manager` to use `WorkerFactory` and `WorkerOptions`.
-5) Introduce `ExecutionService` and migrate `recipe-history` client usages.
-6) Keep `StandaloneExecutor` but implement it via `LocalRuntime` instead of `sdk/testsuite`.
-
-**Non-Goals (for now)**
-
-- Signals/queries, child workflows, cron schedules: not used today.
-- Cross-namespace routing or sticky execution semantics: out of scope.
-
-**Why This Covers Everything We Use Today**
-
-- Activity execution and options: covered by `ActivityOptions`, `ExecuteActivity`, and `Future`.
-- Timers/concurrency/cancellation/logging: covered by `FlowContext` methods and `Logger`.
-- Retries/errors: covered by `RetryPolicy`, `IsCanceled`, `NewError`, `IsNonRetryable`.
-- Worker creation/registration/lifecycle: covered by `WorkerFactory`, `Worker`, and registration structs.
-- History/introspection: covered by `ExecutionService`, neutral enums/types, and `HistoryIterator`.
-- Local/in-memory execution: covered by `LocalRuntime` and `LocalEnv`.
-
-**Appendix: Example Handler Shapes**
-
-- Workflow handler: `func(ctx FlowContext, inputs map[string]any) (map[string]any, error)`
-- Activity handler: `func(ctx context.Context, input any) (any, error)`
-
+This roadmap reflects the Feb 2025 repository inventory; revisit the usage audit whenever new Temporal features are introduced so the neutral surface stays aligned with real-world needs.
