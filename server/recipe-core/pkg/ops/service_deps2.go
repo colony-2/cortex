@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 )
 
@@ -26,6 +27,18 @@ type ServiceDependencies2 interface {
 
 	// Database returns the shared GORM handle for the current runtime when available.
 	Database() (*gorm.DB, bool)
+
+	// RunMetadata returns the recipe run metadata attached to this dependency container when available.
+	RunMetadata() (*runmetadata.Signal, bool)
+
+	// ResumeMetadata returns rewind resume metadata when present.
+	ResumeMetadata() (*runmetadata.Resume, bool)
+
+	// CloneWithRunMetadata returns a shallow copy of the dependencies with run metadata attached.
+	CloneWithRunMetadata(metadata *runmetadata.Signal) ServiceDependencies2
+
+	// CloneWithResumeMetadata returns a shallow copy of the dependencies with resume metadata attached.
+	CloneWithResumeMetadata(metadata *runmetadata.Resume) ServiceDependencies2
 
 	// serviceDependenciesMarker seals the interface to recipe-core implementations.
 	serviceDependenciesMarker() serviceDependenciesSeal
@@ -90,6 +103,8 @@ type serviceDependencies struct {
 	sseManager        SSEManager
 	temporalNamespace string
 	database          *gorm.DB
+	runMetadata       *runmetadata.Signal
+	resumeMetadata    *runmetadata.Resume
 }
 
 func (d *serviceDependencies) WorkflowControl() (workflowctl.WorkflowControl, bool) {
@@ -118,6 +133,38 @@ func (d *serviceDependencies) Database() (*gorm.DB, bool) {
 		return nil, false
 	}
 	return d.database, true
+}
+
+func (d *serviceDependencies) RunMetadata() (*runmetadata.Signal, bool) {
+	if d == nil || d.runMetadata == nil {
+		return nil, false
+	}
+	return d.runMetadata, true
+}
+
+func (d *serviceDependencies) ResumeMetadata() (*runmetadata.Resume, bool) {
+	if d == nil || d.resumeMetadata == nil {
+		return nil, false
+	}
+	return d.resumeMetadata, true
+}
+
+func (d *serviceDependencies) CloneWithRunMetadata(metadata *runmetadata.Signal) ServiceDependencies2 {
+	if d == nil {
+		return nil
+	}
+	clone := *d
+	clone.runMetadata = metadata
+	return &clone
+}
+
+func (d *serviceDependencies) CloneWithResumeMetadata(metadata *runmetadata.Resume) ServiceDependencies2 {
+	if d == nil {
+		return nil
+	}
+	clone := *d
+	clone.resumeMetadata = metadata
+	return &clone
 }
 
 func (d *serviceDependencies) serviceDependenciesMarker() serviceDependenciesSeal {

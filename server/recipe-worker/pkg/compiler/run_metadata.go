@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	runmd "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"go.temporal.io/sdk/workflow"
 )
 
@@ -14,46 +15,22 @@ func RecipeRunMetadataSignalName() string {
 	return recipeRunMetadataSignalName
 }
 
-// RecipeRunMetadataSignal models the payload delivered via the recipe_run_metadata signal.
-type RecipeRunMetadataSignal struct {
-	TargetRunID string                   `json:"target_run_id"`
-	Parent      *RecipeRunMetadataParent `json:"parent,omitempty"`
-	Resume      *RecipeRunMetadataResume `json:"resume,omitempty"`
-	Reason      string                   `json:"reason,omitempty"`
-}
-
-// RecipeRunMetadataParent captures linkage to the parent workflow invocation.
-type RecipeRunMetadataParent struct {
-	WorkflowID     string `json:"workflow_id"`
-	RunID          string `json:"run_id"`
-	InvocationHash string `json:"invocation_hash"`
-	RecipeSetIndex *int   `json:"recipe_set_index,omitempty"`
-}
-
-// RecipeRunMetadataResume contains the execution path to be replayed when rewinding.
-type RecipeRunMetadataResume struct {
-	ExecutionPath []RecipeRunMetadataSegment `json:"execution_path,omitempty"`
-}
-
-// RecipeRunMetadataSegment describes a single step in the execution path.
-type RecipeRunMetadataSegment struct {
-	InvocationHash string `json:"invocation_hash"`
-	RunID          string `json:"run_id"`
-	EventID        int64  `json:"event_id"`
-	RecipeSetIndex *int   `json:"recipe_set_index,omitempty"`
-}
-
-type recipeRunMetadataKey struct{}
+// Type aliases maintain backwards compatibility for existing call sites while moving the
+// canonical definitions into recipe-core.
+type RecipeRunMetadataSignal = runmd.Signal
+type RecipeRunMetadataParent = runmd.Parent
+type RecipeRunMetadataResume = runmd.Resume
+type RecipeRunMetadataSegment = runmd.Segment
 
 // waitForRecipeRunMetadata blocks workflow execution until a metadata signal for the current run is received.
 // It ignores signals targeted at other runs and returns the latest matching payload when multiple arrive before
 // execution resumes.
-func waitForRecipeRunMetadata(ctx workflow.Context) (*RecipeRunMetadataSignal, error) {
+func waitForRecipeRunMetadata(ctx workflow.Context) (*runmd.Signal, error) {
 	signalCh := workflow.GetSignalChannel(ctx, recipeRunMetadataSignalName)
 	logger := workflow.GetLogger(ctx)
 	runID := workflow.GetInfo(ctx).WorkflowExecution.RunID
 
-	var payload RecipeRunMetadataSignal
+	var payload runmd.Signal
 	for {
 		if ok := signalCh.Receive(ctx, &payload); !ok {
 			return nil, errors.New("recipe_run_metadata signal channel closed")
@@ -75,7 +52,7 @@ func waitForRecipeRunMetadata(ctx workflow.Context) (*RecipeRunMetadataSignal, e
 	const idleDrainChecks = 3
 	idleCount := 0
 	for idleCount < idleDrainChecks {
-		var next RecipeRunMetadataSignal
+		var next runmd.Signal
 		if !signalCh.ReceiveAsync(&next) {
 			idleCount++
 			_ = workflow.Sleep(ctx, time.Millisecond)
@@ -97,20 +74,4 @@ func waitForRecipeRunMetadata(ctx workflow.Context) (*RecipeRunMetadataSignal, e
 	}
 
 	return &latest, nil
-}
-
-func withRecipeRunMetadata(ctx workflow.Context, metadata *RecipeRunMetadataSignal) workflow.Context {
-	if metadata == nil {
-		return ctx
-	}
-	return workflow.WithValue(ctx, recipeRunMetadataKey{}, metadata)
-}
-
-func recipeRunMetadataFromContext(ctx workflow.Context) (*RecipeRunMetadataSignal, bool) {
-	if val := ctx.Value(recipeRunMetadataKey{}); val != nil {
-		if metadata, ok := val.(*RecipeRunMetadataSignal); ok {
-			return metadata, true
-		}
-	}
-	return nil, false
 }

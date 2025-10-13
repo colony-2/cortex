@@ -23,13 +23,12 @@ type executionContextKey struct{}
 
 // ExecutionContext aggregates execution metadata that needs to travel with the workflow.
 type ExecutionContext struct {
-	Git         GitContext
-	Worktree    string
-	BlobStore   string
-	TicketID    string
-	CellName    string
-	Recipe      ExecutionRecipeContext
-	RunMetadata *RecipeRunMetadataSignal
+	Git       GitContext
+	Worktree  string
+	BlobStore string
+	TicketID  string
+	CellName  string
+	Recipe    ExecutionRecipeContext
 }
 
 // GitContext captures git metadata shared across the recipe lifecycle.
@@ -71,7 +70,7 @@ func (rc ExecutionRecipeContext) toMap() map[string]interface{} {
 }
 
 // initializeExecutionContext validates inputs, computes workspace/blob paths, and injects context.git.
-func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs map[string]interface{}, metadata *RecipeRunMetadataSignal) (workflow.Context, map[string]interface{}, error) {
+func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs map[string]interface{}) (workflow.Context, map[string]interface{}, error) {
 	if inputs == nil {
 		inputs = make(map[string]interface{})
 	}
@@ -137,7 +136,6 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 			WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
 			NodePath:      recipeMetadata.NodeMetadata.ID,
 		},
-		RunMetadata: metadata,
 	}
 
 	ctx = workflow.WithValue(ctx, executionContextKey{}, execCtx)

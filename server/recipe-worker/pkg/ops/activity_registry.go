@@ -47,7 +47,7 @@ func NewActivityRegistry() (*ActivityRegistry, error) {
 		activities:    make(map[string]ActivityRegistration),
 		generator:     NewDefaultSchemaGenerator(),
 		gitController: gitstate.NewController(nil),
-		deps:          nil,
+		deps:          ops.NewServiceDepsBuilder().Build(),
 	}
 	opsList := ops.List()
 	for _, op := range opsList {

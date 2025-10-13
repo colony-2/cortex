@@ -18,14 +18,25 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityReg
 	if err != nil {
 		return nil, err
 	}
-	ctx = withRecipeRunMetadata(ctx, metadata)
 
-	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs, metadata)
+	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs)
 	if err != nil {
 		return nil, err
 	}
 
-	tracker := newInvocationTracker(r.GetMetdata(), activityRegistry.Dependencies())
+	deps := activityRegistry.Dependencies()
+	if metadata != nil && deps != nil {
+		if cloned := deps.CloneWithRunMetadata(metadata); cloned != nil {
+			deps = cloned
+		}
+		if metadata.Resume != nil {
+			if cloned := deps.CloneWithResumeMetadata(metadata.Resume); cloned != nil {
+				deps = cloned
+			}
+		}
+	}
+
+	tracker := newInvocationTracker(r.GetMetdata(), deps)
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
