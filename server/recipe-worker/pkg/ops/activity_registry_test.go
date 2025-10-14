@@ -15,6 +15,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/activity"
 )
 
 // Test types with proper JSON tags
@@ -97,7 +98,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	)
 
 	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
-	wrapped := withGitWorkspace(registration, controller, nil)
+	wrapped := withGitWorkspace(registration, controller)
 
 	inv := recipeops.Invocation{RecipeID: "recipe.test", NodePath: "sequence.node", InvokeSeq: 1}
 	input := map[string]interface{}{
@@ -134,37 +135,73 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	require.True(t, stat.Mode().IsRegular())
 }
 
-func TestWithGitWorkspaceInjectsDependencies(t *testing.T) {
+func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	t.Parallel()
 
 	deps := recipeops.NewServiceDepsBuilder().Build()
-	repoDir, baseHash, persistHash := initTwoCommitRepo(t)
-	blobStore := t.TempDir()
-	worktree := filepath.Join(t.TempDir(), "worktree")
+	registry, err := NewActivityRegistry()
+	require.NoError(t, err)
 
-	activity := recipeops.NewActivityMappedOpV2[TestInput, TestOutput](
-		recipeops.OpMetadata{Type: "deps_check", Description: "ensure deps present", Version: "1.0.0"},
-		func(inv recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
-			require.NotNil(t, inv.Deps)
-			return runTestActivity(inv, ctx, input)
+	type depInput struct {
+		Message string `json:"message"`
+	}
+	type depOutput struct {
+		Acknowledged bool `json:"acknowledged"`
+	}
+
+	const activityType = "deps_injection_check"
+	seenDeps := false
+	activity := recipeops.NewActivityMappedOpV2[depInput, depOutput](
+		recipeops.OpMetadata{Type: activityType, Description: "ensure deps present", Version: "1.0.0"},
+		func(inv recipeops.Invocation, ctx context.Context, input depInput) (depOutput, error) {
+			require.Same(t, deps, inv.Deps)
+			seenDeps = true
+			return depOutput{Acknowledged: true}, nil
 		},
 	)
-	registration := ActivityRegistration{Activity: activity, Metadata: activity.GetMetadata()}
+	require.NoError(t, Register(registry, activity))
+	registry.SetDependencies(deps)
 
-	wrapped := withGitWorkspace(registration, nil, deps)
+	worker := newCapturingWorker(t)
+	registry.EnableActivitiesInWorker(worker)
+
+	handler, ok := worker.handlers[activityType]
+	require.True(t, ok)
+
+	repoPath, baseHash, _ := initTwoCommitRepo(t)
 	input := map[string]interface{}{
+		"message": "hi",
 		"context": map[string]interface{}{
 			"git": map[string]interface{}{
-				"base_repo":      repoDir,
-				"base_hash":      baseHash,
-				"persist_hash":   persistHash,
-				"worktree_path":  worktree,
-				"blob_store_uri": "file://" + filepath.ToSlash(blobStore),
+				"base_repo":    repoPath,
+				"base_hash":    baseHash,
+				"persist_hash": baseHash,
 			},
+			"worktree":  "/tmp/work",
+			"blobstore": "file:///tmp/blob",
+			"ticketid":  "TEST-1",
+			"cellname":  "cell-a",
 		},
+		"git_persist_hash": baseHash,
 	}
-	_, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, Input: input})
+	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, Input: input})
 	require.NoError(t, err)
+	require.True(t, seenDeps)
+}
+
+type capturingWorker struct {
+	t        *testing.T
+	handlers map[string]func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)
+}
+
+func newCapturingWorker(t *testing.T) *capturingWorker {
+	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error))}
+}
+
+func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
+	handler, ok := a.(func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error))
+	require.True(c.t, ok)
+	c.handlers[options.Name] = handler
 }
 
 func initTwoCommitRepo(t *testing.T) (string, string, string) {

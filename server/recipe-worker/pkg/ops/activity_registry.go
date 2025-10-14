@@ -77,12 +77,13 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 		if !registration.Activity.ExecuteAsActivity() {
 			continue
 		}
-		wrapped := withGitWorkspace(registration, r.gitController, r.deps)
+		wrapped := withGitWorkspace(registration, r.gitController)
+		wrapped = withDependencies(r.deps, wrapped)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
 	}
 }
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller, deps ops.ServiceDependencies2) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
@@ -100,9 +101,6 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller,
 		}
 		if err := controller.Restore(ctx, gitCtx); err != nil {
 			return nil, err
-		}
-		if req.Invocation.Deps == nil {
-			req.Invocation.Deps = deps
 		}
 		outputs, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
 		if err != nil {
@@ -123,6 +121,18 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller,
 		}
 		gitstate.InjectPersistResult(outputs, newHash, updatedCtx)
 		return outputs, nil
+	}
+}
+
+func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+	if deps == nil {
+		return next
+	}
+	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+		if req.Invocation.Deps == nil {
+			req.Invocation.Deps = deps
+		}
+		return next(ctx, req)
 	}
 }
 
