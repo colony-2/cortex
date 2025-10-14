@@ -40,7 +40,7 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 	parentWorktree := filepath.Join(workspaceRoot, "run-parent", "work")
 	inputs := map[string]interface{}{
 		"ticket_id": "TICKET-123",
-		"cell_name": "alpha",
+		"cell_name": "cells/alpha",
 		"context": map[string]interface{}{
 			"git": map[string]interface{}{
 				"base_repo":      baseRepo,
@@ -53,7 +53,7 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 			"worktree":  parentWorktree,
 			"blobstore": "file://" + filepath.ToSlash(blobStore),
 			"ticketid":  "TICKET-123",
-			"cellname":  "alpha",
+			"cellname":  "cells/alpha",
 			"recipe": map[string]interface{}{
 				"id":        "recipe.parent",
 				"node_path": "root",
@@ -87,7 +87,7 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 			var ignore interface{}
 			future := workflow.ExecuteLocalActivity(inner, inlineWriteFileActivity, inlineWriteFileArgs{
 				Dir:     worktreePath,
-				Name:    "child.txt",
+				Name:    filepath.Join("cells", "alpha", "child.txt"),
 				Content: "nested",
 			})
 			if err := future.Get(inner, &ignore); err != nil {
@@ -123,7 +123,7 @@ func TestWithInlineWorkspaceLifecycle(t *testing.T) {
 	require.True(t, strings.HasPrefix(childWorktree, filepath.Dir(parentWorktree)))
 	require.Equal(t, "work", filepath.Base(childWorktree))
 	require.DirExists(t, filepath.Dir(childWorktree))
-	_, err = os.Stat(filepath.Join(childWorktree, "child.txt"))
+	_, err = os.Stat(filepath.Join(childWorktree, "cells", "alpha", "child.txt"))
 	require.NoError(t, err)
 	gitMap := result.ContextMap["git"].(map[string]interface{})
 	if prepared, ok := gitMap["workspace_prepared"].(bool); ok {

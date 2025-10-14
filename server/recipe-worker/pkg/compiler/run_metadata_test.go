@@ -121,7 +121,7 @@ func TestExecuteRecipeWaitsForMetadataSignal(t *testing.T) {
 		"basegitrepo": "https://example.com/repo.git",
 		"basegithash": "abc123",
 		"ticketid":    "TEST-1",
-		"cellname":    "cell-a",
+		"cellname":    "cells/cell-a",
 	}
 
 	env.RegisterDelayedCallback(func() {

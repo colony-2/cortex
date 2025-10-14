@@ -24,7 +24,7 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 
 	inputs := map[string]interface{}{
 		"ticket_id": "TICKET-DETACHED",
-		"cell_name": "beta",
+		"cell_name": "cells/beta",
 		"context": map[string]interface{}{
 			"git": map[string]interface{}{
 				"base_repo":      baseRepo,
@@ -37,7 +37,7 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 			"worktree":  parentWorktree,
 			"blobstore": "file://" + filepath.ToSlash(blobStore),
 			"ticketid":  "TICKET-DETACHED",
-			"cellname":  "beta",
+			"cellname":  "cells/beta",
 		},
 		"git_persist_hash": baseHash,
 	}
@@ -60,7 +60,7 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 			var ignore interface{}
 			err := workflow.ExecuteLocalActivity(inner, inlineWriteFileActivity, inlineWriteFileArgs{
 				Dir:     worktree,
-				Name:    "child.txt",
+				Name:    filepath.Join("cells", "beta", "child.txt"),
 				Content: "detached",
 			}).Get(inner, &ignore)
 			if err != nil {
@@ -86,10 +86,10 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 	gitMap := result.ContextMap["git"].(map[string]interface{})
 	worktreePath := gitMap["worktree_path"].(string)
 
-	stat, err := os.Stat(filepath.Join(worktreePath, "child.txt"))
+	stat, err := os.Stat(filepath.Join(worktreePath, "cells", "beta", "child.txt"))
 	require.NoError(t, err)
 	require.False(t, stat.IsDir())
 
-	_, err = os.Stat(filepath.Join(parentWorktree, "child.txt"))
+	_, err = os.Stat(filepath.Join(parentWorktree, "cells", "beta", "child.txt"))
 	require.Error(t, err)
 }

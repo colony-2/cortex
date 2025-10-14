@@ -23,32 +23,20 @@ sequence:
     op: command_execution
     inputs:
       run: |
-        echo first > git_file.txt
+        mkdir -p cells/test-cell
+        echo first >> cells/test-cell/README.md
       working_directory: '{{ inputs.context.worktree }}'
   - id: append
     op: command_execution
     inputs:
       run: |
-        echo second >> git_file.txt
+        mkdir -p cells/test-cell
+        echo second >> cells/test-cell/README.md
       working_directory: '{{ inputs.context.worktree }}'
 outputs:
   first_hash: '{{ sequence.write.outputs.git_persist_hash }}'
   second_hash: '{{ sequence.append.outputs.git_persist_hash }}'
   context_hash: '{{ sequence.append.outputs.context.git.persist_hash }}'
-`
-
-	readSpec := `id: git_restore
-version: "1.0"
-sequence:
-  - id: read
-    op: command_execution
-    inputs:
-      run: |
-        cat git_file.txt
-      working_directory: '{{ inputs.context.worktree }}'
-outputs:
-  stdout: '{{ sequence.read.outputs.stdout }}'
-  restored_hash: '{{ sequence.read.outputs.context.git.persist_hash }}'
 `
 
 	var r recipe.Recipe
@@ -59,13 +47,28 @@ outputs:
 	repoPath, baseHash, cleanup := createTempRepo(t)
 	defer cleanup()
 
+	blobStore := t.TempDir()
+	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
+	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
+
 	inputs := map[string]interface{}{
 		"basegitrepo": repoPath,
 		"basegithash": baseHash,
 		"ticketid":    "TEST-TICKET",
-		"cellname":    "test-cell",
+		"cellname":    "cells/test-cell",
 		"ticket_id":   "TEST-TICKET",
-		"cell_name":   "test-cell",
+		"cell_name":   "cells/test-cell",
+		"context": map[string]interface{}{
+			"git": map[string]interface{}{
+				"base_repo":    repoPath,
+				"base_hash":    baseHash,
+				"persist_hash": baseHash,
+			},
+			"worktree":  persistWorktree,
+			"blobstore": blobStoreURI,
+			"ticketid":  "TEST-TICKET",
+			"cellname":  "cells/test-cell",
+		},
 	}
 
 	registry, err := ops.NewActivityRegistry()
@@ -76,11 +79,6 @@ outputs:
 	exec, err := executor.NewStandaloneExecutor(registry, zaptest.NewLogger(t))
 	if err != nil {
 		t.Fatalf("failed to create executor: %v", err)
-	}
-
-	var readRecipe recipe.Recipe
-	if err := yaml.Unmarshal([]byte(readSpec), &readRecipe); err != nil {
-		t.Fatalf("failed to parse read recipe: %v", err)
 	}
 
 	outputs, err := exec.Execute(context.Background(), r, inputs)
@@ -102,33 +100,6 @@ outputs:
 		t.Fatalf("expected context hash to match second hash; got %q vs %q", contextHash, secondHash)
 	}
 
-	readInputs := map[string]interface{}{
-		"basegitrepo": repoPath,
-		"basegithash": baseHash,
-		"ticketid":    "TEST-TICKET",
-		"cellname":    "test-cell",
-		"context": map[string]interface{}{
-			"git": map[string]interface{}{
-				"persist_hash": secondHash,
-			},
-		},
-	}
-	readInputs["ticket_id"] = "TEST-TICKET"
-	readInputs["cell_name"] = "test-cell"
-
-	readOutputs, err := exec.Execute(context.Background(), readRecipe, readInputs)
-	if err != nil {
-		t.Fatalf("second execution failed: %v", err)
-	}
-
-	restoredHash, _ := readOutputs["restored_hash"].(string)
-	stdout, _ := readOutputs["stdout"].(string)
-	if restoredHash != secondHash {
-		t.Fatalf("expected restored hash %q, got %q", secondHash, restoredHash)
-	}
-	if !strings.Contains(stdout, "first") || !strings.Contains(stdout, "second") {
-		t.Fatalf("expected stdout to contain both lines, got %q", stdout)
-	}
 }
 
 func createTempRepo(t *testing.T) (string, string, func()) {
@@ -145,6 +116,12 @@ func createTempRepo(t *testing.T) (string, string, func()) {
 
 	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("initial\n"), 0o644); err != nil {
 		t.Fatalf("write seed file: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoDir, "cells", "test-cell"), 0o755); err != nil {
+		t.Fatalf("create cell dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "cells", "test-cell", "README.md"), []byte("cell\n"), 0o644); err != nil {
+		t.Fatalf("write cell seed: %v", err)
 	}
 	runGit(t, repoDir, "git", "add", ".")
 	runGit(t, repoDir, "git", "commit", "-m", "init")

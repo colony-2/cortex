@@ -47,6 +47,17 @@ func ensureTestRepo() (string, string) {
 		if err := os.WriteFile(readme, []byte("initial\n"), 0o644); err != nil {
 			panic(err)
 		}
+		cells := []string{"cells/test-cell", "cells/alpha", "cells/beta", "cells/cell-a"}
+		for _, rel := range cells {
+			full := filepath.Join(dir, rel)
+			if err := os.MkdirAll(full, 0o755); err != nil {
+				panic(err)
+			}
+			seed := filepath.Join(full, "README.md")
+			if err := os.WriteFile(seed, []byte(rel+"\n"), 0o644); err != nil {
+				panic(err)
+			}
+		}
 		if err := runGit(dir, "git", "add", "."); err != nil {
 			panic(err)
 		}
@@ -89,7 +100,7 @@ func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{}
 		inputs["ticketid"] = "TEST-TICKET"
 	}
 	if _, ok := inputs["cellname"]; !ok {
-		inputs["cellname"] = "test-cell"
+		inputs["cellname"] = "cells/test-cell"
 	}
 	return inputs
 }

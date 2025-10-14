@@ -113,7 +113,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			"worktree":  repoDir,
 			"blobstore": "file://" + filepath.ToSlash(blobStore),
 			"ticketid":  "T-1",
-			"cellname":  "beta",
+			"cellname":  "cells/beta",
 		},
 	}
 
@@ -169,6 +169,8 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	require.True(t, ok)
 
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
+	worktreeDir := filepath.Join(t.TempDir(), "work")
+	blobDir := t.TempDir()
 	input := map[string]interface{}{
 		"message": "hi",
 		"context": map[string]interface{}{
@@ -177,10 +179,10 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 				"base_hash":    baseHash,
 				"persist_hash": baseHash,
 			},
-			"worktree":  "/tmp/work",
-			"blobstore": "file:///tmp/blob",
+			"worktree":  worktreeDir,
+			"blobstore": "file://" + filepath.ToSlash(blobDir),
 			"ticketid":  "TEST-1",
-			"cellname":  "cell-a",
+			"cellname":  "cells/cell-a",
 		},
 		"git_persist_hash": baseHash,
 	}
@@ -213,12 +215,15 @@ func initTwoCommitRepo(t *testing.T) (string, string, string) {
 	runGitCmd(t, repoDir, "git", "config", "user.name", "Tester")
 	runGitCmd(t, repoDir, "git", "config", "user.email", "tester@example.com")
 	writeFile(t, repoDir, "README.md", "first\n")
-	runGitCmd(t, repoDir, "git", "add", "README.md")
+	for _, cell := range []string{"beta", "cell-a", "test-cell"} {
+		writeFile(t, repoDir, filepath.Join("cells", cell, "README.md"), cell+"\n")
+	}
+	runGitCmd(t, repoDir, "git", "add", ".")
 	runGitCmd(t, repoDir, "git", "commit", "-m", "first")
 	baseHash := strings.TrimSpace(runGitCmd(t, repoDir, "git", "rev-parse", "HEAD"))
 	runGitCmd(t, repoDir, "git", "checkout", "-B", "main")
 	writeFile(t, repoDir, "README.md", "second\n")
-	runGitCmd(t, repoDir, "git", "add", "README.md")
+	runGitCmd(t, repoDir, "git", "add", ".")
 	runGitCmd(t, repoDir, "git", "commit", "-m", "second")
 	nextHash := strings.TrimSpace(runGitCmd(t, repoDir, "git", "rev-parse", "HEAD"))
 	return repoDir, baseHash, nextHash

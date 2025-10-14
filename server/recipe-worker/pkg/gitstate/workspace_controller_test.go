@@ -33,7 +33,7 @@ func TestControllerLifecycle(t *testing.T) {
 		WorktreePath:   worktree,
 		BlobStoreURI:   "file://" + blobStore,
 		TicketID:       "ticket-123",
-		CellName:       "alpha",
+		CellName:       "cells/alpha",
 		RecipeID:       "recipe.test",
 		RecipeNode:     "node",
 		WorkflowID:     "wf",
@@ -46,7 +46,7 @@ func TestControllerLifecycle(t *testing.T) {
 	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
 	require.NoError(t, controller.Restore(context.Background(), &ctx))
 
-	file := writeFile{Path: filepath.Join(worktree, "hello.txt"), Content: "hello"}
+	file := writeFile{Path: filepath.Join(worktree, "cells", "alpha", "hello.txt"), Content: "hello"}
 	require.NoError(t, os.WriteFile(file.Path, []byte(file.Content), 0o644))
 
 	newHash, updatedCtx, err := controller.Persist(context.Background(), &ctx)
@@ -81,6 +81,100 @@ func TestControllerLifecycle(t *testing.T) {
 	require.True(t, strings.HasPrefix(restoredHead, newHash[:7]))
 }
 
+func TestControllerPersistCleansOutsideCell(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := Context{
+		BaseRepo:     baseRepo,
+		BaseHash:     baseHash,
+		PersistHash:  baseHash,
+		PreviousHash: baseHash,
+		WorktreePath: worktree,
+		BlobStoreURI: "file://" + blobStore,
+		CellName:     "cells/alpha",
+	}
+
+	controller := NewController(nil)
+	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
+	require.NoError(t, controller.Restore(context.Background(), &ctx))
+
+	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
+	require.NoError(t, os.WriteFile(inside, []byte("alpha"), 0o644))
+
+	outside := filepath.Join(worktree, "rogue.txt")
+	require.NoError(t, os.WriteFile(outside, []byte("rogue"), 0o644))
+
+	newHash, _, err := controller.Persist(context.Background(), &ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, newHash)
+
+	_, err = os.Stat(outside)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
+
+	status := strings.TrimSpace(runGitOutput(t, worktree, "git", "status", "--porcelain"))
+	require.Equal(t, "", status)
+
+	show := runGitOutput(t, worktree, "git", "show", "--name-only", "--pretty=format:")
+	require.Contains(t, show, "cells/alpha/alpha.txt")
+	require.NotContains(t, show, "rogue.txt")
+}
+
+func TestControllerRestoreCleansOutsideCell(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := Context{
+		BaseRepo:     baseRepo,
+		BaseHash:     baseHash,
+		PersistHash:  baseHash,
+		PreviousHash: baseHash,
+		WorktreePath: worktree,
+		BlobStoreURI: "file://" + blobStore,
+		CellName:     "cells/alpha",
+	}
+
+	controller := NewController(nil)
+	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
+	require.NoError(t, controller.Restore(context.Background(), &ctx))
+
+	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
+	require.NoError(t, os.WriteFile(inside, []byte("alpha"), 0o644))
+
+	newHash, updatedCtx, err := controller.Persist(context.Background(), &ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, newHash)
+
+	stray := filepath.Join(worktree, "stray.txt")
+	require.NoError(t, os.WriteFile(stray, []byte("stray"), 0o644))
+	statBefore, err := os.Stat(stray)
+	require.NoError(t, err)
+	require.False(t, statBefore.IsDir())
+
+	updatedCtx.PersistHash = newHash
+	require.NoError(t, controller.Restore(context.Background(), &updatedCtx))
+
+	_, err = os.Stat(stray)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
+
+	status := strings.TrimSpace(runGitOutput(t, worktree, "git", "status", "--porcelain"))
+	require.Equal(t, "", status)
+}
+
 func TestBuildCommitMessage(t *testing.T) {
 	ctx := Context{
 		BaseRepo:          "/repo",
@@ -90,7 +184,7 @@ func TestBuildCommitMessage(t *testing.T) {
 		BlobStoreURI:      "file:///blob",
 		ThinPackPath:      "git/thin-packs/cb-pack.pack",
 		TicketID:          "TICK-1",
-		CellName:          "alpha",
+		CellName:          "cells/alpha",
 		RecipeID:          "recipe",
 		RecipeNode:        "node",
 		InvocationHash:    "invhash",
@@ -117,6 +211,10 @@ func setupGitRepo(t *testing.T) (string, string, func()) {
 	runGit(t, repoPath, "git", "config", "user.email", "test@example.com")
 	runGit(t, repoPath, "git", "config", "user.name", "Test User")
 	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "README.md"), []byte("initial\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(repoPath, "cells", "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(repoPath, "cells", "beta"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "cells", "alpha", "README.md"), []byte("alpha\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repoPath, "cells", "beta", "README.md"), []byte("beta\n"), 0o644))
 	runGit(t, repoPath, "git", "add", ".")
 	runGit(t, repoPath, "git", "commit", "-m", "init")
 	head := gitRevParse(t, repoPath, "HEAD")

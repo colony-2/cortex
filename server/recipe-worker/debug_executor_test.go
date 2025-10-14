@@ -106,7 +106,7 @@ inputs:
 			"basegitrepo": repo,
 			"basegithash": hash,
 			"ticketid":    "TEST-TICKET",
-			"cellname":    "test-cell",
+			"cellname":    "cells/test-cell",
 		},
 		executor.ExecutionOptions{
 			SuppressLogs: false, // Show logs for debugging

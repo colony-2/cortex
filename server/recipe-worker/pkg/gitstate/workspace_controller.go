@@ -114,7 +114,7 @@ func (c *Controller) Restore(ctx context.Context, ws Workspace) error {
 		return fmt.Errorf("determine current commit: %w", err)
 	}
 	if hashesEqual(current, ws.GetPersistHash()) {
-		return nil
+		return c.ensureCleanAfterRestore(ctx, ws)
 	}
 
 	adapter, err := c.adapterFor(ws.GetBlobStoreURI())
@@ -153,11 +153,17 @@ func (c *Controller) Restore(ctx context.Context, ws Workspace) error {
 	if _, err := gitcommit.RestoreCommit(ctx, restoreInput); err != nil {
 		return fmt.Errorf("restore git state: %w", err)
 	}
-	return nil
+
+	return c.ensureCleanAfterRestore(ctx, ws)
 }
 
 // Persist captures repository changes, writes thin packs, and returns the new commit hash alongside refreshed context.
 func (c *Controller) Persist(ctx context.Context, ws Workspace) (string, Context, error) {
+	scopePath, err := c.prepareScopedWorkspace(ctx, ws)
+	if err != nil {
+		return "", Context{}, err
+	}
+
 	adapter, err := c.adapterFor(ws.GetBlobStoreURI())
 	if err != nil {
 		return "", Context{}, err
@@ -209,7 +215,69 @@ func (c *Controller) Persist(ctx context.Context, ws Workspace) (string, Context
 	updated.ThinPackPath = filepath.ToSlash(relativePackPath)
 	updated.WorkspacePrepared = true
 
+	if scopePath != "" {
+		// Ensure the worktree remains clean after persistence.
+		if err := common.EnsureCleanAfterRestore(ctx, ws.GetWorktreePath(), scopePath, output.CommitHash); err != nil {
+			return "", Context{}, err
+		}
+	}
+
 	return output.CommitHash, updated, nil
+}
+
+func (c *Controller) prepareScopedWorkspace(ctx context.Context, ws Workspace) (string, error) {
+	worktree := strings.TrimSpace(ws.GetWorktreePath())
+	if worktree == "" {
+		return "", fmt.Errorf("git workspace requires worktree path")
+	}
+
+	scope, err := c.resolveScopePath(ctx, ws)
+	if err != nil {
+		return "", err
+	}
+
+	if scope == "" {
+		return "", nil
+	}
+
+	if _, err := common.PrepareScopedCommit(ctx, worktree, scope); err != nil {
+		return "", err
+	}
+
+	return scope, nil
+}
+
+func (c *Controller) ensureCleanAfterRestore(ctx context.Context, ws Workspace) error {
+	worktree := strings.TrimSpace(ws.GetWorktreePath())
+	if worktree == "" {
+		return fmt.Errorf("git workspace requires worktree path")
+	}
+
+	scope, err := c.resolveScopePath(ctx, ws)
+	if err != nil {
+		return err
+	}
+	if scope == "" {
+		scope = "."
+	}
+
+	return common.EnsureCleanAfterRestore(ctx, worktree, scope, ws.GetPersistHash())
+}
+
+func (c *Controller) resolveScopePath(ctx context.Context, ws Workspace) (string, error) {
+	cell := strings.TrimSpace(ws.GetCellName())
+	if cell == "" {
+		return ".", nil
+	}
+
+	sanitized := filepath.ToSlash(strings.Trim(cell, "/"))
+	if sanitized == "" {
+		return "", fmt.Errorf("cell name cannot resolve to repository root")
+	}
+	if strings.Contains(sanitized, "..") || filepath.IsAbs(sanitized) {
+		return "", fmt.Errorf("invalid cell path %s", cell)
+	}
+	return sanitized, nil
 }
 
 func (c *Controller) adapterFor(uri string) (StorageAdapter, error) {
