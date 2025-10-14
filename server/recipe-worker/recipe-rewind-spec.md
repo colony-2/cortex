@@ -100,11 +100,12 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
 3. **Processing the execution path**
    - Once the workflow receives a metadata payload (blocking until it does), it stores the payload in workflow state, extracting the parent linkage (if present) and the resume details, then begins execution.
    - If `resume.execution_path` is empty or `resume` is omitted, the recipe runs normally.
+   - The resume payload is exposed to ops through `ServiceDependencies2.ResumeMetadata()`. Before each op executes, the worker provides the same dependency container populated from the signal so every op can read the execution path.
    - If the op is a `recipe` or `recipe_set`, the head invocation_hash from `resume.execution_path` is compared to the op invocation_hash. If they do not match, the op is executed normally (non-resume behavior). The recipe will continue to other ops, ultimately landing on the given invocation_hash.
    - When the invocation_hash matches:
-     - If op is a `recipe`, the child recipe is run as a reset with the given run_id and event_id and the workflow follows the standard wait logic (wait for sync, don't wait for async). The parent includes its identifiers in the metadata signal so the child can record linkage for story builder.
-     - If op is a `recipe_set`, the op moves through each child recipe in its set. If that child does not match the given recipe_set_index, the child is run through the standard path. If the child is the matching index, the child recipe is run as a reset with the given run_id and event_id and the workflow follows the standard wait logic (wait for sync, don't wait for async), again including parent identifiers in the metadata signal.
-   - Once an invocation_hash is matched, the resume state inside the workflow is cleared, but the parent linkage remains available for story recording.
+     - If op is a `recipe`, the child recipe is restarted via the Temporal workflow reset API using the provided `run_id` and `event_id`, and the workflow follows the standard wait logic (wait for sync, don't wait for async). The parent includes its identifiers in the metadata signal so the child can record linkage for story builder. The op also constructs a new `runmetadata.Resume` excluding the consumed head segment and passes that trimmed resume (along with the existing parent metadata) when cloning dependencies for the child.
+     - If op is a `recipe_set`, the op moves through each child recipe in its set. Non-matching children run through the standard path. When the child index matches the resume segment, the op uses the Temporal reset API instead of the start-child call, follows the standard wait logic, and forwards a cloned dependency container whose resume metadata omits the head segment for the selected child.
+   - After a reset branch is executed, the parent workflow continues with the original dependency view; additional resume segments (if any) are consumed by downstream ops that observe the trimmed resume forwarded to them.
 
 4. **Payload construction**
    - Invoke the execution-path builder described above to produce the ordered list of segments. Each segment becomes one entry in the `resume.execution_path` array with fields:
@@ -116,8 +117,11 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
 
 ## Implementation Steps
 1. Implement the recipe_run_metadata signal handler and recipe wait with unit/integration tests (leveraging temporal's workflowtestsuite)
-2. Implement the execution-path holder and recipe/recipeset branching (if resume invocation, do reset with event id and run id) with unit/integration tests
+2. Implement resume-aware recipe/recipeset branching:
+   - Ensure the workflow passes the `runmetadata.Resume` from the signal straight through `ServiceDependencies2` so ops can inspect it.
+   - Update the new `recipe` and `recipe_set` ops to read `deps.ResumeMetadata()` to determine whether they are the target invocation and, when they are, invoke the Temporal reset API with the segment’s `run_id` and `event_id` instead of starting a fresh child workflow execution.
+   - When performing a reset, clone the dependency container (and associated run metadata) with a new resume object whose `ExecutionPath` excludes the consumed head segment before handing it to the child recipe.
+   - Non-matching ops ignore the resume metadata and continue normal execution. Tests should cover both matching and non-matching cases across recipe and recipeset flows.
 3. Add additional needed properties to story builder with unit/integration tests (including the embeddedtemporal ones)
 4. Implement the execution-path builder with unit/integration tests
 5. Add new embeddedtemporal tests similar to story builder ones entire cycle: run recipe with sub recipe and sub-sub-recipe. Pick a mid op of inner-most recipe and, build rewind execution path and then execute from rewound state. validate that the correct portion of state was replayed at each level.
-
