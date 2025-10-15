@@ -2,9 +2,11 @@ package worker
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/google/uuid"
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
@@ -20,9 +22,7 @@ func newWorkerDependencies(cli client.Client, namespace string, db *gorm.DB) ops
 		WithDatabase(db)
 	if cli != nil {
 		ctl := &temporalWorkflowControl{client: cli, namespace: namespace}
-		builder = builder.
-			WithWorkflowControl(ctl).
-			WithWorkflowClient(cli)
+		builder = builder.WithWorkflowControl(ctl)
 	}
 	return builder.Build()
 }
@@ -91,6 +91,64 @@ func (c *temporalWorkflowControl) Cancel(ctx context.Context, ref workflowctl.Ex
 		return workflowctl.ErrUnavailable
 	}
 	return mapTemporalError(c.client.CancelWorkflow(ctx, ref.WorkflowID, ref.RunID))
+}
+
+func (c *temporalWorkflowControl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
+	if c == nil || c.client == nil {
+		return workflowctl.ResetResponse{}, workflowctl.ErrUnavailable
+	}
+	if req.Execution.WorkflowID == "" {
+		return workflowctl.ResetResponse{}, fmt.Errorf("workflow id is required for reset")
+	}
+	if req.WorkflowTaskFinishEventID <= 0 {
+		return workflowctl.ResetResponse{}, fmt.Errorf("workflow task finish event id must be positive")
+	}
+	resetReq := &workflowservice.ResetWorkflowExecutionRequest{
+		Namespace: c.namespace,
+		WorkflowExecution: &commonpb.WorkflowExecution{
+			WorkflowId: req.Execution.WorkflowID,
+			RunId:      req.Execution.RunID,
+		},
+		Reason:                    req.Reason,
+		WorkflowTaskFinishEventId: req.WorkflowTaskFinishEventID,
+		RequestId:                 uuid.NewString(),
+		ResetReapplyType:          enumspb.RESET_REAPPLY_TYPE_SIGNAL,
+	}
+	resp, err := c.client.WorkflowService().ResetWorkflowExecution(ctx, resetReq)
+	if err != nil {
+		return workflowctl.ResetResponse{}, mapTemporalError(err)
+	}
+	newRunID := resp.GetRunId()
+	if newRunID == "" {
+		newRunID = req.Execution.RunID
+	}
+	result := workflowctl.ResetResponse{
+		Execution: workflowctl.ExecutionRef{WorkflowID: req.Execution.WorkflowID, RunID: newRunID},
+	}
+	if req.WaitForResult {
+		workflowRun := c.client.GetWorkflow(ctx, req.Execution.WorkflowID, newRunID)
+		if workflowRun == nil {
+			return workflowctl.ResetResponse{}, workflowctl.ErrUnavailable
+		}
+		var payload map[string]interface{}
+		if err := workflowRun.Get(ctx, &payload); err != nil {
+			return workflowctl.ResetResponse{}, mapTemporalError(err)
+		}
+		if payload == nil {
+			payload = make(map[string]interface{})
+		}
+		result.Completed = true
+		result.Result = payload
+	}
+	return result, nil
+}
+
+func (c *temporalWorkflowControl) StartWorkflow(ctx context.Context, req workflowctl.StartRequest) (workflowctl.StartResponse, error) {
+	return workflowctl.StartResponse{}, workflowctl.ErrUnavailable
+}
+
+func (c *temporalWorkflowControl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
+	return workflowctl.StartChildResponse{}, workflowctl.ErrUnavailable
 }
 
 func mapTemporalStatus(status enumspb.WorkflowExecutionStatus) workflowctl.WorkflowStatus {

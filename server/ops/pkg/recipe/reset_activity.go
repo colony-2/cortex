@@ -6,10 +6,7 @@ import (
 	"fmt"
 
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/google/uuid"
-	commonpb "go.temporal.io/api/common/v1"
-	enumspb "go.temporal.io/api/enums/v1"
-	workflowservice "go.temporal.io/api/workflowservice/v1"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 )
 
 // ResetChildWorkflowActivityName is the registered Temporal activity name used by recipe-worker.
@@ -56,57 +53,35 @@ func (a *ResetChildWorkflowActivity) Execute(ctx context.Context, input ResetChi
 		return ResetChildWorkflowActivityResult{}, errors.New("dependencies not configured")
 	}
 
-	cli, ok := a.deps.WorkflowClient()
-	if !ok || cli == nil {
-		return ResetChildWorkflowActivityResult{}, errors.New("workflow client dependency not available")
-	}
-	ns, ok := a.deps.TemporalNamespace()
-	if !ok || ns == "" {
-		return ResetChildWorkflowActivityResult{}, errors.New("temporal namespace not configured")
+	ctl, ok := a.deps.WorkflowControl()
+	if !ok || ctl == nil {
+		return ResetChildWorkflowActivityResult{}, errors.New("workflow control dependency not available")
 	}
 
-	resetReq := &workflowservice.ResetWorkflowExecutionRequest{
-		Namespace: ns,
-		WorkflowExecution: &commonpb.WorkflowExecution{
-			WorkflowId: input.WorkflowID,
-			RunId:      input.RunID,
+	resp, err := ctl.ResetWorkflow(ctx, workflowctl.ResetRequest{
+		Execution: workflowctl.ExecutionRef{
+			WorkflowID: input.WorkflowID,
+			RunID:      input.RunID,
 		},
+		WorkflowTaskFinishEventID: input.EventID,
 		Reason:                    input.Reason,
-		WorkflowTaskFinishEventId: input.EventID,
-		RequestId:                 uuid.NewString(),
-		ResetReapplyType:          enumspb.RESET_REAPPLY_TYPE_SIGNAL,
-	}
-
-	resp, err := cli.WorkflowService().ResetWorkflowExecution(ctx, resetReq)
+		WaitForResult:             input.WaitForCompletion,
+	})
 	if err != nil {
 		return ResetChildWorkflowActivityResult{}, err
 	}
 
-	newRunID := resp.GetRunId()
-	if newRunID == "" {
-		// Temporal should always return a run id, but fall back to the supplied value if it does not.
-		newRunID = input.RunID
+	result := ResetChildWorkflowActivityResult{RunID: resp.Execution.RunID}
+	if input.WaitForCompletion {
+		if !resp.Completed {
+			return ResetChildWorkflowActivityResult{}, fmt.Errorf("reset response missing completion payload for %s/%s", resp.Execution.WorkflowID, resp.Execution.RunID)
+		}
+		payload := resp.Result
+		if payload == nil {
+			payload = make(map[string]interface{})
+		}
+		result.Completed = true
+		result.Result = payload
 	}
-
-	result := ResetChildWorkflowActivityResult{RunID: newRunID}
-	if !input.WaitForCompletion {
-		return result, nil
-	}
-
-	// Wait for the reset run to complete and hydrate the result payload.
-	workflowRun := cli.GetWorkflow(ctx, input.WorkflowID, newRunID)
-	if workflowRun == nil {
-		return ResetChildWorkflowActivityResult{}, fmt.Errorf("failed to obtain workflow handle for %s/%s", input.WorkflowID, newRunID)
-	}
-
-	var payload map[string]interface{}
-	if err := workflowRun.Get(ctx, &payload); err != nil {
-		return ResetChildWorkflowActivityResult{}, err
-	}
-	if payload == nil {
-		payload = make(map[string]interface{})
-	}
-	result.Completed = true
-	result.Result = payload
 	return result, nil
 }

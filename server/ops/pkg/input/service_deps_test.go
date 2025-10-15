@@ -44,3 +44,15 @@ func (m *mockWorkflowControl) Cancel(_ context.Context, ref workflowctl.Executio
 	m.LastCancelReason = reason
 	return m.CancelErr
 }
+
+func (m *mockWorkflowControl) ResetWorkflow(context.Context, workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
+	return workflowctl.ResetResponse{}, nil
+}
+
+func (m *mockWorkflowControl) StartWorkflow(context.Context, workflowctl.StartRequest) (workflowctl.StartResponse, error) {
+	return workflowctl.StartResponse{}, nil
+}
+
+func (m *mockWorkflowControl) StartChildWorkflow(context.Context, workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
+	return workflowctl.StartChildResponse{}, nil
+}

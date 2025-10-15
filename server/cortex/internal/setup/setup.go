@@ -46,6 +46,18 @@ func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.Execution
 	return nil
 }
 
+func (c *suiteWorkflowCtl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
+	return workflowctl.ResetResponse{Execution: req.Execution, Completed: req.WaitForResult}, nil
+}
+
+func (c *suiteWorkflowCtl) StartWorkflow(ctx context.Context, req workflowctl.StartRequest) (workflowctl.StartResponse, error) {
+	return workflowctl.StartResponse{Execution: workflowctl.ExecutionRef{WorkflowID: req.WorkflowID}}, nil
+}
+
+func (c *suiteWorkflowCtl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
+	return workflowctl.StartChildResponse{Execution: workflowctl.ExecutionRef{WorkflowID: req.WorkflowID}}, nil
+}
+
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
 	var cleanup []func()

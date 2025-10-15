@@ -19,9 +19,6 @@ func TestServiceDepsCloneMetadata(t *testing.T) {
 	if _, ok := base.ResumeMetadata(); ok {
 		t.Fatalf("expected no resume metadata on fresh dependencies")
 	}
-	if _, ok := base.WorkflowClient(); ok {
-		t.Fatalf("expected no workflow client on fresh dependencies")
-	}
 
 	runMarker := &runmetadata.Signal{Reason: "initial"}
 	withRun := base.CloneWithRunMetadata(runMarker)

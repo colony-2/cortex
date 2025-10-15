@@ -249,16 +249,37 @@ func (e *childExecutor) runDiscrete(runMode executionRunMode) (RecipeOutput, err
 
 func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
 	segment, remaining := e.resumeTarget(nil)
-	if segment != nil {
-		return e.resetChildWorkflow(ctx, runMode, gitMode, childInputs, segment, remaining)
+	launch, err := e.prepareChildLaunch(ctx, runMode, gitMode, childInputs, segment, remaining)
+	if err != nil {
+		return nil, err
 	}
-	return e.launchChildWorkflow(ctx, runMode, gitMode, childInputs)
+	return e.finalizeChildLaunch(ctx, runMode, gitMode, childInputs, launch, nil)
 }
 
-func (e *childExecutor) launchChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
+type childLaunch struct {
+	exec        workflow.Execution
+	metadata    map[string]interface{}
+	resume      *runmetadata.Resume
+	wait        func() (map[string]interface{}, error)
+	asyncHandle map[string]interface{}
+}
+
+func (e *childExecutor) prepareChildLaunch(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}, segment *runmetadata.Segment, remaining *runmetadata.Resume) (*childLaunch, error) {
+	if segment != nil {
+		return e.prepareResetChildLaunch(ctx, runMode, gitMode, childInputs, segment, remaining)
+	}
+	return e.prepareNewChildLaunch(ctx, runMode, gitMode, childInputs)
+}
+
+func (e *childExecutor) prepareNewChildLaunch(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (*childLaunch, error) {
 	future, childCtx := e.scheduleChildWorkflow(ctx, runMode, childInputs)
 	logger := workflow.GetLogger(ctx)
 	logger.Info("invoking child recipe", "recipe", e.input.Name, "run_mode", runMode.String(), "git_state", gitMode.String(), "inputs_keys", mapKeys(childInputs))
+
+	metadata := map[string]interface{}{
+		"run_mode":  runMode.String(),
+		"git_state": gitMode.String(),
+	}
 
 	var exec workflow.Execution
 	if err := future.GetChildWorkflowExecution().Get(childCtx, &exec); err != nil {
@@ -269,101 +290,33 @@ func (e *childExecutor) launchChildWorkflow(ctx workflow.Context, runMode execut
 			CompletedAt:     workflow.Now(childCtx),
 			ErrorMessage:    err.Error(),
 			RecipeName:      e.input.Name,
-			Metadata: map[string]interface{}{
-				"run_mode":  runMode.String(),
-				"git_state": gitMode.String(),
-			},
+			Metadata:        copyShallow(metadata),
 		})
 		return nil, err
 	}
 
-	if err := SignalChildRunMetadata(ctx, e.invocation, exec, nil, nil); err != nil {
-		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
-			ChildWorkflowID: exec.ID,
-			ChildRunID:      exec.RunID,
-			Status:          "start_failed",
-			CompletedAt:     workflow.Now(childCtx),
-			ErrorMessage:    err.Error(),
-			RecipeName:      e.input.Name,
-			Metadata: map[string]interface{}{
-				"run_mode":  runMode.String(),
-				"git_state": gitMode.String(),
-			},
-		})
-		return nil, err
-	}
-
-	story.RecordChildRecipeTrigger(childCtx, e.invocation, story.ChildRecipeTriggerPayload{
-		ChildWorkflowID: exec.ID,
-		ChildRunID:      exec.RunID,
-		TriggeredAt:     workflow.Now(childCtx),
-		RecipeName:      e.input.Name,
-		Inputs:          copyShallow(childInputs),
-		Metadata: map[string]interface{}{
-			"run_mode":  runMode.String(),
-			"git_state": gitMode.String(),
-		},
-	})
-
-	if runMode == runModeSync {
+	waitFn := func() (map[string]interface{}, error) {
 		var result map[string]interface{}
 		if err := future.Get(childCtx, &result); err != nil {
-			story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
-				ChildWorkflowID: exec.ID,
-				ChildRunID:      exec.RunID,
-				Status:          "failed",
-				CompletedAt:     workflow.Now(childCtx),
-				ErrorMessage:    err.Error(),
-				RecipeName:      e.input.Name,
-				Metadata: map[string]interface{}{
-					"run_mode":  runMode.String(),
-					"git_state": gitMode.String(),
-				},
-			})
 			return nil, err
 		}
 		if result == nil {
 			result = make(map[string]interface{})
 		}
-		logger.Info("child recipe completed", "recipe", e.input.Name, "keys", mapKeys(result))
-		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
-			ChildWorkflowID: exec.ID,
-			ChildRunID:      exec.RunID,
-			Status:          "completed",
-			CompletedAt:     workflow.Now(childCtx),
-			Outputs:         copyShallow(result),
-			RecipeName:      e.input.Name,
-			Metadata: map[string]interface{}{
-				"run_mode":  runMode.String(),
-				"git_state": gitMode.String(),
-			},
-		})
 		return result, nil
 	}
 
-	handle := map[string]interface{}{
-		"recipe":      e.input.Name,
-		"workflow_id": exec.ID,
-		"run_id":      exec.RunID,
-		"git_state":   gitMode.String(),
-	}
-	if ctxVal, ok := childInputs["context"]; ok {
-		handle["context"] = ctxVal
-	}
-	if hash, ok := childInputs["git_persist_hash"]; ok {
-		handle["git_persist_hash"] = hash
-	}
-	logger.Info("async child recipe scheduled", "recipe", e.input.Name, "workflow_id", exec.ID, "run_id", exec.RunID, "git_state", gitMode.String())
-	return map[string]interface{}{"async_handle": handle}, nil
+	return &childLaunch{
+		exec:        exec,
+		metadata:    metadata,
+		wait:        waitFn,
+		asyncHandle: e.buildAsyncHandle(childInputs, exec, gitMode),
+	}, nil
 }
 
-func (e *childExecutor) resetChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}, segment *runmetadata.Segment, remaining *runmetadata.Resume) (map[string]interface{}, error) {
-	logger := workflow.GetLogger(ctx)
-	if segment == nil {
-		return nil, temporal.NewNonRetryableApplicationError("resume segment missing", "RESET_INVALID_SEGMENT", nil)
-	}
-	if segment.WorkflowID == "" {
-		return nil, temporal.NewNonRetryableApplicationError("resume segment missing workflow_id", "RESET_INVALID_SEGMENT", nil)
+func (e *childExecutor) prepareResetChildLaunch(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}, segment *runmetadata.Segment, remaining *runmetadata.Resume) (*childLaunch, error) {
+	if segment == nil || segment.WorkflowID == "" {
+		return nil, temporal.NewNonRetryableApplicationError("resume segment missing workflow reference", "RESET_INVALID_SEGMENT", nil)
 	}
 
 	reason := ""
@@ -408,63 +361,109 @@ func (e *childExecutor) resetChildWorkflow(ctx workflow.Context, runMode executi
 		return nil, err
 	}
 
-	childExec := workflow.Execution{ID: segment.WorkflowID, RunID: resetResult.RunID}
-	if err := SignalChildRunMetadata(ctx, e.invocation, childExec, remaining, nil); err != nil {
-		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
-			ChildWorkflowID: childExec.ID,
-			ChildRunID:      childExec.RunID,
-			Status:          "start_failed",
-			CompletedAt:     workflow.Now(ctx),
-			ErrorMessage:    err.Error(),
-			RecipeName:      e.input.Name,
-			Metadata: map[string]interface{}{
-				"run_mode":  runMode.String(),
-				"git_state": gitMode.String(),
-				"reset":     true,
-			},
-		})
-		return nil, err
-	}
-
-	story.RecordChildRecipeTrigger(ctx, e.invocation, story.ChildRecipeTriggerPayload{
-		ChildWorkflowID: childExec.ID,
-		ChildRunID:      childExec.RunID,
-		TriggeredAt:     workflow.Now(ctx),
-		RecipeName:      e.input.Name,
-		Inputs:          copyShallow(childInputs),
-		Metadata: map[string]interface{}{
+	exec := workflow.Execution{ID: segment.WorkflowID, RunID: resetResult.RunID}
+	launch := &childLaunch{
+		exec: exec,
+		metadata: map[string]interface{}{
 			"run_mode":  runMode.String(),
 			"git_state": gitMode.String(),
 			"reset":     true,
 		},
-	})
+		resume:      remaining,
+		asyncHandle: e.buildAsyncHandle(childInputs, exec, gitMode),
+	}
 
 	if waitForCompletion {
 		outputs := resetResult.Result
 		if outputs == nil {
 			outputs = make(map[string]interface{})
 		}
-		logger.Info("child recipe reset completed", "recipe", e.input.Name, "workflow_id", childExec.ID, "run_id", childExec.RunID, "keys", mapKeys(outputs))
-		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
-			ChildWorkflowID: childExec.ID,
-			ChildRunID:      childExec.RunID,
-			Status:          "completed",
-			CompletedAt:     workflow.Now(ctx),
-			Outputs:         copyShallow(outputs),
-			RecipeName:      e.input.Name,
-			Metadata: map[string]interface{}{
-				"run_mode":  runMode.String(),
-				"git_state": gitMode.String(),
-				"reset":     true,
-			},
-		})
-		return outputs, nil
+		launch.wait = func() (map[string]interface{}, error) {
+			return copyShallow(outputs), nil
+		}
 	}
 
+	return launch, nil
+}
+
+func (e *childExecutor) finalizeChildLaunch(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}, launch *childLaunch, recipeSetIndex *int) (map[string]interface{}, error) {
+	if launch == nil {
+		return nil, temporal.NewNonRetryableApplicationError("child launch data missing", "INVALID_CHILD_LAUNCH", nil)
+	}
+	metadata := copyShallow(launch.metadata)
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+	if recipeSetIndex != nil {
+		metadata["index"] = *recipeSetIndex
+	}
+
+	if err := SignalChildRunMetadata(ctx, e.invocation, launch.exec, launch.resume, recipeSetIndex); err != nil {
+		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: launch.exec.ID,
+			ChildRunID:      launch.exec.RunID,
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(ctx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      e.input.Name,
+			Metadata:        copyShallow(metadata),
+		})
+		return nil, err
+	}
+
+	story.RecordChildRecipeTrigger(ctx, e.invocation, story.ChildRecipeTriggerPayload{
+		ChildWorkflowID: launch.exec.ID,
+		ChildRunID:      launch.exec.RunID,
+		TriggeredAt:     workflow.Now(ctx),
+		RecipeName:      e.input.Name,
+		Inputs:          copyShallow(childInputs),
+		Metadata:        copyShallow(metadata),
+	})
+
+	logger := workflow.GetLogger(ctx)
+	if runMode == runModeSync {
+		if launch.wait == nil {
+			return nil, temporal.NewNonRetryableApplicationError("synchronous child missing wait handler", "INVALID_CHILD_WAIT", nil)
+		}
+		result, err := launch.wait()
+		if err != nil {
+			story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+				ChildWorkflowID: launch.exec.ID,
+				ChildRunID:      launch.exec.RunID,
+				Status:          "failed",
+				CompletedAt:     workflow.Now(ctx),
+				ErrorMessage:    err.Error(),
+				RecipeName:      e.input.Name,
+				Metadata:        copyShallow(metadata),
+			})
+			return nil, err
+		}
+		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: launch.exec.ID,
+			ChildRunID:      launch.exec.RunID,
+			Status:          "completed",
+			CompletedAt:     workflow.Now(ctx),
+			Outputs:         copyShallow(result),
+			RecipeName:      e.input.Name,
+			Metadata:        copyShallow(metadata),
+		})
+		logger.Info("child recipe completed", "recipe", e.input.Name, "workflow_id", launch.exec.ID, "run_id", launch.exec.RunID, "keys", mapKeys(result))
+		return result, nil
+	}
+
+	handle := launch.asyncHandle
+	if handle == nil {
+		handle = e.buildAsyncHandle(childInputs, launch.exec, gitMode)
+	}
+	logger.Info("async child recipe scheduled", "recipe", e.input.Name, "workflow_id", launch.exec.ID, "run_id", launch.exec.RunID, "git_state", gitMode.String())
+	return map[string]interface{}{"async_handle": handle}, nil
+}
+
+func (e *childExecutor) buildAsyncHandle(childInputs map[string]interface{}, exec workflow.Execution, gitMode gitStateMode) map[string]interface{} {
 	handle := map[string]interface{}{
 		"recipe":      e.input.Name,
-		"workflow_id": childExec.ID,
-		"run_id":      childExec.RunID,
+		"workflow_id": exec.ID,
+		"run_id":      exec.RunID,
 		"git_state":   gitMode.String(),
 	}
 	if ctxVal, ok := childInputs["context"]; ok {
@@ -473,8 +472,7 @@ func (e *childExecutor) resetChildWorkflow(ctx workflow.Context, runMode executi
 	if hash, ok := childInputs["git_persist_hash"]; ok {
 		handle["git_persist_hash"] = hash
 	}
-	logger.Info("child recipe reset scheduled asynchronously", "recipe", e.input.Name, "workflow_id", childExec.ID, "run_id", childExec.RunID, "git_state", gitMode.String())
-	return map[string]interface{}{"async_handle": handle}, nil
+	return handle
 }
 
 func (e *childExecutor) resumeTarget(recipeSetIndex *int) (*runmetadata.Segment, *runmetadata.Resume) {
