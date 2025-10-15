@@ -73,6 +73,7 @@ func (s *store) ListByTicket(ctx context.Context, ticketID model.ID, filter mode
 	}
 	for _, evt := range events {
 		if evt != nil {
+			normalizeEventTimes(evt)
 			evt.HydratePayload()
 		}
 	}
@@ -116,7 +117,16 @@ func (s *store) LatestReset(ctx context.Context, ticketID model.ID) (*model.Tick
 		}
 		return nil, err
 	}
+	reset.CreatedAt = reset.CreatedAt.UTC()
 	return &reset, nil
+}
+
+func normalizeEventTimes(event *model.TicketEvent) {
+	if event == nil {
+		return
+	}
+	event.EventTime = event.EventTime.UTC()
+	event.CreatedAt = event.CreatedAt.UTC()
 }
 
 func applyFilter(db *gorm.DB, filter model.TicketEventFilter) *gorm.DB {

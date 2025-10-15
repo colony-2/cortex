@@ -74,6 +74,7 @@ func (s *store) Get(ctx context.Context, id model.ID) (*model.Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeTicketTimes(&ticket)
 	return &ticket, nil
 }
 
@@ -86,6 +87,7 @@ func (s *store) GetAt(ctx context.Context, id model.ID, at time.Time) (*model.Ti
 	if err != nil {
 		return nil, err
 	}
+	normalizeTicketTimes(&ticket)
 	return &ticket, nil
 }
 
@@ -109,6 +111,9 @@ func (s *store) Search(ctx context.Context, filter model.SearchFilter) (Iterator
 	query := applyFilter(s.db.WithContext(ctx), filter)
 	if err := query.Order("updated_at DESC").Find(&tickets).Error; err != nil {
 		return nil, err
+	}
+	for _, ticket := range tickets {
+		normalizeTicketTimes(ticket)
 	}
 	return newSliceIterator(tickets), nil
 }
@@ -202,4 +207,18 @@ func backfillTemporalColumns(db *gorm.DB) error {
 
 func temporalInfinity() time.Time {
 	return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+}
+
+func normalizeTicketTimes(ticket *model.Ticket) {
+	if ticket == nil {
+		return
+	}
+	ticket.CreatedAt = ticket.CreatedAt.UTC()
+	ticket.UpdatedAt = ticket.UpdatedAt.UTC()
+	ticket.ValidFrom = ticket.ValidFrom.UTC()
+	ticket.ValidUntil = ticket.ValidUntil.UTC()
+	if ticket.CompletedAt != nil {
+		completed := ticket.CompletedAt.UTC()
+		ticket.CompletedAt = &completed
+	}
 }
