@@ -108,12 +108,14 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
    - After a reset branch is executed, the parent workflow continues with the original dependency view; additional resume segments (if any) are consumed by downstream ops that observe the trimmed resume forwarded to them.
 
 4. **Payload construction**
-   - Invoke the execution-path builder described above to produce the ordered list of segments. Each segment becomes one entry in the `resume.execution_path` array with fields:
-     - `invocation_hash`: taken from `NodeRun.InvocationHash`.
-     - `run_id`: the Temporal `RunID` whose history we will reset (for parent ops this is the parent run, for the leaf it is the run containing the target invocation).
-     - `event_id`: the `NodeRun.ResumeEventID` recorded from the workflow task completion that immediately preceded the op.
-     - `recipe_set_index` (optional): included only when present on the `NodeRun` and the parent op is `recipe_set`.
-   - The builder must validate that every entry has a populated `run_id` and `event_id`; missing values indicate a gap in history capture and should abort rewind with a descriptive error.
+   - Invoke the execution-path builder described above to produce the ordered list of segments. The builder should lean on the new story indexes (`Story.Indexes.ByInvocationHash`, `ByChildRunID`) instead of scanning every `StoryNode` on each hop.
+   - For each segment populate:
+     - `invocation_hash`: from `NodeRun.InvocationHash` (always set, even for legacy inline ops that previously relied on `InvocationID`).
+     - `run_id`: for child-recipes use `NodeRun.ChildRunID`; for inline/activity nodes use the current story metadata run id. Parent traversal should use `NodeRun.ParentRunID`/`ParentWorkflowID` when available to avoid redundant Describe calls.
+     - `event_id`: `NodeRun.ResumeEventID`, the workflow-task-completed event immediately preceding the op. If this value is zero, abort with a gap-in-history error so operators know to rebuild the story.
+     - `recipe_set_index`: include when `NodeRun.RecipeSetIndex` is non-nil to identify the specific recipeset branch to reset.
+     - `wait_for_child`: forward `NodeRun.WaitForChild` when present so reset flows can mirror async vs sync behaviour. Absence means the default semantics apply.
+   - The builder validates each segment before returning: required fields (`invocation_hash`, `run_id`, `event_id`) must be present; `recipe_set_index` must only appear on recipeset parents; `ParentInvocationHash` continuity must hold from root to leaf.
 
 ## Implementation Steps
 1. Implement the recipe_run_metadata signal handler and recipe wait with unit/integration tests (leveraging temporal's workflowtestsuite)
@@ -124,4 +126,4 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
    - Non-matching ops ignore the resume metadata and continue normal execution. Tests should cover both matching and non-matching cases across recipe and recipeset flows.
 3. Add additional needed properties to story builder with unit/integration tests (including the embeddedtemporal ones)
 4. Implement the execution-path builder with unit/integration tests
-5. Add new embeddedtemporal tests similar to story builder ones entire cycle: run recipe with sub recipe and sub-sub-recipe. Pick a mid op of inner-most recipe and, build rewind execution path and then execute from rewound state. validate that the correct portion of state was replayed at each level.
+5. Add new embeddedtemporal tests similar to story builder ones entire cycle: run recipe with sub recipe and sub-sub-recipe. Ensure each workflow receives a `recipe_run_metadata` signal immediately after start so the stories record parent linkage. Pick a mid op of the inner-most recipe, build the rewind execution path using the enriched story metadata (`ResumeEventID`, `RecipeSetIndex`, `WaitForChild`, parent hashes), reset from that point, and verify that the replayed execution matches the original at every level along the path.

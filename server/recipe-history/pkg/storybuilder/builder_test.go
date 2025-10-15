@@ -7,6 +7,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,7 @@ func TestBuilder_BuildStory(t *testing.T) {
 				TriggeredAt:     base.Add(6 * time.Second),
 				RecipeName:      "child-recipe",
 				Inputs:          map[string]interface{}{"arg": 1},
+				Metadata:        map[string]interface{}{"run_mode": "sync", "index": 0},
 			},
 		}),
 		childMarkerEvent(8, base.Add(7*time.Second), story.MarkerEnvelope{
@@ -108,6 +110,7 @@ func TestBuilder_BuildStory(t *testing.T) {
 				Status:          "completed",
 				CompletedAt:     base.Add(7 * time.Second),
 				Outputs:         map[string]interface{}{"child": "ok"},
+				Metadata:        map[string]interface{}{"run_mode": "sync", "index": 0},
 			},
 		}),
 		signalEvent(9, base.Add(8*time.Second), "user-response:inv-inline", map[string]interface{}{"user_id": "alice"}),
@@ -130,27 +133,41 @@ func TestBuilder_BuildStory(t *testing.T) {
 	require.Len(t, inlineNode.Runs, 1)
 	inlineRun := inlineNode.Runs[0]
 	require.Equal(t, "completed", inlineRun.Status)
+	require.Equal(t, inlineRun.InvocationID, inlineRun.InvocationHash)
 	require.Equal(t, "bar", inlineRun.Inputs["foo"])
 	require.Equal(t, "ok", inlineRun.Outputs["result"])
 	require.NotNil(t, inlineRun.StartedAt)
 	require.NotNil(t, inlineRun.CompletedAt)
+	require.NotZero(t, inlineRun.ResumeEventID)
+	require.EqualValues(t, 3, inlineRun.MarkerEventID)
 
 	activityNode := findNode(t, story.Nodes, "root/activity-node")
 	require.Len(t, activityNode.Runs, 1)
 	activityRun := activityNode.Runs[0]
 	require.Equal(t, "completed", activityRun.Status)
+	require.Equal(t, activityRun.InvocationID, activityRun.InvocationHash)
 	require.Equal(t, "done", activityRun.Outputs["status"])
+	require.EqualValues(t, 4, activityRun.ScheduleEventID)
+	require.EqualValues(t, 3, activityRun.ResumeEventID)
 
 	childNode := findNode(t, story.Nodes, "root/child-node")
 	require.Len(t, childNode.Runs, 1)
 	childRun := childNode.Runs[0]
 	require.Equal(t, "completed", childRun.Status)
+	require.Equal(t, childRun.InvocationID, childRun.InvocationHash)
 	require.Equal(t, "child-wf", childRun.ChildWorkflowID)
 	require.Equal(t, "child-run", childRun.ChildRunID)
 	require.NotEmpty(t, childRun.ChildRecipeName)
 	require.Equal(t, "ok", childRun.Outputs["child"])
 	require.NotNil(t, childRun.StartedAt)
 	require.NotNil(t, childRun.CompletedAt)
+	require.NotNil(t, childRun.RecipeSetIndex)
+	require.Equal(t, 0, *childRun.RecipeSetIndex)
+	require.NotNil(t, childRun.WaitForChild)
+	require.True(t, *childRun.WaitForChild)
+	require.Equal(t, story.Metadata.WorkflowID, childRun.ParentWorkflowID)
+	require.Equal(t, story.Metadata.RunID, childRun.ParentRunID)
+	require.Equal(t, childRun.InvocationHash, childRun.ParentInvocationHash)
 
 	// Timeline should include signal entry with user_id
 	foundSignal := false
@@ -161,6 +178,55 @@ func TestBuilder_BuildStory(t *testing.T) {
 		}
 	}
 	require.True(t, foundSignal, "expected input-response entry in timeline")
+
+	require.Contains(t, story.Indexes.ByInvocationID, inlineRun.InvocationID)
+	require.Equal(t, inlineRun, story.Indexes.ByInvocationID[inlineRun.InvocationID])
+	require.Contains(t, story.Indexes.ByInvocationHash, childRun.InvocationHash)
+	require.Equal(t, childRun, story.Indexes.ByInvocationHash[childRun.InvocationHash])
+	require.Contains(t, story.Indexes.ByChildRunID, childRun.ChildRunID)
+	require.Equal(t, childRun, story.Indexes.ByChildRunID[childRun.ChildRunID])
+	require.Nil(t, story.Metadata.Parent)
+}
+
+func TestBuilder_MetadataSignalParent(t *testing.T) {
+	base := time.Now().UTC()
+	b := New("child-recipe", nil)
+	b.SetExecutionInfo(&workflowservice.DescribeWorkflowExecutionResponse{
+		WorkflowExecutionInfo: &workflowpb.WorkflowExecutionInfo{
+			Execution: &commonpb.WorkflowExecution{WorkflowId: "child-wf", RunId: "child-run"},
+			Status:    enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED,
+			StartTime: timestamppb.New(base),
+			CloseTime: timestamppb.New(base.Add(2 * time.Second)),
+		},
+	})
+
+	idx := 1
+	events := []*historypb.HistoryEvent{
+		workflowEvent(1, base, enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED),
+		signalEvent(2, base.Add(500*time.Millisecond), "recipe_run_metadata", runmetadata.Signal{
+			TargetRunID: "child-run",
+			Parent: &runmetadata.Parent{
+				WorkflowID:     "parent-wf",
+				RunID:          "parent-run",
+				InvocationHash: "parent/hash",
+				RecipeSetIndex: &idx,
+			},
+			Reason: "resume",
+		}),
+		workflowEvent(3, base.Add(2*time.Second), enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED),
+	}
+
+	for _, e := range events {
+		b.Process(e)
+	}
+
+	story := b.Build()
+	require.NotNil(t, story.Metadata.Parent)
+	require.Equal(t, "parent-wf", story.Metadata.Parent.WorkflowID)
+	require.Equal(t, "parent-run", story.Metadata.Parent.RunID)
+	require.Equal(t, "parent/hash", story.Metadata.Parent.InvocationHash)
+	require.NotNil(t, story.Metadata.Parent.RecipeSetIndex)
+	require.Equal(t, idx, *story.Metadata.Parent.RecipeSetIndex)
 }
 
 func TestBuilder_StateMachineTransitions(t *testing.T) {
@@ -359,6 +425,7 @@ func inlineMarkerEvent(id int64, ts time.Time, env story.MarkerEnvelope) *histor
 			MarkerRecordedEventAttributes: &historypb.MarkerRecordedEventAttributes{
 				MarkerName: "SideEffect",
 				Details:    map[string]*commonpb.Payloads{"data": payloads},
+				WorkflowTaskCompletedEventId: id - 1,
 			},
 		},
 	}
@@ -379,6 +446,7 @@ func activityScheduledEvent(id int64, ts time.Time, req *workerops.ActivityInvoc
 				ActivityId:   fmt.Sprintf("act-%d", id),
 				ActivityType: &commonpb.ActivityType{Name: req.Invocation.NodePath},
 				Input:        payloads,
+				WorkflowTaskCompletedEventId: id - 1,
 			},
 		},
 	}
@@ -413,7 +481,7 @@ func activityCompletedEvent(id int64, ts time.Time, scheduledID int64, result ma
 	}
 }
 
-func signalEvent(id int64, ts time.Time, name string, payload map[string]interface{}) *historypb.HistoryEvent {
+func signalEvent(id int64, ts time.Time, name string, payload interface{}) *historypb.HistoryEvent {
 	input := mustPayloads(payload)
 	return &historypb.HistoryEvent{
 		EventId:   id,

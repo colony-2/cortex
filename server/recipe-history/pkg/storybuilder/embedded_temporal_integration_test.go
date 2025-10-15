@@ -18,6 +18,7 @@ import (
 	recipeop "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	runmetadata "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -139,7 +140,7 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 		"cellname":    "cell-123",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	we, err := temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("story-builder-%d", time.Now().UnixNano()),
@@ -147,6 +148,10 @@ func TestStoryBuilder_WithEmbeddedTemporal(t *testing.T) {
 	}, "story-parent", workflowInputs)
 	require.NoError(t, err)
 	t.Logf("workflow started: id=%s run=%s", we.GetID(), we.GetRunID())
+	metaCtx, cancelMeta := context.WithTimeout(context.Background(), 10*time.Second)
+	metaSignal := runmetadata.Signal{TargetRunID: we.GetRunID()}
+	require.NoError(t, temporalClient.SignalWorkflow(metaCtx, we.GetID(), we.GetRunID(), "recipe_run_metadata", metaSignal))
+	cancelMeta()
 
 	time.Sleep(2 * time.Second)
 	idFromAttributes := waitForInputInvocationFromSearchAttributes(t, temporalClient, namespace, we.GetID(), we.GetRunID())

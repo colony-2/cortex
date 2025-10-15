@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	runmetadata "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -26,6 +29,8 @@ type Builder struct {
 	parents     map[string]string
 
 	runsByInvocation map[string]*NodeRun
+	runsByInvocationHash map[string]*NodeRun
+	runsByChildRunID     map[string]*NodeRun
 	runsByScheduleID map[int64]*NodeRun
 
 	timeline         []TimelineEntry
@@ -53,6 +58,8 @@ func New(recipeName string, r *recipe.Recipe) *Builder {
 		nodes:            make(map[string]*StoryNode),
 		parents:          make(map[string]string),
 		runsByInvocation: make(map[string]*NodeRun),
+		runsByInvocationHash: make(map[string]*NodeRun),
+		runsByChildRunID:     make(map[string]*NodeRun),
 		runsByScheduleID: make(map[int64]*NodeRun),
 		timeline:         make([]TimelineEntry, 0, 64),
 		converter:        converter.GetDefaultDataConverter(),
@@ -148,6 +155,21 @@ func (b *Builder) Build() *Story {
 	if story.Metadata.CompletedAt != nil && story.Metadata.Duration == nil {
 		d := story.Metadata.CompletedAt.Sub(story.Metadata.StartedAt)
 		story.Metadata.Duration = &d
+	}
+
+	story.Indexes = StoryIndexes{
+		ByInvocationID:   make(map[string]*NodeRun, len(b.runsByInvocation)),
+		ByInvocationHash: make(map[string]*NodeRun, len(b.runsByInvocationHash)),
+		ByChildRunID:     make(map[string]*NodeRun, len(b.runsByChildRunID)),
+	}
+	for k, v := range b.runsByInvocation {
+		story.Indexes.ByInvocationID[k] = v
+	}
+	for k, v := range b.runsByInvocationHash {
+		story.Indexes.ByInvocationHash[k] = v
+	}
+	for k, v := range b.runsByChildRunID {
+		story.Indexes.ByChildRunID[k] = v
 	}
 
 	return story
@@ -383,15 +405,19 @@ func (b *Builder) handleActivityScheduled(event *historypb.HistoryEvent) {
 	if invID == "" {
 		invID = req.Invocation.Hash()
 	}
+	invHash := invocationHashFromCore(req.Invocation)
 	node := b.getOrCreateNode(req.Invocation.NodePath, req.Invocation.RecipeID)
 	run := &NodeRun{
 		InvocationID: invID,
+		InvocationHash: invHash,
 		Status:       "scheduled",
 		Attempt:      1,
 		Inputs:       cloneMap(req.Input),
 	}
 	node.Runs = append(node.Runs, run)
-	b.runsByInvocation[invID] = run
+	run.ScheduleEventID = event.GetEventId()
+	run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+	b.indexRun(run)
 	b.runsByScheduleID[event.GetEventId()] = run
 	b.appendNodeEvent(node, run, event, "activity-scheduled", map[string]interface{}{"op": attrs.ActivityType.GetName()})
 	b.addTimeline(event.GetEventId(), event, "activity-scheduled", nodeTimelineRef(node.Path))
@@ -503,17 +529,26 @@ func (b *Builder) handleMarker(event *historypb.HistoryEvent) {
 	}
 }
 
+
+const (
+	userResponseSignalPrefix = "user-response:"
+	metadataSignalName       = "recipe_run_metadata"
+)
+
 func (b *Builder) handleSignal(event *historypb.HistoryEvent) {
 	attrs := event.GetWorkflowExecutionSignaledEventAttributes()
 	if attrs == nil {
 		return
 	}
 	name := attrs.GetSignalName()
-	const prefix = "user-response:"
-	if !strings.HasPrefix(name, prefix) {
+	if name == metadataSignalName {
+		b.handleMetadataSignal(attrs)
 		return
 	}
-	invID := strings.TrimPrefix(name, prefix)
+	if !strings.HasPrefix(name, userResponseSignalPrefix) {
+		return
+	}
+	invID := strings.TrimPrefix(name, userResponseSignalPrefix)
 	run := b.runsByInvocation[invID]
 	if run == nil {
 		return
@@ -533,6 +568,32 @@ func (b *Builder) handleSignal(event *historypb.HistoryEvent) {
 	b.addTimeline(event.GetEventId(), event, "input-response", nodeTimelineRef(node.Path), data)
 }
 
+func (b *Builder) handleMetadataSignal(attrs *historypb.WorkflowExecutionSignaledEventAttributes) {
+	if attrs == nil {
+		return
+	}
+	if attrs.Input == nil {
+		return
+	}
+	var payload runmetadata.Signal
+	if err := b.converter.FromPayloads(attrs.Input, &payload); err != nil {
+		return
+	}
+	if payload.Parent == nil {
+		return
+	}
+	parent := payload.Parent
+	b.metadata.Parent = &StoryParentLink{
+		WorkflowID:     parent.WorkflowID,
+		RunID:          parent.RunID,
+		InvocationHash: parent.InvocationHash,
+	}
+	if parent.RecipeSetIndex != nil {
+		idx := *parent.RecipeSetIndex
+		b.metadata.Parent.RecipeSetIndex = &idx
+	}
+}
+
 func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.MarkerEnvelope) {
 	payloadMap, ok := env.Payload.(map[string]interface{})
 	if !ok {
@@ -545,8 +606,10 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 		if err := decodePayload(payloadMap, &payload); err != nil {
 			return
 		}
+		invID := ensureInvocationID(env.Invocation)
 		run := &NodeRun{
-			InvocationID: ensureInvocationID(env.Invocation),
+			InvocationID:   invID,
+			InvocationHash: invID,
 			Status:       "running",
 			Attempt:      len(node.Runs) + 1,
 			Inputs:       cloneMap(payload.Inputs),
@@ -556,7 +619,12 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 			run.StartedAt = &started
 		}
 		node.Runs = append(node.Runs, run)
-		b.runsByInvocation[run.InvocationID] = run
+		attrs := event.GetMarkerRecordedEventAttributes()
+		if attrs != nil {
+			run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+		}
+		run.MarkerEventID = event.GetEventId()
+		b.indexRun(run)
 		b.appendNodeEvent(node, run, event, "inline-start", nil)
 		b.addTimeline(event.GetEventId(), event, "inline-start", nodeTimelineRef(node.Path))
 	case "complete":
@@ -573,9 +641,18 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 				run.CompletedAt = &completed
 			}
 		}
+		attrs := event.GetMarkerRecordedEventAttributes()
+		if attrs != nil && run.ResumeEventID == 0 {
+			run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+		}
+		run.MarkerEventID = event.GetEventId()
+		if run.InvocationHash == "" {
+			run.InvocationHash = run.InvocationID
+		}
 		node := b.findNodeByRun(run)
 		b.appendNodeEvent(node, run, event, "inline-completed", nil)
 		b.addTimeline(event.GetEventId(), event, "inline-completed", nodeTimelineRef(node.Path))
+		b.indexRun(run)
 	case "fail":
 		run := b.runsByInvocation[ensureInvocationID(env.Invocation)]
 		if run == nil {
@@ -590,9 +667,18 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 				run.CompletedAt = &failedAt
 			}
 		}
+		attrs := event.GetMarkerRecordedEventAttributes()
+		if attrs != nil && run.ResumeEventID == 0 {
+			run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+		}
+		run.MarkerEventID = event.GetEventId()
+		if run.InvocationHash == "" {
+			run.InvocationHash = run.InvocationID
+		}
 		node := b.findNodeByRun(run)
 		b.appendNodeEvent(node, run, event, "inline-failed", nil)
 		b.addTimeline(event.GetEventId(), event, "inline-failed", nodeTimelineRef(node.Path))
+		b.indexRun(run)
 	case "timeout":
 		run := b.runsByInvocation[ensureInvocationID(env.Invocation)]
 		if run == nil {
@@ -606,9 +692,18 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 				run.CompletedAt = &to
 			}
 		}
+		attrs := event.GetMarkerRecordedEventAttributes()
+		if attrs != nil && run.ResumeEventID == 0 {
+			run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+		}
+		run.MarkerEventID = event.GetEventId()
+		if run.InvocationHash == "" {
+			run.InvocationHash = run.InvocationID
+		}
 		node := b.findNodeByRun(run)
 		b.appendNodeEvent(node, run, event, "inline-timeout", nil)
 		b.addTimeline(event.GetEventId(), event, "inline-timeout", nodeTimelineRef(node.Path))
+		b.indexRun(run)
 	}
 }
 
@@ -638,6 +733,19 @@ func (b *Builder) handleChildRecipeMarker(event *historypb.HistoryEvent, env *st
 		if payload.RecipeName != "" {
 			run.ChildRecipeName = payload.RecipeName
 		}
+		attrs := event.GetMarkerRecordedEventAttributes()
+		if attrs != nil {
+			run.ResumeEventID = attrs.GetWorkflowTaskCompletedEventId()
+		}
+		run.MarkerEventID = event.GetEventId()
+		run.ParentWorkflowID = b.metadata.WorkflowID
+		run.ParentRunID = b.metadata.RunID
+		if run.InvocationHash == "" {
+			run.InvocationHash = run.InvocationID
+		}
+		run.ParentInvocationHash = run.InvocationHash
+		run.RecipeSetIndex = extractRecipeSetIndex(payload.Metadata)
+		run.WaitForChild = extractWaitForChild(payload.Metadata)
 		data := map[string]interface{}{
 			"child_workflow_id": payload.ChildWorkflowID,
 			"child_run_id":      payload.ChildRunID,
@@ -648,6 +756,7 @@ func (b *Builder) handleChildRecipeMarker(event *historypb.HistoryEvent, env *st
 		}
 		b.appendNodeEvent(node, run, event, "child-trigger", data)
 		b.addTimeline(event.GetEventId(), event, "child-trigger", nodeTimelineRef(node.Path), data)
+		b.indexRun(run)
 	case "result":
 		var payload story.ChildRecipeResultPayload
 		if err := decodePayload(payloadMap, &payload); err != nil {
@@ -684,6 +793,7 @@ func (b *Builder) handleChildRecipeMarker(event *historypb.HistoryEvent, env *st
 		}
 		b.appendNodeEvent(node, run, event, "child-result", data)
 		b.addTimeline(event.GetEventId(), event, "child-result", nodeTimelineRef(node.Path), data)
+		b.indexRun(run)
 	}
 }
 
@@ -706,12 +816,28 @@ func (b *Builder) ensureRunForInvocation(inv story.MarkerInvocation) *NodeRun {
 	node := b.getOrCreateNode(inv.NodePath, inv.RecipeID)
 	run := &NodeRun{
 		InvocationID: invID,
+		InvocationHash: invID,
 		Status:       "pending",
 		Attempt:      len(node.Runs) + 1,
 	}
 	node.Runs = append(node.Runs, run)
-	b.runsByInvocation[invID] = run
+	b.indexRun(run)
 	return run
+}
+
+func (b *Builder) indexRun(run *NodeRun) {
+	if run == nil {
+		return
+	}
+	if run.InvocationID != "" {
+		b.runsByInvocation[run.InvocationID] = run
+	}
+	if run.InvocationHash != "" {
+		b.runsByInvocationHash[run.InvocationHash] = run
+	}
+	if run.ChildRunID != "" {
+		b.runsByChildRunID[run.ChildRunID] = run
+	}
 }
 
 func (b *Builder) getOrCreateNode(path, recipeID string) *StoryNode {
@@ -973,6 +1099,88 @@ func cloneMap(in map[string]interface{}) map[string]interface{} {
 		out[k] = v
 	}
 	return out
+}
+
+func invocationHashFromCore(inv coreops.Invocation) string {
+	if inv.ID != "" {
+		return inv.ID
+	}
+	return inv.Hash()
+}
+
+func extractRecipeSetIndex(metadata map[string]interface{}) *int {
+	if len(metadata) == 0 {
+		return nil
+	}
+	raw, ok := metadata["index"]
+	if !ok {
+		return nil
+	}
+	convert := func(value int) *int {
+		idx := value
+		return &idx
+	}
+	switch v := raw.(type) {
+	case int:
+		return convert(v)
+	case int32:
+		return convert(int(v))
+	case int64:
+		return convert(int(v))
+	case float64:
+		return convert(int(v))
+	case json.Number:
+		if parsed, err := strconv.Atoi(v.String()); err == nil {
+			return convert(parsed)
+		}
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return convert(parsed)
+		}
+	}
+	return nil
+}
+
+func extractWaitForChild(metadata map[string]interface{}) *bool {
+	if len(metadata) == 0 {
+		return nil
+	}
+	if raw, ok := metadata["wait_for_child"]; ok {
+		switch v := raw.(type) {
+		case bool:
+			value := v
+			return &value
+		case string:
+			mode := strings.ToLower(strings.TrimSpace(v))
+			if mode == "true" {
+				value := true
+				return &value
+			}
+			if mode == "false" {
+				value := false
+				return &value
+			}
+		}
+	}
+	if raw, ok := metadata["run_mode"]; ok {
+		mode := ""
+		switch v := raw.(type) {
+		case string:
+			mode = v
+		case fmt.Stringer:
+			mode = v.String()
+		}
+		mode = strings.ToLower(strings.TrimSpace(mode))
+		if mode == "sync" {
+			value := true
+			return &value
+		}
+		if mode == "async" {
+			value := false
+			return &value
+		}
+	}
+	return nil
 }
 
 func mapWorkflowStatus(status enumspb.WorkflowExecutionStatus) string {
