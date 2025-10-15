@@ -79,7 +79,24 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		return nil, fmt.Errorf("remote branch %s no longer descends from base %s", targetBranch, shortHash(snapshot.BaseHash))
 	}
 
-	newlyCommitted, err := countCommitsBetween(ctx, snapshot.RepoPath, snapshot.BaseHash, snapshot.PersistHash)
+	skipRebase := input.SkipRebase
+	rangeBaseHash := snapshot.BaseHash
+	if skipRebase {
+		fastForwardable, err := isAncestor(ctx, snapshot.RepoPath, remoteTip, snapshot.PersistHash)
+		if err != nil {
+			return nil, fmt.Errorf("check fast-forward eligibility: %w", err)
+		}
+		if !fastForwardable {
+			return nil, common.NotFastForwardError{
+				TargetBranch: targetBranch,
+				LocalHead:    snapshot.PersistHash,
+				UpstreamHead: remoteTip,
+			}
+		}
+		rangeBaseHash = remoteTip
+	}
+
+	newlyCommitted, err := countCommitsBetween(ctx, snapshot.RepoPath, rangeBaseHash, snapshot.PersistHash)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +119,11 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 				"persist_hash":  remoteTip,
 				"previous_hash": snapshot.PersistHash,
 			},
+			FastForward: skipRebase,
 		}, nil
 	}
 
-	commitLog, err := collectCommitSummaries(ctx, snapshot.RepoPath, snapshot.BaseHash, snapshot.PersistHash)
+	commitLog, err := collectCommitSummaries(ctx, snapshot.RepoPath, rangeBaseHash, snapshot.PersistHash)
 	if err != nil {
 		return nil, err
 	}
@@ -115,25 +133,60 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		_, _ = common.ExecuteGitCommand(context.Background(), snapshot.RepoPath, "reset", "--hard", originalHead)
 	}
 
-	if err := createSquashCommit(ctx, snapshot, targetBranch, commitLog, input.PreserveAuthor); err != nil {
+	if err := createSquashCommit(ctx, snapshot, rangeBaseHash, targetBranch, commitLog, input.PreserveAuthor); err != nil {
 		restoreOnError()
 		return nil, err
 	}
 
-	if err := rebaseOntoTarget(ctx, snapshot.RepoPath, remoteTip, snapshot.BaseHash, input.PreserveAuthor, snapshot.GitAuthor); err != nil {
-		restoreOnError()
-		return nil, err
-	}
+	var mergedHash string
+	if skipRebase {
+		mergedHash, err = common.GetCommitHash(ctx, snapshot.RepoPath, "HEAD")
+		if err != nil {
+			restoreOnError()
+			return nil, fmt.Errorf("determine merged head: %w", err)
+		}
 
-	mergedHash, err := common.GetCommitHash(ctx, snapshot.RepoPath, "HEAD")
-	if err != nil {
-		restoreOnError()
-		return nil, fmt.Errorf("determine merged head: %w", err)
-	}
+		stillAncestor, err := isAncestor(ctx, snapshot.RepoPath, remoteTip, mergedHash)
+		if err != nil {
+			restoreOnError()
+			return nil, fmt.Errorf("confirm fast-forward ancestor: %w", err)
+		}
+		if !stillAncestor {
+			restoreOnError()
+			return nil, common.NotFastForwardError{
+				TargetBranch: targetBranch,
+				LocalHead:    mergedHash,
+				UpstreamHead: remoteTip,
+			}
+		}
 
-	if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "push", remoteName, fmt.Sprintf("HEAD:%s", targetBranch)); err != nil {
-		restoreOnError()
-		return nil, fmt.Errorf("push to %s: %w", targetBranch, err)
+		if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "push", remoteName, fmt.Sprintf("HEAD:%s", targetBranch)); err != nil {
+			restoreOnError()
+			if isNonFastForwardError(err) {
+				return nil, common.NotFastForwardError{
+					TargetBranch: targetBranch,
+					LocalHead:    mergedHash,
+					UpstreamHead: remoteTip,
+				}
+			}
+			return nil, fmt.Errorf("push to %s: %w", targetBranch, err)
+		}
+	} else {
+		if err := rebaseOntoTarget(ctx, snapshot.RepoPath, remoteTip, snapshot.BaseHash, input.PreserveAuthor, snapshot.GitAuthor); err != nil {
+			restoreOnError()
+			return nil, err
+		}
+
+		mergedHash, err = common.GetCommitHash(ctx, snapshot.RepoPath, "HEAD")
+		if err != nil {
+			restoreOnError()
+			return nil, fmt.Errorf("determine merged head: %w", err)
+		}
+
+		if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "push", remoteName, fmt.Sprintf("HEAD:%s", targetBranch)); err != nil {
+			restoreOnError()
+			return nil, fmt.Errorf("push to %s: %w", targetBranch, err)
+		}
 	}
 
 	return &SquashRebaseMergeOutput{
@@ -149,6 +202,7 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 			"persist_hash":  mergedHash,
 			"previous_hash": snapshot.PersistHash,
 		},
+		FastForward: skipRebase,
 	}, nil
 }
 
@@ -272,8 +326,8 @@ func collectCommitSummaries(ctx context.Context, repoPath, baseHash, persistHash
 	return strings.TrimSpace(string(out)), nil
 }
 
-func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, targetBranch, commitLog string, preserveAuthor *bool) error {
-	if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "reset", "--soft", snapshot.BaseHash); err != nil {
+func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, squashBaseHash, targetBranch, commitLog string, preserveAuthor *bool) error {
+	if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "reset", "--soft", squashBaseHash); err != nil {
 		return fmt.Errorf("prepare squash reset: %w", err)
 	}
 
@@ -290,7 +344,7 @@ func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, targetB
 		}
 	}
 
-	message := buildSquashCommitMessage(snapshot, targetBranch, commitLog)
+	message := buildSquashCommitMessage(snapshot, targetBranch, commitLog, squashBaseHash)
 
 	args := []string{"commit", "-m", message}
 	env := os.Environ()
@@ -379,10 +433,10 @@ func isAncestor(ctx context.Context, repoPath, ancestor, descendant string) (boo
 	return false, err
 }
 
-func buildSquashCommitMessage(snapshot workspaceSnapshot, targetBranch, commitLog string) string {
+func buildSquashCommitMessage(snapshot workspaceSnapshot, targetBranch, commitLog string, baseHash string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Squash delivery to %s\n\n", targetBranch)
-	fmt.Fprintf(&b, "Base: %s\n", snapshot.BaseHash)
+	fmt.Fprintf(&b, "Base: %s\n", baseHash)
 	fmt.Fprintf(&b, "Original tip: %s\n", snapshot.PersistHash)
 	b.WriteString("\nCommits:\n")
 	if commitLog == "" {
@@ -450,4 +504,12 @@ func stringFromMap(m map[string]interface{}, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func isNonFastForwardError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lowered := strings.ToLower(err.Error())
+	return strings.Contains(lowered, "non-fast-forward") || strings.Contains(lowered, "[rejected]")
 }

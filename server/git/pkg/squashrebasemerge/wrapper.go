@@ -12,6 +12,7 @@ type SquashRebaseMergeInput struct {
 	TargetBranch   string                 `json:"target_branch,omitempty"`
 	UpstreamRemote string                 `json:"upstream_remote,omitempty"`
 	PreserveAuthor *bool                  `json:"preserve_author,omitempty"`
+	SkipRebase     bool                   `json:"skip_rebase,omitempty"`
 	Context        map[string]interface{} `json:"context,omitempty"`
 }
 
@@ -28,6 +29,7 @@ type SquashRebaseMergeOutput struct {
 	MergedHash      string                 `json:"merged_hash"`
 	SquashedCommits SquashRangeSummary     `json:"squashed_commits"`
 	GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
+	FastForward     bool                   `json:"fast_forward"`
 }
 
 // Activity implements the RegisterableOp interface for squash-rebase-merge.

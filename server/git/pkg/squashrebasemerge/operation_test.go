@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/git/pkg/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,6 +73,7 @@ func TestRunSquashRebaseMerge_PushesSquashedCommit(t *testing.T) {
 	require.Equal(t, baseHash, output.SquashedCommits.BaseHash)
 	require.Equal(t, output.MergedHash, output.GitContextPatch["base_hash"])
 	require.Equal(t, output.MergedHash, output.GitContextPatch["persist_hash"])
+	require.False(t, output.FastForward)
 
 	// Only one commit should exist after the squash.
 	commitCount := strings.TrimSpace(runGitOutput(t, workspace, "git", "rev-list", "--count", fmt.Sprintf("%s..HEAD", baseHash)))
@@ -134,6 +136,131 @@ func TestRunSquashRebaseMerge_NoChangesFastForwards(t *testing.T) {
 	require.Equal(t, remoteHead, revParse(t, workspace, "HEAD"))
 	require.Equal(t, remoteHead, output.GitContextPatch["base_hash"])
 	require.Equal(t, remoteHead, output.GitContextPatch["persist_hash"])
+	require.False(t, output.FastForward)
+}
+
+func TestRunSquashRebaseMerge_FastForwardSuccess(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	remotePath := filepath.Join(tempDir, "remote.git")
+	initBareRemote(t, remotePath)
+
+	seedRepo := filepath.Join(tempDir, "seed")
+	runGit(t, tempDir, "git", "clone", remotePath, "seed")
+	configureAuthor(t, seedRepo, "Seed", "seed@example.com")
+	writeFile(t, seedRepo, "README.md", "base\n")
+	runGit(t, seedRepo, "git", "add", "README.md")
+	runGit(t, seedRepo, "git", "commit", "-m", "seed")
+	runGit(t, seedRepo, "git", "checkout", "-B", "main")
+	runGit(t, seedRepo, "git", "push", "origin", "HEAD:main")
+	initialHead := revParse(t, seedRepo, "HEAD")
+
+	workspace := filepath.Join(tempDir, "workspace")
+	runGit(t, tempDir, "git", "clone", remotePath, "workspace")
+	configureAuthor(t, workspace, "Dev", "dev@example.com")
+
+	writeFile(t, workspace, "one.txt", "one\n")
+	runGit(t, workspace, "git", "add", "one.txt")
+	runGit(t, workspace, "git", "commit", "-m", "feature one")
+
+	writeFile(t, workspace, "two.txt", "two\n")
+	runGit(t, workspace, "git", "add", "two.txt")
+	runGit(t, workspace, "git", "commit", "-m", "feature two")
+
+	baseHash := initialHead
+	persistHash := revParse(t, workspace, "HEAD")
+
+	input := SquashRebaseMergeInput{
+		RepoPath:       workspace,
+		TargetBranch:   "refs/heads/main",
+		UpstreamRemote: "origin",
+		SkipRebase:     true,
+		Context: map[string]interface{}{
+			"worktree": workspace,
+			"git": map[string]interface{}{
+				"base_hash":      baseHash,
+				"persist_hash":   persistHash,
+				"base_repo":      remotePath,
+				"worktree_path":  workspace,
+				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
+			},
+		},
+	}
+
+	output, err := Run(context.Background(), input)
+	require.NoError(t, err)
+	require.True(t, output.FastForward)
+	require.Equal(t, "refs/heads/main", output.TargetBranch)
+
+	require.Equal(t, output.MergedHash, revParse(t, workspace, "HEAD"))
+	runGit(t, workspace, "git", "fetch", "origin", "main")
+	require.Equal(t, output.MergedHash, revParse(t, workspace, "refs/remotes/origin/main"))
+
+	parent := strings.TrimSpace(runGitOutput(t, workspace, "git", "rev-parse", fmt.Sprintf("%s^", output.MergedHash)))
+	require.Equal(t, initialHead, parent)
+	require.Equal(t, output.MergedHash, output.GitContextPatch["base_hash"])
+
+	require.Equal(t, persistHash, output.SquashedCommits.PersistHash)
+}
+
+func TestRunSquashRebaseMerge_FastForwardFailsWhenRemoteAdvanced(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	remotePath := filepath.Join(tempDir, "remote.git")
+	initBareRemote(t, remotePath)
+
+	seedRepo := filepath.Join(tempDir, "seed")
+	runGit(t, tempDir, "git", "clone", remotePath, "seed")
+	configureAuthor(t, seedRepo, "Seed", "seed@example.com")
+	writeFile(t, seedRepo, "shared.txt", "base\n")
+	runGit(t, seedRepo, "git", "add", "shared.txt")
+	runGit(t, seedRepo, "git", "commit", "-m", "seed")
+	runGit(t, seedRepo, "git", "checkout", "-B", "main")
+	runGit(t, seedRepo, "git", "push", "origin", "HEAD:main")
+
+	workspace := filepath.Join(tempDir, "workspace")
+	runGit(t, tempDir, "git", "clone", remotePath, "workspace")
+	configureAuthor(t, workspace, "Dev", "dev@example.com")
+
+	baseHash := revParse(t, workspace, "HEAD")
+
+	writeFile(t, workspace, "shared.txt", "base\nlocal\n")
+	runGit(t, workspace, "git", "add", "shared.txt")
+	runGit(t, workspace, "git", "commit", "-m", "local change")
+	persistHash := revParse(t, workspace, "HEAD")
+
+	// Remote diverges after local work.
+	writeFile(t, seedRepo, "shared.txt", "base\nremote\n")
+	runGit(t, seedRepo, "git", "add", "shared.txt")
+	runGit(t, seedRepo, "git", "commit", "-m", "remote change")
+	runGit(t, seedRepo, "git", "push", "origin", "main")
+
+	input := SquashRebaseMergeInput{
+		RepoPath:       workspace,
+		TargetBranch:   "refs/heads/main",
+		UpstreamRemote: "origin",
+		SkipRebase:     true,
+		Context: map[string]interface{}{
+			"worktree": workspace,
+			"git": map[string]interface{}{
+				"base_hash":      baseHash,
+				"persist_hash":   persistHash,
+				"base_repo":      remotePath,
+				"worktree_path":  workspace,
+				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
+			},
+		},
+	}
+
+	_, err := Run(context.Background(), input)
+	require.Error(t, err)
+	require.ErrorIs(t, err, common.ErrNotFastForward)
+	var nfErr common.NotFastForwardError
+	require.ErrorAs(t, err, &nfErr)
+	require.Equal(t, "refs/heads/main", nfErr.TargetBranch)
+	require.Equal(t, persistHash, revParse(t, workspace, "HEAD"))
 }
 
 func TestRunSquashRebaseMerge_RebaseConflict(t *testing.T) {
