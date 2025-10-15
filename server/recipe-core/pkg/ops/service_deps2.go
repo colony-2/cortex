@@ -7,6 +7,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"go.temporal.io/sdk/client"
 )
 
 // serviceDependenciesSeal is an unexported type used to seal ServiceDependencies2 implementations
@@ -18,6 +19,9 @@ type serviceDependenciesSeal struct{}
 type ServiceDependencies2 interface {
 	// WorkflowControl returns a typed workflow controller if available.
 	WorkflowControl() (workflowctl.WorkflowControl, bool)
+
+	// WorkflowClient returns the underlying Temporal client when exposed.
+	WorkflowClient() (client.Client, bool)
 
 	// SSEManager returns the server-sent-event manager when supported.
 	SSEManager() (SSEManager, bool)
@@ -47,6 +51,7 @@ type ServiceDependencies2 interface {
 // ServiceDepsBuilder constructs ServiceDependencies2 instances via a fluent API.
 type ServiceDepsBuilder struct {
 	workflowCtl       workflowctl.WorkflowControl
+	workflowClient    client.Client
 	sseManager        SSEManager
 	temporalNamespace string
 	database          *gorm.DB
@@ -61,6 +66,12 @@ func NewServiceDepsBuilder() *ServiceDepsBuilder { return &ServiceDepsBuilder{} 
 // WithWorkflowControl configures the workflow controller dependency.
 func (b *ServiceDepsBuilder) WithWorkflowControl(ctl workflowctl.WorkflowControl) *ServiceDepsBuilder {
 	b.workflowCtl = ctl
+	return b
+}
+
+// WithWorkflowClient configures the underlying workflow client dependency.
+func (b *ServiceDepsBuilder) WithWorkflowClient(cli client.Client) *ServiceDepsBuilder {
+	b.workflowClient = cli
 	return b
 }
 
@@ -87,6 +98,7 @@ func (b *ServiceDepsBuilder) Build() ServiceDependencies2 {
 	b.once.Do(func() {
 		b.result = &serviceDependencies{
 			workflowCtl:       b.workflowCtl,
+			workflowClient:    b.workflowClient,
 			sseManager:        b.sseManager,
 			temporalNamespace: b.temporalNamespace,
 			database:          b.database,
@@ -100,6 +112,7 @@ func (b *ServiceDepsBuilder) Build() ServiceDependencies2 {
 
 type serviceDependencies struct {
 	workflowCtl       workflowctl.WorkflowControl
+	workflowClient    client.Client
 	sseManager        SSEManager
 	temporalNamespace string
 	database          *gorm.DB
@@ -112,6 +125,13 @@ func (d *serviceDependencies) WorkflowControl() (workflowctl.WorkflowControl, bo
 		return nil, false
 	}
 	return d.workflowCtl, true
+}
+
+func (d *serviceDependencies) WorkflowClient() (client.Client, bool) {
+	if d == nil || d.workflowClient == nil {
+		return nil, false
+	}
+	return d.workflowClient, true
 }
 
 func (d *serviceDependencies) SSEManager() (SSEManager, bool) {

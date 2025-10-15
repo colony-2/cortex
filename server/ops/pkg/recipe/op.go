@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
@@ -247,6 +248,14 @@ func (e *childExecutor) runDiscrete(runMode executionRunMode) (RecipeOutput, err
 }
 
 func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
+	segment, remaining := e.resumeTarget(nil)
+	if segment != nil {
+		return e.resetChildWorkflow(ctx, runMode, gitMode, childInputs, segment, remaining)
+	}
+	return e.launchChildWorkflow(ctx, runMode, gitMode, childInputs)
+}
+
+func (e *childExecutor) launchChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}) (map[string]interface{}, error) {
 	future, childCtx := e.scheduleChildWorkflow(ctx, runMode, childInputs)
 	logger := workflow.GetLogger(ctx)
 	logger.Info("invoking child recipe", "recipe", e.input.Name, "run_mode", runMode.String(), "git_state", gitMode.String(), "inputs_keys", mapKeys(childInputs))
@@ -256,6 +265,22 @@ func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executi
 		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
 			ChildWorkflowID: "",
 			ChildRunID:      "",
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(childCtx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+			},
+		})
+		return nil, err
+	}
+
+	if err := SignalChildRunMetadata(ctx, e.invocation, exec, nil, nil); err != nil {
+		story.RecordChildRecipeResult(childCtx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: exec.ID,
+			ChildRunID:      exec.RunID,
 			Status:          "start_failed",
 			CompletedAt:     workflow.Now(childCtx),
 			ErrorMessage:    err.Error(),
@@ -315,6 +340,7 @@ func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executi
 		})
 		return result, nil
 	}
+
 	handle := map[string]interface{}{
 		"recipe":      e.input.Name,
 		"workflow_id": exec.ID,
@@ -329,6 +355,160 @@ func (e *childExecutor) startChildWorkflow(ctx workflow.Context, runMode executi
 	}
 	logger.Info("async child recipe scheduled", "recipe", e.input.Name, "workflow_id", exec.ID, "run_id", exec.RunID, "git_state", gitMode.String())
 	return map[string]interface{}{"async_handle": handle}, nil
+}
+
+func (e *childExecutor) resetChildWorkflow(ctx workflow.Context, runMode executionRunMode, gitMode gitStateMode, childInputs map[string]interface{}, segment *runmetadata.Segment, remaining *runmetadata.Resume) (map[string]interface{}, error) {
+	logger := workflow.GetLogger(ctx)
+	if segment == nil {
+		return nil, temporal.NewNonRetryableApplicationError("resume segment missing", "RESET_INVALID_SEGMENT", nil)
+	}
+	if segment.WorkflowID == "" {
+		return nil, temporal.NewNonRetryableApplicationError("resume segment missing workflow_id", "RESET_INVALID_SEGMENT", nil)
+	}
+
+	reason := ""
+	if e.invocation.Deps != nil {
+		if meta, ok := e.invocation.Deps.RunMetadata(); ok && meta != nil {
+			reason = meta.Reason
+		}
+	}
+
+	activityTimeout := e.timeout
+	if activityTimeout <= 0 {
+		activityTimeout = 30 * time.Minute
+	}
+	activityOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: activityTimeout,
+		RetryPolicy:         e.retry,
+	}
+	actx := workflow.WithActivityOptions(ctx, activityOpts)
+	waitForCompletion := runMode == runModeSync
+	var resetResult ResetChildWorkflowActivityResult
+	input := ResetChildWorkflowActivityInput{
+		WorkflowID:        segment.WorkflowID,
+		RunID:             segment.RunID,
+		EventID:           segment.EventID,
+		Reason:            reason,
+		WaitForCompletion: waitForCompletion,
+	}
+	if err := workflow.ExecuteActivity(actx, ResetChildWorkflowActivityName, input).Get(actx, &resetResult); err != nil {
+		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: segment.WorkflowID,
+			ChildRunID:      segment.RunID,
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(ctx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+				"reset":     true,
+			},
+		})
+		return nil, err
+	}
+
+	childExec := workflow.Execution{ID: segment.WorkflowID, RunID: resetResult.RunID}
+	if err := SignalChildRunMetadata(ctx, e.invocation, childExec, remaining, nil); err != nil {
+		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: childExec.ID,
+			ChildRunID:      childExec.RunID,
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(ctx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+				"reset":     true,
+			},
+		})
+		return nil, err
+	}
+
+	story.RecordChildRecipeTrigger(ctx, e.invocation, story.ChildRecipeTriggerPayload{
+		ChildWorkflowID: childExec.ID,
+		ChildRunID:      childExec.RunID,
+		TriggeredAt:     workflow.Now(ctx),
+		RecipeName:      e.input.Name,
+		Inputs:          copyShallow(childInputs),
+		Metadata: map[string]interface{}{
+			"run_mode":  runMode.String(),
+			"git_state": gitMode.String(),
+			"reset":     true,
+		},
+	})
+
+	if waitForCompletion {
+		outputs := resetResult.Result
+		if outputs == nil {
+			outputs = make(map[string]interface{})
+		}
+		logger.Info("child recipe reset completed", "recipe", e.input.Name, "workflow_id", childExec.ID, "run_id", childExec.RunID, "keys", mapKeys(outputs))
+		story.RecordChildRecipeResult(ctx, e.invocation, story.ChildRecipeResultPayload{
+			ChildWorkflowID: childExec.ID,
+			ChildRunID:      childExec.RunID,
+			Status:          "completed",
+			CompletedAt:     workflow.Now(ctx),
+			Outputs:         copyShallow(outputs),
+			RecipeName:      e.input.Name,
+			Metadata: map[string]interface{}{
+				"run_mode":  runMode.String(),
+				"git_state": gitMode.String(),
+				"reset":     true,
+			},
+		})
+		return outputs, nil
+	}
+
+	handle := map[string]interface{}{
+		"recipe":      e.input.Name,
+		"workflow_id": childExec.ID,
+		"run_id":      childExec.RunID,
+		"git_state":   gitMode.String(),
+	}
+	if ctxVal, ok := childInputs["context"]; ok {
+		handle["context"] = ctxVal
+	}
+	if hash, ok := childInputs["git_persist_hash"]; ok {
+		handle["git_persist_hash"] = hash
+	}
+	logger.Info("child recipe reset scheduled asynchronously", "recipe", e.input.Name, "workflow_id", childExec.ID, "run_id", childExec.RunID, "git_state", gitMode.String())
+	return map[string]interface{}{"async_handle": handle}, nil
+}
+
+func (e *childExecutor) resumeTarget(recipeSetIndex *int) (*runmetadata.Segment, *runmetadata.Resume) {
+	if e.invocation.Deps == nil {
+		return nil, nil
+	}
+	resume, ok := e.invocation.Deps.ResumeMetadata()
+	if !ok || resume == nil {
+		return nil, nil
+	}
+	if len(resume.ExecutionPath) == 0 {
+		return nil, nil
+	}
+	segment := resume.ExecutionPath[0]
+	if segment.InvocationHash != invocationHash(e.invocation) {
+		return nil, nil
+	}
+	if recipeSetIndex != nil {
+		if segment.RecipeSetIndex == nil || *segment.RecipeSetIndex != *recipeSetIndex {
+			return nil, nil
+		}
+	}
+	segCopy := segment
+	remaining := cloneResumeWithoutHead(resume)
+	return &segCopy, remaining
+}
+
+func cloneResumeWithoutHead(resume *runmetadata.Resume) *runmetadata.Resume {
+	if resume == nil || len(resume.ExecutionPath) <= 1 {
+		return nil
+	}
+	cloned := make([]runmetadata.Segment, len(resume.ExecutionPath)-1)
+	copy(cloned, resume.ExecutionPath[1:])
+	return &runmetadata.Resume{ExecutionPath: cloned}
 }
 
 func (e *childExecutor) scheduleChildWorkflow(ctx workflow.Context, runMode executionRunMode, childInputs map[string]interface{}) (workflow.ChildWorkflowFuture, workflow.Context) {

@@ -1,0 +1,25 @@
+go 1.24.1
+
+use (
+	./server/api
+	./server/container
+	./server/core
+	./server/cortex
+	./server/embeddedtemporal
+	./server/files
+	./server/git
+	./server/graph
+	./server/llm
+	./server/nucleus
+	./server/openapi
+	./server/ops
+	./server/recipe-core
+	./server/recipe-history
+	./server/recipe-worker
+	./server/storage
+	./server/ticket
+)
+
+replace (
+gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
+)

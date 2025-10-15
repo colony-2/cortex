@@ -93,4 +93,3 @@ var (
     ErrNotFound    = errors.New("workflow not found")
     ErrUnavailable = errors.New("workflow service unavailable")
 )
-

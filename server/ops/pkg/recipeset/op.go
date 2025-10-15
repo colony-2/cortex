@@ -7,6 +7,7 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -64,7 +65,21 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 
 	logger := workflow.GetLogger(ctx)
 	scheduled := make([]scheduledChild, 0, len(plans))
+	statuses := make([]map[string]interface{}, len(plans))
+	anyFailure := false
+
 	for _, plan := range plans {
+		if segment, remaining := resumeSegmentForPlan(inv, plan.index); segment != nil {
+			_, err := resetRecipesetChild(inv, ctx, timeout, retry, plan, segment, remaining)
+			if err != nil {
+				anyFailure = true
+				statuses[plan.index] = failureStatus(plan.index, plan.name, err)
+			} else {
+				statuses[plan.index] = successStatus(plan.index, plan.name)
+			}
+			continue
+		}
+
 		callBase := cloneMap(base)
 		for k, v := range plan.extras {
 			callBase[k] = v
@@ -82,6 +97,21 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 				CompletedAt:  workflow.Now(launch.Ctx),
 				ErrorMessage: err.Error(),
 				RecipeName:   plan.name,
+				Metadata: map[string]interface{}{
+					"index": plan.index,
+				},
+			})
+			return Output{}, wrapPlanError(plan, err)
+		}
+
+		if err := recipe.SignalChildRunMetadata(ctx, inv, exec, nil, &plan.index); err != nil {
+			story.RecordChildRecipeResult(launch.Ctx, inv, story.ChildRecipeResultPayload{
+				ChildWorkflowID: exec.ID,
+				ChildRunID:      exec.RunID,
+				Status:          "start_failed",
+				CompletedAt:     workflow.Now(launch.Ctx),
+				ErrorMessage:    err.Error(),
+				RecipeName:      plan.name,
 				Metadata: map[string]interface{}{
 					"index": plan.index,
 				},
@@ -110,25 +140,21 @@ func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, re
 		})
 	}
 
-	if len(scheduled) == 0 {
-		return Output{}, nil
+	if len(scheduled) > 0 {
+		// Propagate cancellation to child workflows.
+		workflow.Go(ctx, func(cancelCtx workflow.Context) {
+			if done := cancelCtx.Done(); done != nil {
+				done.Receive(cancelCtx, nil)
+				for _, child := range scheduled {
+					if child.exec.ID == "" {
+						continue
+					}
+					workflow.RequestCancelExternalWorkflow(cancelCtx, child.exec.ID, child.exec.RunID)
+				}
+			}
+		})
 	}
 
-	// Propagate cancellation to child workflows.
-	workflow.Go(ctx, func(cancelCtx workflow.Context) {
-		if done := cancelCtx.Done(); done != nil {
-			done.Receive(cancelCtx, nil)
-			for _, child := range scheduled {
-				if child.exec.ID == "" {
-					continue
-				}
-				workflow.RequestCancelExternalWorkflow(cancelCtx, child.exec.ID, child.exec.RunID)
-			}
-		}
-	})
-
-	statuses := make([]map[string]interface{}, len(scheduled))
-	anyFailure := false
 	for _, child := range scheduled {
 		var childResult map[string]interface{}
 		err := child.future.Get(child.ctx, &childResult)
@@ -210,6 +236,139 @@ func buildChildPlan(index int, raw map[string]interface{}) (childPlan, error) {
 		inputs: inputs,
 		extras: extras,
 	}, nil
+}
+
+func resetRecipesetChild(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, plan childPlan, segment *runmetadata.Segment, remaining *runmetadata.Resume) (map[string]interface{}, error) {
+	logger := workflow.GetLogger(ctx)
+	if segment.WorkflowID == "" {
+		return nil, temporal.NewNonRetryableApplicationError("resume segment missing workflow_id", "RESET_INVALID_SEGMENT", nil, map[string]interface{}{"index": plan.index})
+	}
+
+	reason := ""
+	if inv.Deps != nil {
+		if meta, ok := inv.Deps.RunMetadata(); ok && meta != nil {
+			reason = meta.Reason
+		}
+	}
+
+	activityTimeout := timeout
+	if activityTimeout <= 0 {
+		activityTimeout = 30 * time.Minute
+	}
+	activityOpts := workflow.ActivityOptions{
+		StartToCloseTimeout: activityTimeout,
+		RetryPolicy:         retry,
+	}
+	actx := workflow.WithActivityOptions(ctx, activityOpts)
+
+	var resetResult recipe.ResetChildWorkflowActivityResult
+	input := recipe.ResetChildWorkflowActivityInput{
+		WorkflowID:        segment.WorkflowID,
+		RunID:             segment.RunID,
+		EventID:           segment.EventID,
+		Reason:            reason,
+		WaitForCompletion: true,
+	}
+	if err := workflow.ExecuteActivity(actx, recipe.ResetChildWorkflowActivityName, input).Get(actx, &resetResult); err != nil {
+		story.RecordChildRecipeResult(ctx, inv, story.ChildRecipeResultPayload{
+			ChildWorkflowID: segment.WorkflowID,
+			ChildRunID:      segment.RunID,
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(ctx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      plan.name,
+			Metadata: map[string]interface{}{
+				"index": plan.index,
+				"reset": true,
+			},
+		})
+		return nil, err
+	}
+
+	childExec := workflow.Execution{ID: segment.WorkflowID, RunID: resetResult.RunID}
+	if err := recipe.SignalChildRunMetadata(ctx, inv, childExec, remaining, &plan.index); err != nil {
+		story.RecordChildRecipeResult(ctx, inv, story.ChildRecipeResultPayload{
+			ChildWorkflowID: childExec.ID,
+			ChildRunID:      childExec.RunID,
+			Status:          "start_failed",
+			CompletedAt:     workflow.Now(ctx),
+			ErrorMessage:    err.Error(),
+			RecipeName:      plan.name,
+			Metadata: map[string]interface{}{
+				"index": plan.index,
+				"reset": true,
+			},
+		})
+		return nil, err
+	}
+
+	story.RecordChildRecipeTrigger(ctx, inv, story.ChildRecipeTriggerPayload{
+		ChildWorkflowID: childExec.ID,
+		ChildRunID:      childExec.RunID,
+		TriggeredAt:     workflow.Now(ctx),
+		RecipeName:      plan.name,
+		Inputs:          cloneMap(plan.inputs),
+		Metadata: map[string]interface{}{
+			"index": plan.index,
+			"reset": true,
+		},
+	})
+
+	outputs := resetResult.Result
+	if outputs == nil {
+		outputs = make(map[string]interface{})
+	}
+	logger.Info("recipe_set child reset completed", "index", plan.index, "recipe", plan.name, "workflow_id", childExec.ID, "run_id", childExec.RunID, "output_keys", len(outputs))
+	story.RecordChildRecipeResult(ctx, inv, story.ChildRecipeResultPayload{
+		ChildWorkflowID: childExec.ID,
+		ChildRunID:      childExec.RunID,
+		Status:          "completed",
+		CompletedAt:     workflow.Now(ctx),
+		Outputs:         cloneMap(outputs),
+		RecipeName:      plan.name,
+		Metadata: map[string]interface{}{
+			"index": plan.index,
+			"reset": true,
+		},
+	})
+
+	return outputs, nil
+}
+
+func resumeSegmentForPlan(inv ops.Invocation, index int) (*runmetadata.Segment, *runmetadata.Resume) {
+	if inv.Deps == nil {
+		return nil, nil
+	}
+	resume, ok := inv.Deps.ResumeMetadata()
+	if !ok || resume == nil || len(resume.ExecutionPath) == 0 {
+		return nil, nil
+	}
+	segment := resume.ExecutionPath[0]
+	if segment.InvocationHash != invocationHash(inv) {
+		return nil, nil
+	}
+	if segment.RecipeSetIndex == nil || *segment.RecipeSetIndex != index {
+		return nil, nil
+	}
+	segCopy := segment
+	remaining := cloneResumeWithoutHead(resume)
+	return &segCopy, remaining
+}
+
+func cloneResumeWithoutHead(resume *runmetadata.Resume) *runmetadata.Resume {
+	if resume == nil || len(resume.ExecutionPath) <= 1 {
+		return nil
+	}
+	cloned := make([]runmetadata.Segment, len(resume.ExecutionPath)-1)
+	copy(cloned, resume.ExecutionPath[1:])
+	return &runmetadata.Resume{ExecutionPath: cloned}
+}
+
+func invocationHash(inv ops.Invocation) string {
+	if inv.ID != "" {
+		return inv.ID
+	}
+	return inv.Hash()
 }
 
 func extractInputs(index int, raw map[string]interface{}) (map[string]interface{}, error) {

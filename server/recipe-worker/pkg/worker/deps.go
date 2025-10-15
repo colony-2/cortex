@@ -19,7 +19,10 @@ func newWorkerDependencies(cli client.Client, namespace string, db *gorm.DB) ops
 		WithTemporalNamespace(namespace).
 		WithDatabase(db)
 	if cli != nil {
-		builder = builder.WithWorkflowControl(&temporalWorkflowControl{client: cli, namespace: namespace})
+		ctl := &temporalWorkflowControl{client: cli, namespace: namespace}
+		builder = builder.
+			WithWorkflowControl(ctl).
+			WithWorkflowClient(cli)
 	}
 	return builder.Build()
 }

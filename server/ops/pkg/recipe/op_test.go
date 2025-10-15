@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/temporal"
@@ -181,6 +182,43 @@ func TestRecipeOpDiscreteAsyncReturnsHandle(t *testing.T) {
 	ctxVal, ok := handle["context"].(map[string]interface{})
 	require.True(t, ok)
 	require.NotNil(t, ctxVal["git"])
+}
+
+func TestChildExecutorResumeTargetMatchesInvocation(t *testing.T) {
+	resume := &runmetadata.Resume{ExecutionPath: []runmetadata.Segment{{
+		InvocationHash: "inv-hash",
+		WorkflowID:     "child-workflow",
+		RunID:          "child-run",
+		EventID:        42,
+	}}}
+	deps := ops.NewServiceDepsBuilder().Build().CloneWithResumeMetadata(resume)
+	exec := &childExecutor{
+		invocation: ops.Invocation{ID: "inv-hash", Deps: deps},
+	}
+	segment, remaining := exec.resumeTarget(nil)
+	require.NotNil(t, segment)
+	assert.Equal(t, "child-workflow", segment.WorkflowID)
+	assert.Equal(t, int64(42), segment.EventID)
+	assert.Nil(t, remaining)
+}
+
+func TestChildExecutorResumeTargetIndexMismatch(t *testing.T) {
+	idx := 3
+	resume := &runmetadata.Resume{ExecutionPath: []runmetadata.Segment{{
+		InvocationHash: "inv-hash",
+		WorkflowID:     "child-workflow",
+		RunID:          "child-run",
+		EventID:        7,
+		RecipeSetIndex: &idx,
+	}}}
+	deps := ops.NewServiceDepsBuilder().Build().CloneWithResumeMetadata(resume)
+	exec := &childExecutor{
+		invocation: ops.Invocation{ID: "inv-hash", Deps: deps},
+	}
+	otherIdx := 1
+	segment, remaining := exec.resumeTarget(&otherIdx)
+	assert.Nil(t, segment)
+	assert.Nil(t, remaining)
 }
 
 // --- Helpers -----------------------------------------------------------------

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"sync"
 
+	opsRecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	coreRecipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -22,6 +24,8 @@ type WorkerManager struct {
 	mu               sync.RWMutex
 	taskQueue        string // Base task queue name
 	activityRegistry *ops.ActivityRegistry
+	deps             coreops.ServiceDependencies2
+	resetActivity    *opsRecipe.ResetChildWorkflowActivity
 }
 
 // NewWorkerManager creates a new worker manager
@@ -46,10 +50,12 @@ func (m *WorkerManager) SetDependencies(deps coreops.ServiceDependencies2) {
 		return
 	}
 	m.activityRegistry.SetDependencies(deps)
+	m.deps = deps
+	m.resetActivity = opsRecipe.NewResetChildWorkflowActivity(deps)
 }
 
 // StartWorker starts a new worker for a recipe
-func (m *WorkerManager) StartWorker(file *recipe.RecipeFile) error {
+func (m *WorkerManager) StartWorker(file *coreRecipe.RecipeFile) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -70,6 +76,9 @@ func (m *WorkerManager) StartWorker(file *recipe.RecipeFile) error {
 	// Create the worker
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 	m.activityRegistry.EnableActivitiesInWorker(w)
+	if m.resetActivity != nil {
+		w.RegisterActivityWithOptions(m.resetActivity.Execute, activity.RegisterOptions{Name: opsRecipe.ResetChildWorkflowActivityName})
+	}
 	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		return compiler.ExecuteRecipe(ctx, m.activityRegistry, file.Recipe, inputs)
 	}
@@ -113,7 +122,7 @@ func (m *WorkerManager) StopWorker(recipeName string) error {
 }
 
 // RestartWorker restarts a worker for a recipe
-func (m *WorkerManager) RestartWorker(recipeName string, recipe *recipe.RecipeFile) error {
+func (m *WorkerManager) RestartWorker(recipeName string, recipe *coreRecipe.RecipeFile) error {
 	// Stop existing worker if it exists
 	_ = m.StopWorker(recipeName)
 
@@ -135,17 +144,17 @@ func (m *WorkerManager) StopAll() {
 }
 
 // GetWorkerStatus returns the status of a worker
-func (m *WorkerManager) GetWorkerStatus(recipeName string) recipe.WorkerStatus {
+func (m *WorkerManager) GetWorkerStatus(recipeName string) coreRecipe.WorkerStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	_, exists := m.workers[recipeName]
 	if exists {
 		// TODO: Check actual worker health
-		return recipe.WorkerStatusRunning
+		return coreRecipe.WorkerStatusRunning
 	}
 
-	return recipe.WorkerStatusStopped
+	return coreRecipe.WorkerStatusStopped
 }
 
 // GetTaskQueueForRecipe returns the task queue name for a recipe
