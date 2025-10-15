@@ -136,10 +136,15 @@ func (c *Client) getActivityExecutions(ctx context.Context, workflowID, recipeNa
 }
 
 // BuildStory reconstructs the execution story for a workflow run.
-func (c *Client) BuildStory(ctx context.Context, recipeName, workflowID string) (*storybuilder.Story, error) {
-	desc, err := c.temporal.DescribeWorkflowExecution(ctx, workflowID, "")
+// When recipeName is empty the workflow type name from Temporal metadata is used.
+func (c *Client) BuildStory(ctx context.Context, recipeName, workflowID, runID string) (*storybuilder.Story, error) {
+	desc, err := c.temporal.DescribeWorkflowExecution(ctx, workflowID, runID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe workflow execution: %w", err)
+	}
+
+	if recipeName == "" && desc != nil && desc.WorkflowExecutionInfo != nil && desc.WorkflowExecutionInfo.Type != nil {
+		recipeName = desc.WorkflowExecutionInfo.Type.GetName()
 	}
 
 	rec, err := c.transformer.getRecipe(recipeName)
@@ -150,7 +155,7 @@ func (c *Client) BuildStory(ctx context.Context, recipeName, workflowID string) 
 	b := storybuilder.New(recipeName, rec)
 	b.SetExecutionInfo(desc)
 
-	iter := c.temporal.GetWorkflowHistory(ctx, workflowID, "", false, 0)
+	iter := c.temporal.GetWorkflowHistory(ctx, workflowID, runID, false, 0)
 	for iter.HasNext() {
 		event, err := iter.Next()
 		if err != nil {

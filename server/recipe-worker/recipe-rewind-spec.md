@@ -46,7 +46,7 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
 - Access to `history.Client.BuildStory` (from `server/recipe-history/pkg/history`).
 
 ### Traversal Steps
-1. Start from the run that contains the invocation_hash: build its story (`leaf := BuildStory(leafRecipeName, leafWorkflowID)`) and verify the target `InvocationHash` exists in that run (falling back to `InvocationID` only for legacy runs). Capture the run's `ResumeEventID`, `RecipeSetIndex`, and parent linkage metadata.
+1. Start from the run that contains the invocation_hash: build its story (`leaf := BuildStory(leafRecipeName, leafWorkflowID, leafRunID)`) and verify the target `InvocationHash` exists in that run (falling back to `InvocationID` only for legacy runs). Capture the run's `ResumeEventID`, `RecipeSetIndex`, and parent linkage metadata.
 2. Append the leaf invocation segment to an in-memory stack.
 3. While the current run exposes `ParentWorkflowID`/`ParentRunID`, fetch the parent's story (from cache when possible), locate the parent `NodeRun` by matching `ParentInvocationHash`, and push a new segment containing the parent's hash, run ids, resume event id, and optional `RecipeSetIndex`.
 4. Repeat step 3 until there is no parent linkage (root reached) or a necessary story is missing. If any lookup fails (missing story, missing parent hash), abort with `ErrInvocationNotFound`.
@@ -126,4 +126,4 @@ The rewind builder will use `storybuilder.Story` instances to derive the ordered
    - Non-matching ops ignore the resume metadata and continue normal execution. Tests should cover both matching and non-matching cases across recipe and recipeset flows.
 3. Add additional needed properties to story builder with unit/integration tests (including the embeddedtemporal ones)
 4. Implement the execution-path builder with unit/integration tests
-5. Add new embeddedtemporal tests similar to story builder ones entire cycle: run recipe with sub recipe and sub-sub-recipe. Ensure each workflow receives a `recipe_run_metadata` signal immediately after start so the stories record parent linkage. Pick a mid op of the inner-most recipe, build the rewind execution path using the enriched story metadata (`ResumeEventID`, `RecipeSetIndex`, `WaitForChild`, parent hashes), reset from that point, and verify that the replayed execution matches the original at every level along the path.
+5. Add new embeddedtemporal tests similar to the story-builder suite: run a recipe with nested child recipes, ensure each workflow receives an initial `recipe_run_metadata` signal so parent linkage is captured, then build the rewind execution path from an inner inline op. Assert that every segment contains the expected workflow and run identifiers, resume event ids, recipe-set indices, and wait flags harvested from the real history. (Replay orchestration is exercised in downstream end-to-end tests; this suite focuses on validating captured metadata.)

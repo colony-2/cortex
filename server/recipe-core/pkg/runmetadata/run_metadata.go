@@ -28,4 +28,5 @@ type Segment struct {
 	RunID          string `json:"run_id"`
 	EventID        int64  `json:"event_id"`
 	RecipeSetIndex *int   `json:"recipe_set_index,omitempty"`
+	WaitForChild   *bool  `json:"wait_for_child,omitempty"`
 }
