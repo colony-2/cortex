@@ -9,6 +9,7 @@ import (
 	serveropsrecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	runmetadata "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
 	"github.com/divisive-ai/vibethis/server/recipe-history/pkg/storybuilder"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -178,6 +179,10 @@ func TestHistoryWithWorkflowTestSuite(t *testing.T) {
 	for k, v := range baseInputs {
 		workflowInputs[k] = v
 	}
+	env.RegisterDelayedCallback(func() {
+		signal := runmetadata.Signal{TargetRunID: "default-test-run-id"}
+		env.SignalWorkflow(compiler.RecipeRunMetadataSignalName(), signal)
+	}, time.Millisecond)
 	env.ExecuteWorkflow(wfName, workflowInputs)
 	if !env.IsWorkflowCompleted() {
 		t.Fatalf("workflow not completed")
