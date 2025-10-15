@@ -202,7 +202,9 @@ func newCapturingWorker(t *testing.T) *capturingWorker {
 
 func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
 	handler, ok := a.(func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error))
-	require.True(c.t, ok)
+	if !ok {
+		return
+	}
 	c.handlers[options.Name] = handler
 }
 

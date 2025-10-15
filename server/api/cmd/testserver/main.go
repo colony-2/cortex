@@ -317,6 +317,18 @@ func (c *temporalWorkflowControl) Cancel(ctx context.Context, ref workflowctl.Ex
 	return mapTemporalError(c.client.CancelWorkflow(ctx, ref.WorkflowID, ref.RunID))
 }
 
+func (c *temporalWorkflowControl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
+	return workflowctl.ResetResponse{}, workflowctl.ErrUnavailable
+}
+
+func (c *temporalWorkflowControl) StartWorkflow(ctx context.Context, req workflowctl.StartRequest) (workflowctl.StartResponse, error) {
+	return workflowctl.StartResponse{}, workflowctl.ErrUnavailable
+}
+
+func (c *temporalWorkflowControl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
+	return workflowctl.StartChildResponse{}, workflowctl.ErrUnavailable
+}
+
 func mapTemporalStatus(status enumspb.WorkflowExecutionStatus) workflowctl.WorkflowStatus {
 	switch status {
 	case enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED:

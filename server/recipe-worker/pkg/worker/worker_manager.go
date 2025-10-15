@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	opsRecipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	coreRecipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -25,7 +23,6 @@ type WorkerManager struct {
 	taskQueue        string // Base task queue name
 	activityRegistry *ops.ActivityRegistry
 	deps             coreops.ServiceDependencies2
-	resetActivity    *opsRecipe.ResetChildWorkflowActivity
 }
 
 // NewWorkerManager creates a new worker manager
@@ -51,7 +48,6 @@ func (m *WorkerManager) SetDependencies(deps coreops.ServiceDependencies2) {
 	}
 	m.activityRegistry.SetDependencies(deps)
 	m.deps = deps
-	m.resetActivity = opsRecipe.NewResetChildWorkflowActivity(deps)
 }
 
 // StartWorker starts a new worker for a recipe
@@ -76,9 +72,6 @@ func (m *WorkerManager) StartWorker(file *coreRecipe.RecipeFile) error {
 	// Create the worker
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 	m.activityRegistry.EnableActivitiesInWorker(w)
-	if m.resetActivity != nil {
-		w.RegisterActivityWithOptions(m.resetActivity.Execute, activity.RegisterOptions{Name: opsRecipe.ResetChildWorkflowActivityName})
-	}
 	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
 		return compiler.ExecuteRecipe(ctx, m.activityRegistry, file.Recipe, inputs)
 	}

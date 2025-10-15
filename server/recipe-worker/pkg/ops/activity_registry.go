@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	recipe "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/invopop/jsonschema"
@@ -32,6 +33,7 @@ type ActivityRegistry struct {
 	generator     SchemaGenerator
 	gitController *gitstate.Controller
 	deps          ops.ServiceDependencies2
+	resetActivity *recipe.ResetChildWorkflowActivity
 }
 
 // SchemaGenerator validates struct tags and generates JSON schemas
@@ -65,6 +67,11 @@ type ActivityRegisterable interface {
 // SetDependencies makes a dependency container available for invocations produced by this registry.
 func (r *ActivityRegistry) SetDependencies(deps ops.ServiceDependencies2) {
 	r.deps = deps
+	if deps != nil {
+		r.resetActivity = recipe.NewResetChildWorkflowActivity(deps)
+	} else {
+		r.resetActivity = nil
+	}
 }
 
 // Dependencies exposes the current dependency container (may be nil).
@@ -80,6 +87,9 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 		wrapped := withGitWorkspace(registration, r.gitController)
 		wrapped = withDependencies(r.deps, wrapped)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
+	}
+	if r.resetActivity != nil {
+		worker.RegisterActivityWithOptions(r.resetActivity.Execute, activity.RegisterOptions{Name: recipe.ResetChildWorkflowActivityName})
 	}
 }
 

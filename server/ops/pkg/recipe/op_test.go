@@ -12,8 +12,10 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
@@ -219,6 +221,120 @@ func TestChildExecutorResumeTargetIndexMismatch(t *testing.T) {
 	segment, remaining := exec.resumeTarget(&otherIdx)
 	assert.Nil(t, segment)
 	assert.Nil(t, remaining)
+}
+
+type recordingWorkflowControl struct {
+	resetCalls []workflowctl.ResetRequest
+}
+
+func (c *recordingWorkflowControl) Describe(context.Context, workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
+	return workflowctl.WorkflowSummary{}, nil
+}
+
+func (c *recordingWorkflowControl) Signal(context.Context, workflowctl.ExecutionRef, string, any) error {
+	return nil
+}
+
+func (c *recordingWorkflowControl) Cancel(context.Context, workflowctl.ExecutionRef, string) error {
+	return nil
+}
+
+func (c *recordingWorkflowControl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
+	c.resetCalls = append(c.resetCalls, req)
+	return workflowctl.ResetResponse{
+		Execution: workflowctl.ExecutionRef{WorkflowID: req.Execution.WorkflowID, RunID: "reset-run"},
+		Completed: req.WaitForResult,
+		Result:    map[string]interface{}{"reset": "ok"},
+	}, nil
+}
+
+func (c *recordingWorkflowControl) StartWorkflow(context.Context, workflowctl.StartRequest) (workflowctl.StartResponse, error) {
+	return workflowctl.StartResponse{}, nil
+}
+
+func (c *recordingWorkflowControl) StartChildWorkflow(context.Context, workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
+	return workflowctl.StartChildResponse{}, nil
+}
+
+var rewindTestDeps ops.ServiceDependencies2
+
+type rewindParams struct {
+	InvocationHash string
+	RunMode        executionRunMode
+	GitMode        gitStateMode
+	ChildInputs    map[string]interface{}
+}
+
+func rewindHarnessWorkflow(ctx workflow.Context, params rewindParams) (map[string]interface{}, error) {
+	inv := ops.Invocation{
+		RecipeID:  "rewind.recipe",
+		NodePath:  "sequence/node",
+		InvokeSeq: 0,
+		ID:        params.InvocationHash,
+		Deps:      rewindTestDeps,
+	}
+	exec := childExecutor{
+		invocation: inv,
+		ctx:        ctx,
+		timeout:    time.Minute,
+		retry:      nil,
+		input: RecipeInput{
+			Name:   "testChildWorkflow",
+			Inputs: params.ChildInputs,
+			Raw:    map[string]interface{}{},
+		},
+		baseInputs: map[string]interface{}{},
+	}
+	return exec.startChildWorkflow(ctx, params.RunMode, params.GitMode, params.ChildInputs)
+}
+
+func TestRecipeOpResumeTriggersReset(t *testing.T) {
+	ts := &testsuite.WorkflowTestSuite{}
+	env := ts.NewTestWorkflowEnvironment()
+	defer env.AssertExpectations(t)
+
+	control := &recordingWorkflowControl{}
+	deps := ops.NewServiceDepsBuilder().WithWorkflowControl(control).Build()
+	deps = deps.CloneWithRunMetadata(&runmetadata.Signal{Reason: "rewind"})
+	deps = deps.CloneWithResumeMetadata(&runmetadata.Resume{
+		ExecutionPath: []runmetadata.Segment{{
+			InvocationHash: "rewind-inv",
+			WorkflowID:     "default-test-workflow-id",
+			RunID:          "original-run",
+			EventID:        99,
+		}},
+	})
+	rewindTestDeps = deps
+	defer func() { rewindTestDeps = nil }()
+
+	resetActivity := NewResetChildWorkflowActivity(deps)
+	env.RegisterActivityWithOptions(resetActivity.Execute, activity.RegisterOptions{Name: ResetChildWorkflowActivityName})
+
+	env.RegisterWorkflow(testChildWorkflow)
+	env.RegisterWorkflow(rewindHarnessWorkflow)
+
+	childInputs := map[string]interface{}{"inputs": map[string]interface{}{"foo": "bar"}}
+
+	env.ExecuteWorkflow(rewindHarnessWorkflow, rewindParams{
+		InvocationHash: "rewind-inv",
+		RunMode:        runModeSync,
+		GitMode:        gitStateModeShared,
+		ChildInputs:    childInputs,
+	})
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	var result map[string]interface{}
+	require.NoError(t, env.GetWorkflowResult(&result))
+	assert.Equal(t, map[string]interface{}{"reset": "ok"}, result)
+
+	require.Len(t, control.resetCalls, 1)
+	call := control.resetCalls[0]
+	assert.Equal(t, int64(99), call.WorkflowTaskFinishEventID)
+	assert.True(t, call.WaitForResult)
+	assert.Equal(t, "original-run", call.Execution.RunID)
+	assert.Equal(t, "rewind", call.Reason)
 }
 
 // --- Helpers -----------------------------------------------------------------
