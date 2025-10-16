@@ -6,7 +6,10 @@
   },
   "workspaceFolder": "/src",
   "containerEnv": {
-    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}"
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN}",
+    "ANTHROPIC_API_KEY":"${localEnv:ANTHROPIC_API_KEY}",
+    "GEMINI_API_KEY":"${localEnv:GEMINI_API_KEY}",
+    "OPENAI_API_KEY":"${localEnv:OPENAI_API_KEY}"
   },
   "mounts": [
     "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",

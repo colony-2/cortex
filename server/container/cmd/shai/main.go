@@ -166,6 +166,7 @@ func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	spinnerIdx := 0
 	var spinTicker *time.Ticker
+	var stopSpinner chan struct{}
 	renderSpinner := func() {
 		if current == "" {
 			return
@@ -177,10 +178,18 @@ func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
 			return
 		}
 		spinTicker = time.NewTicker(120 * time.Millisecond)
+		stopSpinner = make(chan struct{})
+		ticker := spinTicker  // Capture for goroutine
+		stop := stopSpinner
 		go func() {
-			for range spinTicker.C {
-				spinnerIdx = (spinnerIdx + 1) % len(spinner)
-				renderSpinner()
+			for {
+				select {
+				case <-ticker.C:
+					spinnerIdx = (spinnerIdx + 1) % len(spinner)
+					renderSpinner()
+				case <-stop:
+					return
+				}
 			}
 		}()
 	}
@@ -191,6 +200,7 @@ func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
 		}
 		if spinTicker != nil {
 			spinTicker.Stop()
+			close(stopSpinner)
 			spinTicker = nil
 		}
 		// Clear spinner line and print checkmark line

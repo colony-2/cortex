@@ -248,14 +248,15 @@ func TestProcessReplacement(t *testing.T) {
 		script := runner.generateSetupScript()
 
     // Script should end with user shell exec (sudo preferred, fallback su)
-    if !strings.Contains(script, "exec sudo -iu nobody /bin/bash -l") && !strings.Contains(script, "exec su - nobody -c 'exec /bin/bash --login'") {
+    // Updated to use user's default shell instead of hardcoded bash
+    if !strings.Contains(script, "exec sudo -iu nobody") && !strings.Contains(script, "exec su - nobody") {
         t.Fatalf("missing expected user exec in script: %s", script)
     }
     // Script should not have any commands after exec, ignoring closing 'else'/'fi' of sudo fallback block
     lines := strings.Split(script, "\n")
     execFound := false
     for _, line := range lines {
-        if strings.Contains(line, "exec sudo -iu nobody /bin/bash -l") || strings.Contains(line, "exec su - nobody -c 'exec /bin/bash --login'") {
+        if strings.Contains(line, "exec sudo -iu nobody") || strings.Contains(line, "exec su - nobody") {
             execFound = true
         } else if execFound {
             trimmed := strings.TrimSpace(line)

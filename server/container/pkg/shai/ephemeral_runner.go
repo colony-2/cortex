@@ -394,13 +394,16 @@ echo "::DEVCONTAINER::INIT::START::Initializing devcontainer setup"
 # Run postAttach commands as target user
 %POSTATTACH%
 
+echo "::DEVCONTAINER::INIT::COMPLETE::Completed devcontainer setup"
+
 echo "::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%"
 
 # Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.
+# Both sudo -i and su - will use the user's configured shell from /etc/passwd
 if command -v sudo >/dev/null 2>&1; then
-  exec sudo -iu %USER% /bin/bash -l
+  exec sudo -iu %USER%
 else
-  exec su - %USER% -c 'exec /bin/bash --login'
+  exec su - %USER%
 fi
 `
 
@@ -462,7 +465,7 @@ fi
             "  exec su - %USER% -c '" + innerEsc + "'\n" +
             "fi\n"
 
-        original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER% /bin/bash -l\nelse\n  exec su - %USER% -c 'exec /bin/bash --login'\nfi\n"
+        original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\n# Both sudo -i and su - will use the user's configured shell from /etc/passwd\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER%\nelse\n  exec su - %USER%\nfi\n"
         // Ensure placeholders are replaced with actual user for matching and replacement content
         replacement = strings.ReplaceAll(replacement, "%USER%", targetUser)
         original = strings.ReplaceAll(original, "%USER%", targetUser)
@@ -494,16 +497,16 @@ fi
             suEnv := "env " + strings.Join(suEnvParts, " ") + " "
 
             // Original block with concrete user
-            original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER% /bin/bash -l\nelse\n  exec su - %USER% -c 'exec /bin/bash --login'\nfi\n"
+            original := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n\n# Replace this process with user shell (login). Prefer sudo to avoid job-control warnings.\n# Both sudo -i and su - will use the user's configured shell from /etc/passwd\nif command -v sudo >/dev/null 2>&1; then\n  exec sudo -iu %USER%\nelse\n  exec su - %USER%\nfi\n"
             original = strings.ReplaceAll(original, "%USER%", targetUser)
 
             // Replacement that injects env for both branches
             replacement := "echo \"::DEVCONTAINER::USERSWITCH::START::Switching to user %USER%\"\n" +
                 "\n# Replace this process with user shell with injected environment.\n" +
                 "if command -v sudo >/dev/null 2>&1; then\n" +
-                "  exec sudo -iu %USER% " + sudoEnv + "/bin/bash -l\n" +
+                "  exec sudo -iu %USER% " + sudoEnv + "\n" +
                 "else\n" +
-                "  exec su - %USER% -c '" + suEnv + " /bin/bash --login'\n" +
+                "  exec su - %USER% -c '" + suEnv + "'\n" +
                 "fi\n"
             replacement = strings.ReplaceAll(replacement, "%USER%", targetUser)
 
@@ -875,6 +878,9 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
                                 line = ""
                             }
                         }
+                    } else if !userSwitched && line != "" {
+                        // Output non-progress lines before user switch (e.g., lifecycle command output)
+                        forward("stdout", []byte(line))
                     }
                     if userSwitched && line != "" {
                         forward("stdout", []byte(line))
@@ -1164,6 +1170,11 @@ func parseProgressMarker(line string) *ProgressUpdate {
 		Status:  parts[1],
 		Message: strings.TrimSpace(strings.Join(parts[2:], "::")),
 	}
+}
+
+// GetContainerID returns the current container ID if a container is running
+func (r *EphemeralRunner) GetContainerID() string {
+    return r.currentContainerID
 }
 
 // Close closes the Docker client connection
