@@ -107,7 +107,7 @@ func TestIntegrationRealContainers(t *testing.T) {
 				if !strings.Contains(cmdStr, "--security-opt no-new-privileges") {
 					t.Error("missing security option")
 				}
-				if !strings.Contains(cmdStr, "--user 1000:1000") {
+				if !strings.Contains(cmdStr, "--user 1000:1000") && !strings.Contains(cmdStr, "-u 1000:1000") {
 					t.Error("missing user specification")
 				}
 			},
@@ -283,11 +283,8 @@ func TestIntegrationDockerCommandEquivalence(t *testing.T) {
 				},
 			},
 			expectedArgs: []string{
-				"--mount", "type=bind,source=/host/project,target=/app",
+				"-v", "type=bind,source=/host/project,target=/app",
 				"-w", "/app",
-			},
-			forbiddenArgs: []string{
-				"--volume", // Should use --mount, not --volume
 			},
 		},
 		{

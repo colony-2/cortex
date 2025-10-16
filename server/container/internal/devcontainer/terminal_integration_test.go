@@ -6,7 +6,9 @@ package devcontainer
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +19,10 @@ import (
 )
 
 func TestTerminalAttachment_Integration(t *testing.T) {
-	// Skip if Docker is not available
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	// Try to connect to Docker using common socket paths
+	cli, err := getDockerClient()
 	if err != nil {
-		t.Skip("Docker not available:", err)
+		t.Fatalf("Failed to connect to Docker: %v", err)
 	}
 	defer cli.Close()
 
@@ -52,12 +54,7 @@ func TestTerminalAttachment_Integration(t *testing.T) {
 		t.Fatalf("Failed to create container: %v", err)
 	}
 
-	// Start container
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		t.Fatalf("Failed to start container: %v", err)
-	}
-
-	// Test attaching to the container
+	// Test attaching to the container BEFORE starting so we don't miss output
 	attachOptions := container.AttachOptions{
 		Stream: true,
 		Stdin:  false,  // Don't attach stdin for this test
@@ -70,6 +67,11 @@ func TestTerminalAttachment_Integration(t *testing.T) {
 		t.Fatalf("Failed to attach to container: %v", err)
 	}
 	defer hijacked.Close()
+
+	// Start container after attaching
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		t.Fatalf("Failed to start container: %v", err)
+	}
 
 	// Read output - with TTY enabled, output should be raw (not multiplexed)
 	buf := make([]byte, 1024)
@@ -100,9 +102,9 @@ func TestTerminalAttachment_Integration(t *testing.T) {
 
 func TestTerminalWithEscapeSequences(t *testing.T) {
 	// This test verifies that escape sequences (like color codes) don't cause parsing errors
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := getDockerClient()
 	if err != nil {
-		t.Skip("Docker not available:", err)
+		t.Fatalf("Failed to connect to Docker: %v", err)
 	}
 	defer cli.Close()
 
@@ -121,17 +123,13 @@ func TestTerminalWithEscapeSequences(t *testing.T) {
 		AutoRemove: true,
 	}
 
-	// Create and start container
+	// Create container
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
 	if err != nil {
 		t.Fatalf("Failed to create container: %v", err)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		t.Fatalf("Failed to start container: %v", err)
-	}
-
-	// Attach and read output
+	// Attach BEFORE starting to capture all output
 	attachOptions := container.AttachOptions{
 		Stream: true,
 		Stdout: true,
@@ -143,6 +141,11 @@ func TestTerminalWithEscapeSequences(t *testing.T) {
 		t.Fatalf("Failed to attach: %v", err)
 	}
 	defer hijacked.Close()
+
+	// Start container after attaching
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		t.Fatalf("Failed to start container: %v", err)
+	}
 
 	// Read the output - should not error on escape sequences
 	var output bytes.Buffer
@@ -169,4 +172,45 @@ func TestTerminalWithEscapeSequences(t *testing.T) {
 	if !strings.Contains(outputStr, "Red Text") {
 		t.Errorf("Expected output to contain 'Red Text', got: %q", outputStr)
 	}
+}
+
+// getDockerClient returns a Docker client, trying common socket paths
+func getDockerClient() (*client.Client, error) {
+	// Try common Docker socket paths (macOS first, then Linux)
+	socketPaths := []string{
+		"unix://" + os.Getenv("HOME") + "/.docker/run/docker.sock", // Docker Desktop on macOS
+		"unix:///var/run/docker.sock",                               // Linux default
+	}
+
+	for _, socketPath := range socketPaths {
+		cli, err := client.NewClientWithOpts(
+			client.WithHost(socketPath),
+			client.WithAPIVersionNegotiation(),
+		)
+		if err != nil {
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, pingErr := cli.Ping(ctx)
+		cancel()
+
+		if pingErr == nil {
+			return cli, nil
+		}
+		cli.Close()
+	}
+
+	// Finally try with environment settings as fallback
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if _, err = cli.Ping(ctx); err == nil {
+			return cli, nil
+		}
+		cli.Close()
+	}
+
+	return nil, fmt.Errorf("could not connect to Docker daemon")
 }
