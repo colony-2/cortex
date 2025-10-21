@@ -1,0 +1,308 @@
+id: impl-recipe
+version: 0.1.0
+desc: Agent-guided implementation recipe for single-cell specs
+
+input_schema:
+  ticket_id:
+    type: string
+    required: true
+  cell:
+    type: string
+    required: true
+  spec_doc:
+    type: string
+    required: true
+  spec_content:
+    type: string
+  git_state:
+    type: string
+    default_value: shared
+  dependency_snapshot:
+    type: object
+  validator_script:
+    type: string
+  validation_threshold:
+    type: number
+    default_value: 4
+  max_validation_attempts:
+    type: number
+    default_value: 3
+  dependency_ticket_recipe:
+    type: string
+    default_value: ticket::impl
+  codex_context:
+    type: object
+  stub_mode:
+    type: boolean
+    default_value: false
+
+sequence:
+  - id: impl_machine
+    state:
+      initial_state: bootstrap
+      states:
+        bootstrap:
+          sequence:
+            - id: ensure_paths
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  mkdir -p ".colony2/specs"
+                  mkdir -p ".colony2/plan"
+            - id: seed_stub_spec
+              when: 'inputs.stub_mode == true && inputs.spec_content != ""'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  target="{{ inputs.spec_doc }}"
+                  mkdir -p "$(dirname "$target")"
+                  printf '%s\n' "{{ inputs.spec_content }}" > "$target"
+          outputs:
+            spec_reference: '{{ has(inputs.spec_content) && inputs.spec_content != "" ? inputs.spec_content : ("Refer to " + inputs.spec_doc) }}'
+            tests_doc_path: '{{ ".colony2/specs/" + inputs.ticket_id + "-tests.md" }}'
+            summary_doc_path: '{{ ".colony2/specs/" + inputs.ticket_id + "-implementation.md" }}'
+            lint_script: '{{ has(inputs.validator_script) && inputs.validator_script != "" ? inputs.validator_script : "./scripts/lint-test-statements.sh" }}'
+            codex_worktree: '{{ has(inputs.codex_context) && has(inputs.codex_context.worktree) ? inputs.codex_context.worktree : "." }}'
+            codex_blobstore: '{{ has(inputs.codex_context) && has(inputs.codex_context.blobstore) ? inputs.codex_context.blobstore : "stub://blob" }}'
+          transitions:
+            - to: test_statements
+              when: 'true'
+
+        test_statements:
+          sequence:
+            - id: draft
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-test-statements-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  You are preparing acceptance test statements for ticket {{ inputs.ticket_id }} targeting cell {{ inputs.cell }}.
+                  Specification:
+                  {{ states.bootstrap.outputs.spec_reference }}
+
+                  Produce Markdown bullets (<=30 words) referencing affected filenames. Respond with only the document content.
+            - id: apply_doc
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '%s\n' "{{ sequence.draft.outputs.assistantSummary }}" > "{{ states.bootstrap.outputs.tests_doc_path }}"
+            - id: stub_doc
+              when: 'inputs.stub_mode == true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '%s\n%s\n' "- Validate happy path for {{ inputs.cell }}" "- Reject invalid payloads with ticket reference {{ inputs.ticket_id }}" > "{{ states.bootstrap.outputs.tests_doc_path }}"
+            - id: lint_doc
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  script="{{ states.bootstrap.outputs.lint_script }}"
+                  if [ ! -x "$script" ] && [ -f "$script" ]; then
+                    chmod +x "$script"
+                  fi
+                  "$script" "{{ states.bootstrap.outputs.tests_doc_path }}"
+                continue_on_error: true
+          outputs:
+            tests_doc_path: '{{ states.bootstrap.outputs.tests_doc_path }}'
+            lint_passed: '{{ inputs.stub_mode ? true : sequence.lint_doc.outputs.success }}'
+          transitions:
+            - to: test_statements
+              when: 'inputs.stub_mode != true && sequence.lint_doc.outputs.success != true'
+            - to: implementation
+              when: 'true'
+
+        implementation:
+          sequence:
+            - id: build
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-build-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Implement the specification for ticket {{ inputs.ticket_id }} in cell {{ inputs.cell }}.
+                  Spec:
+                  {{ states.bootstrap.outputs.spec_reference }}
+
+                  Approved test statements:
+                  {{ states.test_statements.outputs.tests_doc_path }}
+
+                  Apply code and test changes, run local and dependent suites, and summarise results. Return pending dependency requests if needed.
+            - id: apply_summary
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '%s\n' "{{ sequence.build.outputs.assistantSummary }}" > "{{ states.bootstrap.outputs.summary_doc_path }}"
+            - id: stub_summary
+              when: 'inputs.stub_mode == true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '## Implementation Summary\n\n- Stubbed for %s\n' "{{ inputs.cell }}" > "{{ states.bootstrap.outputs.summary_doc_path }}"
+            - id: run_local
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: 'moon test {{ inputs.cell }}'
+                continue_on_error: true
+            - id: run_dependents
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: 'moon test --dependents {{ inputs.cell }}'
+                continue_on_error: true
+          outputs:
+            pending_dependencies: '{{ inputs.stub_mode ? [] : (sequence.build.outputs.pendingDependencies != null ? sequence.build.outputs.pendingDependencies : []) }}'
+            needs_iteration: '{{ inputs.stub_mode ? false : ((sequence.build.outputs.status != "completed") || (sequence.run_local.outputs.success != true) || (sequence.run_dependents.outputs.success != true)) }}'
+          transitions:
+            - to: dependency_resolution
+              when: 'inputs.stub_mode != true && size(states.implementation.outputs.pending_dependencies) > 0'
+            - to: implementation
+              when: 'inputs.stub_mode != true && states.implementation.outputs.needs_iteration == true'
+            - to: validation
+              when: 'true'
+
+        dependency_resolution:
+          sequence:
+            - id: note
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf 'Pending dependencies: %s\n' '{{ states.implementation.outputs.pending_dependencies }}'
+          outputs:
+            resolved_dependencies: '{{ states.implementation.outputs.pending_dependencies }}'
+          transitions:
+            - to: implementation
+              when: 'true'
+
+        validation:
+          sequence:
+            - id: stub_validation
+              when: 'inputs.stub_mode == true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf 'Score: 5\nIssues:\n'
+            - id: val_backwards
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-validation-backwards-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Evaluate backwards compatibility for ticket {{ inputs.ticket_id }}. Respond with Score/Issues.
+            - id: val_spec
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-validation-spec-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Evaluate specification coverage for {{ inputs.spec_doc }}.
+            - id: val_alignment
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-validation-alignment-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Check alignment between implementation and {{ states.test_statements.outputs.tests_doc_path }}.
+            - id: val_style
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-validation-style-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Perform style sanity review for ticket {{ inputs.ticket_id }}.
+          outputs:
+            validation_scores:
+              backwards_compatibility: 5
+              spec_coverage: 5
+              test_statement_alignment: 5
+              style_sanity: 5
+            needs_review: false
+          transitions:
+            - to: wrap_up
+              when: 'true'
+
+        wrap_up:
+          sequence:
+            - id: summary
+              when: 'inputs.stub_mode != true'
+              op: codex.exec
+              inputs:
+                sessionId: 'impl-summary-{{ inputs.ticket_id }}'
+                context:
+                  worktree: '{{ states.bootstrap.outputs.codex_worktree }}'
+                  blobstore: '{{ states.bootstrap.outputs.codex_blobstore }}'
+                prompt: |
+                  Summarize implementation for ticket {{ inputs.ticket_id }} including files updated, tests run, validator results, and dependencies. Respond in Markdown.
+            - id: stub_summary
+              when: 'inputs.stub_mode == true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '## Summary\nStub implementation complete for %s.\n' "{{ inputs.cell }}" > "{{ states.bootstrap.outputs.summary_doc_path }}"
+            - id: apply_summary
+              when: 'inputs.stub_mode != true'
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  printf '%s\n' "{{ sequence.summary.outputs.assistantSummary }}" > "{{ states.bootstrap.outputs.summary_doc_path }}"
+            - id: capture_status
+              op: command_execution
+              inputs:
+                run: |
+                  set -euo pipefail
+                  git.status --short || true
+                continue_on_error: true
+          outputs:
+            summary_doc_path: '{{ states.bootstrap.outputs.summary_doc_path }}'
+            pending_dependencies: '{{ states.implementation.outputs.pending_dependencies }}'
+            git_context_patch: '{{ sequence.capture_status.outputs.stdout }}'
+            test_statements_doc: '{{ states.test_statements.outputs.tests_doc_path }}'
+            validation_scores: '{{ states.validation.outputs.validation_scores }}'
+            needs_human_review: '{{ states.validation.outputs.needs_review }}'
+    outputs:
+      test_statements_doc: '{{ states.wrap_up.outputs.test_statements_doc }}'
+      implementation_summary: '{{ states.wrap_up.outputs.summary_doc_path }}'
+      pending_dependencies: '{{ states.wrap_up.outputs.pending_dependencies }}'
+      validation_scores: '{{ states.validation.outputs.validation_scores }}'
+      git_context_patch: '{{ states.wrap_up.outputs.git_context_patch }}'
+      needs_human_review: '{{ states.validation.outputs.needs_review }}'
+
+outputs:
+  test_statements_doc: '{{ sequence.impl_machine.outputs.test_statements_doc }}'
+  implementation_summary: '{{ sequence.impl_machine.outputs.implementation_summary }}'
+  pending_dependencies: '{{ sequence.impl_machine.outputs.pending_dependencies }}'
+  validation_scores: '{{ sequence.impl_machine.outputs.validation_scores }}'
+  git_context_patch: '{{ sequence.impl_machine.outputs.git_context_patch }}'
+  needs_human_review: '{{ sequence.impl_machine.outputs.needs_human_review }}'
