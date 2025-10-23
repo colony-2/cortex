@@ -55,7 +55,7 @@ Pauses workflow execution for a fixed duration, useful for backoff or scheduling
 
 **Outputs**
 
-Reports `start_time`, `end_time`, actual sleep duration, and whether the sleep completed or was interrupted.
+Returns `start_time`, `end_time`, the `slept` duration, and boolean flags `completed` / `interrupted` to show whether the pause finished normally.
 
 ## recipe
 
@@ -197,7 +197,7 @@ Runs Codex CLI in non-interactive mode inside the managed workspace, streaming r
 
 **Outputs**
 
-Returns run `status`, `sessionId`, `assistantSummary`, pending dependency hints, and a `stdoutBlobUri` pointing to the streamed transcript/stdout payload.
+Returns run `status`, `sessionId`, `assistantSummary`, captured `stderr`, pending dependency hints, and a `stdoutBlobUri` pointing to the streamed transcript/stdout payload (plus `errorMessage` when Codex exits early).
 
 ## llm_inference
 
@@ -244,12 +244,14 @@ Enhanced LLM execution that adds persona presets, file context ingestion, tool i
 - id: design-review
   op: llm_inference2
   inputs:
-    provider: anthropic
-    model: claude-3-sonnet
+    default_provider: anthropic
+    default_model: claude-3-sonnet
     prompt: "Evaluate the UX copy in docs/feature.md"
     files:
       - path: docs/feature.md
         media_type: text/markdown
+    execute_tools: true
+    enable_tool_execution: true
     tools:
       - name: shell
         description: "Run read-only shell commands"
@@ -258,22 +260,23 @@ Enhanced LLM execution that adds persona presets, file context ingestion, tool i
           properties:
             command:
               type: string
-    execute_tools: true
     tool_working_dir: docs
+    tool_timeout: 90s
+    max_tool_rounds: 3
     continue_on_tool_error: false
+    enable_sandbox: true
+    allowed_paths: [docs]
     metadata:
       review_type: ux-copy
 ```
 
 **Key configuration**
 
-- Supports all basic `llm_inference` fields plus:
-  - `files`: array of `core/file.File` descriptors to preload context.
-  - `file_handling`: `native`, `text_fallback`, or `hybrid` for adapters without file APIs.
-  - `tools`: tool definition objects; set `execute_tools` and `tool_working_dir` to enable tool calls.
-  - Sandbox guards: `enable_sandbox`, `allowed_paths`, `restricted_paths`.
-  - Persona mode and defaults via `default_provider`, `default_model`, `metadata`, `api_keys` overrides.
-- `tool_timeout`, `max_tool_rounds`, and `continue_on_tool_error` control tool execution behaviour.
+- Includes every `llm_inference` knob (`prompt`, `system_prompt`, sampling, `response_schema`).
+- Provider defaults live in `default_provider` / `default_model`; override credentials and persona metadata with `api_keys` and `metadata`.
+- File ingestion: supply `files`, choose `file_handling` (`native`, `text_fallback`, `hybrid`), set `default_file_handling`, cap size with `max_file_context_size`, and control workspace with `default_working_dir`.
+- Tooling support: register `tools`, enable globally via `enable_tool_execution` and per call with `execute_tools`; combine with `tool_working_dir`, `tool_timeout`, `max_tool_rounds`, and `continue_on_tool_error`.
+- Sandbox guards: `enable_sandbox`, `allowed_paths`, `restricted_paths`.
 
 **Outputs**
 
@@ -310,7 +313,7 @@ Collects a curated set of repository files (optionally staged/untracked) for LLM
 
 **Outputs**
 
-Returns collected `files` (path + content + metadata), repository status, and `statistics` (by type, extension, skipped reasons, total size).
+Returns collected `files` (path + content + metadata), aggregate `file_count`, cumulative `total_size`, repository status, and detailed `statistics` buckets (by type, extension, skipped reasons, total size).
 
 ## git_shallow_clone
 
@@ -454,11 +457,12 @@ Squashes local commits, rebases onto the latest target branch tip, and pushes th
 - `target_branch`: ref to fast-forward/push (defaults to `refs/heads/main`).
 - `upstream_remote`: remote name that hosts the target branch.
 - `preserve_author`: keep original author metadata when squashing.
+- `skip_rebase`: skip the rebase step and require the local tip to fast-forward the remote.
 - `context`: supply when repo path not provided.
 
 **Outputs**
 
-Returns `target_branch`, `remote_ref`, `merged_hash`, summary of squashed commits, and a `git_context_patch` for updated hashes.
+Returns `target_branch`, `remote_ref`, `merged_hash`, summary of squashed commits, a boolean `fast_forward` indicator, and a `git_context_patch` for updated hashes.
 
 ## ticket.manage
 
@@ -506,4 +510,3 @@ Executes a batch of ticket lifecycle actions (create, update, notes, markdown li
 **Outputs**
 
 Returns the updated `ticket` (when available), per-action `results` (ticket/event/reset objects with timestamps), and `context_patch` keys (`ticket.id`, etc.) for downstream propagation.
-
