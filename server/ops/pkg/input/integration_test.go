@@ -11,6 +11,7 @@ import (
 	"time"
 
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -152,7 +153,23 @@ func TestInputManagementServiceAPI(t *testing.T) {
 	sseManager := NewSimpleSSEManager()
 
 	// Provide a mock workflow control that succeeds on Signal/Cancel and returns a summary on Describe
-	mctl := &mockWorkflowControl{}
+	now := time.Now().UTC()
+	mctl := &mockWorkflowControl{
+		ListResp: workflowctl.ListWorkflowsResponse{
+			Executions: []workflowctl.WorkflowSummary{
+				{
+					WorkflowID: "test-workflow-pending",
+					SearchAttributes: map[string]any{
+						"InputKey":       "input-123",
+						"InputFormTitle": "Approve deployment",
+						"InputBoxID":     "cell-42",
+						"InputCreatedAt": now.Format(time.RFC3339),
+						"InputExpiresAt": now.Add(30 * time.Minute).Format(time.RFC3339),
+					},
+				},
+			},
+		},
+	}
 
 	// Create management service
 	service := newInputManagementService()
@@ -177,7 +194,14 @@ func TestInputManagementServiceAPI(t *testing.T) {
 		var pending []PendingInput
 		err := json.Unmarshal(rec.Body.Bytes(), &pending)
 		require.NoError(t, err)
-		assert.Empty(t, pending)
+		require.Len(t, pending, 1)
+		assert.Equal(t, "input-123", pending[0].ID)
+		assert.Equal(t, "test-workflow-pending", pending[0].WorkflowID)
+		assert.Equal(t, "cell-42", pending[0].BoxID)
+		assert.Equal(t, "Approve deployment", pending[0].FormTitle)
+		assert.NotEmpty(t, pending[0].CreatedAt)
+		assert.NotEmpty(t, pending[0].ExpiresAt)
+		assert.Equal(t, pendingStatusQuery, mctl.LastListRequest.Query)
 	})
 
 	// Test 2: Submit response to workflow (signal success; SSE broadcast)

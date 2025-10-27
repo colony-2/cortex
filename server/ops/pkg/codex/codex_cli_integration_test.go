@@ -70,13 +70,21 @@ func TestCodexCLIProducesStructuredOutput(t *testing.T) {
 			continue
 		}
 		if item, ok := event["item"].(map[string]any); ok {
-			if item["item_type"] == "assistant_message" {
-				text, _ := item["text"].(string)
-				if err := json.Unmarshal([]byte(text), &assistantMsg); err != nil {
-					t.Fatalf("assistant text is not valid JSON: %v (%s)", err, text)
-				}
-				break
+			itemType := asString(item["item_type"])
+			if itemType == "" {
+				itemType = asString(item["type"])
 			}
+			if itemType != "assistant_message" && itemType != "agent_message" {
+				continue
+			}
+			text := asString(item["text"])
+			if text == "" {
+				continue
+			}
+			if err := json.Unmarshal([]byte(text), &assistantMsg); err != nil {
+				t.Fatalf("assistant text is not valid JSON: %v (%s)", err, text)
+			}
+			break
 		}
 	}
 
@@ -183,10 +191,21 @@ func extractSessionID(t *testing.T, output []byte) string {
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			continue
 		}
-		if sid, ok := event["session_id"].(string); ok && sid != "" {
+		if sid := asString(event["session_id"]); sid != "" {
 			session = sid
+		} else if tid := asString(event["thread_id"]); tid != "" {
+			session = tid
 		}
-		if item, ok := event["item"].(map[string]any); ok && item["item_type"] == "assistant_message" {
+		if item, ok := event["item"].(map[string]any); ok {
+			itemType := asString(item["item_type"])
+			if itemType == "" {
+				itemType = asString(item["type"])
+			}
+			if itemType == "assistant_message" || itemType == "agent_message" {
+				break
+			}
+		}
+		if eventType := asString(event["type"]); eventType == "item.completed" {
 			break
 		}
 	}
@@ -200,8 +219,18 @@ func extractAssistantPayload(t *testing.T, output []byte) map[string]any {
 		if err := json.Unmarshal([]byte(lines[i]), &event); err != nil {
 			continue
 		}
-		if item, ok := event["item"].(map[string]any); ok && item["item_type"] == "assistant_message" {
-			text, _ := item["text"].(string)
+		if item, ok := event["item"].(map[string]any); ok {
+			itemType := asString(item["item_type"])
+			if itemType == "" {
+				itemType = asString(item["type"])
+			}
+			if itemType != "assistant_message" && itemType != "agent_message" {
+				continue
+			}
+			text := asString(item["text"])
+			if text == "" {
+				continue
+			}
 			var payload map[string]any
 			if err := json.Unmarshal([]byte(text), &payload); err == nil {
 				return payload

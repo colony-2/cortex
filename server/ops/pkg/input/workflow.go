@@ -21,15 +21,15 @@ func InputCollectionWorkflow(ctx workflow.Context, params InputWorkflowParams) (
 	createdAt := workflow.Now(ctx)
 	expiresAt := createdAt.Add(waitTimeout)
 
-	upsertInputSearchAttributes(ctx,
-		temporal.NewSearchAttributeKeyKeyword("InputKey").ValueSet(params.ID),
-		temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
-		temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(params.Form.Title),
-		temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(params.BoxID),
-		temporal.NewSearchAttributeKeyString("InputActivityID").ValueSet(params.ActivityID),
-		temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(createdAt),
-		temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(expiresAt),
-	)
+	upsertInputSearchAttributes(ctx, map[string]interface{}{
+		"InputKey":        params.ID,
+		"InputStatus":     "pending",
+		"InputFormTitle":  params.Form.Title,
+		"InputBoxID":      params.BoxID,
+		"InputActivityID": params.ActivityID,
+		"InputCreatedAt":  createdAt,
+		"InputExpiresAt":  expiresAt,
+	})
 
 	// Create a channel to receive user response signal
 	responseChan := workflow.GetSignalChannel(ctx, userResponseSignalName(params.ID))
@@ -49,18 +49,18 @@ func InputCollectionWorkflow(ctx workflow.Context, params InputWorkflowParams) (
 
 	// Check if we timed out
 	if timeoutCtx.Err() != nil {
-		upsertInputSearchAttributes(ctx,
-			temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
-		)
+		upsertInputSearchAttributes(ctx, map[string]interface{}{
+			"InputStatus": "timeout",
+		})
 		return InputWorkflowResult{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
 	}
 
 	// Update status to completed
-	upsertInputSearchAttributes(ctx,
-		temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
-		temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(response.UserID),
-		temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(response.RespondedAt),
-	)
+	upsertInputSearchAttributes(ctx, map[string]interface{}{
+		"InputStatus":      "completed",
+		"InputRespondedBy": response.UserID,
+		"InputRespondedAt": response.RespondedAt,
+	})
 
 	// Return the result
 	return InputWorkflowResult{

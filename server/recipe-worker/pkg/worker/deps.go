@@ -10,8 +10,10 @@ import (
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
+	workflowpb "go.temporal.io/api/workflow/v1"
 	workflowservice "go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	temporalconverter "go.temporal.io/sdk/converter"
 	"gorm.io/gorm"
 )
 
@@ -63,20 +65,34 @@ func (c *temporalWorkflowControl) Describe(ctx context.Context, ref workflowctl.
 	if info == nil {
 		return workflowctl.WorkflowSummary{}, workflowctl.ErrUnavailable
 	}
-	summary := workflowctl.WorkflowSummary{
-		WorkflowID: info.GetExecution().GetWorkflowId(),
-		RunID:      info.GetExecution().GetRunId(),
-		Status:     mapTemporalStatus(info.GetStatus()),
+	return buildWorkflowSummary(info), nil
+}
+
+func (c *temporalWorkflowControl) ListWorkflows(ctx context.Context, req workflowctl.ListWorkflowsRequest) (workflowctl.ListWorkflowsResponse, error) {
+	if c == nil || c.client == nil {
+		return workflowctl.ListWorkflowsResponse{}, workflowctl.ErrUnavailable
 	}
-	if ts := info.GetStartTime(); ts != nil {
-		t := ts.AsTime()
-		summary.StartTime = &t
+	listReq := &workflowservice.ListWorkflowExecutionsRequest{
+		Namespace:     c.namespace,
+		PageSize:      req.PageSize,
+		Query:         req.Query,
+		NextPageToken: req.NextPageToken,
 	}
-	if ts := info.GetCloseTime(); ts != nil {
-		t := ts.AsTime()
-		summary.CloseTime = &t
+	resp, err := c.client.WorkflowService().ListWorkflowExecutions(ctx, listReq)
+	if err != nil {
+		return workflowctl.ListWorkflowsResponse{}, mapTemporalError(err)
 	}
-	return summary, nil
+	executions := make([]workflowctl.WorkflowSummary, 0, len(resp.GetExecutions()))
+	for _, info := range resp.GetExecutions() {
+		if info == nil {
+			continue
+		}
+		executions = append(executions, buildWorkflowSummary(info))
+	}
+	return workflowctl.ListWorkflowsResponse{
+		Executions:    executions,
+		NextPageToken: resp.GetNextPageToken(),
+	}, nil
 }
 
 func (c *temporalWorkflowControl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
@@ -149,6 +165,46 @@ func (c *temporalWorkflowControl) StartWorkflow(ctx context.Context, req workflo
 
 func (c *temporalWorkflowControl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
 	return workflowctl.StartChildResponse{}, workflowctl.ErrUnavailable
+}
+
+func buildWorkflowSummary(info *workflowpb.WorkflowExecutionInfo) workflowctl.WorkflowSummary {
+	summary := workflowctl.WorkflowSummary{
+		WorkflowID: info.GetExecution().GetWorkflowId(),
+		RunID:      info.GetExecution().GetRunId(),
+		Status:     mapTemporalStatus(info.GetStatus()),
+	}
+	if ts := info.GetStartTime(); ts != nil {
+		t := ts.AsTime()
+		summary.StartTime = &t
+	}
+	if ts := info.GetCloseTime(); ts != nil {
+		t := ts.AsTime()
+		summary.CloseTime = &t
+	}
+	if attrs := info.GetSearchAttributes(); attrs != nil && len(attrs.IndexedFields) > 0 {
+		summary.SearchAttributes = decodeSearchAttributes(attrs.IndexedFields)
+	}
+	return summary
+}
+
+func decodeSearchAttributes(indexed map[string]*commonpb.Payload) map[string]any {
+	if len(indexed) == 0 {
+		return nil
+	}
+	dc := temporalconverter.GetDefaultDataConverter()
+	result := make(map[string]any, len(indexed))
+	for key, payload := range indexed {
+		if payload == nil {
+			continue
+		}
+		var value any
+		if err := dc.FromPayload(payload, &value); err != nil {
+			result[key] = fmt.Sprintf("<decode error: %v>", err)
+			continue
+		}
+		result[key] = value
+	}
+	return result
 }
 
 func mapTemporalStatus(status enumspb.WorkflowExecutionStatus) workflowctl.WorkflowStatus {

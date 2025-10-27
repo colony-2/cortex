@@ -80,15 +80,15 @@ func GetOp() ops.RegisterableOp {
 			expiresAt := createdAt.Add(waitTimeout)
 
 			// Record pending status and basic metadata
-			upsertInputSearchAttributes(ctx,
-				temporal.NewSearchAttributeKeyKeyword("InputKey").ValueSet(id),
-				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("pending"),
-				temporal.NewSearchAttributeKeyString("InputFormTitle").ValueSet(form.Title),
-				temporal.NewSearchAttributeKeyString("InputBoxID").ValueSet(in.BoxID),
-				temporal.NewSearchAttributeKeyString("InputActivityID").ValueSet(in.ActivityID),
-				temporal.NewSearchAttributeKeyTime("InputCreatedAt").ValueSet(createdAt),
-				temporal.NewSearchAttributeKeyTime("InputExpiresAt").ValueSet(expiresAt),
-			)
+			upsertInputSearchAttributes(ctx, map[string]interface{}{
+				"InputKey":        id,
+				"InputStatus":     "pending",
+				"InputFormTitle":  form.Title,
+				"InputBoxID":      in.BoxID,
+				"InputActivityID": in.ActivityID,
+				"InputCreatedAt":  createdAt,
+				"InputExpiresAt":  expiresAt,
+			})
 
 			// Wait for signal or timeout using keyed channel
 			responseChan := workflow.GetSignalChannel(ctx, signalName)
@@ -101,17 +101,17 @@ func GetOp() ops.RegisterableOp {
 			var sig UserResponseSignal
 			responseChan.Receive(tctx, &sig)
 			if tctx.Err() != nil {
-				upsertInputSearchAttributes(ctx,
-					temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("timeout"),
-				)
+				upsertInputSearchAttributes(ctx, map[string]interface{}{
+					"InputStatus": "timeout",
+				})
 				return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
 			}
 
-			upsertInputSearchAttributes(ctx,
-				temporal.NewSearchAttributeKeyKeyword("InputStatus").ValueSet("completed"),
-				temporal.NewSearchAttributeKeyString("InputRespondedBy").ValueSet(sig.UserID),
-				temporal.NewSearchAttributeKeyTime("InputRespondedAt").ValueSet(sig.RespondedAt),
-			)
+			upsertInputSearchAttributes(ctx, map[string]interface{}{
+				"InputStatus":      "completed",
+				"InputRespondedBy": sig.UserID,
+				"InputRespondedAt": sig.RespondedAt,
+			})
 
 			return Output{Fields: sig.Fields, UserID: sig.UserID, Metadata: sig.Metadata}, nil
 		},
@@ -148,10 +148,15 @@ func (a *InputActivity) GetManagementService() ops.ManagementService {
 	return a.managementService
 }
 
-// upsertInputSearchAttributes centralises error handling for typed search attribute updates.
-func upsertInputSearchAttributes(ctx workflow.Context, attrs ...temporal.SearchAttributeUpdate) {
-	if err := workflow.UpsertTypedSearchAttributes(ctx, attrs...); err != nil {
-		workflow.GetLogger(ctx).Error("failed to upsert input search attributes", "error", err)
+// upsertInputSearchAttributes centralises error handling for search attribute updates.
+func upsertInputSearchAttributes(ctx workflow.Context, attrs map[string]interface{}) {
+	if len(attrs) == 0 {
+		return
+	}
+	if err := workflow.UpsertSearchAttributes(ctx, attrs); err != nil {
+		workflow.GetLogger(ctx).Error("failed to upsert input search attributes", "error", err, "attrs", attrs)
+	} else {
+		workflow.GetLogger(ctx).Info("upserted input search attributes", "attrs", attrs)
 	}
 }
 

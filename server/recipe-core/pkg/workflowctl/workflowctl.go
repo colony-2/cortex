@@ -99,11 +99,30 @@ type WorkflowControl interface {
 	StartChildWorkflow(ctx context.Context, req StartChildRequest) (StartChildResponse, error)
 }
 
+// WorkflowLister is an optional extension implemented by controllers that support
+// querying workflow executions.
+type WorkflowLister interface {
+	ListWorkflows(ctx context.Context, req ListWorkflowsRequest) (ListWorkflowsResponse, error)
+}
+
 // Canonical errors returned by implementations.
 var (
 	ErrNotFound    = errors.New("workflow not found")
 	ErrUnavailable = errors.New("workflow service unavailable")
 )
+
+// ListWorkflowsRequest describes a list/search request for workflows.
+type ListWorkflowsRequest struct {
+	Query         string
+	PageSize      int32
+	NextPageToken []byte
+}
+
+// ListWorkflowsResponse returns matching workflows and pagination metadata.
+type ListWorkflowsResponse struct {
+	Executions    []WorkflowSummary
+	NextPageToken []byte
+}
 
 // ResetRequest describes a workflow reset operation.
 type ResetRequest struct {

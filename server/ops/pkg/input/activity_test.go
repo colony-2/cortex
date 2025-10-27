@@ -163,14 +163,13 @@ func TestInputActivity_ManagementService(t *testing.T) {
 	mgmtService := service.(*inputManagementService)
 	routes := mgmtService.GetRoutes()
 
-	assert.Len(t, routes, 6)
+	assert.Len(t, routes, 5)
 
 	// Verify route paths
 	expectedPaths := []string{
 		"/api/user-inputs/pending",
 		"/api/user-inputs/stream",
 		"/api/user-inputs/{workflowID}",
-		"/api/user-inputs/{workflowID}/pending",
 		"/api/user-inputs/{workflowID}/respond",
 		"/api/user-inputs/{workflowID}/cancel",
 	}

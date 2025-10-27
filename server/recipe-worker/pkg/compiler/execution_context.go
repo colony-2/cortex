@@ -153,8 +153,12 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 	contextMap["recipe"] = recipeMap
 
 	inputs["context"] = contextMap
-	inputs["ticket_id"] = execCtx.TicketID
-	inputs["cell_name"] = execCtx.CellName
+	if _, exists := inputs["ticket_id"]; !exists {
+		inputs["ticket_id"] = execCtx.TicketID
+	}
+	if _, exists := inputs["cell_name"]; !exists {
+		inputs["cell_name"] = execCtx.CellName
+	}
 
 	return ctx, inputs, nil
 }

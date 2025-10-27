@@ -14,6 +14,8 @@ type mockWorkflowControl struct {
 	DescribeSummary workflowctl.WorkflowSummary
 	SignalErr       error
 	CancelErr       error
+	ListErr         error
+	ListResp        workflowctl.ListWorkflowsResponse
 
 	// Capture last-call details for assertions
 	LastDescribeRef  workflowctl.ExecutionRef
@@ -22,6 +24,7 @@ type mockWorkflowControl struct {
 	LastSignalArg    any
 	LastCancelRef    workflowctl.ExecutionRef
 	LastCancelReason string
+	LastListRequest  workflowctl.ListWorkflowsRequest
 }
 
 func (m *mockWorkflowControl) Describe(_ context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
@@ -43,6 +46,14 @@ func (m *mockWorkflowControl) Cancel(_ context.Context, ref workflowctl.Executio
 	m.LastCancelRef = ref
 	m.LastCancelReason = reason
 	return m.CancelErr
+}
+
+func (m *mockWorkflowControl) ListWorkflows(_ context.Context, req workflowctl.ListWorkflowsRequest) (workflowctl.ListWorkflowsResponse, error) {
+	m.LastListRequest = req
+	if m.ListErr != nil {
+		return workflowctl.ListWorkflowsResponse{}, m.ListErr
+	}
+	return m.ListResp, nil
 }
 
 func (m *mockWorkflowControl) ResetWorkflow(context.Context, workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {

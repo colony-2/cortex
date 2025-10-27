@@ -29,27 +29,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *workerops.Activ
 			return nil, fmt.Errorf("state '%s' not found", currentState)
 		}
 
-		stateMeta := stateDef.Node.GetMetadata()
-		stateTracker := tracker.child(segmentForMetadata(stateMeta, currentState))
-
-		// Create a child context for the state if it's a sequence
-		var stateOutputs map[string]interface{}
-		var stateResCtx *ResolutionContext
-
-		// Check if state is a sequence that needs its own scope
-		switch stateDef.NodeImpl.(type) {
-		case *recipe.NodeSequence:
-			// Create child context for sequence scope
-			stateResCtx, err = resCtx.NewChildContext("state", currentState, resCtx.TemplateData.Inputs)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create state context: %w", err)
-			}
-			// Execute state with child context that can see parent states
-			stateOutputs, err = executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, stateResCtx, currentState)
-		default:
-			// For non-sequence states, use parent context directly
-			stateOutputs, err = executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, resCtx, currentState)
-		}
+		stateOutputs, err := runState(ctx, activityRegistry, tracker, resCtx, currentState, stateDef)
 
 		if err != nil {
 			// Handle retry if configured
@@ -160,6 +140,22 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, currentOutp
 		}
 	}
 	return "", nil
+}
+
+func runState(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, resCtx *ResolutionContext, stateName string, stateDef recipe.State) (map[string]interface{}, error) {
+	stateMeta := stateDef.Node.GetMetadata()
+	stateTracker := tracker.child(segmentForMetadata(stateMeta, stateName))
+
+	switch stateDef.NodeImpl.(type) {
+	case *recipe.NodeSequence:
+		stateResCtx, err := resCtx.NewChildContext("state", stateName, resCtx.TemplateData.Inputs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create state context: %w", err)
+		}
+		return executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, stateResCtx, stateName)
+	default:
+		return executeStateNode(ctx, activityRegistry, stateTracker, &stateDef.Node, resCtx, stateName)
+	}
 }
 
 // executeStateNode executes a node within a state with proper context
