@@ -30,7 +30,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
        apt-utils ca-certificates curl wget gnupg gnupg2 dirmngr unzip xz-utils tar \
        git jq \
-       build-essential pkg-config \
+       build-essential pkg-config clang libclang-dev \
        python3 python3-pip python3-venv python3-dev \
        default-jdk \
        openssh-client \
@@ -229,7 +229,7 @@ RUN set -euxo pipefail \
        bzip2 zip nano vim-tiny less lsb-release apt-transport-https dialog \
        libc6 libgcc1 libkrb5-3 libgssapi-krb5-2 libstdc++6 zlib1g locales sudo \
        ncdu man-db strace manpages manpages-dev init-system-helpers libssl3 zsh iptables supervisor inotify-tools \
-       build-essential pkg-config \
+       build-essential pkg-config clang libclang-dev \
        python3 python3-pip python3-venv python3-dev \
        default-jdk \
        openssh-client tinyproxy \
