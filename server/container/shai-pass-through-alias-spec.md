@@ -28,7 +28,7 @@
 - Rules:
   - Column 1 (`alias`): unique per repo, lowercase letters/digits/`-`/`_`.
   - Column 2 (`args-regex`): RE2 pattern evaluated against the *entire* extra-args string exactly as typed in the container (after we join the argv tail with single spaces). Use `-` to disallow any extra args. Regex is anchored automatically; treat it as full match.
-  - Column 3 (`command`): remainder of the line, executed on the host using the parent shell (`$SHELL` or `/bin/bash -lc`). Relative paths resolve from the repo root containing the manifest.
+  - Column 3 (`command`): remainder of the line, executed on the host using the parent shell (`$SHELL` or `/bin/bash -lc`). Commands may be absolute, leverage the host’s `$PATH`, or be relative (`./scripts/apply.sh` resolves from the repo root).
 - Blank lines or those starting with `#` are ignored.
 - Example:
   ```
@@ -76,6 +76,7 @@
 ## Execution Semantics
 - Command assembly: the supervisor constructs a single shell line as `<command-from-column3> <extra-args-string>` (extra string omitted when empty) and runs it via `exec.CommandContext(shellPath, "-lc", ...)` in the repo root.
 - Additional args: helper joins remaining argv into a single string (preserving spaces quoted by user) and forwards it verbatim; the host validates this string against the column 2 regex (or `-`) before launching the backing command. On failure, the host returns exit 2 plus a friendly error message to the container.
+- Undefined aliases: helper errors immediately when alias is missing, and the host double-checks to ensure no unregistered command ever launches.
 - STDIN: streamed byte-for-byte over SSH; if a future manifest flag disables stdin for an alias, the supervisor immediately closes the stdin pipe before launching the command.
 - STDOUT/STDERR: since SSH channels already carry separate stdout/stderr, we simply wire them directly to the container terminal—no custom framing or buffering beyond what OpenSSH already provides.
 - Exit Codes: helper exits with the remote process exit code or 130 when interrupted (matching bash conventions).
@@ -92,8 +93,8 @@
 
 ## Security Considerations
 - `.shai-cmds` should be committed and code-reviewed; treat as execution policy.
-- Bridge refuses to run commands referencing paths outside repo root; command lines are executed relative to the repo root to prevent directory traversal.
-- The real `.shai-cmds` stays hidden inside the container via a bind mount to `/dev/null`, preventing users from reverse-engineering available host commands.
+- Commands can target any host path or `$PATH` binary, so validation relies entirely on the manifest: if an alias is not present, the supervisor refuses the request. Relative paths (`./foo`) still resolve from the repo root for convenience.
+- The real `.shai-cmds` stays hidden inside the container via a bind mount to `/dev/null`, preventing users from reading or writing the policy file. Attempts to `cat` or `tee` it inside the container must fail.
 - Password generated per session; never log the secret (log first/last 4 chars max). Host key can also be regenerated per session to avoid persistence.
 - Alias supervisor guarantees cleanup: all alias processes belong to the supervisor’s process group, so when the parent dies (even via `kill -9`) the supervisor notices the control-pipe EOF, sends SIGTERM, waits a grace period, then SIGKILLs the entire group before exiting.
 - Consider future support for signed manifests (out of scope now).
@@ -104,10 +105,29 @@
 - Add metrics hooks (duration, success/failure) for later ingestion.
 
 ## Testing Requirements
-- Unit tests for manifest parsing + regex validation.
-- Integration tests using loopback docker container that runs `shai-alias` against a fake bridge to ensure streaming/interrupts.
-- Cross-platform tests verifying host discovery logic (macOS vs Linux) via mocked environment.
-- Load test: spawn concurrent aliases to ensure isolation and proper log streaming.
+### Unit Tests
+- **Manifest Parsing**: whitespace tokenization, comment skipping, invalid regex detection, relative command resolution (`./foo`), `-` arg sentinel, duplicate alias rejection.
+- **Regex Enforcement**: ensure helper rejects locally when regex is `-`; host double-check denies mismatched strings.
+- **Env Propagation**: helper errors when required env vars missing; ensures `SHAI_ALIAS_SSH_HOSTPORT` respected verbatim.
+- **Supervisor IPC**: RPC framing between bridge and supervisor, control pipe EOF detection, per-command context timeouts.
+
+- **Happy Path Exec**: start supervisor + SSH bridge, run alias via `shai-alias`, confirm stdout/stderr/exit codes round-trip.
+- **Hot Reload**: modify `.shai-cmds` while container stays running; subsequent invocation uses new command.
+- **Arg Validation**: run with invalid args; expect exit 2 and no command spawn (assert supervisor never launched child).
+- **STDIN Passthrough**: pipe data through alias, confirm host command receives content; test stdin-disabled future flag closes pipe.
+- **Signal Propagation**: send Ctrl+C from helper; verify supervisor relays SIGINT then SIGKILL on timeout.
+- **Kill -9 Safety**: forcefully terminate main shai process; ensure supervisor detects control-pipe close and kills in-flight alias.
+- **.shai-cmds Masking**: inside container confirm manifest path unreadable and unwritable (bind to `/dev/null`).
+- **Undefined Alias**: invoke `shai-alias not-real`; expect clear error/exit 2, no supervisor call.
+- **Unauthorized Args**: helper tries args disallowed by regex; ensure it fails locally and host would reject if bypassed.
+- **Host PATH Command**: alias referencing a binary only on host `$PATH` executes successfully to prove non-repo commands work.
+
+### Cross-Platform / Platform-Specific
+- **macOS vs Linux Host Discovery**: verify `SHAI_ALIAS_SSH_HOSTPORT` uses host.docker.internal or host-gateway accordingly and helper honors it.
+- **Process Group Behavior**: ensure SIGTERM/SIGKILL fan out to grandchildren on both platforms.
+
+### Load / Concurrency
+- Spawn multiple concurrent aliases to verify supervisor queueing, per-alias timeout enforcement, and logging completeness.
 
 ## `shai-alias` Helper
 - **Form factor**: POSIX shell (`/bin/bash`) script installed into the container at `/usr/local/bin/shai-alias`. Using Bash keeps the distribution simple (no additional binaries) and lets us rely on the system `ssh` client.
