@@ -183,9 +183,9 @@ WORKDIR /src
 
 # Ensure toolchains are on PATH and add global symlinks (dev stage)
 RUN set -euxo pipefail && \
-    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
+    printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
     chmod 0644 /etc/profile.d/10-lang-paths.sh && \
-    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
+    printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
     ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
     ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt && \
     ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo && \
@@ -287,11 +287,11 @@ RUN set -euxo pipefail \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh \
     && chmod 0644 /etc/profile.d/10-proxy.sh \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv \
-    && printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh \
+    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh \
     && chmod 0644 /etc/profile.d/10-lang-paths.sh \
-    && printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv \
-    && printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc \
-    && printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc \
+    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv \
+    && printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc \
+    && printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc \
     && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf \
     && if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
          sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
@@ -334,11 +334,11 @@ ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -euxo pipefail && mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" && chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH"
 RUN set -euxo pipefail && \
-    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
+    printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' > /etc/profile.d/10-lang-paths.sh && \
     chmod 0644 /etc/profile.d/10-lang-paths.sh && \
-    printf 'export PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
-    printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc && \
-    printf '\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc && \
+    printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv && \
+    printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc && \
+    printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc && \
     chown devuser:devuser /home/devuser/.bashrc /home/devuser/.zshrc && \
     ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
     ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt && \
