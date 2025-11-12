@@ -7,7 +7,9 @@ toolchain go1.24.1
 replace github.com/divisive-ai/vibethis/server/core => ../core
 
 require (
+	github.com/creack/pty v1.1.23
 	github.com/docker/docker v28.3.0+incompatible
+	github.com/gliderlabs/ssh v0.3.6
 	github.com/klauspost/compress v1.18.0
 	github.com/moby/term v0.5.2
 	github.com/stretchr/testify v1.10.0
@@ -16,6 +18,7 @@ require (
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.4.14 // indirect
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -40,7 +43,9 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
+	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/term v0.23.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/v3 v3.5.2 // indirect

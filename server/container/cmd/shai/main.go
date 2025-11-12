@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/container/pkg/shai"
+	"github.com/divisive-ai/vibethis/server/container/pkg/shai/alias"
 )
 
 // MultiStringFlag allows multiple -rw flags
@@ -27,22 +28,30 @@ func (m *MultiStringFlag) Set(value string) error {
 }
 
 func main() {
-    var rwPaths MultiStringFlag
-    var containerName string
-    var verbose bool
-    var noCache bool
-    var hideProgress bool
-    var printScript bool
-    var noTTY bool
+	if os.Getenv("SHAI_ALIAS_SUPERVISOR") == "1" {
+		if err := alias.RunSupervisor(); err != nil {
+			fmt.Fprintf(os.Stderr, "shai alias supervisor error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
-    flag.Var(&rwPaths, "rw", "Read-write directory (can be specified multiple times)")
-    flag.StringVar(&containerName, "name", "", "Container name")
-    flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
-    flag.BoolVar(&noCache, "no-cache", false, "Force rebuild")
-    flag.BoolVar(&hideProgress, "hide-progress", false, "Hide progress markers in ephemeral mode")
-    flag.BoolVar(&printScript, "print-script", false, "Print the generated setup script in ephemeral mode")
-    flag.BoolVar(&noTTY, "no-tty", false, "Disable TTY for final command (when using --)")
-    flag.Parse()
+	var rwPaths MultiStringFlag
+	var containerName string
+	var verbose bool
+	var noCache bool
+	var hideProgress bool
+	var printScript bool
+	var noTTY bool
+
+	flag.Var(&rwPaths, "rw", "Read-write directory (can be specified multiple times)")
+	flag.StringVar(&containerName, "name", "", "Container name")
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+	flag.BoolVar(&noCache, "no-cache", false, "Force rebuild")
+	flag.BoolVar(&hideProgress, "hide-progress", false, "Hide progress markers in ephemeral mode")
+	flag.BoolVar(&printScript, "print-script", false, "Print the generated setup script in ephemeral mode")
+	flag.BoolVar(&noTTY, "no-tty", false, "Disable TTY for final command (when using --)")
+	flag.Parse()
 
 	if len(rwPaths) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: at least one -rw path required\n")
@@ -59,34 +68,34 @@ func main() {
 		os.Exit(1)
 	}
 
-    // Determine optional post-setup command passed after "--"
-    var postExec *shai.ExecSpec
-    if args := flag.Args(); len(args) > 0 {
-        // Run provided command as the container user in the workspace
-        postExec = &shai.ExecSpec{
-            Command: args,
-            Workdir: "/src",
-            UseTTY:  !noTTY,
-        }
-    }
+	// Determine optional post-setup command passed after "--"
+	var postExec *shai.ExecSpec
+	if args := flag.Args(); len(args) > 0 {
+		// Run provided command as the container user in the workspace
+		postExec = &shai.ExecSpec{
+			Command: args,
+			Workdir: "/src",
+			UseTTY:  !noTTY,
+		}
+	}
 
-    // Set up signal handling for graceful shutdown
-    ctx, cancel := setupSignals()
-    defer cancel()
+	// Set up signal handling for graceful shutdown
+	ctx, cancel := setupSignals()
+	defer cancel()
 
-    runEphemeral(ctx, workingDir, rwPaths, noCache, hideProgress, verbose, printScript, postExec)
+	runEphemeral(ctx, workingDir, rwPaths, noCache, hideProgress, verbose, printScript, postExec)
 }
 
 func runEphemeral(ctx context.Context, workingDir string, rwPaths []string, noCache, hideProgress, verbose, printScript bool, postExec *shai.ExecSpec) {
-    // Create ephemeral runner
-    runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-        WorkingDir:          workingDir,
-        ReadWritePaths:      rwPaths,
-        NoCache:             noCache,
-        HideProgressMarkers: hideProgress,
-        DebugScript:         printScript || verbose,
-        PostSetupExec:       postExec,
-    })
+	// Create ephemeral runner
+	runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+		WorkingDir:          workingDir,
+		ReadWritePaths:      rwPaths,
+		NoCache:             noCache,
+		HideProgressMarkers: hideProgress,
+		DebugScript:         printScript || verbose,
+		PostSetupExec:       postExec,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -179,7 +188,7 @@ func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
 		}
 		spinTicker = time.NewTicker(120 * time.Millisecond)
 		stopSpinner = make(chan struct{})
-		ticker := spinTicker  // Capture for goroutine
+		ticker := spinTicker // Capture for goroutine
 		stop := stopSpinner
 		go func() {
 			for {

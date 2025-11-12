@@ -21,7 +21,10 @@ tasks:
     description: 'Build the shai CLI binary'
 
   integration:
-    command: 'go test -v -tags=integration ./...'
+    script: |
+      export SHAI_ALIAS_SUPERVISOR_BIN="$(pwd)/bin/shai"
+      export SHAI_ALIAS_DEBUG=1
+      go test -tags=integration ./...
     deps:
       - 'build-shai'
     inputs:

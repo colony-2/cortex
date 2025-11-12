@@ -61,7 +61,7 @@
 - Responsibilities:
   - Read `SHAI_ALIAS_SSH_HOSTPORT`, `SHAI_ALIAS_SSH_USER`, `SHAI_ALIAS_SSH_PASS`.
   - `SHAI_ALIAS_SSH_HOSTPORT` already encodes the reachable hostname (macOS: `host.docker.internal`, Linux: injected host-gateway), so helpers do not guess the host.
-  - Invoke system `ssh` with `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` and feed the password via `SSH_ASKPASS`/`sshpass`-style helper owned by `shai-alias` (no user prompts).
+  - Invoke system `ssh` with `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` plus sane timeouts, feeding the password via `sshpass` (or `SSH_ASKPASS`) so no prompts ever appear. Container images must therefore include at least `ssh`, `sshpass`, `base64`, and `coreutils`—all standard on `debian-dev:dev`.
   - Forward stdin to the SSH session and stream stdout/stderr back to the container terminal verbatim.
   - Exit with the SSH session’s remote status; emit clear errors (exit 125) on connection/auth failures.
 

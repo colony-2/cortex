@@ -34,6 +34,8 @@ RUN set -eux; \
        python3 python3-pip python3-venv python3-dev \
        default-jdk \
        openssh-client \
+       sshpass \
+       coreutils \
        bash-completion iproute2 procps lsof htop net-tools psmisc tree rsync \
        bzip2 zip nano vim-tiny less lsb-release apt-transport-https dialog \
        libc6 libgcc1 libkrb5-3 libgssapi-krb5-2 libstdc++6 zlib1g locales sudo \
@@ -86,6 +88,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH="/usr/local/cargo/bin:/usr/local/go/bin:${PATH}"
 RUN set -euxo pipefail && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
 RUN set -euxo pipefail && sh /tmp/rustup.sh -y --default-toolchain stable
+RUN set -euxo pipefail && rustup default stable
 RUN set -euxo pipefail && chmod -R a+rX /usr/local/rustup /usr/local/cargo
 RUN set -euxo pipefail && rustc --version && cargo --version
 
@@ -232,7 +235,10 @@ RUN set -euxo pipefail \
        build-essential pkg-config clang libclang-dev \
        python3 python3-pip python3-venv python3-dev \
        default-jdk \
-       openssh-client tinyproxy \
+       openssh-client \
+       sshpass \
+       coreutils \
+       tinyproxy \
        "$icu_pkg" "$lttng_pkg" \
     && arch=$(dpkg --print-architecture) \
     && case "$arch" in amd64) GOARCH=amd64 ;; arm64) GOARCH=arm64 ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac \
@@ -242,6 +248,7 @@ RUN set -euxo pipefail \
     && rm -f /tmp/go.tgz \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh \
     && sh /tmp/rustup.sh -y --default-toolchain stable \
+    && rustup default stable \
     && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
     && python3 -m pip --version \
     && arch=$(dpkg --print-architecture) \
