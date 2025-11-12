@@ -4,6 +4,7 @@ set -euo pipefail
 DEV_UID=${DEV_UID:-1000}
 PROXY_PORT=${PROXY_PORT:-8888}
 DNS_PORT=${DNS_PORT:-53}
+ALLOW_DOCKER_HOST_PORT=${ALLOW_DOCKER_HOST_PORT:-}
 
 ensure_rule() {
   local table=$1
@@ -37,6 +38,10 @@ if command -v iptables >/dev/null 2>&1; then
   ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp -d 127.0.0.1 --dport "$DNS_PORT" -j ACCEPT
 
   # Reject all other egress for dev UID
+  if [ -n "$ALLOW_DOCKER_HOST_PORT" ]; then
+    echo "[dev-egress] allowing egress on port $ALLOW_DOCKER_HOST_PORT"
+    ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -p tcp --dport "$ALLOW_DOCKER_HOST_PORT" -j ACCEPT
+  fi
   ensure_rule filter OUTPUT -m owner --uid-owner "$DEV_UID" -j REJECT
 fi
 

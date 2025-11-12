@@ -90,6 +90,7 @@ RUN set -euxo pipefail && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup
 RUN set -euxo pipefail && sh /tmp/rustup.sh -y --default-toolchain stable
 RUN set -euxo pipefail && rustup default stable
 RUN set -euxo pipefail && chmod -R a+rX /usr/local/rustup /usr/local/cargo
+RUN set -euxo pipefail && mkdir -p /usr/local/cargo/registry && chmod 0777 /usr/local/cargo/registry
 RUN set -euxo pipefail && rustc --version && cargo --version
 
 ## Python: keep pip current (no pipx for non-Python CLIs)
@@ -250,6 +251,8 @@ RUN set -euxo pipefail \
     && sh /tmp/rustup.sh -y --default-toolchain stable \
     && rustup default stable \
     && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
+    && mkdir -p /usr/local/cargo/registry \
+    && chmod 0777 /usr/local/cargo/registry \
     && python3 -m pip --version \
     && arch=$(dpkg --print-architecture) \
     && case "$arch" in amd64) NODEARCH=x64 ;; arm64) NODEARCH=arm64 ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac \
