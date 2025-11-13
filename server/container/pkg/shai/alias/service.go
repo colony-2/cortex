@@ -25,6 +25,7 @@ type Config struct {
 	ShellPath      string
 	ExecutablePath string
 	ListenAddr     string
+	Debug          bool
 }
 
 // MountSpec describes a file mount required for alias helpers.
@@ -122,19 +123,27 @@ func MaybeStart(cfg Config) (*Service, error) {
 		SessionID:      sessionID,
 		Port:           port,
 		ListenAddr:     listenAddr,
+		Debug:          cfg.Debug,
 	})
 	if err != nil {
 		os.RemoveAll(assetsDir)
 		return nil, err
 	}
 
+	allowHostPortEnv := fmt.Sprintf("ALLOW_DOCKER_HOST_PORT=%d", port)
+
+	envList := []string{
+		fmt.Sprintf("SHAI_ALIAS_SSH_HOSTPORT=%s:%d", containerHostAlias(), port),
+		fmt.Sprintf("SHAI_ALIAS_SSH_USER=%s", aliasUser),
+		fmt.Sprintf("SHAI_ALIAS_SSH_PASS=%s", password),
+		fmt.Sprintf("SHAI_ALIAS_SESSION_ID=%s", sessionID),
+		allowHostPortEnv,
+	}
+	if cfg.Debug {
+		envList = append(envList, "SHAI_ALIAS_DEBUG=1")
+	}
 	service := &Service{
-		env: []string{
-			fmt.Sprintf("SHAI_ALIAS_SSH_HOSTPORT=%s:%d", containerHostAlias(), port),
-			fmt.Sprintf("SHAI_ALIAS_SSH_USER=%s", aliasUser),
-			fmt.Sprintf("SHAI_ALIAS_SSH_PASS=%s", password),
-			fmt.Sprintf("SHAI_ALIAS_SESSION_ID=%s", sessionID),
-		},
+		env: envList,
 		mounts: []MountSpec{
 			{Source: scriptPath, Target: "/usr/local/bin/shai-alias", ReadOnly: true},
 			{Source: "/dev/null", Target: filepath.Join(containerRoot, manifestName), ReadOnly: true},
@@ -236,6 +245,7 @@ type supervisorLaunchConfig struct {
 	SessionID      string
 	Port           int
 	ListenAddr     string
+	Debug          bool
 }
 
 func launchSupervisor(cfg supervisorLaunchConfig) (*exec.Cmd, *os.File, error) {
@@ -245,7 +255,7 @@ func launchSupervisor(cfg supervisorLaunchConfig) (*exec.Cmd, *os.File, error) {
 	}
 
 	cmd := exec.Command(cfg.ExecutablePath)
-	cmd.Env = append(os.Environ(),
+	cmdEnv := []string{
 		"SHAI_ALIAS_SUPERVISOR=1",
 		fmt.Sprintf("SHAI_ALIAS_MANIFEST=%s", cfg.ManifestPath),
 		fmt.Sprintf("SHAI_ALIAS_WORKDIR=%s", cfg.WorkingDir),
@@ -255,7 +265,11 @@ func launchSupervisor(cfg supervisorLaunchConfig) (*exec.Cmd, *os.File, error) {
 		fmt.Sprintf("SHAI_ALIAS_BIND_PORT=%d", cfg.Port),
 		fmt.Sprintf("SHAI_ALIAS_LISTEN_ADDR=%s", cfg.ListenAddr),
 		"SHAI_ALIAS_CONTROL_FD=3",
-	)
+	}
+	if cfg.Debug {
+		cmdEnv = append(cmdEnv, "SHAI_ALIAS_DEBUG=1")
+	}
+	cmd.Env = append(os.Environ(), cmdEnv...)
 	cmd.ExtraFiles = []*os.File{reader}
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr

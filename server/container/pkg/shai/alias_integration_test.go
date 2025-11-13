@@ -34,29 +34,44 @@ func TestMain(m *testing.M) {
 
 func TestAliasIntegrationListShowsAliases(t *testing.T) {
 	workspace := setupAliasWorkspace(t)
-	lines := runInDevcontainer(t, workspace, "shai-alias --list")
+	lines, err := runInDevcontainer(t, workspace, "shai-alias --verbose --list")
+	if err != nil {
+		t.Fatalf("alias list failed: %v\nlogs: %v", err, lines)
+	}
 	assertContainsLine(t, lines, "hosthello")
 	assertContainsLine(t, lines, "withargs")
 }
 
 func TestAliasIntegrationRunsHostCommand(t *testing.T) {
 	workspace := setupAliasWorkspace(t)
-	lines := runInDevcontainer(t, workspace, "shai-alias hosthello first second")
+	lines, err := runInDevcontainer(t, workspace, "shai-alias --verbose hosthello first second")
+	if err != nil {
+		t.Fatalf("alias run failed: %v\nlogs: %v", err, lines)
+	}
 	assertContainsSubstring(t, lines, "HOST_HELLO:first second")
 }
 
 func TestAliasIntegrationArgValidation(t *testing.T) {
 	workspace := setupAliasWorkspace(t)
-	lines := runInDevcontainer(t, workspace, "shai-alias withargs --msg=test")
+	lines, err := runInDevcontainer(t, workspace, "shai-alias --verbose withargs --msg=test")
+	if err != nil {
+		t.Fatalf("alias run failed: %v\nlogs: %v", err, lines)
+	}
 	assertContainsSubstring(t, lines, "HOST_ARGS:--msg=test")
 
-	lines = runInDevcontainer(t, workspace, "if shai-alias withargs --msg=Bad; then echo unexpected; else echo denied; fi")
+	lines, err = runInDevcontainer(t, workspace, "if shai-alias --verbose withargs --msg=Bad; then echo unexpected; else echo denied; fi")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	assertContainsSubstring(t, lines, "denied")
 }
 
 func TestAliasIntegrationMasksManifest(t *testing.T) {
 	workspace := setupAliasWorkspace(t)
-	lines := runInDevcontainer(t, workspace, "if [ -s /src/.shai-cmds ]; then echo visible; else echo masked; fi")
+	lines, err := runInDevcontainer(t, workspace, "if [ -s /src/.shai-cmds ]; then echo visible; else echo masked; fi")
+	if err != nil {
+		t.Fatalf("mask command failed: %v\nlogs: %v", err, lines)
+	}
 	assertContainsSubstring(t, lines, "masked")
 
 	content, err := os.ReadFile(filepath.Join(workspace, ".shai-cmds"))
@@ -95,13 +110,15 @@ withargs   ^(--msg=[a-z]+)$    ./scripts/host-args.sh
 	return workspace
 }
 
-func runInDevcontainer(t *testing.T, workspace, shellCmd string) []string {
+func runInDevcontainer(t *testing.T, workspace, shellCmd string) ([]string, error) {
 	t.Helper()
+	t.Setenv("SHAI_ALIAS_DEBUG", "1")
 	lines := newLineCollector()
+
 	cfg := shai.EphemeralConfig{
-		WorkingDir:          workspace,
-		ReadWritePaths:      []string{"."},
-		HideProgressMarkers: true,
+		WorkingDir:     workspace,
+		ReadWritePaths: []string{"."},
+		Verbose:        true,
 		PostSetupExec: &shai.ExecSpec{
 			Command: []string{"/bin/bash", "-lc", shellCmd},
 			Workdir: "/src",
@@ -118,9 +135,9 @@ func runInDevcontainer(t *testing.T, workspace, shellCmd string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	if err := runner.Run(ctx); err != nil {
-		t.Fatalf("runner run (%s): %v", shellCmd, err)
+		return lines.Events(), err
 	}
-	return lines.Events()
+	return lines.Events(), nil
 }
 
 func requireDocker(t *testing.T) {
@@ -172,7 +189,13 @@ func newLineCollector() *lineCollector {
 }
 
 func (l *lineCollector) Collect(stream, line string) {
+	if strings.TrimSpace(line) == "" {
+		return
+	}
 	l.lines = append(l.lines, stream+":"+line)
+	if stream == "stderr" {
+		fmt.Fprintf(os.Stderr, "[alias-test stderr] %s\n", line)
+	}
 }
 
 func (l *lineCollector) Events() []string {
@@ -188,7 +211,8 @@ func assertContainsLine(t *testing.T, lines []string, needle string) {
 			return
 		}
 	}
-	t.Fatalf("expected output to contain %q, got %v", needle, lines)
+	logCollectedLines(t, lines)
+	t.Fatalf("expected output to contain %q, got %v at %s", needle, lines, time.Now().Format(time.RFC3339))
 }
 
 func assertContainsSubstring(t *testing.T, lines []string, needle string) {
@@ -198,5 +222,16 @@ func assertContainsSubstring(t *testing.T, lines []string, needle string) {
 			return
 		}
 	}
-	t.Fatalf("expected substring %q in output %v", needle, lines)
+	logCollectedLines(t, lines)
+	t.Fatalf("expected substring %q in output %v at %s", needle, lines, time.Now().Format(time.RFC3339))
+}
+
+func logCollectedLines(t *testing.T, lines []string) {
+	if len(lines) == 0 {
+		t.Log("collected: <no output>")
+		return
+	}
+	for _, line := range lines {
+		t.Logf("collected: %s", line)
+	}
 }

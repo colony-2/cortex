@@ -61,8 +61,8 @@ type Session struct {
 type EphemeralConfig struct {
     WorkingDir          string
     ReadWritePaths      []string
-    HideProgressMarkers bool
-    DebugScript         bool
+    NoCache             bool
+    Verbose             bool
     PostSetupExec       *ExecSpec
     Output              OutputSink
     GracefulStopTimeout time.Duration
@@ -83,6 +83,7 @@ func (r *EphemeralRunner) Start(ctx context.Context) (*Session, error)
   - `UseTTY=true` and no `Output`: attached to caller’s TTY (interactive).
   - `UseTTY=false`: stdout/stderr demuxed and streamed to `Output` if provided; otherwise buffered and included on error.
 - Mounting: `/src` is read-only by default; entries in `ReadWritePaths` become RW overlays at `/src` (use `.` to make the whole workspace RW).
+- Set `Verbose` to true to dump the generated setup script, stream lifecycle command output, and emit per-phase progress markers (identical to `shai -verbose`).
 
 ### Example: Run a custom entrypoint
 ```go
@@ -93,9 +94,8 @@ import (
 
 func startProcess(ctx context.Context, repoRoot string) (*shai.Session, error) {
   cfg := shai.EphemeralConfig{
-    WorkingDir:          repoRoot,
-    ReadWritePaths:      []string{".vibethis", ".cache"},
-    HideProgressMarkers: true,
+    WorkingDir:     repoRoot,
+    ReadWritePaths: []string{".vibethis", ".cache"},
     PostSetupExec: &shai.ExecSpec{
       Command: []string{"./bin/worker", "--name", "example"},
       UseTTY: false, // structured logs

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -91,17 +92,29 @@ func (p *ProgressDisplay) Stop() {
 
 // EphemeralConfig represents configuration for ephemeral container execution
 type EphemeralConfig struct {
-	WorkingDir          string   // Directory containing .devcontainer
-	ReadWritePaths      []string // Paths to mount as read-write
-	NoCache             bool     // Force rebuild
-	HideProgressMarkers bool     // Hide progress markers from output
-	DebugScript         bool     // Print generated setup script
+	WorkingDir     string   // Directory containing .devcontainer
+	ReadWritePaths []string // Paths to mount as read-write
+	NoCache        bool     // Force rebuild
+	Verbose        bool     // Enable verbose logging, script dumps, and setup streaming
+	legacyEphemeralConfig
 	// PostSetupExec runs a command after setup instead of a login shell
 	PostSetupExec *ExecSpec
 	// Output receives stdout/stderr after USERSWITCH (optional)
 	Output OutputSink
 	// GracefulStopTimeout for Session.Stop (SIGTERM -> SIGKILL)
 	GracefulStopTimeout time.Duration
+}
+
+// legacyEphemeralConfig preserves backward-compatible struct fields for callers in
+// read-only modules. They no longer influence runner behavior and will be removed
+// once downstream packages are migrated.
+type legacyEphemeralConfig struct {
+	// Deprecated: no longer used.
+	HideProgressMarkers bool
+	// Deprecated: no longer used.
+	DebugScript bool
+	// Deprecated: no longer used.
+	StreamSetupOutput bool
 }
 
 // EphemeralProgressCallback is a callback for ephemeral progress updates
@@ -117,7 +130,6 @@ type EphemeralRunner struct {
 	progress         *ProgressDisplay
 	// resolvedFeatures are features fetched to local temp dirs for mounting
 	resolvedFeatures   []ResolvedFeature
-	debugScript        bool
 	currentContainerID string
 	aliasSvc           *alias.Service
 	aliasEnv           map[string]string
@@ -199,6 +211,8 @@ func NewEphemeralRunner(config EphemeralConfig) (*EphemeralRunner, error) {
 	aliasSvc, err := alias.MaybeStart(alias.Config{
 		WorkingDir: config.WorkingDir,
 		ShellPath:  os.Getenv("SHELL"),
+		ListenAddr: "0.0.0.0",
+		Debug:      os.Getenv("SHAI_ALIAS_DEBUG") != "",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize alias service: %w", err)
@@ -209,7 +223,6 @@ func NewEphemeralRunner(config EphemeralConfig) (*EphemeralRunner, error) {
 		docker:       dockerClient,
 		mountBuilder: mountBuilder,
 		progress:     NewProgressDisplay(),
-		debugScript:  config.DebugScript,
 		aliasSvc:     aliasSvc,
 		aliasEnv:     map[string]string{},
 	}
@@ -258,7 +271,7 @@ func (r *EphemeralRunner) Run(ctx context.Context) error {
 
 	// Generate setup script
 	setupScript := r.generateSetupScript()
-	if r.debugScript {
+	if r.config.Verbose {
 		fmt.Println("--- devcontainer setup script ---")
 		fmt.Println(setupScript)
 		fmt.Println("--- end script ---")
@@ -447,7 +460,7 @@ echo "::DEVCONTAINER::INIT::COMPLETE::Completed devcontainer setup"
 	script = strings.ReplaceAll(script, "%FEATURES%", r.generateFeatureInstallsWithProgress())
 	script = strings.ReplaceAll(script, "%ONCREATE%", r.generateCommandWithProgress(r.devContainer.OnCreateCommand, "ONCREATE"))
 	script = strings.ReplaceAll(script, "%UPDATECONTENT%", r.generateCommandWithProgress(r.devContainer.UpdateContentCommand, "UPDATECONTENT"))
-	script = strings.ReplaceAll(script, "%POSTCREATE%", r.generateCommandWithProgress(r.devContainer.PostCreateCommand, "POSTCREATE"))
+	script = strings.ReplaceAll(script, "%POSTCREATE%", r.generatePostCreateSection())
 	script = strings.ReplaceAll(script, "%POSTSTART%", r.generateCommandWithProgress(r.devContainer.PostStartCommand, "POSTSTART"))
 	script = strings.ReplaceAll(script, "%POSTATTACH%", r.generateCommandWithProgress(r.devContainer.PostAttachCommand, "POSTATTACH"))
 
@@ -571,6 +584,85 @@ func (r *EphemeralRunner) parseLifecycleCommand(cmd interface{}) string {
 	}
 
 	return lifecycleCmd.ToShellCommand()
+}
+
+func (r *EphemeralRunner) generatePostCreateSection() string {
+	var blocks []string
+
+	if cmd := r.parseLifecycleCommand(r.devContainer.PostCreateCommand); cmd != "" {
+		blocks = append(blocks, cmd)
+	}
+
+	blocks = append(blocks, r.bootstrapCommandSnippet())
+
+	var body strings.Builder
+	for _, block := range blocks {
+		if strings.TrimSpace(block) == "" {
+			continue
+		}
+		body.WriteString(block)
+		if !strings.HasSuffix(block, "\n") {
+			body.WriteString("\n")
+		}
+	}
+
+	contents := strings.TrimSpace(body.String())
+	if contents == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(`
+echo "::DEVCONTAINER::POSTCREATE::START::Executing postcreate command"
+%s
+echo "::DEVCONTAINER::POSTCREATE::COMPLETE::Completed postcreate command"
+`, contents)
+}
+
+func (r *EphemeralRunner) bootstrapCommandSnippet() string {
+	var b strings.Builder
+	if len(r.aliasEnv) > 0 {
+		var keys []string
+		for k := range r.aliasEnv {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		b.WriteString("# Ensure alias supervisor env is available before bootstrap\n")
+		for _, k := range keys {
+			v := strings.ReplaceAll(r.aliasEnv[k], "'", "'\\''")
+			b.WriteString(fmt.Sprintf("export %s='%s'\n", k, v))
+		}
+	}
+	b.WriteString(`
+# Invoke bootstrap.sh (starts proxy/dns and dev-egress) with extra diagnostics
+bootstrap_cmd=""
+if [ -x /usr/local/sbin/bootstrap.sh ]; then
+  bootstrap_cmd="/usr/local/sbin/bootstrap.sh"
+elif [ -x /usr/local/bin/bootstrap.sh ]; then
+  bootstrap_cmd="/usr/local/bin/bootstrap.sh"
+fi
+	if [ -n "$bootstrap_cmd" ]; then
+  echo "[bootstrap] running $bootstrap_cmd (pid $$)"
+  if command -v date >/dev/null 2>&1; then
+    echo "[bootstrap] started at $(date -Iseconds)"
+  fi
+  if "$bootstrap_cmd"; then
+    status=0
+  else
+    status=$?
+  fi
+  if command -v date >/dev/null 2>&1; then
+    echo "[bootstrap] finished at $(date -Iseconds)"
+  fi
+  if [ "$status" -eq 0 ]; then
+    echo "[bootstrap] bootstrap.sh complete"
+  else
+    echo "[bootstrap] bootstrap.sh exited with $status"
+  fi
+else
+  echo "[bootstrap] bootstrap.sh not present"
+fi
+`)
+	return b.String()
 }
 
 func (r *EphemeralRunner) defaultUserSwitchBlock(user string) string {
@@ -787,7 +879,7 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 
 	// Add capabilities
 	if len(config.CapAdd) > 0 {
-		hostConfig.CapAdd = config.CapAdd
+		hostConfig.CapAdd = append([]string{}, config.CapAdd...)
 	}
 
 	// Add security options
@@ -805,6 +897,8 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 		hostConfig.Privileged = config.Privileged
 	}
 
+	ensureCapability(hostConfig, "NET_ADMIN")
+
 	// Ensure image is available locally (suppress internal spinner)
 	if err := r.ensureImageNoSpinner(ctx, config.Image); err != nil {
 		return fmt.Errorf("failed to ensure image %s: %w", config.Image, err)
@@ -816,6 +910,13 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 		return fmt.Errorf("failed to create container: %w", err)
 	}
 	r.currentContainerID = resp.ID
+
+	shortID := resp.ID
+	if len(shortID) > 12 {
+		shortID = shortID[:12]
+	}
+	fmt.Printf("[ephemeral-runner] %s created container %s (image %s)\n", time.Now().Format(time.RFC3339), shortID, containerConfig.Image)
+
 	select {
 	case idCh <- resp.ID:
 	default:
@@ -883,6 +984,9 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 	go func() {
 		var outputBuffer strings.Builder
 		userSwitched := false
+
+		streamSetup := r.config.Verbose
+		captureSetup := streamSetup && r.config.Output != nil
 
 		forward := func(stream string, data []byte) {
 			if r.config.Output != nil {
@@ -971,7 +1075,14 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 						}
 					} else if !userSwitched && line != "" {
 						// Output non-progress lines before user switch (e.g., lifecycle command output)
-						forward("stdout", []byte(line))
+						if streamSetup {
+							fmt.Print(line)
+							if captureSetup {
+								r.config.Output.OnStdout([]byte(line))
+							}
+						} else {
+							forward("stdout", []byte(line))
+						}
 					}
 					if userSwitched && line != "" {
 						forward("stdout", []byte(line))
@@ -1003,6 +1114,12 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 				if userSwitched {
 					forward("stdout", []byte(s+"\n"))
 				} else {
+					if streamSetup && strings.TrimSpace(s) != "" {
+						fmt.Println(s)
+						if captureSetup {
+							r.config.Output.OnStdout([]byte(s + "\n"))
+						}
+					}
 					outputBuffer.WriteString(s + "\n")
 				}
 			}}
@@ -1010,6 +1127,12 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 				if userSwitched {
 					forward("stderr", []byte(s+"\n"))
 				} else {
+					if streamSetup && strings.TrimSpace(s) != "" {
+						fmt.Fprintln(os.Stderr, s)
+						if captureSetup {
+							r.config.Output.OnStderr([]byte(s + "\n"))
+						}
+					}
 					outputBuffer.WriteString(s + "\n")
 				}
 			}}
@@ -1063,6 +1186,21 @@ func (r *EphemeralRunner) runEphemeralContainerWithID(ctx context.Context, confi
 		case containerOutput = <-outputCh:
 		case <-time.After(1 * time.Second):
 			// Timeout getting output
+		}
+
+		ts := time.Now().Format(time.RFC3339)
+		shortID := resp.ID
+		if len(shortID) > 12 {
+			shortID = shortID[:12]
+		}
+		if status.StatusCode == 0 {
+			fmt.Printf("[ephemeral-runner] %s container %s exited cleanly\n", ts, shortID)
+		} else {
+			msg := ""
+			if status.Error != nil {
+				msg = status.Error.Message
+			}
+			fmt.Printf("[ephemeral-runner] %s container %s exited with code %d %s\n", ts, shortID, status.StatusCode, msg)
 		}
 
 		close(progressCh)
@@ -1172,6 +1310,18 @@ func (r *EphemeralRunner) buildEnvVars(config *devcontainer.DockerRunConfig) []s
 		env = append(env, r.aliasSvc.Env()...)
 	}
 	return env
+}
+
+func ensureCapability(hostConfig *container.HostConfig, capability string) {
+	if hostConfig == nil || capability == "" {
+		return
+	}
+	for _, existing := range hostConfig.CapAdd {
+		if strings.EqualFold(existing, capability) {
+			return
+		}
+	}
+	hostConfig.CapAdd = append(hostConfig.CapAdd, capability)
 }
 
 // buildMounts builds mount configurations for the container

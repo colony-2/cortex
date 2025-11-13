@@ -39,7 +39,7 @@ func TestEphemeralContainerFullLifecycle(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "docs"), 0755))
 
 	// Create a devcontainer.json with lifecycle commands
-    devcontainerJSON := `{
+	devcontainerJSON := `{
         "image": "alpine:latest",
         "postCreateCommand": "echo 'PostCreate executed' > /tmp/postcreate.txt",
         "postStartCommand": "echo 'PostStart executed' > /tmp/poststart.txt",
@@ -69,9 +69,9 @@ func TestEphemeralContainerFullLifecycle(t *testing.T) {
 
 		// Create ephemeral runner
 		runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-			WorkingDir:          tmpDir,
-			ReadWritePaths:      []string{"src", "tests"},
-			HideProgressMarkers: false,
+			WorkingDir:     tmpDir,
+			ReadWritePaths: []string{"src", "tests"},
+			Verbose:        true,
 		})
 		require.NoError(t, err)
 		defer runner.Close()
@@ -176,7 +176,7 @@ func TestMountPermissionsIntegration(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "docs", "readonly.txt"), []byte("original"), 0644))
 
 	// Create devcontainer.json that tests mount permissions
-    devcontainerJSON := `{
+	devcontainerJSON := `{
         "image": "alpine:latest",
         "postCreateCommand": [
             "sh", "-c",
@@ -192,6 +192,7 @@ func TestMountPermissionsIntegration(t *testing.T) {
 		runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
 			WorkingDir:     tmpDir,
 			ReadWritePaths: []string{"src"}, // Only src is writable
+			Verbose:        true,
 		})
 		require.NoError(t, err)
 		defer runner.Close()
@@ -251,7 +252,7 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
 
 	// Create devcontainer with all lifecycle commands
-    devcontainerJSON := `{
+	devcontainerJSON := `{
         "image": "alpine:latest",
         "onCreateCommand": "echo 'onCreate running'",
         "updateContentCommand": "echo 'updateContent running'",
@@ -264,11 +265,11 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 	err = os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644)
 	require.NoError(t, err)
 
-    t.Run("all lifecycle phases report progress", func(t *testing.T) {
+	t.Run("all lifecycle phases report progress", func(t *testing.T) {
 		runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-			WorkingDir:          tmpDir,
-			ReadWritePaths:      []string{"."},
-			HideProgressMarkers: false,
+			WorkingDir:     tmpDir,
+			ReadWritePaths: []string{"."},
+			Verbose:        true,
 		})
 		require.NoError(t, err)
 		defer runner.Close()
@@ -287,11 +288,11 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 			done <- runner.Run(ctx)
 		}()
 
-        select {
-        case <-done:
-        case <-ctx.Done():
-            t.Fatal("Test timed out")
-        }
+		select {
+		case <-done:
+		case <-ctx.Done():
+			t.Fatal("Test timed out")
+		}
 
 		// Verify we saw all expected phases
 		expectedPhases := []string{"INIT", "ONCREATE", "UPDATECONTENT", "POSTCREATE", "POSTSTART", "POSTATTACH"}
@@ -302,97 +303,97 @@ func TestProgressMarkersEndToEnd(t *testing.T) {
 				assert.Contains(t, statuses, "COMPLETE", "Phase %s should have COMPLETE status", phase)
 			}
 		}
-    })
+	})
 
-    t.Run("postCreate status markers appear", func(t *testing.T) {
-        runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-            WorkingDir:          tmpDir,
-            ReadWritePaths:      []string{"."},
-            HideProgressMarkers: false,
-        })
-        require.NoError(t, err)
-        defer runner.Close()
+	t.Run("postCreate status markers appear", func(t *testing.T) {
+		runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+			WorkingDir:     tmpDir,
+			ReadWritePaths: []string{"."},
+			Verbose:        true,
+		})
+		require.NoError(t, err)
+		defer runner.Close()
 
-        var statuses []string
-        runner.OnProgress(func(update shai.ProgressUpdate) {
-            if update.Phase == "POSTCREATE" {
-                statuses = append(statuses, update.Status)
-            }
-        })
+		var statuses []string
+		runner.OnProgress(func(update shai.ProgressUpdate) {
+			if update.Phase == "POSTCREATE" {
+				statuses = append(statuses, update.Status)
+			}
+		})
 
-        ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-        defer cancel()
-        _ = runner.Run(ctx)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = runner.Run(ctx)
 
-        assert.Contains(t, statuses, "START")
-        assert.Contains(t, statuses, "COMPLETE")
-    })
+		assert.Contains(t, statuses, "START")
+		assert.Contains(t, statuses, "COMPLETE")
+	})
 }
 
 // TestInteractivePromptEcho verifies prompt visibility and character echo in TTY mode
 func TestInteractivePromptEcho(t *testing.T) {
-    if !isDockerAvailable() {
-        t.Skip("Docker not available, skipping integration test")
-    }
+	if !isDockerAvailable() {
+		t.Skip("Docker not available, skipping integration test")
+	}
 
-    tmpDir, err := os.MkdirTemp("", "shai-tty-test-*")
-    require.NoError(t, err)
-    defer os.RemoveAll(tmpDir)
-    require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
+	tmpDir, err := os.MkdirTemp("", "shai-tty-test-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
 
-    // Minimal devcontainer; we'll rely on shell prompt behavior after USERSWITCH
-    devcontainerJSON := `{"image":"alpine:latest","workspaceFolder":"/src"}`
-    require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644))
+	// Minimal devcontainer; we'll rely on shell prompt behavior after USERSWITCH
+	devcontainerJSON := `{"image":"alpine:latest","workspaceFolder":"/src"}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".devcontainer", "devcontainer.json"), []byte(devcontainerJSON), 0644))
 
-    runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-        WorkingDir:     tmpDir,
-        ReadWritePaths: []string{"."},
-        // default interactive behavior (no PostSetupExec)
-    })
-    require.NoError(t, err)
-    defer runner.Close()
+	runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
+		WorkingDir:     tmpDir,
+		ReadWritePaths: []string{"."},
+		// default interactive behavior (no PostSetupExec)
+	})
+	require.NoError(t, err)
+	defer runner.Close()
 
-    // Capture stdout and provide stdin to simulate user typing
-    oldStdout := os.Stdout
-    oldStdin := os.Stdin
-    rOut, wOut, _ := os.Pipe()
-    rIn, wIn, _ := os.Pipe()
-    os.Stdout = wOut
-    os.Stdin = rIn
-    defer func() {
-        os.Stdout = oldStdout
-        os.Stdin = oldStdin
-    }()
+	// Capture stdout and provide stdin to simulate user typing
+	oldStdout := os.Stdout
+	oldStdin := os.Stdin
+	rOut, wOut, _ := os.Pipe()
+	rIn, wIn, _ := os.Pipe()
+	os.Stdout = wOut
+	os.Stdin = rIn
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stdin = oldStdin
+	}()
 
-    ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
 
-    // Run container; it will switch to shell; we then type a command
-    done := make(chan error, 1)
-    var outBuf bytes.Buffer
-    go func() { io.Copy(&outBuf, rOut) }()
-    go func() { done <- runner.Run(ctx) }()
+	// Run container; it will switch to shell; we then type a command
+	done := make(chan error, 1)
+	var outBuf bytes.Buffer
+	go func() { io.Copy(&outBuf, rOut) }()
+	go func() { done <- runner.Run(ctx) }()
 
-    // Wait a moment for shell to initialize and print a prompt
-    time.Sleep(2 * time.Second)
-    // Type a command: print marker without newline first, then read/echo characters, then newline
-    _, _ = wIn.Write([]byte("echo HELLO\n"))
-    // Allow output to flush
-    time.Sleep(1 * time.Second)
+	// Wait a moment for shell to initialize and print a prompt
+	time.Sleep(2 * time.Second)
+	// Type a command: print marker without newline first, then read/echo characters, then newline
+	_, _ = wIn.Write([]byte("echo HELLO\n"))
+	// Allow output to flush
+	time.Sleep(1 * time.Second)
 
-    // Close input to terminate shell
-    _ = wIn.Close()
-    select {
-    case <-done:
-    case <-time.After(10 * time.Second):
-        t.Fatal("TTY test timed out")
-    }
-    _ = wOut.Close()
+	// Close input to terminate shell
+	_ = wIn.Close()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("TTY test timed out")
+	}
+	_ = wOut.Close()
 
-    got := outBuf.String()
-    // We expect to see the typed command echoed and the output HELLO
-    assert.Contains(t, got, "echo HELLO")
-    assert.Contains(t, got, "HELLO")
+	got := outBuf.String()
+	// We expect to see the typed command echoed and the output HELLO
+	assert.Contains(t, got, "echo HELLO")
+	assert.Contains(t, got, "HELLO")
 }
 
 // TestCleanShutdown tests graceful shutdown behavior
@@ -409,7 +410,7 @@ func TestCleanShutdown(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".devcontainer"), 0755))
 
 	// Create devcontainer with a long-running command
-    devcontainerJSON := `{
+	devcontainerJSON := `{
         "image": "alpine:latest",
         "postCreateCommand": "sleep 60",
         "workspaceFolder": "/src"
@@ -463,8 +464,8 @@ func TestCleanShutdown(t *testing.T) {
 func isDockerAvailable() bool {
 	// Try multiple Docker socket locations
 	socketPaths := []string{
-		"unix:///var/run/docker.sock", // Linux default
-		"unix://" + os.Getenv("HOME") + "/.docker/run/docker.sock", // Docker Desktop on macOS
+		"unix:///var/run/docker.sock",                                     // Linux default
+		"unix://" + os.Getenv("HOME") + "/.docker/run/docker.sock",        // Docker Desktop on macOS
 		"unix:///Users/" + os.Getenv("USER") + "/.docker/run/docker.sock", // Alternative macOS path
 	}
 
@@ -491,12 +492,12 @@ func isDockerAvailable() bool {
 		if err != nil {
 			continue
 		}
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_, pingErr := cli.Ping(ctx)
 		cancel()
 		cli.Close()
-		
+
 		if pingErr == nil {
 			// Set DOCKER_HOST for subsequent Docker operations in this test
 			os.Setenv("DOCKER_HOST", socketPath)

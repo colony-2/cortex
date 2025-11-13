@@ -236,10 +236,6 @@ func (r *Runner) runEphemeralContainer(ctx context.Context, config *DockerRunCon
                     default: // Don't block if channel is full
                     }
                 }
-                // Optionally hide progress markers from user
-                if r.config.HideProgressMarkers {
-                    continue
-                }
             }
             
             // Write to stdout
@@ -278,6 +274,8 @@ func (r *Runner) runEphemeralContainer(ctx context.Context, config *DockerRunCon
 ```
 
 ### Progress Parsing and Display
+
+Setting `EphemeralConfig.Verbose` (surfaced via `shai -verbose`) dumps the generated setup script, streams lifecycle command output live, and enables the CLI progress renderer so each DEVCONTAINER phase is visible while setup runs. Non-verbose runs suppress these markers for quieter logs.
 ```go
 type ProgressUpdate struct {
     Phase   string // FEATURES, ONCREATE, etc.

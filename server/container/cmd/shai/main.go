@@ -40,16 +40,12 @@ func main() {
 	var containerName string
 	var verbose bool
 	var noCache bool
-	var hideProgress bool
-	var printScript bool
 	var noTTY bool
 
 	flag.Var(&rwPaths, "rw", "Read-write directory (can be specified multiple times)")
 	flag.StringVar(&containerName, "name", "", "Container name")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	flag.BoolVar(&noCache, "no-cache", false, "Force rebuild")
-	flag.BoolVar(&hideProgress, "hide-progress", false, "Hide progress markers in ephemeral mode")
-	flag.BoolVar(&printScript, "print-script", false, "Print the generated setup script in ephemeral mode")
 	flag.BoolVar(&noTTY, "no-tty", false, "Disable TTY for final command (when using --)")
 	flag.Parse()
 
@@ -83,18 +79,17 @@ func main() {
 	ctx, cancel := setupSignals()
 	defer cancel()
 
-	runEphemeral(ctx, workingDir, rwPaths, noCache, hideProgress, verbose, printScript, postExec)
+	runEphemeral(ctx, workingDir, rwPaths, noCache, verbose, postExec)
 }
 
-func runEphemeral(ctx context.Context, workingDir string, rwPaths []string, noCache, hideProgress, verbose, printScript bool, postExec *shai.ExecSpec) {
+func runEphemeral(ctx context.Context, workingDir string, rwPaths []string, noCache bool, verbose bool, postExec *shai.ExecSpec) {
 	// Create ephemeral runner
 	runner, err := shai.NewEphemeralRunner(shai.EphemeralConfig{
-		WorkingDir:          workingDir,
-		ReadWritePaths:      rwPaths,
-		NoCache:             noCache,
-		HideProgressMarkers: hideProgress,
-		DebugScript:         printScript || verbose,
-		PostSetupExec:       postExec,
+		WorkingDir:     workingDir,
+		ReadWritePaths: rwPaths,
+		NoCache:        noCache,
+		Verbose:        verbose,
+		PostSetupExec:  postExec,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -102,8 +97,10 @@ func runEphemeral(ctx context.Context, workingDir string, rwPaths []string, noCa
 	}
 	defer runner.Close()
 
-	// Set up progress display for ephemeral mode
-	setupEphemeralProgressDisplay(runner, verbose)
+	// Set up verbose progress display
+	if verbose {
+		setupEphemeralProgressDisplay(runner)
+	}
 
 	// Run the ephemeral container
 	if err := runner.Run(ctx); err != nil {
@@ -168,7 +165,7 @@ func setupProgressDisplay(runner *shai.Runner, verbose bool) {
 	})
 }
 
-func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner, verbose bool) {
+func setupEphemeralProgressDisplay(runner *shai.EphemeralRunner) {
 	// Simpler UI: accumulate completed items as checkmarks, show a single spinner line for the current item.
 	var completed []string
 	current := ""
