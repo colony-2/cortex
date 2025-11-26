@@ -118,66 +118,13 @@ RUN set -euxo pipefail && \
     git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/devuser/.oh-my-zsh && \
     cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc && \
     chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc && \
-    printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc && \
     printf '\n# Auto-cd to /src for interactive zsh\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.zshrc && \
     printf '# Auto-cd to /src for login zsh\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.zprofile && \
     chown devuser:devuser /home/devuser/.zprofile
-RUN set -euxo pipefail && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc && \
+RUN set -euxo pipefail && \
     printf '\n# Auto-cd to /src for interactive bash\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.bashrc && \
     printf '# Auto-cd to /src for login bash\nif [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.bash_profile && \
     chown devuser:devuser /home/devuser/.bashrc /home/devuser/.bash_profile
-RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh && chmod 0644 /etc/profile.d/10-proxy.sh
-RUN set -euxo pipefail && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv
-# Bootstrap proxy on root interactive shells
-COPY scripts/bootstrap.sh /usr/local/sbin/bootstrap.sh
-RUN chmod +x /usr/local/sbin/bootstrap.sh
-RUN set -euxo pipefail && \
-    printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/zsh/zshrc && \
-    printf '\n# Bootstrap services synchronously (root interactive shells) to tighten env before prompt\nif [ -t 1 ] && [ "$(id -u)" -eq 0 ]; then /usr/local/sbin/bootstrap.sh || true; fi\n# Ensure TTY sane in case anything tweaked it (echo, ixon)\nif [ -t 1 ]; then stty sane -ixon 2>/dev/null || true; fi\n' >> /etc/bash.bashrc
-# Tinyproxy/dnsmasq config and allowlist (late)
-RUN set -euxo pipefail && \
-    mkdir -p /var/log/tinyproxy /var/log/supervisor && \
-    touch /var/log/tinyproxy/tinyproxy.log && \
-    chown tinyproxy:tinyproxy /var/log/tinyproxy /var/log/tinyproxy/tinyproxy.log && \
-    chmod 0644 /var/log/tinyproxy/tinyproxy.log
-RUN set -euxo pipefail && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && \
-    if grep -qE '^[# ]*LogFile ' /etc/tinyproxy/tinyproxy.conf; then \
-      sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf; \
-    else \
-      printf '\nLogFile "/var/log/tinyproxy/tinyproxy.log"\n' >> /etc/tinyproxy/tinyproxy.conf; \
-    fi
-RUN set -euxo pipefail && \
-    if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
-      sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
-    else \
-      printf '\nListen 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf; \
-    fi
-RUN set -euxo pipefail && \
-    grep -qE '^[# ]*Allow 127\.0\.0\.1' /etc/tinyproxy/tinyproxy.conf || \
-    printf 'Allow 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
-RUN set -euxo pipefail && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true
-RUN set -euxo pipefail && \
-    grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || \
-    printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf
-RUN set -euxo pipefail && printf '%s\n' \
-    'no-resolv' \
-    'bind-interfaces' \
-    'listen-address=127.0.0.1' \
-    'conf-dir=/etc/dnsmasq.d,*.conf' \
-    > /etc/dnsmasq.conf
-RUN set -euxo pipefail && mkdir -p /etc/dnsmasq.d /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true
-COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
-COPY scripts/generate-dnsmasq-allowlist.sh /usr/local/sbin/generate-dnsmasq-allowlist.sh
-RUN chmod +x /usr/local/sbin/generate-dnsmasq-allowlist.sh && \
-    /usr/local/sbin/generate-dnsmasq-allowlist.sh /etc/shai/allowed_domains.conf /etc/dnsmasq.d/allowlist.conf
-# Egress setup and supervisord configs (late)
-COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
-RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
-COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
-COPY supervisord/supervisord-daemon.conf /etc/supervisor/supervisord-daemon.conf
-COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
 # Workspace
 RUN set -euxo pipefail && mkdir -p /src
 WORKDIR /src
@@ -209,9 +156,6 @@ RUN set -euxo pipefail && jq --version
 RUN set -euxo pipefail && codex -h >/dev/null 2>&1 || true
 RUN set -euxo pipefail && gemini -h >/dev/null 2>&1 || true
 RUN set -euxo pipefail && claude -h >/dev/null 2>&1 || claude-code -h >/dev/null 2>&1 || true
-
-EXPOSE 8888
-ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
 
 ############################################
 # Prod target: Collapse steps into one RUN #
@@ -295,21 +239,6 @@ RUN set -euxo pipefail \
     && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH\n' >> /etc/zsh/zshenv \
     && printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.zshrc \
     && printf '\nexport RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH="/usr/local/go/bin:/usr/local/cargo/bin:$PATH"\n' >> /home/devuser/.bashrc \
-    && sed -i 's/^# \?Port .*/Port 8888/' /etc/tinyproxy/tinyproxy.conf \
-    && if grep -qE '^[# ]*Listen ' /etc/tinyproxy/tinyproxy.conf; then \
-         sed -i 's|^[# ]*Listen .*|Listen 127.0.0.1|' /etc/tinyproxy/tinyproxy.conf; \
-       else \
-         printf '\nListen 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf; \
-       fi \
-    && grep -qE '^[# ]*Allow 127\.0\.0\.1' /etc/tinyproxy/tinyproxy.conf || printf 'Allow 127.0.0.1\n' >> /etc/tinyproxy/tinyproxy.conf \
-    && sed -i 's|^# \?User .*$|User tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true \
-    && sed -i 's|^# \?Group .*$|Group tinyproxy|' /etc/tinyproxy/tinyproxy.conf || true \
-    && grep -q '^Filter ' /etc/tinyproxy/tinyproxy.conf || printf '\nFilter "/etc/shai/allowed_domains.conf"\nFilterDefaultDeny Yes\nFilterURLs On\n#FilterExtended On\n' >> /etc/tinyproxy/tinyproxy.conf \
-    && mkdir -p /etc/shai && chown -R tinyproxy:tinyproxy /etc/shai || true \
-    && mkdir -p /var/log/tinyproxy && touch /var/log/tinyproxy/tinyproxy.log \
-    && chown tinyproxy:tinyproxy /var/log/tinyproxy /var/log/tinyproxy/tinyproxy.log \
-    && chmod 0644 /var/log/tinyproxy/tinyproxy.log \
-    && if grep -qE '^[# ]*LogFile ' /etc/tinyproxy/tinyproxy.conf; then sed -i -E 's|^[# ]*LogFile .*|LogFile "/var/log/tinyproxy/tinyproxy.log"|' /etc/tinyproxy/tinyproxy.conf; else printf '\nLogFile "/var/log/tinyproxy/tinyproxy.log"\n' >> /etc/tinyproxy/tinyproxy.conf; fi \
     && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
     && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
     && ln -sf /usr/local/cargo/bin/cargo /usr/local/bin/cargo \
@@ -326,14 +255,6 @@ RUN set -euxo pipefail \
     && codex -h >/dev/null 2>&1 || true \
     && gemini -h >/dev/null 2>&1 || true \
     && claude -h >/dev/null 2>&1 || claude-code -h >/dev/null 2>&1 || true
-
-COPY scripts/dev-egress-setup.sh /usr/local/sbin/dev-egress-setup.sh
-RUN chmod +x /usr/local/sbin/dev-egress-setup.sh
-COPY supervisord/supervisord.conf /etc/supervisor/supervisord.conf
-COPY supervisord/tinyproxy.conf /etc/supervisor/conf.d/tinyproxy.conf
-COPY shai-allowed-domains.conf /etc/shai/allowed_domains.conf
-EXPOSE 8888
-ENTRYPOINT ["/usr/bin/supervisord","-n","-c","/etc/supervisor/supervisord.conf"]
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN set -euxo pipefail && mkdir -p "$PLAYWRIGHT_BROWSERS_PATH" && chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH"
 RUN set -euxo pipefail && \
