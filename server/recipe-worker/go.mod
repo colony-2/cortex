@@ -3,6 +3,7 @@ module github.com/divisive-ai/vibethis/server/recipe-worker
 go 1.24.1
 
 require (
+	github.com/colony-2/swf-go v0.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
@@ -17,7 +18,7 @@ require (
 	go.temporal.io/sdk v1.35.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/gorm v1.25.11
+	gorm.io/gorm v1.30.0
 )
 
 require (
@@ -62,7 +63,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 // indirect
 	github.com/jackc/pgx/v5 v5.5.5 // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -130,3 +131,9 @@ replace github.com/divisive-ai/vibethis/server/ticket => ../ticket
 replace github.com/divisive-ai/vibethis/server/container => ../container
 
 replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
+
+replace github.com/colony-2/swf-go => ../../../swf-go
+
+replace github.com/colony-2/strata-go => ../../../strata-go
+
+replace github.com/colony-2/shai => ../../../shai
