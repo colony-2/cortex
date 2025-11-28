@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
@@ -43,7 +42,6 @@ var (
 )
 
 func init() {
-	coreops.Register(opsexport.GetAll()...)
 	coreops.Register(gitexport.GetAll()...)
 }
 
