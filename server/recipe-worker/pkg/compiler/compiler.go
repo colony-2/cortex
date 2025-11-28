@@ -10,33 +10,19 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 
+	workflow "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
+	//"go.temporal.io/sdk/workflow"
 )
 
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
-	metadata, err := waitForRecipeRunMetadata(ctx)
-	if err != nil {
-		return nil, err
-	}
 
-	ctx, inputs, err = initializeExecutionContext(ctx, r, inputs)
+	ctx, inputs, err := initializeExecutionContext(ctx, r, inputs)
 	if err != nil {
 		return nil, err
 	}
 
 	deps := activityRegistry.Dependencies()
-	if metadata != nil && deps != nil {
-		if cloned := deps.CloneWithRunMetadata(metadata); cloned != nil {
-			deps = cloned
-		}
-		if metadata.Resume != nil {
-			if cloned := deps.CloneWithResumeMetadata(metadata.Resume); cloned != nil {
-				deps = cloned
-			}
-		}
-	}
-
 	tracker := newInvocationTracker(r.GetMetdata(), deps)
 
 	switch t := r.RecipeImpl.(type) {

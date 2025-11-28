@@ -54,8 +54,7 @@ const (
 // ExecutionRef identifies a workflow execution.
 // RunID may be empty to reference the latest run for a WorkflowID.
 type ExecutionRef struct {
-	WorkflowID string
-	RunID      string
+	JobId string
 }
 
 // WorkflowSummary is a normalized description of a workflow execution.
@@ -77,11 +76,6 @@ type WorkflowControl interface {
 	// Describe returns a normalized summary for the referenced execution.
 	// ErrNotFound should be returned when the execution cannot be located.
 	Describe(ctx context.Context, ref ExecutionRef) (WorkflowSummary, error)
-
-	// Signal delivers a named signal with an opaque payload to the execution.
-	// The call is fire-and-forget with respect to the workflow; delivery or
-	// handling status is not reported here. ErrNotFound if the execution is unknown.
-	Signal(ctx context.Context, ref ExecutionRef, signalName string, payload any) error
 
 	// Cancel requests cancellation of the execution. Implementations should
 	// translate runtime-specific outcomes to ErrNotFound when applicable.

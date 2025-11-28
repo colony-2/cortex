@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 const (
@@ -39,10 +39,8 @@ type GitContext struct {
 }
 
 type ExecutionRecipeContext struct {
-	ID                string
+	JobID             string
 	Version           string
-	WorkflowID        string
-	WorkflowRunID     string
 	NodePath          string
 	InvocationHash    string
 	InvocationID      string
@@ -51,11 +49,9 @@ type ExecutionRecipeContext struct {
 
 func (rc ExecutionRecipeContext) toMap() map[string]interface{} {
 	m := map[string]interface{}{
-		"id":              rc.ID,
-		"version":         rc.Version,
-		"workflow_id":     rc.WorkflowID,
-		"workflow_run_id": rc.WorkflowRunID,
-		"node_path":       rc.NodePath,
+		"job_id":    rc.JobID,
+		"version":   rc.Version,
+		"node_path": rc.NodePath,
 	}
 	if rc.InvocationHash != "" {
 		m["invocation_hash"] = rc.InvocationHash
@@ -105,8 +101,7 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 		return ctx, nil, err
 	}
 
-	workflowInfo := workflow.GetInfo(ctx)
-	worktreePath := filepath.Join(workspaceRoot, workflowInfo.WorkflowExecution.RunID, "work")
+	worktreePath := filepath.Join(workspaceRoot, ctx.GetJobId(), "work")
 	blobStoreURI := fmt.Sprintf("%s/%s/%s", strings.TrimRight(blobStoreBase, "/"), cellName, ticketID)
 
 	recipeMetadata := r.GetMetdata()
@@ -130,15 +125,13 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 		TicketID:  ticketID,
 		CellName:  cellName,
 		Recipe: ExecutionRecipeContext{
-			ID:            recipeMetadata.ID,
-			Version:       recipeMetadata.Version,
-			WorkflowID:    workflowInfo.WorkflowExecution.ID,
-			WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
-			NodePath:      recipeMetadata.NodeMetadata.ID,
+			JobID:    ctx.GetJobId(),
+			Version:  recipeMetadata.Version,
+			NodePath: recipeMetadata.NodeMetadata.ID,
 		},
 	}
 
-	ctx = workflow.WithValue(ctx, executionContextKey{}, execCtx)
+	//ctx = workflow.WithValue(ctx, executionContextKey{}, execCtx)
 
 	contextMap, _ := inputs["context"].(map[string]interface{})
 	if contextMap == nil {
@@ -178,18 +171,10 @@ func requireStringInput(inputs map[string]interface{}, key string) (string, erro
 }
 
 func sideEffectEnvDefault(ctx workflow.Context, key, fallback string) (string, error) {
-	future := workflow.SideEffect(ctx, func(workflow.Context) interface{} {
-		if v := os.Getenv(key); strings.TrimSpace(v) != "" {
-			return v
-		}
-		return fallback
-	})
-
-	var value string
-	if err := future.Get(&value); err != nil {
-		return "", err
+	if v := os.Getenv(key); strings.TrimSpace(v) != "" {
+		return v, nil
 	}
-	return value, nil
+	return fallback, nil
 }
 
 func (gc GitContext) toMap() map[string]interface{} {
