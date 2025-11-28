@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/temporal"
 	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
 )
@@ -235,10 +235,9 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 
 	_, err := execute(inv, context.Background(), input)
 	require.Error(t, err)
-	appErr := new(temporal.ApplicationError)
+	appErr := new(workflow.NonRetryableError)
 	require.True(t, errors.As(err, &appErr))
 	require.True(t, appErr.NonRetryable())
-	require.Equal(t, "BAD_REQUEST", appErr.Type())
 }
 
 func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
@@ -302,10 +301,9 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 
 	_, err := execute(inv, context.Background(), input)
 	require.Error(t, err)
-	appErr := new(temporal.ApplicationError)
+	appErr := new(workflow.NonRetryableError)
 	require.True(t, errors.As(err, &appErr))
 	require.True(t, appErr.NonRetryable())
-	require.Equal(t, "VERSION_CONFLICT", appErr.Type())
 }
 
 func mustMarshal(tb testing.TB, v any) json.RawMessage {

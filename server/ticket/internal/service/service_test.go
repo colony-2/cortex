@@ -400,7 +400,7 @@ func TestAppendTicketEventStoresNotes(t *testing.T) {
 
 	store := &stubStore{
 		getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
-			return &model.Ticket{ID: ticketID, ValidUntil: temporalInfinity()}, nil
+			return &model.Ticket{ID: ticketID, ValidUntil: infinity()}, nil
 		},
 	}
 
@@ -441,7 +441,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store: &stubStore{
 			getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
-				return &model.Ticket{ID: model.ID("ticket-note-1"), ValidUntil: temporalInfinity()}, nil
+				return &model.Ticket{ID: model.ID("ticket-note-1"), ValidUntil: infinity()}, nil
 			},
 		},
 		EventStore: &stubEventStore{

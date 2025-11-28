@@ -3,13 +3,10 @@ package recipe
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 type schemaEchoIn struct {
@@ -57,28 +54,4 @@ func TestValidate_Valid_And_Invalid_YAML(t *testing.T) {
 
 	// Missing required fields: currently inputs are optional at schema level
 	// Concrete ops may enforce required fields at runtime
-}
-
-func TestSchema_Generate_With_Inline_Op(t *testing.T) {
-	ops.Clear()
-	type in struct {
-		A string `json:"a" yaml:"a"`
-	}
-	type out struct {
-		B string `json:"b" yaml:"b"`
-	}
-	// Register an inline op and ensure schema generation does not panic and includes it
-	inline := ops.NewInlineOpV2[in, out](
-		ops.OpMetadata{Type: "recipe"}, // inline op type
-		func(_ ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, i in) (out, error) {
-			_ = ctx
-			_ = timeout
-			_ = retry
-			return out{B: i.A}, nil
-		},
-	)
-	ops.Register(inline)
-	s, err := GenerateSchemaString()
-	require.NoError(t, err)
-	assert.Contains(t, s, "recipe")
 }

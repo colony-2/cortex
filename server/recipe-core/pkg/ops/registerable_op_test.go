@@ -2,14 +2,10 @@ package ops
 
 import (
 	"context"
-	"reflect"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 type rIn struct {
@@ -22,12 +18,6 @@ type rOut struct {
 // Operation Execution
 func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 	// Inline operations execute synchronously within workflows [pkg/ops/registerable_op.go]
-	inline := NewInlineOpV2[rIn, rOut](OpMetadata{Type: "i1"}, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in rIn) (rOut, error) {
-		return rOut{Echo: in.Msg}, nil
-	})
-	out, err := inline.ExecuteInlineV2(Invocation{}, nil, time.Second, nil, map[string]interface{}{"msg": "hi"})
-	require.NoError(t, err)
-	assert.Equal(t, "hi", out["echo"]) // JSON-tagged structs decode from input maps correctly
 
 	// Activity operations delegate to external workers correctly [pkg/ops/registerable_op.go]
 	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a1"}, func(_ Invocation, ctx context.Context, in rIn) (rOut, error) {
@@ -44,40 +34,12 @@ func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	_, err := act.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": 123})
 	assert.Error(t, err)
 
-	// Missing handlers fail fast with clear panic messages [pkg/ops/registerable_op.go]
-	inlineOnly := NewInlineOpV2[rIn, rOut](OpMetadata{Type: "inline-only"}, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in rIn) (rOut, error) {
-		return rOut{}, nil
-	})
-	assert.PanicsWithValue(t, "this must be run inline, not as an activity", func() {
-		_, _ = inlineOnly.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": "x"})
-	})
-
 	actOnly := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "act-only"}, func(_ Invocation, ctx context.Context, in rIn) (rOut, error) { return rOut{}, nil })
-	assert.PanicsWithValue(t, "this must be run as an activity, not inline", func() {
-		_, _ = actOnly.ExecuteInlineV2(Invocation{}, nil, time.Second, nil, map[string]interface{}{"msg": "x"})
-	})
 
 	// Nil contexts handled gracefully in operations [pkg/ops/registerable_op.go]
 	out, err := actOnly.ExecuteV2(Invocation{}, nil, map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
 	assert.NotNil(t, out)
-}
-
-func TestRegisterableOp_GetInputType_Inline_Is_ActualInput(t *testing.T) {
-	type inlineIn struct {
-		X string `json:"x"`
-	}
-	type inlineOut struct {
-		Y string `json:"y"`
-	}
-
-	inline := NewInlineOpV2[inlineIn, inlineOut](OpMetadata{Type: "inline-check"}, func(_ Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in inlineIn) (inlineOut, error) {
-		return inlineOut{Y: in.X}, nil
-	})
-
-	// Ensure GetInputType returns the typed input (not time.Duration)
-	got := inline.GetInputType()
-	require.Equal(t, reflect.TypeOf(inlineIn{}), got)
 }
 
 func TestInvocation_HashDeterministic(t *testing.T) {
@@ -93,15 +55,6 @@ func TestInvocation_HashDeterministic(t *testing.T) {
 }
 
 func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
-	inlineInvoked := false
-	inline := NewInlineOpV2[rIn, rOut](OpMetadata{Type: "inline-v2"}, func(inv Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, in rIn) (rOut, error) {
-		inlineInvoked = inv.RecipeID == "r1"
-		return rOut{Echo: in.Msg}, nil
-	})
-
-	_, err := inline.ExecuteInlineV2(Invocation{RecipeID: "r1"}, nil, time.Second, nil, map[string]interface{}{"msg": "hi"})
-	require.NoError(t, err)
-	assert.True(t, inlineInvoked)
 
 	activityInvoked := false
 	activity := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "activity-v2"}, func(inv Invocation, ctx context.Context, in rIn) (rOut, error) {
@@ -109,7 +62,7 @@ func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
 		return rOut{Echo: in.Msg}, nil
 	})
 
-	_, err = activity.ExecuteV2(Invocation{NodePath: "node", InvokeSeq: 7}, context.Background(), map[string]interface{}{"msg": "yo"})
+	_, err := activity.ExecuteV2(Invocation{NodePath: "node", InvokeSeq: 7}, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.True(t, activityInvoked)
 }

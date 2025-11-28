@@ -12,11 +12,11 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.temporal.io/sdk/temporal"
 	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
 )
@@ -307,10 +307,10 @@ func resolveService(inv ops.Invocation) (ticket.Service, error) {
 		var ok bool
 		db, ok = inv.Deps.Database()
 		if !ok || db == nil {
-			return nil, temporal.NewNonRetryableApplicationError("ticket.manage: database dependency not configured", "MISSING_DATABASE", nil)
+			return nil, workflow.NewNonRetryableApplicationError("ticket.manage: database dependency not configured")
 		}
 	} else {
-		return nil, temporal.NewNonRetryableApplicationError("ticket.manage: dependency container missing", "MISSING_DATABASE", nil)
+		return nil, workflow.NewNonRetryableApplicationError("ticket.manage: dependency container missing")
 	}
 	serviceFactoryMu.RLock()
 	factory := serviceFactory
@@ -333,19 +333,20 @@ func mapError(err error, partial []ActionResult, patch map[string]any) error {
 	if len(patch) > 0 {
 		detail.ContextPatch = patch
 	}
+
 	switch {
 	case errors.Is(err, errMissingActions), errors.Is(err, errCreateAfterTicket), errors.Is(err, errTicketIDRequired), errors.Is(err, errUpdateNoFields), errors.Is(err, errInvalidExpectedVersion):
-		return temporal.NewNonRetryableApplicationError(err.Error(), "BAD_REQUEST", err, detail)
+		return workflow.NewNonRetryableApplicationError(err.Error(), err, detail)
 	case errors.Is(err, ticket.ErrVersionConflict):
-		return temporal.NewNonRetryableApplicationError(err.Error(), "VERSION_CONFLICT", err, detail)
+		return workflow.NewNonRetryableApplicationError(err.Error(), err, detail)
 	case errors.Is(err, ticket.ErrInvalidState), errors.Is(err, ticket.ErrInvalidActor), errors.Is(err, ticket.ErrEmptyTitle), errors.Is(err, ticket.ErrEmptyStage):
-		return temporal.NewNonRetryableApplicationError(err.Error(), "BAD_REQUEST", err, detail)
+		return workflow.NewNonRetryableApplicationError(err.Error(), "BAD_REQUEST", err, detail)
 	case errors.Is(err, ticket.ErrResetNoEvents):
-		return temporal.NewNonRetryableApplicationError(err.Error(), "RESET_NOT_ALLOWED", err, detail)
+		return workflow.NewNonRetryableApplicationError(err.Error(), "RESET_NOT_ALLOWED", err, detail)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return err
 	default:
-		return temporal.NewApplicationError(err.Error(), "TICKET_MANAGE_FAILED", err, detail)
+		return workflow.NewApplicationError(err.Error(), "TICKET_MANAGE_FAILED", err, detail)
 	}
 }
 

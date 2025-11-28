@@ -30,10 +30,9 @@ type ServiceDependencies2 interface {
 
 // ServiceDepsBuilder constructs ServiceDependencies2 instances via a fluent API.
 type ServiceDepsBuilder struct {
-	workflowCtl       workflowctl.WorkflowControl
-	sseManager        SSEManager
-	temporalNamespace string
-	database          *gorm.DB
+	workflowCtl workflowctl.WorkflowControl
+	sseManager  SSEManager
+	database    *gorm.DB
 
 	once   sync.Once
 	result ServiceDependencies2
@@ -51,12 +50,6 @@ func (b *ServiceDepsBuilder) WithWorkflowControl(ctl workflowctl.WorkflowControl
 // WithSSEManager configures the SSE manager dependency.
 func (b *ServiceDepsBuilder) WithSSEManager(mgr SSEManager) *ServiceDepsBuilder {
 	b.sseManager = mgr
-	return b
-}
-
-// WithTemporalNamespace configures the Temporal namespace for this runtime.
-func (b *ServiceDepsBuilder) WithTemporalNamespace(ns string) *ServiceDepsBuilder {
-	b.temporalNamespace = ns
 	return b
 }
 

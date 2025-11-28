@@ -53,16 +53,12 @@ type Job struct {
 	Activities   []*ActivityExecution
 	WorkflowType string
 
-	// Temporal workflow execution details (internal use)
-	WorkflowID    string
-	RunID         string
 	ExecutionInfo *WorkflowExecutionInfo
 }
 
-// WorkflowExecutionInfo contains Temporal-specific execution details
+// WorkflowExecutionInfo contains job info
 type WorkflowExecutionInfo struct {
-	WorkflowID string
-	RunID      string
+	JobId string
 }
 
 // JobStatus represents the execution status of a job
@@ -88,7 +84,6 @@ type ActivityExecution struct {
 	Error     string
 	Attempt   int
 
-	// Internal Temporal activity details
 	ActivityID   string
 	ActivityType string
 }

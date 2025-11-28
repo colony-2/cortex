@@ -1,6 +1,6 @@
 // Package workflowctl provides a minimal, SDK-agnostic interface
 // for controlling and inspecting workflow executions. It is designed
-// to be implemented by runtimes like Temporal without leaking SDK types
+// to be implemented by runtimes without leaking SDK types
 // into recipe-core or ops packages.
 package workflowctl
 

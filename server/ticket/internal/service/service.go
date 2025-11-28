@@ -134,7 +134,7 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		ticket.CompletedAt = ptrTime(now)
 	}
 	ticket.ValidFrom = now
-	ticket.ValidUntil = temporalInfinity()
+	ticket.ValidUntil = infinity()
 
 	if err := s.store.Create(ctx, ticket); err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 
 		next := original
 		next.ValidFrom = now
-		next.ValidUntil = temporalInfinity()
+		next.ValidUntil = infinity()
 		next.UpdatedAt = now
 		next.Version = optimisticlock.Version{Int64: original.Version.Int64 + 1, Valid: true}
 
@@ -357,7 +357,7 @@ func (s *service) applyActorPatch(existing model.Actor, patch model.ActorPatch) 
 	return actor, nil
 }
 
-func temporalInfinity() time.Time {
+func infinity() time.Time {
 	return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 }
 

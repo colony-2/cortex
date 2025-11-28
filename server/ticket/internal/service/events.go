@@ -146,7 +146,7 @@ func (s *service) appendEventInTx(ctx context.Context, st store.Store, snapshot 
 	lock := clause.Locking{Strength: "UPDATE"}
 	if err := txDB.WithContext(ctx).
 		Clauses(lock).
-		Where("id = ? AND valid_until = ?", id, temporalInfinity()).
+		Where("id = ? AND valid_until = ?", id, infinity()).
 		First(&model.Ticket{}).Error; err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (s *service) ResetTicket(ctx context.Context, id model.ID, input TicketRese
 
 		restored := *sourceTicket
 		restored.ValidFrom = resetTime
-		restored.ValidUntil = temporalInfinity()
+		restored.ValidUntil = infinity()
 		restored.UpdatedAt = resetTime
 		restored.Version = optimisticlock.Version{Int64: ticketCurrent.Version.Int64 + 1, Valid: true}
 
