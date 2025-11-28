@@ -3,7 +3,6 @@ module github.com/divisive-ai/vibethis/server/recipe-worker
 go 1.24.1
 
 require (
-	github.com/colony-2/swf-go v0.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
@@ -131,9 +130,3 @@ replace github.com/divisive-ai/vibethis/server/ticket => ../ticket
 replace github.com/divisive-ai/vibethis/server/container => ../container
 
 replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
-
-replace github.com/colony-2/swf-go => ../../../swf-go
-
-replace github.com/colony-2/strata-go => ../../../strata-go
-
-replace github.com/colony-2/shai => ../../../shai
