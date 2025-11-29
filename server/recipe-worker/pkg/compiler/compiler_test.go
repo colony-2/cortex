@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	task2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
@@ -32,8 +33,7 @@ func (s *CompilerTestSuite) AfterTest(suiteName, testName string) {
 }
 
 func TestCompilerTestSuite(t *testing.T) {
-	t.Skip("Workflow test suite requires proper activity registration")
-	// suite.Run(t, new(CompilerTestSuite))
+	suite.Run(t, new(CompilerTestSuite))
 }
 
 func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
@@ -83,7 +83,7 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 
 	jobId, err := StartRecipeJob(context.Background(), input, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
-	time.Sleep(3 * time.Second)
+	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 5*time.Second, jobId, s.eng))
 	r, err := s.eng.GetJobResult(context.Background(), jobId)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
@@ -218,7 +218,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 
 	jobId, err := StartRecipeJob(context.Background(), in, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
-	time.Sleep(3 * time.Second)
+	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 5*time.Second, jobId, s.eng))
 	r, err := s.eng.GetJobResult(context.Background(), jobId)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()

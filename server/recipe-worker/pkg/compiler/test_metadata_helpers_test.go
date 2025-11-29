@@ -1,17 +1,7 @@
 package compiler
 
-import (
-	"time"
+import "go.temporal.io/sdk/testsuite"
 
-	"go.temporal.io/sdk/testsuite"
-)
-
-func signalMetadataForTest(env *testsuite.TestWorkflowEnvironment, payload RecipeRunMetadataSignal) {
-	env.RegisterDelayedCallback(func() {
-		env.SignalWorkflow(recipeRunMetadataSignalName, payload)
-	}, time.Millisecond)
-}
-
-func primeDefaultMetadataSignal(env *testsuite.TestWorkflowEnvironment) {
-	signalMetadataForTest(env, RecipeRunMetadataSignal{})
-}
+// Temporal metadata signals are no longer used in tests; keep a no-op helper to
+// avoid refactoring callers while the suite migrates to SWF.
+func primeDefaultMetadataSignal(env *testsuite.TestWorkflowEnvironment) {}

@@ -1,3 +1,6 @@
+//go:build temporal
+// +build temporal
+
 package compiler
 
 import (
