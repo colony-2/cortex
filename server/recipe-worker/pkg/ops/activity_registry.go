@@ -74,9 +74,6 @@ func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 
 func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
 	for name, registration := range r.activities {
-		if !registration.Activity.ExecuteAsActivity() {
-			continue
-		}
 		wrapped := withGitWorkspace(registration, r.gitController)
 		wrapped = withDependencies(r.deps, wrapped)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
@@ -175,10 +172,7 @@ func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
 		Metadata: metadata,
 	}
 
-	// Only generate schemas for activities (inline ops are not activities)
-	if activity.ExecuteAsActivity() {
-		r.generateSchemasForRegistration(&registration)
-	}
+	r.generateSchemasForRegistration(&registration)
 	r.activities[metadata.Type] = registration
 	return nil
 }

@@ -3,30 +3,32 @@ package compiler
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	task2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 )
 
 type CompilerTestSuite struct {
 	suite.Suite
-	testsuite.WorkflowTestSuite
-	env *testsuite.TestWorkflowEnvironment
+	eng *impl.EmbeddedEngine
 }
 
 func (s *CompilerTestSuite) SetupTest() {
-	s.env = s.NewTestWorkflowEnvironment()
-	primeDefaultMetadataSignal(s.env)
+	eng, err := impl.StartEmbeddedEngine(context.Background(), nil)
+	if err != nil {
+		s.T().Fatalf("fail starting engine %v", err)
+	}
+	s.eng = eng
 }
 
 func (s *CompilerTestSuite) AfterTest(suiteName, testName string) {
-	s.env.AssertExpectations(s.T())
+	s.eng.Shutdown()
 }
 
 func TestCompilerTestSuite(t *testing.T) {
@@ -57,37 +59,38 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	require.NoError(s.T(), err)
 
 	// Register a test activity function
-	testActivityFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	testActivityFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "test_output"}, nil
 	}
-	s.env.RegisterActivity(testActivityFunc)
+	task := task2.AsTask("test_activity", testActivityFunc)
 
-	// Define workflow that uses ExecuteRecipe
-	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
-		testRecipe := &recipe.Recipe{
-			RecipeImpl: &recipe.RecipeOp{
-				RecipeMetadata: recipe.RecipeMetadata{
-					NodeMetadata: node.NodeImpl.(*recipe.NodeOp).NodeMetadata,
-				},
-				OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
+	testRecipe := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeOp{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: node.NodeImpl.(*recipe.NodeOp).NodeMetadata,
 			},
-		}
-		return ExecuteRecipe(ctx, registry, *testRecipe, withRequiredGitInputs(map[string]interface{}{
-			"param1": "test_value",
-		}))
+			OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
+		},
 	}
 
-	s.env.RegisterWorkflow(testWorkflow)
+	worker := NewRecipeWorker(registry)
+	err = s.eng.RegisterWorkers(worker, task)
+	require.NoError(s.T(), err)
 
-	// Execute workflow
-	s.env.OnActivity("test_activity", mock.Anything, mock.Anything).Return(
-		map[string]interface{}{"result": "test_output"}, nil,
-	)
+	input := withRequiredGitInputs(map[string]interface{}{
+		"param1": "test_value",
+	})
 
-	s.env.ExecuteWorkflow(testWorkflow)
-
-	require.True(s.T(), s.env.IsWorkflowCompleted())
-	require.NoError(s.T(), s.env.GetWorkflowError())
+	jobId, err := StartRecipeJob(context.Background(), input, s.eng, *testRecipe)
+	require.NoError(s.T(), err)
+	time.Sleep(3 * time.Second)
+	r, err := s.eng.GetJobResult(context.Background(), jobId)
+	require.NoError(s.T(), err)
+	d, err := r.GetData()
+	require.NoError(s.T(), err)
+	asMap, err := d.ToMap()
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), map[string]interface{}{"result": "test_output"}, asMap)
 }
 
 func TestTemplateResolver(t *testing.T) {
@@ -189,42 +192,39 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	require.NoError(s.T(), err)
 
 	// Register test activity functions
-	activityAFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	activityAFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "output_a"}, nil
 	}
-	activityBFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	activityBFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "output_b"}, nil
 	}
-	s.env.RegisterActivity(activityAFunc)
-	s.env.RegisterActivity(activityBFunc)
 
-	// Define workflow that uses ExecuteRecipe
-	testWorkflow := func(ctx workflow.Context) (map[string]interface{}, error) {
-		testRecipe := &recipe.Recipe{
-			RecipeImpl: &recipe.RecipeSequence{
-				RecipeMetadata: recipe.RecipeMetadata{
-					NodeMetadata: node.NodeImpl.(*recipe.NodeSequence).NodeMetadata,
-				},
-				SequenceData: node.NodeImpl.(*recipe.NodeSequence).SequenceData,
+	t1 := task2.AsTask("activity_a", activityAFunc)
+	t2 := task2.AsTask("activity_b", activityBFunc)
+
+	testRecipe := &recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: node.NodeImpl.(*recipe.NodeSequence).NodeMetadata,
 			},
-		}
-		return ExecuteRecipe(ctx, registry, *testRecipe, withRequiredGitInputs(map[string]interface{}{}))
+			SequenceData: node.NodeImpl.(*recipe.NodeSequence).SequenceData,
+		},
 	}
 
-	s.env.RegisterWorkflow(testWorkflow)
+	worker := NewRecipeWorker(registry)
+	err = s.eng.RegisterWorkers(worker, t1, t2)
+	require.NoError(s.T(), err)
+	in := withRequiredGitInputs(map[string]interface{}{})
 
-	// Mock activities
-	s.env.OnActivity("activity_a", mock.Anything, mock.Anything).Return(
-		map[string]interface{}{"result": "output_a"}, nil,
-	)
-	s.env.OnActivity("activity_b", mock.Anything, mock.Anything).Return(
-		map[string]interface{}{"result": "output_b"}, nil,
-	)
-
-	s.env.ExecuteWorkflow(testWorkflow)
-
-	require.True(s.T(), s.env.IsWorkflowCompleted())
-	require.NoError(s.T(), s.env.GetWorkflowError())
+	jobId, err := StartRecipeJob(context.Background(), in, s.eng, *testRecipe)
+	require.NoError(s.T(), err)
+	time.Sleep(3 * time.Second)
+	r, err := s.eng.GetJobResult(context.Background(), jobId)
+	require.NoError(s.T(), err)
+	d, err := r.GetData()
+	require.NoError(s.T(), err)
+	_, err = d.ToMap()
+	require.NoError(s.T(), err)
 }
 
 func TestActivityRegistry(t *testing.T) {

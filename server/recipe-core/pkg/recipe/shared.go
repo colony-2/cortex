@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/invopop/jsonschema"
 )
 
@@ -54,10 +55,4 @@ func (d Duration) String() string {
 	return time.Duration(d).String()
 }
 
-type RetryPolicy struct {
-	InitialInterval        Duration `yaml:"initial_interval,omitempty"`
-	BackoffCoefficient     float64  `yaml:"backoff_coefficient,omitempty"`
-	MaximumInterval        Duration `yaml:"maximum_interval,omitempty"`
-	MaximumAttempts        int32    `yaml:"maximum_attempts,omitempty"`
-	NonRetryableErrorTypes []string `yaml:"non_retryable_error_types,omitempty"`
-}
+type RetryPolicy = swf.RetryPolicy

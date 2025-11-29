@@ -166,7 +166,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/validator.v2 v2.0.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	gorm.io/gorm v1.25.11 // indirect
+	gorm.io/gorm v1.30.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20250121204235-2db1fde51ea4 // indirect
 	modernc.org/libc v1.55.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

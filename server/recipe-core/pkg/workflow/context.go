@@ -1,12 +1,18 @@
 package workflow
 
+import (
+	"log/slog"
+
+	"github.com/colony-2/swf-go/pkg/swf"
+)
+
 type Context struct {
-	jobId  string
+	swf.JobContext
 	extras map[any]any
 }
 
 func (c Context) GetJobId() string {
-	return c.jobId
+	return string(c.JobContext.GetJobId())
 }
 
 func (c Context) WithValue(k any, v any) Context {
@@ -16,4 +22,8 @@ func (c Context) WithValue(k any, v any) Context {
 
 func (c Context) Value(k any) any {
 	return c.extras[k]
+}
+
+func (c Context) GetLogger() *slog.Logger {
+	return slog.Default()
 }

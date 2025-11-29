@@ -23,28 +23,28 @@ type executionContextKey struct{}
 
 // ExecutionContext aggregates execution metadata that needs to travel with the workflow.
 type ExecutionContext struct {
-	Git       GitContext
-	Worktree  string
-	BlobStore string
-	TicketID  string
-	CellName  string
-	Recipe    ExecutionRecipeContext
+	Git       GitContext             `json:"git"`
+	Worktree  string                 `json:"worktree"`
+	BlobStore string                 `json:"blob_store"`
+	TicketID  string                 `json:"ticket_id"`
+	CellName  string                 `json:"cell_name"`
+	Recipe    ExecutionRecipeContext `json:"recipe"`
 }
 
 // GitContext captures git metadata shared across the recipe lifecycle.
 type GitContext struct {
-	BaseRepo    string
-	BaseHash    string
-	PersistHash string
+	BaseRepo    string `json:"base_repo"`
+	BaseHash    string `json:"base_hash"`
+	PersistHash string `json:"persist_hash"`
 }
 
 type ExecutionRecipeContext struct {
-	JobID             string
-	Version           string
-	NodePath          string
-	InvocationHash    string
-	InvocationID      string
-	InvocationAttempt int
+	JobID             string `json:"job_id"`
+	Version           string `json:"version"`
+	NodePath          string `json:"node_path"`
+	InvocationHash    string `json:"invocation_hash"`
+	InvocationID      string `json:"invocation_id"`
+	InvocationAttempt int    `json:"invocation_attempt"`
 }
 
 func (rc ExecutionRecipeContext) toMap() map[string]interface{} {
@@ -131,7 +131,7 @@ func initializeExecutionContext(ctx workflow.Context, r recipe.Recipe, inputs ma
 		},
 	}
 
-	//ctx = workflow.WithValue(ctx, executionContextKey{}, execCtx)
+	ctx = ctx.WithValue(executionContextKey{}, execCtx)
 
 	contextMap, _ := inputs["context"].(map[string]interface{})
 	if contextMap == nil {

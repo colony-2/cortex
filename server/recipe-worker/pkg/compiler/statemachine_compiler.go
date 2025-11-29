@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"go.temporal.io/sdk/workflow"
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format
@@ -37,7 +37,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *workerops.Activ
 		}
 
 		// Debug: Log what we got from state execution
-		workflow.GetLogger(ctx).Debug("State execution result", "state", currentState, "outputs", stateOutputs)
+		ctx.GetLogger().Debug("State execution result", "state", currentState, "outputs", stateOutputs)
 
 		// Store state outputs in parent context
 		resCtx.AddStateOutput(currentState, stateOutputs)
@@ -85,7 +85,7 @@ func executeStateMachine(ctx workflow.Context, activityRegistry *workerops.Activ
 	if len(finalState.Transitions) == 0 {
 		if lastState, ok := resCtx.TemplateData.States[currentState]; ok {
 			// Debug: check what we have
-			workflow.GetLogger(ctx).Debug("Terminal state outputs check", "state", currentState, "outputs", lastState.Outputs)
+			ctx.GetLogger().Debug("Terminal state outputs check", "state", currentState, "outputs", lastState.Outputs)
 			if lastState.Outputs != nil && len(lastState.Outputs) > 0 {
 				return lastState.Outputs, nil
 			}

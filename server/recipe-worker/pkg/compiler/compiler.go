@@ -1,18 +1,14 @@
 package compiler
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 
-	workflow "github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
-	"go.temporal.io/sdk/temporal"
-	//"go.temporal.io/sdk/workflow"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 )
 
 func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, inputs map[string]interface{}) (map[string]interface{}, error) {
@@ -238,76 +234,33 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 		inputs[k] = v
 	}
 
-	opImpl, exists := activityRegistry.Get(op)
-	if !exists {
-		return nil, fmt.Errorf("op type %q not found", op)
-	}
-
 	boxID := extractFirstString(inputs, "box_id", "boxId", "BoxID")
 	activityID := extractFirstString(inputs, "activity_id", "activityId", "ActivityID")
-	inv := tracker.nextInvocation(boxID, activityID)
-
-	// ExecuteAsActivity returns true when it has a handler (should be executed as activity)
-	if !opImpl.Activity.ExecuteAsActivity() {
-		timeout := time.Duration(metadata.Timeout)
-		if timeout == 0 {
-			timeout = 30 * time.Second // Default timeout
-		}
-		retry := ToTemporalRetryPolicy(metadata.Retry)
-
-		startPayload := story.InlineOpStartPayload{
-			OpType:    op,
-			Inputs:    cloneMap(inputs),
-			StartedAt: workflow.Now(ctx),
-		}
-		story.RecordInlineOpStart(ctx, inv, startPayload)
-		outputs, err := executeCompositeInEnvelope(ctx, retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
-			return opImpl.Activity.ExecuteInlineV2(inv, inner, timeout, retry, inputs)
-		})
-		if err != nil {
-			now := workflow.Now(ctx)
-			if isTimeoutError(err) {
-				story.RecordInlineOpTimeout(ctx, inv, story.InlineOpTimeoutPayload{
-					OpType:    op,
-					TimeoutAt: now,
-					Duration:  timeout,
-				})
-			} else {
-				recordInlineFailure(ctx, inv, op, now, retry, err)
-			}
-			return nil, err
-		}
-		if outputs != nil {
-			propagateGitOutputs(ctx, workflowInputs, outputs)
-		}
-		story.RecordInlineOpComplete(ctx, inv, story.InlineOpCompletePayload{
-			OpType:      op,
-			Outputs:     cloneMap(outputs),
-			CompletedAt: workflow.Now(ctx),
-			Attempts:    1,
-		})
-		return outputs, nil
-	}
-
-	// Configure activity options
-	var timeout time.Duration
-	timeout = time.Duration(metadata.Timeout)
-	if timeout == 0 {
-		timeout = 30 * time.Second // Default timeout
-	}
-	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: timeout,
-		RetryPolicy:         ToTemporalRetryPolicy(metadata.Retry),
-	}
-	ctx = workflow.WithActivityOptions(ctx, activityOptions)
+	tracker.nextInvocation(boxID, activityID)
+	// TODO: put the invocation data in the context.
 
 	// Execute the operation
-	var outputs map[string]interface{}
 
-	err := workflow.ExecuteActivity(ctx, op, workerops.ActivityInvocationRequest{
-		Invocation: inv,
-		Input:      inputs,
-	}).Get(ctx, &outputs)
+	timeout := swf.Duration(metadata.Timeout)
+	out, err := ctx.DoTask(swf.RunPolicy{
+		Retry:        *metadata.Retry,
+		TotalTimeout: &timeout,
+	},
+		op, &swf.SimpleTaskData{
+			Data: swf.NewMapData(inputs),
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	outputData, err := out.GetData()
+	if err != nil {
+		return nil, err
+	}
+
+	outputs, err := outputData.ToMap()
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +401,7 @@ func executeSequence(ctx workflow.Context, activityRegistry *workerops.ActivityR
 		timeout = 30 * time.Second // Default timeout
 	}
 	sequenceTracker := tracker.child(segmentForMetadata(metadata, fallback))
-	outputs, err := executeCompositeInEnvelope(ctx, ToTemporalRetryPolicy(metadata.Retry), timeout, func(inner workflow.Context) (map[string]interface{}, error) {
+	outputs, err := executeCompositeInEnvelope(ctx, metadata.Retry, timeout, func(inner workflow.Context) (map[string]interface{}, error) {
 		return innerSequence(inner, activityRegistry, sequenceTracker, metadata, sequence, nodeInputs)
 	})
 	// Return outputs, modified inputs (with nodes), and error
@@ -456,141 +409,7 @@ func executeSequence(ctx workflow.Context, activityRegistry *workerops.ActivityR
 }
 
 // executeCompositeInEnvelope executes a composite nodes in a retry/timeout envelope
-func executeCompositeInEnvelope(ctx workflow.Context, retry *temporal.RetryPolicy, timeoutDuration time.Duration, fn func(inner workflow.Context) (map[string]interface{}, error)) (map[string]interface{}, error) {
-	// If no retry policy, just execute once with timeout
-	if retry == nil {
-		if timeoutDuration > 0 {
-			var cancel workflow.CancelFunc
-			ctx, cancel = workflow.WithCancel(ctx)
-			defer cancel()
-
-			// Start timeout timer
-			workflow.Go(ctx, func(ctx workflow.Context) {
-				_ = workflow.Sleep(ctx, timeoutDuration)
-				cancel()
-			})
-		}
-		return fn(ctx)
-	}
-
-	ctx, cancel := workflow.WithCancel(ctx)
-	defer cancel()
-
-	retryInterval := time.Duration(retry.InitialInterval)
-
-	// Start timeout timer - cancel will stop all activities
-	workflow.Go(ctx, func(ctx workflow.Context) {
-		_ = workflow.Sleep(ctx, time.Duration(timeoutDuration))
-		cancel()
-	})
-
-	var lastErr error
-
-	for attempt := int32(1); attempt <= retry.MaximumAttempts; attempt++ {
-		// Execute activities - they will be cancelled if timeout occurs
-		val, err := fn(ctx)
-		if err == nil {
-			return val, nil // Success
-		}
-
-		lastErr = err
-
-		// Check if the error was due to context cancellation (timeout)
-		if temporal.IsCanceledError(err) {
-			return nil, temporal.NewApplicationError(
-				fmt.Sprintf("sequence timed out after %v during attempt %d",
-					timeoutDuration, attempt),
-				"SEQUENCE_TIMEOUT",
-			)
-		}
-
-		// Check if error is non-retryable
-		var appErr *temporal.ApplicationError
-		if errors.As(err, &appErr) && appErr.NonRetryable() {
-			return nil, err
-		}
-
-		// Sleep before retry (except for last attempt)
-		if attempt < retry.MaximumAttempts {
-			err := workflow.Sleep(ctx, retryInterval)
-			if err != nil {
-				// Sleep was cancelled - must be timeout
-				return nil, temporal.NewApplicationError(
-					fmt.Sprintf("sequence timed out after %v during retry delay after attempt %d",
-						timeoutDuration, attempt),
-					"SEQUENCE_TIMEOUT",
-				)
-			}
-
-			retryInterval = time.Duration(float64(retryInterval) * retry.BackoffCoefficient)
-			if retryInterval > retry.MaximumInterval {
-				retryInterval = retry.MaximumInterval
-			}
-		}
-	}
-
-	return nil, temporal.NewApplicationError(
-		fmt.Sprintf("sequence failed after %d attempts: %v", retry.MaximumAttempts, lastErr),
-		"MAX_RETRIES_EXCEEDED",
-		lastErr,
-	)
-}
-
-func isTimeoutError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if temporal.IsCanceledError(err) {
-		return true
-	}
-	var appErr *temporal.ApplicationError
-	if errors.As(err, &appErr) {
-		switch appErr.Type() {
-		case "SEQUENCE_TIMEOUT", "SERVICE_TIMEOUT", "TIMEOUT":
-			return true
-		}
-	}
-	return false
-}
-
-func recordInlineFailure(ctx workflow.Context, inv coreops.Invocation, op string, failedAt time.Time, retry *temporal.RetryPolicy, err error) {
-	payload := story.InlineOpFailPayload{
-		OpType:    op,
-		ErrorType: inlineErrorType(err),
-		Message:   err.Error(),
-		FailedAt:  failedAt,
-		Attempts:  attemptsFromRetry(retry),
-	}
-	story.RecordInlineOpFail(ctx, inv, payload)
-}
-
-func attemptsFromRetry(retry *temporal.RetryPolicy) int {
-	if retry == nil || retry.MaximumAttempts <= 0 {
-		return 1
-	}
-	return int(retry.MaximumAttempts)
-}
-
-func inlineErrorType(err error) string {
-	if err == nil {
-		return ""
-	}
-	var appErr *temporal.ApplicationError
-	if errors.As(err, &appErr) {
-		if t := appErr.Type(); t != "" {
-			return t
-		}
-	}
-	return fmt.Sprintf("%T", err)
-}
-
-func cloneMap(in map[string]interface{}) map[string]interface{} {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
+func executeCompositeInEnvelope(ctx workflow.Context, retry *recipe.RetryPolicy, timeoutDuration time.Duration, fn func(inner workflow.Context) (map[string]interface{}, error)) (map[string]interface{}, error) {
+	// TODO: update composite executions to respect retry policy and timeouts.
+	return fn(ctx)
 }

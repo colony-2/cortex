@@ -131,7 +131,7 @@ require (
 	google.golang.org/protobuf v1.36.8 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/driver/sqlite v1.5.7 // indirect
-	gorm.io/gorm v1.25.11 // indirect
+	gorm.io/gorm v1.30.0 // indirect
 	gorm.io/plugin/optimisticlock v1.3.3 // indirect
 )
 
