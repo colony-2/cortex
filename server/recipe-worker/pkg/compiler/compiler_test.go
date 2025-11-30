@@ -7,6 +7,7 @@ import (
 
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
+	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	task2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -54,16 +55,23 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 		},
 	}
 
-	// Create activity registry
-	registry, err := ops.NewActivityRegistry()
-	require.NoError(s.T(), err)
-
 	// Register a test activity function
 	testActivityFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "test_output"}, nil
 	}
 	task := task2.AsTask("test_activity", testActivityFunc)
 
+	ops2.Clear()
+	ops2.Register(ops2.NewActivityMappedOpV2(ops2.OpMetadata{
+		Type: "test_activity",
+	},
+		func(inv ops2.Invocation, actx task2.Context, in map[string]interface{}) (map[string]interface{}, error) {
+			return testActivityFunc(actx, in)
+		}))
+	// Create activity registry
+	registry, err := ops.NewActivityRegistry()
+
+	require.NoError(s.T(), err)
 	testRecipe := &recipe.Recipe{
 		RecipeImpl: &recipe.RecipeOp{
 			RecipeMetadata: recipe.RecipeMetadata{
@@ -75,6 +83,10 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 
 	worker := NewRecipeWorker(registry)
 	err = s.eng.RegisterWorkers(worker, task)
+	stop := context.Background()
+	s.eng.Run(stop)
+	defer s.eng.Shutdown()
+
 	require.NoError(s.T(), err)
 
 	input := withRequiredGitInputs(map[string]interface{}{
@@ -83,7 +95,7 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 
 	jobId, err := StartRecipeJob(context.Background(), input, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
-	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 5*time.Second, jobId, s.eng))
+	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobId, s.eng))
 	r, err := s.eng.GetJobResult(context.Background(), jobId)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
@@ -213,12 +225,16 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 
 	worker := NewRecipeWorker(registry)
 	err = s.eng.RegisterWorkers(worker, t1, t2)
+	stop := context.Background()
+	s.eng.Run(stop) // we start after worker registration.
+	defer s.eng.Shutdown()
+
 	require.NoError(s.T(), err)
 	in := withRequiredGitInputs(map[string]interface{}{})
 
 	jobId, err := StartRecipeJob(context.Background(), in, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
-	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 5*time.Second, jobId, s.eng))
+	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobId, s.eng))
 	r, err := s.eng.GetJobResult(context.Background(), jobId)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()

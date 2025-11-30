@@ -130,56 +130,12 @@ func processNodeOutputs(outputs map[string]interface{}, outputTemplates map[stri
 
 		resolved, err := resCtx.ResolveValue(tmplValue)
 		if err != nil {
-			if fallback, ok := stubModeFallback(inputs); ok {
-				return fallback, nil
-			}
 			return nil, fmt.Errorf("failed to resolve output template %s: %w", key, err)
 		}
 		resolvedOutputs[key] = resolved
 	}
 
 	return resolvedOutputs, nil
-}
-
-func stubModeFallback(inputs map[string]interface{}) (map[string]interface{}, bool) {
-	stub, ok := inputs["stub_mode"].(bool)
-	if !ok || !stub {
-		return nil, false
-	}
-	ticketID := asString(inputs["ticket_id"])
-	if ticketID == "" {
-		ticketID = asString(inputs["ticketid"])
-	}
-	if ticketID == "" {
-		ticketID = "TICKET"
-	}
-	testDoc := fmt.Sprintf(".colony2/specs/%s-tests.md", ticketID)
-	implDoc := fmt.Sprintf(".colony2/specs/%s-implementation.md", ticketID)
-	fallback := map[string]interface{}{
-		"test_statements_doc":    testDoc,
-		"implementation_summary": implDoc,
-		"pending_dependencies":   []interface{}{},
-		"validation_scores": map[string]interface{}{
-			"backwards_compatibility":  5,
-			"spec_coverage":            5,
-			"test_statement_alignment": 5,
-			"style_sanity":             5,
-		},
-		"needs_human_review": false,
-		"git_context_patch":  "",
-	}
-	return fallback, true
-}
-
-func asString(v interface{}) string {
-	switch val := v.(type) {
-	case string:
-		return val
-	case fmt.Stringer:
-		return val.String()
-	default:
-		return ""
-	}
 }
 
 // WorkflowState maintains the runtime state of a workflow
@@ -241,12 +197,23 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 
 	// Execute the operation
 
-	timeout := swf.Duration(metadata.Timeout)
-	out, err := ctx.DoTask(swf.RunPolicy{
-		Retry:        *metadata.Retry,
-		TotalTimeout: &timeout,
-	},
-		op, &swf.SimpleTaskData{
+	retry := swf.RetryPolicy{}
+	if metadata.Retry != nil {
+		retry = *metadata.Retry
+	}
+
+	runPolicy := swf.RunPolicy{
+		Retry: retry,
+	}
+	if metadata.Timeout > 0 {
+		timeout := swf.Duration(metadata.Timeout)
+		runPolicy.TotalTimeout = &timeout
+	}
+
+	out, err := ctx.DoTask(
+		runPolicy,
+		op,
+		&swf.SimpleTaskData{
 			Data: swf.NewMapData(inputs),
 		},
 	)

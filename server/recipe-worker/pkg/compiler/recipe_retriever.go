@@ -58,7 +58,7 @@ func (r *recipeRetriever) GetRecipe(name string) (recipe.Recipe, error) {
 	// Deserialize the recipe
 	var newRecipe recipe.Recipe
 	if err := yaml.Unmarshal(yamlBytes, &newRecipe); err != nil {
-		return recipe.Recipe{}, fmt.Errorf("failed to unmarshal YAML for %s: %w", name, err)
+		return recipe.Recipe{}, fmt.Errorf("failed to unmarshal YAML for %s: %w. Data: %s", name, err, string(yamlBytes))
 	}
 
 	// Cache the deserialized recipe

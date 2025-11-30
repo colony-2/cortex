@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
@@ -67,6 +68,15 @@ func (r *ActivityRegistry) SetDependencies(deps ops.ServiceDependencies2) {
 	r.deps = deps
 }
 
+//func (r *ActivityRegistry) GetTaskWorkers() []swf.TaskWorker {
+//	workers := make([]swf.TaskWorker, 0, len(r.activities))
+//	for k, v := range r.activities {
+//
+//
+//		workers = append(workers)
+//	}
+//}
+
 // Dependencies exposes the current dependency container (may be nil).
 func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 	return r.deps
@@ -80,11 +90,11 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable)
 	}
 }
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+	return func(ctx task.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
 		input := req.Input
 		if input == nil {
 			input = map[string]interface{}{}
@@ -93,10 +103,10 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 		if err != nil {
 			return nil, err
 		}
-		if err := controller.PrepareWorkspace(ctx, gitCtx); err != nil {
+		if err := controller.PrepareWorkspace(context.Background(), gitCtx); err != nil {
 			return nil, err
 		}
-		if err := controller.Restore(ctx, gitCtx); err != nil {
+		if err := controller.Restore(context.Background(), gitCtx); err != nil {
 			return nil, err
 		}
 		outputs, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
@@ -112,7 +122,7 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 			}
 			delete(outputs, "git_context_patch")
 		}
-		newHash, updatedCtx, err := controller.Persist(ctx, gitCtx)
+		newHash, updatedCtx, err := controller.Persist(context.Background(), gitCtx)
 		if err != nil {
 			return nil, err
 		}
@@ -121,11 +131,11 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 	}
 }
 
-func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withDependencies(deps ops.ServiceDependencies2, next func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if deps == nil {
 		return next
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+	return func(ctx task.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
 		if req.Invocation.Deps == nil {
 			req.Invocation.Deps = deps
 		}

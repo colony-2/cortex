@@ -2,21 +2,21 @@
 package ops
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
 	"time"
 
-	"github.com/fatih/structs"
-	"github.com/mitchellh/mapstructure"
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
 	// ExecuteV2 runs the op as a task with an explicit invocation descriptor.
-	ExecuteV2(inv Invocation, ctx context.Context, input map[string]interface{}) (output map[string]interface{}, err error)
+	ExecuteV2(inv Invocation, ctx task.Context, input swf.Data) (output swf.Data, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -45,7 +45,7 @@ type OpExecutor interface {
 }
 
 // ActivityHandlerV2 defines the signature for activity handlers that accept an invocation descriptor.
-type ActivityHandlerV2[In any, Out any] func(inv Invocation, actx context.Context, in In) (Out, error)
+type ActivityHandlerV2[In any, Out any] func(inv Invocation, actx task.Context, in In) (Out, error)
 
 func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out]) RegisterableOp {
 	return newActivityMappedOpV2(metadata, handler, nil, nil)
@@ -94,37 +94,21 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, inputMap map[string]interface{}) (map[string]interface{}, error) {
+func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx task.Context, inputData swf.Data) (swf.Data, error) {
 	var input In
-	if err := decodeWithJsonTags(inputMap, &input); err != nil {
-		return nil, err
+	err := json.Unmarshal(inputData, &input)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding input: %w", err)
 	}
 	objResult, err := c.activityHandler(inv, ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("error executing handler: %w", err)
+		return nil, fmt.Errorf("error executing op: %w", err)
 	}
-
-	s := structs.New(objResult)
-	s.TagName = "json" // Use JSON tags instead of default "structs" tags
-	return s.Map(), nil
-}
-
-func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
-	config := &mapstructure.DecoderConfig{
-		TagName: "json", // Use JSON tags instead of mapstructure tags
-		Result:  input,
-	}
-	decoder, err := mapstructure.NewDecoder(config)
+	out, err := json.Marshal(objResult)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("error encoding output: %w", err)
 	}
-
-	err = decoder.Decode(data)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return out, nil
 }
 
 func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {

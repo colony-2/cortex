@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -19,7 +20,7 @@ type recipeWorkerImpl struct {
 
 const (
 	RecipeJobType        = "recipe"
-	RecipeArtifactSuffix = ".recipe.json"
+	RecipeArtifactSuffix = ".recipe.yaml"
 )
 
 func NewRecipeWorker(activityRegistry *workerops.ActivityRegistry) swf.JobWorker {
@@ -50,10 +51,20 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 	recipeName, ok := input["recipe"]
 	if !ok {
+		if len(artifacts) == 1 {
+			recipeName = strings.TrimSuffix(artifacts[0].Name(), RecipeArtifactSuffix)
+			input["recipe"] = recipeName
+		} else {
+			return nil, fmt.Errorf("missing recipe name")
+		}
+	}
+
+	name, _ := recipeName.(string)
+	if name == "" {
 		return nil, fmt.Errorf("missing recipe name")
 	}
 
-	r, err := j.recipes.GetRecipe(recipeName.(string))
+	r, err := j.recipes.GetRecipe(name)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +87,7 @@ var _ swf.JobWorker = &recipeWorkerImpl{}
 func StartRecipeJob(ctx context.Context, input map[string]interface{}, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
 	artifacts := make([]artifact.Artifact, len(recipes))
 	for i, r := range recipes {
-		recipeYaml, err := yaml.Marshal(r)
+		recipeYaml, err := yaml.Marshal(&r)
 		if err != nil {
 			return "", err
 		}
