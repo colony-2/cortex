@@ -16,8 +16,15 @@ import (
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
-	Invocation ops.Invocation         `json:"invocation"`
-	Input      map[string]interface{} `json:"input"`
+	Invocation ops.Invocation            `json:"invocation"`
+	OpInput    json.RawMessage           `json:"input"`
+	Workspace  gitstate.WorkspacePayload `json:"workspace"`
+}
+
+// ActivityInvocationOutput wraps the raw op output alongside workspace results.
+type ActivityInvocationOutput struct {
+	OpOutput  json.RawMessage          `json:"op_output"`
+	Workspace gitstate.WorkspaceResult `json:"workspace"`
 }
 
 // ActivityRegistration holds the activity and its generated schemas
@@ -65,15 +72,6 @@ func (r *ActivityRegistry) SetDependencies(deps ops.ServiceDependencies2) {
 	r.deps = deps
 }
 
-//func (r *ActivityRegistry) GetTaskWorkers() []swf.TaskWorker {
-//	workers := make([]swf.TaskWorker, 0, len(r.activities))
-//	for k, v := range r.activities {
-//
-//
-//		workers = append(workers)
-//	}
-//}
-
 // Dependencies exposes the current dependency container (may be nil).
 func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 	return r.deps
@@ -91,7 +89,7 @@ func (r *ActivityRegistry) GetTaskWorkers() []swf.TaskWorker {
 
 type taskWorker struct {
 	name string
-	fn   func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)
+	fn   func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)
 }
 
 func (t *taskWorker) Name() string {
@@ -116,81 +114,66 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 
 var _ swf.TaskWorker = &taskWorker{}
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
-		input := req.Input
-		if input == nil {
-			input = map[string]interface{}{}
+	return func(ctx context.Context, req ActivityInvocationRequest) (ActivityInvocationOutput, error) {
+		var zero ActivityInvocationOutput
+		if req.Workspace.Context.BaseRepo == "" {
+			return zero, fmt.Errorf("workspace payload required")
 		}
-		payload, err := gitstate.LegacyPayloadFromInput(req.Invocation, input)
+
+		gitCtx, err := gitstate.ContextFromPayload(req.Invocation, req.Workspace)
 		if err != nil {
-			return nil, err
-		}
-		gitCtx, err := gitstate.ContextFromPayload(req.Invocation, payload)
-		if err != nil {
-			return nil, err
+			return zero, err
 		}
 		if err := controller.PrepareWorkspace(context.Background(), gitCtx); err != nil {
-			return nil, err
+			return zero, err
 		}
 		if err := controller.Restore(context.Background(), gitCtx); err != nil {
-			return nil, err
+			return zero, err
 		}
-		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
+		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, req.OpInput)
 		if err != nil {
-			return nil, err
-		}
-		var outputs map[string]interface{}
-		if outputData != nil {
-			if m, ok := outputData.(map[string]interface{}); ok {
-				outputs = m
-			} else {
-				raw, err := json.Marshal(outputData)
-				if err != nil {
-					return nil, fmt.Errorf("marshal activity output: %w", err)
-				}
-				if err := json.Unmarshal(raw, &outputs); err != nil {
-					return nil, fmt.Errorf("unmarshal activity output: %w", err)
-				}
-			}
-		}
-		if outputs != nil {
-			if patch, ok := outputs["git_context_patch"]; ok {
-				if patchMap, ok := patch.(map[string]interface{}); ok {
-					applyGitContextPatch(gitCtx, patchMap)
-				}
-				delete(outputs, "git_context_patch")
-			}
+			return zero, err
 		}
 
 		newHash, updatedCtx, err := controller.Persist(context.Background(), gitCtx)
 		if err != nil {
-			return nil, err
+			return zero, err
 		}
-		if outputs == nil {
-			outputs = make(map[string]interface{})
+
+		var opOutput json.RawMessage
+		switch v := outputData.(type) {
+		case json.RawMessage:
+			opOutput = v
+		case []byte:
+			opOutput = v
+		case nil:
+		default:
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return zero, fmt.Errorf("marshal op output: %w", err)
+			}
+			opOutput = buf
 		}
-		workspaceResult := gitstate.WorkspaceResult{
-			Context:        updatedCtx,
-			GitPersistHash: newHash,
-		}
-		legacy := gitstate.LegacyOutputsFromResult(workspaceResult)
-		delete(legacy, "result")
-		for k, v := range legacy {
-			outputs[k] = v
-		}
-		return outputs, nil
+
+		return ActivityInvocationOutput{
+			OpOutput: opOutput,
+			Workspace: gitstate.WorkspaceResult{
+				Context:        updatedCtx,
+				GitPersistHash: newHash,
+			},
+		}, nil
 	}
 }
 
-func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
 	if deps == nil {
 		return next
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+	return func(ctx context.Context, req ActivityInvocationRequest) (ActivityInvocationOutput, error) {
 		if req.Invocation.Deps == nil {
 			req.Invocation.Deps = deps
 		}

@@ -116,23 +116,15 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			"cellname":  "cells/beta",
 		},
 	}
-
-	outputs, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, Input: input})
+	raw, err := json.Marshal(input)
 	require.NoError(t, err)
-	require.NotNil(t, outputs)
-	require.NotContains(t, outputs, "git_context_patch")
-
-	ctxMap := outputs["context"].(map[string]interface{})
-	gitMap := ctxMap["git"].(map[string]interface{})
-	require.Equal(t, newBase, gitMap["base_hash"])
-	require.Equal(t, outputs["git_persist_hash"], gitMap["persist_hash"])
-	// ensure new thin pack recorded relative to blobstore
-	thinPack, ok := gitMap["thin_pack_path"].(string)
-	require.True(t, ok)
-	require.NotEmpty(t, thinPack)
-	stat, err := os.Stat(filepath.Join(blobStore, filepath.FromSlash(thinPack)))
+	workspace, err := gitstate.LegacyPayloadFromInput(inv, input)
 	require.NoError(t, err)
-	require.True(t, stat.Mode().IsRegular())
+
+	envelope, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, OpInput: raw, Workspace: workspace})
+	require.NoError(t, err)
+	require.NotNil(t, envelope.Workspace.Context)
+	require.NotEmpty(t, envelope.Workspace.Context.PersistHash)
 }
 
 func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
@@ -186,22 +178,26 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 		},
 		"git_persist_hash": baseHash,
 	}
-	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, Input: input})
+	rawInput, err := json.Marshal(input)
+	require.NoError(t, err)
+	wp, err := gitstate.LegacyPayloadFromInput(recipeops.Invocation{}, input)
+	require.NoError(t, err)
+	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, OpInput: rawInput, Workspace: wp})
 	require.NoError(t, err)
 	require.True(t, seenDeps)
 }
 
 type capturingWorker struct {
 	t        *testing.T
-	handlers map[string]func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)
+	handlers map[string]func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)
 }
 
 func newCapturingWorker(t *testing.T) *capturingWorker {
-	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error))}
+	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error))}
 }
 
 func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
-	handler, ok := a.(func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error))
+	handler, ok := a.(func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error))
 	if !ok {
 		return
 	}

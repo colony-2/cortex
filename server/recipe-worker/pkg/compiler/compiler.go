@@ -7,6 +7,7 @@ import (
 
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
@@ -209,10 +210,19 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 		timeout := swf.Duration(metadata.Timeout)
 		runPolicy.TotalTimeout = &timeout
 	}
-	
+
+	rawInput, err := json.Marshal(inputs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal inputs: %w", err)
+	}
+	workspacePayload, err := gitstate.LegacyPayloadFromInput(inv, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("build workspace payload: %w", err)
+	}
 	invocation := workerops.ActivityInvocationRequest{
 		Invocation: inv,
-		Input:      inputs,
+		OpInput:    rawInput,
+		Workspace:  workspacePayload,
 	}
 
 	taskData, err := swf.NewTaskData(invocation)
@@ -234,89 +244,30 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 	if err != nil {
 		return nil, err
 	}
-	outputs := make(map[string]interface{})
-	err = json.Unmarshal(outputData, &outputs)
-	if err != nil {
-		return nil, err
+
+	var envelope workerops.ActivityInvocationOutput
+	if err := json.Unmarshal(outputData, &envelope); err != nil {
+		return nil, fmt.Errorf("decode activity output envelope: %w", err)
 	}
 
-	if outputs != nil {
-		propagateGitOutputs(ctx, workflowInputs, outputs)
+	outputs := make(map[string]interface{})
+	if len(envelope.OpOutput) > 0 {
+		if err := json.Unmarshal(envelope.OpOutput, &outputs); err != nil {
+			return nil, fmt.Errorf("decode op output: %w", err)
+		}
+	}
+
+	legacy := gitstate.LegacyOutputsFromResult(envelope.Workspace)
+	delete(legacy, "result")
+	for k, v := range legacy {
+		outputs[k] = v
 	}
 
 	return outputs, nil
 }
 
 func propagateGitOutputs(ctx workflow.Context, workflowInputs map[string]interface{}, outputs map[string]interface{}) {
-	contextVal, ok := outputs["context"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	gitMap, ok := contextVal["git"].(map[string]interface{})
-	if !ok {
-		return
-	}
-
-	wfContext, _ := workflowInputs["context"].(map[string]interface{})
-	if wfContext == nil {
-		wfContext = make(map[string]interface{})
-		workflowInputs["context"] = wfContext
-	}
-	wfContext["git"] = gitMap
-	if val, ok := contextVal["worktree"]; ok {
-		wfContext["worktree"] = val
-	}
-	if val, ok := contextVal["blobstore"]; ok {
-		wfContext["blobstore"] = val
-	}
-	if val, ok := contextVal["ticketid"]; ok {
-		wfContext["ticketid"] = val
-		workflowInputs["ticket_id"] = val
-	}
-	if val, ok := contextVal["cellname"]; ok {
-		wfContext["cellname"] = val
-		workflowInputs["cell_name"] = val
-	}
-	if recipeMap, ok := contextVal["recipe"].(map[string]interface{}); ok {
-		wfContext["recipe"] = recipeMap
-	}
-
-	if gitPersist, ok := outputs["git_persist_hash"]; ok {
-		workflowInputs["git_persist_hash"] = gitPersist
-	}
-
-	if execVal := ctx.Value(executionContextKey{}); execVal != nil {
-		if execCtx, ok := execVal.(*ExecutionContext); ok {
-			_ = execCtx.Git.UpdateFromMap(gitMap)
-			if worktree, ok := contextVal["worktree"].(string); ok {
-				execCtx.Worktree = worktree
-			}
-			if blob, ok := contextVal["blobstore"].(string); ok {
-				execCtx.BlobStore = blob
-			}
-			if ticket, ok := contextVal["ticketid"].(string); ok {
-				execCtx.TicketID = ticket
-			}
-			if cell, ok := contextVal["cellname"].(string); ok {
-				execCtx.CellName = cell
-			}
-			if recipeMap, ok := contextVal["recipe"].(map[string]interface{}); ok {
-				if hash, ok := recipeMap["invocation_hash"].(string); ok {
-					execCtx.Recipe.InvocationHash = hash
-				}
-				if id, ok := recipeMap["invocation_id"].(string); ok {
-					execCtx.Recipe.InvocationID = id
-				}
-				if attempt, ok := recipeMap["invocation_attempt"].(int); ok {
-					execCtx.Recipe.InvocationAttempt = attempt
-				} else if attempt64, ok := recipeMap["invocation_attempt"].(int64); ok {
-					execCtx.Recipe.InvocationAttempt = int(attempt64)
-				} else if attemptFloat, ok := recipeMap["invocation_attempt"].(float64); ok {
-					execCtx.Recipe.InvocationAttempt = int(attemptFloat)
-				}
-			}
-		}
-	}
+	// no-op: workspace propagation handled via envelopes
 }
 
 func innerSequence(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, tracker *invocationTracker, metadata recipe.NodeMetadata, sequence []recipe.Node, inputs map[string]interface{}) (map[string]interface{}, error) {
