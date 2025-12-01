@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf/impl"
 	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	task2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +37,18 @@ func TestCompilerTestSuite(t *testing.T) {
 	suite.Run(t, new(CompilerTestSuite))
 }
 
+type simpleFunc func(context.Context, map[string]interface{}) (map[string]interface{}, error)
+
+func register(name string, fn simpleFunc) {
+	ops2.Register(ops2.NewActivityMappedOpV2(ops2.OpMetadata{
+		Type: name,
+	},
+		func(inv ops2.Invocation, actx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+			return fn(actx, in)
+		}))
+
+}
+
 func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	// Create a simple recipe definition using unified format
 	node := &recipe.Node{
@@ -56,18 +68,12 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	}
 
 	// Register a test activity function
-	testActivityFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	testActivityFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "test_output"}, nil
 	}
-	task := task2.AsTask("test_activity", testActivityFunc)
-
 	ops2.Clear()
-	ops2.Register(ops2.NewActivityMappedOpV2(ops2.OpMetadata{
-		Type: "test_activity",
-	},
-		func(inv ops2.Invocation, actx task2.Context, in map[string]interface{}) (map[string]interface{}, error) {
-			return testActivityFunc(actx, in)
-		}))
+	register("test_activity", testActivityFunc)
+
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
 
@@ -81,8 +87,9 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 		},
 	}
 
-	worker := NewRecipeWorker(registry)
-	err = s.eng.RegisterWorkers(worker, task)
+	workSet, err := NewRecipeWorker(registry)
+	require.NoError(s.T(), err)
+	err = s.eng.RegisterWorkers(workSet)
 	stop := context.Background()
 	s.eng.Run(stop)
 	defer s.eng.Shutdown()
@@ -100,9 +107,9 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
 	require.NoError(s.T(), err)
-	asMap, err := d.ToMap()
-	require.NoError(s.T(), err)
-	assert.Equal(s.T(), map[string]interface{}{"result": "test_output"}, asMap)
+	out := make(map[string]interface{})
+	require.NoError(s.T(), json.Unmarshal(d, &out))
+	assert.Equal(s.T(), map[string]interface{}{"result": "test_output"}, out)
 }
 
 func TestTemplateResolver(t *testing.T) {
@@ -204,15 +211,15 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	require.NoError(s.T(), err)
 
 	// Register test activity functions
-	activityAFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	activityAFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "output_a"}, nil
 	}
-	activityBFunc := func(ctx task2.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	activityBFunc := func(ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{"result": "output_b"}, nil
 	}
-
-	t1 := task2.AsTask("activity_a", activityAFunc)
-	t2 := task2.AsTask("activity_b", activityBFunc)
+	ops2.Clear()
+	register("activity_a", activityAFunc)
+	register("activity_b", activityBFunc)
 
 	testRecipe := &recipe.Recipe{
 		RecipeImpl: &recipe.RecipeSequence{
@@ -223,8 +230,8 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 		},
 	}
 
-	worker := NewRecipeWorker(registry)
-	err = s.eng.RegisterWorkers(worker, t1, t2)
+	workSet, err := NewRecipeWorker(registry)
+	err = s.eng.RegisterWorkers(workSet)
 	stop := context.Background()
 	s.eng.Run(stop) // we start after worker registration.
 	defer s.eng.Shutdown()
@@ -239,8 +246,8 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
 	require.NoError(s.T(), err)
-	_, err = d.ToMap()
-	require.NoError(s.T(), err)
+	out := make(map[string]interface{})
+	require.NoError(s.T(), json.Unmarshal(d, &out))
 }
 
 func TestActivityRegistry(t *testing.T) {

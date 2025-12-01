@@ -1,6 +1,7 @@
 package gitstate
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,9 +53,10 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 	env.RegisterActivity(inlineWriteFileActivity)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (*DetachedWorkspaceResult, error) {
-		res, err := WithDetachedWorkspace(ctx, inv, inputs, DetachedWorkspaceOptions{}, func(inner workflow.Context, childInputs map[string]interface{}) (map[string]interface{}, error) {
-			gitMap := childInputs["context"].(map[string]interface{})["git"].(map[string]interface{})
-			worktree := gitMap["worktree_path"].(string)
+		payload, err := LegacyPayloadFromInput(inv, inputs)
+		require.NoError(t, err)
+		res, err := WithDetachedWorkspace(ctx, inv, payload, DetachedWorkspaceOptions{}, func(inner workflow.Context, childPayload WorkspacePayload) (json.RawMessage, error) {
+			worktree := childPayload.Context.WorktreePath
 			laOpts := workflow.LocalActivityOptions{StartToCloseTimeout: time.Minute}
 			inner = workflow.WithLocalActivityOptions(inner, laOpts)
 			var ignore interface{}
@@ -66,7 +68,7 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]interface{}{"status": "ok"}, nil
+			return json.RawMessage(`{"status":"ok"}`), nil
 		})
 		if err != nil {
 			return nil, err
@@ -80,11 +82,12 @@ func TestWithDetachedWorkspaceLifecycle(t *testing.T) {
 	var result *DetachedWorkspaceResult
 	require.NoError(t, env.GetWorkflowResult(&result))
 	require.NotNil(t, result)
-	require.Equal(t, "ok", result.Result["status"])
-	require.NotEqual(t, baseHash, result.GitContext.PersistHash)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(result.Result, &out))
+	require.Equal(t, "ok", out["status"])
+	require.NotEqual(t, baseHash, result.Context.PersistHash)
 
-	gitMap := result.ContextMap["git"].(map[string]interface{})
-	worktreePath := gitMap["worktree_path"].(string)
+	worktreePath := result.Context.WorktreePath
 
 	stat, err := os.Stat(filepath.Join(worktreePath, "cells", "beta", "child.txt"))
 	require.NoError(t, err)

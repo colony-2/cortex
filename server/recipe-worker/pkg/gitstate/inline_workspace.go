@@ -2,6 +2,7 @@ package gitstate
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -24,32 +25,24 @@ type InlineWorkspaceOptions struct {
 
 // InlineWorkspaceResult packages the result of executing inline logic within a managed workspace lifecycle.
 type InlineWorkspaceResult struct {
-	// Result captures the raw outputs from the wrapped inline logic.
-	Result map[string]interface{}
-	// ContextMap mirrors the structure injected into outputs["context"].
-	ContextMap map[string]interface{}
-	// GitContext exposes the structured git metadata after persistence.
-	GitContext Context
+	WorkspaceResult
 }
 
 // InlineWorkspaceFunc represents the inline logic executed within a managed git workspace.
-type InlineWorkspaceFunc func(workflow.Context, map[string]interface{}) (map[string]interface{}, error)
+type InlineWorkspaceFunc func(workflow.Context, WorkspacePayload) (json.RawMessage, error)
 
 // WithInlineWorkspace orchestrates prepare/restore/persist semantics for inline operations that mutate git state.
-func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs map[string]interface{}, opts InlineWorkspaceOptions, fn InlineWorkspaceFunc) (*InlineWorkspaceResult, error) {
+func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, payload WorkspacePayload, opts InlineWorkspaceOptions, fn InlineWorkspaceFunc) (*InlineWorkspaceResult, error) {
 	if fn == nil {
 		return nil, fmt.Errorf("inline workspace requires execution function")
 	}
-	if inputs == nil {
-		inputs = make(map[string]interface{})
-	}
 
-	parentCtx, err := ContextFromRequest(inv, inputs)
+	parentCtx, err := ContextFromPayload(inv, payload)
 	if err != nil {
 		return nil, err
 	}
 
-	childCtx, childInputs, err := deriveChildWorkspace(inv, *parentCtx, opts, inputs)
+	childCtx, childPayload, err := deriveChildWorkspace(inv, *parentCtx, opts, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -64,18 +57,21 @@ func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs ma
 		return nil, err
 	}
 
-	result, err := fn(ctx, childInputs)
+	result, err := fn(ctx, childPayload)
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
-		result = make(map[string]interface{})
-	}
 
-	workspaceResult := &InlineWorkspaceResult{Result: result}
+	workspaceResult := &InlineWorkspaceResult{}
 
 	if opts.SkipFinalize {
-		workspaceResult.GitContext = childCtx
+		workspaceResult.Context = childCtx
+		if len(result) == 0 {
+			workspaceResult.Result = json.RawMessage(`{}`)
+		} else {
+			workspaceResult.Result = result
+		}
+		workspaceResult.GitPersistHash = childCtx.PersistHash
 		return workspaceResult, nil
 	}
 
@@ -85,15 +81,11 @@ func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs ma
 	}
 	childCtx = persistOutput.Context
 
-	outputs := map[string]interface{}{
-		"result": result,
+	workspaceResult.WorkspaceResult = WorkspaceResult{
+		Result:         result,
+		Context:        childCtx,
+		GitPersistHash: childCtx.PersistHash,
 	}
-	InjectPersistResult(outputs, childCtx.PersistHash, childCtx)
-
-	contextMap, _ := outputs["context"].(map[string]interface{})
-
-	workspaceResult.ContextMap = cloneMap(contextMap)
-	workspaceResult.GitContext = childCtx
 
 	return workspaceResult, nil
 }
@@ -165,9 +157,9 @@ func inlinePersistWorkspaceActivity(ctx context.Context, gitCtx Context) (inline
 	return inlinePersistResult{Context: updated}, nil
 }
 
-func deriveChildWorkspace(inv coreops.Invocation, parentCtx Context, opts InlineWorkspaceOptions, baseInputs map[string]interface{}) (Context, map[string]interface{}, error) {
+func deriveChildWorkspace(inv coreops.Invocation, parentCtx Context, opts InlineWorkspaceOptions, basePayload WorkspacePayload) (Context, WorkspacePayload, error) {
 	if parentCtx.WorktreePath == "" {
-		return Context{}, nil, fmt.Errorf("parent git context missing worktree path")
+		return Context{}, WorkspacePayload{}, fmt.Errorf("parent git context missing worktree path")
 	}
 
 	runRoot := filepath.Dir(parentCtx.WorktreePath)
@@ -195,51 +187,13 @@ func deriveChildWorkspace(inv coreops.Invocation, parentCtx Context, opts Inline
 		childCtx.NodePath = inv.NodePath
 	}
 
-	childInputs := cloneMap(baseInputs)
+	childPayload := basePayload
+	childPayload.Context = childCtx
+	childPayload.GitPersistHash = childCtx.PersistHash
+	childPayload.TicketID = childCtx.TicketID
+	childPayload.CellName = childCtx.CellName
 
-	contextMap, ok := childInputs["context"].(map[string]interface{})
-	if !ok {
-		contextMap = make(map[string]interface{})
-	} else {
-		contextMap = cloneMap(contextMap)
-	}
-
-	gitMap := childCtx.ToMap()
-	gitMap["worktree_path"] = childCtx.WorktreePath
-	contextMap["git"] = gitMap
-	contextMap["worktree"] = childCtx.WorktreePath
-	contextMap["blobstore"] = childCtx.BlobStoreURI
-	if childCtx.TicketID != "" {
-		contextMap["ticketid"] = childCtx.TicketID
-	}
-	if childCtx.CellName != "" {
-		contextMap["cellname"] = childCtx.CellName
-	}
-
-	recipeMeta := map[string]interface{}{
-		"id":        childCtx.RecipeID,
-		"node_path": childCtx.NodePath,
-	}
-	if childCtx.InvocationHash != "" {
-		recipeMeta["invocation_hash"] = childCtx.InvocationHash
-	}
-	if childCtx.InvocationID != "" {
-		recipeMeta["invocation_id"] = childCtx.InvocationID
-	}
-	if childCtx.InvocationAttempt != 0 {
-		recipeMeta["invocation_attempt"] = childCtx.InvocationAttempt
-	}
-	if childCtx.JobID != "" {
-		recipeMeta["job_id"] = string(childCtx.JobID)
-	}
-	contextMap["recipe"] = recipeMeta
-
-	childInputs["context"] = contextMap
-	childInputs["git_persist_hash"] = childCtx.PersistHash
-	childInputs["ticket_id"] = childCtx.TicketID
-	childInputs["cell_name"] = childCtx.CellName
-
-	return childCtx, childInputs, nil
+	return childCtx, childPayload, nil
 }
 
 var nonSegmentChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)

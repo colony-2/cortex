@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"go.temporal.io/sdk/activity"
 	templog "go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"

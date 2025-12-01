@@ -1,5 +1,31 @@
 package gitstate
 
+import "fmt"
+
+func mapFromAny(input map[string]interface{}, key string) (map[string]interface{}, error) {
+	val, ok := input[key]
+	if !ok {
+		return nil, fmt.Errorf("missing %s in input", key)
+	}
+	m, ok := val.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s must be a map", key)
+	}
+	return m, nil
+}
+
+func mapFromAnyOptional(input map[string]interface{}, key string) (map[string]interface{}, bool) {
+	val, ok := input[key]
+	if !ok {
+		return nil, false
+	}
+	m, ok := val.(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+	return m, true
+}
+
 func stringFromMap(m map[string]interface{}, key string) (string, bool) {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok && str != "" {

@@ -1,6 +1,7 @@
 package gitstate
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -16,36 +17,28 @@ type DetachedWorkspaceOptions struct {
 
 // DetachedWorkspaceResult mirrors the inline result but is used for isolated executions.
 type DetachedWorkspaceResult struct {
-	Result     map[string]interface{}
-	ContextMap map[string]interface{}
-	GitContext Context
+	WorkspaceResult
 }
 
 // DetachedWorkspaceFunc represents the execution performed inside the detached workspace.
-type DetachedWorkspaceFunc func(workflow.Context, map[string]interface{}) (map[string]interface{}, error)
+type DetachedWorkspaceFunc func(workflow.Context, WorkspacePayload) (json.RawMessage, error)
 
 // PlanDetachedWorkspace derives an isolated git context and input payload without performing any git operations.
-func PlanDetachedWorkspace(inv coreops.Invocation, inputs map[string]interface{}, opts DetachedWorkspaceOptions) (Context, map[string]interface{}, error) {
-	if inputs == nil {
-		inputs = make(map[string]interface{})
-	}
-	baseCtx, err := ContextFromRequest(inv, inputs)
+func PlanDetachedWorkspace(inv coreops.Invocation, payload WorkspacePayload, opts DetachedWorkspaceOptions) (Context, WorkspacePayload, error) {
+	baseCtx, err := ContextFromPayload(inv, payload)
 	if err != nil {
-		return Context{}, nil, err
+		return Context{}, WorkspacePayload{}, err
 	}
-	return deriveDetachedWorkspace(inv, *baseCtx, opts, inputs)
+	return deriveDetachedWorkspace(inv, *baseCtx, opts, payload)
 }
 
 // WithDetachedWorkspace provisions a standalone git workspace, executes fn, and persists the resulting git context without mutating the caller's inputs.
-func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs map[string]interface{}, opts DetachedWorkspaceOptions, fn DetachedWorkspaceFunc) (*DetachedWorkspaceResult, error) {
+func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, payload WorkspacePayload, opts DetachedWorkspaceOptions, fn DetachedWorkspaceFunc) (*DetachedWorkspaceResult, error) {
 	if fn == nil {
 		return nil, fmt.Errorf("detached workspace requires execution function")
 	}
-	if inputs == nil {
-		inputs = make(map[string]interface{})
-	}
 
-	childCtx, childInputs, err := PlanDetachedWorkspace(inv, inputs, opts)
+	childCtx, childPayload, err := PlanDetachedWorkspace(inv, payload, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +53,9 @@ func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs 
 		return nil, err
 	}
 
-	result, err := fn(ctx, childInputs)
+	result, err := fn(ctx, childPayload)
 	if err != nil {
 		return nil, err
-	}
-	if result == nil {
-		result = make(map[string]interface{})
 	}
 
 	persistOutput, err := runInlinePersistStage(ctx, childCtx)
@@ -74,20 +64,18 @@ func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, inputs 
 	}
 	childCtx = persistOutput.Context
 
-	outputs := map[string]interface{}{"result": result}
-	InjectPersistResult(outputs, childCtx.PersistHash, childCtx)
-	contextMap, _ := outputs["context"].(map[string]interface{})
-
 	return &DetachedWorkspaceResult{
-		Result:     result,
-		ContextMap: cloneMap(contextMap),
-		GitContext: childCtx,
+		WorkspaceResult: WorkspaceResult{
+			Result:         result,
+			Context:        childCtx,
+			GitPersistHash: childCtx.PersistHash,
+		},
 	}, nil
 }
 
-func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts DetachedWorkspaceOptions, baseInputs map[string]interface{}) (Context, map[string]interface{}, error) {
+func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts DetachedWorkspaceOptions, basePayload WorkspacePayload) (Context, WorkspacePayload, error) {
 	if parentCtx.WorktreePath == "" {
-		return Context{}, nil, fmt.Errorf("git context missing worktree path for detached workspace")
+		return Context{}, WorkspacePayload{}, fmt.Errorf("git context missing worktree path for detached workspace")
 	}
 
 	runRoot := filepath.Dir(parentCtx.WorktreePath)
@@ -122,61 +110,12 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 		childCtx.BlobStoreURI = appendBlobStoreSegment(uri, segment)
 	}
 
-	childInputs := cloneMap(baseInputs)
-	if childInputs == nil {
-		childInputs = make(map[string]interface{})
-	}
-
-	contextMap, ok := childInputs["context"].(map[string]interface{})
-	if !ok {
-		contextMap = make(map[string]interface{})
-	} else {
-		contextMap = cloneMap(contextMap)
-	}
-
-	gitMap := childCtx.ToMap()
-	gitMap["worktree_path"] = childCtx.WorktreePath
-	contextMap["git"] = gitMap
-	contextMap["worktree"] = childCtx.WorktreePath
-	contextMap["blobstore"] = childCtx.BlobStoreURI
-	if childCtx.TicketID != "" {
-		contextMap["ticketid"] = childCtx.TicketID
-	}
-	if childCtx.CellName != "" {
-		contextMap["cellname"] = childCtx.CellName
-	}
-
-	recipeMeta := map[string]interface{}{
-		"id":        childCtx.RecipeID,
-		"node_path": childCtx.NodePath,
-	}
-	if childCtx.InvocationHash != "" {
-		recipeMeta["invocation_hash"] = childCtx.InvocationHash
-	}
-	if childCtx.InvocationID != "" {
-		recipeMeta["invocation_id"] = childCtx.InvocationID
-	}
-	if childCtx.InvocationAttempt != 0 {
-		recipeMeta["invocation_attempt"] = childCtx.InvocationAttempt
-	}
-	if childCtx.JobID != "" {
-		recipeMeta["job_id"] = string(childCtx.JobID)
-	}
-	contextMap["recipe"] = recipeMeta
-
-	childInputs["context"] = contextMap
-	childInputs["git_persist_hash"] = childCtx.PersistHash
-	if childCtx.TicketID != "" {
-		childInputs["ticket_id"] = childCtx.TicketID
-	}
-	if childCtx.CellName != "" {
-		childInputs["cell_name"] = childCtx.CellName
-	}
-	if len(childInputs) == 0 {
-		panic("detached workspace produced empty child inputs")
-	}
-
-	return childCtx, childInputs, nil
+	childPayload := basePayload
+	childPayload.Context = childCtx
+	childPayload.GitPersistHash = childCtx.PersistHash
+	childPayload.TicketID = childCtx.TicketID
+	childPayload.CellName = childCtx.CellName
+	return childCtx, childPayload, nil
 }
 
 func appendBlobStoreSegment(baseURI, segment string) string {

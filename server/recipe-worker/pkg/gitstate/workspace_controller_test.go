@@ -63,8 +63,10 @@ func TestControllerLifecycle(t *testing.T) {
 	require.NotEmpty(t, newHash)
 	require.NotEqual(t, baseHash, newHash)
 
-	outputs := map[string]interface{}{}
-	InjectPersistResult(outputs, newHash, updatedCtx)
+	outputs := LegacyOutputsFromResult(WorkspaceResult{
+		Context:        updatedCtx,
+		GitPersistHash: updatedCtx.PersistHash,
+	})
 
 	gitMap := outputs["context"].(map[string]interface{})["git"].(map[string]interface{})
 	require.Equal(t, newHash, gitMap["persist_hash"].(string))

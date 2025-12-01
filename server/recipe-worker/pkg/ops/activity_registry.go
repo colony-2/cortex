@@ -2,12 +2,13 @@ package ops
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
@@ -59,10 +60,6 @@ func NewActivityRegistry() (*ActivityRegistry, error) {
 	return a, nil
 }
 
-type ActivityRegisterable interface {
-	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
-}
-
 // SetDependencies makes a dependency container available for invocations produced by this registry.
 func (r *ActivityRegistry) SetDependencies(deps ops.ServiceDependencies2) {
 	r.deps = deps
@@ -82,24 +79,57 @@ func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 	return r.deps
 }
 
-func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
+func (r *ActivityRegistry) GetTaskWorkers() []swf.TaskWorker {
+	workers := make([]swf.TaskWorker, 0, len(r.activities))
 	for name, registration := range r.activities {
 		wrapped := withGitWorkspace(registration, r.gitController)
 		wrapped = withDependencies(r.deps, wrapped)
-		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
+		workers = append(workers, &taskWorker{name: name, fn: wrapped})
 	}
+	return workers
 }
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+type taskWorker struct {
+	name string
+	fn   func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)
+}
+
+func (t *taskWorker) Name() string {
+	return t.name
+}
+
+func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData, error) {
+	d, err := input.GetData()
+	if err != nil {
+		return nil, err
+	}
+	air := ActivityInvocationRequest{}
+	if err := json.Unmarshal(d, &air); err != nil {
+		return nil, err
+	}
+	out, err := t.fn(context.Background(), air)
+	if err != nil {
+		return nil, err
+	}
+	return swf.NewTaskData(out)
+}
+
+var _ swf.TaskWorker = &taskWorker{}
+
+func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx task.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
 		input := req.Input
 		if input == nil {
 			input = map[string]interface{}{}
 		}
-		gitCtx, err := gitstate.ContextFromRequest(req.Invocation, input)
+		payload, err := gitstate.LegacyPayloadFromInput(req.Invocation, input)
+		if err != nil {
+			return nil, err
+		}
+		gitCtx, err := gitstate.ContextFromPayload(req.Invocation, payload)
 		if err != nil {
 			return nil, err
 		}
@@ -109,33 +139,58 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 		if err := controller.Restore(context.Background(), gitCtx); err != nil {
 			return nil, err
 		}
-		outputs, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
+		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		var outputs map[string]interface{}
+		if outputData != nil {
+			if m, ok := outputData.(map[string]interface{}); ok {
+				outputs = m
+			} else {
+				raw, err := json.Marshal(outputData)
+				if err != nil {
+					return nil, fmt.Errorf("marshal activity output: %w", err)
+				}
+				if err := json.Unmarshal(raw, &outputs); err != nil {
+					return nil, fmt.Errorf("unmarshal activity output: %w", err)
+				}
+			}
+		}
+		if outputs != nil {
+			if patch, ok := outputs["git_context_patch"]; ok {
+				if patchMap, ok := patch.(map[string]interface{}); ok {
+					applyGitContextPatch(gitCtx, patchMap)
+				}
+				delete(outputs, "git_context_patch")
+			}
+		}
+
+		newHash, updatedCtx, err := controller.Persist(context.Background(), gitCtx)
 		if err != nil {
 			return nil, err
 		}
 		if outputs == nil {
 			outputs = make(map[string]interface{})
 		}
-		if patch, ok := outputs["git_context_patch"]; ok {
-			if patchMap, ok := patch.(map[string]interface{}); ok {
-				applyGitContextPatch(gitCtx, patchMap)
-			}
-			delete(outputs, "git_context_patch")
+		workspaceResult := gitstate.WorkspaceResult{
+			Context:        updatedCtx,
+			GitPersistHash: newHash,
 		}
-		newHash, updatedCtx, err := controller.Persist(context.Background(), gitCtx)
-		if err != nil {
-			return nil, err
+		legacy := gitstate.LegacyOutputsFromResult(workspaceResult)
+		delete(legacy, "result")
+		for k, v := range legacy {
+			outputs[k] = v
 		}
-		gitstate.InjectPersistResult(outputs, newHash, updatedCtx)
 		return outputs, nil
 	}
 }
 
-func withDependencies(deps ops.ServiceDependencies2, next func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(task.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
+func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error)) func(context.Context, ActivityInvocationRequest) (map[string]interface{}, error) {
 	if deps == nil {
 		return next
 	}
-	return func(ctx task.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
+	return func(ctx context.Context, req ActivityInvocationRequest) (map[string]interface{}, error) {
 		if req.Invocation.Deps == nil {
 			req.Invocation.Deps = deps
 		}
@@ -185,6 +240,32 @@ func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
 	r.generateSchemasForRegistration(&registration)
 	r.activities[metadata.Type] = registration
 	return nil
+}
+
+func (r *ActivityRegistry) Register(activity ops.RegisterableOp) error {
+	return Register(r, activity)
+}
+
+type GenericActivityFunc func(context.Context, any) (any, error)
+
+func (r *ActivityRegistry) RegisterFunc(name string, fn func(context.Context, map[string]interface{}) (map[string]interface{}, error)) error {
+	fnB := func(inv ops.Invocation, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+		return fn(ctx, input)
+	}
+	op := ops.NewActivityMappedOpV2[map[string]interface{}, map[string]interface{}](ops.OpMetadata{Type: name}, fnB)
+	return Register(r, op)
+}
+
+type ActivityRegisterable interface {
+	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
+}
+
+func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
+	for name, registration := range r.activities {
+		wrapped := withGitWorkspace(registration, r.gitController)
+		wrapped = withDependencies(r.deps, wrapped)
+		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
+	}
 }
 
 // Register accepts any generic RegisterableOp from the activity module

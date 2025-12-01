@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -23,10 +24,11 @@ const (
 	RecipeArtifactSuffix = ".recipe.yaml"
 )
 
-func NewRecipeWorker(activityRegistry *workerops.ActivityRegistry) swf.JobWorker {
-	return &recipeWorkerImpl{
+func NewRecipeWorker(activityRegistry *workerops.ActivityRegistry) (*swf.WorkSet, error) {
+	job := &recipeWorkerImpl{
 		activityRegistry: activityRegistry,
 	}
+	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers()...)
 }
 
 func (j recipeWorkerImpl) Name() string {
@@ -44,8 +46,8 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	if err != nil {
 		return nil, err
 	}
-
-	input, err := data.ToMap()
+	input := make(map[string]interface{})
+	err = json.Unmarshal(data, &input)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +76,11 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	if err != nil {
 		return nil, err
 	}
-
-	taskData := swf.SimpleTaskData{
-		Data: swf.NewMapData(out),
+	taskData, err := swf.NewTaskData(out)
+	if err != nil {
+		return nil, err
 	}
-	return swf.JobData(&taskData), nil
+	return swf.JobData(taskData), nil
 
 }
 
@@ -95,10 +97,12 @@ func StartRecipeJob(ctx context.Context, input map[string]interface{}, engine sw
 		artifacts[i] = artifact.FromBytes(name, "", recipeYaml)
 	}
 
-	inputData := &swf.SimpleTaskData{
-		Data:      swf.NewMapData(input),
-		Artifacts: artifacts,
+	inputData, err := swf.NewTaskData(input, artifacts...)
+
+	if err != nil {
+		return "", err
 	}
+
 	job := swf.StartJob{
 		JobType:   RecipeJobType,
 		Data:      inputData,

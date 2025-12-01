@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -192,8 +193,7 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 
 	boxID := extractFirstString(inputs, "box_id", "boxId", "BoxID")
 	activityID := extractFirstString(inputs, "activity_id", "activityId", "ActivityID")
-	tracker.nextInvocation(boxID, activityID)
-	// TODO: put the invocation data in the context.
+	inv := tracker.nextInvocation(boxID, activityID)
 
 	// Execute the operation
 
@@ -209,13 +209,21 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 		timeout := swf.Duration(metadata.Timeout)
 		runPolicy.TotalTimeout = &timeout
 	}
+	
+	invocation := workerops.ActivityInvocationRequest{
+		Invocation: inv,
+		Input:      inputs,
+	}
+
+	taskData, err := swf.NewTaskData(invocation)
+	if err != nil {
+		return nil, err
+	}
 
 	out, err := ctx.DoTask(
 		runPolicy,
 		op,
-		&swf.SimpleTaskData{
-			Data: swf.NewMapData(inputs),
-		},
+		taskData,
 	)
 
 	if err != nil {
@@ -226,8 +234,8 @@ func executeOp(ctx workflow.Context, activityRegistry *workerops.ActivityRegistr
 	if err != nil {
 		return nil, err
 	}
-
-	outputs, err := outputData.ToMap()
+	outputs := make(map[string]interface{})
+	err = json.Unmarshal(outputData, &outputs)
 	if err != nil {
 		return nil, err
 	}

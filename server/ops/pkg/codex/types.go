@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+	"github.com/colony-2/shai/pkg/shai"
 )
 
 // Status describes the overall Codex execution outcome.
@@ -51,7 +51,7 @@ type Runner interface {
 }
 
 // RunnerFactory constructs runners from the generated EphemeralConfig.
-type RunnerFactory func(config *shai.EphemeralConfig) (Runner, error)
+type RunnerFactory func(config *shai.SandboxConfig) (Runner, error)
 
 // BlobStore provides persistence for stdout artifacts.
 type BlobStore interface {

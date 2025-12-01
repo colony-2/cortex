@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+	"github.com/colony-2/shai/pkg/shai"
 	"github.com/google/uuid"
 )
 
@@ -44,16 +44,16 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 	command := buildCommand(opts, containerSchemaPath)
 	env := buildEnv(opts)
 
-	cfg := &shai.EphemeralConfig{
-		WorkingDir:          opts.WorktreeRoot,
-		ReadWritePaths:      []string{opts.CellRelativePath},
-		HideProgressMarkers: true,
-		PostSetupExec: &shai.ExecSpec{
+	cfg := &shai.SandboxConfig{
+		WorkingDir:     opts.WorktreeRoot,
+		ReadWritePaths: []string{opts.CellRelativePath},
+		PostSetupExec: &shai.SandboxExec{
 			Command: command,
 			Env:     env,
 			UseTTY:  false,
 		},
-		Output: collector,
+		// TODO: map stdio
+		//Output: collector,
 	}
 
 	runner, err := opts.RunnerFactory(cfg)

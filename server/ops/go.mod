@@ -3,7 +3,7 @@ module github.com/divisive-ai/vibethis/server/ops
 go 1.24.1
 
 require (
-	github.com/divisive-ai/vibethis/server/container v0.0.0-00010101000000-000000000000
+	github.com/colony-2/shai v0.0.0
 	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
@@ -110,3 +110,9 @@ replace github.com/divisive-ai/vibethis/server/core => ../core
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
 replace github.com/divisive-ai/vibethis/server/git => ../git
+
+replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
+
+replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go
+
+replace github.com/colony-2/shai v0.0.0 => ../../../shai
