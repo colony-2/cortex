@@ -115,7 +115,7 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 	childCtx.ActivityID = inv.ActivityID
 	childCtx.BoxID = inv.BoxID
 	if inv.NodePath != "" {
-		childCtx.RecipeNode = inv.NodePath
+		childCtx.NodePath = inv.NodePath
 	}
 
 	if uri := strings.TrimSpace(childCtx.BlobStoreURI); uri != "" {
@@ -148,7 +148,7 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 
 	recipeMeta := map[string]interface{}{
 		"id":        childCtx.RecipeID,
-		"node_path": childCtx.RecipeNode,
+		"node_path": childCtx.NodePath,
 	}
 	if childCtx.InvocationHash != "" {
 		recipeMeta["invocation_hash"] = childCtx.InvocationHash
@@ -159,11 +159,8 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 	if childCtx.InvocationAttempt != 0 {
 		recipeMeta["invocation_attempt"] = childCtx.InvocationAttempt
 	}
-	if childCtx.WorkflowID != "" {
-		recipeMeta["workflow_id"] = childCtx.WorkflowID
-	}
-	if childCtx.WorkflowRunID != "" {
-		recipeMeta["workflow_run_id"] = childCtx.WorkflowRunID
+	if childCtx.JobID != "" {
+		recipeMeta["job_id"] = string(childCtx.JobID)
 	}
 	contextMap["recipe"] = recipeMeta
 

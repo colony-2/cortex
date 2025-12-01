@@ -24,13 +24,7 @@ func InjectPersistResult(outputs map[string]interface{}, newHash string, updated
 
 	recipeMap := map[string]interface{}{
 		"id":        updated.RecipeID,
-		"node_path": updated.RecipeNode,
-	}
-	if updated.WorkflowID != "" {
-		recipeMap["workflow_id"] = updated.WorkflowID
-	}
-	if updated.WorkflowRunID != "" {
-		recipeMap["workflow_run_id"] = updated.WorkflowRunID
+		"node_path": updated.NodePath,
 	}
 	if updated.InvocationHash != "" {
 		recipeMap["invocation_hash"] = updated.InvocationHash
@@ -40,6 +34,9 @@ func InjectPersistResult(outputs map[string]interface{}, newHash string, updated
 	}
 	if updated.InvocationAttempt != 0 {
 		recipeMap["invocation_attempt"] = updated.InvocationAttempt
+	}
+	if updated.JobID != "" {
+		recipeMap["job_id"] = string(updated.JobID)
 	}
 	contextMap["recipe"] = recipeMap
 

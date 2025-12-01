@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,20 +28,27 @@ func TestControllerLifecycle(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	ctx := Context{
-		BaseRepo:       baseRepo,
-		BaseHash:       baseHash,
-		PersistHash:    baseHash,
-		PreviousHash:   baseHash,
-		WorktreePath:   worktree,
-		BlobStoreURI:   "file://" + blobStore,
-		TicketID:       "ticket-123",
-		CellName:       "cells/alpha",
-		RecipeID:       "recipe.test",
-		RecipeNode:     "node",
-		WorkflowID:     "wf",
-		WorkflowRunID:  "run",
-		InvocationID:   "inv",
-		InvocationHash: "invhash",
+		InvocationContext: contextual.InvocationContext{
+			RecipeID:       "recipe.test",
+			NodePath:       "node",
+			InvocationID:   "inv",
+			InvocationHash: "invhash",
+		},
+		ActorContext: contextual.ActorContext{
+			TicketID: "ticket-123",
+			CellName: "cells/alpha",
+		},
+		EnvironmentContext: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: "file://" + blobStore,
+		},
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:     baseRepo,
+			BaseHash:     baseHash,
+			PersistHash:  baseHash,
+			PreviousHash: baseHash,
+		},
+		Workflow: contextual.WorkflowEnvelope{JobID: swf.JobId("job-1")},
 	}
 
 	controller := NewController(nil)
@@ -91,13 +100,19 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	ctx := Context{
-		BaseRepo:     baseRepo,
-		BaseHash:     baseHash,
-		PersistHash:  baseHash,
-		PreviousHash: baseHash,
-		WorktreePath: worktree,
-		BlobStoreURI: "file://" + blobStore,
-		CellName:     "cells/alpha",
+		EnvironmentContext: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: "file://" + blobStore,
+		},
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:     baseRepo,
+			BaseHash:     baseHash,
+			PersistHash:  baseHash,
+			PreviousHash: baseHash,
+		},
+		ActorContext: contextual.ActorContext{
+			CellName: "cells/alpha",
+		},
 	}
 
 	controller := NewController(nil)
@@ -137,13 +152,19 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	ctx := Context{
-		BaseRepo:     baseRepo,
-		BaseHash:     baseHash,
-		PersistHash:  baseHash,
-		PreviousHash: baseHash,
-		WorktreePath: worktree,
-		BlobStoreURI: "file://" + blobStore,
-		CellName:     "cells/alpha",
+		EnvironmentContext: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: "file://" + blobStore,
+		},
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:     baseRepo,
+			BaseHash:     baseHash,
+			PersistHash:  baseHash,
+			PreviousHash: baseHash,
+		},
+		ActorContext: contextual.ActorContext{
+			CellName: "cells/alpha",
+		},
 	}
 
 	controller := NewController(nil)
@@ -177,29 +198,36 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 
 func TestBuildCommitMessage(t *testing.T) {
 	ctx := Context{
-		BaseRepo:          "/repo",
-		BaseHash:          strings.Repeat("a", 40),
-		PreviousHash:      strings.Repeat("b", 40),
-		PersistHash:       strings.Repeat("c", 40),
-		BlobStoreURI:      "file:///blob",
-		ThinPackPath:      "git/thin-packs/cb-pack.pack",
-		TicketID:          "TICK-1",
-		CellName:          "cells/alpha",
-		RecipeID:          "recipe",
-		RecipeNode:        "node",
-		InvocationHash:    "invhash",
-		InvocationID:      "invoke",
-		InvocationAttempt: 2,
-		BoxID:             "box",
-		ActivityID:        "activity",
-		WorkflowID:        "wf",
-		WorkflowRunID:     "run",
+		InvocationContext: contextual.InvocationContext{
+			RecipeID:          "recipe",
+			NodePath:          "node",
+			InvocationHash:    "invhash",
+			InvocationID:      "invoke",
+			InvocationAttempt: 2,
+			BoxID:             "box",
+			ActivityID:        "activity",
+			JobID:             swf.JobId("job-123"),
+		},
+		ActorContext: contextual.ActorContext{
+			TicketID: "TICK-1",
+			CellName: "cells/alpha",
+		},
+		EnvironmentContext: contextual.EnvironmentContext{
+			BlobStoreURI: "file:///blob",
+			ThinPackPath: "git/thin-packs/cb-pack.pack",
+		},
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:     "/repo",
+			BaseHash:     strings.Repeat("a", 40),
+			PreviousHash: strings.Repeat("b", 40),
+			PersistHash:  strings.Repeat("c", 40),
+		},
 	}
 	message := buildCommitMessage(ctx, ctx.PersistHash, ctx.ThinPackPath)
 	require.Contains(t, message, "Recipe recipe node node")
 	require.Contains(t, message, "persist_hash: "+ctx.PersistHash)
 	require.Contains(t, message, "thin_pack_path: "+ctx.ThinPackPath)
-	require.Contains(t, message, "workflow:\n  id: wf\n  run_id: run")
+	require.Contains(t, message, "job:\n  id: job-123")
 }
 
 func setupGitRepo(t *testing.T) (string, string, func()) {

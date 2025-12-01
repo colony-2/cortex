@@ -27,9 +27,8 @@ invocation:
   attempt: %d
   box_id: %s
   activity_id: %s
-workflow:
+job:
   id: %s
-  run_id: %s
 ticket:
   id: %s
   cell: %s
@@ -39,7 +38,7 @@ recipe:
 ---
 `,
 		ctx.RecipeID,
-		ctx.RecipeNode,
+		ctx.NodePath,
 		ctx.BaseHash,
 		ctx.PreviousHash,
 		persistHash,
@@ -50,11 +49,10 @@ recipe:
 		ctx.InvocationAttempt,
 		ctx.BoxID,
 		ctx.ActivityID,
-		ctx.WorkflowID,
-		ctx.WorkflowRunID,
+		ctx.JobID,
 		ctx.TicketID,
 		ctx.CellName,
 		ctx.RecipeID,
-		ctx.RecipeNode,
+		ctx.NodePath,
 	)
 }

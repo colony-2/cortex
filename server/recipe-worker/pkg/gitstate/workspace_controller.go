@@ -9,9 +9,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/git/pkg/common"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 )
 
 // Workspace defines the contract the controller relies upon for git state.
@@ -26,8 +28,7 @@ type Workspace interface {
 	GetCellName() string
 	GetRecipeID() string
 	GetRecipeNode() string
-	GetWorkflowID() string
-	GetWorkflowRunID() string
+	GetJobID() swf.JobId
 	GetInvocationID() string
 	GetInvocationHash() string
 	GetInvocationAttempt() int
@@ -352,26 +353,34 @@ func hashesEqual(a, b string) bool {
 
 func contextFromWorkspace(ws Workspace) Context {
 	return Context{
-		BaseRepo:          ws.GetBaseRepo(),
-		BaseHash:          ws.GetBaseHash(),
-		PersistHash:       ws.GetPersistHash(),
-		PreviousHash:      ws.GetPreviousHash(),
-		WorktreePath:      ws.GetWorktreePath(),
-		BlobStoreURI:      ws.GetBlobStoreURI(),
-		ThinPackPath:      ws.GetThinPackPath(),
-		TicketID:          ws.GetTicketID(),
-		CellName:          ws.GetCellName(),
-		RecipeID:          ws.GetRecipeID(),
-		RecipeNode:        ws.GetRecipeNode(),
-		InvocationID:      ws.GetInvocationID(),
-		InvocationHash:    ws.GetInvocationHash(),
-		InvocationAttempt: ws.GetInvocationAttempt(),
-		BoxID:             ws.GetBoxID(),
-		ActivityID:        ws.GetActivityID(),
-		WorkflowID:        ws.GetWorkflowID(),
-		WorkflowRunID:     ws.GetWorkflowRunID(),
-		WorkspacePrepared: ws.IsWorkspacePrepared(),
-		GitAuthor:         ws.GetGitAuthor(),
+		InvocationContext: contextual.InvocationContext{
+			RecipeID:          ws.GetRecipeID(),
+			NodePath:          ws.GetRecipeNode(),
+			InvocationID:      ws.GetInvocationID(),
+			InvocationHash:    ws.GetInvocationHash(),
+			InvocationAttempt: ws.GetInvocationAttempt(),
+			BoxID:             ws.GetBoxID(),
+			ActivityID:        ws.GetActivityID(),
+			JobID:             ws.GetJobID(),
+		},
+		ActorContext: contextual.ActorContext{
+			TicketID: ws.GetTicketID(),
+			CellName: ws.GetCellName(),
+		},
+		EnvironmentContext: contextual.EnvironmentContext{
+			WorktreePath: ws.GetWorktreePath(),
+			BlobStoreURI: ws.GetBlobStoreURI(),
+			ThinPackPath: ws.GetThinPackPath(),
+		},
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:          ws.GetBaseRepo(),
+			BaseHash:          ws.GetBaseHash(),
+			PersistHash:       ws.GetPersistHash(),
+			PreviousHash:      ws.GetPreviousHash(),
+			WorkspacePrepared: ws.IsWorkspacePrepared(),
+			GitAuthor:         ws.GetGitAuthor(),
+		},
+		Workflow: contextual.WorkflowEnvelope{JobID: ws.GetJobID()},
 	}
 }
 

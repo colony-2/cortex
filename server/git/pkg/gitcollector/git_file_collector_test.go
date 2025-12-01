@@ -65,14 +65,6 @@ func setupTestGitRepo(t *testing.T, files map[string]string) string {
 
 func TestGitFileCollectorActivity(t *testing.T) {
 
-	t.Run("Metadata", func(t *testing.T) {
-		wrap := GetOp()
-		metadata := wrap.GetMetadata()
-		assert.Equal(t, "git_file_collector", metadata.Type)
-		assert.Equal(t, "1.0.0", metadata.Version)
-		assert.NotEmpty(t, metadata.Description)
-	})
-
 	activity := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
 	t.Run("CollectTrackedFiles", func(t *testing.T) {
 		tmpDir := setupTestGitRepo(t, map[string]string{

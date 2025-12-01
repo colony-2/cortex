@@ -1,54 +1,45 @@
 package gitstate
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
+)
 
 // Context captures git execution metadata that persists across activity invocations.
+// It composes shared contextual structs to avoid duplicated field definitions.
 type Context struct {
-	BaseRepo          string
-	BaseHash          string
-	PersistHash       string
-	PreviousHash      string
-	WorktreePath      string
-	BlobStoreURI      string
-	ThinPackPath      string
-	TicketID          string
-	CellName          string
-	RecipeID          string
-	RecipeNode        string
-	InvocationID      string
-	InvocationHash    string
-	InvocationAttempt int
-	BoxID             string
-	ActivityID        string
-	WorkflowID        string
-	WorkflowRunID     string
-	WorkspacePrepared bool
-	GitAuthor         string
+	contextual.InvocationContext
+	contextual.ActorContext
+	contextual.EnvironmentContext
+	contextual.GitSnapshotContext
+	Workflow contextual.WorkflowEnvelope
 }
 
-func (c *Context) GetBaseRepo() string         { return c.BaseRepo }
-func (c *Context) GetBaseHash() string         { return c.BaseHash }
-func (c *Context) GetPersistHash() string      { return c.PersistHash }
-func (c *Context) GetPreviousHash() string     { return c.PreviousHash }
-func (c *Context) GetWorktreePath() string     { return c.WorktreePath }
-func (c *Context) GetBlobStoreURI() string     { return c.BlobStoreURI }
-func (c *Context) GetThinPackPath() string     { return c.ThinPackPath }
-func (c *Context) GetTicketID() string         { return c.TicketID }
-func (c *Context) GetCellName() string         { return c.CellName }
-func (c *Context) GetRecipeID() string         { return c.RecipeID }
-func (c *Context) GetRecipeNode() string       { return c.RecipeNode }
-func (c *Context) GetInvocationID() string     { return c.InvocationID }
-func (c *Context) GetInvocationHash() string   { return c.InvocationHash }
-func (c *Context) GetInvocationAttempt() int   { return c.InvocationAttempt }
-func (c *Context) GetBoxID() string            { return c.BoxID }
-func (c *Context) GetActivityID() string       { return c.ActivityID }
-func (c *Context) GetWorkflowID() string       { return c.WorkflowID }
-func (c *Context) GetWorkflowRunID() string    { return c.WorkflowRunID }
-func (c *Context) GetGitAuthor() string        { return c.GitAuthor }
-func (c *Context) IsWorkspacePrepared() bool   { return c.WorkspacePrepared }
-func (c *Context) SetWorkspacePrepared(v bool) { c.WorkspacePrepared = v }
+func (c *Context) GetBaseRepo() string         { return c.GitSnapshotContext.BaseRepo }
+func (c *Context) GetBaseHash() string         { return c.GitSnapshotContext.BaseHash }
+func (c *Context) GetPersistHash() string      { return c.GitSnapshotContext.PersistHash }
+func (c *Context) GetPreviousHash() string     { return c.GitSnapshotContext.PreviousHash }
+func (c *Context) GetWorktreePath() string     { return c.EnvironmentContext.WorktreePath }
+func (c *Context) GetBlobStoreURI() string     { return c.EnvironmentContext.BlobStoreURI }
+func (c *Context) GetThinPackPath() string     { return c.EnvironmentContext.ThinPackPath }
+func (c *Context) GetTicketID() string         { return c.ActorContext.TicketID }
+func (c *Context) GetCellName() string         { return c.ActorContext.CellName }
+func (c *Context) GetRecipeID() string         { return c.InvocationContext.RecipeID }
+func (c *Context) GetRecipeNode() string       { return c.InvocationContext.NodePath }
+func (c *Context) GetInvocationID() string     { return c.InvocationContext.InvocationID }
+func (c *Context) GetInvocationHash() string   { return c.InvocationContext.InvocationHash }
+func (c *Context) GetInvocationAttempt() int   { return c.InvocationContext.InvocationAttempt }
+func (c *Context) GetBoxID() string            { return c.InvocationContext.BoxID }
+func (c *Context) GetActivityID() string       { return c.InvocationContext.ActivityID }
+func (c *Context) GetJobID() swf.JobId         { return c.InvocationContext.JobID }
+func (c *Context) GetGitAuthor() string        { return c.GitSnapshotContext.GitAuthor }
+func (c *Context) IsWorkspacePrepared() bool   { return c.GitSnapshotContext.WorkspacePrepared }
+func (c *Context) SetWorkspacePrepared(v bool) { c.GitSnapshotContext.WorkspacePrepared = v }
 
 // ToMap converts the Context into a map suitable for embedding inside outputs["context"]["git"].
+// TODO: remove once callers are fully typed.
 func (c Context) ToMap() map[string]interface{} {
 	result := map[string]interface{}{
 		"base_repo":          c.BaseRepo,
@@ -60,14 +51,13 @@ func (c Context) ToMap() map[string]interface{} {
 		"ticket_id":          c.TicketID,
 		"cell_name":          c.CellName,
 		"recipe_id":          c.RecipeID,
-		"recipe_node":        c.RecipeNode,
+		"recipe_node":        c.NodePath,
 		"invocation_id":      c.InvocationID,
 		"invocation_hash":    c.InvocationHash,
 		"invocation_attempt": c.InvocationAttempt,
 		"box_id":             c.BoxID,
 		"activity_id":        c.ActivityID,
-		"workflow_id":        c.WorkflowID,
-		"workflow_run_id":    c.WorkflowRunID,
+		"job_id":             c.JobID,
 		"workspace_prepared": c.WorkspacePrepared,
 	}
 	if c.WorktreePath != "" {
@@ -80,6 +70,7 @@ func (c Context) ToMap() map[string]interface{} {
 }
 
 // UpdateFromMap merges values from map input into the context. Missing required fields trigger an error.
+// TODO: delete when all callers supply typed payloads.
 func (c *Context) UpdateFromMap(input map[string]interface{}) error {
 	if input == nil {
 		return fmt.Errorf("git context map is missing")
@@ -128,7 +119,7 @@ func (c *Context) UpdateFromMap(input map[string]interface{}) error {
 	}
 
 	if str, ok := stringFromMap(input, "recipe_node"); ok {
-		c.RecipeNode = str
+		c.NodePath = str
 	}
 
 	if str, ok := stringFromMap(input, "invocation_id"); ok {
@@ -147,12 +138,8 @@ func (c *Context) UpdateFromMap(input map[string]interface{}) error {
 		c.ActivityID = str
 	}
 
-	if str, ok := stringFromMap(input, "workflow_id"); ok {
-		c.WorkflowID = str
-	}
-
-	if str, ok := stringFromMap(input, "workflow_run_id"); ok {
-		c.WorkflowRunID = str
+	if val, ok := stringFromMap(input, "job_id"); ok {
+		c.JobID = swf.JobId(val)
 	}
 
 	if val, ok := boolFromMap(input, "workspace_prepared"); ok {
@@ -172,38 +159,4 @@ func (c *Context) UpdateFromMap(input map[string]interface{}) error {
 	}
 
 	return nil
-}
-
-func stringFromMap(m map[string]interface{}, key string) (string, bool) {
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok && str != "" {
-			return str, true
-		}
-	}
-	return "", false
-}
-
-func boolFromMap(m map[string]interface{}, key string) (bool, bool) {
-	if val, ok := m[key]; ok {
-		if b, ok := val.(bool); ok {
-			return b, true
-		}
-	}
-	return false, false
-}
-
-func intFromMap(m map[string]interface{}, key string) (int, bool) {
-	if val, ok := m[key]; ok {
-		switch v := val.(type) {
-		case int:
-			return v, true
-		case int32:
-			return int(v), true
-		case int64:
-			return int(v), true
-		case float64:
-			return int(v), true
-		}
-	}
-	return 0, false
 }

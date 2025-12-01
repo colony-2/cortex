@@ -3,10 +3,12 @@ package gitstate
 import (
 	"fmt"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 // ContextFromRequest reconstructs a git execution context from the invocation and input payload.
+// TODO: accept fully typed payloads once upstream callers are migrated off maps.
 func ContextFromRequest(inv coreops.Invocation, input map[string]interface{}) (*Context, error) {
 	ctxMap, err := mapFromAny(input, "context")
 	if err != nil {
@@ -57,19 +59,9 @@ func ContextFromRequest(inv coreops.Invocation, input map[string]interface{}) (*
 				gitCtx.RecipeID = val
 			}
 		}
-		if gitCtx.RecipeNode == "" {
+		if gitCtx.NodePath == "" {
 			if val, ok := stringFromMap(recipeMeta, "node_path"); ok {
-				gitCtx.RecipeNode = val
-			}
-		}
-		if gitCtx.WorkflowID == "" {
-			if val, ok := stringFromMap(recipeMeta, "workflow_id"); ok {
-				gitCtx.WorkflowID = val
-			}
-		}
-		if gitCtx.WorkflowRunID == "" {
-			if val, ok := stringFromMap(recipeMeta, "workflow_run_id"); ok {
-				gitCtx.WorkflowRunID = val
+				gitCtx.NodePath = val
 			}
 		}
 		if gitCtx.InvocationHash == "" {
@@ -87,6 +79,11 @@ func ContextFromRequest(inv coreops.Invocation, input map[string]interface{}) (*
 				gitCtx.InvocationAttempt = val
 			}
 		}
+		if gitCtx.JobID == "" {
+			if val, ok := stringFromMap(recipeMeta, "job_id"); ok {
+				gitCtx.JobID = swf.JobId(val)
+			}
+		}
 	}
 
 	if val, ok := stringFromMap(input, "git_author"); ok {
@@ -96,7 +93,7 @@ func ContextFromRequest(inv coreops.Invocation, input map[string]interface{}) (*
 	gitCtx.BoxID = firstNonEmpty(gitCtx.BoxID, inv.BoxID)
 	gitCtx.ActivityID = firstNonEmpty(gitCtx.ActivityID, inv.ActivityID)
 	gitCtx.RecipeID = firstNonEmpty(gitCtx.RecipeID, inv.RecipeID)
-	gitCtx.RecipeNode = firstNonEmpty(gitCtx.RecipeNode, inv.NodePath)
+	gitCtx.NodePath = firstNonEmpty(gitCtx.NodePath, inv.NodePath)
 	gitCtx.InvocationID = firstNonEmpty(gitCtx.InvocationID, inv.ID)
 	if gitCtx.InvocationHash == "" {
 		gitCtx.InvocationHash = inv.Hash()

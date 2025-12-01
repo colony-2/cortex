@@ -75,20 +75,6 @@ type gitFileCollectorActivity struct {
 	gitRepo *commands.Repository
 }
 
-// NewGitFileCollectorActivity creates a new activity instance
-func GetOp() ops.RegisterableOp {
-
-	act := &gitFileCollectorActivity{gitRepo: commands.New("", "")}
-
-	return ops.NewActivityMappedOpV2[GitFileCollectorInput, GitFileCollectorOutput](
-		ops.OpMetadata{
-			Type:        "git_file_collector",
-			Description: "Collects files from a git repository with filtering and metadata",
-			Version:     "1.0.0",
-		},
-		act.Execute)
-}
-
 // Execute runs the git file collection
 func (a *gitFileCollectorActivity) Execute(
 	_ ops.Invocation,
