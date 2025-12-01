@@ -1,13 +1,13 @@
 package recipe
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	rops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/invopop/jsonschema"
 	yamlv3 "gopkg.in/yaml.v3"
 )
@@ -52,7 +52,7 @@ func TestProvider_SchemaReflection_And_YAMLValidation(t *testing.T) {
 		Description: "provider-based test op",
 		Version:     "1.0.0",
 	}
-	handler := func(_ rops.Invocation, _ context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+	handler := func(_ rops.Invocation, _ task.Context, in map[string]interface{}) (map[string]interface{}, error) {
 		// Echo input; runtime execution not under test here.
 		return in, nil
 	}

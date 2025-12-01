@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 )
 
@@ -16,7 +15,7 @@ import (
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
 	// ExecuteV2 runs the op as a task with an explicit invocation descriptor.
-	ExecuteV2(inv Invocation, ctx task.Context, input swf.Data) (output swf.Data, err error)
+	ExecuteV2(inv Invocation, ctx task.Context, input any) (output any, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -94,21 +93,31 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx task.Context, inputData swf.Data) (swf.Data, error) {
+func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx task.Context, inputData any) (any, error) {
 	var input In
-	err := json.Unmarshal(inputData, &input)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding input: %w", err)
+
+	switch mapped := inputData.(type) {
+	case In:
+		input = mapped
+	case []byte:
+		err := json.Unmarshal(mapped, &input)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding input: %w", err)
+		}
+	case json.RawMessage:
+		err := json.Unmarshal(mapped, &input)
+		if err != nil {
+			return nil, fmt.Errorf("error decoding input: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported input type: %T", inputData)
 	}
+
 	objResult, err := c.activityHandler(inv, ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing op: %w", err)
 	}
-	out, err := json.Marshal(objResult)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding output: %w", err)
-	}
-	return out, nil
+	return objResult, nil
 }
 
 func (c *opSpecImpl[In, Out]) GetInputType() reflect.Type {

@@ -1,8 +1,12 @@
 package task
 
-import "github.com/colony-2/swf-go/pkg/swf"
+import (
+	"encoding/json"
 
-type taskFunc func(Context, map[string]interface{}) (map[string]interface{}, error)
+	"github.com/colony-2/swf-go/pkg/swf"
+)
+
+type taskFunc func(Context, any) (any, error)
 
 func AsTask(name string, fn taskFunc) swf.TaskWorker {
 	return &worker{
@@ -25,17 +29,17 @@ func (w *worker) Run(context swf.TaskContext, input swf.TaskData) (swf.TaskData,
 	if err != nil {
 		return nil, err
 	}
-	m, err := d.ToMap()
+	out, err := w.fn(Context{TaskContext: context}, d)
 	if err != nil {
 		return nil, err
 	}
-	out, err := w.fn(Context{TaskContext: context}, m)
+	outd, err := json.Marshal(out)
 	if err != nil {
 		return nil, err
 	}
 
 	return &swf.SimpleTaskData{
-		Data: swf.NewMapData(out),
+		Data: outd,
 	}, nil
 
 }
