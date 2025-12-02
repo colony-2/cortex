@@ -1,6 +1,7 @@
 package gitstate
 
 import (
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 )
 
@@ -13,6 +14,10 @@ type Context struct {
 	contextual.WorkflowEnvelope
 }
 
+func (c *Context) GetJobID() swf.JobId {
+	return swf.JobId(c.WorkflowEnvelope.JobID)
+}
+
 func (c *Context) GetBaseRepo() string     { return c.GitSnapshotContext.BaseRepo }
 func (c *Context) GetBaseHash() string     { return c.GitSnapshotContext.BaseHash }
 func (c *Context) GetPersistHash() string  { return c.GitSnapshotContext.PersistHash }
@@ -23,3 +28,5 @@ func (c *Context) GetThinPackPath() string { return c.EnvironmentContext.ThinPac
 func (c *Context) GetTicketID() string     { return c.ActorContext.TicketID }
 func (c *Context) GetCellName() string     { return c.WorkflowEnvelope.CellName }
 func (c *Context) GetGitAuthor() string    { return c.GitSnapshotContext.GitAuthor }
+
+var _ Workspace = (*Context)(nil)

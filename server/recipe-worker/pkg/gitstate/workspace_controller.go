@@ -26,17 +26,9 @@ type Workspace interface {
 	GetBlobStoreURI() string
 	GetTicketID() string
 	GetCellName() string
-	GetRecipeID() string
-	GetRecipeNode() string
 	GetJobID() swf.JobId
-	GetInvocationID() string
-	GetInvocationHash() string
-	GetInvocationAttempt() int
-	GetBoxID() string
-	GetActivityID() string
 	GetGitAuthor() string
 	GetThinPackPath() string
-	IsWorkspacePrepared() bool
 }
 
 // Controller orchestrates cloning, restoring, and persisting git state per activity invocation.
@@ -214,7 +206,6 @@ func (c *Controller) Persist(ctx context.Context, ws Workspace) (string, Context
 	updated.PreviousHash = ws.GetPersistHash()
 	updated.PersistHash = output.CommitHash
 	updated.ThinPackPath = filepath.ToSlash(relativePackPath)
-	updated.WorkspacePrepared = true
 
 	if scopePath != "" {
 		// Ensure the worktree remains clean after persistence.
@@ -373,12 +364,11 @@ func contextFromWorkspace(ws Workspace) Context {
 			ThinPackPath: ws.GetThinPackPath(),
 		},
 		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:          ws.GetBaseRepo(),
-			BaseHash:          ws.GetBaseHash(),
-			PersistHash:       ws.GetPersistHash(),
-			PreviousHash:      ws.GetPreviousHash(),
-			WorkspacePrepared: ws.IsWorkspacePrepared(),
-			GitAuthor:         ws.GetGitAuthor(),
+			BaseRepo:     ws.GetBaseRepo(),
+			BaseHash:     ws.GetBaseHash(),
+			PersistHash:  ws.GetPersistHash(),
+			PreviousHash: ws.GetPreviousHash(),
+			GitAuthor:    ws.GetGitAuthor(),
 		},
 		Workflow: contextual.WorkflowEnvelope{JobID: ws.GetJobID()},
 	}

@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
 )
 
@@ -15,7 +16,7 @@ import (
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
 	// ExecuteV2 runs the op as a task with an explicit invocation descriptor.
-	ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (output any, err error)
+	ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -93,7 +94,7 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (OpOutputType, error) {
+func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
 	var input In
 	err := decodeWithJsonTags(resolvedInput, &input)
 	if err != nil {
@@ -104,13 +105,17 @@ func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, res
 	if err != nil {
 		return nil, fmt.Errorf("error executing op: %w", err)
 	}
-	return objResult, nil
+
+	s := structs.New(objResult)
+	s.TagName = "json" // Use JSON tags instead of default "structs" tags
+	return s.Map(), nil
 }
 
 func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 	config := &mapstructure.DecoderConfig{
-		TagName: "json", // Use JSON tags instead of mapstructure tags
-		Result:  input,
+		TagName:     "json", // Use JSON tags instead of mapstructure tags
+		Result:      input,
+		ErrorUnused: true,
 	}
 	decoder, err := mapstructure.NewDecoder(config)
 	if err != nil {

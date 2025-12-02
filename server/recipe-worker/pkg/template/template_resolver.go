@@ -29,8 +29,8 @@ func (s ScopeType) HasConfigurableOutputs() bool {
 	return s.HasConfigurableInputs()
 }
 
-// TemplateData is the root context for both Go templates and CEL
-type TemplateData struct {
+// templateData is the root context for both Go templates and CEL
+type templateData struct {
 	ContainerInputs map[string]interface{}    `json:"containerinputs"` // ContainerInputs map if this is a sequence or state machine.
 	Sequence        map[string]StepOutput     `json:"sequence"`        // Sibling nodes in sequence
 	States          map[string]StepOutput     `json:"states"`          // Completed states in state machine
@@ -80,7 +80,7 @@ type ResolutionContext struct {
 	Parent *ResolutionContext
 
 	// Template data for current scope
-	TemplateData TemplateData
+	TemplateData templateData
 
 	// CEL environment for when expressions
 	CELEnv *cel.Env
@@ -103,7 +103,7 @@ func newResolutionContext(tracker *invocationTracker, scopeType ScopeType, scope
 		ScopeType: scopeType,
 		tracker:   tracker,
 		scopeId:   scopeId,
-		TemplateData: TemplateData{
+		TemplateData: templateData{
 
 			ContainerInputs: containerInputs,
 			Sequence:        make(map[string]StepOutput),
@@ -252,7 +252,7 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
 		return false, fmt.Errorf("failed to create CEL program: %w", err)
 	}
 
-	// Pass TemplateData fields as CEL variables without coercing structs to maps
+	// Pass templateData fields as CEL variables without coercing structs to maps
 	result, _, err := program.Eval(map[string]interface{}{
 		"inputs":   rc.TemplateData.ContainerInputs,
 		"sequence": rc.TemplateData.Sequence,
@@ -290,7 +290,7 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 		return nil, fmt.Errorf("failed to create CEL program: %w", err)
 	}
 
-	// Pass TemplateData fields as CEL variables without coercing structs to maps
+	// Pass templateData fields as CEL variables without coercing structs to maps
 	result, _, err := program.Eval(map[string]interface{}{
 		"inputs":   rc.TemplateData.ContainerInputs,
 		"sequence": rc.TemplateData.Sequence,

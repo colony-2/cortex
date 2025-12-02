@@ -16,9 +16,10 @@ import (
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
-	Input     map[string]interface{}    `json:"input"`
-	TaskCtx   TaskExecutionContext      `json:"context"`
-	Workspace gitstate.WorkspacePayload `json:"workspace"`
+	Input                map[string]interface{}    `json:"input"`
+	TaskCtx              TaskExecutionContext      `json:"context"`
+	Workspace            gitstate.WorkspacePayload `json:"workspace"`
+	ServiceDependencies2 ops.ServiceDependencies2  `json:"-"`
 }
 
 // ActivityInvocationOutput wraps the raw op output alongside workspace results.
@@ -124,21 +125,21 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 			return zero, fmt.Errorf("workspace payload required")
 		}
 
-		gitCtx, err := gitstate.ContextFromPayload(req.Invocation, req.Workspace)
+		gitCtx, err := gitstate.ContextFromPayload(req.Workspace)
 		if err != nil {
 			return zero, err
 		}
-		if err := controller.PrepareWorkspace(context.Background(), gitCtx); err != nil {
+		if err := controller.PrepareWorkspace(context.Background(), &req.Workspace.Context); err != nil {
 			return zero, err
 		}
 		if err := controller.Restore(context.Background(), gitCtx); err != nil {
 			return zero, err
 		}
-		// Resolve input at registry boundary using the op's declared input type (zero value).
-		inType := reg.Activity.GetInputType()
-		zeroInput := reflect.New(inType).Elem().Interface()
 
-		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, zeroInput)
+		outputData, err := reg.Activity.ExecuteV2(ops.Invocation{
+			NodePath:  "",
+			InvokeSeq: 0,
+		}, ctx, req.Input)
 		if err != nil {
 			return zero, err
 		}
@@ -167,36 +168,6 @@ func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, 
 			req.Invocation.Deps = deps
 		}
 		return next(ctx, req)
-	}
-}
-
-func applyGitContextPatch(gitCtx *gitstate.Context, patch map[string]interface{}) {
-	if gitCtx == nil || patch == nil {
-		return
-	}
-	for key, raw := range patch {
-		str, ok := raw.(string)
-		if !ok {
-			continue
-		}
-		str = strings.TrimSpace(str)
-		if str == "" {
-			continue
-		}
-		switch strings.ToLower(key) {
-		case "base_hash":
-			gitCtx.BaseHash = str
-		case "persist_hash":
-			gitCtx.PersistHash = str
-		case "previous_hash":
-			gitCtx.PreviousHash = str
-		case "blob_store_uri":
-			gitCtx.BlobStoreURI = str
-		case "thin_pack_path":
-			gitCtx.ThinPackPath = str
-		case "git_author":
-			gitCtx.GitAuthor = str
-		}
 	}
 }
 

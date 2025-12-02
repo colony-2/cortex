@@ -76,9 +76,9 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 var _ swf.JobWorker = &recipeWorkerImpl{}
 
 type StartJob struct {
-	RecipeName string                 `json:"recipe"`
-	Inputs     map[string]interface{} `json:"inputs,omitempty"`
-	Context    ExecutionContext       `json:"context,omitempty"`
+	RecipeName string                     `json:"recipe"`
+	Inputs     map[string]interface{}     `json:"inputs,omitempty"`
+	Context    workerops.ExecutionContext `json:"context,omitempty"`
 }
 
 func StartRecipeJob(ctx context.Context, startJob StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
