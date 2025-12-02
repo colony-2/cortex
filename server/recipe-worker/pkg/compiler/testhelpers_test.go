@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 )
 
 var (
@@ -61,7 +64,8 @@ func ensureTestRepo() (string, string) {
 	return testRepoPath, testRepoHash
 }
 
-func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{} {
+// withRequiredGitInputs seeds both the legacy input map and a typed execution context for tests.
+func withRequiredGitInputs(inputs map[string]interface{}) (map[string]interface{}, ExecutionContext) {
 	if inputs == nil {
 		inputs = make(map[string]interface{})
 	}
@@ -79,7 +83,42 @@ func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{}
 	if _, ok := inputs["cellname"]; !ok {
 		inputs["cellname"] = "cells/test-cell"
 	}
-	return inputs
+	worktree, err := os.MkdirTemp("", "vibethis-worktree-*")
+	if err != nil {
+		panic(err)
+	}
+	blobDir, err := os.MkdirTemp("", "vibethis-blobstore-*")
+	if err != nil {
+		panic(err)
+	}
+	blobStoreURI := "file://" + blobDir
+
+	actor := contextual.ActorContext{
+		TicketID: "TEST-TICKET",
+		CellName: "cells/test-cell",
+	}
+	environment := contextual.EnvironmentContext{
+		WorktreePath: worktree,
+		BlobStoreURI: blobStoreURI,
+	}
+	gitCtx := gitstate.Context{
+		ActorContext:       actor,
+		EnvironmentContext: environment,
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:    baseRepo,
+			BaseHash:    baseHash,
+			PersistHash: baseHash,
+		},
+	}
+
+	execCtx := ExecutionContext{
+		Invocation:  contextual.InvocationContext{},
+		Actor:       actor,
+		Environment: environment,
+		Git:         gitCtx,
+		Extra:       nil,
+	}
+	return inputs, execCtx
 }
 
 func runGit(dir string, name string, args ...string) error {

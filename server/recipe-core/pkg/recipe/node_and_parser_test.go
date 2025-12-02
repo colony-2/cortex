@@ -2,11 +2,11 @@ package recipe
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yamlv3 "gopkg.in/yaml.v3"
@@ -23,7 +23,7 @@ func registerTestOp() {
 	ops.Clear()
 	testOp := ops.NewActivityMappedOpV2[testOpIn, testOpOut](
 		ops.OpMetadata{Type: "echo"},
-		func(_ ops.Invocation, _ task.Context, in testOpIn) (testOpOut, error) {
+		func(_ ops.Invocation, _ context.Context, in testOpIn) (testOpOut, error) {
 			return testOpOut{Output: in.Message}, nil
 		},
 	)

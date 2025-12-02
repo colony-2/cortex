@@ -79,7 +79,8 @@ outputs:
 		inputs := map[string]interface{}{
 			"base_value": 10,
 		}
-		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return ExecuteRecipe(ctx, registry, r, expandedInputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -142,7 +143,8 @@ outputs:
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
+		inputs, execCtx := withRequiredGitInputs(map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -194,7 +196,8 @@ outputs:
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
+		inputs, execCtx := withRequiredGitInputs(map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -247,7 +250,8 @@ outputs:
 	registry.EnableActivitiesInWorker(env)
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, r, withRequiredGitInputs(map[string]interface{}{}))
+		inputs, execCtx := withRequiredGitInputs(map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, r, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -324,13 +328,15 @@ outputs:
 	registry.EnableActivitiesInWorker(env)
 
 	env.RegisterWorkflowWithOptions(func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		result, err := ExecuteRecipe(ctx, registry, child, inputs)
+		childInputs, childCtx := withRequiredGitInputs(inputs)
+		result, err := ExecuteRecipe(ctx, registry, child, childInputs, childCtx)
 		workflow.GetLogger(ctx).Info("child workflow finished", "result", result)
 		return result, err
 	}, workflow.RegisterOptions{Name: "child-workflow"})
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, parent, withRequiredGitInputs(map[string]interface{}{}))
+		parentInputs, parentCtx := withRequiredGitInputs(map[string]interface{}{})
+		return ExecuteRecipe(ctx, registry, parent, parentInputs, parentCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())

@@ -4,11 +4,12 @@ import (
 	"log/slog"
 
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
 type Context struct {
 	swf.JobContext
-	extras map[any]any
+	ops.ServiceDependencies2
 }
 
 func (c Context) GetJobId() string {

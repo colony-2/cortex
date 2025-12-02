@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"go.temporal.io/api/common/v1"
 	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflow/v1"
 	"go.temporal.io/api/workflowservice/v1"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
 
 // Transformer handles the transformation between Recipe/Job abstractions
@@ -57,7 +57,7 @@ func (t *Transformer) WorkflowExecutionToJob(
 			RunID:      execution.Execution.RunId,
 		},
 	}
-	
+
 	// Update time if available
 	if execution.CloseTime != nil && !execution.CloseTime.AsTime().IsZero() {
 		job.UpdateTime = execution.CloseTime.AsTime()
@@ -122,7 +122,7 @@ func (t *Transformer) DescribeWorkflowToJob(
 
 	// Parse workflow inputs if available
 	if info.GetSearchAttributes() != nil {
-		if inputs, ok := info.SearchAttributes.IndexedFields["Inputs"]; ok {
+		if inputs, ok := info.SearchAttributes.IndexedFields["ContainerInputs"]; ok {
 			job.Inputs = t.parseInputs(inputs)
 		}
 	}
@@ -140,7 +140,7 @@ func (t *Transformer) HistoryToActivityExecutions(
 ) ([]*recipe.ActivityExecution, error) {
 	// Get recipe to help with activity name mapping
 	rec, _ := t.getRecipe(recipeName)
-	
+
 	activities := make([]*recipe.ActivityExecution, 0)
 	activityMap := make(map[int64]*recipe.ActivityExecution) // eventID -> activity
 
@@ -225,69 +225,73 @@ func (t *Transformer) mapWorkflowStatusToJobStatus(status enums.WorkflowExecutio
 
 // extractActivityName extracts user-friendly activity name
 func (t *Transformer) extractActivityName(temporalName string, r *recipe.Recipe) string {
-    // Attempt to derive a friendly name by scanning the recipe structure
-    if r != nil && r.RecipeImpl != nil {
-        // Collect possible op names and IDs from the recipe tree
-        candidates := make([]string, 0, 8)
+	// Attempt to derive a friendly name by scanning the recipe structure
+	if r != nil && r.RecipeImpl != nil {
+		// Collect possible op names and IDs from the recipe tree
+		candidates := make([]string, 0, 8)
 
-        // Helper to add a candidate if non-empty
-        add := func(s string) { if s != "" { candidates = append(candidates, s) } }
+		// Helper to add a candidate if non-empty
+		add := func(s string) {
+			if s != "" {
+				candidates = append(candidates, s)
+			}
+		}
 
-        // Walk the recipe using the public interfaces
-        switch rec := r.RecipeImpl.(type) {
-        case *recipe.RecipeOp:
-            add(rec.Op)
-            add(rec.ID)
-        case *recipe.RecipeSequence:
-            for _, n := range rec.Sequence {
-                switch nn := n.NodeImpl.(type) {
-                case *recipe.NodeOp:
-                    add(nn.Op)
-                    add(nn.ID)
-                case *recipe.NodeSequence:
-                    for _, cn := range nn.Sequence {
-                        if nop, ok := cn.NodeImpl.(*recipe.NodeOp); ok {
-                            add(nop.Op)
-                            add(nop.ID)
-                        }
-                    }
-                case *recipe.NodeState:
-                    if nn.States != nil {
-                        for _, st := range nn.States.States {
-                            if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
-                                add(nop.Op)
-                                add(nop.ID)
-                            }
-                        }
-                    }
-                }
-            }
-        case *recipe.RecipeState:
-            if rec.States != nil {
-                for _, st := range rec.States.States {
-                    if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
-                        add(nop.Op)
-                        add(nop.ID)
-                    }
-                }
-            }
-        }
+		// Walk the recipe using the public interfaces
+		switch rec := r.RecipeImpl.(type) {
+		case *recipe.RecipeOp:
+			add(rec.Op)
+			add(rec.ID)
+		case *recipe.RecipeSequence:
+			for _, n := range rec.Sequence {
+				switch nn := n.NodeImpl.(type) {
+				case *recipe.NodeOp:
+					add(nn.Op)
+					add(nn.ID)
+				case *recipe.NodeSequence:
+					for _, cn := range nn.Sequence {
+						if nop, ok := cn.NodeImpl.(*recipe.NodeOp); ok {
+							add(nop.Op)
+							add(nop.ID)
+						}
+					}
+				case *recipe.NodeState:
+					if nn.States != nil {
+						for _, st := range nn.States.States {
+							if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
+								add(nop.Op)
+								add(nop.ID)
+							}
+						}
+					}
+				}
+			}
+		case *recipe.RecipeState:
+			if rec.States != nil {
+				for _, st := range rec.States.States {
+					if nop, ok := st.Node.NodeImpl.(*recipe.NodeOp); ok {
+						add(nop.Op)
+						add(nop.ID)
+					}
+				}
+			}
+		}
 
-        // Try to match Temporal activity name against collected candidates
-        tname := strings.ToLower(temporalName)
-        for _, c := range candidates {
-            lc := strings.ToLower(c)
-            if lc != "" && strings.Contains(tname, lc) {
-                return c
-            }
-        }
-    }
+		// Try to match Temporal activity name against collected candidates
+		tname := strings.ToLower(temporalName)
+		for _, c := range candidates {
+			lc := strings.ToLower(c)
+			if lc != "" && strings.Contains(tname, lc) {
+				return c
+			}
+		}
+	}
 
-    // Fallback: normalize the Temporal name
-    name := temporalName
-    name = strings.TrimPrefix(name, "Activity")
-    name = strings.TrimSuffix(name, "Activity")
-    return toKebabCase(name)
+	// Fallback: normalize the Temporal name
+	name := temporalName
+	name = strings.TrimPrefix(name, "Activity")
+	name = strings.TrimSuffix(name, "Activity")
+	return toKebabCase(name)
 }
 
 // pendingActivityToExecution converts pending activity to execution

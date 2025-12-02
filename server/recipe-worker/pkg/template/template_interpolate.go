@@ -1,4 +1,4 @@
-package compiler
+package template
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ func (rc *ResolutionContext) interpolateString(template string, mode ResolutionM
 	if len(segments) == 1 {
 		if expr, ok := segments[0].(ExpressionSegment); ok {
 			// Single expression - evaluate and return raw result (could be any type)
-			return rc.EvaluateCELExpression(expr.Expression)
+			return rc.evaluateCELExpression(expr.Expression)
 		}
 		// Single text segment - return as-is
 		if text, ok := segments[0].(TextSegment); ok {
@@ -39,7 +39,7 @@ func (rc *ResolutionContext) interpolateString(template string, mode ResolutionM
 			result.WriteString(s.Text)
 
 		case ExpressionSegment:
-			value, err := rc.EvaluateCELExpression(s.Expression)
+			value, err := rc.evaluateCELExpression(s.Expression)
 			if err != nil {
 				// Include position in error for better debugging
 				return nil, fmt.Errorf("expression error at position %d: %w", s.Pos, err)
@@ -60,7 +60,7 @@ func (rc *ResolutionContext) ResolveTemplateWithMode(expr string, mode Resolutio
 
 	// For interpolation mode, check if it looks like a template
 	trimmed := strings.TrimSpace(expr)
-	
+
 	// If it doesn't have {{ }}, return as-is
 	if !strings.Contains(trimmed, "{{") || !strings.Contains(trimmed, "}}") {
 		return expr, nil

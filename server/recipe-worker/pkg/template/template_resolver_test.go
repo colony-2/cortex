@@ -1,15 +1,16 @@
-package compiler
+package template
 
 import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewResolutionContext(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test-seq")
+	ctx, err := NewResolutionContext("sequence", "test-seq", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
 	assert.NotNil(t, ctx)
 	assert.Equal(t, "sequence", ctx.ScopeType)
@@ -21,15 +22,15 @@ func TestNewResolutionContext(t *testing.T) {
 }
 
 func TestResolveTemplate_Simple(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Set up test data
 	ctx.TemplateData.Inputs = map[string]interface{}{
 		"name": "Alice",
 		"age":  30,
 	}
-	
+
 	tests := []struct {
 		name     string
 		template string
@@ -56,10 +57,10 @@ func TestResolveTemplate_Simple(t *testing.T) {
 			expected: int64(40),
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.ResolveTemplate(tt.template)
+			result, err := ctx.resolveTemplate(tt.template)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -67,9 +68,9 @@ func TestResolveTemplate_Simple(t *testing.T) {
 }
 
 func TestResolveTemplate_SequenceReferences(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Add sequence nodes
 	ctx.AddSequenceNode("fetch", map[string]interface{}{
 		"status": 200,
@@ -79,7 +80,7 @@ func TestResolveTemplate_SequenceReferences(t *testing.T) {
 		"result": "processed",
 		"count":  5,
 	})
-	
+
 	tests := []struct {
 		name     string
 		template string
@@ -96,10 +97,10 @@ func TestResolveTemplate_SequenceReferences(t *testing.T) {
 			expected: "processed",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.ResolveTemplate(tt.template)
+			result, err := ctx.resolveTemplate(tt.template)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -107,13 +108,13 @@ func TestResolveTemplate_SequenceReferences(t *testing.T) {
 }
 
 func TestResolveTemplate_CELFunction(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	ctx.AddSequenceNode("calc", map[string]interface{}{
 		"value": 10,
 	})
-	
+
 	tests := []struct {
 		name     string
 		template string
@@ -125,10 +126,10 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 			expected: int64(15),
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.ResolveTemplate(tt.template)
+			result, err := ctx.resolveTemplate(tt.template)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -136,15 +137,15 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 }
 
 func TestEvaluateCEL_Conditions(t *testing.T) {
-	ctx, err := NewResolutionContext("state_machine", "test")
+	ctx, err := NewResolutionContext("state_machine", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Set up test data
 	ctx.AddSequenceNode("validate", map[string]interface{}{
 		"valid": true,
 		"score": 0.9,
 	})
-	
+
 	tests := []struct {
 		name       string
 		expression string
@@ -171,7 +172,7 @@ func TestEvaluateCEL_Conditions(t *testing.T) {
 			expected:   true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := ctx.EvaluateCEL(tt.expression)
@@ -182,84 +183,85 @@ func TestEvaluateCEL_Conditions(t *testing.T) {
 }
 
 func TestAddSequenceNode_WithRuns(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Add initial run
 	ctx.AddSequenceNode("retry_node", map[string]interface{}{
 		"attempt": 1,
 		"status":  "failed",
 	})
-	
+
 	// Check initial state
 	node := ctx.TemplateData.Sequence["retry_node"]
-	assert.Equal(t, 1, node.Outputs["attempt"])
+	assert.Equal(t, 1, node.Outputs.(map[string]interface{})["attempt"])
 	assert.Len(t, node.Runs, 0)
-	
+
 	// Add second run (retry)
 	ctx.AddSequenceNode("retry_node", map[string]interface{}{
 		"attempt": 2,
 		"status":  "success",
 	})
-	
+
 	// Check updated state
 	node = ctx.TemplateData.Sequence["retry_node"]
-	assert.Equal(t, 2, node.Outputs["attempt"])
-	assert.Equal(t, "success", node.Outputs["status"])
+	assert.Equal(t, 2, node.Outputs.(map[string]interface{})["attempt"])
+	assert.Equal(t, "success", node.Outputs.(map[string]interface{})["status"])
 	assert.Len(t, node.Runs, 1)
-	assert.Equal(t, 1, node.Runs[0].Outputs["attempt"])
+	assert.Equal(t, 1, node.Runs[0].Outputs.(map[string]interface{})["attempt"])
 }
 
 func TestAddStateOutput(t *testing.T) {
-	ctx, err := NewResolutionContext("state_machine", "test")
+	ctx, err := NewResolutionContext("state_machine", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Add state output
 	ctx.AddStateOutput("validate", map[string]interface{}{
 		"valid":    true,
 		"metadata": map[string]interface{}{"source": "api"},
 	})
-	
+
 	// Check state was added
 	state := ctx.TemplateData.States["validate"]
-	assert.Equal(t, true, state.Outputs["valid"])
-	assert.Equal(t, "api", state.Outputs["metadata"].(map[string]interface{})["source"])
+	stateOutputs := state.Outputs.(map[string]interface{})
+	assert.Equal(t, true, stateOutputs["valid"])
+	assert.Equal(t, "api", stateOutputs["metadata"].(map[string]interface{})["source"])
 }
 
 func TestNewChildContext(t *testing.T) {
-	parent, err := NewResolutionContext("state_machine", "parent")
+	parent, err := NewResolutionContext("state_machine", "parent", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Add state to parent
 	parent.AddStateOutput("previous_state", map[string]interface{}{
 		"result": "done",
 	})
-	
+
 	// Create child context
-	child, err := parent.NewChildContext("state", "child", map[string]interface{}{
+	child, err := parent.NewChildContext(ScopeState, "child", map[string]interface{}{
 		"child_input": "value",
 	})
 	require.NoError(t, err)
-	
+
 	// Check child has access to parent states
 	assert.Equal(t, parent, child.Parent)
-	assert.Equal(t, "value", child.TemplateData.Inputs["child_input"])
-	assert.Equal(t, "done", child.TemplateData.States["previous_state"].Outputs["result"])
+	assert.Equal(t, "value", convertRawToMap(child.TemplateData.Inputs)["child_input"])
+	assert.Equal(t, "done", convertRawToMap(child.TemplateData.States["previous_state"].Outputs)["result"])
 }
 
 func TestResolveValue_Recursive(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	ctx.TemplateData.Inputs = map[string]interface{}{
 		"base_url": "https://api.example.com",
 		"version":  "v1",
 	}
-	
+
 	ctx.AddSequenceNode("auth", map[string]interface{}{
 		"token": "abc123",
 	})
-	
+
 	// Test complex nested structure
 	value := map[string]interface{}{
 		"url": `{{ inputs.base_url + "/" + inputs.version }}`,
@@ -272,26 +274,26 @@ func TestResolveValue_Recursive(t *testing.T) {
 			"stable",
 		},
 	}
-	
-	result, err := ctx.ResolveValue(value)
+
+	result, err := ctx.resolveValue(value)
 	require.NoError(t, err)
-	
+
 	resultMap := result.(map[string]interface{})
 	assert.Equal(t, "https://api.example.com/v1", resultMap["url"])
-	
+
 	headers := resultMap["headers"].(map[string]interface{})
 	assert.Equal(t, "Bearer abc123", headers["Authorization"])
 	assert.Equal(t, "application/json", headers["Content-Type"])
-	
+
 	options := resultMap["options"].([]interface{})
 	assert.Equal(t, "v1", options[0])
 	assert.Equal(t, "stable", options[1])
 }
 
 func TestValidateTemplateReferences(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	tests := []struct {
 		name      string
 		template  string
@@ -313,10 +315,10 @@ func TestValidateTemplateReferences(t *testing.T) {
 			wantError: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ctx.ValidateTemplateReferences(tt.template)
+			err := ctx.validateTemplateReferences(tt.template)
 			if tt.wantError {
 				assert.Error(t, err)
 			} else {
@@ -327,9 +329,9 @@ func TestValidateTemplateReferences(t *testing.T) {
 }
 
 func TestValidateCELExpression(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	tests := []struct {
 		name      string
 		expr      string
@@ -356,10 +358,10 @@ func TestValidateCELExpression(t *testing.T) {
 			wantError: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ctx.ValidateCELExpression(tt.expr)
+			err := ctx.validateCELExpression(tt.expr)
 			if tt.wantError {
 				assert.Error(t, err)
 			} else {
@@ -373,14 +375,14 @@ func TestStateTransitionContext(t *testing.T) {
 	// This test simulates a state machine transition evaluation
 	// where the current state is a sequence and we need to evaluate
 	// transitions based on the sequence's node outputs
-	
-	ctx, err := NewResolutionContext("state_machine", "sm")
+
+	ctx, err := NewResolutionContext("state_machine", "sm", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	// Simulate a state that is a sequence
 	stateCtx, err := ctx.NewChildContext("state", "process", ctx.TemplateData.Inputs)
 	require.NoError(t, err)
-	
+
 	// Add nodes executed in the state's sequence
 	stateCtx.AddSequenceNode("validate", map[string]interface{}{
 		"valid": true,
@@ -389,7 +391,7 @@ func TestStateTransitionContext(t *testing.T) {
 		"success": true,
 		"count":   10,
 	})
-	
+
 	// Test transition evaluation with sequence node access
 	tests := []struct {
 		name       string
@@ -407,7 +409,7 @@ func TestStateTransitionContext(t *testing.T) {
 			expected:   true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := stateCtx.EvaluateCEL(tt.expression)
@@ -420,57 +422,57 @@ func TestStateTransitionContext(t *testing.T) {
 func TestComplexStateMachineScenario(t *testing.T) {
 	// This test simulates a complex state machine with nested sequences
 	// and validates the template resolution across scopes
-	
+
 	// Create state machine context
-	smCtx, err := NewResolutionContext("state_machine", "workflow")
+	smCtx, err := NewResolutionContext("state_machine", "workflow", nil, ops.TaskExecutionContext{})
 	require.NoError(t, err)
-	
+
 	smCtx.TemplateData.Inputs = map[string]interface{}{
 		"user_id": "123",
 		"payload": map[string]interface{}{"data": "test"},
 	}
-	
+
 	// Execute first state (validate)
 	smCtx.AddStateOutput("validate", map[string]interface{}{
 		"valid":    true,
 		"metadata": map[string]interface{}{"checked_at": time.Now()},
 	})
-	
+
 	// Create context for process state (which is a sequence)
 	processCtx, err := smCtx.NewChildContext("state", "process", smCtx.TemplateData.Inputs)
 	require.NoError(t, err)
-	
+
 	// Process state can see previous states
 	template := "{{ states.validate.outputs.valid }}"
-	result, err := processCtx.ResolveTemplate(template)
+	result, err := processCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, true, result)
-	
+
 	// Add sequence nodes within process state
 	processCtx.AddSequenceNode("enrich", map[string]interface{}{
 		"enriched_data": map[string]interface{}{
-			"user": "{{ inputs.user_id }}",
+			"user":  "{{ inputs.user_id }}",
 			"extra": "info",
 		},
 	})
-	
+
 	// Next node in sequence can see previous node
 	template = "{{ sequence.enrich.outputs.enriched_data }}"
-	result, err = processCtx.ResolveTemplate(template)
+	result, err = processCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
-	
+
 	// Add the process state output to parent context
 	smCtx.AddStateOutput("process", map[string]interface{}{
 		"final_result": "completed",
 	})
-	
+
 	// Final state can see all previous states
 	finalCtx, err := smCtx.NewChildContext("state", "complete", smCtx.TemplateData.Inputs)
 	require.NoError(t, err)
-	
+
 	template = "{{ states.process.outputs.final_result }}"
-	result, err = finalCtx.ResolveTemplate(template)
+	result, err = finalCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, "completed", result)
 }

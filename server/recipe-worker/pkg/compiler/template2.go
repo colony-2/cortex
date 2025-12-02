@@ -131,7 +131,7 @@ func (t *TemplateResolver2) prepareTemplateData(stateCtx *StateContext) map[stri
 	data := make(map[string]interface{})
 
 	// Add inputs
-	data["Inputs"] = stateCtx.Inputs
+	data["ContainerInputs"] = stateCtx.Inputs
 
 	// Add state outputs
 	data["States"] = stateCtx.StateOutputs

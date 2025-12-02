@@ -78,21 +78,18 @@ func (r *TemplateResolver) getTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
 
 	// Add inputs - use lowercase for compatibility with existing templates
-	data["inputs"] = r.state.Inputs
+	data["inputs"] = convertRawToMap(r.state.Inputs)
 	// Also add capital case for backwards compatibility
-	data["Inputs"] = r.state.Inputs
+	data["ContainerInputs"] = convertRawToMap(r.state.Inputs)
 
 	// Add steps - directly expose outputs at the step level
 	steps := make(map[string]interface{})
 	for stepID, stepResult := range r.state.Steps {
 		// Directly add outputs to the step for easier access
 		// This allows {{ .Steps.stepID.outputName }} syntax
-		stepData := make(map[string]interface{})
-		for k, v := range stepResult.Outputs {
-			stepData[k] = v
-		}
+		stepData := convertRawToMap(stepResult.Outputs)
 		// Also keep outputs nested for backwards compatibility
-		stepData["outputs"] = stepResult.Outputs
+		stepData["outputs"] = convertRawToMap(stepResult.Outputs)
 		steps[stepID] = stepData
 	}
 	data["Steps"] = steps

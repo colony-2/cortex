@@ -72,8 +72,12 @@ func (m *WorkerManager) StartWorker(file *coreRecipe.RecipeFile) error {
 	// Create the worker
 	w := worker.New(m.temporalClient, taskQueue, workerOptions)
 	m.activityRegistry.EnableActivitiesInWorker(w)
-	fn := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, m.activityRegistry, file.Recipe, inputs)
+	type workflowInput struct {
+		Inputs  map[string]interface{}  `json:"inputs,omitempty"`
+		Context compiler.ExecutionContext `json:"context,omitempty"`
+	}
+	fn := func(ctx workflow.Context, payload workflowInput) (map[string]interface{}, error) {
+		return compiler.ExecuteRecipe(ctx, m.activityRegistry, file.Recipe, payload.Inputs, payload.Context)
 	}
 
 	w.RegisterWorkflowWithOptions(

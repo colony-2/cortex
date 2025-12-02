@@ -52,7 +52,7 @@ outputs:
 	require.Len(t, recipeSeq.SequenceData.Sequence, 3)
 
 	// Create a resolution context
-	ctx, err := NewResolutionContext("sequence", "test-exec")
+	ctx, err := NewResolutionContext("sequence", "test-exec", nil, ExecutionContext{})
 	require.NoError(t, err)
 
 	// Add inputs
@@ -169,7 +169,7 @@ outputs:
 	require.NoError(t, err)
 
 	// Create resolution context
-	ctx, err := NewResolutionContext("sequence", "test-exec-2")
+	ctx, err := NewResolutionContext("sequence", "test-exec-2", nil, ExecutionContext{})
 	require.NoError(t, err)
 
 	// Simulate execution of sequence nodes
@@ -237,7 +237,7 @@ outputs:
 }
 
 func TestSequenceOutputErrorCases(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test-errors")
+	ctx, err := NewResolutionContext("sequence", "test-errors", nil, ExecutionContext{})
 	require.NoError(t, err)
 
 	// Add a sequence node

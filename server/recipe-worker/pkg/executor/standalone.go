@@ -32,6 +32,7 @@ func (e *StandaloneExecutor) Execute(
 	ctx context.Context,
 	r recipe.Recipe,
 	inputs map[string]interface{},
+	execCtx compiler.ExecutionContext,
 ) (map[string]interface{}, error) {
 
 	workset, err := compiler.NewRecipeWorker(e.registry)
@@ -41,7 +42,13 @@ func (e *StandaloneExecutor) Execute(
 
 	eng := toy.NewToyEngine([]swf.WorkSet{*workset})
 
-	id, err := compiler.StartRecipeJob(ctx, inputs, eng, r)
+	job := compiler.StartJob{
+		RecipeName: r.GetMetadata().ID,
+		Inputs:     inputs,
+		Context:    execCtx,
+	}
+
+	id, err := compiler.StartRecipeJob(ctx, job, eng, r)
 	if err != nil {
 		return nil, err
 	}

@@ -80,7 +80,8 @@ func TestContextShortcutExposesGitMetadata(t *testing.T) {
 	_, expectedHash := ensureTestRepo()
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, compiled, withRequiredGitInputs(nil))
+		inputs, execCtx := withRequiredGitInputs(nil)
+		return ExecuteRecipe(ctx, registry, compiled, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())

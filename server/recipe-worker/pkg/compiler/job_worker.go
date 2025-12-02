@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -46,33 +45,23 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	if err != nil {
 		return nil, err
 	}
-	input := make(map[string]interface{})
+	input := StartJob{}
 	err = json.Unmarshal(data, &input)
 	if err != nil {
 		return nil, err
 	}
-	recipeName, ok := input["recipe"]
-	if !ok {
-		if len(artifacts) == 1 {
-			recipeName = strings.TrimSuffix(artifacts[0].Name(), RecipeArtifactSuffix)
-			input["recipe"] = recipeName
-		} else {
-			return nil, fmt.Errorf("missing recipe name")
-		}
-	}
 
-	name, _ := recipeName.(string)
-	if name == "" {
+	if input.RecipeName == "" {
 		return nil, fmt.Errorf("missing recipe name")
 	}
 
-	r, err := j.recipes.GetRecipe(name)
+	r, err := j.recipes.GetRecipe(input.RecipeName)
 	if err != nil {
 		return nil, err
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
-	out, err := ExecuteRecipe(wCtx, j.activityRegistry, r, input)
+	out, err := ExecuteRecipe(wCtx, j.activityRegistry, r, input.Inputs, input.Context)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +75,13 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 
 var _ swf.JobWorker = &recipeWorkerImpl{}
 
-func StartRecipeJob(ctx context.Context, input map[string]interface{}, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
+type StartJob struct {
+	RecipeName string                 `json:"recipe"`
+	Inputs     map[string]interface{} `json:"inputs,omitempty"`
+	Context    ExecutionContext       `json:"context,omitempty"`
+}
+
+func StartRecipeJob(ctx context.Context, startJob StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
 	artifacts := make([]artifact.Artifact, len(recipes))
 	for i, r := range recipes {
 		recipeYaml, err := yaml.Marshal(&r)
@@ -97,7 +92,7 @@ func StartRecipeJob(ctx context.Context, input map[string]interface{}, engine sw
 		artifacts[i] = artifact.FromBytes(name, "", recipeYaml)
 	}
 
-	inputData, err := swf.NewTaskData(input, artifacts...)
+	inputData, err := swf.NewTaskData(startJob, artifacts...)
 
 	if err != nil {
 		return "", err

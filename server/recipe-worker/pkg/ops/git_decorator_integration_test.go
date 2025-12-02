@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
@@ -25,14 +28,14 @@ sequence:
       run: |
         mkdir -p cells/test-cell
         echo first >> cells/test-cell/README.md
-      working_directory: '{{ inputs.context.worktree }}'
+      working_directory: '{{ context.git.worktree_path }}'
   - id: append
     op: command_execution
     inputs:
       run: |
         mkdir -p cells/test-cell
         echo second >> cells/test-cell/README.md
-      working_directory: '{{ inputs.context.worktree }}'
+      working_directory: '{{ context.git.worktree_path }}'
 outputs:
   first_hash: '{{ sequence.write.outputs.git_persist_hash }}'
   second_hash: '{{ sequence.append.outputs.git_persist_hash }}'
@@ -58,17 +61,28 @@ outputs:
 		"cellname":    "cells/test-cell",
 		"ticket_id":   "TEST-TICKET",
 		"cell_name":   "cells/test-cell",
-		"context": map[string]interface{}{
-			"git": map[string]interface{}{
-				"base_repo":    repoPath,
-				"base_hash":    baseHash,
-				"persist_hash": baseHash,
-			},
-			"worktree":  persistWorktree,
-			"blobstore": blobStoreURI,
-			"ticketid":  "TEST-TICKET",
-			"cellname":  "cells/test-cell",
+	}
+	actor := contextual.ActorContext{
+		TicketID: "TEST-TICKET",
+		CellName: "cells/test-cell",
+	}
+	environment := contextual.EnvironmentContext{
+		WorktreePath: persistWorktree,
+		BlobStoreURI: blobStoreURI,
+	}
+	gitCtx := gitstate.Context{
+		ActorContext:       actor,
+		EnvironmentContext: environment,
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:    repoPath,
+			BaseHash:    baseHash,
+			PersistHash: baseHash,
 		},
+	}
+	execCtx := compiler.ExecutionContext{
+		Actor:       actor,
+		Environment: environment,
+		Git:         gitCtx,
 	}
 
 	registry, err := ops.NewActivityRegistry()
@@ -81,7 +95,7 @@ outputs:
 		t.Fatalf("failed to create executor: %v", err)
 	}
 
-	outputs, err := exec.Execute(context.Background(), r, inputs)
+	outputs, err := exec.Execute(context.Background(), r, inputs, execCtx)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}

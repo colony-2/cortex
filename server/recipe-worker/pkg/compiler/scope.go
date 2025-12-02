@@ -43,7 +43,7 @@ func (sc *ScopedContext) GetTemplateData() map[string]interface{} {
 	data := make(map[string]interface{})
 
 	// Global inputs (available at all levels)
-	data["Inputs"] = sc.StateContext.Inputs
+	data["ContainerInputs"] = sc.StateContext.Inputs
 
 	// State outputs (available at all levels)
 	data["States"] = sc.StateContext.StateOutputs
@@ -109,9 +109,9 @@ func (sc *ScopedContext) GetCELVariables(currentOutputs map[string]interface{}) 
 
 	// Current inputs (global)
 	if sc.StateContext.Inputs != nil {
-		vars["Inputs"] = sc.StateContext.Inputs
+		vars["ContainerInputs"] = sc.StateContext.Inputs
 	} else {
-		vars["Inputs"] = make(map[string]interface{})
+		vars["ContainerInputs"] = make(map[string]interface{})
 	}
 
 	// Recipe context (global)

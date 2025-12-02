@@ -12,6 +12,8 @@ import (
 
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -84,7 +86,7 @@ func runGit(dir string, name string, args ...string) error {
 	return nil
 }
 
-func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{} {
+func withRequiredGitInputs(inputs map[string]interface{}) (map[string]interface{}, compiler.ExecutionContext) {
 	if inputs == nil {
 		inputs = make(map[string]interface{})
 	}
@@ -102,7 +104,41 @@ func withRequiredGitInputs(inputs map[string]interface{}) map[string]interface{}
 	if _, ok := inputs["cellname"]; !ok {
 		inputs["cellname"] = "cells/test-cell"
 	}
-	return inputs
+	worktree, err := os.MkdirTemp("", "worker-worktree-*")
+	if err != nil {
+		panic(err)
+	}
+	blobStoreDir, err := os.MkdirTemp("", "worker-blobstore-*")
+	if err != nil {
+		panic(err)
+	}
+	blobStoreURI := "file://" + blobStoreDir
+
+	actor := contextual.ActorContext{
+		TicketID: "TEST-TICKET",
+		CellName: "cells/test-cell",
+	}
+	envCtx := contextual.EnvironmentContext{
+		WorktreePath: worktree,
+		BlobStoreURI: blobStoreURI,
+	}
+	gitCtx := gitstate.Context{
+		ActorContext:       actor,
+		EnvironmentContext: envCtx,
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:    repo,
+			BaseHash:    hash,
+			PersistHash: hash,
+		},
+	}
+
+	execCtx := compiler.ExecutionContext{
+		Invocation:  contextual.InvocationContext{},
+		Actor:       actor,
+		Environment: envCtx,
+		Git:         gitCtx,
+	}
+	return inputs, execCtx
 }
 
 type WorkerIntegrationTestSuite struct {
@@ -166,7 +202,8 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, expandedInputs, execCtx)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -182,7 +219,7 @@ func (s *WorkerIntegrationTestSuite) TestSimpleWorkflowExecution() {
 	)
 
 	// Execute the workflow with empty inputs since the text is hardcoded
-	s.env.ExecuteWorkflow("test-recipe", withRequiredGitInputs(map[string]interface{}{}))
+	s.env.ExecuteWorkflow("test-recipe", map[string]interface{}{})
 
 	// Verify the result
 	s.True(s.env.IsWorkflowCompleted())
@@ -259,7 +296,8 @@ func (s *WorkerIntegrationTestSuite) TestSequenceWorkflowExecution() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, expandedInputs, execCtx)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -350,7 +388,8 @@ func (s *WorkerIntegrationTestSuite) TestSharedActivityWorkflow() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, expandedInputs, execCtx)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,
@@ -421,7 +460,8 @@ func (s *WorkerIntegrationTestSuite) TestWorkflowWithRetry() {
 
 	// Create a workflow that uses ExecuteRecipe
 	workflowFunc := func(ctx workflow.Context, inputs map[string]interface{}) (map[string]interface{}, error) {
-		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return compiler.ExecuteRecipe(ctx, registry, *recipeDef, expandedInputs, execCtx)
 	}
 	s.env.RegisterWorkflowWithOptions(
 		workflowFunc,

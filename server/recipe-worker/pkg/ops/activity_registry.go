@@ -16,14 +16,14 @@ import (
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
-	Invocation ops.Invocation            `json:"invocation"`
-	OpInput    json.RawMessage           `json:"input"`
-	Workspace  gitstate.WorkspacePayload `json:"workspace"`
+	Input     map[string]interface{}    `json:"input"`
+	TaskCtx   TaskExecutionContext      `json:"context"`
+	Workspace gitstate.WorkspacePayload `json:"workspace"`
 }
 
 // ActivityInvocationOutput wraps the raw op output alongside workspace results.
 type ActivityInvocationOutput struct {
-	OpOutput  json.RawMessage          `json:"op_output"`
+	OpOutput  map[string]interface{}   `json:"output"`
 	Workspace gitstate.WorkspaceResult `json:"workspace"`
 }
 
@@ -134,7 +134,11 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 		if err := controller.Restore(context.Background(), gitCtx); err != nil {
 			return zero, err
 		}
-		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, req.OpInput)
+		// Resolve input at registry boundary using the op's declared input type (zero value).
+		inType := reg.Activity.GetInputType()
+		zeroInput := reflect.New(inType).Elem().Interface()
+
+		outputData, err := reg.Activity.ExecuteV2(req.Invocation, ctx, zeroInput)
 		if err != nil {
 			return zero, err
 		}
@@ -144,23 +148,8 @@ func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller)
 			return zero, err
 		}
 
-		var opOutput json.RawMessage
-		switch v := outputData.(type) {
-		case json.RawMessage:
-			opOutput = v
-		case []byte:
-			opOutput = v
-		case nil:
-		default:
-			buf, err := json.Marshal(v)
-			if err != nil {
-				return zero, fmt.Errorf("marshal op output: %w", err)
-			}
-			opOutput = buf
-		}
-
 		return ActivityInvocationOutput{
-			OpOutput: opOutput,
+			OpOutput: outputData,
 			Workspace: gitstate.WorkspaceResult{
 				Context:        updatedCtx,
 				GitPersistHash: newHash,

@@ -69,7 +69,7 @@ outputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	inputs := withRequiredGitInputs(map[string]interface{}{
+	inputs, execCtx := withRequiredGitInputs(map[string]interface{}{
 		"message": "test",
 	})
 
@@ -77,7 +77,7 @@ outputs:
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
 		tracker := newInvocationTracker(rs.RecipeMetadata, nil)
 		stateTracker := tracker.child(segmentForMetadata(rs.RecipeMetadata.NodeMetadata, "recipe-state"))
-		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs)
+		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -98,7 +98,7 @@ outputs:
 	primeDefaultMetadataSignal(env2)
 
 	env2.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, *r, inputs)
+		return ExecuteRecipe(ctx, registry, *r, inputs, execCtx)
 	})
 
 	require.True(t, env2.IsWorkflowCompleted())

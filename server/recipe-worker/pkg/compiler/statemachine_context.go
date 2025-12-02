@@ -51,7 +51,7 @@ type CELVariables struct {
 	Outputs map[string]interface{}            `json:"Outputs"`
 	State   *StateInfo                        `json:"State"`
 	States  map[string]map[string]interface{} `json:"States"`
-	Inputs  map[string]interface{}            `json:"Inputs"`
+	Inputs  map[string]interface{}            `json:"ContainerInputs"`
 	Context *RecipeContext                    `json:"Context"`
 	Steps   map[string]interface{}            `json:"Steps"` // Access to step outputs within current state
 }

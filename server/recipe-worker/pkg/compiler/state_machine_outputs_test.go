@@ -68,7 +68,8 @@ outputs:
 
 	// Test the recipe execution
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
-		return ExecuteRecipe(ctx, registry, *r, withRequiredGitInputs(inputs))
+		expandedInputs, execCtx := withRequiredGitInputs(inputs)
+		return ExecuteRecipe(ctx, registry, *r, expandedInputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())
@@ -125,14 +126,14 @@ outputs:
 
 	rs := r.RecipeImpl.(*recipe.RecipeState)
 
-	inputs := map[string]interface{}{
+	inputs, execCtx := withRequiredGitInputs(map[string]interface{}{
 		"message": "test",
-	}
+	})
 
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
 		tracker := newInvocationTracker(rs.RecipeMetadata, nil)
 		stateTracker := tracker.child(segmentForMetadata(rs.RecipeMetadata.NodeMetadata, "recipe-state"))
-		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs)
+		return executeStateMachine(ctx, registry, stateTracker, rs.StateData.States, inputs, execCtx)
 	})
 
 	require.True(t, env.IsWorkflowCompleted())

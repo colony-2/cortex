@@ -3,17 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"go.uber.org/zap/zaptest"
-	"gopkg.in/yaml.v3"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"go.uber.org/zap/zaptest"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -96,6 +100,30 @@ inputs:
 	}
 
 	repo, hash := ensureDebugRepo()
+	worktree := filepath.Join(os.TempDir(), "debug-executor-worktree")
+	blobStore := "file://" + filepath.Join(os.TempDir(), "debug-executor-blobstore")
+	actor := contextual.ActorContext{
+		TicketID: "TEST-TICKET",
+		CellName: "cells/test-cell",
+	}
+	envCtx := contextual.EnvironmentContext{
+		WorktreePath: worktree,
+		BlobStoreURI: blobStore,
+	}
+	gitCtx := gitstate.Context{
+		ActorContext:       actor,
+		EnvironmentContext: envCtx,
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:    repo,
+			BaseHash:    hash,
+			PersistHash: hash,
+		},
+	}
+	execCtx := compiler.ExecutionContext{
+		Actor:       actor,
+		Environment: envCtx,
+		Git:         gitCtx,
+	}
 
 	// Execute recipe
 	result, err := exec.Execute(
@@ -108,9 +136,7 @@ inputs:
 			"ticketid":    "TEST-TICKET",
 			"cellname":    "cells/test-cell",
 		},
-		executor.ExecutionOptions{
-			SuppressLogs: false, // Show logs for debugging
-		},
+		execCtx,
 	)
 
 	if err != nil {

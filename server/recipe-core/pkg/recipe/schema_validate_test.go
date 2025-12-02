@@ -1,10 +1,10 @@
 package recipe
 
 import (
+	"context"
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +21,7 @@ func TestSchema_Generate_Includes_Ops_And_NodeTypes(t *testing.T) {
 	// Recipe schemas include all registered operations dynamically [pkg/recipe/schema.go]
 	op := ops.NewActivityMappedOpV2[schemaEchoIn, schemaEchoOut](
 		ops.OpMetadata{Type: "echo"},
-		func(_ ops.Invocation, _ task.Context, in schemaEchoIn) (schemaEchoOut, error) {
+		func(_ ops.Invocation, _ context.Context, in schemaEchoIn) (schemaEchoOut, error) {
 			return schemaEchoOut{Out: in.Msg}, nil
 		},
 	)

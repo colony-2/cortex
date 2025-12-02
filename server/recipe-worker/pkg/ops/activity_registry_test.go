@@ -121,7 +121,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	workspace, err := gitstate.LegacyPayloadFromInput(inv, input)
 	require.NoError(t, err)
 
-	envelope, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, OpInput: raw, Workspace: workspace})
+	envelope, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, Workspace: workspace})
 	require.NoError(t, err)
 	require.NotNil(t, envelope.Workspace.Context)
 	require.NotEmpty(t, envelope.Workspace.Context.PersistHash)

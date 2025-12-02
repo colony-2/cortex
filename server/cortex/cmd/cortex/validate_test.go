@@ -19,7 +19,7 @@ func TestValidateFile(t *testing.T) {
 	// Create a test schema
 	compiler := jsonschema.NewCompiler()
 	compiler.Draft = jsonschema.Draft7
-	
+
 	schemaDoc := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
@@ -32,15 +32,15 @@ func TestValidateFile(t *testing.T) {
 		},
 		"required": []string{"name"},
 	}
-	
+
 	schemaBytes, _ := json.Marshal(schemaDoc)
 	err := compiler.AddResource("test.json", bytes.NewReader(schemaBytes))
 	require.NoError(t, err)
 	schema := compiler.MustCompile("test.json")
-	
+
 	// Create test files
 	tempDir := t.TempDir()
-	
+
 	// Valid file
 	validFile := filepath.Join(tempDir, "valid.yaml")
 	validContent := `name: test-recipe
@@ -52,22 +52,22 @@ sequence:
       run: "echo test"`
 	err = os.WriteFile(validFile, []byte(validContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Invalid file (missing required field)
 	invalidFile := filepath.Join(tempDir, "invalid.yaml")
 	invalidContent := `version: "1.0"`
 	err = os.WriteFile(invalidFile, []byte(invalidContent), 0644)
 	require.NoError(t, err)
-	
+
 	// Create a validator for testing
-    _ = zap.NewNop()
-    validator := shared.NewRecipeValidator()
-	
+	_ = zap.NewNop()
+	validator := shared.NewRecipeValidator()
+
 	// Test valid file
 	result := validateFile(validFile, schema, false, validator)
 	assert.True(t, result.Valid)
 	assert.Empty(t, result.Errors)
-	
+
 	// Test invalid file
 	result = validateFile(invalidFile, schema, false, validator)
 	assert.False(t, result.Valid)
@@ -121,7 +121,7 @@ func TestConvertYAMLToJSON(t *testing.T) {
 			expected: "string",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := convertYAMLToJSON(tt.input)
@@ -148,7 +148,7 @@ func TestGetErrorType(t *testing.T) {
 		{"additional properties not allowed", "additionalProperties"},
 		{"some other error", "validation"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
 			err := &jsonschema.ValidationError{
@@ -175,7 +175,7 @@ func TestValidateTemplateVariables(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name        string
 		content     string
@@ -184,12 +184,12 @@ func TestValidateTemplateVariables(t *testing.T) {
 	}{
 		{
 			name:        "valid input reference",
-			content:     "value: {{.Inputs.user_input}}",
+			content:     "value: {{.ContainerInputs.user_input}}",
 			expectError: false,
 		},
 		{
 			name:        "invalid input reference",
-			content:     "value: {{.Inputs.nonexistent}}",
+			content:     "value: {{.ContainerInputs.nonexistent}}",
 			expectError: true,
 			errorType:   "undefined_input",
 		},
@@ -216,7 +216,7 @@ func TestValidateTemplateVariables(t *testing.T) {
 			errorType:   "invalid_context_field",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			errors := validateTemplateVariables(tt.content, doc)
@@ -245,10 +245,10 @@ func TestExtractInputs(t *testing.T) {
 			},
 		},
 	}
-	
+
 	inputs := extractInputs(doc)
 	assert.Equal(t, []string{"input1", "input2"}, inputs)
-	
+
 	// Test with no inputs
 	docNoInputs := map[string]interface{}{}
 	inputs = extractInputs(docNoInputs)
@@ -286,7 +286,7 @@ func TestExtractSteps(t *testing.T) {
 			},
 		},
 	}
-	
+
 	steps := extractSteps(doc)
 	assert.Contains(t, steps, "step1")
 	assert.Contains(t, steps, "step2")
@@ -341,9 +341,9 @@ func TestFormatTextOutput(t *testing.T) {
 			},
 		},
 	}
-	
+
 	output := formatTextOutput(summary)
-	
+
 	// Check for key elements in the output
 	assert.Contains(t, output, "VALIDATION RESULTS")
 	assert.Contains(t, output, "valid.yaml")
@@ -374,9 +374,9 @@ func TestFormatMarkdownOutput(t *testing.T) {
 			},
 		},
 	}
-	
+
 	output := formatMarkdownOutput(summary)
-	
+
 	// Check for markdown elements
 	assert.Contains(t, output, "# Recipe Validation Results")
 	assert.Contains(t, output, "## Summary")
@@ -384,7 +384,7 @@ func TestFormatMarkdownOutput(t *testing.T) {
 	assert.Contains(t, output, "## Statistics")
 	assert.Contains(t, output, "`test.yaml`")
 	assert.Contains(t, output, "❌ INVALID")
-	assert.Contains(t, output, "|")  // Table separator
+	assert.Contains(t, output, "|") // Table separator
 }
 
 func TestOutputResults(t *testing.T) {
@@ -399,33 +399,33 @@ func TestOutputResults(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Test JSON output
 	tempFile := filepath.Join(t.TempDir(), "output.json")
 	err := outputResults(summary, "json", tempFile)
 	require.NoError(t, err)
-	
+
 	data, err := os.ReadFile(tempFile)
 	require.NoError(t, err)
-	
+
 	var parsed ValidationSummary
 	err = json.Unmarshal(data, &parsed)
 	require.NoError(t, err)
 	assert.Equal(t, summary.FilesValidated, parsed.FilesValidated)
-	
+
 	// Test text output to stdout (captured in test)
 	err = outputResults(summary, "text", "")
 	require.NoError(t, err)
-	
+
 	// Test markdown output
 	tempFile = filepath.Join(t.TempDir(), "output.md")
 	err = outputResults(summary, "markdown", tempFile)
 	require.NoError(t, err)
-	
+
 	data, err = os.ReadFile(tempFile)
 	require.NoError(t, err)
 	assert.True(t, strings.Contains(string(data), "# Recipe Validation Results"))
-	
+
 	// Test invalid format
 	err = outputResults(summary, "invalid", "")
 	assert.Error(t, err)

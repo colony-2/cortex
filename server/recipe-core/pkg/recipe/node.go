@@ -1,27 +1,27 @@
 package recipe
 
 import (
-    "fmt"
-    "reflect"
+	"fmt"
+	"reflect"
 
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-    "github.com/invopop/jsonschema"
-    yamlv3 "gopkg.in/yaml.v3"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/invopop/jsonschema"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
 type Node struct {
-    NodeImpl
+	NodeImpl
 }
 
 func (n Node) GetMetadata() NodeMetadata {
-    return n.NodeImpl.GetMetadata()
+	return n.NodeImpl.GetMetadata()
 }
 
 // MarshalYAML ensures Node marshals to the same shape expected by UnmarshalYAML
 // by delegating directly to the underlying concrete implementation.
 func (n Node) MarshalYAML() (interface{}, error) {
-    return n.NodeImpl, nil
+	return n.NodeImpl, nil
 }
 
 func (Node) JSONSchema() *jsonschema.Schema {
@@ -68,29 +68,29 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 }
 
 func checkOpInputs(opName string, inputs map[string]interface{}, line int, col int) error {
-    op, exists := ops.Get(opName)
-    if !exists {
-        return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
-    }
-    // Unmarshal into a pointer to the concrete input value so that any
-    // type-provided UnmarshalYAML (e.g., validation wrappers) is invoked.
-    inputVal := op.GetInputStruct()
-    var dest interface{}
-    rv := reflect.ValueOf(inputVal)
-    if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-        dest = inputVal
-    } else {
-        dest = reflect.New(rv.Type()).Interface()
-    }
+	op, exists := ops.Get(opName)
+	if !exists {
+		return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
+	}
+	// Unmarshal into a pointer to the concrete input value so that any
+	// type-provided UnmarshalYAML (e.g., validation wrappers) is invoked.
+	inputVal := op.GetInputStruct()
+	var dest interface{}
+	rv := reflect.ValueOf(inputVal)
+	if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+		dest = inputVal
+	} else {
+		dest = reflect.New(rv.Type()).Interface()
+	}
 
-    data, err := yamlv3.Marshal(inputs)
-    if err != nil {
-        return err
-    }
-    if err := yamlv3.Unmarshal(data, dest); err != nil {
-        return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
-    }
-    return nil
+	data, err := yamlv3.Marshal(inputs)
+	if err != nil {
+		return err
+	}
+	if err := yamlv3.Unmarshal(data, dest); err != nil {
+		return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
+	}
+	return nil
 }
 
 type NodeImpl interface {

@@ -1,14 +1,15 @@
-package compiler
+package template
 
 import (
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInterpolateString(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
 	require.NoError(t, err)
 
 	// Set up test data
@@ -200,7 +201,7 @@ func TestInterpolateString(t *testing.T) {
 }
 
 func TestInterpolateString_Errors(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -246,7 +247,7 @@ func TestInterpolateString_Errors(t *testing.T) {
 }
 
 func TestResolveValueWithMode(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test")
+	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
 	require.NoError(t, err)
 
 	ctx.TemplateData.Inputs = map[string]interface{}{
@@ -340,7 +341,7 @@ func TestResolveValueWithMode(t *testing.T) {
 }
 
 func TestPureCELMode(t *testing.T) {
-	ctx, err := NewResolutionContext("state_machine", "test")
+	ctx, err := NewResolutionContext("state_machine", "test", nil, ops.ExecutionContext{})
 	require.NoError(t, err)
 
 	ctx.TemplateData.Inputs = map[string]interface{}{

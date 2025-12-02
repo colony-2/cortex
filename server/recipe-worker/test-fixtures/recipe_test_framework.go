@@ -14,7 +14,10 @@ import (
 	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -101,7 +104,7 @@ func runGit(dir string, name string, args ...string) error {
 	return nil
 }
 
-func ensureGitInputs(inputs map[string]interface{}) map[string]interface{} {
+func ensureGitInputs(inputs map[string]interface{}) (map[string]interface{}, compiler.ExecutionContext) {
 	clone := make(map[string]interface{}, len(inputs)+4)
 	for k, v := range inputs {
 		clone[k] = v
@@ -121,7 +124,41 @@ func ensureGitInputs(inputs map[string]interface{}) map[string]interface{} {
 		clone["cellname"] = "cells/test-cell"
 	}
 
-	return clone
+	worktree, err := os.MkdirTemp("", "fixtures-worktree-*")
+	if err != nil {
+		panic(err)
+	}
+	blobStoreDir, err := os.MkdirTemp("", "fixtures-blobstore-*")
+	if err != nil {
+		panic(err)
+	}
+	blobStoreURI := "file://" + blobStoreDir
+
+	actor := contextual.ActorContext{
+		TicketID: fmt.Sprint(clone["ticketid"]),
+		CellName: fmt.Sprint(clone["cellname"]),
+	}
+	envCtx := contextual.EnvironmentContext{
+		WorktreePath: worktree,
+		BlobStoreURI: blobStoreURI,
+	}
+	gitCtx := gitstate.Context{
+		ActorContext:       actor,
+		EnvironmentContext: envCtx,
+		GitSnapshotContext: contextual.GitSnapshotContext{
+			BaseRepo:    fmt.Sprint(clone["basegitrepo"]),
+			BaseHash:    fmt.Sprint(clone["basegithash"]),
+			PersistHash: fmt.Sprint(clone["basegithash"]),
+		},
+	}
+
+	execCtx := compiler.ExecutionContext{
+		Actor:       actor,
+		Environment: envCtx,
+		Git:         gitCtx,
+	}
+
+	return clone, execCtx
 }
 
 // equalWithTypeFlexibility compares two values with flexibility for numeric types.
@@ -304,14 +341,8 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				tc := tc // capture range variable
 				t.Run(tc.Name, func(t *testing.T) {
 					// Execute recipe using standalone executor
-					result, err := exec.Execute(
-						context.Background(),
-						recipeDef,
-						ensureGitInputs(tc.Inputs),
-						executor.ExecutionOptions{
-							SuppressLogs: true, // Keep tests clean
-						},
-					)
+					inputs, execCtx := ensureGitInputs(tc.Inputs)
+					result, err := exec.Execute(context.Background(), recipeDef, inputs, execCtx)
 
 					// Check results
 					if tc.WantErr {

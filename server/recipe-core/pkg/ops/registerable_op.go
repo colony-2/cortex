@@ -3,7 +3,6 @@ package ops
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -16,7 +15,7 @@ import (
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
 	// ExecuteV2 runs the op as a task with an explicit invocation descriptor.
-	ExecuteV2(inv Invocation, ctx context.Context, input any) (output any, err error)
+	ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (output any, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -45,7 +44,7 @@ type OpExecutor interface {
 }
 
 // ActivityHandlerV2 defines the signature for activity handlers that accept an invocation descriptor.
-type ActivityHandlerV2[In any, Out any] func(inv Invocation, ctx context.Context, in In) (Out, error)
+type ActivityHandlerV2[In OpInputType, Out OpOutputType] func(inv Invocation, ctx context.Context, in In) (Out, error)
 
 func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out]) RegisterableOp {
 	return newActivityMappedOpV2(metadata, handler, nil, nil)
@@ -94,24 +93,9 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, inputData any) (any, error) {
+func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (OpOutputType, error) {
 	var input In
-
-	var err error
-	switch mapped := inputData.(type) {
-	case In:
-		input = mapped
-	case []byte:
-		err = json.Unmarshal(mapped, &input)
-	case map[string]interface{}:
-		// Legacy path until we stop carrying around map[string]interface{}
-		err = decodeWithJsonTags(mapped, &input)
-	case json.RawMessage:
-		err = json.Unmarshal(mapped, &input)
-	default:
-		return nil, fmt.Errorf("unsupported input type: %T", inputData)
-	}
-
+	err := decodeWithJsonTags(resolvedInput, &input)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding input: %w", err)
 	}

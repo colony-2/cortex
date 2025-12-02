@@ -54,50 +54,31 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 		},
 	}
 
-	baseInputs := withRequiredGitInputs(nil)
 	worktree := filepath.Join(os.TempDir(), "state-investigation-worktree")
 	blobStore := "file://" + filepath.Join(os.TempDir(), "state-investigation-blobstore")
 	inputs := map[string]interface{}{
 		"test_input":  "test_value",
-		"basegitrepo": baseInputs["basegitrepo"],
-		"basegithash": baseInputs["basegithash"],
-		"ticketid":    baseInputs["ticketid"],
-		"cellname":    baseInputs["cellname"],
-		"context": map[string]interface{}{
-			"git": map[string]interface{}{
-				"base_repo":    baseInputs["basegitrepo"],
-				"base_hash":    baseInputs["basegithash"],
-				"persist_hash": baseInputs["basegithash"],
-			},
-			"worktree":  worktree,
-			"blobstore": blobStore,
-			"ticketid":  baseInputs["ticketid"],
-			"cellname":  baseInputs["cellname"],
-			"recipe": map[string]interface{}{
-				"id":              "test-investigation",
-				"workflow_id":     "default-test-workflow-id",
-				"workflow_run_id": "default-test-run-id",
-			},
-		},
 	}
-	inputs["ticket_id"] = baseInputs["ticketid"]
-	inputs["cell_name"] = baseInputs["cellname"]
+	_, execCtx := withRequiredGitInputs(nil)
+	execCtx.Environment.WorktreePath = worktree
+	execCtx.Environment.BlobStoreURI = blobStore
+	execCtx.Git.WorktreePath = worktree
+	execCtx.Git.BlobStoreURI = blobStore
 
 	// Execute and capture what happens
 	env.ExecuteWorkflow(func(ctx workflow.Context) (map[string]interface{}, error) {
 		// Create resolution context
-		resCtx, err := NewResolutionContext("state_machine", "test-sm")
+		resCtx, err := NewResolutionContext("state_machine", "test-sm", inputs, execCtx)
 		if err != nil {
 			return nil, err
 		}
-		resCtx.TemplateData.Inputs = inputs
 
 		// Execute the state
 		tracker := newInvocationTracker(recipe.RecipeMetadata{NodeMetadata: recipe.NodeMetadata{ID: "test-investigation"}}, nil)
 		state := stateMap.States["simple_state"]
 
 		// This should execute the activity and return outputs
-		stateOutputs, err := executeStateNode(ctx, registry, tracker, &state.Node, resCtx, "simple_state")
+		stateOutputs, err := executeStateNode(ctx, registry, tracker, &state.Node, resCtx, "simple_state", execCtx)
 		if err != nil {
 			return nil, err
 		}
