@@ -31,7 +31,7 @@ type EchoOut struct {
 func registerOp() {
 	echoActivity := ops.NewActivityMappedOpV2[EchoIn, EchoOut](
 		ops.OpMetadata{Type: "echo"},
-		func(_ ops.Invocation, _ context.Context, input EchoIn) (EchoOut, error) {
+		func(_ ops.OpDependencies, _ context.Context, input EchoIn) (EchoOut, error) {
 			message := input.Message
 			return EchoOut{
 				Output: message,

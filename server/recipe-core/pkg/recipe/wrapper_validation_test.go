@@ -39,7 +39,7 @@ func TestOpInputs_Normal_Decode_Succeeds(t *testing.T) {
 	ops.Clear()
 	op := ops.NewActivityMappedOpV2[normalIn, normalOut](
 		ops.OpMetadata{Type: "normal"},
-		func(_ ops.Invocation, _ context.Context, in normalIn) (normalOut, error) {
+		func(_ ops.OpDependencies, _ context.Context, in normalIn) (normalOut, error) {
 			return normalOut{M: in.N}, nil
 		},
 	)
@@ -54,7 +54,7 @@ func TestOpInputs_Normal_InvalidType_ProducesError(t *testing.T) {
 	ops.Clear()
 	op := ops.NewActivityMappedOpV2[normalIn, normalOut](
 		ops.OpMetadata{Type: "normal"},
-		func(_ ops.Invocation, _ context.Context, in normalIn) (normalOut, error) {
+		func(_ ops.OpDependencies, _ context.Context, in normalIn) (normalOut, error) {
 			return normalOut{M: in.N}, nil
 		},
 	)
@@ -70,7 +70,7 @@ func TestOpInputs_Wrapper_UnmarshalYAML_Validation_Invoked(t *testing.T) {
 	ops.Clear()
 	op := ops.NewActivityMappedOpV2[wrapperIn, normalOut](
 		ops.OpMetadata{Type: "wrapped"},
-		func(_ ops.Invocation, _ context.Context, in wrapperIn) (normalOut, error) {
+		func(_ ops.OpDependencies, _ context.Context, in wrapperIn) (normalOut, error) {
 			return normalOut{M: 0}, nil
 		},
 	)

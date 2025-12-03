@@ -33,7 +33,7 @@ type RegisterableOp interface {
 }
 
 type OpDependencies interface {
-	Database() (*gorm.DB, bool)
+	Database() *gorm.DB
 	AddArtifact(swf.Artifact) error
 	GetArtifacts() []swf.Artifact
 	WorkflowControl() contextual.TaskWorkflowControl

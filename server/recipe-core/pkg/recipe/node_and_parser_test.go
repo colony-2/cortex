@@ -23,7 +23,7 @@ func registerTestOp() {
 	ops.Clear()
 	testOp := ops.NewActivityMappedOpV2[testOpIn, testOpOut](
 		ops.OpMetadata{Type: "echo"},
-		func(_ ops.Invocation, _ context.Context, in testOpIn) (testOpOut, error) {
+		func(_ ops.OpDependencies, _ context.Context, in testOpIn) (testOpOut, error) {
 			return testOpOut{Output: in.Message}, nil
 		},
 	)

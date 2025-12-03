@@ -52,7 +52,7 @@ func TestProvider_SchemaReflection_And_YAMLValidation(t *testing.T) {
 		Description: "provider-based test op",
 		Version:     "1.0.0",
 	}
-	handler := func(_ rops.Invocation, _ context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+	handler := func(_ rops.OpDependencies, _ context.Context, in map[string]interface{}) (map[string]interface{}, error) {
 		// Echo input; runtime execution not under test here.
 		return in, nil
 	}

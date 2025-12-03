@@ -18,7 +18,7 @@ type dummyOut struct {
 func TestOps_Register_Get_List_Clear(t *testing.T) {
 	Clear()
 	// Operations register globally for workflow access [pkg/ops/ops.go]
-	op := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ Invocation, _ context.Context, in dummyIn) (dummyOut, error) {
+	op := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ OpDependencies, _ context.Context, in dummyIn) (dummyOut, error) {
 		return dummyOut{B: in.A}, nil
 	})
 	Register(op)
@@ -29,7 +29,7 @@ func TestOps_Register_Get_List_Clear(t *testing.T) {
 	assert.Equal(t, "t1", got.GetMetadata().Type)
 
 	// Duplicate operation names replace existing registrations [pkg/ops/ops.go]
-	op2 := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ Invocation, _ context.Context, in dummyIn) (dummyOut, error) {
+	op2 := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "t1"}, func(_ OpDependencies, _ context.Context, in dummyIn) (dummyOut, error) {
 		return dummyOut{B: "new"}, nil
 	})
 	Register(op2)
@@ -56,7 +56,7 @@ func TestOps_ThreadSafety(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			name := "op-" + string(rune('a'+(i%26)))
-			Register(NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: name}, func(_ Invocation, _ context.Context, in dummyIn) (dummyOut, error) {
+			Register(NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: name}, func(_ OpDependencies, _ context.Context, in dummyIn) (dummyOut, error) {
 				return dummyOut{B: in.A}, nil
 			}))
 		}()

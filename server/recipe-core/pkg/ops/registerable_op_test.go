@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,38 +21,34 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 	// Inline operations execute synchronously within workflows [pkg/ops/registerable_op.go]
 
 	// Activity operations delegate to external workers correctly [pkg/ops/registerable_op.go]
-	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a1"}, func(_ Invocation, _ context.Context, in rIn) (rOut, error) {
+	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a1"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) {
 		return rOut{Echo: in.Msg}, nil
 	})
-	out2, err := act.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": "yo"})
+	out2, err := act.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
-	result, ok := out2.(rOut)
-	require.True(t, ok)
-	assert.Equal(t, "yo", result.Echo)
+	assert.Equal(t, map[string]interface{}{"echo": "yo"}, out2)
 }
 
 func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	// Invalid input data fails operation with clear errors [pkg/ops/registerable_op.go]
-	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a2"}, func(_ Invocation, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
-	_, err := act.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": 123})
+	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a2"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
+	_, err := act.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": 123})
 	assert.Error(t, err)
 
-	actOnly := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "act-only"}, func(_ Invocation, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
+	actOnly := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "act-only"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
 
 	// Zero-valued contexts handled gracefully in operations [pkg/ops/registerable_op.go]
-	out, err := actOnly.ExecuteV2(Invocation{}, context.Background(), map[string]interface{}{"msg": "ok"})
+	out, err := actOnly.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
-	result, ok := out.(rOut)
-	require.True(t, ok)
-	assert.NotNil(t, result)
+	assert.Equal(t, map[string]interface{}{"echo": ""}, out)
 }
 
 func TestInvocation_HashDeterministic(t *testing.T) {
-	inv := Invocation{RecipeID: "recipe", NodePath: "node/a", InvokeSeq: 3, BoxID: "box", ActivityID: "act"}
-	inv.ID = inv.Hash()
+	inv := contextual.Invocation{NodePath: "node/a", InvokeSeq: 3}
+	hash := inv.Hash()
 
 	// Hash is stable for identical invocations and changes when fields differ.
-	assert.Equal(t, inv.ID, inv.Hash())
+	assert.Equal(t, hash, inv.Hash())
 
 	modified := inv
 	modified.InvokeSeq = 4
@@ -61,12 +58,15 @@ func TestInvocation_HashDeterministic(t *testing.T) {
 func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
 
 	activityInvoked := false
-	activity := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "activity-v2"}, func(inv Invocation, _ context.Context, in rIn) (rOut, error) {
-		activityInvoked = inv.NodePath == "node" && inv.InvokeSeq == 7
+	deps := &testDeps{}
+	activity := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "activity-v2"}, func(dep OpDependencies, _ context.Context, in rIn) (rOut, error) {
+		if td, ok := dep.(*testDeps); ok {
+			activityInvoked = td == deps && in.Msg == "yo"
+		}
 		return rOut{Echo: in.Msg}, nil
 	})
 
-	_, err := activity.ExecuteV2(Invocation{NodePath: "node", InvokeSeq: 7}, context.Background(), map[string]interface{}{"msg": "yo"})
+	_, err := activity.ExecuteV2(deps, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.True(t, activityInvoked)
 }
