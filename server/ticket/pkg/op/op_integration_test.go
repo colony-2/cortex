@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
@@ -14,15 +13,7 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
-	deps := ops.NewServiceDepsBuilder().WithDatabase(pg.DB).Build()
-	inv := ops.Invocation{
-		RecipeID:   "integration",
-		NodePath:   "flow/0",
-		InvokeSeq:  0,
-		BoxID:      "cell-integration",
-		ActivityID: "ticket-manage",
-		Deps:       deps,
-	}
+	inv := newOpDepsWithDB(pg.DB)
 
 	input := Input{
 		Actions: []Action{

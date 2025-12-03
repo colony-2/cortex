@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -94,16 +96,25 @@ func (s *stubService) ResetTicket(ctx context.Context, id ticket.ID, in ticket.T
 	return nil, errors.New("unexpected ResetTicket call")
 }
 
-func newInvocation() ops.Invocation {
-	deps := ops.NewServiceDepsBuilder().WithDatabase(&gorm.DB{}).Build()
-	return ops.Invocation{
-		RecipeID:   "recipe-alpha",
-		NodePath:   "node/step",
-		InvokeSeq:  1,
-		BoxID:      "cell-x",
-		ActivityID: "activity-1",
-		Deps:       deps,
-	}
+type stubDeps struct {
+	db        *gorm.DB
+	artifacts []swf.Artifact
+	workflow  workflowctl.WorkflowControl
+}
+
+func (d *stubDeps) Database() *gorm.DB { return d.db }
+func (d *stubDeps) AddArtifact(a swf.Artifact) error {
+	d.artifacts = append(d.artifacts, a)
+	return nil
+}
+func (d *stubDeps) GetArtifacts() []swf.Artifact { return d.artifacts }
+func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
+	return d.workflow
+}
+
+func newOpDeps() ops.OpDependencies { return newOpDepsWithDB(&gorm.DB{}) }
+func newOpDepsWithDB(db *gorm.DB) ops.OpDependencies {
+	return &stubDeps{db: db}
 }
 
 func TestExecute_CreateAndUpdate(t *testing.T) {
@@ -142,7 +153,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 		return updated, nil
 	}
 
-	inv := newInvocation()
+	deps := newOpDeps()
 	input := Input{
 		Actions: []Action{
 			{
@@ -152,6 +163,15 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 					Title: "Bootstrap",
 					Stage: "Triage",
 					State: string(ticket.StateWorking),
+					Actor: &actorPayload{
+						Type: "agent",
+						Agent: &actorAgentPayload{
+							CellName:       "cell-x",
+							WorkflowName:   "recipe-alpha",
+							ExecutionID:    "exec-1",
+							InvocationHash: "inv-1",
+						},
+					},
 				}),
 			},
 			{
@@ -164,7 +184,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 		},
 	}
 
-	output, err := execute(inv, context.Background(), input)
+	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.NotNil(t, output.Ticket)
 	require.Equal(t, ticket.Stage("execution"), output.Ticket.Stage)
@@ -195,7 +215,7 @@ func TestExecute_AppendTicketNoteUpdatesContext(t *testing.T) {
 		return event, nil
 	}
 
-	inv := newInvocation()
+	deps := newOpDeps()
 	input := Input{
 		TicketID: "TCK-42",
 		Actions: []Action{
@@ -209,7 +229,7 @@ func TestExecute_AppendTicketNoteUpdatesContext(t *testing.T) {
 		},
 	}
 
-	output, err := execute(inv, context.Background(), input)
+	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.Nil(t, output.Ticket)
 	require.Equal(t, "EVT-1", output.ContextPatch["ticket.last_event_id"])
@@ -224,7 +244,7 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 	restore := TestingStub{Service: svc}.Install()
 	defer restore()
 
-	inv := newInvocation()
+	deps := newOpDeps()
 	input := Input{
 		TicketID: "T-1",
 		Actions: []Action{{
@@ -233,7 +253,7 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 		}},
 	}
 
-	_, err := execute(inv, context.Background(), input)
+	_, err := execute(deps, context.Background(), input)
 	require.Error(t, err)
 	appErr := new(workflow.NonRetryableError)
 	require.True(t, errors.As(err, &appErr))
@@ -260,7 +280,7 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 		}, nil
 	}
 
-	inv := newInvocation()
+	deps := newOpDeps()
 	input := Input{
 		TicketID: "T-55",
 		Actions: []Action{{
@@ -269,7 +289,7 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 		}},
 	}
 
-	output, err := execute(inv, context.Background(), input)
+	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.NotNil(t, output.Ticket)
 	require.Equal(t, ticket.Stage("triage"), output.Ticket.Stage)
@@ -287,7 +307,7 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 		return nil, ticket.ErrVersionConflict
 	}
 
-	inv := newInvocation()
+	deps := newOpDeps()
 	input := Input{
 		TicketID: "T-1",
 		Actions: []Action{{
@@ -299,7 +319,7 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 		}},
 	}
 
-	_, err := execute(inv, context.Background(), input)
+	_, err := execute(deps, context.Background(), input)
 	require.Error(t, err)
 	appErr := new(workflow.NonRetryableError)
 	require.True(t, errors.As(err, &appErr))
