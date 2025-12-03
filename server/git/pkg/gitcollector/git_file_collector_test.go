@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/git/internal/commands"
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +77,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			ContextDir: tmpDir,
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 		assert.Equal(t, 3, output.FileCount)
 		assert.NotEmpty(t, output.Repository.CommitHash)
@@ -109,7 +108,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			ExcludePatterns: []string{"*_test.go"},
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 		assert.Equal(t, 2, output.FileCount) // main.go and lib/util.go
 
@@ -154,7 +153,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			ExcludeBinary: true,
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Should only have text files
@@ -182,7 +181,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			MaxFileSize: 100, // Only allow files up to 100 bytes
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 		assert.Equal(t, 1, output.FileCount) // Only small.txt
 		assert.Equal(t, 1, output.Statistics.SkippedFiles)
@@ -206,13 +205,13 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			IncludeUntracked: false,
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 		assert.Equal(t, 1, output.FileCount) // Only tracked.go
 
 		// Test with including untracked
 		input.IncludeUntracked = true
-		output, err = activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err = activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 		assert.Equal(t, 2, output.FileCount) // tracked.go and untracked.go
 	})
@@ -243,7 +242,7 @@ func TestGitFileCollectorActivity(t *testing.T) {
 			UseGitignore:     true,
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Should have main.go, .gitignore, and new.go (but not debug.log or build/output.bin)

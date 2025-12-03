@@ -8,14 +8,27 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/stretchr/testify/require"
 )
 
 type writeFile struct {
 	Path    string
 	Content string
+}
+
+func newTaskContext(baseRepo, baseHash, worktree, blobStore, cell string) *GitTaskContext {
+	return &GitTaskContext{
+		BaseRepo:     baseRepo,
+		BaseHash:     baseHash,
+		PersistHash:  baseHash,
+		PreviousHash: baseHash,
+		WorktreePath: worktree,
+		BlobStoreURI: "file://" + blobStore,
+		CellName:     cell,
+		TicketID:     "ticket-123",
+		NodePath:     "node",
+		InvokeSeq:    1,
+	}
 }
 
 func TestControllerLifecycle(t *testing.T) {
@@ -27,69 +40,44 @@ func TestControllerLifecycle(t *testing.T) {
 	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := Context{
-		InvocationContext: contextual.InvocationContext{
-			RecipeID:       "recipe.test",
-			NodePath:       "node",
-			InvocationID:   "inv",
-			InvocationHash: "invhash",
-		},
-		ActorContext: contextual.ActorContext{
-			TicketID: "ticket-123",
-			CellName: "cells/alpha",
-		},
-		EnvironmentContext: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-			BlobStoreURI: "file://" + blobStore,
-		},
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:     baseRepo,
-			BaseHash:     baseHash,
-			PersistHash:  baseHash,
-			PreviousHash: baseHash,
-		},
-		Workflow: contextual.WorkflowEnvelope{JobID: swf.JobId("job-1")},
-	}
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
 
 	controller := NewController(nil)
-	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
-	require.NoError(t, controller.Restore(context.Background(), &ctx))
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx))
 
 	file := writeFile{Path: filepath.Join(worktree, "cells", "alpha", "hello.txt"), Content: "hello"}
 	require.NoError(t, os.WriteFile(file.Path, []byte(file.Content), 0o644))
 
-	newHash, updatedCtx, err := controller.Persist(context.Background(), &ctx)
+	output, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
-	require.NotEmpty(t, newHash)
-	require.NotEqual(t, baseHash, newHash)
+	require.NotNil(t, output)
+	require.NotEmpty(t, output.CommitHash)
+	require.NotEqual(t, baseHash, output.CommitHash)
 
-	outputs := LegacyOutputsFromResult(WorkspaceResult{
-		Context:        updatedCtx,
-		GitPersistHash: updatedCtx.PersistHash,
-	})
-
-	gitMap := outputs["context"].(map[string]interface{})["git"].(map[string]interface{})
-	require.Equal(t, newHash, gitMap["persist_hash"].(string))
+	ctx.PersistHash = output.CommitHash
+	ctx.PreviousHash = output.ParentHash
+	ctx.ThinPackPath = output.ThinPackPath
 
 	head := gitRevParse(t, worktree, "HEAD")
-	require.True(t, strings.HasPrefix(head, newHash[:7]))
+	require.True(t, strings.HasPrefix(head, output.CommitHash[:7]))
 
-	thinPackPath := gitMap["thin_pack_path"].(string)
-	require.True(t, strings.HasPrefix(thinPackPath, "git/thin-packs"))
-	packAbs := filepath.Join(blobStore, filepath.FromSlash(thinPackPath))
-	info, err := os.Stat(packAbs)
+	relativePack, err := filepath.Rel(blobStore, output.ThinPackPath)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(filepath.ToSlash(relativePack), "git/thin-packs"))
+
+	info, err := os.Stat(output.ThinPackPath)
 	require.NoError(t, err)
 	require.Greater(t, info.Size(), int64(0))
 
 	restoredWorktree := filepath.Join(t.TempDir(), "restore")
-	restoredCtx := updatedCtx
+	restoredCtx := *ctx
 	restoredCtx.WorktreePath = restoredWorktree
-	restoredCtx.WorkspacePrepared = false
 
-	require.NoError(t, controller.PrepareWorkspace(context.Background(), &restoredCtx))
+	require.NoError(t, controller.prepareWorkspace(context.Background(), &restoredCtx))
 	require.NoError(t, controller.Restore(context.Background(), &restoredCtx))
 	restoredHead := gitRevParse(t, restoredWorktree, "HEAD")
-	require.True(t, strings.HasPrefix(restoredHead, newHash[:7]))
+	require.True(t, strings.HasPrefix(restoredHead, output.CommitHash[:7]))
 }
 
 func TestControllerPersistCleansOutsideCell(t *testing.T) {
@@ -101,25 +89,11 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := Context{
-		EnvironmentContext: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-			BlobStoreURI: "file://" + blobStore,
-		},
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:     baseRepo,
-			BaseHash:     baseHash,
-			PersistHash:  baseHash,
-			PreviousHash: baseHash,
-		},
-		ActorContext: contextual.ActorContext{
-			CellName: "cells/alpha",
-		},
-	}
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
 
 	controller := NewController(nil)
-	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
-	require.NoError(t, controller.Restore(context.Background(), &ctx))
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx))
 
 	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
@@ -128,9 +102,10 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 	outside := filepath.Join(worktree, "rogue.txt")
 	require.NoError(t, os.WriteFile(outside, []byte("rogue"), 0o644))
 
-	newHash, _, err := controller.Persist(context.Background(), &ctx)
+	output, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
-	require.NotEmpty(t, newHash)
+	require.NotNil(t, output)
+	require.NotEmpty(t, output.CommitHash)
 
 	_, err = os.Stat(outside)
 	require.Error(t, err)
@@ -153,33 +128,20 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := Context{
-		EnvironmentContext: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-			BlobStoreURI: "file://" + blobStore,
-		},
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:     baseRepo,
-			BaseHash:     baseHash,
-			PersistHash:  baseHash,
-			PreviousHash: baseHash,
-		},
-		ActorContext: contextual.ActorContext{
-			CellName: "cells/alpha",
-		},
-	}
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
 
 	controller := NewController(nil)
-	require.NoError(t, controller.PrepareWorkspace(context.Background(), &ctx))
-	require.NoError(t, controller.Restore(context.Background(), &ctx))
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx))
 
 	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
 	require.NoError(t, os.WriteFile(inside, []byte("alpha"), 0o644))
 
-	newHash, updatedCtx, err := controller.Persist(context.Background(), &ctx)
+	output, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
-	require.NotEmpty(t, newHash)
+	require.NotNil(t, output)
+	require.NotEmpty(t, output.CommitHash)
 
 	stray := filepath.Join(worktree, "stray.txt")
 	require.NoError(t, os.WriteFile(stray, []byte("stray"), 0o644))
@@ -187,8 +149,11 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, statBefore.IsDir())
 
-	updatedCtx.PersistHash = newHash
-	require.NoError(t, controller.Restore(context.Background(), &updatedCtx))
+	ctx.PersistHash = output.CommitHash
+	ctx.PreviousHash = output.ParentHash
+	ctx.ThinPackPath = output.ThinPackPath
+
+	require.NoError(t, controller.Restore(context.Background(), ctx))
 
 	_, err = os.Stat(stray)
 	require.Error(t, err)
@@ -199,37 +164,27 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 }
 
 func TestBuildCommitMessage(t *testing.T) {
-	ctx := Context{
-		InvocationContext: contextual.InvocationContext{
-			RecipeID:          "recipe",
-			NodePath:          "node",
-			InvocationHash:    "invhash",
-			InvocationID:      "invoke",
-			InvocationAttempt: 2,
-			BoxID:             "box",
-			ActivityID:        "activity",
-			JobID:             swf.JobId("job-123"),
-		},
-		ActorContext: contextual.ActorContext{
-			TicketID: "TICK-1",
-			CellName: "cells/alpha",
-		},
-		EnvironmentContext: contextual.EnvironmentContext{
-			BlobStoreURI: "file:///blob",
-			ThinPackPath: "git/thin-packs/cb-pack.pack",
-		},
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:     "/repo",
-			BaseHash:     strings.Repeat("a", 40),
-			PreviousHash: strings.Repeat("b", 40),
-			PersistHash:  strings.Repeat("c", 40),
-		},
+	ctx := &GitTaskContext{
+		BaseRepo:     "/repo",
+		BaseHash:     strings.Repeat("a", 40),
+		PreviousHash: strings.Repeat("b", 40),
+		PersistHash:  strings.Repeat("c", 40),
+		BlobStoreURI: "file:///blob",
+		ThinPackPath: "git/thin-packs/cb-pack.pack",
+		TicketID:     "TICK-1",
+		CellName:     "cells/alpha",
+		NodePath:     "cells/alpha/op",
+		InvokeSeq:    3,
 	}
 	message := buildCommitMessage(ctx, ctx.PersistHash, ctx.ThinPackPath)
-	require.Contains(t, message, "Recipe recipe node node")
-	require.Contains(t, message, "persist_hash: "+ctx.PersistHash)
-	require.Contains(t, message, "thin_pack_path: "+ctx.ThinPackPath)
-	require.Contains(t, message, "job:\n  id: job-123")
+	require.Contains(t, message, ctx.BaseHash)
+	require.Contains(t, message, ctx.PreviousHash)
+	require.Contains(t, message, ctx.PersistHash)
+	require.Contains(t, message, ctx.BlobStoreURI)
+	require.Contains(t, message, ctx.ThinPackPath)
+	require.Contains(t, message, ctx.TicketID)
+	require.Contains(t, message, ctx.CellName)
+	require.Contains(t, message, ctx.NodePath)
 }
 
 func setupGitRepo(t *testing.T) (string, string, func()) {

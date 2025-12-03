@@ -1,8 +1,6 @@
 package gitstate
 
-import (
-	"fmt"
-)
+import "fmt"
 
 // buildCommitMessage renders the structured commit metadata block used for git persistence.
 func buildCommitMessage(ctx *GitTaskContext, persistHash, thinPackPath string) string {
@@ -12,7 +10,7 @@ func buildCommitMessage(ctx *GitTaskContext, persistHash, thinPackPath string) s
 	if thinPackPath == "" {
 		thinPackPath = ctx.ThinPackPath
 	}
-	return fmt.Sprintf(`Recipe %s node %s
+	return fmt.Sprintf(`Recipe node %s seq %d
 
 ---
 git:
@@ -27,9 +25,12 @@ ticket:
 invocation:
   path: %s
   seq: %d
+  hash: %s
 
 ---
 `,
+		ctx.NodePath,
+		ctx.InvokeSeq,
 		ctx.BaseHash,
 		ctx.PreviousHash,
 		persistHash,
@@ -39,5 +40,6 @@ invocation:
 		ctx.CellName,
 		ctx.NodePath,
 		ctx.InvokeSeq,
+		ctx.InvokeHash,
 	)
 }
