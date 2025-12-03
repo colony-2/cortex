@@ -1,13 +1,14 @@
+//go:build futureworkspace
+
 package workspace
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
 
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"go.temporal.io/sdk/workflow"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 )
 
 // DetachedWorkspaceOptions controls how detached workspaces are named.

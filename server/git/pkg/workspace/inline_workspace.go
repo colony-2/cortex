@@ -1,3 +1,5 @@
+//go:build futureworkspace
+
 package workspace
 
 import (
@@ -10,9 +12,8 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 // InlineWorkspaceOptions provides knobs for deriving child workspace metadata.

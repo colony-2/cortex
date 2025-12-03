@@ -1,3 +1,5 @@
+//go:build futureworkspace
+
 package workspace
 
 import (
@@ -10,9 +12,9 @@ import (
 	"time"
 
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 )
 
 type inlineWriteFileArgs struct {

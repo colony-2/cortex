@@ -1,5 +1,11 @@
 package thinpackrebase
 
+import (
+	"context"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+)
+
 // ThinpackRebaseInput captures the parameters required to rebase a thin-pack backed workspace.
 type ThinpackRebaseInput struct {
 	RepoPath       string                 `json:"repo_path,omitempty"`
@@ -24,4 +30,36 @@ type ThinpackRebaseOutput struct {
 	UpdatedRef      string                 `json:"updated_ref,omitempty"`
 	RebasedFrom     RebasedFromSummary     `json:"rebased_from"`
 	GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
+}
+
+// ThinpackRebaseActivity implements the RegisterableOp interface.
+type ThinpackRebaseActivity struct{}
+
+// NewThinpackRebaseActivity constructs a thinpack rebase activity wrapper.
+func NewThinpackRebaseActivity() *ThinpackRebaseActivity {
+	return &ThinpackRebaseActivity{}
+}
+
+// GetOp exposes the activity in a recipe-friendly form.
+func GetOp() ops.RegisterableOp {
+	act := NewThinpackRebaseActivity()
+	return ops.NewActivityMappedOpV2[ThinpackRebaseInput, ThinpackRebaseOutput](act.GetMetadata(), act.Execute)
+}
+
+// GetMetadata describes the activity for registry/discovery.
+func (a *ThinpackRebaseActivity) GetMetadata() ops.OpMetadata {
+	return ops.OpMetadata{
+		Type:        "thinpackrebase",
+		Description: "Rebases a thin-pack backed workspace onto a new base commit and refreshes git context metadata",
+		Version:     "1.0.0",
+	}
+}
+
+// Execute performs the thin-pack aware rebase operation.
+func (a *ThinpackRebaseActivity) Execute(inv ops.OpDependencies, ctx context.Context, input ThinpackRebaseInput) (ThinpackRebaseOutput, error) {
+	output, err := Run(ctx, input)
+	if err != nil {
+		return ThinpackRebaseOutput{}, err
+	}
+	return *output, nil
 }

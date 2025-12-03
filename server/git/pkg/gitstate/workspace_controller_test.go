@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/stretchr/testify/require"
 )
 
