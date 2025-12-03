@@ -9,9 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
 // DependencyName is the well-known key for retrieving a WorkflowControl
