@@ -1,4 +1,4 @@
-package gitstate
+package workspace
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -29,30 +30,26 @@ type InlineWorkspaceResult struct {
 }
 
 // InlineWorkspaceFunc represents the inline logic executed within a managed git workspace.
-type InlineWorkspaceFunc func(workflow.Context, WorkspacePayload) (json.RawMessage, error)
+type InlineWorkspaceFunc[In any, Out any] func(workflow.Context, In) (Out, error)
 
 // WithInlineWorkspace orchestrates prepare/restore/persist semantics for inline operations that mutate git state.
-func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, payload WorkspacePayload, opts InlineWorkspaceOptions, fn InlineWorkspaceFunc) (*InlineWorkspaceResult, error) {
+func WithInlineWorkspace[In any, Out any](ctx context.Context, parentCtx GitTaskContext, opts InlineWorkspaceOptions, fn InlineWorkspaceFunc[In, Out], in In) (*InlineWorkspaceResult, Out, error) {
+	var result Out
 	if fn == nil {
-		return nil, fmt.Errorf("inline workspace requires execution function")
+		return nil, result, fmt.Errorf("inline workspace requires execution function")
 	}
 
-	parentCtx, err := ContextFromPayload(inv, payload)
+	childCtx, err := deriveChildWorkspace(parentCtx, opts)
 	if err != nil {
-		return nil, err
+		return nil, result, err
 	}
 
-	childCtx, childPayload, err := deriveChildWorkspace(inv, *parentCtx, opts, payload)
-	if err != nil {
-		return nil, err
+	controller := NewController(nil)
+	if err := controller.Restore(ctx, gitCtx); err != nil {
+		return err
 	}
 
-	childCtx, err = runInlineLifecycleStage(ctx, childCtx, inlinePrepareWorkspaceActivity)
-	if err != nil {
-		return nil, err
-	}
-
-	childCtx, err = runInlineLifecycleStage(ctx, childCtx, inlineRestoreWorkspaceActivity)
+	err = inlineRestoreWorkspaceActivity(ctx, &childCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -90,27 +87,7 @@ func WithInlineWorkspace(ctx workflow.Context, inv coreops.Invocation, payload W
 	return workspaceResult, nil
 }
 
-type inlineLifecycleActivity func(context.Context, Context) (Context, error)
-
-func runInlineLifecycleStage(ctx workflow.Context, gitCtx Context, activity inlineLifecycleActivity) (Context, error) {
-	laOpts := workflow.LocalActivityOptions{
-		StartToCloseTimeout: 2 * time.Minute,
-		RetryPolicy: &temporal.RetryPolicy{
-			InitialInterval:    time.Second,
-			BackoffCoefficient: 2,
-			MaximumAttempts:    3,
-		},
-	}
-	laCtx := workflow.WithLocalActivityOptions(ctx, laOpts)
-	var updated Context
-	err := workflow.ExecuteLocalActivity(laCtx, activity, gitCtx).Get(laCtx, &updated)
-	if err != nil {
-		return Context{}, err
-	}
-	return updated, nil
-}
-
-func runInlinePersistStage(ctx workflow.Context, gitCtx Context) (inlinePersistResult, error) {
+func runInlinePersistStage(ctx workflow.Context, gitCtx GitTaskContext) (inlinePersistResult, error) {
 	laOpts := workflow.LocalActivityOptions{
 		StartToCloseTimeout: 2 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
@@ -129,85 +106,57 @@ func runInlinePersistStage(ctx workflow.Context, gitCtx Context) (inlinePersistR
 }
 
 type inlinePersistResult struct {
-	Context Context
+	GitHash string `json:"git_hash"`
 }
 
-func inlinePrepareWorkspaceActivity(ctx context.Context, gitCtx Context) (Context, error) {
+func inlineRestoreWorkspaceActivity(ctx context.Context, gitCtx *GitTaskContext) error {
 	controller := NewController(nil)
-	if err := controller.PrepareWorkspace(ctx, &gitCtx); err != nil {
-		return Context{}, err
+	if err := controller.Restore(ctx, gitCtx); err != nil {
+		return err
 	}
-	return gitCtx, nil
+	return nil
 }
 
-func inlineRestoreWorkspaceActivity(ctx context.Context, gitCtx Context) (Context, error) {
+func inlinePersistWorkspaceActivity(ctx context.Context, gitCtx *GitTaskContext) (*gitcommit.PersistCommitOutput, error) {
 	controller := NewController(nil)
-	if err := controller.Restore(ctx, &gitCtx); err != nil {
-		return Context{}, err
-	}
-	return gitCtx, nil
+	return controller.Persist(ctx, gitCtx)
 }
 
-func inlinePersistWorkspaceActivity(ctx context.Context, gitCtx Context) (inlinePersistResult, error) {
-	controller := NewController(nil)
-	_, updated, err := controller.Persist(ctx, &gitCtx)
-	if err != nil {
-		return inlinePersistResult{}, err
-	}
-	return inlinePersistResult{Context: updated}, nil
-}
-
-func deriveChildWorkspace(inv coreops.Invocation, parentCtx Context, opts InlineWorkspaceOptions, basePayload WorkspacePayload) (Context, WorkspacePayload, error) {
+func deriveChildWorkspace(parentCtx GitTaskContext, opts InlineWorkspaceOptions) (GitTaskContext, error) {
+	childCtx := parentCtx
 	if parentCtx.WorktreePath == "" {
-		return Context{}, WorkspacePayload{}, fmt.Errorf("parent git context missing worktree path")
+		return childCtx, fmt.Errorf("parent git context missing worktree path")
 	}
 
 	runRoot := filepath.Dir(parentCtx.WorktreePath)
-	childSegment := opts.ChildID
-	if strings.TrimSpace(childSegment) == "" {
-		childSegment = defaultChildSegment(inv)
-	} else {
-		childSegment = sanitizeSegment(childSegment)
-		if childSegment == "" {
-			childSegment = defaultChildSegment(inv)
-		}
+	childSegment := strings.TrimSpace(opts.ChildID)
+	if childSegment != "" {
+		childSegment = defaultChildSegment(parentCtx)
 	}
 
-	childCtx := parentCtx
 	childCtx.WorktreePath = filepath.Join(runRoot, childSegment, "work")
 	childCtx.ThinPackPath = ""
-	childCtx.WorkspacePrepared = false
 	childCtx.PreviousHash = parentCtx.PersistHash
-	childCtx.InvocationID = inv.ID
-	childCtx.InvocationHash = inv.Hash()
-	childCtx.InvocationAttempt = inv.InvokeSeq
-	childCtx.ActivityID = inv.ActivityID
-	childCtx.BoxID = inv.BoxID
-	if inv.NodePath != "" {
-		childCtx.NodePath = inv.NodePath
-	}
-
-	childPayload := basePayload
-	childPayload.Context = childCtx
-	childPayload.GitPersistHash = childCtx.PersistHash
-	childPayload.TicketID = childCtx.TicketID
-	childPayload.CellName = childCtx.CellName
-
-	return childCtx, childPayload, nil
+	return childCtx, nil
 }
 
 var nonSegmentChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
-func defaultChildSegment(inv coreops.Invocation) string {
-	base := sanitizeSegment(inv.NodePath)
+func defaultChildSegment(git GitTaskContext) string {
+	base := sanitizeSegment(git.NodePath)
 	if base == "" {
 		base = "inline"
 	}
-	hash := inv.Hash()
+
+	if len(base) > 10 {
+		base = base[:40]
+	}
+
+	hash := git.GetInvokeHash()
 	if len(hash) > 8 {
 		hash = hash[:8]
 	}
-	return fmt.Sprintf("%s-%s-%d", base, hash, inv.InvokeSeq)
+	return fmt.Sprintf("%s-%s-%d", base, hash, git.InvokeSeq)
 }
 
 func sanitizeSegment(raw string) string {

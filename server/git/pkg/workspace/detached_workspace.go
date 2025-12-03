@@ -1,4 +1,4 @@
-package gitstate
+package workspace
 
 import (
 	"encoding/json"
@@ -21,48 +21,44 @@ type DetachedWorkspaceResult struct {
 }
 
 // DetachedWorkspaceFunc represents the execution performed inside the detached workspace.
-type DetachedWorkspaceFunc func(workflow.Context, WorkspacePayload) (json.RawMessage, error)
+type DetachedWorkspaceFunc[In any, Out any] func(workflow.Context, In) (Out, error)
 
 // PlanDetachedWorkspace derives an isolated git context and input payload without performing any git operations.
-func PlanDetachedWorkspace(inv coreops.Invocation, payload WorkspacePayload, opts DetachedWorkspaceOptions) (Context, WorkspacePayload, error) {
-	baseCtx, err := ContextFromPayload(inv, payload)
-	if err != nil {
-		return Context{}, WorkspacePayload{}, err
-	}
-	return deriveDetachedWorkspace(inv, *baseCtx, opts, payload)
+func PlanDetachedWorkspace(inv coreops.Invocation, parentCtx GitTaskContext, opts DetachedWorkspaceOptions) (GitTaskContext, error) {
+	return deriveDetachedWorkspace(inv, parentCtx, opts)
 }
 
 // WithDetachedWorkspace provisions a standalone git workspace, executes fn, and persists the resulting git context without mutating the caller's inputs.
-func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, payload WorkspacePayload, opts DetachedWorkspaceOptions, fn DetachedWorkspaceFunc) (*DetachedWorkspaceResult, error) {
+func WithDetachedWorkspace[In any, Out any](ctx workflow.Context, inv coreops.Invocation, parentCtx GitTaskContext, opts DetachedWorkspaceOptions, fn DetachedWorkspaceFunc[In, Out], input In) (Out, string, error) {
+	var result Out
 	if fn == nil {
-		return nil, fmt.Errorf("detached workspace requires execution function")
+		return result, "", fmt.Errorf("detached workspace requires execution function")
 	}
 
-	childCtx, childPayload, err := PlanDetachedWorkspace(inv, payload, opts)
+	childCtx, err := PlanDetachedWorkspace(inv, parentCtx, opts)
 	if err != nil {
-		return nil, err
+		return result, "", err
 	}
 
 	childCtx, err = runInlineLifecycleStage(ctx, childCtx, inlinePrepareWorkspaceActivity)
 	if err != nil {
-		return nil, err
+		return result, "", err
 	}
 
 	childCtx, err = runInlineLifecycleStage(ctx, childCtx, inlineRestoreWorkspaceActivity)
 	if err != nil {
-		return nil, err
+		return result, "", err
 	}
 
-	result, err := fn(ctx, childPayload)
+	result, err := fn(ctx, input)
 	if err != nil {
-		return nil, err
+		return result, "", err
 	}
 
 	persistOutput, err := runInlinePersistStage(ctx, childCtx)
 	if err != nil {
-		return nil, err
+		return result, "", err
 	}
-	childCtx = persistOutput.Context
 
 	return &DetachedWorkspaceResult{
 		WorkspaceResult: WorkspaceResult{
@@ -73,9 +69,9 @@ func WithDetachedWorkspace(ctx workflow.Context, inv coreops.Invocation, payload
 	}, nil
 }
 
-func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts DetachedWorkspaceOptions, basePayload WorkspacePayload) (Context, WorkspacePayload, error) {
+func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx GitTaskContext, opts DetachedWorkspaceOptions) (GitTaskContext, error) {
 	if parentCtx.WorktreePath == "" {
-		return Context{}, WorkspacePayload{}, fmt.Errorf("git context missing worktree path for detached workspace")
+		return parentCtx, fmt.Errorf("git context missing worktree path for detached workspace")
 	}
 
 	runRoot := filepath.Dir(parentCtx.WorktreePath)
@@ -89,7 +85,6 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 	childCtx := parentCtx
 	childCtx.WorktreePath = filepath.Join(runRoot, segment, "work")
 	childCtx.ThinPackPath = ""
-	childCtx.WorkspacePrepared = false
 	childCtx.PreviousHash = parentCtx.BaseHash
 	if childCtx.PreviousHash == "" {
 		childCtx.PreviousHash = parentCtx.PersistHash
@@ -97,25 +92,12 @@ func deriveDetachedWorkspace(inv coreops.Invocation, parentCtx Context, opts Det
 	if childCtx.BaseHash != "" {
 		childCtx.PersistHash = childCtx.BaseHash
 	}
-	childCtx.InvocationID = inv.ID
-	childCtx.InvocationHash = inv.Hash()
-	childCtx.InvocationAttempt = inv.InvokeSeq
-	childCtx.ActivityID = inv.ActivityID
-	childCtx.BoxID = inv.BoxID
-	if inv.NodePath != "" {
-		childCtx.NodePath = inv.NodePath
-	}
 
 	if uri := strings.TrimSpace(childCtx.BlobStoreURI); uri != "" {
 		childCtx.BlobStoreURI = appendBlobStoreSegment(uri, segment)
 	}
 
-	childPayload := basePayload
-	childPayload.Context = childCtx
-	childPayload.GitPersistHash = childCtx.PersistHash
-	childPayload.TicketID = childCtx.TicketID
-	childPayload.CellName = childCtx.CellName
-	return childCtx, childPayload, nil
+	return childCtx, nil
 }
 
 func appendBlobStoreSegment(baseURI, segment string) string {

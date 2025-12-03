@@ -9,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
 // DependencyName is the well-known key for retrieving a WorkflowControl
@@ -69,9 +72,6 @@ type WorkflowSummary struct {
 	SearchAttributes map[string]any
 }
 
-// WorkflowControl exposes the minimal control-plane interactions
-// for an execution. Implementations should map runtime-specific
-// behavior and errors into this portable shape.
 type WorkflowControl interface {
 	// Describe returns a normalized summary for the referenced execution.
 	// ErrNotFound should be returned when the execution cannot be located.

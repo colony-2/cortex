@@ -7,6 +7,7 @@ import (
 
 	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
@@ -74,12 +75,6 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 }
 
 var _ swf.JobWorker = &recipeWorkerImpl{}
-
-type StartJob struct {
-	RecipeName string                     `json:"recipe"`
-	Inputs     map[string]interface{}     `json:"inputs,omitempty"`
-	Context    workerops.ExecutionContext `json:"context,omitempty"`
-}
 
 func StartRecipeJob(ctx context.Context, startJob StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
 	artifacts := make([]artifact.Artifact, len(recipes))

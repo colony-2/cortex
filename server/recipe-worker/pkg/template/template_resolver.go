@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	ops2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/google/cel-go/cel"
 )
 
@@ -21,33 +21,14 @@ const (
 	ScopeOp           ScopeType = "op"
 )
 
-func (s ScopeType) HasConfigurableInputs() bool {
-	return s == ScopeSequence || s == ScopeStateMachine || s == ScopeRecipe
-}
-
-func (s ScopeType) HasConfigurableOutputs() bool {
-	return s.HasConfigurableInputs()
-}
-
 // templateData is the root context for both Go templates and CEL
 type templateData struct {
-	ContainerInputs map[string]interface{}    `json:"containerinputs"` // ContainerInputs map if this is a sequence or state machine.
-	Sequence        map[string]StepOutput     `json:"sequence"`        // Sibling nodes in sequence
-	States          map[string]StepOutput     `json:"states"`          // Completed states in state machine
-	Scope           ScopeMetadata             `json:"scope"`           // Execution metadata
-	Context         ops2.TaskExecutionContext `json:"context"`         // Execution context (typed)
+	ContainerInputs map[string]interface{}          `json:"container_inputs"` // ContainerInputs map if this is a sequence or state machine.
+	Sequence        map[string]StepOutput           `json:"sequence"`         // Sibling nodes in sequence
+	States          map[string]StepOutput           `json:"states"`           // Completed states in state machine
+	Scope           ScopeMetadata                   `json:"scope"`            // Execution metadata
+	Context         contextual.TaskExecutionContext `json:"context"`          // Execution context (typed)
 	// Note: No unqualified "outputs" field - outputs always qualified by context
-}
-
-func clone[T any](original map[string]T) map[string]T {
-	shallowClone := make(map[string]T, len(original))
-
-	// 2. Iterate and copy all key-value pairs
-	for key, value := range original {
-		shallowClone[key] = value // Copies the value/reference
-	}
-
-	return shallowClone
 }
 
 type StepOutput struct {
@@ -71,6 +52,8 @@ type ScopeMetadata struct {
 
 // ResolutionContext represents template resolution context
 type ResolutionContext struct {
+	commitContext *contextual.GitCommitContext
+
 	// Scope type: "root", "sequence", "state_machine", "state"
 	ScopeType ScopeType
 
@@ -92,17 +75,27 @@ type ResolutionContext struct {
 	lastExecution map[string]interface{}
 }
 
-// NewRecipeResolutionContext creates a new resolution context for a recipe
-func NewRecipeResolutionContext(recipeInputs map[string]interface{}, execCtx ops2.ExecutionContext) (*ResolutionContext, error) {
-	tracker := newInvocationTracker()
-	return newResolutionContext(tracker, ScopeRecipe, "", recipeInputs, execCtx)
+func (rc *ResolutionContext) UpdateGitState(parentHash string, persistHash string) {
+	rc.commitContext.ParentHash = parentHash
+	rc.commitContext.PersistHash = persistHash
 }
 
-func newResolutionContext(tracker *invocationTracker, scopeType ScopeType, scopeId string, containerInputs map[string]interface{}, execCtx ops2.ExecutionContext) (*ResolutionContext, error) {
+func (rc *ResolutionContext) GetGitCommitContext() contextual.GitCommitContext {
+	return *rc.commitContext
+}
+
+// NewRecipeResolutionContext creates a new resolution context for a recipe
+func NewRecipeResolutionContext(commitContext *contextual.GitCommitContext, recipeInputs map[string]interface{}, execCtx contextual.JobContext) (*ResolutionContext, error) {
+	tracker := newInvocationTracker()
+	return newResolutionContext(commitContext, tracker, ScopeRecipe, "", recipeInputs, execCtx)
+}
+
+func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *invocationTracker, scopeType ScopeType, scopeId string, containerInputs map[string]interface{}, execCtx contextual.JobContext) (*ResolutionContext, error) {
 	rc := &ResolutionContext{
-		ScopeType: scopeType,
-		tracker:   tracker,
-		scopeId:   scopeId,
+		commitContext: commitContext,
+		ScopeType:     scopeType,
+		tracker:       tracker,
+		scopeId:       scopeId,
 		TemplateData: templateData{
 
 			ContainerInputs: containerInputs,
@@ -112,9 +105,9 @@ func newResolutionContext(tracker *invocationTracker, scopeType ScopeType, scope
 				ExecutionID: generateExecutionID(),
 				Timestamp:   time.Now(),
 			},
-			Context: ops2.TaskExecutionContext{
-				ExecutionContext: execCtx,
-				Invocation:       tracker.nextInvocation(),
+			Context: contextual.TaskExecutionContext{
+				JobContext:  execCtx,
+				TaskContext: tracker.nextInvocation(),
 			},
 		},
 	}
@@ -136,7 +129,7 @@ func newResolutionContext(tracker *invocationTracker, scopeType ScopeType, scope
 	return rc, nil
 }
 
-func (rc *ResolutionContext) TaskExecutionContext() ops2.TaskExecutionContext {
+func (rc *ResolutionContext) TaskExecutionContext() contextual.TaskExecutionContext {
 	return rc.TemplateData.Context
 }
 
@@ -177,7 +170,7 @@ func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recip
 	}
 
 	scopeId := scopeId(metadata, fallback, scopeType)
-	child, err := newResolutionContext(rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TemplateData.Context.ExecutionContext)
+	child, err := newResolutionContext(rc.commitContext, rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TaskExecutionContext().JobContext)
 	if err != nil {
 		return nil, err
 	}

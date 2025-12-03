@@ -5,7 +5,7 @@ import (
 )
 
 // buildCommitMessage renders the structured commit metadata block used for git persistence.
-func buildCommitMessage(ctx Context, persistHash, thinPackPath string) string {
+func buildCommitMessage(ctx *GitTaskContext, persistHash, thinPackPath string) string {
 	if persistHash == "" {
 		persistHash = ctx.PersistHash
 	}
@@ -21,38 +21,23 @@ git:
   persist_hash: %s
   blob_store_uri: %s
   thin_pack_path: %s
-invocation:
-  hash: %s
-  id: %s
-  attempt: %d
-  box_id: %s
-  activity_id: %s
-job:
-  id: %s
 ticket:
   id: %s
   cell: %s
-recipe:
-  id: %s
-  node_id: %s
+invocation:
+  path: %s
+  seq: %d
+
 ---
 `,
-		ctx.RecipeID,
-		ctx.NodePath,
 		ctx.BaseHash,
 		ctx.PreviousHash,
 		persistHash,
 		ctx.BlobStoreURI,
 		thinPackPath,
-		ctx.InvocationHash,
-		ctx.InvocationID,
-		ctx.InvocationAttempt,
-		ctx.BoxID,
-		ctx.ActivityID,
-		ctx.JobID,
 		ctx.TicketID,
 		ctx.CellName,
-		ctx.RecipeID,
 		ctx.NodePath,
+		ctx.InvokeSeq,
 	)
 }

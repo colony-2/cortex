@@ -6,20 +6,23 @@ import (
 	"time"
 
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/template"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 )
 
-func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, r recipe.Recipe, recipeInputs map[string]interface{}, execCtx workerops.ExecutionContext) (map[string]interface{}, error) {
+func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext) (map[string]interface{}, error) {
+	recipeInputs, err := r.GetMetdata().ResolveInputs(rawRecipeInputs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid recipe input: %w", err)
+	}
 
-	// TODO: validate the inputSchema matches the actual inputs.
-
-	rCtx, err := template.NewRecipeResolutionContext(recipeInputs, execCtx)
+	rCtx, err := template.NewRecipeResolutionContext(&commitContext, recipeInputs, execCtx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
@@ -28,11 +31,11 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityReg
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		err = executeStateMachine(ctx, rCtx, activityRegistry, metadata, t.Outputs, t.StateData.States)
+		err = executeStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateData.States)
 	case *recipe.RecipeOp:
-		err = executeOp(ctx, rCtx, activityRegistry, metadata, t.OpData.Op)
+		err = executeOp(ctx, rCtx, metadata, t.OpData.Op)
 	case *recipe.RecipeSequence:
-		err = executeSequence(ctx, rCtx, activityRegistry, metadata, t.Outputs, t.SequenceData.Sequence)
+		err = executeSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -44,15 +47,15 @@ func ExecuteRecipe(ctx workflow.Context, activityRegistry *workerops.ActivityReg
 }
 
 // ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes
-func executeNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, activityRegistry *workerops.ActivityRegistry, n *recipe.Node) error {
+func executeNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, n *recipe.Node) error {
 	metadata := n.GetMetadata()
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return executeStateMachine(ctx, parentResCtx, activityRegistry, metadata, t.Outputs, t.StateData.States)
+		return executeStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateData.States)
 	case *recipe.NodeOp:
-		return executeOp(ctx, parentResCtx, activityRegistry, metadata, t.OpData.Op)
+		return executeOp(ctx, parentResCtx, metadata, t.OpData.Op)
 	case *recipe.NodeSequence:
-		return executeSequence(ctx, parentResCtx, activityRegistry, metadata, t.Outputs, t.SequenceData.Sequence)
+		return executeSequence(ctx, parentResCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -72,7 +75,7 @@ type StepResult struct {
 }
 
 // executeOperation executes a single operation node
-func executeOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, activityRegistry *workerops.ActivityRegistry, metadata recipe.NodeMetadata, op string) error {
+func executeOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
 
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)
 	if err != nil {
@@ -97,15 +100,9 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		runPolicy.TotalTimeout = &timeout
 	}
 
-	workspacePayload, err := workspacePayloadFromContext(resCtx.TaskExecutionContext())
-	if err != nil {
-		return fmt.Errorf("build workspace payload: %w", err)
-	}
-
 	invocation := workerops.ActivityInvocationRequest{
-		Input:     resolvedNodeInputs,
-		TaskCtx:   resCtx.TaskExecutionContext(),
-		Workspace: workspacePayload,
+		Input:          resolvedNodeInputs,
+		GitTaskContext: *gitstate.NewGitTaskContext(resCtx.TaskExecutionContext()),
 	}
 
 	taskData, err := swf.NewTaskData(invocation)
@@ -133,52 +130,13 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		return fmt.Errorf("decode activity output envelope: %w", err)
 	}
 
-	if err != nil {
-		return err
-	}
-
+	gitResult := envelope.GitResult
+	parentResolutionContext.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
 	parentResolutionContext.AddExecution(envelope.OpOutput)
-	// TODO: capture the output of the git workspace...
 	return nil
 }
 
-func workspacePayloadFromContext(execCtx workerops.TaskExecutionContext) (gitstate.WorkspacePayload, error) {
-	var payload gitstate.WorkspacePayload
-	ctx := execCtx.Git
-
-	if ctx.BaseRepo == "" {
-		return payload, fmt.Errorf("execution context missing git.base_repo")
-	}
-	if ctx.BaseHash == "" {
-		return payload, fmt.Errorf("execution context missing git.base_hash")
-	}
-	if ctx.WorktreePath == "" {
-		return payload, fmt.Errorf("execution context missing environment.worktree_path")
-	}
-	if ctx.BlobStoreURI == "" {
-		return payload, fmt.Errorf("execution context missing environment.blob_store_uri")
-	}
-
-	if ctx.PersistHash == "" {
-		ctx.PersistHash = ctx.BaseHash
-	}
-	if ctx.PreviousHash == "" {
-		ctx.PreviousHash = ctx.PersistHash
-	}
-	if ctx.GitAuthor == "" && ctx.GetCellName() != "" {
-		ctx.GitAuthor = fmt.Sprintf("%s <%s@vibethis>", ctx.CellName, ctx.CellName)
-	}
-
-	payload = gitstate.WorkspacePayload{
-		Context:        ctx,
-		GitPersistHash: ctx.PersistHash,
-		TicketID:       ctx.TicketID,
-		CellName:       ctx.CellName,
-	}
-	return payload, nil
-}
-
-func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, activityRegistry *workerops.ActivityRegistry, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
+func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
 	// Create resolution context for this sequence
 	resolvedInputs, err := parentCtx.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -192,7 +150,7 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 
 	for i, node := range sequence {
 		// Execute the node
-		err := executeNode(ctx, resCtx, activityRegistry, &node)
+		err := executeNode(ctx, resCtx, &node)
 		if err != nil {
 			return fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
@@ -208,13 +166,13 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 	return nil
 }
 
-func executeSequence(ctx workflow.Context, rCtx *template.ResolutionContext, activityRegistry *workerops.ActivityRegistry, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
+func executeSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
 	timeout := time.Duration(metadata.Timeout)
 	if timeout == 0 {
 		timeout = 30 * time.Second // Default timeout
 	}
 	fn := func(inner workflow.Context) error {
-		e := innerSequence(inner, rCtx, activityRegistry, metadata, outputTemplate, sequence)
+		e := innerSequence(inner, rCtx, metadata, outputTemplate, sequence)
 		return e
 	}
 	err := executeCompositeInEnvelope(ctx, metadata.Retry, timeout, fn)

@@ -8,15 +8,18 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
+	"gorm.io/gorm"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions
 type RegisterableOp interface {
 	// ExecuteV2 runs the op as a task with an explicit invocation descriptor.
-	ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (output map[string]interface{}, err error)
+	ExecuteV2(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (output map[string]interface{}, err error)
 
 	GetMetadata() OpMetadata
 	GetName() string
@@ -27,6 +30,13 @@ type RegisterableOp interface {
 	GetManagementService() ManagementService
 
 	isOpSpec()
+}
+
+type OpDependencies interface {
+	Database() (*gorm.DB, bool)
+	AddArtifact(swf.Artifact) error
+	GetArtifacts() []swf.Artifact
+	WorkflowControl() contextual.TaskWorkflowControl
 }
 
 type HasManagmentService interface {
@@ -45,7 +55,7 @@ type OpExecutor interface {
 }
 
 // ActivityHandlerV2 defines the signature for activity handlers that accept an invocation descriptor.
-type ActivityHandlerV2[In OpInputType, Out OpOutputType] func(inv Invocation, ctx context.Context, in In) (Out, error)
+type ActivityHandlerV2[In OpInputType, Out OpOutputType] func(deps OpDependencies, ctx context.Context, in In) (Out, error)
 
 func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out]) RegisterableOp {
 	return newActivityMappedOpV2(metadata, handler, nil, nil)
@@ -94,14 +104,14 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 	return c.metadata
 }
 
-func (c *opSpecImpl[In, Out]) ExecuteV2(inv Invocation, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
+func (c *opSpecImpl[In, Out]) ExecuteV2(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
 	var input In
 	err := decodeWithJsonTags(resolvedInput, &input)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding input: %w", err)
 	}
 
-	objResult, err := c.activityHandler(inv, ctx, input)
+	objResult, err := c.activityHandler(deps, ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("error executing op: %w", err)
 	}

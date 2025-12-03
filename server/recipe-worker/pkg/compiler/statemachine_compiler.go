@@ -5,12 +5,11 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/template"
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format
-func executeStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, activityRegistry *workerops.ActivityRegistry, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, stateMap *recipe.StateMap) error {
+func executeStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, stateMap *recipe.StateMap) error {
 	// Create resolution context for the state machine
 	resolvedInputs, err := parentContext.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -34,7 +33,7 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 			return fmt.Errorf("state '%s' not found", currentState)
 		}
 
-		err := runState(ctx, activityRegistry, resCtx, currentState, stateDef)
+		err := runState(ctx, resCtx, currentState, stateDef)
 
 		if err != nil {
 			// Handle retry if configured
@@ -100,11 +99,11 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, resCtx *tem
 	return "", nil
 }
 
-func runState(ctx workflow.Context, activityRegistry *workerops.ActivityRegistry, resCtx *template.ResolutionContext, stateName string, node recipe.State) error {
+func runState(ctx workflow.Context, resCtx *template.ResolutionContext, stateName string, node recipe.State) error {
 	stateResCtx, err := resCtx.NewChildContext(template.ScopeState, node.GetMetadata(), stateName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create state context: %w", err)
 	}
 
-	return executeNode(ctx, stateResCtx, activityRegistry, &node.Node, nil)
+	return executeNode(ctx, stateResCtx, &node.Node)
 }

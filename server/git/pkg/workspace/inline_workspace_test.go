@@ -1,4 +1,4 @@
-package gitstate
+package workspace
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package ops
+package contextual
 
 import (
 	"crypto/sha256"
@@ -9,7 +9,7 @@ import (
 // Invocation captures deterministic identifiers for an op execution.
 type Invocation struct {
 	NodePath  string
-	InvokeSeq int
+	InvokeSeq int64
 }
 
 // Hash returns a truncated hex-encoded SHA-256 hash over deterministic invocation fields.
@@ -17,7 +17,7 @@ func (inv Invocation) Hash() string {
 	hasher := sha256.New()
 	hasher.Write([]byte(inv.NodePath))
 	hasher.Write([]byte{0})
-	hasher.Write([]byte(strconv.Itoa(inv.InvokeSeq)))
+	hasher.Write([]byte(strconv.FormatInt(inv.InvokeSeq, 10)))
 	sum := hasher.Sum(nil)
 	return hex.EncodeToString(sum[:8])
 }

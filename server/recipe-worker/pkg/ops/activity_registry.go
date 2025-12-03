@@ -5,27 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/invopop/jsonschema"
 	"go.temporal.io/sdk/activity"
 )
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
-	Input                map[string]interface{}    `json:"input"`
-	TaskCtx              TaskExecutionContext      `json:"context"`
-	Workspace            gitstate.WorkspacePayload `json:"workspace"`
-	ServiceDependencies2 ops.ServiceDependencies2  `json:"-"`
+	Input          map[string]interface{}  `json:"input"`
+	GitTaskContext gitstate.GitTaskContext `json:"context"`
+	Deps           ops.OpDependencies      `json:"-"`
 }
 
 // ActivityInvocationOutput wraps the raw op output alongside workspace results.
 type ActivityInvocationOutput struct {
-	OpOutput  map[string]interface{}   `json:"output"`
-	Workspace gitstate.WorkspaceResult `json:"workspace"`
+	OpOutput  map[string]interface{}      `json:"output"`
+	GitResult contextual.GitCommitContext `json:"git,omitempty"`
 }
 
 // ActivityRegistration holds the activity and its generated schemas
@@ -78,11 +77,10 @@ func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 	return r.deps
 }
 
-func (r *ActivityRegistry) GetTaskWorkers() []swf.TaskWorker {
+func (r *ActivityRegistry) GetTaskWorkers(deps ops.OpDependencies) []swf.TaskWorker {
 	workers := make([]swf.TaskWorker, 0, len(r.activities))
 	for name, registration := range r.activities {
-		wrapped := withGitWorkspace(registration, r.gitController)
-		wrapped = withDependencies(r.deps, wrapped)
+		wrapped := withGitWorkspace(deps, registration, r.gitController)
 		workers = append(workers, &taskWorker{name: name, fn: wrapped})
 	}
 	return workers
@@ -115,59 +113,33 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 
 var _ swf.TaskWorker = &taskWorker{}
 
-func withGitWorkspace(reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
+func withGitWorkspace(deps ops.OpDependencies, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
 	return func(ctx context.Context, req ActivityInvocationRequest) (ActivityInvocationOutput, error) {
 		var zero ActivityInvocationOutput
-		if req.Workspace.Context.BaseRepo == "" {
-			return zero, fmt.Errorf("workspace payload required")
-		}
-
-		gitCtx, err := gitstate.ContextFromPayload(req.Workspace)
-		if err != nil {
-			return zero, err
-		}
-		if err := controller.PrepareWorkspace(context.Background(), &req.Workspace.Context); err != nil {
-			return zero, err
-		}
-		if err := controller.Restore(context.Background(), gitCtx); err != nil {
+		if err := controller.Restore(context.Background(), &req.GitTaskContext); err != nil {
 			return zero, err
 		}
 
-		outputData, err := reg.Activity.ExecuteV2(ops.Invocation{
-			NodePath:  "",
-			InvokeSeq: 0,
-		}, ctx, req.Input)
+		outputData, err := reg.Activity.ExecuteV2(deps, ctx, req.Input)
 		if err != nil {
 			return zero, err
 		}
 
-		newHash, updatedCtx, err := controller.Persist(context.Background(), gitCtx)
+		output, err := controller.Persist(context.Background(), &req.GitTaskContext)
 		if err != nil {
 			return zero, err
 		}
 
 		return ActivityInvocationOutput{
 			OpOutput: outputData,
-			Workspace: gitstate.WorkspaceResult{
-				Context:        updatedCtx,
-				GitPersistHash: newHash,
+			GitResult: gitstate.WorkspaceResult{
+				CommitHash: output.CommitHash,
+				ParentHash: output.ParentHash,
 			},
 		}, nil
-	}
-}
-
-func withDependencies(deps ops.ServiceDependencies2, next func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
-	if deps == nil {
-		return next
-	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (ActivityInvocationOutput, error) {
-		if req.Invocation.Deps == nil {
-			req.Invocation.Deps = deps
-		}
-		return next(ctx, req)
 	}
 }
 
@@ -192,7 +164,7 @@ func (r *ActivityRegistry) Register(activity ops.RegisterableOp) error {
 type GenericActivityFunc func(context.Context, any) (any, error)
 
 func (r *ActivityRegistry) RegisterFunc(name string, fn func(context.Context, map[string]interface{}) (map[string]interface{}, error)) error {
-	fnB := func(inv ops.Invocation, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+	fnB := func(_ ops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 		return fn(ctx, input)
 	}
 	op := ops.NewActivityMappedOpV2[map[string]interface{}, map[string]interface{}](ops.OpMetadata{Type: name}, fnB)
@@ -203,10 +175,9 @@ type ActivityRegisterable interface {
 	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
 }
 
-func (r *ActivityRegistry) EnableActivitiesInWorker(worker ActivityRegisterable) {
+func (r *ActivityRegistry) EnableActivitiesInWorker(deps ops.OpDependencies, worker ActivityRegisterable) {
 	for name, registration := range r.activities {
-		wrapped := withGitWorkspace(registration, r.gitController)
-		wrapped = withDependencies(r.deps, wrapped)
+		wrapped := withGitWorkspace(deps, registration, r.gitController)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
 	}
 }

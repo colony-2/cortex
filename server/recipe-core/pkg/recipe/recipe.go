@@ -2,6 +2,7 @@ package recipe
 
 import (
 	"fmt"
+	"reflect"
 
 	yamlv3 "gopkg.in/yaml.v3"
 )
@@ -114,4 +115,83 @@ type InputSchema struct {
 	Description string      `yaml:"description,omitempty"`                                         // Description of the input
 	Required    bool        `yaml:"required,omitempty"`                                            // Whether the input is required
 	Default     interface{} `yaml:"default_value,omitempty" jsonschema:"oneof_type=string;number"` // Default value if not provided
+}
+
+func (def InputSchema) validate(key string, value interface{}) error {
+
+	if value == nil {
+		return fmt.Errorf("field '%s' is nil", key)
+	}
+
+	// Get the Go type name of the value provided in the data
+	valueType := reflect.TypeOf(value).Kind().String()
+
+	var expectedGoType string
+	switch def.Type {
+	case "string":
+		expectedGoType = "string"
+	case "number":
+		// Go unmarshaling often uses float64 for generic numbers,
+		// so we check for both float64 and int/int64
+		if valueType == "float64" || valueType == "int" || valueType == "int64" {
+			return nil
+		}
+		expectedGoType = "number (float64, int, or int64)"
+	case "boolean":
+		expectedGoType = "bool"
+	default:
+		return fmt.Errorf("field '%s' has an unsupported schema type: %s", key, def.Type)
+	}
+
+	if valueType == expectedGoType {
+		return nil
+	}
+	return fmt.Errorf("field '%s' has wrong type: expected '%s' (Go type: %s) but got '%s' (Go type: %s)",
+		key, def.Type, expectedGoType, value, valueType)
+}
+
+func (def InputSchema) validateMissing(key string) error {
+	if def.Required && def.Default == nil {
+		return fmt.Errorf("required field '%s' is missing", key)
+	}
+	return nil
+}
+
+func (n RecipeMetadata) ResolveInputs(data map[string]interface{}) (map[string]interface{}, error) {
+
+	resolved := make(map[string]interface{})
+
+	// 1. Check for missing required fields and apply defaults
+	for key, def := range n.InputSchema {
+		_, exists := data[key]
+
+		if !exists {
+			err := def.validateMissing(key)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Apply default value if field is missing and a default is provided
+		if !exists && def.Default != nil {
+			resolved[key] = def.Default
+		}
+	}
+
+	// 2. Check types and handle fields present in data but not in schema
+	for key, value := range data {
+		resolved[key] = value
+		def, schemaExists := n.InputSchema[key]
+
+		if !schemaExists {
+			return nil, fmt.Errorf("field '%s' is present in data but not defined in schema", key)
+		}
+
+		err := def.validate(key, value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return resolved, nil
 }
