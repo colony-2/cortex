@@ -3,11 +3,11 @@ package worker
 import (
 	"fmt"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
-	ticketop "github.com/divisive-ai/vibethis/server/ticket/pkg/op"
 	"go.temporal.io/sdk/client"
 	"go.uber.org/zap"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // Worker represents the recipe worker system that monitors directories
@@ -20,8 +20,13 @@ type Worker struct {
 }
 
 // NewWorker creates a new recipe worker system
-func NewWorker(logger *zap.Logger, recipesDir string, temporalClient client.Client, namespace string) (*Worker, error) {
-	coreops.Register(ticketop.GetOp())
+func NewWorker(logger *zap.Logger, recipesDir string, namespace string) (*Worker, error) {
+
+	db, err := gorm.Open(postgres.Open(b.postgresDSN), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+
 
 	ticketDB, closeTicketDB, err := database.Open(database.Config{})
 	if err != nil {

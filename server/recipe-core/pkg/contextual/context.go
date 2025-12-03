@@ -1,11 +1,5 @@
 package contextual
 
-import (
-	"context"
-
-	"github.com/colony-2/swf-go/pkg/swf"
-)
-
 // ActorContext represents the user/cell identity associated with an invocation.
 type ActorContext struct {
 	TicketID   string `json:"ticket_id,omitempty"`
@@ -56,16 +50,4 @@ type TaskExecutionContext struct {
 type GitCommitContext struct {
 	PersistHash string `json:"commit"` // SHA-1 hash of created commit
 	ParentHash  string `json:"parent"` // SHA-1 hash of parent commit
-}
-
-type StartJob struct {
-	RecipeName string                 `json:"recipe"`
-	Inputs     map[string]interface{} `json:"inputs,omitempty"`
-	JobContext JobContext             `json:"context,omitempty"`
-	GitContext GitBaseContext         `json:"git,omitempty"`
-}
-
-type TaskWorkflowControl interface {
-	StartJob(ctx context.Context, req StartJob) (swf.JobId, error)
-	Cancel(ctx context.Context, jobId swf.JobId) error
 }

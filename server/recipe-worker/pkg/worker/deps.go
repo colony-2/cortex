@@ -17,7 +17,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func newWorkerDependencies(cli client.Client, namespace string, db *gorm.DB) ops.ServiceDependencies2 {
+func newWorkerDependencies(db *gorm.DB) ops.ServiceDependencies2 {
 	builder := ops.NewServiceDepsBuilder().
 		WithSSEManager(noopSSEManager{}).
 		WithTemporalNamespace(namespace).

@@ -199,9 +199,9 @@ var (
 	serviceFactory   = defaultServiceFactory
 )
 
-type serviceFactoryFunc func(inv ops.Invocation, db *gorm.DB) (ticket.Service, error)
+type serviceFactoryFunc func(inv ops.OpDependencies, db *gorm.DB) (ticket.Service, error)
 
-func defaultServiceFactory(_ ops.Invocation, db *gorm.DB) (ticket.Service, error) {
+func defaultServiceFactory(_ ops.OpDependencies, db *gorm.DB) (ticket.Service, error) {
 	if db == nil {
 		panic("ticketop: database dependency is nil")
 	}
@@ -217,7 +217,7 @@ type TestingStub struct {
 func (s TestingStub) Install() func() {
 	serviceFactoryMu.Lock()
 	previous := serviceFactory
-	serviceFactory = func(inv ops.Invocation, db *gorm.DB) (ticket.Service, error) {
+	serviceFactory = func(inv ops.OpDependencies, db *gorm.DB) (ticket.Service, error) {
 		if s.Service != nil {
 			return s.Service, s.Err
 		}
@@ -246,7 +246,7 @@ func GetOp() ops.RegisterableOp {
 	)
 }
 
-func execute(inv ops.Invocation, ctx context.Context, input Input) (Output, error) {
+func execute(inv ops.OpDependencies, ctx context.Context, input Input) (Output, error) {
 	if len(input.Actions) == 0 {
 		return Output{}, mapError(errMissingActions, nil, nil)
 	}
@@ -301,12 +301,11 @@ func execute(inv ops.Invocation, ctx context.Context, input Input) (Output, erro
 	return output, nil
 }
 
-func resolveService(inv ops.Invocation) (ticket.Service, error) {
+func resolveService(inv ops.OpDependencies) (ticket.Service, error) {
 	var db *gorm.DB
-	if inv.Deps != nil {
-		var ok bool
-		db, ok = inv.Deps.Database()
-		if !ok || db == nil {
+	if inv != nil {
+		db = inv.Database()
+		if db == nil {
 			return nil, workflow.NewNonRetryableApplicationError("ticket.manage: database dependency not configured")
 		}
 	} else {
@@ -352,7 +351,7 @@ func mapError(err error, partial []ActionResult, patch map[string]any) error {
 
 func executeAction(
 	ctx context.Context,
-	inv ops.Invocation,
+	inv ops.OpDependencies,
 	svc ticket.Service,
 	action Action,
 	fallback ticket.Actor,
@@ -378,24 +377,8 @@ func executeAction(
 	}
 }
 
-func defaultAutomationActor(inv ops.Invocation) ticket.Actor {
-	cell := strings.TrimSpace(inv.BoxID)
-	if cell == "" {
-		cell = "unknown"
-	}
-	workflow := strings.TrimSpace(inv.RecipeID)
-	if workflow == "" {
-		workflow = "recipe"
-	}
-	execID := strings.TrimSpace(inv.ActivityID)
-	if execID == "" {
-		execID = fmt.Sprintf("%s:%d", inv.NodePath, inv.InvokeSeq)
-	}
-	hash := inv.Hash()
-	if hash == "" {
-		hash = fmt.Sprintf("%s:%d", inv.NodePath, inv.InvokeSeq)
-	}
-	return ticket.NewAgentActor(cell, workflow, execID, hash)
+func defaultAutomationActor(inv ops.OpDependencies) ticket.Actor {
+	return ticket.NewAgentActor("unknown", "unknown", "unknown", "unknown")
 }
 
 func resolveActor(payload *actorPayload, fallback ticket.Actor) (ticket.Actor, error) {

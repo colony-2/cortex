@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
 var (

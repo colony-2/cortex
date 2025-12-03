@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
 	"gorm.io/gorm"
@@ -36,7 +36,7 @@ type OpDependencies interface {
 	Database() *gorm.DB
 	AddArtifact(swf.Artifact) error
 	GetArtifacts() []swf.Artifact
-	WorkflowControl() contextual.TaskWorkflowControl
+	WorkflowControl() workflowctl.WorkflowControl
 }
 
 type HasManagmentService interface {

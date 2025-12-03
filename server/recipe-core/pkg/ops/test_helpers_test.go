@@ -2,7 +2,7 @@ package ops
 
 import (
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"gorm.io/gorm"
 )
 
@@ -20,4 +20,4 @@ func (d *testDeps) AddArtifact(a swf.Artifact) error {
 
 func (d *testDeps) GetArtifacts() []swf.Artifact { return d.artifacts }
 
-func (d *testDeps) WorkflowControl() contextual.TaskWorkflowControl { return nil }
+func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }

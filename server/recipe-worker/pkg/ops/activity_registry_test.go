@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"

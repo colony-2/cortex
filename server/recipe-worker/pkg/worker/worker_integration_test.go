@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"

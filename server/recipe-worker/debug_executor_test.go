@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
