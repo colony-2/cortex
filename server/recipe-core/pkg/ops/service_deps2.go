@@ -1,8 +1,6 @@
 package ops
 
 import (
-	"sync"
-
 	"gorm.io/gorm"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
@@ -29,9 +27,7 @@ type ServiceDepsBuilder struct {
 	workflowCtl workflowctl.WorkflowControl
 	sseManager  SSEManager
 	database    *gorm.DB
-
-	once   sync.Once
-	result ServiceDependencies2
+	result      ServiceDependencies2
 }
 
 // NewServiceDepsBuilder returns a new builder for ServiceDependencies2 implementations.
@@ -57,15 +53,10 @@ func (b *ServiceDepsBuilder) WithDatabase(db *gorm.DB) *ServiceDepsBuilder {
 
 // Build materializes the immutable ServiceDependencies2 instance.
 func (b *ServiceDepsBuilder) Build() ServiceDependencies2 {
-	b.once.Do(func() {
-		b.result = &serviceDependencies{
-			workflowCtl: b.workflowCtl,
-			sseManager:  b.sseManager,
-			database:    b.database,
-		}
-	})
-	if b.result == nil {
-		panic("ServiceDepsBuilder.Build called multiple times concurrently")
+	b.result = &serviceDependencies{
+		workflowCtl: b.workflowCtl,
+		sseManager:  b.sseManager,
+		database:    b.database,
 	}
 	return b.result
 }

@@ -53,57 +53,21 @@ func registerActivity(registry *ops.ActivityRegistry, name string, fn simpleFunc
 	return ops.Register(registry, op)
 }
 
-func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
-	// Create a simple recipe definition using unified format
-	node := &recipe.Node{
-		NodeImpl: &recipe.NodeOp{
-			NodeMetadata: recipe.NodeMetadata{
-				ID:   "test-recipe",
-				Desc: "Test recipe",
-				Inputs: map[string]interface{}{
-					"type":   "function",
-					"param1": "test_value",
-				},
-			},
-			OpData: recipe.OpData{
-				Op: "echo_activity",
-			},
-		},
-	}
+func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]interface{}, expectedOutputs map[string]interface{}) {
 
-	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
-
 	require.NoError(s.T(), err)
-	testRecipe := &recipe.Recipe{
-		RecipeImpl: &recipe.RecipeOp{
-			RecipeMetadata: recipe.RecipeMetadata{
-				InputSchema: map[string]recipe.InputSchema{
-					"param1": {
-						Type: "string",
-					},
-				},
-				NodeMetadata: node.NodeImpl.(*recipe.NodeOp).NodeMetadata,
-			},
-			OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
-		},
-	}
-
+	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
+	require.NoError(s.T(), err)
 	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry)
 	require.NoError(s.T(), err)
 	err = s.eng.RegisterWorkers(workSet)
-	stop := context.Background()
-	s.eng.Run(stop)
-
 	require.NoError(s.T(), err)
 
 	jobCtx, gitCtx := generateTestContext()
-	input := map[string]interface{}{
-		"param1": "test_value",
-	}
 
 	job := workflowctl.StartJob{
-		RecipeName: testRecipe.GetMetadata().ID,
+		RecipeName: "test-recipe",
 		Inputs:     input,
 		JobContext: jobCtx,
 		GitContext: gitCtx,
@@ -118,65 +82,37 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	require.NoError(s.T(), err)
 	out := make(map[string]interface{})
 	require.NoError(s.T(), json.Unmarshal(d, &out))
-	assert.Equal(s.T(), map[string]interface{}{"output": "Hello, World!"}, out)
+	assert.Equal(s.T(), expectedOutputs, out)
 }
 
-func TestTemplateResolver(t *testing.T) {
-	state := &WorkflowState{
-		Inputs: map[string]interface{}{
-			"topic":       "AI Agents",
-			"max_sources": 5,
-		},
-		Steps: map[string]StepResult{
-			"research": {
-				Outputs: map[string]interface{}{
-					"sources": []string{"source1", "source2"},
-					"summary": "Research summary",
-				},
-			},
-		},
+func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
+
+	recipeYaml := `
+---
+id: test-recipe
+input_schema:
+  param1:
+    type: string
+inputs:
+  iParam1: "{{ .inputs.param1 }}"
+sequence:
+  - id: echo
+    op: echo_activity
+    inputs:
+      Message: "{{ .inputs.iParam1 }}"
+outputs:
+  result: "{{ .sequence.echo.outputs.output }}"
+`
+
+	input := map[string]interface{}{
+		"param1": "Hello, World!",
 	}
 
-	resolver := NewTemplateResolver(state)
-
-	tests := []struct {
-		name     string
-		template string
-		expected interface{}
-	}{
-		{
-			name:     "simple input reference",
-			template: "{{ .ContainerInputs.topic }}",
-			expected: "AI Agents",
-		},
-		{
-			name:     "step output reference",
-			template: "{{ .Steps.research.outputs.summary }}",
-			expected: "Research summary",
-		},
-		{
-			name:     "no template",
-			template: "plain text",
-			expected: "plain text",
-		},
-		{
-			name:     "complex template",
-			template: "Research on {{ .ContainerInputs.topic }} with {{ .ContainerInputs.max_sources }} sources",
-			expected: "Research on AI Agents with 5 sources",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := resolver.Resolve(tt.template)
-			require.NoError(t, err)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+	expectedOutputs := map[string]interface{}{"result": "Hello, World!"}
+	s.testRecipe(recipeYaml, input, expectedOutputs)
 }
 
 func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
-	s.T().Skip("disabled pending sequence/job orchestration refactor")
 	// Test sequence compilation instead of parallel
 	node := &recipe.Node{
 		NodeImpl: &recipe.NodeSequence{

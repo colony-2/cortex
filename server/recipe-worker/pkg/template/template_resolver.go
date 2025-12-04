@@ -2,12 +2,14 @@ package template
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/ext"
 )
 
 // ScopeType defines resolver scope kinds.
@@ -118,10 +120,15 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	// Initialize CEL environment
 	env, err := cel.NewEnv(
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("sequence", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("states", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("sequence", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
+		cel.Variable("states", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
 		cel.Variable("scope", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("context", cel.MapType(cel.StringType, cel.DynType)),
+		ext.NativeTypes(
+			reflect.TypeOf(StepOutput{}),
+			reflect.TypeOf(RunOutput{}),
+			ext.ParseStructTag("json"),
+		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
@@ -238,35 +245,8 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
 		return true, nil
 	}
 
-	ast, issues := rc.CELEnv.Compile(expr)
-	if issues != nil && issues.Err() != nil {
-		return false, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
-	}
-
-	program, err := rc.CELEnv.Program(ast)
-	if err != nil {
-		return false, fmt.Errorf("failed to create CEL program: %w", err)
-	}
-
-	// Pass templateData fields as CEL variables without coercing structs to maps
-	result, _, err := program.Eval(map[string]interface{}{
-		"inputs":   rc.TemplateData.ContainerInputs,
-		"sequence": rc.TemplateData.Sequence,
-		"states":   rc.TemplateData.States,
-		"scope":    rc.TemplateData.Scope,
-		"context":  rc.TemplateData.Context,
-	})
-	if err != nil {
-		return false, fmt.Errorf("failed to evaluate CEL expression: %w", err)
-	}
-
-	// Convert result to bool
-	boolVal, ok := result.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("CEL expression did not evaluate to boolean: got %T", result.Value())
-	}
-
-	return boolVal, nil
+	out, err := rc.evaluateCELExpression(expr)
+	return out.(bool), err
 }
 
 // evaluateCELExpression evaluates a CEL expression and returns any type

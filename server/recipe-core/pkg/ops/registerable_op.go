@@ -96,6 +96,7 @@ func (c *opSpecImpl[In, Out]) GetMetadata() OpMetadata {
 
 func (c *opSpecImpl[In, Out]) ExecuteV2(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
 	var input In
+
 	err := decodeWithJsonTags(resolvedInput, &input)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding input: %w", err)
@@ -112,6 +113,13 @@ func (c *opSpecImpl[In, Out]) ExecuteV2(deps OpDependencies, ctx context.Context
 }
 
 func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
+	coerced, ok := any(input).(*map[string]interface{})
+	if ok {
+		for k, v := range data {
+			(*coerced)[k] = v
+		}
+	}
+
 	config := &mapstructure.DecoderConfig{
 		TagName:     "json", // Use JSON tags instead of mapstructure tags
 		Result:      input,

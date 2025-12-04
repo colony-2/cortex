@@ -8,7 +8,6 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/template"
@@ -59,14 +58,6 @@ func executeNode(ctx workflow.Context, parentResCtx *template.ResolutionContext,
 	default:
 		return fmt.Errorf("unsupported recipe type: %T", t)
 	}
-}
-
-// WorkflowState maintains the runtime state of a workflow
-type WorkflowState struct {
-	Inputs  ops.RawMessageOrStruct
-	Steps   map[string]StepResult
-	Outputs ops.RawMessageOrStruct
-	Context map[string]interface{}
 }
 
 // StepResult stores the result of a workflow step
@@ -131,8 +122,8 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 	}
 
 	gitResult := envelope.GitResult
-	parentResolutionContext.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
-	parentResolutionContext.AddExecution(envelope.OpOutput)
+	resCtx.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
+	resCtx.AddExecution(envelope.OpOutput)
 	return nil
 }
 

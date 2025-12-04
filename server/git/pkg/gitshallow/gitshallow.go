@@ -41,9 +41,21 @@ func GitShallowClone(ctx context.Context, input GitShallowCloneInput) (*GitShall
 		return nil, fmt.Errorf("source directory validation failed: %w", err)
 	}
 
-	// Check if target directory already exists
-	if _, err := os.Stat(input.TargetDir); err == nil {
-		return nil, fmt.Errorf("target directory already exists: %s", input.TargetDir)
+	if info, err := os.Stat(input.TargetDir); err == nil {
+		// Exists but not a directory
+		if !info.IsDir() {
+			return nil, fmt.Errorf("target path exists but is not a directory: %s", input.TargetDir)
+		}
+
+		// Exists and is a directory; check if non-empty
+		entries, readErr := os.ReadDir(input.TargetDir)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read target directory: %w", readErr)
+		}
+
+		if len(entries) > 0 {
+			return nil, fmt.Errorf("target directory already exists and is not empty: %s", input.TargetDir)
+		}
 	}
 
 	// Create parent directory if needed
