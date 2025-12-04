@@ -20,7 +20,6 @@ type RecipeFile struct {
 	// Metadata
 	Hash         string // Canonical hash of recipe content
 	LastModified time.Time
-	WorkerStatus WorkerStatus
 }
 
 // WorkerStatus represents the status of a recipe's worker
@@ -111,12 +110,6 @@ type RecipeManifest struct {
 			Agents     string `yaml:"agents"`
 		} `yaml:"files"`
 	} `yaml:"recipe"`
-}
-
-// RecipeFilter represents filter criteria for listing recipes
-type RecipeFilter struct {
-	Status         *WorkerStatus
-	IncludeRemoved bool // Include recipes that are no longer present but have historical data
 }
 
 // JobFilter represents filter criteria for listing jobs

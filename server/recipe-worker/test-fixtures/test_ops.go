@@ -45,7 +45,7 @@ func init() {
 				Description: "writes file contents for git workspace tests",
 				Version:     "1.0.0",
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input testWriteFileInput) (testWriteFileOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input testWriteFileInput) (testWriteFileOutput, error) {
 				if input.Path == "" {
 					return testWriteFileOutput{}, fmt.Errorf("path is required")
 				}
@@ -64,7 +64,7 @@ func init() {
 				Description: "reads file contents from git workspace for tests",
 				Version:     "1.0.0",
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input testReadFileInput) (testReadFileOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input testReadFileInput) (testReadFileOutput, error) {
 				if input.Path == "" {
 					return testReadFileOutput{}, fmt.Errorf("path is required")
 				}
@@ -81,7 +81,7 @@ func init() {
 				Description: "stages all changes and creates a git commit for tests",
 				Version:     "1.0.0",
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input testGitCommitInput) (testGitCommitOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input testGitCommitInput) (testGitCommitOutput, error) {
 				if input.RepoPath == "" {
 					return testGitCommitOutput{}, fmt.Errorf("repo_path is required")
 				}

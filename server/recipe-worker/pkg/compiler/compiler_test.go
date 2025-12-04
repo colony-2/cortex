@@ -219,50 +219,30 @@ func TestActivityRegistry(t *testing.T) {
 }
 
 func (s *CompilerTestSuite) TestRecipeWithSharedActivities() {
-	recipeDef := &recipe.Recipe{
-		RecipeImpl: &recipe.RecipeSequence{
-			RecipeMetadata: recipe.RecipeMetadata{
-				NodeMetadata: recipe.NodeMetadata{
-					ID: "shared-recipe",
-				},
-				Version: "1.0",
-				Defs: map[string]recipe.Node{
-					"my_llm": {
-						NodeImpl: &recipe.NodeOp{
-							NodeMetadata: recipe.NodeMetadata{
-								Inputs: map[string]interface{}{
-									"type":  "ai_prompt",
-									"model": "gpt-4",
-								},
-							},
-							OpData: recipe.OpData{
-								Op: "llm",
-							},
-						},
-					},
-				},
-			},
-			SequenceData: recipe.SequenceData{
-				Sequence: []recipe.Node{
-					{
-						NodeImpl: &recipe.NodeShared{
-							Shared: "my_llm",
-						},
-					},
-				},
-			},
-		},
-	}
+	recipeYaml := `
+id: shared-recipe
+version: 1.0
+defs:
+  my_llm:
+    op: llm
+    inputs:
+      model: gpt-4
+      type: ai_prompt
 
-	// Create activity registry
-	registry, err := ops.NewActivityRegistry()
+sequence:
+  - shared: my_llm
+`
+
+	recipeDef, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(s.T(), err)
 
-	// For now just verify structure is correct
+	// ensure the sequence node is of type llm.
 	assert.NotNil(s.T(), recipeDef)
-	assert.NotNil(s.T(), registry)
 	recipeSeq := recipeDef.RecipeImpl.(*recipe.RecipeSequence)
 	assert.Equal(s.T(), "1.0", recipeSeq.RecipeMetadata.Version)
-	assert.NotNil(s.T(), recipeSeq.RecipeMetadata.Defs)
+	item := recipeSeq.Sequence[0]
+	assert.NotNil(s.T(), recipeSeq.Sequence[0])
+	op := item.NodeImpl.(*recipe.NodeOp)
+	assert.Equal(s.T(), "llm", op.Op)
 	assert.Len(s.T(), recipeSeq.Sequence, 1)
 }

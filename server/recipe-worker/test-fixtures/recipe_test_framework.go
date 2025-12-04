@@ -12,11 +12,9 @@ import (
 	"testing"
 
 	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
@@ -104,26 +102,8 @@ func runGit(dir string, name string, args ...string) error {
 	return nil
 }
 
-func ensureGitInputs(inputs map[string]interface{}) (map[string]interface{}, compiler.ExecutionContext) {
-	clone := make(map[string]interface{}, len(inputs)+4)
-	for k, v := range inputs {
-		clone[k] = v
-	}
-
-	repo, hash := ensureTestRepo()
-	if _, ok := clone["basegitrepo"]; !ok {
-		clone["basegitrepo"] = repo
-	}
-	if _, ok := clone["basegithash"]; !ok {
-		clone["basegithash"] = hash
-	}
-	if _, ok := clone["ticketid"]; !ok {
-		clone["ticketid"] = "TEST-TICKET"
-	}
-	if _, ok := clone["cellname"]; !ok {
-		clone["cellname"] = "cells/test-cell"
-	}
-
+func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
+	baseRepo, baseHash := ensureTestRepo()
 	worktree, err := os.MkdirTemp("", "fixtures-worktree-*")
 	if err != nil {
 		panic(err)
@@ -134,31 +114,34 @@ func ensureGitInputs(inputs map[string]interface{}) (map[string]interface{}, com
 	}
 	blobStoreURI := "file://" + blobStoreDir
 
-	actor := contextual.ActorContext{
-		TicketID: fmt.Sprint(clone["ticketid"]),
-		CellName: fmt.Sprint(clone["cellname"]),
-	}
-	envCtx := contextual.EnvironmentContext{
-		WorktreePath: worktree,
-		BlobStoreURI: blobStoreURI,
-	}
-	gitCtx := gitstate.Context{
-		ActorContext:       actor,
-		EnvironmentContext: envCtx,
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:    fmt.Sprint(clone["basegitrepo"]),
-			BaseHash:    fmt.Sprint(clone["basegithash"]),
-			PersistHash: fmt.Sprint(clone["basegithash"]),
+	job := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "TEST-TICKET",
+			ActorName:  "test-actor",
+			ActorEmail: "test-actor@vibethis",
+		},
+		Environment: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: blobStoreURI,
+			ThinPackPath: "",
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: "cells/test-cell",
+			JobID:    "test-job-id",
+		},
+		GitBase: contextual.GitBaseContext{
+			BaseRepo:  baseRepo,
+			BaseHash:  baseHash,
+			GitAuthor: "",
 		},
 	}
 
-	execCtx := compiler.ExecutionContext{
-		Actor:       actor,
-		Environment: envCtx,
-		Git:         gitCtx,
+	g := contextual.GitCommitContext{
+		PersistHash: baseHash,
+		ParentHash:  "not-available",
 	}
 
-	return clone, execCtx
+	return job, g
 }
 
 // equalWithTypeFlexibility compares two values with flexibility for numeric types.
@@ -299,7 +282,8 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	a, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
-	exec, err := executor.NewStandaloneExecutor(a, logger)
+
+	exec, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
 	require.NoError(t, err, "Failed to create standalone executor")
 
 	// Find all .test.yaml files
@@ -341,8 +325,8 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				tc := tc // capture range variable
 				t.Run(tc.Name, func(t *testing.T) {
 					// Execute recipe using standalone executor
-					inputs, execCtx := ensureGitInputs(tc.Inputs)
-					result, err := exec.Execute(context.Background(), recipeDef, inputs, execCtx)
+					jobCtx, gitCtx := generateTestContext()
+					result, err := exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx)
 
 					// Check results
 					if tc.WantErr {

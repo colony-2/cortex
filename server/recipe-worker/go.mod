@@ -6,9 +6,8 @@ require (
 	github.com/colony-2/strata/strata-go v0.0.0
 	github.com/colony-2/swf-go v0.0.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/git v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
-	github.com/divisive-ai/vibethis/server/ticket v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
@@ -122,10 +121,8 @@ replace github.com/divisive-ai/vibethis/server/git => ../git
 
 replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/ticket => ../ticket
-
 replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 
-replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
+replace github.com/colony-2/swf-go => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go
+replace github.com/colony-2/strata/strata-go => ../../../strata-go

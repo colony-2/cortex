@@ -6,7 +6,10 @@ import (
 
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/toy"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap"
@@ -16,14 +19,15 @@ import (
 type StandaloneExecutor struct {
 	registry *ops.ActivityRegistry
 	logger   *zap.Logger
+	deps     ops2.ServiceDependencies2
 }
 
 // NewStandaloneExecutor creates a new standalone recipe executor
-func NewStandaloneExecutor(registry *ops.ActivityRegistry, logger *zap.Logger) (*StandaloneExecutor, error) {
-
+func NewStandaloneExecutor(deps ops2.ServiceDependencies2, registry *ops.ActivityRegistry, logger *zap.Logger) (*StandaloneExecutor, error) {
 	return &StandaloneExecutor{
 		registry: registry,
 		logger:   logger,
+		deps:     deps,
 	}, nil
 }
 
@@ -32,20 +36,22 @@ func (e *StandaloneExecutor) Execute(
 	ctx context.Context,
 	r recipe.Recipe,
 	inputs map[string]interface{},
-	execCtx compiler.ExecutionContext,
+	jobCtx contextual.JobContext,
+	gitCtx contextual.GitCommitContext,
 ) (map[string]interface{}, error) {
 
-	workset, err := compiler.NewRecipeWorker(e.registry)
+	workset, err := compiler.NewRecipeWorker(e.deps, e.registry)
 	if err != nil {
 		return nil, err
 	}
 
 	eng := toy.NewToyEngine([]swf.WorkSet{*workset})
 
-	job := compiler.StartJob{
+	job := workflowctl.StartJob{
 		RecipeName: r.GetMetadata().ID,
 		Inputs:     inputs,
-		Context:    execCtx,
+		JobContext: jobCtx,
+		GitContext: gitCtx,
 	}
 
 	id, err := compiler.StartRecipeJob(ctx, job, eng, r)

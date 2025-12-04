@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	recipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -32,7 +31,7 @@ func init() {
 			Description: "Test activity for registry tests",
 			Version:     "1.0.0",
 		},
-		func(_ ops.Invocation, ctx context.Context, input TestRegistryInput) (TestRegistryOutput, error) {
+		func(_ ops.OpDependencies, ctx context.Context, input TestRegistryInput) (TestRegistryOutput, error) {
 			return TestRegistryOutput{
 				Result: "success",
 			}, nil
@@ -45,7 +44,7 @@ func TestRegistry_NewRegistry(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 
-	registry, err := NewRegistry(logger, tempDir, nil)
+	registry, err := NewRegistry(logger, tempDir)
 	require.NoError(t, err)
 	assert.NotNil(t, registry)
 	// Check that recipesDir is the absolute path of tempDir
@@ -60,7 +59,7 @@ func TestRegistry_StartStop(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 
-	registry, err := NewRegistry(logger, tempDir, nil)
+	registry, err := NewRegistry(logger, tempDir)
 	require.NoError(t, err)
 
 	// Start registry
@@ -101,7 +100,7 @@ sequence:
 	require.NoError(t, err)
 
 	// Create registry and start it
-	registry, err := NewRegistry(logger, tempDir, nil)
+	registry, err := NewRegistry(logger, tempDir)
 	require.NoError(t, err)
 
 	err = registry.Start()
@@ -112,16 +111,15 @@ sequence:
 	time.Sleep(200 * time.Millisecond)
 
 	// Check if recipe was discovered
-	recipes, err := registry.ListRecipes(nil)
-	require.NoError(t, err)
+	recipes := registry.ListRecipes()
 	assert.Len(t, recipes, 1)
 	assert.Equal(t, "test-recipe", recipes[0].ID)
 	assert.Equal(t, "1.0.0", recipes[0].Version)
 
 	// Test GetRecipe
-	recipe, err := registry.GetRecipe("test-recipe")
+	r, err := registry.GetRecipe("test-recipe")
 	require.NoError(t, err)
-	assert.Equal(t, "test-recipe", recipe.ID)
+	assert.Equal(t, "test-recipe", r.ID)
 }
 
 // TestRegistry_MultiFileRecipe removed - unified format doesn't support multi-file recipes
@@ -130,7 +128,7 @@ func TestRegistry_RecipeNotFound(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	tempDir := t.TempDir()
 
-	registry, err := NewRegistry(logger, tempDir, nil)
+	registry, err := NewRegistry(logger, tempDir)
 	require.NoError(t, err)
 
 	// Try to get non-existent recipe
@@ -163,7 +161,7 @@ sequence:
 
 	// Create registry without worker manager for this test
 	// TODO: Create WorkerManager interface to allow proper mocking
-	registry, err := NewRegistry(logger, tempDir, nil)
+	registry, err := NewRegistry(logger, tempDir)
 	require.NoError(t, err)
 
 	err = registry.Start()
@@ -201,41 +199,4 @@ sequence:
 	recipe, err = registry.GetRecipe("watch-test")
 	require.NoError(t, err)
 	assert.Equal(t, "1.0.5", recipe.Version) // Latest version
-}
-
-func TestRegistry_ListRecipesWithFilter(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-	tempDir := t.TempDir()
-
-	registry, err := NewRegistry(logger, tempDir, nil)
-	require.NoError(t, err)
-
-	// Add some test recipes manually
-	registry.recipes["recipe1"] = &recipe.RecipeFile{
-		ID:           "recipe1",
-		WorkerStatus: recipe.WorkerStatusRunning,
-	}
-	registry.recipes["recipe2"] = &recipe.RecipeFile{
-		ID:           "recipe2",
-		WorkerStatus: recipe.WorkerStatusStopped,
-	}
-	registry.recipes["recipe3"] = &recipe.RecipeFile{
-		ID:           "recipe3",
-		WorkerStatus: recipe.WorkerStatusRunning,
-	}
-
-	// Test filter by status
-	runningStatus := recipe.WorkerStatusRunning
-	filter := &recipe.RecipeFilter{
-		Status: &runningStatus,
-	}
-
-	recipes, err := registry.ListRecipes(filter)
-	require.NoError(t, err)
-	assert.Len(t, recipes, 2)
-
-	// Verify all returned recipes have running status
-	for _, r := range recipes {
-		assert.Equal(t, recipe.WorkerStatusRunning, r.WorkerStatus)
-	}
 }
