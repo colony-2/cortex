@@ -3,7 +3,6 @@ package compiler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 

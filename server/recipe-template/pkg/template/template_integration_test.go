@@ -226,6 +226,11 @@ func TestIntegration_RetryScenario(t *testing.T) {
 	result, err := ctx.resolveTemplate("{{ sequence.api_call.outputs.status }}")
 	require.NoError(t, err)
 	assert.Equal(t, int64(200), result)
+
+	// Runs are addressable in CEL for audit history
+	history, err := ctx.resolveTemplate("{{ sequence.api_call.runs[1].outputs.error }}")
+	require.NoError(t, err)
+	assert.Equal(t, "Service Unavailable", history)
 }
 
 func TestIntegration_ComplexCELExpressions(t *testing.T) {
@@ -282,4 +287,12 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 	result, err := seqCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, int64(150), result)
+
+	// State runs tracking
+	stateCtx := newStateCtx(t, smCtx, "loop-state")
+	stateCtx.AddExecution(map[string]interface{}{"count": 1})
+	stateCtx.AddExecution(map[string]interface{}{"count": 2})
+	runCount, err := stateCtx.resolveTemplate(`{{ states["loop-state"].runs[0].outputs.count }}`)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), runCount)
 }

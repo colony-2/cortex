@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -186,6 +187,11 @@ func TestAddSequenceNode_WithRuns(t *testing.T) {
 	assert.Equal(t, "success", node.Outputs["status"])
 	assert.Len(t, node.Runs, 1)
 	assert.Equal(t, 1, node.Runs[0].Outputs["attempt"])
+
+	// Runs should be addressable from CEL expressions
+	val, err := seqCtx.resolveTemplate("{{ sequence.retry_node.runs[0].outputs.status }}")
+	require.NoError(t, err)
+	assert.Equal(t, "failed", val)
 }
 
 func TestAddStateOutput(t *testing.T) {
@@ -217,6 +223,10 @@ func TestNewChildContext(t *testing.T) {
 	assert.Equal(t, smCtx, child.Parent)
 	assert.Equal(t, "value", child.TemplateData.ContainerInputs["child_input"])
 	assert.Equal(t, "done", child.TemplateData.States["previous_state"].Outputs["result"])
+
+	// Scope metadata should be initialized
+	assert.NotEmpty(t, child.TemplateData.Scope.ExecutionID)
+	assert.False(t, child.TemplateData.Scope.Timestamp.IsZero())
 }
 
 func TestResolveValue_Recursive(t *testing.T) {
@@ -322,6 +332,11 @@ func TestValidateCELExpression(t *testing.T) {
 			expr:      "true",
 			wantError: false,
 		},
+		{
+			name:      "unqualified outputs not allowed",
+			expr:      "outputs.value",
+			wantError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -418,4 +433,86 @@ func TestComplexStateMachineScenario(t *testing.T) {
 	result, err = finalCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, "completed", result)
+}
+
+func TestScopeVisibility_Positive(t *testing.T) {
+	recipeCtx := newRecipeCtx(t, map[string]interface{}{
+		"sm_input": "parent-value",
+	})
+	smCtx := newStateMachineCtx(t, recipeCtx, "sm", recipeCtx.TemplateData.ContainerInputs)
+	addStateOutput(t, smCtx, "prev", map[string]interface{}{
+		"status": "ok",
+	})
+
+	stateCtx := newStateCtx(t, smCtx, "process")
+	seqCtx := newSequenceCtx(t, stateCtx, "process-seq", smCtx.TemplateData.ContainerInputs)
+	addOpOutput(t, seqCtx, "task", map[string]interface{}{
+		"value": "done",
+	})
+
+	// State can see previous states
+	val, err := stateCtx.resolveTemplate("{{ states.prev.outputs.status }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ok", val)
+
+	// Sequence can see parent inputs and state outputs
+	val, err = seqCtx.resolveTemplate("{{ inputs.sm_input }}")
+	require.NoError(t, err)
+	assert.Equal(t, "parent-value", val)
+
+	val, err = seqCtx.resolveTemplate("{{ sequence.task.outputs.value }}")
+	require.NoError(t, err)
+	assert.Equal(t, "done", val)
+
+	// Op created under sequence inherits same visibility
+	opCtx, err := seqCtx.NewChildContext(ScopeOp, recipe.NodeMetadata{ID: "inner-op"}, "inner-op", nil)
+	require.NoError(t, err)
+	val, err = opCtx.resolveTemplate("{{ inputs.sm_input }}")
+	require.NoError(t, err)
+	assert.Equal(t, "parent-value", val)
+
+	// Other state can see completed state outputs
+	anotherState := newStateCtx(t, smCtx, "next")
+	val, err = anotherState.resolveTemplate("{{ states.prev.outputs.status }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ok", val)
+}
+
+func TestScopeVisibility_Negative(t *testing.T) {
+	recipeCtx := newRecipeCtx(t, map[string]interface{}{
+		"foo": "bar",
+	})
+
+	// Child sequence should not see parent sequence nodes
+	parentSeq := newSequenceCtx(t, recipeCtx, "parent-seq", recipeCtx.TemplateData.ContainerInputs)
+	addOpOutput(t, parentSeq, "outer", map[string]interface{}{
+		"val": 1,
+	})
+	childSeq := newSequenceCtx(t, parentSeq, "child-seq", parentSeq.TemplateData.ContainerInputs)
+	_, err := childSeq.resolveTemplate("{{ sequence.outer.outputs.val }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no such key")
+
+	// State B's sequence should not see State A's sequence nodes
+	smCtx := newStateMachineCtx(t, recipeCtx, "sm", recipeCtx.TemplateData.ContainerInputs)
+	stateA := newStateCtx(t, smCtx, "stateA")
+	seqA := newSequenceCtx(t, stateA, "seqA", smCtx.TemplateData.ContainerInputs)
+	addOpOutput(t, seqA, "taskA", map[string]interface{}{
+		"value": "secret",
+	})
+
+	stateB := newStateCtx(t, smCtx, "stateB")
+	seqB := newSequenceCtx(t, stateB, "seqB", smCtx.TemplateData.ContainerInputs)
+	_, err = seqB.resolveTemplate("{{ sequence.taskA.outputs.value }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no such key")
+
+	// Root (outside state machine) cannot see inside state machine states
+	addStateOutput(t, smCtx, "stateA", map[string]interface{}{"result": "hidden"})
+	_, err = recipeCtx.resolveTemplate("{{ states.stateA.outputs.result }}")
+	require.Error(t, err)
+
+	// Root (outside sequence) cannot see inside sequence nodes
+	_, err = recipeCtx.resolveTemplate("{{ sequence.outer.outputs.val }}")
+	require.Error(t, err)
 }
