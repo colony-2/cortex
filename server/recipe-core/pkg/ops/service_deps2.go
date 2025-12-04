@@ -8,24 +8,20 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 )
 
-// serviceDependenciesSeal is an unexported type used to seal ServiceDependencies2 implementations
-// so that only recipe-core can provide compliant values.
-type serviceDependenciesSeal struct{}
-
 // ServiceDependencies2 defines the typed dependencies exposed to management services
 // and ops that require access to shared runtime collaborators.
 type ServiceDependencies2 interface {
 	// WorkflowControl returns a typed workflow controller if available.
-	WorkflowControl() (workflowctl.WorkflowControl, bool)
+	WorkflowControl() workflowctl.WorkflowControl
 
 	// SSEManager returns the server-sent-event manager when supported.
-	SSEManager() (SSEManager, bool)
+	SSEManager() SSEManager
 
 	// Database returns the shared GORM handle for the current runtime when available.
-	Database() (*gorm.DB, bool)
+	Database() *gorm.DB
 
 	// serviceDependenciesMarker seals the interface to recipe-core implementations.
-	serviceDependenciesMarker() serviceDependenciesSeal
+	serviceDependenciesMarker()
 }
 
 // ServiceDepsBuilder constructs ServiceDependencies2 instances via a fluent API.
@@ -80,27 +76,20 @@ type serviceDependencies struct {
 	database    *gorm.DB
 }
 
-func (d *serviceDependencies) WorkflowControl() (workflowctl.WorkflowControl, bool) {
-	if d == nil || d.workflowCtl == nil {
-		return nil, false
-	}
-	return d.workflowCtl, true
+// WorkflowControl returns the controller or nil if not set.
+func (d *serviceDependencies) WorkflowControl() workflowctl.WorkflowControl {
+	return d.workflowCtl
 }
 
-func (d *serviceDependencies) SSEManager() (SSEManager, bool) {
-	if d == nil || d.sseManager == nil {
-		return nil, false
-	}
-	return d.sseManager, true
+// SSEManager returns the SSE manager or nil if not set.
+func (d *serviceDependencies) SSEManager() SSEManager {
+	return d.sseManager
 }
 
-func (d *serviceDependencies) Database() (*gorm.DB, bool) {
-	if d == nil || d.database == nil {
-		return nil, false
-	}
-	return d.database, true
+// Database returns the GORM handle or nil if not set.
+func (d *serviceDependencies) Database() *gorm.DB {
+	return d.database
 }
 
-func (d *serviceDependencies) serviceDependenciesMarker() serviceDependenciesSeal {
-	return serviceDependenciesSeal{}
+func (d *serviceDependencies) serviceDependenciesMarker() {
 }

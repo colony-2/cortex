@@ -3,18 +3,18 @@ package template
 import (
 	"strings"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
 type invocationTracker struct {
 	segments []string
-	counters map[string]int
+	counters map[string]int64
 }
 
 func newInvocationTracker() *invocationTracker {
 	return &invocationTracker{
 		segments: make([]string, 0, 8),
-		counters: make(map[string]int),
+		counters: make(map[string]int64),
 	}
 }
 
@@ -37,12 +37,12 @@ func (t *invocationTracker) currentPath() string {
 	return strings.Join(t.segments, "/")
 }
 
-func (t *invocationTracker) nextInvocation() coreops.Invocation {
+func (t *invocationTracker) nextInvocation() contextual.Invocation {
 	path := t.currentPath()
 	seq := t.counters[path]
 	t.counters[path] = seq + 1
 
-	inv := coreops.Invocation{
+	inv := contextual.Invocation{
 		NodePath:  path,
 		InvokeSeq: seq,
 	}

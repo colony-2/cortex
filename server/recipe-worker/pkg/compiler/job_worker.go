@@ -7,9 +7,10 @@ import (
 
 	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"gopkg.in/yaml.v3"
 )
@@ -24,11 +25,11 @@ const (
 	RecipeArtifactSuffix = ".recipe.yaml"
 )
 
-func NewRecipeWorker(activityRegistry *workerops.ActivityRegistry) (*swf.WorkSet, error) {
+func NewRecipeWorker(dependencies ops.ServiceDependencies2, activityRegistry *workerops.ActivityRegistry) (*swf.WorkSet, error) {
 	job := &recipeWorkerImpl{
 		activityRegistry: activityRegistry,
 	}
-	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers()...)
+	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers(dependencies)...)
 }
 
 func (j recipeWorkerImpl) Name() string {
@@ -46,7 +47,7 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	if err != nil {
 		return nil, err
 	}
-	input := StartJob{}
+	input := workflowctl.StartJob{}
 	err = json.Unmarshal(data, &input)
 	if err != nil {
 		return nil, err
@@ -62,7 +63,7 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
-	out, err := ExecuteRecipe(wCtx, j.activityRegistry, r, input.Inputs, input.Context)
+	out, err := ExecuteRecipe(wCtx, r, input.Inputs, input.JobContext, input.GitContext)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 
 var _ swf.JobWorker = &recipeWorkerImpl{}
 
-func StartRecipeJob(ctx context.Context, startJob StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
+func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
 	artifacts := make([]artifact.Artifact, len(recipes))
 	for i, r := range recipes {
 		recipeYaml, err := yaml.Marshal(&r)

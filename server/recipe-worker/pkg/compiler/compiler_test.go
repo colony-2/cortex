@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/impl"
+	"github.com/colony-2/swf-go/pkg/swf/toy"
 	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,19 +19,22 @@ import (
 
 type CompilerTestSuite struct {
 	suite.Suite
-	eng *impl.EmbeddedEngine
+	eng  swf.SWFEngine
+	deps ops2.OpDependencies
+	//eng *impl.EmbeddedEngine
 }
 
 func (s *CompilerTestSuite) SetupTest() {
-	eng, err := impl.StartEmbeddedEngine(context.Background(), nil)
-	if err != nil {
-		s.T().Fatalf("fail starting engine %v", err)
-	}
-	s.eng = eng
+	s.eng = toy.NewToyEngine([]swf.WorkSet{})
+
+	deps, err := ops2.NewOpDependenciesBuilder().Build()
+	require.NoError(s.T(), err)
+	s.deps = deps
+	//eng, err := impl.StartEmbeddedEngine(context.Background(), nil)
 }
 
 func (s *CompilerTestSuite) AfterTest(suiteName, testName string) {
-	s.eng.Shutdown()
+	//s.eng.Shutdown()
 }
 
 func TestCompilerTestSuite(t *testing.T) {
@@ -42,8 +46,8 @@ type simpleFunc func(context.Context, map[string]interface{}) (map[string]interf
 func registerActivity(registry *ops.ActivityRegistry, name string, fn simpleFunc) error {
 	op := ops2.NewActivityMappedOpV2[map[string]interface{}, map[string]interface{}](
 		ops2.OpMetadata{Type: name},
-		func(inv ops2.Invocation, actx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
-			return fn(actx, in)
+		func(inv ops2.OpDependencies, aCtx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+			return fn(aCtx, in)
 		},
 	)
 	return ops.Register(registry, op)
@@ -74,29 +78,35 @@ func (s *CompilerTestSuite) TestCompileSimpleRecipe() {
 	testRecipe := &recipe.Recipe{
 		RecipeImpl: &recipe.RecipeOp{
 			RecipeMetadata: recipe.RecipeMetadata{
+				InputSchema: map[string]recipe.InputSchema{
+					"param1": {
+						Type: "string",
+					},
+				},
 				NodeMetadata: node.NodeImpl.(*recipe.NodeOp).NodeMetadata,
 			},
 			OpData: node.NodeImpl.(*recipe.NodeOp).OpData,
 		},
 	}
 
-	workSet, err := NewRecipeWorker(registry)
+	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry)
 	require.NoError(s.T(), err)
 	err = s.eng.RegisterWorkers(workSet)
 	stop := context.Background()
 	s.eng.Run(stop)
-	defer s.eng.Shutdown()
 
 	require.NoError(s.T(), err)
 
-	input, execCtx := withRequiredGitInputs(map[string]interface{}{
+	jobCtx, gitCtx := generateTestContext()
+	input := map[string]interface{}{
 		"param1": "test_value",
-	})
+	}
 
-	job := StartJob{
+	job := workflowctl.StartJob{
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     input,
-		Context:    execCtx,
+		JobContext: jobCtx,
+		GitContext: gitCtx,
 	}
 
 	jobId, err := StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
@@ -233,19 +243,20 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 		},
 	}
 
-	workSet, err := NewRecipeWorker(registry)
+	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry)
 	err = s.eng.RegisterWorkers(workSet)
 	stop := context.Background()
 	s.eng.Run(stop) // we start after worker registration.
-	defer s.eng.Shutdown()
 
 	require.NoError(s.T(), err)
-	in, execCtx := withRequiredGitInputs(map[string]interface{}{})
+	jobCtx, gitCtx := generateTestContext()
+	in := map[string]interface{}{}
 
-	job := StartJob{
+	job := workflowctl.StartJob{
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     in,
-		Context:    execCtx,
+		JobContext: jobCtx,
+		GitContext: gitCtx,
 	}
 
 	jobId, err := StartRecipeJob(context.Background(), job, s.eng, *testRecipe)

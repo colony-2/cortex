@@ -106,8 +106,11 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 				Timestamp:   time.Now(),
 			},
 			Context: contextual.TaskExecutionContext{
-				JobContext:  execCtx,
-				TaskContext: tracker.nextInvocation(),
+				JobContext: execCtx,
+				TaskContext: contextual.TaskContext{
+					Invocation: tracker.nextInvocation(),
+					GitCommit:  commitContext,
+				},
 			},
 		},
 	}

@@ -8,11 +8,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/fatih/structs"
 	"github.com/mitchellh/mapstructure"
-	"gorm.io/gorm"
 )
 
 // RegisterableOp defines the contract for ops that can be consumed
@@ -30,13 +27,6 @@ type RegisterableOp interface {
 	GetManagementService() ManagementService
 
 	isOpSpec()
-}
-
-type OpDependencies interface {
-	Database() *gorm.DB
-	AddArtifact(swf.Artifact) error
-	GetArtifacts() []swf.Artifact
-	WorkflowControl() workflowctl.WorkflowControl
 }
 
 type HasManagmentService interface {

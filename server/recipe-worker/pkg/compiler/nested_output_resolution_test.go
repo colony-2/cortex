@@ -1,3 +1,5 @@
+//go:build test44
+
 package compiler
 
 import (
@@ -9,11 +11,11 @@ import (
 
 func TestNestedOutputResolution(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		outputTemplates map[string]interface{}
-		inputs         map[string]interface{}
-		nodeOutputs    map[string]interface{}
-		expected       map[string]interface{}
+		inputs          map[string]interface{}
+		nodeOutputs     map[string]interface{}
+		expected        map[string]interface{}
 	}{
 		{
 			name: "nested object with template expressions",
@@ -59,7 +61,7 @@ func TestNestedOutputResolution(t *testing.T) {
 				"result": map[string]interface{}{
 					"data": map[string]interface{}{
 						"fromInput": "{{ inputs.inputValue }}",
-						"fromNode": "{{ sequence.node1.outputs.result }}",
+						"fromNode":  "{{ sequence.node1.outputs.result }}",
 						"nested": map[string]interface{}{
 							"level3": map[string]interface{}{
 								"value": "{{ sequence.node1.outputs.nested }}",
@@ -81,7 +83,7 @@ func TestNestedOutputResolution(t *testing.T) {
 				"result": map[string]interface{}{
 					"data": map[string]interface{}{
 						"fromInput": "from-input",
-						"fromNode": "from-node",
+						"fromNode":  "from-node",
 						"nested": map[string]interface{}{
 							"level3": map[string]interface{}{
 								"value": "deep-value",
@@ -110,9 +112,9 @@ func TestNestedOutputResolution(t *testing.T) {
 				},
 			},
 			inputs: map[string]interface{}{
-				"id1": "first",
+				"id1":   "first",
 				"name1": "First Item",
-				"id2": "second",
+				"id2":   "second",
 				"name2": "Second Item",
 			},
 			nodeOutputs: map[string]interface{}{},

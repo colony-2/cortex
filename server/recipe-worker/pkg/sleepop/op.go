@@ -39,7 +39,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func executeSleep(_ ops.Invocation, ctx context.Context, input SleepInput) (SleepOutput, error) {
+func executeSleep(_ ops.OpDependencies, ctx context.Context, input SleepInput) (SleepOutput, error) {
 	// Determine duration to use
 	durationStr := input.Duration
 	config := SleepConfig{}

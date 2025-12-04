@@ -33,8 +33,7 @@ func (r *TemplateResolver) Resolve(expr string) (interface{}, error) {
 
 	// Execute template
 	var buf bytes.Buffer
-	data := r.getTemplateData()
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err := tmpl.Execute(&buf, r.state); err != nil {
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
 
@@ -72,46 +71,6 @@ func (r *TemplateResolver) getFuncMap() template.FuncMap {
 			}
 		},
 	}
-}
-
-func (r *TemplateResolver) getTemplateData() map[string]interface{} {
-	data := make(map[string]interface{})
-
-	// Add inputs - use lowercase for compatibility with existing templates
-	data["inputs"] = convertRawToMap(r.state.Inputs)
-	// Also add capital case for backwards compatibility
-	data["ContainerInputs"] = convertRawToMap(r.state.Inputs)
-
-	// Add steps - directly expose outputs at the step level
-	steps := make(map[string]interface{})
-	for stepID, stepResult := range r.state.Steps {
-		// Directly add outputs to the step for easier access
-		// This allows {{ .Steps.stepID.outputName }} syntax
-		stepData := convertRawToMap(stepResult.Outputs)
-		// Also keep outputs nested for backwards compatibility
-		stepData["outputs"] = convertRawToMap(stepResult.Outputs)
-		steps[stepID] = stepData
-	}
-	data["Steps"] = steps
-	// Also add lowercase steps for compatibility
-	data["steps"] = steps
-
-	// Add environment variables (placeholder for now)
-	data["Env"] = map[string]string{}
-	data["env"] = data["Env"]
-
-	ctxMap := r.state.Context
-	if ctxMap == nil {
-		if fromInputs, ok := r.state.Inputs["context"].(map[string]interface{}); ok {
-			ctxMap = fromInputs
-		} else {
-			ctxMap = map[string]interface{}{}
-		}
-	}
-	data["Context"] = ctxMap
-	data["context"] = ctxMap
-
-	return data
 }
 
 // ResolveStepOutput resolves a specific step output reference

@@ -18,6 +18,6 @@ func (d *testDeps) AddArtifact(a swf.Artifact) error {
 	return nil
 }
 
-func (d *testDeps) GetArtifacts() []swf.Artifact { return d.artifacts }
+func (d *testDeps) GetInputArtifacts() []swf.Artifact { return d.artifacts }
 
 func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }

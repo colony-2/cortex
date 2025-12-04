@@ -107,7 +107,7 @@ func (d *stubDeps) AddArtifact(a swf.Artifact) error {
 	d.artifacts = append(d.artifacts, a)
 	return nil
 }
-func (d *stubDeps) GetArtifacts() []swf.Artifact { return d.artifacts }
+func (d *stubDeps) GetInputArtifacts() []swf.Artifact { return d.artifacts }
 func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }

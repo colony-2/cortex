@@ -13,8 +13,8 @@ type WorkflowControl interface {
 }
 
 type StartJob struct {
-	RecipeName string                    `json:"recipe"`
-	Inputs     map[string]interface{}    `json:"inputs,omitempty"`
-	JobContext contextual.JobContext     `json:"context,omitempty"`
-	GitContext contextual.GitBaseContext `json:"git,omitempty"`
+	RecipeName string                      `json:"recipe"`
+	Inputs     map[string]interface{}      `json:"inputs,omitempty"`
+	JobContext contextual.JobContext       `json:"context,omitempty"`
+	GitContext contextual.GitCommitContext `json:"git,omitempty"`
 }

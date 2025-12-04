@@ -13,7 +13,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "context_logger",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Logged: true,
 			}, nil
@@ -26,7 +26,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "batch_validator",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			if input.Items == nil {
 				return GenericOutput{}, fmt.Errorf("items array is required")
 			}
@@ -44,7 +44,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "gemini_report_activity",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Report: "Generated report",
 				Status: "complete",
@@ -58,7 +58,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "llm",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			prompt := input.Message
 			if prompt == "" && input.Extra != nil {
 				if p, ok := input.Extra["prompt"].(string); ok {
@@ -78,7 +78,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "http",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			return GenericOutput{
 				Status: "200",
 				Body:   "HTTP response",
@@ -108,7 +108,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				output := GenericOutput{
 					Status: "processed",
 				}
@@ -139,7 +139,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Check if we should simulate an error
 				if name == "error-activity" && input.Error {
 					return GenericOutput{}, fmt.Errorf("simulated error")
@@ -168,7 +168,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Status: "success",
 					Action: name,
@@ -206,7 +206,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result:     fmt.Sprintf("ML analysis from %s", name),
 					Status:     "analyzed",
@@ -269,7 +269,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Processed by %s", name),
 					Status: "processed",
@@ -307,7 +307,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Report: fmt.Sprintf("Report from %s", name),
 					Status: "generated",
@@ -351,7 +351,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				// Simulate errors for certain activities
 				if input.Error {
 					return GenericOutput{}, fmt.Errorf("simulated error in %s", name)
@@ -384,7 +384,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result:    fmt.Sprintf("Processed by %s", name),
 					Status:    "success",
@@ -409,7 +409,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Found by %s", name),
 					Status: "found",
@@ -424,7 +424,7 @@ func registerTypedTestActivities() {
 		recipeops.OpMetadata{
 			Type: "recipe",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			// For test purposes, simulate recipe invocation
 			recipeName := ""
 			if input.Extra != nil {
@@ -501,7 +501,7 @@ func registerTypedTestActivities() {
 			recipeops.OpMetadata{
 				Type: name,
 			},
-			func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+			func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 				return GenericOutput{
 					Result: fmt.Sprintf("Executed %s", name),
 					Status: "success",

@@ -61,7 +61,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(_ ops.Invocation, ctx context.Context, input CommandExecutionInput) (CommandExecutionOutput, error) {
+func execute(_ ops.OpDependencies, ctx context.Context, input CommandExecutionInput) (CommandExecutionOutput, error) {
 	// Validate inputs
 	if input.Run == "" {
 		return CommandExecutionOutput{}, fmt.Errorf("run command is required")

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
@@ -64,25 +63,8 @@ func ensureTestRepo() (string, string) {
 	return testRepoPath, testRepoHash
 }
 
-// withRequiredGitInputs seeds both the legacy input map and a typed execution context for tests.
-func withRequiredGitInputs(inputs map[string]interface{}) (map[string]interface{}, ExecutionContext) {
-	if inputs == nil {
-		inputs = make(map[string]interface{})
-	}
-
+func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
-	if _, ok := inputs["basegitrepo"]; !ok {
-		inputs["basegitrepo"] = baseRepo
-	}
-	if _, ok := inputs["basegithash"]; !ok {
-		inputs["basegithash"] = baseHash
-	}
-	if _, ok := inputs["ticketid"]; !ok {
-		inputs["ticketid"] = "TEST-TICKET"
-	}
-	if _, ok := inputs["cellname"]; !ok {
-		inputs["cellname"] = "cells/test-cell"
-	}
 	worktree, err := os.MkdirTemp("", "vibethis-worktree-*")
 	if err != nil {
 		panic(err)
@@ -93,32 +75,34 @@ func withRequiredGitInputs(inputs map[string]interface{}) (map[string]interface{
 	}
 	blobStoreURI := "file://" + blobDir
 
-	actor := contextual.ActorContext{
-		TicketID: "TEST-TICKET",
-		CellName: "cells/test-cell",
-	}
-	environment := contextual.EnvironmentContext{
-		WorktreePath: worktree,
-		BlobStoreURI: blobStoreURI,
-	}
-	gitCtx := gitstate.Context{
-		ActorContext:       actor,
-		EnvironmentContext: environment,
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:    baseRepo,
-			BaseHash:    baseHash,
-			PersistHash: baseHash,
+	job := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "TEST-TICKET",
+			ActorName:  "test-actor",
+			ActorEmail: "test-actor@vibethis",
+		},
+		Environment: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: blobStoreURI,
+			ThinPackPath: "",
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: "cells/test-cell",
+			JobID:    "test-job-id",
+		},
+		GitBase: contextual.GitBaseContext{
+			BaseRepo:  baseRepo,
+			BaseHash:  baseHash,
+			GitAuthor: "",
 		},
 	}
 
-	execCtx := ExecutionContext{
-		Invocation:  contextual.InvocationContext{},
-		Actor:       actor,
-		Environment: environment,
-		Git:         gitCtx,
-		Extra:       nil,
+	g := contextual.GitCommitContext{
+		PersistHash: baseHash,
+		ParentHash:  "not-available",
 	}
-	return inputs, execCtx
+
+	return job, g
 }
 
 func runGit(dir string, name string, args ...string) error {

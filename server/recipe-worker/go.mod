@@ -122,11 +122,7 @@ replace github.com/divisive-ai/vibethis/server/git => ../git
 
 replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/llm => ../llm
-
 replace github.com/divisive-ai/vibethis/server/ticket => ../ticket
-
-replace github.com/divisive-ai/vibethis/server/container => ../container
 
 replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 

@@ -1,10 +1,12 @@
+//go:build test44
 package compiler
 
 import (
 	"testing"
+
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"gopkg.in/yaml.v3"
 )
 

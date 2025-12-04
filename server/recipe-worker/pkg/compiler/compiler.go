@@ -71,7 +71,7 @@ type WorkflowState struct {
 
 // StepResult stores the result of a workflow step
 type StepResult struct {
-	Outputs ops.RawMessageOrStruct
+	Outputs map[string]interface{}
 }
 
 // executeOperation executes a single operation node

@@ -66,7 +66,7 @@ func registerTestActivities() {
 		recipeops.OpMetadata{
 			Type: "echo_activity",
 		},
-		func(_ recipeops.Invocation, ctx context.Context, input GenericInput) (GenericOutput, error) {
+		func(_ recipeops.OpDependencies, ctx context.Context, input GenericInput) (GenericOutput, error) {
 			message := input.Message
 			if message == "" {
 				message = "Hello, World!"

@@ -77,7 +77,7 @@ func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 	return r.deps
 }
 
-func (r *ActivityRegistry) GetTaskWorkers(deps ops.OpDependencies) []swf.TaskWorker {
+func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.TaskWorker {
 	workers := make([]swf.TaskWorker, 0, len(r.activities))
 	for name, registration := range r.activities {
 		wrapped := withGitWorkspace(deps, registration, r.gitController)
@@ -88,7 +88,7 @@ func (r *ActivityRegistry) GetTaskWorkers(deps ops.OpDependencies) []swf.TaskWor
 
 type taskWorker struct {
 	name string
-	fn   func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)
+	fn   func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
 func (t *taskWorker) Name() string {
@@ -104,42 +104,51 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 	if err := json.Unmarshal(d, &air); err != nil {
 		return nil, err
 	}
-	out, err := t.fn(context.Background(), air)
+	inArt, err := input.GetArtifacts()
 	if err != nil {
 		return nil, err
 	}
-	return swf.NewTaskData(out)
+	out, outArt, err := t.fn(context.Background(), air, inArt)
+	if err != nil {
+		return nil, err
+	}
+	return swf.NewTaskData(out, outArt...)
 }
 
 var _ swf.TaskWorker = &taskWorker{}
 
-func withGitWorkspace(deps ops.OpDependencies, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error) {
+func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest) (ActivityInvocationOutput, error) {
+	return func(ctx context.Context, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
 		var zero ActivityInvocationOutput
+
 		if err := controller.Restore(context.Background(), &req.GitTaskContext); err != nil {
-			return zero, err
+			return zero, nil, err
 		}
 
-		outputData, err := reg.Activity.ExecuteV2(deps, ctx, req.Input)
+		opDeps, err := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(deps.Database()).WithWorkflowControl(deps.WorkflowControl()).Build()
 		if err != nil {
-			return zero, err
+			return zero, nil, err
+		}
+		outputData, err := reg.Activity.ExecuteV2(opDeps, ctx, req.Input)
+		if err != nil {
+			return zero, nil, err
 		}
 
 		output, err := controller.Persist(context.Background(), &req.GitTaskContext)
 		if err != nil {
-			return zero, err
+			return zero, nil, err
 		}
 
 		return ActivityInvocationOutput{
 			OpOutput: outputData,
-			GitResult: gitstate.WorkspaceResult{
-				CommitHash: output.CommitHash,
-				ParentHash: output.ParentHash,
+			GitResult: contextual.GitCommitContext{
+				PersistHash: output.CommitHash,
+				ParentHash:  output.ParentHash,
 			},
-		}, nil
+		}, opDeps.GetOutputArtifacts(), nil
 	}
 }
 
@@ -175,7 +184,7 @@ type ActivityRegisterable interface {
 	RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions)
 }
 
-func (r *ActivityRegistry) EnableActivitiesInWorker(deps ops.OpDependencies, worker ActivityRegisterable) {
+func (r *ActivityRegistry) EnableActivitiesInWorker(deps ops.ServiceDependencies2, worker ActivityRegisterable) {
 	for name, registration := range r.activities {
 		wrapped := withGitWorkspace(deps, registration, r.gitController)
 		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
