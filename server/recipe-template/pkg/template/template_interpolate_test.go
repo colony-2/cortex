@@ -3,17 +3,13 @@ package template
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestInterpolateString(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
-	require.NoError(t, err)
-
-	// Set up test data
-	ctx.TemplateData.Inputs = map[string]interface{}{
+	recipeCtx := newRecipeCtx(t, nil)
+	ctx := newSequenceCtx(t, recipeCtx, "test", map[string]interface{}{
 		"name":     "Alice",
 		"user_id":  123,
 		"domain":   "example.com",
@@ -23,21 +19,20 @@ func TestInterpolateString(t *testing.T) {
 		"action":   "login",
 		"status":   "active",
 		"code":     "ABC",
-	}
+	})
 
-	// Add sequence nodes
-	ctx.AddSequenceNode("fetch", map[string]interface{}{
+	addOpOutput(t, ctx, "fetch", map[string]interface{}{
 		"status": 200,
 		"body":   map[string]interface{}{"data": "test"},
 	})
-	ctx.AddSequenceNode("check", map[string]interface{}{
+	addOpOutput(t, ctx, "check", map[string]interface{}{
 		"valid":    true,
 		"is_valid": true,
 	})
-	ctx.AddSequenceNode("count", map[string]interface{}{
+	addOpOutput(t, ctx, "count", map[string]interface{}{
 		"total": 42,
 	})
-	ctx.AddSequenceNode("timer", map[string]interface{}{
+	addOpOutput(t, ctx, "timer", map[string]interface{}{
 		"duration": 1500,
 	})
 
@@ -201,8 +196,7 @@ func TestInterpolateString(t *testing.T) {
 }
 
 func TestInterpolateString_Errors(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
-	require.NoError(t, err)
+	ctx := newSequenceCtx(t, newRecipeCtx(t, nil), "test", map[string]interface{}{})
 
 	tests := []struct {
 		name      string
@@ -247,13 +241,10 @@ func TestInterpolateString_Errors(t *testing.T) {
 }
 
 func TestResolveValueWithMode(t *testing.T) {
-	ctx, err := NewResolutionContext("sequence", "test", nil, ops.ExecutionContext{})
-	require.NoError(t, err)
-
-	ctx.TemplateData.Inputs = map[string]interface{}{
+	ctx := newSequenceCtx(t, newRecipeCtx(t, nil), "test", map[string]interface{}{
 		"name":  "Alice",
 		"count": 5,
-	}
+	})
 
 	tests := []struct {
 		name     string
@@ -341,15 +332,15 @@ func TestResolveValueWithMode(t *testing.T) {
 }
 
 func TestPureCELMode(t *testing.T) {
-	ctx, err := NewResolutionContext("state_machine", "test", nil, ops.ExecutionContext{})
-	require.NoError(t, err)
-
-	ctx.TemplateData.Inputs = map[string]interface{}{
+	recipeCtx := newRecipeCtx(t, nil)
+	ctx := newStateMachineCtx(t, recipeCtx, "test", map[string]interface{}{
 		"retry_count": 2,
 		"max_retries": 3,
-	}
+	})
 
-	ctx.AddSequenceNode("validate", map[string]interface{}{
+	seqCtx := newSequenceCtx(t, ctx, "validate-seq", ctx.TemplateData.ContainerInputs)
+
+	addOpOutput(t, seqCtx, "validate", map[string]interface{}{
 		"valid": true,
 	})
 
@@ -388,7 +379,7 @@ func TestPureCELMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.EvaluateCEL(tt.expr)
+			result, err := seqCtx.EvaluateCEL(tt.expr)
 			if tt.expectErr {
 				assert.Error(t, err)
 				return

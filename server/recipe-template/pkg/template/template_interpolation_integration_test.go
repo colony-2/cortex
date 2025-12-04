@@ -3,7 +3,6 @@ package template
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,16 +26,16 @@ func TestInterpolationIntegration(t *testing.T) {
 		"region":      "us-west-2",
 		"api_version": "v2",
 	}
-	ctx, err := NewResolutionContext("sequence", "integration-test", inputs, ops.ExecutionContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	ctx := newSequenceCtx(t, recipeCtx, "integration-test", inputs)
 
 	// Add sequence nodes
-	ctx.AddSequenceNode("validate", map[string]interface{}{
+	addOpOutput(t, ctx, "validate", map[string]interface{}{
 		"status": "valid",
 		"score":  95,
 	})
 
-	ctx.AddSequenceNode("process", map[string]interface{}{
+	addOpOutput(t, ctx, "process", map[string]interface{}{
 		"result":    "success",
 		"timestamp": "2024-01-15T10:30:00Z",
 		"duration":  1234,
@@ -191,10 +190,11 @@ func TestPureCELModeIntegration(t *testing.T) {
 		"max_retries": 3,
 		"status":      "pending",
 	}
-	ctx, err := NewResolutionContext("state_machine", "test-sm", inputs, ops.ExecutionContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	stateMachineCtx := newStateMachineCtx(t, recipeCtx, "test-sm", inputs)
+	seqCtx := newSequenceCtx(t, stateMachineCtx, "state-seq", inputs)
 
-	ctx.AddSequenceNode("validate", map[string]interface{}{
+	addOpOutput(t, seqCtx, "validate", map[string]interface{}{
 		"valid":  true,
 		"errors": []interface{}{},
 	})
@@ -235,7 +235,7 @@ func TestPureCELModeIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.EvaluateCEL(tt.expr)
+			result, err := seqCtx.EvaluateCEL(tt.expr)
 			if tt.expectErr {
 				assert.Error(t, err)
 				return

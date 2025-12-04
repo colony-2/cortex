@@ -246,7 +246,14 @@ func (rc *ResolutionContext) EvaluateCEL(expr string) (bool, error) {
 	}
 
 	out, err := rc.evaluateCELExpression(expr)
-	return out.(bool), err
+	if err != nil {
+		return false, err
+	}
+	boolOut, ok := out.(bool)
+	if !ok {
+		return false, fmt.Errorf("CEL expression did not return bool")
+	}
+	return boolOut, nil
 }
 
 // evaluateCELExpression evaluates a CEL expression and returns any type

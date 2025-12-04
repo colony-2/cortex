@@ -3,7 +3,6 @@ package template
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,8 +16,8 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 		"user_id":     "user-456",
 		"max_retries": 3,
 	}
-	ctx, err := NewResolutionContext("sequence", "data-pipeline", inputs, contextual.JobContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	ctx := newSequenceCtx(t, recipeCtx, "data-pipeline", inputs)
 
 	// Simulate first node: fetch_data
 	fetchOutputs := map[string]interface{}{
@@ -31,7 +30,7 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 			"total": 2,
 		},
 	}
-	ctx.AddSequenceNode("fetch_data", fetchOutputs)
+	addOpOutput(t, ctx, "fetch_data", fetchOutputs)
 
 	// Test template resolution for next node inputs
 	validateInputTemplate := map[string]interface{}{
@@ -53,7 +52,7 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 		"valid":             true,
 		"validation_errors": []interface{}{},
 	}
-	ctx.AddSequenceNode("validate", validateOutputs)
+	addOpOutput(t, ctx, "validate", validateOutputs)
 
 	// Simulate third node: transform
 	transformOutputs := map[string]interface{}{
@@ -66,7 +65,7 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 			"success":            true,
 		},
 	}
-	ctx.AddSequenceNode("transform", transformOutputs)
+	addOpOutput(t, ctx, "transform", transformOutputs)
 
 	// Test output mapping templates
 	outputTemplates := map[string]interface{}{
@@ -93,11 +92,11 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 		"customer_id": "cust-123",
 		"amount":      99.99,
 	}
-	smCtx, err := NewResolutionContext("state_machine", "order-workflow", inputs, contextual.JobContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	smCtx := newStateMachineCtx(t, recipeCtx, "order-workflow", inputs)
 
 	// Execute validate state
-	smCtx.AddStateOutput("validate_order", map[string]interface{}{
+	addStateOutput(t, smCtx, "validate_order", map[string]interface{}{
 		"valid": true,
 		"validation_details": map[string]interface{}{
 			"credit_check":    "passed",
@@ -106,8 +105,8 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 	})
 
 	// Create process state context (nested sequence)
-	processCtx, err := smCtx.NewChildContext("state", "process_order", smCtx.TemplateData.Inputs)
-	require.NoError(t, err)
+	processCtx := newStateCtx(t, smCtx, "process_order")
+	processSeq := newSequenceCtx(t, processCtx, "process-seq", smCtx.TemplateData.ContainerInputs)
 
 	// Test that process state can access validate state outputs
 	template := "{{ states.validate_order.outputs.validation_details.credit_check }}"
@@ -116,18 +115,18 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 	assert.Equal(t, "passed", result)
 
 	// Execute nodes within process state sequence
-	processCtx.AddSequenceNode("reserve_inventory", map[string]interface{}{
+	addOpOutput(t, processSeq, "reserve_inventory", map[string]interface{}{
 		"reservation_id": "res-001",
 		"items_reserved": 2,
 	})
 
-	processCtx.AddSequenceNode("charge_payment", map[string]interface{}{
+	addOpOutput(t, processSeq, "charge_payment", map[string]interface{}{
 		"transaction_id": "txn-456",
 		"status":         "success",
 		"charged_amount": 99.99,
 	})
 
-	processCtx.AddSequenceNode("generate_invoice", map[string]interface{}{
+	addOpOutput(t, processSeq, "generate_invoice", map[string]interface{}{
 		"invoice_id": "inv-789",
 		"pdf_url":    "https://invoices.example.com/inv-789.pdf",
 	})
@@ -139,7 +138,7 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 		"reservation_id": "{{ sequence.reserve_inventory.outputs.reservation_id }}",
 	}
 
-	processOutputs, err := processCtx.resolveValue(processOutputTemplate)
+	processOutputs, err := processSeq.resolveValue(processOutputTemplate)
 	require.NoError(t, err)
 
 	processOutputsMap := processOutputs.(map[string]interface{})
@@ -148,24 +147,24 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 	assert.Equal(t, "res-001", processOutputsMap["reservation_id"])
 
 	// Add process state outputs to parent context
-	smCtx.AddStateOutput("process_order", processOutputsMap)
+	addStateOutput(t, smCtx, "process_order", processOutputsMap)
 
 	// Test transition evaluation with sequence node access
 	transitionExpr := "sequence.charge_payment.outputs.status == \"success\""
 	// For transition evaluation, we need to temporarily add sequence to context
 	tempCtx := &ResolutionContext{
+		ScopeType:    smCtx.ScopeType,
 		TemplateData: smCtx.TemplateData,
-		CELEnv:       processCtx.CELEnv,
+		CELEnv:       processSeq.CELEnv,
 	}
-	tempCtx.TemplateData.Sequence = processCtx.TemplateData.Sequence
+	tempCtx.TemplateData.Sequence = processSeq.TemplateData.Sequence
 
 	shouldTransition, err := tempCtx.EvaluateCEL(transitionExpr)
 	require.NoError(t, err)
 	assert.True(t, shouldTransition)
 
 	// Execute complete state
-	completeCtx, err := smCtx.NewChildContext("state", "complete", smCtx.TemplateData.Inputs)
-	require.NoError(t, err)
+	completeCtx := newStateCtx(t, smCtx, "complete")
 
 	// Complete state can access all previous states
 	completeTemplate := map[string]interface{}{
@@ -191,25 +190,25 @@ func TestIntegration_RetryScenario(t *testing.T) {
 		"endpoint":    "https://flaky-api.example.com",
 		"max_retries": 3,
 	}
-	ctx, err := NewResolutionContext("sequence", "retry-workflow", inputs, contextual.JobContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	ctx := newSequenceCtx(t, recipeCtx, "retry-workflow", inputs)
 
 	// First attempt fails
-	ctx.AddSequenceNode("api_call", map[string]interface{}{
+	addOpOutput(t, ctx, "api_call", map[string]interface{}{
 		"status":  500,
 		"error":   "Internal Server Error",
 		"attempt": 1,
 	})
 
 	// Second attempt fails
-	ctx.AddSequenceNode("api_call", map[string]interface{}{
+	addOpOutput(t, ctx, "api_call", map[string]interface{}{
 		"status":  503,
 		"error":   "Service Unavailable",
 		"attempt": 2,
 	})
 
 	// Third attempt succeeds
-	ctx.AddSequenceNode("api_call", map[string]interface{}{
+	addOpOutput(t, ctx, "api_call", map[string]interface{}{
 		"status":  200,
 		"body":    map[string]interface{}{"result": "success"},
 		"attempt": 3,
@@ -217,11 +216,10 @@ func TestIntegration_RetryScenario(t *testing.T) {
 
 	// Check that we can access runs
 	node := ctx.TemplateData.Sequence["api_call"]
-	outMap := convertRawToMap(node.Outputs)
-	assert.Equal(t, 200, outMap["status"])
+	assert.Equal(t, 200, node.Outputs["status"])
 	assert.Len(t, node.Runs, 2) // Two previous attempts
-	assert.Equal(t, 500, convertRawToMap(node.Runs[0].Outputs)["status"])
-	assert.Equal(t, 503, convertRawToMap(node.Runs[1].Outputs)["status"])
+	assert.Equal(t, 500, node.Runs[0].Outputs["status"])
+	assert.Equal(t, 503, node.Runs[1].Outputs["status"])
 
 	// Test template that references current output
 	// Note: Accessing specific runs would need custom CEL functions
@@ -235,10 +233,11 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 		"threshold":  100,
 		"multiplier": 2,
 	}
-	ctx, err := NewResolutionContext("state_machine", "decision-workflow", inputs, contextual.JobContext{})
-	require.NoError(t, err)
+	recipeCtx := newRecipeCtx(t, inputs)
+	smCtx := newStateMachineCtx(t, recipeCtx, "decision-workflow", inputs)
+	seqCtx := newSequenceCtx(t, smCtx, "calc-seq", inputs)
 
-	ctx.AddSequenceNode("calculate", map[string]interface{}{
+	addOpOutput(t, seqCtx, "calculate", map[string]interface{}{
 		"base_value":     50,
 		"adjusted_value": 150,
 		"metrics": map[string]interface{}{
@@ -272,7 +271,7 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ctx.EvaluateCEL(tt.expression)
+			result, err := seqCtx.EvaluateCEL(tt.expression)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -280,7 +279,7 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 
 	// Test CEL expression
 	template := `{{ sequence.calculate.outputs.base_value * 3 }}`
-	result, err := ctx.resolveTemplate(template)
+	result, err := seqCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, int64(150), result)
 }
