@@ -128,10 +128,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 			return zero, nil, err
 		}
 
-		opDeps, err := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(deps.Database()).WithWorkflowControl(deps.WorkflowControl()).Build()
-		if err != nil {
-			return zero, nil, err
-		}
+		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(deps.Database()).WithWorkflowControl(deps.WorkflowControl()).Build()
 		outputData, err := reg.Activity.ExecuteV2(opDeps, ctx, req.Input)
 		if err != nil {
 			return zero, nil, err

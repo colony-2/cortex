@@ -53,12 +53,12 @@ var testActivity = recipeops.NewActivityMappedOpV2[TestInput, TestOutput](
 		Version:        "1.0.0",
 		DefaultTimeout: 30 * time.Second,
 	},
-	func(inv recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
+	func(inv recipeops.OpDependencies, ctx context.Context, input TestInput) (TestOutput, error) {
 		return runTestActivity(inv, ctx, input)
 	},
 )
 
-func runTestActivity(_ recipeops.Invocation, ctx context.Context, input TestInput) (TestOutput, error) {
+func runTestActivity(_ recipeops.OpDependencies, ctx context.Context, input TestInput) (TestOutput, error) {
 	return TestOutput{
 		Result:  input.Data + " processed",
 		Success: true,
@@ -84,7 +84,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			Description: "emits git context patch",
 			Version:     "1.0.0",
 		},
-		func(inv recipeops.Invocation, ctx context.Context, input struct {
+		func(inv recipeops.OpDependencies, ctx context.Context, input struct {
 			Context map[string]interface{} `json:"context,omitempty"`
 		}) (struct {
 			GitContextPatch map[string]interface{} `json:"git_context_patch,omitempty"`
@@ -100,7 +100,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
 	wrapped := withGitWorkspace(registration, controller)
 
-	inv := recipeops.Invocation{RecipeID: "recipe.test", NodePath: "sequence.node", InvokeSeq: 1}
+	inv := recipeops.NewOpDependenciesBuilder().Build()
 	input := map[string]interface{}{
 		"context": map[string]interface{}{
 			"git": map[string]interface{}{
@@ -145,7 +145,7 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	seenDeps := false
 	activity := recipeops.NewActivityMappedOpV2[depInput, depOutput](
 		recipeops.OpMetadata{Type: activityType, Description: "ensure deps present", Version: "1.0.0"},
-		func(inv recipeops.Invocation, ctx context.Context, input depInput) (depOutput, error) {
+		func(inv recipeops.OpDependencies, ctx context.Context, input depInput) (depOutput, error) {
 			require.Same(t, deps, inv.Deps)
 			seenDeps = true
 			return depOutput{Acknowledged: true}, nil
@@ -180,9 +180,9 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	}
 	rawInput, err := json.Marshal(input)
 	require.NoError(t, err)
-	wp, err := gitstate.LegacyPayloadFromInput(recipeops.Invocation{}, input)
+	wp, err := gitstate.LegacyPayloadFromInput(recipeops.OpDependencies{}, input)
 	require.NoError(t, err)
-	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.Invocation{}, OpInput: rawInput, Workspace: wp})
+	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.OpDependencies{}, OpInput: rawInput, Workspace: wp})
 	require.NoError(t, err)
 	require.True(t, seenDeps)
 }

@@ -82,7 +82,7 @@ func (b *OpDependenciesBuilder) WithWorkflowControl(wc workflowctl.WorkflowContr
 	return b
 }
 
-func (b *OpDependenciesBuilder) Build() (OpDependencies, error) {
+func (b *OpDependenciesBuilder) Build() OpDependencies {
 	deps := &opDepImpl{
 		db:              b.db,
 		inputArtifacts:  b.artifacts,
