@@ -10,10 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
@@ -94,7 +93,7 @@ inputs:
 		t.Fatalf("Registry Error: %v", err)
 	}
 
-	exec, err := executor.NewStandaloneExecutor(a, logger)
+	exec, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
 	if err != nil {
 		t.Fatalf("Executor Error: %v", err)
 	}
@@ -102,41 +101,37 @@ inputs:
 	repo, hash := ensureDebugRepo()
 	worktree := filepath.Join(os.TempDir(), "debug-executor-worktree")
 	blobStore := "file://" + filepath.Join(os.TempDir(), "debug-executor-blobstore")
-	actor := contextual.ActorContext{
-		TicketID: "TEST-TICKET",
-		CellName: "cells/test-cell",
-	}
-	envCtx := contextual.EnvironmentContext{
-		WorktreePath: worktree,
-		BlobStoreURI: blobStore,
-	}
-	gitCtx := gitstate.Context{
-		ActorContext:       actor,
-		EnvironmentContext: envCtx,
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:    repo,
-			BaseHash:    hash,
-			PersistHash: hash,
+	jobCtx := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "TEST-TICKET",
+			ActorName:  "test-user",
+			ActorEmail: "test-user@vibethis",
+		},
+		Environment: contextual.EnvironmentContext{
+			WorktreePath: worktree,
+			BlobStoreURI: blobStore,
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: "cells/test-cell",
+			JobID:    "debug-job",
+		},
+		GitBase: contextual.GitBaseContext{
+			BaseRepo: repo,
+			BaseHash: hash,
 		},
 	}
-	execCtx := compiler.ExecutionContext{
-		Actor:       actor,
-		Environment: envCtx,
-		Git:         gitCtx,
+	gitCtx := contextual.GitCommitContext{
+		PersistHash: hash,
+		ParentHash:  hash,
 	}
 
 	// Execute recipe
 	result, err := exec.Execute(
 		context.Background(),
 		r,
-		map[string]interface{}{
-			"name":        "Test",
-			"basegitrepo": repo,
-			"basegithash": hash,
-			"ticketid":    "TEST-TICKET",
-			"cellname":    "cells/test-cell",
-		},
-		execCtx,
+		map[string]interface{}{},
+		jobCtx,
+		gitCtx,
 	)
 
 	if err != nil {

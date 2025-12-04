@@ -3,7 +3,7 @@ package template
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 		"user_id":     "user-456",
 		"max_retries": 3,
 	}
-	ctx, err := NewResolutionContext("sequence", "data-pipeline", inputs, ops.ExecutionContext{})
+	ctx, err := NewResolutionContext("sequence", "data-pipeline", inputs, contextual.JobContext{})
 	require.NoError(t, err)
 
 	// Simulate first node: fetch_data
@@ -93,7 +93,7 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 		"customer_id": "cust-123",
 		"amount":      99.99,
 	}
-	smCtx, err := NewResolutionContext("state_machine", "order-workflow", inputs, ops.ExecutionContext{})
+	smCtx, err := NewResolutionContext("state_machine", "order-workflow", inputs, contextual.JobContext{})
 	require.NoError(t, err)
 
 	// Execute validate state
@@ -191,7 +191,7 @@ func TestIntegration_RetryScenario(t *testing.T) {
 		"endpoint":    "https://flaky-api.example.com",
 		"max_retries": 3,
 	}
-	ctx, err := NewResolutionContext("sequence", "retry-workflow", inputs, ops.ExecutionContext{})
+	ctx, err := NewResolutionContext("sequence", "retry-workflow", inputs, contextual.JobContext{})
 	require.NoError(t, err)
 
 	// First attempt fails
@@ -235,7 +235,7 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 		"threshold":  100,
 		"multiplier": 2,
 	}
-	ctx, err := NewResolutionContext("state_machine", "decision-workflow", inputs, ops.ExecutionContext{})
+	ctx, err := NewResolutionContext("state_machine", "decision-workflow", inputs, contextual.JobContext{})
 	require.NoError(t, err)
 
 	ctx.AddSequenceNode("calculate", map[string]interface{}{

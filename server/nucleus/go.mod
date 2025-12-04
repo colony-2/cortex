@@ -45,7 +45,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da // indirect
 	github.com/divisive-ai/vibethis/server/core v0.0.0 // indirect
-	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
+	github.com/divisive-ai/vibethis/server/git v0.0.0 // indirect
 	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000 // indirect
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0 // indirect
 	github.com/divisive-ai/vibethis/server/ticket v0.0.0-00010101000000-000000000000 // indirect

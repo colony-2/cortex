@@ -11,11 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/activity"
+	"gorm.io/gorm"
 )
 
 // Test types with proper JSON tags
@@ -72,6 +75,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	blobStore := t.TempDir()
 
 	controller := gitstate.NewController(nil)
+	deps := recipeops.NewServiceDepsBuilder().Build()
 
 	newBase := nextHash
 	patchActivity := recipeops.NewActivityMappedOpV2[struct {
@@ -98,39 +102,46 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	)
 
 	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
-	wrapped := withGitWorkspace(registration, controller)
+	wrapped := withGitWorkspace(deps, registration, controller)
 
-	inv := recipeops.NewOpDependenciesBuilder().Build()
-	input := map[string]interface{}{
-		"context": map[string]interface{}{
-			"git": map[string]interface{}{
-				"base_repo":      repoDir,
-				"base_hash":      baseHash,
-				"persist_hash":   nextHash,
-				"worktree_path":  repoDir,
-				"blob_store_uri": "file://" + filepath.ToSlash(blobStore),
+	worktreePath := filepath.Join(t.TempDir(), "worktree")
+	output, artifacts, err := wrapped(context.Background(), ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"context": map[string]interface{}{
+				"git": map[string]interface{}{
+					"base_hash":    baseHash,
+					"persist_hash": baseHash,
+				},
 			},
-			"worktree":  repoDir,
-			"blobstore": "file://" + filepath.ToSlash(blobStore),
-			"ticketid":  "T-1",
-			"cellname":  "cells/beta",
 		},
-	}
-	raw, err := json.Marshal(input)
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     repoDir,
+			BaseHash:     baseHash,
+			PersistHash:  baseHash,
+			WorktreePath: worktreePath,
+			BlobStoreURI: "file://" + filepath.ToSlash(blobStore),
+			TicketID:     "T-1",
+			CellName:     "cells/beta",
+		},
+	}, nil)
 	require.NoError(t, err)
-	workspace, err := gitstate.LegacyPayloadFromInput(inv, input)
-	require.NoError(t, err)
+	require.Empty(t, artifacts)
 
-	envelope, err := wrapped(context.Background(), ActivityInvocationRequest{Invocation: inv, Workspace: workspace})
-	require.NoError(t, err)
-	require.NotNil(t, envelope.Workspace.Context)
-	require.NotEmpty(t, envelope.Workspace.Context.PersistHash)
+	patch, ok := output.OpOutput["git_context_patch"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, newBase, patch["base_hash"])
+	assert.NotEmpty(t, output.GitResult.PersistHash)
 }
 
 func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	t.Parallel()
 
-	deps := recipeops.NewServiceDepsBuilder().Build()
+	db := &gorm.DB{}
+	wc := &stubWorkflowControl{}
+	deps := recipeops.NewServiceDepsBuilder().
+		WithDatabase(db).
+		WithWorkflowControl(wc).
+		Build()
 	registry, err := NewActivityRegistry()
 	require.NoError(t, err)
 
@@ -146,16 +157,16 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	activity := recipeops.NewActivityMappedOpV2[depInput, depOutput](
 		recipeops.OpMetadata{Type: activityType, Description: "ensure deps present", Version: "1.0.0"},
 		func(inv recipeops.OpDependencies, ctx context.Context, input depInput) (depOutput, error) {
-			require.Same(t, deps, inv.Deps)
+			require.Same(t, db, inv.Database())
+			require.Same(t, wc, inv.WorkflowControl())
 			seenDeps = true
 			return depOutput{Acknowledged: true}, nil
 		},
 	)
 	require.NoError(t, Register(registry, activity))
-	registry.SetDependencies(deps)
 
 	worker := newCapturingWorker(t)
-	registry.EnableActivitiesInWorker(worker)
+	registry.EnableActivitiesInWorker(deps, worker)
 
 	handler, ok := worker.handlers[activityType]
 	require.True(t, ok)
@@ -163,45 +174,52 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
 	worktreeDir := filepath.Join(t.TempDir(), "work")
 	blobDir := t.TempDir()
-	input := map[string]interface{}{
-		"message": "hi",
-		"context": map[string]interface{}{
-			"git": map[string]interface{}{
-				"base_repo":    repoPath,
-				"base_hash":    baseHash,
-				"persist_hash": baseHash,
-			},
-			"worktree":  worktreeDir,
-			"blobstore": "file://" + filepath.ToSlash(blobDir),
-			"ticketid":  "TEST-1",
-			"cellname":  "cells/cell-a",
+	input := map[string]interface{}{"message": "hi"}
+	_, _, err = handler(context.Background(), ActivityInvocationRequest{
+		Input: input,
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     repoPath,
+			BaseHash:     baseHash,
+			PersistHash:  baseHash,
+			WorktreePath: worktreeDir,
+			BlobStoreURI: "file://" + filepath.ToSlash(blobDir),
+			TicketID:     "TEST-1",
+			CellName:     "cells/cell-a",
 		},
-		"git_persist_hash": baseHash,
-	}
-	rawInput, err := json.Marshal(input)
-	require.NoError(t, err)
-	wp, err := gitstate.LegacyPayloadFromInput(recipeops.OpDependencies{}, input)
-	require.NoError(t, err)
-	_, err = handler(context.Background(), ActivityInvocationRequest{Invocation: recipeops.OpDependencies{}, OpInput: rawInput, Workspace: wp})
+	}, nil)
 	require.NoError(t, err)
 	require.True(t, seenDeps)
 }
 
 type capturingWorker struct {
 	t        *testing.T
-	handlers map[string]func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error)
+	handlers map[string]func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
 func newCapturingWorker(t *testing.T) *capturingWorker {
-	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error))}
+	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))}
 }
 
 func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
-	handler, ok := a.(func(context.Context, ActivityInvocationRequest) (ActivityInvocationOutput, error))
+	handler, ok := a.(func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))
 	if !ok {
 		return
 	}
 	c.handlers[options.Name] = handler
+}
+
+type stubWorkflowControl struct{}
+
+func (s *stubWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
+	_ = ctx
+	_ = req
+	return swf.JobId(""), nil
+}
+
+func (s *stubWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {
+	_ = ctx
+	_ = jobId
+	return nil
 }
 
 func initTwoCommitRepo(t *testing.T) (string, string, string) {

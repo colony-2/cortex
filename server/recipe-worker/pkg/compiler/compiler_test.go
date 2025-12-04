@@ -3,6 +3,7 @@ package compiler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -27,9 +28,7 @@ type CompilerTestSuite struct {
 func (s *CompilerTestSuite) SetupTest() {
 	s.eng = toy.NewToyEngine([]swf.WorkSet{})
 
-	deps, err := ops2.NewOpDependenciesBuilder().Build()
-	require.NoError(s.T(), err)
-	s.deps = deps
+	s.deps = ops2.NewOpDependenciesBuilder().Build()
 	//eng, err := impl.StartEmbeddedEngine(context.Background(), nil)
 }
 
@@ -125,9 +124,6 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 						NodeImpl: &recipe.NodeOp{
 							NodeMetadata: recipe.NodeMetadata{
 								ID: "task_a",
-								Inputs: map[string]interface{}{
-									"type": "function",
-								},
 							},
 							OpData: recipe.OpData{
 								Op: "activity_a",
@@ -138,9 +134,6 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 						NodeImpl: &recipe.NodeOp{
 							NodeMetadata: recipe.NodeMetadata{
 								ID: "task_b",
-								Inputs: map[string]interface{}{
-									"type": "function",
-								},
 							},
 							OpData: recipe.OpData{
 								Op: "activity_b",

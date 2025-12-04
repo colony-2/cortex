@@ -8,10 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
@@ -28,14 +27,14 @@ sequence:
       run: |
         mkdir -p cells/test-cell
         echo first >> cells/test-cell/README.md
-      working_directory: '{{ context.git.worktree_path }}'
+      working_directory: '{{ context.environment.worktree_path }}'
   - id: append
     op: command_execution
     inputs:
       run: |
         mkdir -p cells/test-cell
         echo second >> cells/test-cell/README.md
-      working_directory: '{{ context.git.worktree_path }}'
+      working_directory: '{{ context.environment.worktree_path }}'
 outputs:
   first_hash: '{{ sequence.write.outputs.git_persist_hash }}'
   second_hash: '{{ sequence.append.outputs.git_persist_hash }}'
@@ -54,35 +53,29 @@ outputs:
 	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
 	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
 
-	inputs := map[string]interface{}{
-		"basegitrepo": repoPath,
-		"basegithash": baseHash,
-		"ticketid":    "TEST-TICKET",
-		"cellname":    "cells/test-cell",
-		"ticket_id":   "TEST-TICKET",
-		"cell_name":   "cells/test-cell",
-	}
-	actor := contextual.ActorContext{
-		TicketID: "TEST-TICKET",
-		CellName: "cells/test-cell",
-	}
-	environment := contextual.EnvironmentContext{
-		WorktreePath: persistWorktree,
-		BlobStoreURI: blobStoreURI,
-	}
-	gitCtx := gitstate.Context{
-		ActorContext:       actor,
-		EnvironmentContext: environment,
-		GitSnapshotContext: contextual.GitSnapshotContext{
-			BaseRepo:    repoPath,
-			BaseHash:    baseHash,
-			PersistHash: baseHash,
+	inputs := map[string]interface{}{}
+	jobCtx := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "TEST-TICKET",
+			ActorName:  "test-actor",
+			ActorEmail: "test-actor@vibethis",
+		},
+		Environment: contextual.EnvironmentContext{
+			WorktreePath: persistWorktree,
+			BlobStoreURI: blobStoreURI,
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: "cells/test-cell",
+			JobID:    "git-decorator-test",
+		},
+		GitBase: contextual.GitBaseContext{
+			BaseRepo: repoPath,
+			BaseHash: baseHash,
 		},
 	}
-	execCtx := compiler.ExecutionContext{
-		Actor:       actor,
-		Environment: environment,
-		Git:         gitCtx,
+	gitCtx := contextual.GitCommitContext{
+		PersistHash: baseHash,
+		ParentHash:  baseHash,
 	}
 
 	registry, err := ops.NewActivityRegistry()
@@ -90,12 +83,12 @@ outputs:
 		t.Fatalf("failed to create registry: %v", err)
 	}
 
-	exec, err := executor.NewStandaloneExecutor(registry, zaptest.NewLogger(t))
+	exec, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), registry, zaptest.NewLogger(t))
 	if err != nil {
 		t.Fatalf("failed to create executor: %v", err)
 	}
 
-	outputs, err := exec.Execute(context.Background(), r, inputs, execCtx)
+	outputs, err := exec.Execute(context.Background(), r, inputs, jobCtx, gitCtx)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}

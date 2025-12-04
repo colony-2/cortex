@@ -1,24 +1,9 @@
-module github.com/divisive-ai/vibethis/server/recipe-worker
+module github.com/divisive-ai/vibethis/server/recipe-template
 
 go 1.24.1
 
 require (
-	github.com/colony-2/strata/strata-go v0.0.0
-	github.com/colony-2/swf-go v0.0.0
-	github.com/davecgh/go-spew v1.1.1
-	github.com/divisive-ai/vibethis/server/git v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
-	github.com/fsnotify/fsnotify v1.7.0
-	github.com/google/cel-go v0.26.0
-	github.com/google/uuid v1.6.0
-	github.com/invopop/jsonschema v0.13.0
-	github.com/stretchr/testify v1.11.1
-	go.temporal.io/api v1.49.1
-	go.temporal.io/sdk v1.35.0
-	go.uber.org/zap v1.27.0
-	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/gorm v1.30.0
 )
 
 require (
@@ -117,9 +102,7 @@ require (
 )
 
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-replace github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 
-replace github.com/divisive-ai/vibethis/server/git => ../git
 
 replace github.com/divisive-ai/vibethis/server/core => ../core
 

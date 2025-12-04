@@ -9,8 +9,8 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-template/pkg/template"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/template"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 )

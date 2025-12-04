@@ -90,5 +90,5 @@ func (b *OpDependenciesBuilder) Build() OpDependencies {
 		outputArtifacts: make([]swf.Artifact, 0),
 	}
 
-	return deps, nil
+	return deps
 }
