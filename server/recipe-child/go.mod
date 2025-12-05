@@ -101,7 +101,7 @@ require (
 
 replace github.com/divisive-ai/vibethis/server/llm => ../llm
 
-replace github.com/divisive-ai/vibethis/server/container => ../container
+replace github.com/colony-2/shai => ../container
 
 replace github.com/divisive-ai/vibethis/server/core => ../core
 

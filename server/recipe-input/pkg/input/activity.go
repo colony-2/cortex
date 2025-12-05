@@ -51,7 +51,7 @@ type InputActivity struct {
 // newInputActivity creates a new input activity instance
 func newInputActivity() *InputActivity {
 	return &InputActivity{
-		managementService: newInputManagementService(),
+		managementService: nil, //newInputManagementService(),
 	}
 }
 

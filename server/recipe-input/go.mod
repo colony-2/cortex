@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/ops
+module github.com/divisive-ai/vibethis/server/recipe-input
 
 go 1.24.1
 

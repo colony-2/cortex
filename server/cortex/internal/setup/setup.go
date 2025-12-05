@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/colony-2/shai/pkg/shai/runtime"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/static"

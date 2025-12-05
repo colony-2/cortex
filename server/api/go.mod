@@ -3,7 +3,7 @@ module github.com/divisive-ai/vibethis/server/api
 go 1.24.1
 
 require (
-	github.com/divisive-ai/vibethis/server/container v0.0.0
+	github.com/colony-2/shai v0.0.0
 	github.com/divisive-ai/vibethis/server/core v0.0.0
 	github.com/divisive-ai/vibethis/server/embeddedtemporal v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/files v0.0.0
@@ -230,7 +230,7 @@ require (
 )
 
 replace (
-	github.com/divisive-ai/vibethis/server/container => ../container
+	github.com/colony-2/shai => ../container
 	github.com/divisive-ai/vibethis/server/core => ../core
 	github.com/divisive-ai/vibethis/server/embeddedtemporal => ../embeddedtemporal
 	github.com/divisive-ai/vibethis/server/files => ../files

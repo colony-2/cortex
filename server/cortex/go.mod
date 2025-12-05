@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/divisive-ai/vibethis/server/api v0.0.0
-	github.com/divisive-ai/vibethis/server/container v0.0.0
+	github.com/colony-2/shai v0.0.0
 	github.com/divisive-ai/vibethis/server/files v0.0.0
 	github.com/divisive-ai/vibethis/server/git v0.0.0
 	github.com/divisive-ai/vibethis/server/graph v0.0.0
@@ -137,7 +137,7 @@ require (
 
 replace (
 	github.com/divisive-ai/vibethis/server/api => ../api
-	github.com/divisive-ai/vibethis/server/container => ../container
+	github.com/colony-2/shai => ../container
 	github.com/divisive-ai/vibethis/server/core => ../core
 	github.com/divisive-ai/vibethis/server/files => ../files
 	github.com/divisive-ai/vibethis/server/git => ../git

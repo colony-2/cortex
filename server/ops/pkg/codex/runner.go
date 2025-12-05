@@ -6,11 +6,11 @@ import (
 	"io"
 	"strings"
 
-	shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+	"github.com/colony-2/shai/pkg/shai"
 )
 
 type runnerAdapter struct {
-	inner *shai.EphemeralRunner
+	inner shai.Sandbox
 }
 
 func (r runnerAdapter) Run(ctx context.Context) error {
@@ -19,8 +19,8 @@ func (r runnerAdapter) Run(ctx context.Context) error {
 
 func (r runnerAdapter) Close() error { return r.inner.Close() }
 
-func defaultRunnerFactory(cfg *shai.EphemeralConfig) (Runner, error) {
-	runner, err := shai.NewEphemeralRunner(*cfg)
+func defaultRunnerFactory(cfg *shai.SandboxConfig) (Runner, error) {
+	runner, err := shai.NewSandbox(*cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (c *outputCollector) OnStdout(data []byte) {
 	if len(data) == 0 {
 		return
 	}
-	if _, err := c.stdout.Write(append(data, '\n')); err != nil {
+	if _, err := c.stdout.Write(data); err != nil {
 		// best-effort: capture error in stderr buffer so callers can inspect
 		c.stderr.WriteString(fmt.Sprintf("write stdout: %v\n", err))
 	}
@@ -60,4 +60,22 @@ func (c *outputCollector) stderrString() string {
 	return c.stderr.String()
 }
 
-var _ shai.OutputSink = (*outputCollector)(nil)
+// stdoutWriter adapts OnStdout to an io.Writer for shai's non-TTY mode.
+func (c *outputCollector) stdoutWriter() io.Writer {
+	return writerAdapter(func(p []byte) { c.OnStdout(p) })
+}
+
+// stderrWriter adapts OnStderr to an io.Writer for shai's non-TTY mode.
+func (c *outputCollector) stderrWriter() io.Writer {
+	return writerAdapter(func(p []byte) { c.OnStderr(p) })
+}
+
+type writerAdapter func([]byte)
+
+func (w writerAdapter) Write(p []byte) (int, error) {
+	if w == nil {
+		return len(p), nil
+	}
+	w(p)
+	return len(p), nil
+}

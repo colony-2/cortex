@@ -30,6 +30,9 @@ resources:
       - source: /src/strata-go
         target: /strata-go
         mode: ro
+      - source: /src/shai
+        target: /shai
+        mode: ro
       - source: /src/pgwf
         target: /pgwf
         mode: ro

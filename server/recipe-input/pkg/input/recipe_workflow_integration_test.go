@@ -1,3 +1,5 @@
+//go:build ops_input_management
+
 package input
 
 import (
@@ -19,33 +21,33 @@ import (
 func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]interface{}) (map[string]interface{}, error) {
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting recipe workflow", "config", recipeConfig)
-	
+
 	result := map[string]interface{}{
 		"recipe_id": recipeConfig["id"],
 		"status":    "started",
 		"outputs":   map[string]interface{}{},
 	}
-	
+
 	// Get the steps from the recipe config
 	steps := recipeConfig["steps"].([]interface{})
-	
+
 	for i, stepInterface := range steps {
 		step := stepInterface.(map[string]interface{})
 		stepName := step["name"].(string)
 		stepType := step["type"].(string)
-		
+
 		logger.Info("Executing step", "name", stepName, "type", stepType, "index", i)
-		
+
 		if stepType == "input" {
 			// This is an input activity step
 			activityOptions := workflow.ActivityOptions{
 				StartToCloseTimeout: 5 * time.Minute,
 			}
 			ctx = workflow.WithActivityOptions(ctx, activityOptions)
-			
+
 			// Get the input activity configuration
 			inputConfig := step["config"].(map[string]interface{})
-			
+
 			// Create the Config struct from the recipe config
 			var activityConfig Config
 			if question, ok := inputConfig["question"].(string); ok {
@@ -100,36 +102,36 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 					activityConfig.Fields = append(activityConfig.Fields, formField)
 				}
 			}
-			
+
 			if timeout, ok := inputConfig["timeout"].(float64); ok {
 				activityConfig.Timeout = int(timeout)
 			} else {
 				activityConfig.Timeout = 300 // Default 5 minutes
 			}
-			
+
 			// Handle default on timeout
 			if defaultVal, ok := inputConfig["default_on_timeout"]; ok {
 				activityConfig.DefaultOnTimeout = defaultVal
 			}
-			
+
 			// Create the input for the activity
 			activityInput := Input{
 				BoxID:      recipeConfig["cell_id"].(string),
 				ActivityID: stepName,
 				Context:    result["outputs"].(map[string]interface{}),
 			}
-			
+
 			// Execute the input activity
 			var output Output
-            activityInput.Config = activityConfig
-            err := workflow.ExecuteActivity(ctx, InputActivityExecute, activityInput).Get(ctx, &output)
+			activityInput.Config = activityConfig
+			err := workflow.ExecuteActivity(ctx, InputActivityExecute, activityInput).Get(ctx, &output)
 			if err != nil {
 				logger.Error("Input activity failed", "step", stepName, "error", err)
 				result["status"] = "failed"
 				result["error"] = err.Error()
 				return result, err
 			}
-			
+
 			// Store the output
 			outputs := result["outputs"].(map[string]interface{})
 			outputs[stepName] = map[string]interface{}{
@@ -139,7 +141,7 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 				"metadata": output.Metadata,
 			}
 			result["outputs"] = outputs
-			
+
 		} else if stepType == "action" {
 			// Simulate other activity types (not implemented in this test)
 			outputs := result["outputs"].(map[string]interface{})
@@ -150,7 +152,7 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 			result["outputs"] = outputs
 		}
 	}
-	
+
 	result["status"] = "completed"
 	return result, nil
 }
@@ -159,18 +161,18 @@ func SimulatedRecipeWorkflow(ctx workflow.Context, recipeConfig map[string]inter
 func TestRecipeWithSingleInputActivity(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Register the simulated recipe workflow
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
-	
+
 	// Mock the input activity to return a specific response
-    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
-        func(ctx context.Context, input Input) (Output, error) {
-            // Verify the activity received the correct configuration
-            assert.Equal(t, "Do you want to proceed with deployment?", input.Config.Question)
-            assert.Equal(t, FieldTypeMultipleChoice, input.Config.Type)
-            assert.Len(t, input.Config.Options, 2)
-			
+	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, input Input) (Output, error) {
+			// Verify the activity received the correct configuration
+			assert.Equal(t, "Do you want to proceed with deployment?", input.Config.Question)
+			assert.Equal(t, FieldTypeMultipleChoice, input.Config.Type)
+			assert.Len(t, input.Config.Options, 2)
+
 			// Return a mock response
 			return Output{
 				Response: "yes",
@@ -181,10 +183,10 @@ func TestRecipeWithSingleInputActivity(t *testing.T) {
 			}, nil
 		},
 	)
-	
+
 	// Define a recipe configuration with an input step
 	recipeConfig := map[string]interface{}{
-		"id":     "deployment-recipe",
+		"id":      "deployment-recipe",
 		"cell_id": "deployment-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
@@ -222,21 +224,21 @@ func TestRecipeWithSingleInputActivity(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Execute the recipe workflow
 	env.ExecuteWorkflow(SimulatedRecipeWorkflow, recipeConfig)
-	
+
 	// Verify workflow completed successfully
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	// Get and verify the result
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	assert.Equal(t, "completed", result["status"])
 	assert.Equal(t, "deployment-recipe", result["recipe_id"])
-	
+
 	// Verify the outputs contain the input activity response
 	outputs := result["outputs"].(map[string]interface{})
 	approvalOutput := outputs["approval"].(map[string]interface{})
@@ -248,16 +250,16 @@ func TestRecipeWithSingleInputActivity(t *testing.T) {
 func TestRecipeWithMultiFieldInput(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
-	
+
 	// Mock the input activity for multi-field form
-    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
-        func(ctx context.Context, input Input) (Output, error) {
-            // Verify multi-field configuration
-            assert.Equal(t, "Deployment Configuration", input.Config.Title)
-            assert.Len(t, input.Config.Fields, 3)
-			
+	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, input Input) (Output, error) {
+			// Verify multi-field configuration
+			assert.Equal(t, "Deployment Configuration", input.Config.Title)
+			assert.Len(t, input.Config.Fields, 3)
+
 			return Output{
 				Fields: map[string]interface{}{
 					"environment": "staging",
@@ -271,9 +273,9 @@ func TestRecipeWithMultiFieldInput(t *testing.T) {
 			}, nil
 		},
 	)
-	
+
 	recipeConfig := map[string]interface{}{
-		"id":     "config-recipe",
+		"id":      "config-recipe",
 		"cell_id": "config-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
@@ -327,22 +329,22 @@ func TestRecipeWithMultiFieldInput(t *testing.T) {
 			},
 		},
 	}
-	
+
 	env.ExecuteWorkflow(SimulatedRecipeWorkflow, recipeConfig)
-	
+
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	assert.Equal(t, "completed", result["status"])
-	
+
 	// Verify multi-field responses
 	outputs := result["outputs"].(map[string]interface{})
 	configOutput := outputs["get_config"].(map[string]interface{})
 	fields := configOutput["fields"].(map[string]interface{})
-	
+
 	assert.Equal(t, "staging", fields["environment"])
 	assert.Equal(t, "blue_green", fields["strategy"])
 	assert.Equal(t, true, fields["rollback"])
@@ -353,7 +355,7 @@ func TestRecipeWithMultiFieldInput(t *testing.T) {
 func TestRecipeWithConditionalInput(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	// Extended recipe workflow that makes decisions based on input
 	conditionalRecipeWorkflow := func(ctx workflow.Context, recipeConfig map[string]interface{}) (map[string]interface{}, error) {
 		// First, run the standard recipe workflow
@@ -361,7 +363,7 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 		if err != nil {
 			return result, err
 		}
-		
+
 		// Then make decisions based on the input
 		outputs := result["outputs"].(map[string]interface{})
 		if approvalOutput, ok := outputs["approval"]; ok {
@@ -375,22 +377,22 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 				}
 			}
 		}
-		
+
 		return result, nil
 	}
-	
+
 	env.RegisterWorkflow(conditionalRecipeWorkflow)
-	
+
 	// Mock input activity to return emergency response
-    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
 		Output{
 			Response: "emergency",
 			UserID:   "emergency-approver",
 		}, nil,
 	)
-	
+
 	recipeConfig := map[string]interface{}{
-		"id":     "conditional-recipe",
+		"id":      "conditional-recipe",
 		"cell_id": "emergency-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
@@ -408,18 +410,18 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 			},
 		},
 	}
-	
+
 	env.ExecuteWorkflow(conditionalRecipeWorkflow, recipeConfig)
-	
+
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify emergency mode was triggered
 	assert.Equal(t, true, result["emergency_mode"])
-	
+
 	outputs := result["outputs"].(map[string]interface{})
 	assert.Contains(t, outputs, "emergency_deploy")
 	emergencyDeploy := outputs["emergency_deploy"].(map[string]interface{})
@@ -430,22 +432,22 @@ func TestRecipeWithConditionalInput(t *testing.T) {
 func TestRecipeWithInputTimeout(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
-	
+
 	// Mock input activity to simulate timeout by returning default value
 	// The activity should immediately return the default value without error
 	// to avoid retries
-    env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
-        func(ctx context.Context, input Input) (Output, error) {
-            // When there's a default on timeout, return it immediately as success
-            // This simulates the activity handling the timeout gracefully
-            if input.Config.DefaultOnTimeout != nil {
-                return Output{
-                    Response: input.Config.DefaultOnTimeout,
-                    UserID:   "system-timeout",
-                    Metadata: map[string]interface{}{
-                        "reason": "timeout",
+	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, input Input) (Output, error) {
+			// When there's a default on timeout, return it immediately as success
+			// This simulates the activity handling the timeout gracefully
+			if input.Config.DefaultOnTimeout != nil {
+				return Output{
+					Response: input.Config.DefaultOnTimeout,
+					UserID:   "system-timeout",
+					Metadata: map[string]interface{}{
+						"reason": "timeout",
 					},
 				}, nil
 			}
@@ -453,9 +455,9 @@ func TestRecipeWithInputTimeout(t *testing.T) {
 			return Output{}, temporal.NewNonRetryableApplicationError("input timeout", "TIMEOUT", nil)
 		},
 	)
-	
+
 	recipeConfig := map[string]interface{}{
-		"id":     "timeout-recipe",
+		"id":      "timeout-recipe",
 		"cell_id": "timeout-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
@@ -468,21 +470,21 @@ func TestRecipeWithInputTimeout(t *testing.T) {
 						map[string]interface{}{"value": "yes", "label": "Yes"},
 						map[string]interface{}{"value": "no", "label": "No"},
 					},
-					"timeout":           5, // Very short timeout
+					"timeout":            5, // Very short timeout
 					"default_on_timeout": "no",
 				},
 			},
 		},
 	}
-	
+
 	env.ExecuteWorkflow(SimulatedRecipeWorkflow, recipeConfig)
-	
+
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify the default value was used
 	outputs := result["outputs"].(map[string]interface{})
 	quickDecision := outputs["quick_decision"].(map[string]interface{})
@@ -494,19 +496,19 @@ func TestRecipeWithInputTimeout(t *testing.T) {
 func TestRecipeWithMultipleInputSteps(t *testing.T) {
 	testSuite := &testsuite.WorkflowTestSuite{}
 	env := testSuite.NewTestWorkflowEnvironment()
-	
+
 	env.RegisterWorkflow(SimulatedRecipeWorkflow)
-	
+
 	// Track which input activities were called
 	callOrder := []string{}
-	
-env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
-    func(ctx context.Context, input Input) (Output, error) {
-        callOrder = append(callOrder, input.ActivityID)
-        
-        // Return different responses based on the activity
-        switch input.ActivityID {
-        case "initial_approval":
+
+	env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, input Input) (Output, error) {
+			callOrder = append(callOrder, input.ActivityID)
+
+			// Return different responses based on the activity
+			switch input.ActivityID {
+			case "initial_approval":
 				return Output{Response: "approve", UserID: "approver-1"}, nil
 			case "technical_review":
 				return Output{
@@ -523,9 +525,9 @@ env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
 			}
 		},
 	)
-	
+
 	recipeConfig := map[string]interface{}{
-		"id":     "multi-input-recipe",
+		"id":      "multi-input-recipe",
 		"cell_id": "multi-cell",
 		"steps": []interface{}{
 			map[string]interface{}{
@@ -580,33 +582,33 @@ env.OnActivity(InputActivityExecute, mock.Anything, mock.Anything).Return(
 			},
 		},
 	}
-	
+
 	env.ExecuteWorkflow(SimulatedRecipeWorkflow, recipeConfig)
-	
+
 	require.True(t, env.IsWorkflowCompleted())
 	require.NoError(t, env.GetWorkflowError())
-	
+
 	var result map[string]interface{}
 	require.NoError(t, env.GetWorkflowResult(&result))
-	
+
 	// Verify all input activities were called in order
 	assert.Equal(t, []string{"initial_approval", "technical_review", "final_confirmation"}, callOrder)
-	
+
 	// Verify all outputs are present
 	outputs := result["outputs"].(map[string]interface{})
 	assert.Contains(t, outputs, "initial_approval")
 	assert.Contains(t, outputs, "technical_review")
 	assert.Contains(t, outputs, "final_confirmation")
-	
+
 	// Verify specific responses
 	initial := outputs["initial_approval"].(map[string]interface{})
 	assert.Equal(t, "approve", initial["response"])
-	
+
 	technical := outputs["technical_review"].(map[string]interface{})
 	fields := technical["fields"].(map[string]interface{})
 	assert.Equal(t, "medium", fields["risk_level"])
 	assert.Equal(t, "Needs monitoring", fields["notes"])
-	
+
 	final := outputs["final_confirmation"].(map[string]interface{})
 	assert.Equal(t, "confirmed", final["response"])
 }

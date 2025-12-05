@@ -9,7 +9,6 @@ import (
 
 	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
 	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +43,7 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 			Provider: "openai",
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check output
@@ -66,7 +65,7 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 			Provider: "openai",
 		}
 
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check output
@@ -87,7 +86,7 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 		// Provide provider and model directly in input since config is removed
 		input.Provider = "openai"
 		input.Model = "gpt-3.5-turbo"
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, output.Response)
@@ -146,7 +145,7 @@ func TestEnhancedLLMInferenceActivity_WithFiles(t *testing.T) {
 		}
 
 		input.MaxFileContextSize = 10 * 1024 * 1024
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		assert.NotEmpty(t, output.Response)
@@ -216,7 +215,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 		input.EnableToolExecution = true
 		input.EnableSandbox = true
 		input.AllowedPaths = []string{tmpDir}
-		output, err := activity.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check response
@@ -290,7 +289,7 @@ func TestEnhancedLLMInferenceActivity_WithTools(t *testing.T) {
 		input.EnableSandbox = true
 		input.AllowedPaths = []string{tmpDir2}
 
-		output, err := activity2.Execute(recipeops.Invocation{}, context.Background(), input)
+		output, err := activity2.Execute(nil, context.Background(), input)
 		require.NoError(t, err)
 
 		// Check tool results - should have exactly 1

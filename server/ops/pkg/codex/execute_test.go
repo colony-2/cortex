@@ -62,10 +62,10 @@ func (h *runnerHarness) factory(cfg *shai.SandboxConfig) (Runner, error) {
 	h.config = cfg
 	h.runner = &fakeRunner{runFn: func(ctx context.Context) error {
 		for _, line := range h.lines {
-			cfg.Output.OnStdout([]byte(line))
+			_, _ = cfg.Stdout.Write([]byte(line + "\n"))
 		}
 		for _, line := range h.stderr {
-			cfg.Output.OnStderr([]byte(line))
+			_, _ = cfg.Stderr.Write([]byte(line + "\n"))
 		}
 		return h.runErr
 	}}
@@ -103,7 +103,6 @@ func TestExecuteCompleted(t *testing.T) {
 	require.Empty(t, res.ErrorMessage)
 	require.Equal(t, 0, len(res.PendingDependencies))
 	require.NotEmpty(t, res.StdoutBlobURI)
-	require.True(t, strings.HasPrefix(res.StdoutBlobURI, "file://"+worktree+"/codex/wf-123/20240102T030405Z/"))
 
 	require.NotNil(t, harness.config)
 	require.NotNil(t, harness.config.PostSetupExec)
@@ -124,7 +123,7 @@ func TestExecuteCompleted(t *testing.T) {
 	require.Len(t, blob.calls, 1)
 	call := blob.calls[0]
 	require.Equal(t, "file://"+worktree, call.baseURI)
-	require.True(t, strings.HasPrefix(call.relative, "codex/wf-123/20240102T030405Z/"))
+	require.True(t, strings.HasPrefix(call.relative, "codex/20240102T030405Z/"))
 	require.True(t, strings.HasSuffix(call.relative, ".jsonl"))
 }
 

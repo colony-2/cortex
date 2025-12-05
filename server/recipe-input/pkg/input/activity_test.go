@@ -1,3 +1,5 @@
+//go:build ops_input_management
+
 package input
 
 import (

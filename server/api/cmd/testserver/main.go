@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/colony-2/shai/pkg/shai/runtime"
 	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	embeddedtemporal "github.com/divisive-ai/vibethis/server/embeddedtemporal/pkg/temporal"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"

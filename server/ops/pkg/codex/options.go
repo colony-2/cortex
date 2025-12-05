@@ -9,10 +9,9 @@ import (
 )
 
 var (
-	errEmptyPrompt       = errors.New("codex: prompt is required")
-	errMissingWorktree   = errors.New("codex: worktree root is required")
-	errMissingBlobstore  = errors.New("codex: blobstore URI is required")
-	errMissingWorkflowID = errors.New("codex: workflow ID is required")
+	errEmptyPrompt      = errors.New("codex: prompt is required")
+	errMissingWorktree  = errors.New("codex: worktree root is required")
+	errMissingBlobstore = errors.New("codex: blobstore URI is required")
 )
 
 func (o *Options) validate() error {
@@ -24,9 +23,6 @@ func (o *Options) validate() error {
 	}
 	if strings.TrimSpace(o.BlobstoreURI) == "" {
 		return errMissingBlobstore
-	}
-	if strings.TrimSpace(o.WorkflowID) == "" {
-		return errMissingWorkflowID
 	}
 	if o.ExtraEnv == nil {
 		o.ExtraEnv = map[string]string{}
@@ -80,31 +76,8 @@ func (o Options) containerPath(hostPath string) (string, error) {
 	return filepath.ToSlash(filepath.Join("/src", rel)), nil
 }
 
-func (o Options) sanitizeWorkflowID() string {
-	sanitized := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z':
-			fallthrough
-		case r >= 'A' && r <= 'Z':
-			fallthrough
-		case r >= '0' && r <= '9':
-			return r
-		case r == '-', r == '_':
-			return r
-		default:
-			return '-'
-		}
-	}, o.WorkflowID)
-	sanitized = strings.Trim(sanitized, "-")
-	if sanitized == "" {
-		sanitized = "workflow"
-	}
-	return sanitized
-}
-
 func (o Options) stdoutRelativePath(ts string, id string) string {
-	wf := o.sanitizeWorkflowID()
-	return filepath.ToSlash(filepath.Join("codex", wf, ts, id+".jsonl"))
+	return filepath.ToSlash(filepath.Join("codex", ts, id+".jsonl"))
 }
 
 func (o Options) copyEnv() map[string]string {

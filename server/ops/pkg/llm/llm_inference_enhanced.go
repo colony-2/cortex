@@ -145,7 +145,7 @@ func (a *EnhancedLLMInferenceActivity) GetMetadata() ops.OpMetadata {
 
 // Execute runs the enhanced LLM inference activity (input carries all config)
 func (a *EnhancedLLMInferenceActivity) Execute(
-	_ ops.Invocation,
+	_ ops.OpDependencies,
 	ctx context.Context,
 	input LLMInferenceInput,
 ) (LLMInferenceOutput, error) {

@@ -1,3 +1,5 @@
+//go:build ops_input_management
+
 package input
 
 import (
@@ -6,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -21,9 +22,8 @@ import (
 type inputManagementService struct {
 	workflowType string
 	sse          ops.SSEManager
-	namespace    string
 	ctl          workflowctl.WorkflowControl
-	lister       workflowctl.WorkflowLister
+	//lister       workflowctl.WorkflowLister
 }
 
 // newInputManagementService creates a new input management service
@@ -38,11 +38,11 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
 	// Require a typed WorkflowControl; fail if not provided
 	if ctl, ok := deps.WorkflowControl(); ok && ctl != nil {
 		s.ctl = ctl
-		if lister, ok := ctl.(workflowctl.WorkflowLister); ok {
-			s.lister = lister
-		} else {
-			log.Printf("input_mgmt.initialize: workflow_control_missing_list_support")
-		}
+		//if lister, ok := ctl.(workflowctl.WorkflowLister); ok {
+		//	s.lister = lister
+		//} else {
+		//	log.Printf("input_mgmt.initialize: workflow_control_missing_list_support")
+		//}
 	} else {
 		log.Printf("input_mgmt.initialize: missing_workflow_control error=workflow control dependency not provided")
 		return fmt.Errorf("workflow control dependency not provided")
@@ -54,15 +54,6 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
 		return fmt.Errorf("sse manager dependency not provided")
 	}
 	// Best-effort namespace detection via deps or env
-	if ns, ok := deps.TemporalNamespace(); ok && ns != "" {
-		s.namespace = ns
-	}
-	if s.namespace == "" {
-		s.namespace = os.Getenv("TEMPORAL_NAMESPACE")
-	}
-	if s.namespace == "" {
-		s.namespace = "unknown"
-	}
 	log.Printf("input_mgmt.initialize: initialized sse_present=%t namespace=%s", s.sse != nil, s.namespace)
 	return nil
 }

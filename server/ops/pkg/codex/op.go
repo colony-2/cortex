@@ -54,7 +54,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 
 	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("prompt is required", "INVALID_INPUT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("prompt is required")
 	}
 
 	contextMap := cloneMap(input.Context)
@@ -64,7 +64,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		}
 	}
 	if contextMap == nil {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context is required")
 	}
 
 	worktree := stringFromMap(contextMap, "worktree")
@@ -74,7 +74,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		}
 	}
 	if worktree == "" {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.worktree is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.worktree is required")
 	}
 
 	blobstoreURI := stringFromMap(contextMap, "blobstore")
@@ -84,7 +84,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		}
 	}
 	if blobstoreURI == "" {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.blobstore is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.blobstore is required")
 	}
 
 	cellName := stringFromMap(contextMap, "cellname")

@@ -48,7 +48,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // Execute runs the activity with provided configuration and inputs
-func execute(_ ops.Invocation, ctx context.Context, input LLMInput) (LLMOutput, error) {
+func execute(_ ops.OpDependencies, ctx context.Context, input LLMInput) (LLMOutput, error) {
 	// Ensure registry is initialized
 	if globalRegistry == nil {
 		if err := InitializeRegistry(); err != nil {

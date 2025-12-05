@@ -52,8 +52,8 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 			Env:     env,
 			UseTTY:  false,
 		},
-		// TODO: map stdio
-		//Output: collector,
+		Stdout: collector.stdoutWriter(),
+		Stderr: collector.stderrWriter(),
 	}
 
 	runner, err := opts.RunnerFactory(cfg)

@@ -4,9 +4,9 @@ package web
 import (
 	"context"
 	"fmt"
+	"github.com/colony-2/shai/pkg/shai/runtime"
 	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
 	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
-	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
@@ -42,7 +42,7 @@ type Dependencies struct {
 	Git       git.Repository
 	Container container.Manager
 	StaticFS  http.FileSystem // Optional: filesystem for static files
-	
+
 	// ExtensionRoutes allows external modules to add routes
 	ExtensionRoutes []ExtensionRoute
 }
@@ -100,9 +100,9 @@ func NewServer(config Config, deps Dependencies) *Server {
 		handler = middleware.CORS(config.CORSOrigins, handler)
 	}
 
-    handler = middleware.RouteLogging(handler)
-    handler = middleware.Logging(handler)
-    handler = middleware.Recovery(handler)
+	handler = middleware.RouteLogging(handler)
+	handler = middleware.Logging(handler)
+	handler = middleware.Recovery(handler)
 
 	return &Server{
 		config:   config,

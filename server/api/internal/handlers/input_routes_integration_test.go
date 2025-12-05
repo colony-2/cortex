@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/colony-2/shai/pkg/shai/runtime"
 	temporalharness "github.com/divisive-ai/vibethis/server/api/internal/testsupport/temporalharness"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/container/pkg/container"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
