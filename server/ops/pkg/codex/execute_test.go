@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+	"github.com/colony-2/shai/pkg/shai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,11 +54,11 @@ type runnerHarness struct {
 	lines  []string
 	stderr []string
 	runErr error
-	config *shai.EphemeralConfig
+	config *shai.SandboxConfig
 	runner *fakeRunner
 }
 
-func (h *runnerHarness) factory(cfg *shai.EphemeralConfig) (Runner, error) {
+func (h *runnerHarness) factory(cfg *shai.SandboxConfig) (Runner, error) {
 	h.config = cfg
 	h.runner = &fakeRunner{runFn: func(ctx context.Context) error {
 		for _, line := range h.lines {
@@ -90,7 +90,6 @@ func TestExecuteCompleted(t *testing.T) {
 		WorktreeRoot:     worktree,
 		CellRelativePath: cellRel,
 		BlobstoreURI:     "file://" + worktree,
-		WorkflowID:       "wf:123",
 		Clock:            fakeClock{ts: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
 		BlobStore:        blob,
@@ -145,7 +144,6 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
 		BlobstoreURI:     "file://" + worktree,
-		WorkflowID:       "wf",
 		Clock:            fakeClock{ts: time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
 		BlobStore:        &fakeBlobStore{},
@@ -180,7 +178,6 @@ func TestExecuteStructuredPayloadError(t *testing.T) {
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
 		BlobstoreURI:     "file://" + worktree,
-		WorkflowID:       "wf",
 		Clock:            fakeClock{ts: time.Date(2024, 7, 8, 9, 10, 11, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
 		BlobStore:        blob,
@@ -212,7 +209,6 @@ func TestExecuteRunError(t *testing.T) {
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
 		BlobstoreURI:     "file://" + worktree,
-		WorkflowID:       "wf",
 		Clock:            fakeClock{ts: time.Date(2024, 9, 10, 11, 12, 13, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
 		BlobStore:        &fakeBlobStore{},

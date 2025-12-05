@@ -270,7 +270,7 @@ func Discover(startDir string) ([]ops.RegisterableOp, error) {
 		}
 		// Build a RegisterableOp using the provider constructor to supply a
 		// per-op input wrapper instance with JSON Schema + YAML validation.
-		op := ops.NewActivityMappedOpWithProviderV2[map[string]interface{}, map[string]interface{}](md, func(_ ops.Invocation, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+		op := ops.NewActivityMappedOpWithProviderV2[map[string]interface{}, map[string]interface{}](md, func(_ ops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 			// Optional input validation
 			if rctx.compiledInput != nil {
 				if err := rctx.compiledInput.Validate(input); err != nil {

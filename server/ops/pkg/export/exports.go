@@ -5,8 +5,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/ops/pkg/extensions"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	"github.com/divisive-ai/vibethis/server/ops/pkg/llm"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/recipeset"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 )
 
@@ -17,8 +15,6 @@ func GetAll() []ops.RegisterableOp {
 		codex.GetOp(),
 		llm.GetOp(),
 		llm.GetEnhancedOp(),
-		recipe.GetOp(),
-		recipeset.GetOp(),
 		input.GetOp(),
 	}
 	// Discover extension ops under .vibethis/ops and append them

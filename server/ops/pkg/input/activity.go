@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 // Config represents the configuration for the input activity
@@ -61,59 +59,10 @@ func GetOp() ops.RegisterableOp {
 	a := newInputActivity()
 	// Run inline within the workflow: wait on user-response signal
 	// NewInlineOpWithManagementV2 builds on ops.NewInlineOpV2[Input, Output] to attach management endpoints.
-	return ops.NewInlineOpWithManagementV2[Input, Output](
+	return ops.NewActivityMappedOpWithManagementV2[Input, Output](
 		a.GetMetadata(),
-		func(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, _ *temporal.RetryPolicy, in Input) (Output, error) {
-			// Derive deterministic identifier for this invocation and channel name.
-			id := inv.Hash()
-			signalName := userResponseSignalName(id)
-
-			// Build form from config for validation and metadata
-			form := a.buildForm(in.Config, in)
-
-			// Determine timeout window and timestamps up-front for reuse.
-			waitTimeout := form.Timeout
-			if waitTimeout == 0 {
-				waitTimeout = 5 * time.Minute
-			}
-			createdAt := workflow.Now(ctx)
-			expiresAt := createdAt.Add(waitTimeout)
-
-			// Record pending status and basic metadata
-			upsertInputSearchAttributes(ctx, map[string]interface{}{
-				"InputKey":        id,
-				"InputStatus":     "pending",
-				"InputFormTitle":  form.Title,
-				"InputBoxID":      in.BoxID,
-				"InputActivityID": in.ActivityID,
-				"InputCreatedAt":  createdAt,
-				"InputExpiresAt":  expiresAt,
-			})
-
-			// Wait for signal or timeout using keyed channel
-			responseChan := workflow.GetSignalChannel(ctx, signalName)
-			tctx, cancel := workflow.WithCancel(ctx)
-			workflow.Go(tctx, func(c workflow.Context) {
-				workflow.Sleep(c, waitTimeout)
-				cancel()
-			})
-
-			var sig UserResponseSignal
-			responseChan.Receive(tctx, &sig)
-			if tctx.Err() != nil {
-				upsertInputSearchAttributes(ctx, map[string]interface{}{
-					"InputStatus": "timeout",
-				})
-				return Output{}, temporal.NewApplicationError("input timeout", "TIMEOUT")
-			}
-
-			upsertInputSearchAttributes(ctx, map[string]interface{}{
-				"InputStatus":      "completed",
-				"InputRespondedBy": sig.UserID,
-				"InputRespondedAt": sig.RespondedAt,
-			})
-
-			return Output{Fields: sig.Fields, UserID: sig.UserID, Metadata: sig.Metadata}, nil
+		func(deps ops.OpDependencies, ctx context.Context, in Input) (Output, error) {
+			return Output{}, fmt.Errorf("input activity execution is not supported in workflow, must be done via unheld op")
 		},
 		a.managementService,
 	)
@@ -127,41 +76,6 @@ func (a *InputActivity) GetMetadata() ops.OpMetadata {
 		Version:        "1.0.0",
 		DefaultTimeout: 5 * time.Minute,
 	}
-}
-
-// Execute runs the input activity using configuration provided within input
-func (a *InputActivity) Execute(ctx context.Context, input Input) (Output, error) {
-	// Build the form from the embedded config (validation only)
-	_ = a.buildForm(input.Config, input)
-
-	// Activities should not collect input directly. This operation must run inline
-	// within a workflow that waits on the "user-response" signal, and the signal
-	// should be sent via the management service using a typed WorkflowControl.
-	return Output{}, fmt.Errorf("input activity execution is not supported outside workflows; run inline and signal via management service")
-}
-
-// (No Temporal context or workflow execution in activity code)
-
-// GetManagementService returns the management service for HTTP endpoints
-// This implements the ManagementServiceProvider interface
-func (a *InputActivity) GetManagementService() ops.ManagementService {
-	return a.managementService
-}
-
-// upsertInputSearchAttributes centralises error handling for search attribute updates.
-func upsertInputSearchAttributes(ctx workflow.Context, attrs map[string]interface{}) {
-	if len(attrs) == 0 {
-		return
-	}
-	if err := workflow.UpsertSearchAttributes(ctx, attrs); err != nil {
-		workflow.GetLogger(ctx).Error("failed to upsert input search attributes", "error", err, "attrs", attrs)
-	} else {
-		workflow.GetLogger(ctx).Info("upserted input search attributes", "attrs", attrs)
-	}
-}
-
-func userResponseSignalName(id string) string {
-	return fmt.Sprintf("user-response:%s", id)
 }
 
 // buildForm constructs the InputForm from config and input

@@ -10,10 +10,7 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/task"
-	"go.temporal.io/sdk/activity"
-	templog "go.temporal.io/sdk/log"
-	"go.temporal.io/sdk/temporal"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 )
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.
@@ -53,16 +50,11 @@ func GetOp() ops.RegisterableOp {
 	}, runCodexActivity)
 }
 
-func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInput) (ExecOpOutput, error) {
-	start := time.Now()
-	var logger templog.Logger
-	if activity.IsActivity(actx) {
-		logger = activity.GetLogger(actx)
-	}
+func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOpInput) (ExecOpOutput, error) {
 
 	prompt := strings.TrimSpace(input.Prompt)
 	if prompt == "" {
-		return ExecOpOutput{}, temporal.NewNonRetryableApplicationError("prompt is required", "INVALID_INPUT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("prompt is required", "INVALID_INPUT", nil)
 	}
 
 	contextMap := cloneMap(input.Context)
@@ -72,7 +64,7 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 		}
 	}
 	if contextMap == nil {
-		return ExecOpOutput{}, temporal.NewNonRetryableApplicationError("context is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context is required", "INVALID_CONTEXT", nil)
 	}
 
 	worktree := stringFromMap(contextMap, "worktree")
@@ -82,7 +74,7 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 		}
 	}
 	if worktree == "" {
-		return ExecOpOutput{}, temporal.NewNonRetryableApplicationError("context.worktree is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.worktree is required", "INVALID_CONTEXT", nil)
 	}
 
 	blobstoreURI := stringFromMap(contextMap, "blobstore")
@@ -92,7 +84,7 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 		}
 	}
 	if blobstoreURI == "" {
-		return ExecOpOutput{}, temporal.NewNonRetryableApplicationError("context.blobstore is required", "INVALID_CONTEXT", nil)
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.blobstore is required", "INVALID_CONTEXT", nil)
 	}
 
 	cellName := stringFromMap(contextMap, "cellname")
@@ -103,11 +95,7 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 	}
 
 	cellRelPath := resolveCellRelativePath(worktree, cellName)
-	promptHash := digestPrompt(prompt)
-
-	if logger != nil {
-		logger.Info("codex.exec started", "prompt_hash", promptHash, "sessionId", input.SessionID, "model", input.Model, "workflow", inv.ID)
-	}
+	//promptHash := digestPrompt(prompt)
 
 	opts := Options{
 		Prompt:           prompt,
@@ -117,7 +105,6 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 		WorktreeRoot:     worktree,
 		CellRelativePath: cellRelPath,
 		BlobstoreURI:     blobstoreURI,
-		WorkflowID:       inv.Hash(),
 	}
 
 	result, err := executeLibrary(actx, opts)
@@ -135,10 +122,6 @@ func runCodexActivity(inv ops.Invocation, actx context.Context, input ExecOpInpu
 		ErrorMessage:        safeString(result.ErrorMessage),
 		Stderr:              safeString(result.Stderr),
 		StdoutBlobURI:       safeString(result.StdoutBlobURI),
-	}
-
-	if logger != nil {
-		logger.Info("codex.exec finished", "status", output.Status, "sessionId", output.SessionID, "stdoutBlobUri", output.StdoutBlobURI, "duration", time.Since(start))
 	}
 	return output, nil
 }

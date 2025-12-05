@@ -68,7 +68,6 @@ type Options struct {
 	WorktreeRoot     string
 	CellRelativePath string
 	BlobstoreURI     string
-	WorkflowID       string
 
 	Clock            Clock
 	RunnerFactory    RunnerFactory

@@ -8,7 +8,7 @@ import (
 )
 
 // InputCollectionWorkflow handles the actual input collection from users
-func InputCollectionWorkflow(ctx workflow.Context, params InputWorkflowParams) (InputWorkflowResult, error) {
+func InputCollectionWorkflow() (InputWorkflowResult, error) {
 	if params.ID == "" {
 		return InputWorkflowResult{}, temporal.NewApplicationError("input id missing", "BAD_REQUEST")
 	}

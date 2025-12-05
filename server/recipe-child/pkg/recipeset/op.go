@@ -1,16 +1,16 @@
 package recipeset
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-child/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
 )
 
 // Input defines the payload for the recipe_set op.
@@ -38,7 +38,7 @@ type scheduledChild struct {
 
 // GetOp registers the recipe_set inline op.
 func GetOp() ops.RegisterableOp {
-	return ops.NewInlineOpV2[Input, Output](ops.OpMetadata{
+	return ops.NewActivityMappedOpV2[Input, Output](ops.OpMetadata{
 		Type:           "recipe_set",
 		Description:    "Executes multiple recipes in parallel with discrete async children and waits for completion",
 		Version:        "1.0.0",
@@ -46,9 +46,9 @@ func GetOp() ops.RegisterableOp {
 	}, execute)
 }
 
-func execute(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, input Input) (Output, error) {
+func execute(deps ops.OpDependencies, ctx context.Context, in Input) (map[string]interface{}, error) {
 	if len(input.Recipes) == 0 {
-		return Output{}, temporal.NewNonRetryableApplicationError("inputs.recipes must contain at least one entry", "INVALID_RECIPE_SET", nil)
+		return nil, workflow.NewNonRetryableApplicationError("inputs.recipes must contain at least one entry", "INVALID_RECIPE_SET", nil)
 	}
 
 	base := cloneMap(input.Raw)
@@ -238,7 +238,7 @@ func buildChildPlan(index int, raw map[string]interface{}) (childPlan, error) {
 	}, nil
 }
 
-func resetRecipesetChild(inv ops.Invocation, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, plan childPlan, segment *runmetadata.Segment, remaining *runmetadata.Resume) (map[string]interface{}, error) {
+func resetRecipesetChild(inv ops.OpDependencies, ctx workflow.Context, timeout time.Duration, retry *temporal.RetryPolicy, plan childPlan, segment *runmetadata.Segment, remaining *runmetadata.Resume) (map[string]interface{}, error) {
 	logger := workflow.GetLogger(ctx)
 	if segment.WorkflowID == "" {
 		return nil, temporal.NewNonRetryableApplicationError("resume segment missing workflow_id", "RESET_INVALID_SEGMENT", nil, map[string]interface{}{"index": plan.index})
@@ -335,7 +335,7 @@ func resetRecipesetChild(inv ops.Invocation, ctx workflow.Context, timeout time.
 	return outputs, nil
 }
 
-func resumeSegmentForPlan(inv ops.Invocation, index int) (*runmetadata.Segment, *runmetadata.Resume) {
+func resumeSegmentForPlan(inv ops.OpDependencies, index int) (*runmetadata.Segment, *runmetadata.Resume) {
 	if inv.Deps == nil {
 		return nil, nil
 	}
@@ -364,7 +364,7 @@ func cloneResumeWithoutHead(resume *runmetadata.Resume) *runmetadata.Resume {
 	return &runmetadata.Resume{ExecutionPath: cloned}
 }
 
-func invocationHash(inv ops.Invocation) string {
+func invocationHash(inv ops.OpDependencies) string {
 	if inv.ID != "" {
 		return inv.ID
 	}

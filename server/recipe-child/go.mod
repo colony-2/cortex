@@ -1,10 +1,9 @@
-module github.com/divisive-ai/vibethis/server/ops
+module github.com/divisive-ai/vibethis/server/recipe-child
 
 go 1.24.1
 
 require (
 	github.com/colony-2/shai v0.0.0
-	github.com/divisive-ai/vibethis/server/container v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/llm v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
@@ -23,19 +22,13 @@ require (
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.4.14 // indirect
-	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
-	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0 // indirect
-	github.com/colony-2/swf-go v0.0.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/creack/pty v1.1.23 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/docker v28.3.0+incompatible // indirect
@@ -44,7 +37,6 @@ require (
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/gliderlabs/ssh v0.3.6 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
@@ -58,22 +50,15 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 // indirect
-	github.com/jackc/pgx/v5 v5.5.5 // indirect
-	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/nexus-rpc/sdk-go v0.3.0 // indirect
-	github.com/oapi-codegen/nullable v1.1.0 // indirect
-	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/openai/openai-go v1.11.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -99,7 +84,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
-	go.temporal.io/api v1.49.1 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
 	golang.org/x/net v0.43.0 // indirect
@@ -112,7 +96,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
 	google.golang.org/grpc v1.75.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
-	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
 

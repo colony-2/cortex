@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,9 +42,7 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 		},
 	}
 
-	inv := ops.Invocation{RecipeID: "recipe", NodePath: "n/a", InvokeSeq: 1, BoxID: "box", ActivityID: "activity", ID: "inv-1"}
-
-	out, err := runCodexActivity(inv, context.Background(), input)
+	out, err := runCodexActivity(nil, context.Background(), input)
 	require.NoError(t, err)
 
 	require.Equal(t, StatusCompleted, Status(out.Status))
@@ -58,18 +55,17 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	require.Equal(t, worktree, cap.options.WorktreeRoot)
 	require.Equal(t, filepath.Join("cells", "alpha"), cap.options.CellRelativePath)
 	require.Equal(t, "BAR", cap.options.ExtraEnv["FOO"])
-	require.Equal(t, inv.Hash(), cap.options.WorkflowID)
 }
 
 func TestRunCodexActivityMissingPrompt(t *testing.T) {
 	input := ExecOpInput{Prompt: ""}
-	_, err := runCodexActivity(ops.Invocation{}, context.Background(), input)
+	_, err := runCodexActivity(nil, context.Background(), input)
 	require.Error(t, err)
 }
 
 func TestRunCodexActivityMissingContext(t *testing.T) {
 	input := ExecOpInput{Prompt: "ok"}
-	_, err := runCodexActivity(ops.Invocation{}, context.Background(), input)
+	_, err := runCodexActivity(nil, context.Background(), input)
 	require.Error(t, err)
 }
 
@@ -87,7 +83,7 @@ func TestRunCodexActivityLibraryError(t *testing.T) {
 			"blobstore": "file:///blob",
 		},
 	}
-	_, err := runCodexActivity(ops.Invocation{}, context.Background(), input)
+	_, err := runCodexActivity(nil, context.Background(), input)
 	require.Error(t, err)
 }
 
