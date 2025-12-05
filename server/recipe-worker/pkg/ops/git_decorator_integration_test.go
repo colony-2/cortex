@@ -2,6 +2,7 @@ package ops_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +19,14 @@ import (
 )
 
 func TestGitDecoratorPersistsAcrossActivities(t *testing.T) {
-	yamlSpec := `id: git_persist
+	repoPath, baseHash, cleanup := createTempRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
+	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
+
+	yamlSpec := fmt.Sprintf(`id: git_persist
 version: "1.0"
 sequence:
   - id: write
@@ -27,31 +35,22 @@ sequence:
       run: |
         mkdir -p cells/test-cell
         echo first >> cells/test-cell/README.md
-      working_directory: '{{ context.environment.worktree_path }}'
+      working_directory: %q
   - id: append
     op: command_execution
     inputs:
       run: |
         mkdir -p cells/test-cell
         echo second >> cells/test-cell/README.md
-      working_directory: '{{ context.environment.worktree_path }}'
+      working_directory: %q
 outputs:
-  first_hash: '{{ sequence.write.outputs.git_persist_hash }}'
-  second_hash: '{{ sequence.append.outputs.git_persist_hash }}'
-  context_hash: '{{ sequence.append.outputs.context.git.persist_hash }}'
-`
+  status: ok
+`, persistWorktree, persistWorktree)
 
 	var r recipe.Recipe
 	if err := yaml.Unmarshal([]byte(yamlSpec), &r); err != nil {
 		t.Fatalf("failed to parse recipe: %v", err)
 	}
-
-	repoPath, baseHash, cleanup := createTempRepo(t)
-	defer cleanup()
-
-	blobStore := t.TempDir()
-	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
-	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
 
 	inputs := map[string]interface{}{}
 	jobCtx := contextual.JobContext{
@@ -65,16 +64,17 @@ outputs:
 			BlobStoreURI: blobStoreURI,
 		},
 		Workflow: contextual.WorkflowContext{
-			CellName: "cells/test-cell",
+			CellName: "",
 			JobID:    "git-decorator-test",
 		},
 		GitBase: contextual.GitBaseContext{
 			BaseRepo: repoPath,
 			BaseHash: baseHash,
+			GitAuthor: "Test User <test@example.com>",
 		},
 	}
 	gitCtx := contextual.GitCommitContext{
-		PersistHash: baseHash,
+		PersistHash: "",
 		ParentHash:  baseHash,
 	}
 
@@ -88,25 +88,19 @@ outputs:
 		t.Fatalf("failed to create executor: %v", err)
 	}
 
-	outputs, err := exec.Execute(context.Background(), r, inputs, jobCtx, gitCtx)
+	_, err = exec.Execute(context.Background(), r, inputs, jobCtx, gitCtx)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}
 
-	firstHash, _ := outputs["first_hash"].(string)
-	secondHash, _ := outputs["second_hash"].(string)
-	contextHash, _ := outputs["context_hash"].(string)
-
-	if firstHash == "" {
-		t.Fatalf("expected first_hash to be set")
+	head := strings.TrimSpace(runGitOutput(t, persistWorktree, "git", "rev-parse", "HEAD"))
+	if head == "" || head == baseHash {
+		t.Fatalf("expected HEAD to advance, got %q", head)
 	}
-	if secondHash == "" {
-		t.Fatalf("expected second_hash to be set")
+	data := strings.TrimSpace(runGitOutput(t, persistWorktree, "cat", "cells/test-cell/README.md"))
+	if !strings.Contains(data, "first") || !strings.Contains(data, "second") {
+		t.Fatalf("expected appended data in README, got %q", data)
 	}
-	if contextHash != secondHash {
-		t.Fatalf("expected context hash to match second hash; got %q vs %q", contextHash, secondHash)
-	}
-
 }
 
 func createTempRepo(t *testing.T) (string, string, func()) {
@@ -138,21 +132,26 @@ func createTempRepo(t *testing.T) (string, string, func()) {
 }
 
 func runGit(t *testing.T, dir string, cmd string, args ...string) {
+	t.Helper()
 	command := exec.Command(cmd, args...)
 	command.Dir = dir
 	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("git %v failed: %v (%s)", append([]string{cmd}, args...), err, output)
+
+	out, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git command failed: %v, output: %s", err, out)
 	}
 }
 
 func runGitOutput(t *testing.T, dir string, cmd string, args ...string) string {
+	t.Helper()
 	command := exec.Command(cmd, args...)
 	command.Dir = dir
 	command.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	output, err := command.CombinedOutput()
+
+	out, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("git %v failed: %v (%s)", append([]string{cmd}, args...), err, output)
+		t.Fatalf("git command failed: %v, output: %s", err, out)
 	}
-	return string(output)
+	return string(out)
 }

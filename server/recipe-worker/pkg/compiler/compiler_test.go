@@ -42,13 +42,24 @@ func TestCompilerTestSuite(t *testing.T) {
 type simpleFunc func(context.Context, map[string]interface{}) (map[string]interface{}, error)
 
 func registerActivity(registry *ops.ActivityRegistry, name string, fn simpleFunc) error {
-	op := ops2.NewActivityMappedOpV2[map[string]interface{}, map[string]interface{}](
+	adapter := func(ctx context.Context, input ops.GenericInput) (ops.GenericOutput, error) {
+		// Pass only the extras map through to keep the dynamic shape while using a struct for schema generation.
+		out, err := fn(ctx, input.Extra)
+		return ops.GenericOutput{Result: out}, err
+	}
+
+	op := ops2.NewActivityMappedOpV2[ops.GenericInput, ops.GenericOutput](
 		ops2.OpMetadata{Type: name},
-		func(inv ops2.OpDependencies, aCtx context.Context, in map[string]interface{}) (map[string]interface{}, error) {
-			return fn(aCtx, in)
+		func(inv ops2.OpDependencies, aCtx context.Context, in ops.GenericInput) (ops.GenericOutput, error) {
+			return adapter(aCtx, in)
 		},
 	)
-	return ops.Register(registry, op)
+	// Ensure both the local activity registry and the global recipe-core registry know about the op
+	if err := ops.Register(registry, op); err != nil {
+		return err
+	}
+	ops2.Register(op) // recipe parser consults the global registry
+	return nil
 }
 
 func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]interface{}, expectedOutputs map[string]interface{}) {

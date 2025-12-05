@@ -7,7 +7,6 @@ input_schema:
     default_value: process
   should_fail:
     type: boolean
-    default_value: false
 inputs:
   action: '{{ inputs.action }}'
   should_fail: '{{ inputs.should_fail }}'
