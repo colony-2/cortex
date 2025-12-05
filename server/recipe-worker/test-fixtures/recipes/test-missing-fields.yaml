@@ -1,6 +1,7 @@
 id: test-missing-fields
 desc: Test recipe with missing required fields
 version: '1.0'
+input_schema: {}
 sequence:
 - id: step1
   op: echo_activity

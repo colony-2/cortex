@@ -27,6 +27,6 @@ type Transition struct {
 }
 
 type StateData struct {
-	States  *StateMap `yaml:"state,omitempty"`
-	Outputs OutputMap `yaml:"outputs,omitempty"`
+	States  *StateMap              `yaml:"state,omitempty"`
+	Outputs map[string]interface{} `yaml:"outputs,omitempty"`
 }

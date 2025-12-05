@@ -1,8 +1,12 @@
 id: state_outputs_test
 desc: Test state machine outputs functionality
 version: 1.0.0
+input_schema:
+  message:
+    type: string
+    default_value: test
 inputs:
-  message: 'test'
+  message: '{{ inputs.message }}'
 state:
   initial_state: simple_state
   states:

@@ -1,13 +1,13 @@
 id: test-command-execution
 desc: Test recipe for command execution operation with const discrimination
 version: '1.0'
+input_schema: {}
 sequence:
 - id: cmd
   op: command_execution
   inputs:
     run: echo 'Testing command execution'
     working_directory: /tmp
-    working_dir: /tmp
     shell: bash
     env:
       TEST_ENV: value1

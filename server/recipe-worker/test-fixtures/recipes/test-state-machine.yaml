@@ -1,9 +1,16 @@
 id: test-state-machine
 desc: Test recipe for state machine with conditional transitions
 version: '1.0'
+input_schema:
+  action:
+    type: string
+    default_value: process
+  should_fail:
+    type: boolean
+    default_value: false
 inputs:
-  action: process
-  should_fail: false
+  action: '{{ inputs.action }}'
+  should_fail: '{{ inputs.should_fail }}'
 state:
   initial: start
   states:

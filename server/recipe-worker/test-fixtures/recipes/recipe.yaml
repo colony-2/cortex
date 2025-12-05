@@ -1,6 +1,16 @@
 id: research_report_recipe
 desc: Research a topic and generate a comprehensive report
 version: '1.0'
+input_schema:
+  topic:
+    type: string
+    default_value: AI Research
+  max_sources:
+    type: number
+    default_value: 10
+inputs:
+  topic: '{{ has(inputs.topic) ? inputs.topic : "AI Research" }}'
+  max_sources: '{{ has(inputs.max_sources) ? inputs.max_sources : 10 }}'
 sequence:
 - id: research
   op: command_execution
@@ -14,6 +24,7 @@ sequence:
   op: command_execution
   inputs:
     run: echo 'Writing report'
-inputs:
-  topic: AI Research
-  max_sources: 10
+outputs:
+  research: '{{ sequence.research.outputs }}'
+  analyze: '{{ sequence.analyze.outputs }}'
+  writereport: '{{ sequence.writereport.outputs }}'

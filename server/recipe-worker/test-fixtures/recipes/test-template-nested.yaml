@@ -1,9 +1,16 @@
 id: test-template-nested
 desc: Minimal test for nested template interpolation
 version: 1.0.0
+input_schema:
+  value1:
+    type: string
+    default_value: default1
+  value2:
+    type: string
+    default_value: default2
 inputs:
-  value1: default1
-  value2: default2
+  value1: '{{ inputs.value1 }}'
+  value2: '{{ inputs.value2 }}'
 sequence:
 - id: echo_step
   op: echo_activity

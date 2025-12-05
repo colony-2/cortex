@@ -1,62 +1,23 @@
 id: simple_data_pipeline
 desc: Simple data pipeline demonstrating state machine composition features
 version: 1.0.0
-op: state_machine
-config:
-  initial_state: validate
-  states:
-    validate:
-      op: data_validator
-      inputs:
-        size: '{{ inputs.data_size }}'
-      transitions:
-      - to: process
-        when: states.validate.outputs.valid == true
-      - to: error
-        when: states.validate.outputs.valid == false
-    process:
-      sequence:
-      - id: check_size
-        op: command_execution
-        inputs:
-          run: 'test {{ inputs.data_size }} -gt 1000000'
-      - id: batch1
-        op: batch_processor
-        inputs:
-          batch_id: 1
-          size: 500000
-        when: sequence.check_size.outputs.exit_code == 0
-      - id: batch2
-        op: batch_processor
-        inputs:
-          batch_id: 2
-          size: 500000
-        when: sequence.check_size.outputs.exit_code == 0
-      - id: fast_process
-        op: fast_processor
-        inputs:
-          data_size: '{{ inputs.data_size }}'
-        when: inputs.priority == "high" && sequence.check_size.outputs.exit_code != 0
-      - id: standard_process
-        op: standard_processor
-        inputs:
-          data_size: '{{ inputs.data_size }}'
-        when: inputs.priority != "high" && sequence.check_size.outputs.exit_code != 0
-      transitions:
-      - to: complete
-    complete:
-      op: command_execution
-      inputs:
-        run: echo 'Pipeline completed successfully'
-      outputs:
-        result: .stdout
-        status: .success
-    error:
-      op: error_handler
-      inputs:
-        message: 'Validation failed'
+input_schema:
+  data_size:
+    type: number
+    default_value: 1000
+  priority:
+    type: string
+    default_value: normal
 inputs:
-  data_size: 1000
-  priority: normal
+  data_size: '{{ inputs.data_size }}'
+  priority: '{{ inputs.priority }}'
+sequence:
+- id: run
+  op: state_machine
+  inputs:
+    data:
+      data_size: '{{ inputs.data_size }}'
+      priority: '{{ inputs.priority }}'
 outputs:
-  result: '{{ states.complete.outputs.result }}'
+  result: '{{ sequence.run.outputs.result }}'
+  status: '{{ sequence.run.outputs.status }}'

@@ -89,6 +89,7 @@ func (rc *ResolutionContext) GetGitCommitContext() contextual.GitCommitContext {
 // NewRecipeResolutionContext creates a new resolution context for a recipe
 func NewRecipeResolutionContext(commitContext *contextual.GitCommitContext, recipeInputs map[string]interface{}, execCtx contextual.JobContext) (*ResolutionContext, error) {
 	tracker := newInvocationTracker()
+
 	return newResolutionContext(commitContext, tracker, ScopeRecipe, "", recipeInputs, execCtx)
 }
 

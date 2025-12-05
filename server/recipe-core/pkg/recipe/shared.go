@@ -10,8 +10,6 @@ import (
 
 type InputMap map[string]interface{}
 
-type OutputMap map[string]interface{}
-
 // Duration wraps time.Duration to provide custom YAML marshaling/unmarshaling
 // It serializes to/from human-readable strings like "1s", "500ms", "2m"
 type Duration time.Duration

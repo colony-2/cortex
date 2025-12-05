@@ -16,9 +16,9 @@ import (
 )
 
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext) (map[string]interface{}, error) {
-	recipeInputs, err := r.GetMetdata().ResolveInputs(rawRecipeInputs)
+	recipeInputs, err := r.GetMetdata().ValidateInputShapeAndFillDefaults(rawRecipeInputs)
 	if err != nil {
-		return nil, fmt.Errorf("invalid recipe input: %w", err)
+		return nil, fmt.Errorf("recipe inputs do not match schema. %w", err)
 	}
 
 	rCtx, err := template.NewRecipeResolutionContext(&commitContext, recipeInputs, execCtx)
@@ -127,7 +127,7 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 	return nil
 }
 
-func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
+func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
 	// Create resolution context for this sequence
 	resolvedInputs, err := parentCtx.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -157,7 +157,7 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 	return nil
 }
 
-func executeSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, sequence []recipe.Node) error {
+func executeSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
 	timeout := time.Duration(metadata.Timeout)
 	if timeout == 0 {
 		timeout = 30 * time.Second // Default timeout

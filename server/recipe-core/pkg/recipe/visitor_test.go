@@ -31,7 +31,7 @@ func TestBaseVisitor(t *testing.T) {
 						Shared: "shared1",
 					}},
 				},
-				Outputs: OutputMap{"output1": "result1"},
+				Outputs: map[string]interface{}{"output1": "result1"},
 			},
 		},
 	}

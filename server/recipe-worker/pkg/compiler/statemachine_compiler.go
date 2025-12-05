@@ -9,7 +9,7 @@ import (
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format
-func executeStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate recipe.OutputMap, stateMap *recipe.StateMap) error {
+func executeStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error {
 	// Create resolution context for the state machine
 	resolvedInputs, err := parentContext.ResolveMap(metadata.Inputs)
 	if err != nil {

@@ -10,5 +10,5 @@ tests:
   inputs:
     message: "custom"
   want:
-    output: "test"
+    output: "custom"
   wantErr: false

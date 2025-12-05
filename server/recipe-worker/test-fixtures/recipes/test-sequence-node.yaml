@@ -1,13 +1,13 @@
 id: test-sequence-node
 desc: Test recipe for sequence node with multiple operations
 version: '1.0'
+input_schema: {}
 sequence:
 - id: step1
   op: command_execution
   inputs:
     run: echo 'first step'
     working_directory: /tmp
-    working_dir: /tmp
     shell: bash
     env: {}
     continue_on_error: false
@@ -16,13 +16,11 @@ sequence:
   op: sleep
   inputs:
     duration: 2s
-    default_duration: 5s
 - id: step3
   op: command_execution
   inputs:
     run: echo 'Step 3 complete'
     working_directory: /tmp
-    working_dir: /tmp
     shell: bash
     env: {}
     continue_on_error: false

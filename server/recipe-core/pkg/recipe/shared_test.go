@@ -1,11 +1,11 @@
 package recipe
 
 import (
-    "testing"
+	"testing"
 
-    yamlv3 "gopkg.in/yaml.v3"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
 func TestDuration_YAML_RoundTrip_And_Invalid(t *testing.T) {
@@ -44,7 +44,7 @@ func TestDataMaps_Handle_Nil_And_Nested(t *testing.T) {
     // Input maps accept heterogeneous parameter types [pkg/recipe/shared.go]
     in := InputMap{"a": 1, "b": "x", "c": true}
     // Output maps capture varied result types [pkg/recipe/shared.go]
-    out := OutputMap{"n": 2, "s": "y", "ok": false}
+    out := map[string]interface{}{"n": 2, "s": "y", "ok": false}
     assert.Equal(t, 3, len(in))
     assert.Equal(t, 3, len(out))
     // Nested data structures preserve through maps [pkg/recipe/shared.go]
