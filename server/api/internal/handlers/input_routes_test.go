@@ -12,21 +12,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/shai/pkg/shai/runtime"
-	temporalharness "github.com/divisive-ai/vibethis/server/api/internal/testsupport/temporalharness"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-	inputpkg "github.com/divisive-ai/vibethis/server/ops/pkg/input"
 	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/stretchr/testify/require"
 )
 
-func buildServerWithHarness(t *testing.T, h *temporalharness.Harness, sse coreops.SSEManager) (*web.Server, coreops.SSEManager) {
+func buildServerWithHarness(t *testing.T, sse coreops.SSEManager) (*web.Server, coreops.SSEManager) {
 	t.Helper()
 	store := storage.NewMemoryStorage()
 	gb := graph.NewBuilder(".")

@@ -27,7 +27,7 @@ func TestInputActivity_Execute_SingleQuestion(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 	env.RegisterWorkflow(InputCollectionWorkflow)
 	cfg := Config{Question: "What is your name?", Type: FieldTypeShortAnswer, Timeout: 2}
-	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Form: cfg}
 	form := newInputActivity().buildForm(cfg, in)
 	params := InputWorkflowParams{ID: "single-question-id", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 
@@ -62,7 +62,7 @@ func TestInputActivity_Execute_MultiField(t *testing.T) {
 		},
 		Timeout: 3,
 	}
-	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: config}
+	in := Input{BoxID: "test-cell", ActivityID: "test-activity", Form: config}
 	form := newInputActivity().buildForm(config, in)
 	params := InputWorkflowParams{ID: "multi-field-id", Form: form, Timeout: form.Timeout, BoxID: in.BoxID, ActivityID: in.ActivityID}
 	env.RegisterDelayedCallback(func() {
@@ -99,7 +99,7 @@ func TestInputActivity_BuildForm(t *testing.T) {
 		}
 
 		in := input
-		in.Config = config
+		in.Form = config
 		form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test question", form.Question)
@@ -130,7 +130,7 @@ func TestInputActivity_BuildForm(t *testing.T) {
 		}
 
 		in := input
-		in.Config = config
+		in.Form = config
 		form := activity.buildForm(config, in)
 
 		assert.Equal(t, "Test Form", form.Title)
@@ -146,7 +146,7 @@ func TestInputActivity_DefaultOnTimeout(t *testing.T) {
 	env := ts.NewTestWorkflowEnvironment()
 	env.RegisterWorkflow(InputCollectionWorkflow)
 	cfg := Config{Question: "Approve?", Type: FieldTypeMultipleChoice, Options: []Option{{Value: "yes"}, {Value: "no"}}, Timeout: 1}
-	in2 := Input{BoxID: "test-cell", ActivityID: "test-activity", Config: cfg}
+	in2 := Input{BoxID: "test-cell", ActivityID: "test-activity", Form: cfg}
 	form2 := newInputActivity().buildForm(cfg, in2)
 	params2 := InputWorkflowParams{ID: "timeout-id", Form: form2, Timeout: form2.Timeout, BoxID: in2.BoxID, ActivityID: in2.ActivityID}
 	env.ExecuteWorkflow(InputCollectionWorkflow, params2)

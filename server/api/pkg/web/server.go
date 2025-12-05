@@ -4,14 +4,14 @@ package web
 import (
 	"context"
 	"fmt"
-	"github.com/colony-2/shai/pkg/shai/runtime"
+	"io/fs"
+	"net/http"
+
 	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
 	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
-	"io/fs"
-	"net/http"
 )
 
 // Config defines configuration for the web server.
@@ -36,12 +36,11 @@ type Config struct {
 
 // Dependencies contains all the dependencies required by the web server.
 type Dependencies struct {
-	Storage   core.Storage
-	Graph     core.GraphBuilder
-	Files     files.Browser
-	Git       git.Repository
-	Container container.Manager
-	StaticFS  http.FileSystem // Optional: filesystem for static files
+	Storage  core.Storage
+	Graph    core.GraphBuilder
+	Files    files.Browser
+	Git      git.Repository
+	StaticFS http.FileSystem // Optional: filesystem for static files
 
 	// ExtensionRoutes allows external modules to add routes
 	ExtensionRoutes []ExtensionRoute
@@ -64,7 +63,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Storage, deps.Graph, deps.Files, deps.Git, deps.Container)
+	h := handlers.New(deps.Storage, deps.Graph, deps.Files, deps.Git)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

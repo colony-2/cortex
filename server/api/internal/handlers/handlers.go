@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/shai/pkg/shai/runtime"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
@@ -26,21 +25,19 @@ type ExtensionRoute struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	storage   core.Storage
-	graph     core.GraphBuilder
-	files     files.Browser
-	git       git.Repository
-	container container.Manager
+	storage core.Storage
+	graph   core.GraphBuilder
+	files   files.Browser
+	git     git.Repository
 }
 
 // New creates a new handlers instance
-func New(storage core.Storage, graph core.GraphBuilder, files files.Browser, git git.Repository, container container.Manager) *Handlers {
+func New(storage core.Storage, graph core.GraphBuilder, files files.Browser, git git.Repository) *Handlers {
 	return &Handlers{
-		storage:   storage,
-		graph:     graph,
-		files:     files,
-		git:       git,
-		container: container,
+		storage: storage,
+		graph:   graph,
+		files:   files,
+		git:     git,
 	}
 }
 
@@ -73,15 +70,6 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 	api.HandleFunc("/cells/{cellId}/git/diff", withHandlerLog("core:GetGitDiff", h.GetGitDiff)).Methods("GET")
 	api.HandleFunc("/cells/{cellId}/git/history", withHandlerLog("core:GetGitHistory", h.GetGitHistory)).Methods("GET")
 	api.HandleFunc("/cells/{cellId}/git/commit", withHandlerLog("core:CreateGitCommit", h.CreateGitCommit)).Methods("POST")
-
-	// Container endpoints
-	api.HandleFunc("/cells/{cellId}/container/status", withHandlerLog("core:GetContainerStatus", h.GetContainerStatus)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/container/create", withHandlerLog("core:CreateContainer", h.CreateContainer)).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/start", withHandlerLog("core:StartContainer", h.StartContainer)).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/stop", withHandlerLog("core:StopContainer", h.StopContainer)).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/restart", withHandlerLog("core:RestartContainer", h.RestartContainer)).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/reset", withHandlerLog("core:ResetContainer", h.ResetContainer)).Methods("POST")
-	api.HandleFunc("/cells/{cellId}/container/devcontainer", withHandlerLog("core:UpdateDevcontainer", h.UpdateDevcontainer)).Methods("PUT")
 
 	// Add extension routes if provided
 	if extensions != nil {

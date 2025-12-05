@@ -379,7 +379,7 @@ func TestSchemaGeneration(t *testing.T) {
 	registration, exists := registry.Get("test_registry_activity")
 	require.True(t, exists)
 
-	// Config schema test removed - no longer part of ActivityRegistration
+	// Form schema test removed - no longer part of ActivityRegistration
 
 	t.Run("input schema", func(t *testing.T) {
 		schema := registration.InputSchema

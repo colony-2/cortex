@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/colony-2/shai/pkg/shai/runtime"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
@@ -19,7 +18,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
-	"go.temporal.io/sdk/testsuite"
 )
 
 // WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.

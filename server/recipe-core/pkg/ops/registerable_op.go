@@ -35,10 +35,11 @@ type HasManagmentService interface {
 
 // OpMetadata describes the activity for registration and documentation
 type OpMetadata struct {
-	Type           string        // Unique identifier for the activity type
-	Description    string        // Detailed description
-	Version        string        // Semantic version
-	DefaultTimeout time.Duration // Default execution timeout
+	Type                  string        // Unique identifier for the activity type
+	Description           string        // Detailed description
+	Version               string        // Semantic version
+	DefaultTimeout        time.Duration // Default execution timeout
+	DisallowAsTask bool          // disables task execution within a recipe. Must be handled externally (e.g. input)
 }
 
 type OpExecutor interface {

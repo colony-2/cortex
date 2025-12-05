@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package main
@@ -35,9 +36,9 @@ func extractJSON(t *testing.T, output []byte) []byte {
 func TestExecuteCommandBasic(t *testing.T) {
 	// Create a temporary directory for test files
 	tempDir := t.TempDir()
-	
+
 	// Create a simple test recipe
-recipeContent := `
+	recipeContent := `
 id: test-basic
 name: test-basic
 description: Basic test recipe
@@ -59,7 +60,7 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-basic.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build the cortex binary
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
@@ -67,22 +68,22 @@ outputs:
 	if err != nil {
 		t.Fatalf("Failed to build cortex: %v\nOutput: %s", err, output)
 	}
-	
+
 	// Execute the recipe
 	cortexPath := filepath.Join(tempDir, "cortex")
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-i", "message=Hello World",
 		"-o", "json",
-		"--log-level", "error")  // Set log level to error to avoid mixing with output
-	
-	output, err = cmd.Output()  // Use Output() instead of CombinedOutput() to get only stdout
+		"--log-level", "error") // Set log level to error to avoid mixing with output
+
+	output, err = cmd.Output() // Use Output() instead of CombinedOutput() to get only stdout
 	require.NoError(t, err, "Command failed")
-	
+
 	// Parse the JSON output
 	var result ExecutionResult
 	err = json.Unmarshal(extractJSON(t, output), &result)
 	require.NoError(t, err, "Failed to parse JSON")
-	
+
 	// Verify the result
 	assert.True(t, result.Success)
 	assert.NotEmpty(t, result.RunID)
@@ -93,9 +94,9 @@ outputs:
 // TestExecuteCommandWithInputFile tests execution with input from file
 func TestExecuteCommandWithInputFile(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create test recipe
-recipeContent := `
+	recipeContent := `
 id: test-input-file
 name: test-input-file
 description: Test with input file
@@ -123,7 +124,7 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-input-file.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Create JSON input file
 	inputData := map[string]interface{}{
 		"user_prompt": "Analyze this data",
@@ -136,22 +137,22 @@ outputs:
 	inputFile := filepath.Join(tempDir, "inputs.json")
 	inputBytes, _ := json.MarshalIndent(inputData, "", "  ")
 	require.NoError(t, os.WriteFile(inputFile, inputBytes, 0644))
-	
+
 	// Build and execute
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-f", inputFile,
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err, "Command failed")
-	
+
 	var result ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &result))
 	assert.True(t, result.Success)
@@ -160,10 +161,10 @@ outputs:
 // TestExecuteCommandWithYAMLInput tests execution with YAML input file
 func TestExecuteCommandWithYAMLInput(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create test recipe
 	recipeFile := filepath.Join(tempDir, "test-yaml-input.yaml")
-recipeContent := `
+	recipeContent := `
 id: test-yaml
 name: test-yaml
 description: Test with YAML input
@@ -178,13 +179,13 @@ sequence:
   - id: process
     op: command_execution
     inputs:
-      run: "echo Config loaded"
+      run: "echo Form loaded"
 
 outputs:
   result: "{{ sequence.process.outputs.stdout }}"
 `
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Create YAML input file
 	inputContent := `
 config:
@@ -196,29 +197,29 @@ config:
 `
 	inputFile := filepath.Join(tempDir, "inputs.yaml")
 	require.NoError(t, os.WriteFile(inputFile, []byte(inputContent), 0644))
-	
+
 	// Build and execute
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-f", inputFile,
 		"-o", "yaml",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err, "Command failed")
-	
+
 	// For YAML output, we need to handle potential debug logs too
 	yamlStart := strings.Index(string(output), "success:")
 	if yamlStart == -1 {
 		yamlStart = 0 // Try from beginning if marker not found
 	}
 	yamlOutput := output[yamlStart:]
-	
+
 	var result ExecutionResult
 	require.NoError(t, yaml.Unmarshal(yamlOutput, &result))
 	assert.True(t, result.Success)
@@ -227,9 +228,9 @@ config:
 // TestExecuteCommandDryRun tests dry-run validation
 func TestExecuteCommandDryRun(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create valid recipe
-validRecipe := `
+	validRecipe := `
 id: test-dryrun
 name: test-dryrun
 description: Test dry run
@@ -251,46 +252,46 @@ outputs:
 `
 	validFile := filepath.Join(tempDir, "valid.yaml")
 	require.NoError(t, os.WriteFile(validFile, []byte(validRecipe), 0644))
-	
+
 	// Create invalid recipe (missing required field)
-invalidRecipe := `
+	invalidRecipe := `
 description: Invalid recipe missing root node
 version: "1.0"
 name: invalid
 `
 	invalidFile := filepath.Join(tempDir, "invalid.yaml")
 	require.NoError(t, os.WriteFile(invalidFile, []byte(invalidRecipe), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Test valid recipe with dry-run
 	cmd := exec.Command(cortexPath, "execute", validFile,
 		"-i", "required_input=test",
 		"--dry-run",
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err, "Valid recipe dry-run failed")
-	
+
 	var result ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &result))
 	assert.True(t, result.Success)
-	
+
 	// Test invalid recipe with dry-run
 	cmd = exec.Command(cortexPath, "execute", invalidFile,
 		"--dry-run",
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err = cmd.Output()
-	
+
 	// The command should fail, capture stderr if it does
 	if err != nil {
 		// Check exit code
@@ -307,9 +308,9 @@ name: invalid
 // TestExecuteCommandOutputFormats tests different output formats
 func TestExecuteCommandOutputFormats(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create test recipe
-recipeContent := `
+	recipeContent := `
 id: test-formats
 name: test-formats
 description: Test output formats
@@ -332,29 +333,29 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-formats.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Test JSON output
 	cmd := exec.Command(cortexPath, "execute", recipeFile, "-o", "json", "--log-level", "error")
 	output, err := cmd.Output()
 	require.NoError(t, err)
-	
+
 	var jsonResult ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &jsonResult))
 	assert.True(t, jsonResult.Success)
-	
+
 	// Test YAML output
 	cmd = exec.Command(cortexPath, "execute", recipeFile, "-o", "yaml", "--log-level", "error")
 	output, err = cmd.Output()
 	require.NoError(t, err)
-	
+
 	// For YAML, extract from first YAML-like line
 	yamlStart := strings.Index(string(output), "success:")
 	if yamlStart == -1 {
@@ -363,12 +364,12 @@ outputs:
 	var yamlResult ExecutionResult
 	require.NoError(t, yaml.Unmarshal(output[yamlStart:], &yamlResult))
 	assert.True(t, yamlResult.Success)
-	
+
 	// Test text output
 	cmd = exec.Command(cortexPath, "execute", recipeFile, "-o", "text", "--log-level", "error")
 	output, err = cmd.Output()
 	require.NoError(t, err)
-	
+
 	outputStr := string(output)
 	assert.Contains(t, outputStr, "Recipe:")
 	assert.Contains(t, outputStr, "Status: SUCCESS")
@@ -378,9 +379,9 @@ outputs:
 // TestExecuteCommandTimeout tests timeout functionality
 func TestExecuteCommandTimeout(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create recipe that would take 10 seconds
-recipeContent := `
+	recipeContent := `
 id: test-timeout
 name: test-timeout
 description: Test timeout
@@ -397,23 +398,23 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-timeout.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Execute with 2 second timeout (should timeout before 10 second sleep completes)
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"--timeout", "2s",
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
-	
+
 	// We expect an error due to timeout
 	if err == nil {
 		// If no error, check if the output indicates failure
@@ -435,9 +436,9 @@ outputs:
 // TestExecuteCommandInterruption tests signal handling
 func TestExecuteCommandInterruption(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create recipe with a long-running command
-recipeContent := `
+	recipeContent := `
 id: test-interrupt
 name: test-interrupt
 description: Test interruption
@@ -454,43 +455,43 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-interrupt.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Start the command with state tracking
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-o", "json",
 		"--state-dir", tempDir,
 		"--cleanup=false",
 		"--log-level", "error")
-	
+
 	// Start the command
 	require.NoError(t, cmd.Start())
-	
+
 	// Give it a moment to start execution
 	time.Sleep(1 * time.Second)
-	
+
 	// Send interrupt signal
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
-	
+
 	// Wait for it to finish
 	err = cmd.Wait()
-	
+
 	// The command should exit with an error
 	require.Error(t, err, "Command should exit with error after interruption")
-	
+
 	// Check exit code
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		// Should exit with interrupted code (130), timeout (5), general error (1), or misuse (2)
 		assert.Contains(t, []int{1, 2, 5, 130}, exitErr.ExitCode(), "Should exit with appropriate error code")
 	}
-	
+
 	// Check that state file was created with interrupted status
 	stateFiles, _ := filepath.Glob(filepath.Join(tempDir, "cortex-run-*/state.json"))
 	if len(stateFiles) > 0 {
@@ -508,9 +509,9 @@ outputs:
 // TestExecuteCommandLogging tests different log levels and formats
 func TestExecuteCommandLogging(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create test recipe
-recipeContent := `
+	recipeContent := `
 id: test-logging
 name: test-logging
 description: Test logging
@@ -532,48 +533,48 @@ outputs:
 `
 	recipeFile := filepath.Join(tempDir, "test-logging.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Test debug level with text format
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-l", "debug",
 		"--log-format", "text",
 		"-o", "json")
-	
+
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err)
-	
+
 	// Check that we got JSON output
 	var result ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &result))
 	assert.True(t, result.Success)
-	
+
 	// Check that debug logs were written
 	stderrStr := stderr.String()
 	assert.Contains(t, stderrStr, "DEBUG")
-	
+
 	// Test JSON log format
 	cmd = exec.Command(cortexPath, "execute", recipeFile,
 		"-l", "info",
 		"--log-format", "json",
 		"-o", "json")
-	
+
 	stderr.Reset()
 	cmd.Stderr = &stderr
-	
+
 	_, err = cmd.Output()
 	require.NoError(t, err)
-	
+
 	// Check that logs are in JSON format
 	stderrLines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
 	for _, line := range stderrLines {
@@ -591,9 +592,9 @@ outputs:
 // TestExecuteCommandComplexInputs tests complex input parsing
 func TestExecuteCommandComplexInputs(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Create test recipe
-recipeContent := `
+	recipeContent := `
 id: test-complex
 name: test-complex
 description: Test complex inputs
@@ -625,15 +626,15 @@ sequence:
 `
 	recipeFile := filepath.Join(tempDir, "test-complex.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Test with complex inputs
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"-i", "simple=hello",
@@ -643,10 +644,10 @@ sequence:
 		"-i", `nested={"key":"value","count":10}`,
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err, "Command failed")
-	
+
 	var result ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &result))
 	assert.True(t, result.Success)
@@ -656,7 +657,7 @@ sequence:
 func TestExecuteCommandStatePreservation(t *testing.T) {
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")
-	
+
 	// Create simple recipe
 	recipeContent := `
 name: test-state
@@ -677,49 +678,49 @@ steps:
 `
 	recipeFile := filepath.Join(tempDir, "test-state.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Execute with state directory
 	cmd := exec.Command(cortexPath, "execute", recipeFile,
 		"--state-dir", stateDir,
 		"--cleanup=false",
 		"-o", "json",
 		"--log-level", "error")
-	
+
 	output, err := cmd.Output()
 	require.NoError(t, err, "Command should succeed")
-	
+
 	// Verify successful execution
 	var result ExecutionResult
 	require.NoError(t, json.Unmarshal(extractJSON(t, output), &result))
 	assert.True(t, result.Success)
-	
+
 	// Check that state was created and preserved
 	stateFiles, err := filepath.Glob(filepath.Join(stateDir, "cortex-run-*/state.json"))
 	require.NoError(t, err)
-	
+
 	// If not found with cortex-run- prefix, try without prefix (run ID format changed)
 	if len(stateFiles) == 0 {
 		stateFiles, err = filepath.Glob(filepath.Join(stateDir, "*/state.json"))
 		require.NoError(t, err)
 	}
-	
+
 	require.NotEmpty(t, stateFiles, "State file should be created")
-	
+
 	// Read and verify state
 	stateData, err := os.ReadFile(stateFiles[0])
 	require.NoError(t, err)
-	
+
 	var state ExecutionState
 	require.NoError(t, json.Unmarshal(stateData, &state))
-	
+
 	assert.NotEmpty(t, state.RunID)
 	assert.Equal(t, recipeFile, state.RecipeFile)
 	assert.Equal(t, "completed", state.Status)
@@ -730,20 +731,20 @@ steps:
 // TestExecuteCommandErrorHandling tests error cases
 func TestExecuteCommandErrorHandling(t *testing.T) {
 	tempDir := t.TempDir()
-	
+
 	// Build cortex
 	buildCmd := exec.Command("go", "build", "-o", filepath.Join(tempDir, "cortex"), "./cmd/cortex")
 	buildCmd.Dir = filepath.Join(".", "..", "..")
 	_, err := buildCmd.CombinedOutput()
 	require.NoError(t, err)
-	
+
 	cortexPath := filepath.Join(tempDir, "cortex")
-	
+
 	// Test non-existent recipe file
 	cmd := exec.Command(cortexPath, "execute", "/non/existent/file.yaml", "-o", "json", "--log-level", "error")
 	output, err := cmd.Output()
 	// We expect an error
-	
+
 	// Should output error in JSON format if there's output
 	if len(output) > 0 {
 		jsonData := extractJSON(t, output)
@@ -755,17 +756,17 @@ func TestExecuteCommandErrorHandling(t *testing.T) {
 			}
 		}
 	}
-	
+
 	// Test invalid YAML
 	invalidYAML := filepath.Join(tempDir, "invalid.yaml")
 	require.NoError(t, os.WriteFile(invalidYAML, []byte("invalid: yaml: content:"), 0644))
-	
+
 	cmd = exec.Command(cortexPath, "execute", invalidYAML, "-o", "json", "--log-level", "error")
 	output, err = cmd.Output()
 	// We expect an error
-	
+
 	// Test missing required input
-recipeContent := `
+	recipeContent := `
 id: test-missing-input
 name: test-missing-input
 description: Test missing input
@@ -784,17 +785,16 @@ sequence:
 `
 	recipeFile := filepath.Join(tempDir, "missing-input.yaml")
 	require.NoError(t, os.WriteFile(recipeFile, []byte(recipeContent), 0644))
-	
+
 	cmd = exec.Command(cortexPath, "execute", recipeFile, "--dry-run", "-o", "json", "--log-level", "error")
 	output, err = cmd.Output()
 	// We expect an error
-	
+
 	// Check exit code
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		assert.Equal(t, 4, exitErr.ExitCode(), "Should exit with input validation error code")
 	}
 }
-
 
 // Helper to check if output contains expected log entries
 func assertLogContains(t *testing.T, logs string, level, message string) {

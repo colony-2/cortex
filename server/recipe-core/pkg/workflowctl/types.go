@@ -10,6 +10,7 @@ import (
 type WorkflowControl interface {
 	StartJob(ctx context.Context, req StartJob) (swf.JobId, error)
 	Cancel(ctx context.Context, jobId swf.JobId) error
+	ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []swf.JobSummary, nextPage string, err error)
 }
 
 type StartJob struct {

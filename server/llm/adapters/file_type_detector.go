@@ -396,7 +396,7 @@ func initExtensionMap() map[string]f2.FileType {
 		".lua":   f2.FileTypeCode,
 		".vim":   f2.FileTypeCode,
 
-		// Config files
+		// Form files
 		".json":       f2.FileTypeConfig,
 		".yaml":       f2.FileTypeConfig,
 		".yml":        f2.FileTypeConfig,

@@ -28,10 +28,7 @@ type Config struct {
 
 // Input represents the inputs passed to the input activity
 type Input struct {
-	BoxID      string                 `json:"box_id" jsonschema:"required,description=Box identifier"`
-	ActivityID string                 `json:"activity_id" jsonschema:"required,description=Activity identifier"`
-	Context    map[string]interface{} `json:"context,omitempty" jsonschema:"description=Additional context data"`
-	Config     Config                 `json:"config,omitempty" jsonschema:"description=Form configuration"`
+	Form Config `json:"form,omitempty" jsonschema:"description=Form formuration"`
 }
 
 // Output represents the output from the input activity
@@ -74,7 +71,7 @@ func (a *InputActivity) GetMetadata() ops.OpMetadata {
 		Type:           "input",
 		Description:    "Collects user input through interactive forms with support for various field types",
 		Version:        "1.0.0",
-		DefaultTimeout: 5 * time.Minute,
+		DisallowAsTask: true,
 	}
 }
 

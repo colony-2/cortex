@@ -126,12 +126,7 @@ type UserResponseSignal struct {
 
 // PendingInput represents a pending input request
 type PendingInput struct {
-	ID         string `json:"id"`
-	WorkflowID string `json:"workflow_id"`
-	BoxID      string `json:"box_id"`
-	FormTitle  string `json:"form_title"`
-	CreatedAt  string `json:"created_at"`
-	ExpiresAt  string `json:"expires_at"`
+	JobID string `json:"id"`
 }
 
 // InputRequestSignal represents a signal sent by the activity to request user input

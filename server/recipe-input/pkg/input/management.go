@@ -1,5 +1,3 @@
-//go:build ops_input_management
-
 package input
 
 import (
@@ -13,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/go-chi/chi/v5"
@@ -23,7 +22,6 @@ type inputManagementService struct {
 	workflowType string
 	sse          ops.SSEManager
 	ctl          workflowctl.WorkflowControl
-	//lister       workflowctl.WorkflowLister
 }
 
 // newInputManagementService creates a new input management service
@@ -36,25 +34,15 @@ func newInputManagementService() *inputManagementService {
 // Initialize sets up the service with dependencies
 func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error {
 	// Require a typed WorkflowControl; fail if not provided
-	if ctl, ok := deps.WorkflowControl(); ok && ctl != nil {
-		s.ctl = ctl
-		//if lister, ok := ctl.(workflowctl.WorkflowLister); ok {
-		//	s.lister = lister
-		//} else {
-		//	log.Printf("input_mgmt.initialize: workflow_control_missing_list_support")
-		//}
-	} else {
-		log.Printf("input_mgmt.initialize: missing_workflow_control error=workflow control dependency not provided")
-		return fmt.Errorf("workflow control dependency not provided")
+	s.ctl = deps.WorkflowControl()
+	s.sse = deps.SSEManager()
+
+	if s.ctl != nil {
+		return fmt.Errorf("workflow control must be provided")
 	}
-	if sse, ok := deps.SSEManager(); ok {
-		s.sse = sse
-	} else {
-		log.Printf("input_mgmt.initialize: missing_sse_manager")
-		return fmt.Errorf("sse manager dependency not provided")
+	if s.sse != nil {
+		return fmt.Errorf("sse manager must be provided")
 	}
-	// Best-effort namespace detection via deps or env
-	log.Printf("input_mgmt.initialize: initialized sse_present=%t namespace=%s", s.sse != nil, s.namespace)
 	return nil
 }
 
@@ -67,23 +55,14 @@ func (s *inputManagementService) GetRoutes() []ops.Route {
 	return []ops.Route{
 		{Method: "GET", Path: "/api/user-inputs/pending", Handler: s.ListPending},
 		{Method: "GET", Path: "/api/user-inputs/stream", Handler: s.SSEStream},
-		{Method: "GET", Path: "/api/user-inputs/{workflowID}", Handler: s.GetDetails},
-		{Method: "POST", Path: "/api/user-inputs/{workflowID}/respond", Handler: s.SubmitResponse},
-		{Method: "POST", Path: "/api/user-inputs/{workflowID}/cancel", Handler: s.Cancel},
+		{Method: "GET", Path: "/api/user-inputs/{jobId}", Handler: s.GetDetails},
+		{Method: "POST", Path: "/api/user-inputs/{jobId}/respond", Handler: s.SubmitResponse},
+		{Method: "POST", Path: "/api/user-inputs/{jobId}/cancel", Handler: s.Cancel},
 	}
 }
 
 // ListPending returns all pending input requests
 func (s *inputManagementService) ListPending(w http.ResponseWriter, r *http.Request) {
-	if s.ctl == nil {
-		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
-		return
-	}
-	if s.lister == nil {
-		http.Error(w, "workflow control does not support workflow listing", http.StatusNotImplemented)
-		return
-	}
-
 	pending, err := s.collectPendingInputs(r.Context())
 	if err != nil {
 		log.Printf("input_mgmt.list_pending: query_failed error=%v", err)
@@ -104,7 +83,7 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// Extract from chi if available, otherwise parse from URL path segments.
-	workflowID := chi.URLParam(r, "workflowID")
+	workflowID := chi.URLParam(r, "jobId")
 	if workflowID == "" {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		for i := 0; i < len(parts)-1; i++ {
@@ -116,11 +95,6 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	}
-	ns := s.namespace
-	if hdr := r.Header.Get("X-Temporal-Namespace"); hdr != "" {
-		ns = hdr
-	}
-	log.Printf("input_mgmt.get_details: entry workflow_id=%s namespace=%s", workflowID, ns)
 
 	// Describe the workflow execution to get current state
 	var status interface{}
@@ -162,7 +136,7 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
 		return
 	}
-	workflowID := chi.URLParam(r, "workflowID")
+	workflowID := chi.URLParam(r, "jobId")
 	if workflowID == "" {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		for i := 0; i < len(parts)-1; i++ {
@@ -275,7 +249,7 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
 		return
 	}
-	workflowID := chi.URLParam(r, "workflowID")
+	workflowID := chi.URLParam(r, "jobId")
 	if workflowID == "" {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		for i := 0; i < len(parts)-1; i++ {
@@ -409,58 +383,28 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 const pendingStatusQuery = "InputStatus = \"pending\""
 
 func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]PendingInput, error) {
-	if s.lister == nil {
-		return nil, fmt.Errorf("workflow control does not support workflow listing")
-	}
-	var (
-		token []byte
-		items []PendingInput
-		seen  = make(map[string]struct{})
-	)
-	for {
-		resp, err := s.lister.ListWorkflows(ctx, workflowctl.ListWorkflowsRequest{
-			Query:         pendingStatusQuery,
-			PageSize:      50,
-			NextPageToken: token,
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, summary := range resp.Executions {
-			item, ok := buildPendingFromSummary(summary)
-			if !ok {
-				continue
-			}
-			key := item.WorkflowID + ":" + item.ID
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-			items = append(items, item)
-		}
-		if len(resp.NextPageToken) == 0 {
-			break
-		}
-		token = resp.NextPageToken
-	}
-	sort.Slice(items, func(i, j int) bool {
-		ti, okI := parseRFC3339(items[i].CreatedAt)
-		tj, okJ := parseRFC3339(items[j].CreatedAt)
-		switch {
-		case okI && okJ && !ti.Equal(tj):
-			return ti.Before(tj)
-		case okI && !okJ:
-			return true
-		case !okI && okJ:
-			return false
-		default:
-			if items[i].WorkflowID == items[j].WorkflowID {
-				return items[i].ID < items[j].ID
-			}
-			return items[i].WorkflowID < items[j].WorkflowID
-		}
+	// TODO: explore supporting pagination.
+	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
+		Statuses: []swf.JobStatus{swf.JobStatusReady},
+		Stores:   []swf.JobStore{swf.JobStoreActive},
+		JobTasks: []swf.JobTaskFilter{{
+			JobType:  "recipe",
+			TaskType: "input",
+		}},
+		PageSize: 500,
 	})
-	return items, nil
+
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingInput, len(jobs))
+	for i, job := range jobs {
+		out[i] = PendingInput{
+			JobID: string(job.JobID),
+		}
+	}
+
+	return out, nil
 }
 
 func buildPendingFromSummary(summary workflowctl.WorkflowSummary) (PendingInput, bool) {

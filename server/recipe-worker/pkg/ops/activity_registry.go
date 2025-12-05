@@ -60,6 +60,9 @@ func NewActivityRegistry() (*ActivityRegistry, error) {
 	}
 	opsList := ops.List()
 	for _, op := range opsList {
+		if op.GetMetadata().DisallowAsTask {
+			continue
+		}
 		if err := a.register(op); err != nil {
 			return nil, err
 		}
