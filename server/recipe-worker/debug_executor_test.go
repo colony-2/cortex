@@ -50,6 +50,16 @@ func ensureDebugRepo() (string, string) {
 		if err := runGit(dir, "git", "commit", "-m", "init"); err != nil {
 			panic(err)
 		}
+		// Add a second commit to ensure persist flows have a valid parent/root hash.
+		if err := os.WriteFile(filepath.Join(dir, "SECOND.txt"), []byte("second\n"), 0o644); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "add", "."); err != nil {
+			panic(err)
+		}
+		if err := runGit(dir, "git", "commit", "-m", "second"); err != nil {
+			panic(err)
+		}
 		output, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").CombinedOutput()
 		if err != nil {
 			panic(fmt.Errorf("rev-parse HEAD failed: %w (%s)", err, output))

@@ -57,11 +57,9 @@ func TestProvider_SchemaReflection_And_YAMLValidation(t *testing.T) {
 		return in, nil
 	}
 	// Use the new provider constructor to supply our wrapper input
-	op := rops.NewActivityMappedOpWithProviderV2[map[string]interface{}, map[string]interface{}](
-		md,
-		handler,
-		func() interface{} { return &wrapperInput{} },
-	)
+	op := rops.NewActivityMappedOpV2[wrapperInput, map[string]interface{}](md, func(_ rops.OpDependencies, ctx context.Context, in wrapperInput) (map[string]interface{}, error) {
+		return handler(nil, ctx, in.Data)
+	})
 	rops.Register(op)
 
 	// Sanity: provider influences input type
@@ -69,8 +67,12 @@ func TestProvider_SchemaReflection_And_YAMLValidation(t *testing.T) {
 	if !ok {
 		t.Fatalf("op not registered: %s", opName)
 	}
-	if got.GetInputType().Kind() != reflect.Struct {
-		t.Fatalf("expected struct kind for input type, got: %s", got.GetInputType().Kind())
+	chain := got.TaskChain()
+	if len(chain) == 0 {
+		t.Fatalf("expected at least one step")
+	}
+	if chain[0].InputType.Kind() != reflect.Struct {
+		t.Fatalf("expected struct kind for input type, got: %s", chain[0].InputType.Kind())
 	}
 
 	// 1) Schema includes our op and its input shape (requires "foo")

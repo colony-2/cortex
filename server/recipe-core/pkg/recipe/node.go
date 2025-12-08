@@ -74,13 +74,16 @@ func checkOpInputs(opName string, inputs map[string]interface{}, line int, col i
 	}
 	// Unmarshal into a pointer to the concrete input value so that any
 	// type-provided UnmarshalYAML (e.g., validation wrappers) is invoked.
-	inputVal := op.GetInputStruct()
+	chain := op.TaskChain()
+	if len(chain) == 0 {
+		return fmt.Errorf("op %s has no task steps", opName)
+	}
+	inT := chain[0].InputType
 	var dest interface{}
-	rv := reflect.ValueOf(inputVal)
-	if rv.Kind() == reflect.Ptr && !rv.IsNil() {
-		dest = inputVal
+	if inT.Kind() == reflect.Pointer {
+		dest = reflect.New(inT.Elem()).Interface()
 	} else {
-		dest = reflect.New(rv.Type()).Interface()
+		dest = reflect.New(inT).Interface()
 	}
 
 	data, err := yamlv3.Marshal(inputs)
@@ -145,7 +148,18 @@ func (NodeOp) JSONSchema() *jsonschema.Schema {
 	opList := ops.List()
 	items := make([]interface{}, 0, len(opList))
 	for _, op := range opList {
-		items = append(items, op.GetInputStruct())
+		chain := op.TaskChain()
+		if len(chain) == 0 {
+			continue
+		}
+		inT := chain[0].InputType
+		var inputStruct interface{}
+		if inT.Kind() == reflect.Pointer {
+			inputStruct = reflect.New(inT.Elem()).Interface()
+		} else {
+			inputStruct = reflect.New(inT).Elem().Interface()
+		}
+		items = append(items, inputStruct)
 	}
 	return oneOfSchema("op", items...)
 }

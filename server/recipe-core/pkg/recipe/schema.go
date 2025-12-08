@@ -67,15 +67,24 @@ func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
         opType.Type = "string"
         local.Properties.Set("op", opType)
         local.Type = "object"
-        // Default inputs schema from reflected input struct
-        // Guard: ensure ops report a struct or pointer-to-struct input type to avoid schema panics
-        inT := op.GetInputType()
+        chain := op.TaskChain()
+        if len(chain) == 0 {
+            return nil, fmt.Errorf("op %q has no task steps", op.GetName())
+        }
+        firstStep := chain[0]
+        inT := firstStep.InputType
         if inT.Kind() != reflect.Struct {
             if !(inT.Kind() == reflect.Pointer && inT.Elem().Kind() == reflect.Struct) {
                 return nil, fmt.Errorf("op %q inputs must be a struct, got %s", op.GetName(), inT.String())
             }
         }
-        inputsSchema := stripSchema(r.Reflect(op.GetInputStruct()))
+        var inputStruct interface{}
+        if inT.Kind() == reflect.Pointer {
+            inputStruct = reflect.New(inT.Elem()).Interface()
+        } else {
+            inputStruct = reflect.New(inT).Elem().Interface()
+        }
+        inputsSchema := stripSchema(r.Reflect(inputStruct))
 
         // Tighten required fields for certain well-known ops without changing unmarshalling
         switch opTypeName {

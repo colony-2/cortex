@@ -25,11 +25,16 @@ type ActivityInvocationRequest struct {
 type ActivityInvocationOutput struct {
 	OpOutput  map[string]interface{}      `json:"output"`
 	GitResult contextual.GitCommitContext `json:"git,omitempty"`
+	NextTask  string                      `json:"nextTaskType,omitempty"`
 }
 
-// ActivityRegistration holds the activity and its generated schemas
+// ActivityRegistration holds the activity step and its generated schemas.
 type ActivityRegistration struct {
-	Activity     ops.RegisterableOp // The generic activity interface
+	Activity     ops.RegisterableOp // parent op
+	Step         ops.TaskStep
+	StepIndex    int
+	TaskType     string // opType:stepName
+	NextTaskType string
 	InputSchema  *jsonschema.Schema
 	OutputSchema *jsonschema.Schema
 	Metadata     ops.OpMetadata
@@ -60,9 +65,6 @@ func NewActivityRegistry() (*ActivityRegistry, error) {
 	}
 	opsList := ops.List()
 	for _, op := range opsList {
-		if op.GetMetadata().DisallowAsTask {
-			continue
-		}
 		if err := a.register(op); err != nil {
 			return nil, err
 		}
@@ -83,14 +85,18 @@ func (r *ActivityRegistry) Dependencies() ops.ServiceDependencies2 {
 func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.TaskWorker {
 	workers := make([]swf.TaskWorker, 0, len(r.activities))
 	for name, registration := range r.activities {
+		if registration.Step.DisallowAsTask {
+			continue
+		}
 		wrapped := withGitWorkspace(deps, registration, r.gitController)
-		workers = append(workers, &taskWorker{name: name, fn: wrapped})
+		workers = append(workers, &taskWorker{name: name, reg: registration, fn: wrapped})
 	}
 	return workers
 }
 
 type taskWorker struct {
 	name string
+	reg  ActivityRegistration
 	fn   func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
@@ -132,7 +138,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 		}
 
 		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(deps.Database()).WithWorkflowControl(deps.WorkflowControl()).Build()
-		outputData, err := reg.Activity.ExecuteV2(opDeps, ctx, req.Input)
+		outputData, err := reg.Step.Invoke(opDeps, ctx, req.Input)
 		if err != nil {
 			return zero, nil, err
 		}
@@ -148,6 +154,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 				PersistHash: output.CommitHash,
 				ParentHash:  output.ParentHash,
 			},
+			NextTask: reg.NextTaskType,
 		}, opDeps.GetOutputArtifacts(), nil
 	}
 }
@@ -155,15 +162,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages
 func (r *ActivityRegistry) register(activity ops.RegisterableOp) error {
-	metadata := activity.GetMetadata()
-	registration := ActivityRegistration{
-		Activity: activity,
-		Metadata: metadata,
-	}
-
-	r.generateSchemasForRegistration(&registration)
-	r.activities[metadata.Type] = registration
-	return nil
+	return Register(r, activity)
 }
 
 func (r *ActivityRegistry) Register(activity ops.RegisterableOp) error {
@@ -195,41 +194,58 @@ func (r *ActivityRegistry) EnableActivitiesInWorker(deps ops.ServiceDependencies
 func Register(r *ActivityRegistry, activity ops.RegisterableOp) error {
 	metadata := activity.GetMetadata()
 
-	if _, exists := r.activities[metadata.Type]; exists {
-		return fmt.Errorf("activity type %s already registered", metadata.Type)
-	}
+	chain := activity.TaskChain()
+	for i, step := range chain {
+		if step.Name == "" {
+			return fmt.Errorf("step %d for op %s must have a name", i, metadata.Type)
+		}
+		if step.InputType == nil || step.OutputType == nil {
+			return fmt.Errorf("step %s for op %s has nil input/output type", step.Name, metadata.Type)
+		}
+		taskType := fmt.Sprintf("%s:%s", metadata.Type, step.Name)
+		if _, exists := r.activities[taskType]; exists {
+			return fmt.Errorf("activity type %s already registered", taskType)
+		}
 
-	// Validate all struct fields have json tags before generating schemas
-	if err := r.generator.ValidateStructTags(activity.GetInputType()); err != nil {
-		return fmt.Errorf("input type validation failed: %w", err)
-	}
-	if err := r.generator.ValidateStructTags(activity.GetOutputType()); err != nil {
-		return fmt.Errorf("output type validation failed: %w", err)
-	}
+		if err := r.generator.ValidateStructTags(step.InputType); err != nil {
+			return fmt.Errorf("input type validation failed: %w", err)
+		}
+		if err := r.generator.ValidateStructTags(step.OutputType); err != nil {
+			return fmt.Errorf("output type validation failed: %w", err)
+		}
 
-	inputSchema, err := r.generator.GenerateSchema(activity.GetInputType())
-	if err != nil {
-		return fmt.Errorf("input schema generation failed: %w", err)
-	}
+		if step.NextStepTask == "" && i < len(chain)-1 {
+			step.NextStepTask = fmt.Sprintf("%s:%s", metadata.Type, chain[i+1].Name)
+		}
 
-	outputSchema, err := r.generator.GenerateSchema(activity.GetOutputType())
-	if err != nil {
-		return fmt.Errorf("output schema generation failed: %w", err)
-	}
+		inputSchema, err := r.generator.GenerateSchema(step.InputType)
+		if err != nil {
+			return fmt.Errorf("input schema generation failed: %w", err)
+		}
 
-	r.activities[metadata.Type] = ActivityRegistration{
-		Activity:     activity,
-		InputSchema:  inputSchema,
-		OutputSchema: outputSchema,
-		Metadata:     metadata,
+		outputSchema, err := r.generator.GenerateSchema(step.OutputType)
+		if err != nil {
+			return fmt.Errorf("output schema generation failed: %w", err)
+		}
+
+		r.activities[taskType] = ActivityRegistration{
+			Activity:     activity,
+			Step:         step,
+			StepIndex:    i,
+			TaskType:     taskType,
+			NextTaskType: step.NextStepTask,
+			InputSchema:  inputSchema,
+			OutputSchema: outputSchema,
+			Metadata:     metadata,
+		}
 	}
 
 	return nil
 }
 
-// Get retrieves an activity registration by type
-func (r *ActivityRegistry) Get(activityType string) (ActivityRegistration, bool) {
-	registration, exists := r.activities[activityType]
+// Get retrieves an activity registration by task type
+func (r *ActivityRegistry) Get(taskType string) (ActivityRegistration, bool) {
+	registration, exists := r.activities[taskType]
 	return registration, exists
 }
 
@@ -256,19 +272,4 @@ func (r *ActivityRegistry) GetAll() map[string]ActivityRegistration {
 // This is used by the schema manager to update schemas after generation
 func (r *ActivityRegistry) UpdateRegistration(activityType string, registration ActivityRegistration) {
 	r.activities[activityType] = registration
-}
-
-// generateSchemasForRegistration generates schemas for an activity using reflection
-func (r *ActivityRegistry) generateSchemasForRegistration(registration *ActivityRegistration) {
-	// Input is the third parameter
-	inputType := registration.Activity.GetInputType()
-	if inputType.Kind() != reflect.Interface {
-		registration.InputSchema, _ = r.generator.GenerateSchema(inputType)
-	}
-
-	// Output is the first return value
-	outputType := registration.Activity.GetOutputType()
-	if outputType.Kind() != reflect.Interface {
-		registration.OutputSchema, _ = r.generator.GenerateSchema(outputType)
-	}
 }

@@ -91,39 +91,48 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		runPolicy.TotalTimeout = &timeout
 	}
 
-	invocation := workerops.ActivityInvocationRequest{
-		Input:          resolvedNodeInputs,
-		GitTaskContext: *gitstate.NewGitTaskContext(resCtx.TaskExecutionContext()),
+	stepInput := resolvedNodeInputs
+	taskType := fmt.Sprintf("%s:%s", op, op)
+	for i := 0; i < 64; i++ { // guard against accidental loops
+		invocation := workerops.ActivityInvocationRequest{
+			Input:          stepInput,
+			GitTaskContext: *gitstate.NewGitTaskContext(resCtx.TaskExecutionContext()),
+		}
+
+		taskData, err := swf.NewTaskData(invocation)
+		if err != nil {
+			return err
+		}
+
+		out, err := ctx.DoTask(
+			runPolicy,
+			taskType,
+			taskData,
+		)
+
+		if err != nil {
+			return err
+		}
+
+		outputData, err := out.GetData()
+		if err != nil {
+			return err
+		}
+
+		var envelope workerops.ActivityInvocationOutput
+		if err := json.Unmarshal(outputData, &envelope); err != nil {
+			return fmt.Errorf("decode activity output envelope: %w", err)
+		}
+
+		gitResult := envelope.GitResult
+		resCtx.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
+		stepInput = envelope.OpOutput
+		if envelope.NextTask == "" {
+			break
+		}
+		taskType = envelope.NextTask
 	}
-
-	taskData, err := swf.NewTaskData(invocation)
-	if err != nil {
-		return err
-	}
-
-	out, err := ctx.DoTask(
-		runPolicy,
-		op,
-		taskData,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	outputData, err := out.GetData()
-	if err != nil {
-		return err
-	}
-
-	var envelope workerops.ActivityInvocationOutput
-	if err := json.Unmarshal(outputData, &envelope); err != nil {
-		return fmt.Errorf("decode activity output envelope: %w", err)
-	}
-
-	gitResult := envelope.GitResult
-	resCtx.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
-	resCtx.AddExecution(envelope.OpOutput)
+	resCtx.AddExecution(stepInput)
 	return nil
 }
 

@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,7 +102,14 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 		},
 	)
 
-	registration := ActivityRegistration{Activity: patchActivity, Metadata: patchActivity.GetMetadata()}
+	step := patchActivity.TaskChain()[0]
+	registration := ActivityRegistration{
+		Activity:  patchActivity,
+		Step:      step,
+		StepIndex: 0,
+		TaskType:  fmt.Sprintf("%s:%s", patchActivity.GetMetadata().Type, step.Name),
+		Metadata:  patchActivity.GetMetadata(),
+	}
 	wrapped := withGitWorkspace(deps, registration, controller)
 
 	worktreePath := filepath.Join(t.TempDir(), "worktree")
@@ -168,7 +176,8 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	worker := newCapturingWorker(t)
 	registry.EnableActivitiesInWorker(deps, worker)
 
-	handler, ok := worker.handlers[activityType]
+	taskType := fmt.Sprintf("%s:%s", activityType, activityType)
+	handler, ok := worker.handlers[taskType]
 	require.True(t, ok)
 
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
@@ -220,6 +229,12 @@ func (s *stubWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error
 	_ = ctx
 	_ = jobId
 	return nil
+}
+
+func (s *stubWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) ([]swf.JobSummary, string, error) {
+	_ = ctx
+	_ = request
+	return nil, "", nil
 }
 
 func initTwoCommitRepo(t *testing.T) (string, string, string) {
@@ -277,12 +292,14 @@ func TestActivityRegistration(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Verify activity was registered
-		registration, exists := registry.Get("test_registry_activity")
+		taskType := "test_registry_activity:test_registry_activity"
+		registration, exists := registry.Get(taskType)
 		assert.True(t, exists)
 		assert.NotNil(t, registration.Activity)
 		assert.NotNil(t, registration.InputSchema)
 		assert.NotNil(t, registration.OutputSchema)
 		assert.Equal(t, "test_registry_activity", registration.Metadata.Type)
+		assert.Equal(t, "test_registry_activity", registration.Step.Name)
 	})
 
 	t.Run("duplicate registration fails", func(t *testing.T) {
@@ -293,7 +310,7 @@ func TestActivityRegistration(t *testing.T) {
 
 	t.Run("list registered activities", func(t *testing.T) {
 		types := registry.List()
-		assert.Contains(t, types, "test_registry_activity")
+		assert.Contains(t, types, "test_registry_activity:test_registry_activity")
 	})
 }
 
@@ -376,7 +393,7 @@ func TestSchemaGeneration(t *testing.T) {
 	err = Register(registry, testActivity)
 	require.NoError(t, err)
 
-	registration, exists := registry.Get("test_registry_activity")
+	registration, exists := registry.Get("test_registry_activity:test_registry_activity")
 	require.True(t, exists)
 
 	// Form schema test removed - no longer part of ActivityRegistration

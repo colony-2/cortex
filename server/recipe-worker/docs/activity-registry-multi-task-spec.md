@@ -12,44 +12,66 @@
 - No parallel fan-out; sequencing only.
 
 ## Proposed Types (ops / registry)
-- Public surface stays minimal and mirrors today’s constructors:
-  - **New**: `NewActivityMappedOpV2(metadata OpMetadata, handlers ...ActivityHandlerV2[any, any]) RegisterableOp`
-    - Accepts 1+ handlers; single handler preserves current behavior.
-    - Constructor inspects concrete generic types, ensuring `Out(i) == In(i+1)`; fails fast otherwise.
-    - No exposed `TaskChainSpec`/`TaskStepSpec` to op authors.
+- Keep existing `NewActivity*` single-step helpers intact for compatibility; introduce a new builder interface for multi-step (reflection-enforced):
+  ```go
+  // Step is an internal interface; authors obtain it via the generic constructor.
+  type Step interface{ isStep() InType() reflect.Type OutType() reflect.Type Handler() interface{} }
+
+  func NewStep[In, Out any](fn func(ctx context.Context, in In) (Out, error)) Step
+
+  type OpBuilder interface {
+      // Op metadata setters (expose OpMetadata fields individually).
+      WithType(t string) OpBuilder
+      WithDescription(desc string) OpBuilder
+      WithVersion(ver string) OpBuilder
+      WithDefaultTimeout(d time.Duration) OpBuilder
+
+      AddStep(name string, step Step) OpBuilder
+      WithManagementService(svc ManagementService) OpBuilder
+      Build() (RegisterableOp, error)
+  }
+
+  func NewOp() OpBuilder
+  ```
+  - `AddStep` accepts any handler; Build performs reflection to ensure:
+    - Handler kind: `func(ctx context.Context, in TIn) (TOut, error)` (wrapped internally to inject deps if needed).
+    - Chaining: `TOut(i) == TIn(i+1)` for all adjacent steps.
+    - At least one step is present.
+  - Step names are provided explicitly (`name string`) for docs/metrics and capability discovery; dispatch uses the step name on the wire (not just index).
+  - Single-step chain: `NewOp().WithType(...).AddStep(...).Build()` behaves like today; legacy `NewActivity*` helpers delegate to the builder to avoid drift.
 - `RegisterableOp` shifts to a chain-first interface:
   - Remove stepless methods (`GetInputType`, `GetOutputType`, `GetInputStruct`, single `ExecuteV2`).
   - New requirements (illustrative):
     ```go
     type RegisterableOp interface {
-        GetMetadata() OpMetadata
+        GetMetadata() OpMetadata // assembled from builder setters
         GetName() string
-        TaskChain() []TaskStep // TaskStep: {InputType, OutputType, Handler}
+        TaskChain() []TaskStep // TaskStep: {Name, InputType, OutputType, Handler, DisallowAsTask}
         GetManagementService() ManagementService // optional, unchanged
         isOpSpec()
     }
     ```
-  - Removed: `ExecuteV2`, `GetInputType`, `GetOutputType`, `GetInputStruct` on the interface. Execution happens per step via the stored handlers.
-  - `TaskStep` remains internal; op authors only supply handlers via `NewActivityMappedOpV2`.
-- Single task name: `metadata.Type` is used for every step invocation; `StepIndex` in the invocation payload drives dispatch.
+- `TaskStep` remains internal; op authors only interact with the builder/handlers.
+- Task type per step is explicit: `opType:stepName` (not just the op type).
 - One retry/timeout policy: derived from recipe node metadata (no per-step overrides).
 
 ## Registry Behavior
 - `Register` reads `TaskChain()`; if length == 0 it errors, if length == 1 it behaves like today.
-- Schema generation: produce input/output schemas for every step (used for docs/validation), but still register exactly one `TaskWorker` name = `metadata.Type`.
-- Invocation envelope: `ActivityInvocationRequest` gains `StepIndex` (int) alongside `Input` and `GitTaskContext`; dispatch uses it to pick the handler.
-- Task worker dispatch: the wrapper receives `StepIndex` in `ActivityInvocationRequest` and routes to `Steps[StepIndex]`.
+- Schema generation: produce input/output schemas for every step (used for docs/validation), but still register exactly one `TaskWorker` name per step: `task type = opType:stepName`.
+  - Invocation envelope stays simple: `ActivityInvocationRequest` carries resolved `Input` and `GitTaskContext`. Dispatch uses the SWF task type (`opType:stepName`) so no step selector is needed in the payload.
+  - Task worker dispatch: the wrapper is registered per step (`opType:stepName`), so payload-driven routing is unnecessary.
 - Output->Input threading: after executing a step handler, the wrapper marshals the output map and includes it in the response; no custom `ResultMerge` needed because the compiler will treat the step output as the next step input.
 - Retry/timeouts: unchanged; registry does not apply per-step options.
+- Step-level `DisallowAsTask`: respected when building the TaskWorker list; steps flagged as disallowed are not exposed as tasks (while still usable within recipes).
 
 ## Compiler Execution Flow (minimal changes)
 1) Resolve node inputs once with the existing `ResolutionContext` (unchanged).
 2) Fetch `TaskChain` (default single-step) from the registry.
 3) Initialize `stepInput` = resolved node inputs.
-4) For step index i over the chain:
-   - Invoke `ctx.DoTask(metadata.Type, ActivityInvocationRequest{StepIndex: i, Input: stepInput, GitTaskContext: ...})` with the usual retry/timeout from node metadata.
+4) Loop using next-step hints from the step response:
+   - Invoke `ctx.DoTask(taskType=opType:stepName, ActivityInvocationRequest{Input: stepInput, GitTaskContext: ...})` with the usual retry/timeout from node metadata.
    - Unmarshal `ActivityInvocationOutput`; update git state as today.
-   - Set `stepInput = OpOutput` for the next iteration (output type is guaranteed to match the next input type by construction).
+   - Set `stepInput = OpOutput`. If `NextTaskType` is present, set the next task name to that and continue; otherwise exit.
 5) After the last step, call `AddExecution` with the final `stepInput` (which is the last step’s output) so outer scopes observe the same shape as a single-step op.
 
 ## Input Shaping (without new resolution scopes)
@@ -57,14 +79,14 @@
 - Each subsequent step receives the previous step’s output as its input. No additional selectors or merges are needed.
 
 ## Naming and Compatibility
-- Single task name = `opType`; called repeatedly with `StepIndex` to select the handler.
+- Task type per step = `opType:stepName` (explicit in SWF); routing is implicit via task name. Steps carry `NextStepName`/`NextTaskType` so the compiler can walk the chain without registry lookups during execution.
 - Recipes remain unchanged; single-task ops are unaffected.
 - Schema/docs generation can expose per-step schemas while keeping the public op name the same.
 
 ## Rollout Plan
-1) Add `TaskChain()` to `RegisterableOp` and implement internal `TaskStep` + `NewChainedOp` helpers in `recipe-core/pkg/ops` (runtime validation of output->next input).
-2) Extend `ActivityRegistry` to dispatch by `StepIndex` while keeping one registered task name and generating per-step schemas.
-3) Update compiler `executeOp` to loop over the chain, feeding outputs to inputs, preserving current resolution context and git updates.
+1) Add `TaskChain()` to `RegisterableOp` and implement internal `TaskStep` + `NewOp`/builder helpers in `recipe-core/pkg/ops` (runtime validation of output->next input, step-level `DisallowAsTask`).
+2) Extend `ActivityRegistry` to dispatch by `StepName`/`StepIndex` while keeping one registered task name and generating per-step schemas.
+3) Update compiler `executeOp` to loop over the chain, feeding outputs to inputs, preserving current resolution context and git updates (pass step name in invocation).
 4) Tests:
    - Registry: rejects mismatched chains; dispatches correct handler by step index.
    - Compiler: multi-step op runs both steps in order, uses one retry policy, and exposes only the final output to the parent scope.

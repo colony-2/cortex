@@ -314,6 +314,7 @@ func (rc *ResolutionContext) AddExecution(output map[string]interface{}) {
 		case ScopeStateMachine, ScopeState:
 			container = rc.TemplateData.States
 		case ScopeRecipe:
+			rc.Parent.lastExecution = output
 			return
 		default:
 			panic(fmt.Sprintf("invalid parent scope type: %s", rc.Parent.ScopeType))
@@ -335,13 +336,6 @@ func (rc *ResolutionContext) AddExecution(output map[string]interface{}) {
 			Outputs: output,
 			Runs:    []RunOutput{},
 		}
-	}
-	switch rc.ScopeType {
-	case ScopeSequence:
-
-	}
-	if rc.ScopeType == ScopeRecipe {
-
 	}
 }
 
