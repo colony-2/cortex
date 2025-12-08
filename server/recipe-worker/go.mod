@@ -14,8 +14,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/stretchr/testify v1.11.1
-	go.temporal.io/api v1.49.1
-	go.temporal.io/sdk v1.35.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.30.0

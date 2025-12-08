@@ -11,7 +11,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
-	"go.temporal.io/sdk/activity"
 )
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.

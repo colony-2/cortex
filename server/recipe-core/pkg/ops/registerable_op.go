@@ -76,6 +76,18 @@ func (s *stepImpl) invoke(deps OpDependencies, ctx context.Context, resolvedInpu
 	return s.invokeFn(deps, ctx, resolvedInput)
 }
 
+func NewNoTaskStep[In any, Out any]() Step {
+	return &stepImpl{
+		inputType:  reflect.TypeOf((*In)(nil)).Elem(),
+		outputType: reflect.TypeOf((*Out)(nil)).Elem(),
+		invokeFn: func(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
+			return nil, fmt.Errorf("form input collection is not supported in workflow, must be done via unheld op")
+		},
+		disallowAsTask: true,
+	}
+
+}
+
 // NewStep constructs a step with signature func(ctx context.Context, in In) (Out, error).
 func NewStep[In any, Out any](fn func(ctx context.Context, in In) (Out, error)) Step {
 	inputType := reflect.TypeOf((*In)(nil)).Elem()

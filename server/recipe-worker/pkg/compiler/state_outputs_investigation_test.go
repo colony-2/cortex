@@ -10,8 +10,6 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )
@@ -57,7 +55,7 @@ func TestInvestigateStateOutputStorage(t *testing.T) {
 	worktree := filepath.Join(os.TempDir(), "state-investigation-worktree")
 	blobStore := "file://" + filepath.Join(os.TempDir(), "state-investigation-blobstore")
 	inputs := map[string]interface{}{
-		"test_input":  "test_value",
+		"test_input": "test_value",
 	}
 	_, execCtx := withRequiredGitInputs(nil)
 	execCtx.Environment.WorktreePath = worktree

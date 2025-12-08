@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
@@ -39,44 +38,22 @@ type Output struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" jsonschema:"description=Additional metadata"`
 }
 
-// InputActivity is a RegisterableOp that collects user input via forms
-type InputActivity struct {
-	// Management service for HTTP endpoints
-	managementService ops.ManagementService
-}
-
-// newInputActivity creates a new input activity instance
-func newInputActivity() *InputActivity {
-	return &InputActivity{
-		managementService: nil, //newInputManagementService(),
-	}
-}
-
 func GetOp() ops.RegisterableOp {
-	a := newInputActivity()
-	// Run inline within the workflow: wait on user-response signal
-	// NewInlineOpWithManagementV2 builds on ops.NewInlineOpV2[Input, Output] to attach management endpoints.
-	return ops.NewActivityMappedOpWithManagementV2[Input, Output](
-		a.GetMetadata(),
-		func(deps ops.OpDependencies, ctx context.Context, in Input) (Output, error) {
-			return Output{}, fmt.Errorf("input activity execution is not supported in workflow, must be done via unheld op")
-		},
-		a.managementService,
-	)
-}
-
-// GetMetadata returns activity metadata for registration
-func (a *InputActivity) GetMetadata() ops.OpMetadata {
-	return ops.OpMetadata{
-		Type:           "input",
-		Description:    "Collects user input through interactive forms with support for various field types",
-		Version:        "1.0.0",
-		DisallowAsTask: true,
+	op, err := ops.NewOp().
+		WithType("input").
+		WithManagementService(newInputManagementService()).
+		AddStep("generate_form", ops.NewStep[Input, InputForm](buildForm)).
+		AddStep("collect_user_input", ops.NewNoTaskStep[InputForm, Output]()).
+		Build()
+	if err != nil {
+		panic(err)
 	}
+	return op
 }
 
 // buildForm constructs the InputForm from config and input
-func (a *InputActivity) buildForm(config Config, input Input) InputForm {
+func buildForm(ctx context.Context, in Input) (InputForm, error) {
+	config := in.Form
 	form := InputForm{
 		Timeout: time.Duration(config.Timeout) * time.Second,
 	}
@@ -103,7 +80,5 @@ func (a *InputActivity) buildForm(config Config, input Input) InputForm {
 		// For now, we'll leave this as a placeholder
 	}
 
-	return form
+	return form, nil
 }
-
-// executeWithWorkflow was intentionally removed: activities must not start workflows.

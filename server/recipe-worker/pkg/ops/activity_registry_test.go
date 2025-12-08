@@ -18,7 +18,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/activity"
 	"gorm.io/gorm"
 )
 
@@ -67,6 +66,42 @@ func runTestActivity(_ recipeops.OpDependencies, ctx context.Context, input Test
 		Result:  input.Data + " processed",
 		Success: true,
 	}, nil
+}
+
+func TestNewNoTaskStepIsDisallowedAndNotRegisteredAsWorker(t *testing.T) {
+	orig := recipeops.List()
+	recipeops.Clear()
+	t.Cleanup(func() {
+		recipeops.Clear()
+		if len(orig) > 0 {
+			recipeops.Register(orig...)
+		}
+	})
+
+	type stepIn struct {
+		Name string `json:"name"`
+	}
+	type stepOut struct {
+		Confirmed bool `json:"confirmed"`
+	}
+
+	op, err := recipeops.NewOp().
+		WithType("no-task-op").
+		AddStep("collect", recipeops.NewNoTaskStep[stepIn, stepOut]()).
+		Build()
+	require.NoError(t, err)
+	recipeops.Register(op.(recipeops.RegisterableOp))
+
+	registry, err := NewActivityRegistry()
+	require.NoError(t, err)
+
+	all := registry.GetAll()
+	require.Contains(t, all, "no-task-op:collect")
+	entry := all["no-task-op:collect"]
+	require.True(t, entry.Step.DisallowAsTask, "NoTaskStep should be marked disallowed")
+
+	workers := registry.GetTaskWorkers(recipeops.NewServiceDepsBuilder().Build())
+	require.Empty(t, workers, "disallowed steps should not be exposed as task workers")
 }
 
 func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
@@ -218,6 +253,12 @@ func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options act
 }
 
 type stubWorkflowControl struct{}
+
+func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, data swf.TaskData) error {
+	return nil
+}
+
+var _ workflowctl.WorkflowControl = &stubWorkflowControl{}
 
 func (s *stubWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
 	_ = ctx

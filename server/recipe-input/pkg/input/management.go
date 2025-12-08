@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"reflect"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -83,51 +81,45 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// Extract from chi if available, otherwise parse from URL path segments.
-	workflowID := chi.URLParam(r, "jobId")
-	if workflowID == "" {
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		for i := 0; i < len(parts)-1; i++ {
-			if parts[i] == "user-inputs" {
-				if i+1 < len(parts) {
-					workflowID = parts[i+1]
-				}
-				break
-			}
-		}
+	jobId := chi.URLParam(r, "jobId")
+	if jobId == "" {
+		http.Error(w, "jobId is required", http.StatusBadRequest)
 	}
 
-	// Describe the workflow execution to get current state
-	var status interface{}
-	var start interface{}
-	sum, err := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID})
-	if err != nil {
-		log.Printf("input_mgmt.get_details: describe_failed workflow_id=%s error=%v", workflowID, err)
-		http.Error(w, err.Error(), http.StatusNotFound)
+	job := s.findJob(r.Context(), jobId, w)
+	if job == nil {
 		return
-	}
-	status = sum.Status
-	if sum.StartTime != nil {
-		start = sum.StartTime
 	}
 
 	// Extract workflow info and search attributes
 	result := map[string]interface{}{
-		"workflow_id": workflowID,
-		"status":      nil,
-		"start_time":  nil,
+		"job_id":     jobId,
+		"status":     job.Status,
+		"start_time": job.CreatedAt,
 	}
-
-	result["status"] = status
-	result["start_time"] = start
-	log.Printf("input_mgmt.get_details: describe_ok workflow_id=%s status=%v namespace=%s", workflowID, result["status"], ns)
-
-	// TODO: Fetch the actual form definition from workflow state
-	// This would require querying the workflow or storing form data separately
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(result); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *inputManagementService) findJob(ctx context.Context, jobId string, w http.ResponseWriter) *swf.JobSummary {
+	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
+		JobIDs: []swf.JobId{swf.JobId(jobId)},
+		Stores: []swf.JobStore{swf.JobStoreActive},
+	})
+	if err != nil {
+		log.Printf("input_mgmt.get_details: query_failed job_id=%s error=%v", jobId, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil
+	}
+	if len(jobs) == 0 {
+		log.Printf("input_mgmt.get_details: not_found job_id=%s", jobId)
+		http.Error(w, "not found", http.StatusNotFound)
+		return nil
+	}
+	return &jobs[0]
 }
 
 // SubmitResponse handles user form submission
@@ -136,43 +128,26 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
 		return
 	}
-	workflowID := chi.URLParam(r, "jobId")
-	if workflowID == "" {
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		for i := 0; i < len(parts)-1; i++ {
-			if parts[i] == "user-inputs" {
-				if i+1 < len(parts) {
-					workflowID = parts[i+1]
-				}
-				break
-			}
-		}
+	jobId := chi.URLParam(r, "jobId")
+	if jobId == "" {
+		http.Error(w, "jobId is required", http.StatusBadRequest)
+		return
 	}
 
-	// Parse the submission
-	var submission struct {
-		ID       string                 `json:"id"`
-		UserID   string                 `json:"user_id"`
-		Fields   map[string]interface{} `json:"fields"`
-		Metadata map[string]interface{} `json:"metadata,omitempty"`
-	}
+	output := Output{}
 
-	if err := json.NewDecoder(r.Body).Decode(&submission); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&output); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	if strings.TrimSpace(submission.ID) == "" {
-		http.Error(w, "id is required", http.StatusBadRequest)
-		return
-	}
-	if submission.Fields == nil {
+	if output.Fields == nil {
 		http.Error(w, "fields are required", http.StatusBadRequest)
 		return
 	}
 
 	// Get user ID preference: body overrides header, fallback to default
-	userID := submission.UserID
+	userID := output.UserID
 	if userID == "" {
 		userID = r.Header.Get("X-User-ID")
 	}
@@ -180,64 +155,33 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		userID = "anonymous"
 	}
 
-	// Handler entry log
-	ns := s.namespace
-	if hdr := r.Header.Get("X-Temporal-Namespace"); hdr != "" {
-		ns = hdr
+	job := s.findJob(r.Context(), jobId, w)
+	if job == nil {
+		return
 	}
-	log.Printf(
-		"input_mgmt.submit_response: entry workflow_id=%s id=%s user_id=%s field_keys=%s namespace=%s",
-		workflowID, submission.ID, userID, strings.Join(sortedMapKeys(submission.Fields), ","), ns,
-	)
-
-	// Send signal to workflow
-	payload := UserResponseSignal{
-		Fields:      submission.Fields,
-		UserID:      userID,
-		RespondedAt: time.Now(),
-		Metadata:    submission.Metadata,
-	}
-
-	signalName := userResponseSignalName(submission.ID)
-
-	// Log before signaling
-	log.Printf(
-		"input_mgmt.submit_response: pre_signal signal=%s workflow_id=%s run_id=%s namespace=%s payload_type=%s payload_checksum=%s",
-		signalName, workflowID, "", ns, reflect.TypeOf(payload).String(), checksumForFieldsAndMeta(submission.Fields, submission.Metadata),
-	)
-
-	if err := s.ctl.Signal(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, signalName, payload); err != nil {
-		log.Printf("input_mgmt.submit_response: signal_failed workflow_id=%s run_id=%s namespace=%s id=%s error=%v", workflowID, "", ns, submission.ID, err)
+	data, err := swf.NewTaskData(output)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("input_mgmt.submit_response: signal_ok workflow_id=%s run_id=%s namespace=%s id=%s", workflowID, "", ns, submission.ID)
+	outStep := job.TaskWaitOutput
+	if outStep == nil {
+		http.Error(w, "workflow is not waiting for user input", http.StatusBadRequest)
+		return
+	}
 
-	// Optional: short post-signal verification
-	if sum, derr := s.ctl.Describe(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}); derr != nil {
-		log.Printf("input_mgmt.submit_response: post_describe_failed workflow_id=%s namespace=%s error=%v", workflowID, ns, derr)
-	} else {
-		log.Printf("input_mgmt.submit_response: post_describe_ok workflow_id=%s namespace=%s status=%s", workflowID, ns, sum.Status)
+	err = s.ctl.CompleteTask(r.Context(), job.JobID, *outStep, data)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Notify via SSE if available
 	if s.sse != nil {
-		log.Printf("input_mgmt.submit_response: sse_broadcast_pre event=input_completed workflow_id=%s id=%s user_id=%s namespace=%s", workflowID, submission.ID, userID, ns)
-		s.sse.Broadcast(ops.SSEEvent{
-			Type: "input_completed",
-			Data: map[string]interface{}{
-				"workflow_id": workflowID,
-				"id":          submission.ID,
-				"user_id":     userID,
-				"fields":      submission.Fields,
-			},
-		})
-		log.Printf("input_mgmt.submit_response: sse_broadcast_ok event=input_completed workflow_id=%s id=%s user_id=%s namespace=%s", workflowID, submission.ID, userID, ns)
+		http.Error(w, "sse_broadcast_missing", http.StatusInternalServerError)
+		return
 	}
-	if s.sse == nil {
-		log.Printf("input_mgmt.submit_response: sse_broadcast_skipped reason=nil_manager workflow_id=%s user_id=%s namespace=%s", workflowID, userID, ns)
-	}
-
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
@@ -249,22 +193,14 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
 		return
 	}
-	workflowID := chi.URLParam(r, "jobId")
-	if workflowID == "" {
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-		for i := 0; i < len(parts)-1; i++ {
-			if parts[i] == "user-inputs" {
-				if i+1 < len(parts) {
-					workflowID = parts[i+1]
-				}
-				break
-			}
-		}
+	jobId := chi.URLParam(r, "jobId")
+	if jobId == "" {
+		http.Error(w, "jobId is required", http.StatusBadRequest)
+		return
 	}
 
 	// Parse cancellation request
 	var cancelRequest struct {
-		ID     string `json:"id"`
 		Reason string `json:"reason"`
 	}
 
@@ -272,37 +208,23 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(cancelRequest.ID) == "" {
-		http.Error(w, "id is required", http.StatusBadRequest)
-		return
-	}
-	if cancelRequest.Reason == "" {
-		cancelRequest.Reason = "User cancelled"
-	}
 
-	log.Printf("input_mgmt.cancel: entry workflow_id=%s id=%s reason=%q", workflowID, cancelRequest.ID, cancelRequest.Reason)
-
-	// Cancel the workflow
-	err := s.ctl.Cancel(r.Context(), workflowctl.ExecutionRef{WorkflowID: workflowID}, cancelRequest.Reason)
+	err := s.ctl.Cancel(r.Context(), swf.JobId(jobId))
 	if err != nil {
-		log.Printf("input_mgmt.cancel: cancel_failed workflow_id=%s id=%s error=%v", workflowID, cancelRequest.ID, err)
+		log.Printf("input_mgmt.cancel: cancel_failed job_id=%s error=%v", jobId, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("input_mgmt.cancel: cancel_ok workflow_id=%s id=%s", workflowID, cancelRequest.ID)
 
 	// Notify via SSE if available
 	if s.sse != nil {
-		log.Printf("input_mgmt.cancel: sse_broadcast_pre event=input_cancelled workflow_id=%s id=%s", workflowID, cancelRequest.ID)
 		s.sse.Broadcast(ops.SSEEvent{
 			Type: "input_cancelled",
 			Data: map[string]interface{}{
-				"workflow_id": workflowID,
-				"id":          cancelRequest.ID,
-				"reason":      cancelRequest.Reason,
+				"jobId":  jobId,
+				"reason": cancelRequest.Reason,
 			},
 		})
-		log.Printf("input_mgmt.cancel: sse_broadcast_ok event=input_cancelled workflow_id=%s id=%s", workflowID, cancelRequest.ID)
 	}
 
 	// Return success response
@@ -347,7 +269,7 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 		for _, item := range pending {
 			payload, err := json.Marshal(item)
 			if err != nil {
-				log.Printf("input_mgmt.sse_stream: marshal_pending_failed client_id=%s workflow_id=%s error=%v", clientID, item.WorkflowID, err)
+				log.Printf("input_mgmt.sse_stream: marshal_pending_failed client_id=%s job_id=%s error=%v", clientID, item.JobID, err)
 				continue
 			}
 			fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
@@ -405,27 +327,6 @@ func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]Pe
 	}
 
 	return out, nil
-}
-
-func buildPendingFromSummary(summary workflowctl.WorkflowSummary) (PendingInput, bool) {
-	if len(summary.SearchAttributes) == 0 {
-		return PendingInput{}, false
-	}
-	if status := stringAttr(summary.SearchAttributes, "InputStatus"); status != "" && !strings.EqualFold(status, "pending") {
-		return PendingInput{}, false
-	}
-	id := stringAttr(summary.SearchAttributes, "InputKey")
-	if id == "" {
-		id = summary.WorkflowID
-	}
-	return PendingInput{
-		ID:         id,
-		WorkflowID: summary.WorkflowID,
-		BoxID:      stringAttr(summary.SearchAttributes, "InputBoxID"),
-		FormTitle:  stringAttr(summary.SearchAttributes, "InputFormTitle"),
-		CreatedAt:  timeAttr(summary.SearchAttributes, "InputCreatedAt"),
-		ExpiresAt:  timeAttr(summary.SearchAttributes, "InputExpiresAt"),
-	}, true
 }
 
 func stringAttr(attrs map[string]any, key string) string {
@@ -505,46 +406,4 @@ func sortedMapKeys(m map[string]interface{}) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// checksumForFieldsAndMeta returns a deterministic checksum of field keys/types and metadata keys/types
-func checksumForFieldsAndMeta(fields, meta map[string]interface{}) string {
-	b := strings.Builder{}
-	if fields != nil {
-		fk := sortedMapKeys(fields)
-		for _, k := range fk {
-			var t string
-			if v, ok := fields[k]; ok && v != nil {
-				t = reflect.TypeOf(v).String()
-			}
-			b.WriteString("f:")
-			b.WriteString(k)
-			b.WriteString(":")
-			b.WriteString(t)
-			b.WriteString(";")
-		}
-	}
-	if meta != nil {
-		mk := sortedMapKeys(meta)
-		for _, k := range mk {
-			var t string
-			if v, ok := meta[k]; ok && v != nil {
-				t = reflect.TypeOf(v).String()
-			}
-			b.WriteString("m:")
-			b.WriteString(k)
-			b.WriteString(":")
-			b.WriteString(t)
-			b.WriteString(";")
-		}
-	}
-	// simple FNV-like hash without introducing crypto dependencies
-	var h uint64 = 1469598103934665603
-	const prime64 = 1099511628211
-	s := b.String()
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= prime64
-	}
-	return fmt.Sprintf("fnv64-%x", h)
 }

@@ -13,8 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 	"gopkg.in/yaml.v3"
 
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"

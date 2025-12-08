@@ -9,8 +9,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 )

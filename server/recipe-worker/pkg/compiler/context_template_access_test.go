@@ -11,8 +11,6 @@ import (
 	gitrecipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
-	"go.temporal.io/sdk/testsuite"
-	"go.temporal.io/sdk/workflow"
 	"gopkg.in/yaml.v3"
 )
 
