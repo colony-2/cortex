@@ -1,5 +1,5 @@
 # Base: Debian slim with dev tools and CLIs
-# Includes: Go 1.24, Rust (stable), Python, Node, C/C++, Java, jq, git
+# Includes: Go 1.24.1, Rust (stable), Python, Node, C/C++, Java, jq, git
 # Adds user: devuser (uid 1000)
 # Default working directory: /src
 
@@ -10,7 +10,7 @@ LABEL org.opencontainers.image.source="local" \
 
 ## Versions and config
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GO_VERSION=1.24.0
+ARG GO_VERSION=1.24.1
 ARG NODE_MAJOR=22
 ARG NODE_VERSION=22.9.0
 
@@ -73,7 +73,7 @@ RUN set -euxo pipefail && \
     npx playwright install --with-deps chromium && \
     chmod -R a+rx "$PLAYWRIGHT_BROWSERS_PATH"
 
-# Go 1.24 (system-wide in /usr/local/go)
+# Go 1.24.1 (system-wide in /usr/local/go)
 ENV PATH="/usr/local/go/bin:${PATH}"
 RUN set -euxo pipefail && arch=$(dpkg --print-architecture) && \
     case "$arch" in amd64) GOARCH=amd64 ;; arm64) GOARCH=arm64 ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac && \

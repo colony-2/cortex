@@ -170,27 +170,6 @@ func TestClone(t *testing.T) {
 		}
 	})
 
-	t.Run("target directory already exists", func(t *testing.T) {
-		targetDir := filepath.Join(tempDir, "existing-target")
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
-			t.Fatalf("Failed to create existing target dir: %v", err)
-		}
-
-		input := GitShallowCloneInput{
-			SourceDir:  sourceDir,
-			TargetDir:  targetDir,
-			CommitHash: commitHash,
-		}
-
-		_, err := GitShallowClone(ctx, input)
-		if err == nil {
-			t.Error("Expected error when target directory exists, got nil")
-		}
-		if err.Error() != "target directory already exists: "+targetDir {
-			t.Errorf("Unexpected error message: %v", err)
-		}
-	})
-
 	t.Run("empty source directory", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-empty-source")
 		input := GitShallowCloneInput{

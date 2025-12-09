@@ -8,6 +8,7 @@ import (
 	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
 	opsexport "github.com/divisive-ai/vibethis/server/ops/pkg/export"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-input/pkg/input"
 	workerexport "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
 	ticketop "github.com/divisive-ai/vibethis/server/ticket/pkg/op"
 )
@@ -21,6 +22,7 @@ func NewDependencyContainer() *ops.ServiceDepsBuilder {
 func RegisterOps() []ops.RegisterableOp {
 	impls := opsexport.GetAll()
 	impls = append(impls, workerexport.GetAll()...)
+	impls = append(impls, input.GetOp())
 	impls = append(impls, gitexport.GetAll()...)
 	impls = append(impls, ticketop.GetOp())
 	ops.Register(impls...)

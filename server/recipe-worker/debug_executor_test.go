@@ -103,14 +103,14 @@ inputs:
 		t.Fatalf("Registry Error: %v", err)
 	}
 
-	exec, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
+	standaloneExecutor, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
 	if err != nil {
 		t.Fatalf("Executor Error: %v", err)
 	}
 
 	repo, hash := ensureDebugRepo()
-	worktree := filepath.Join(os.TempDir(), "debug-executor-worktree")
-	blobStore := "file://" + filepath.Join(os.TempDir(), "debug-executor-blobstore")
+	worktree := filepath.Join(t.TempDir(), "debug-executor-worktree")
+	blobStore := "file://" + filepath.Join(t.TempDir(), "debug-executor-blobstore")
 	jobCtx := contextual.JobContext{
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
@@ -136,7 +136,7 @@ inputs:
 	}
 
 	// Execute recipe
-	result, err := exec.Execute(
+	result, err := standaloneExecutor.Execute(
 		context.Background(),
 		r,
 		map[string]interface{}{},

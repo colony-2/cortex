@@ -11,6 +11,7 @@ require (
 	github.com/divisive-ai/vibethis/server/ops v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
+	github.com/divisive-ai/vibethis/server/recipe-input v0.0.0
 	github.com/divisive-ai/vibethis/server/storage v0.0.0
 	github.com/divisive-ai/vibethis/server/ticket v0.0.0
 	github.com/gorilla/mux v1.8.1
@@ -154,6 +155,7 @@ replace (
 	github.com/divisive-ai/vibethis/server/ops => ../ops
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
+	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 	github.com/divisive-ai/vibethis/server/storage => ../storage
 	github.com/divisive-ai/vibethis/server/ticket => ../ticket
