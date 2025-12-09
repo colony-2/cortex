@@ -40,7 +40,7 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 	require.NoError(t, err)
 	coreops.Register(op.(coreops.RegisterableOp))
 
-	jobCtx, gitCtx := generateTestContext()
+	jobCtx, gitCtx := GenerateTestContext()
 
 	envelope := workerops.ActivityInvocationOutput{
 		OpOutput: map[string]interface{}{"value": true},
@@ -91,9 +91,9 @@ type stubJobContext struct {
 	lastTaskType string
 }
 
-func (s *stubJobContext) GetJobId() swf.JobId                       { return s.jobID }
-func (s *stubJobContext) Logger() *slog.Logger                      { return slog.Default() }
-func (s *stubJobContext) AwaitDuration(swf.Duration) error         { return nil }
+func (s *stubJobContext) GetJobId() swf.JobId              { return s.jobID }
+func (s *stubJobContext) Logger() *slog.Logger             { return slog.Default() }
+func (s *stubJobContext) AwaitDuration(swf.Duration) error { return nil }
 func (s *stubJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
 	return nil, fmt.Errorf("not implemented")
 }

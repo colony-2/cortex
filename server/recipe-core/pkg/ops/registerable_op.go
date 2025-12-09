@@ -94,7 +94,7 @@ func NewStep[In any, Out any](fn func(ctx context.Context, in In) (Out, error)) 
 	outputType := reflect.TypeOf((*Out)(nil)).Elem()
 	invoker := func(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
 		var input In
-		if err := decodeWithJsonTags(resolvedInput, &input); err != nil {
+		if err := DecodeWithJsonTags(resolvedInput, &input); err != nil {
 			return nil, fmt.Errorf("error decoding input: %w", err)
 		}
 		objResult, err := fn(ctx, input)
@@ -116,7 +116,7 @@ func NewStepWithDeps[In any, Out any](fn ActivityHandlerV2[In, Out]) Step {
 	outputType := reflect.TypeOf((*Out)(nil)).Elem()
 	invoker := func(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
 		var input In
-		if err := decodeWithJsonTags(resolvedInput, &input); err != nil {
+		if err := DecodeWithJsonTags(resolvedInput, &input); err != nil {
 			return nil, fmt.Errorf("error decoding input: %w", err)
 		}
 		objResult, err := fn(deps, ctx, input)
@@ -203,6 +203,10 @@ func (b *opBuilder) Build() (RegisterableOp, error) {
 	}
 	if len(b.steps) == 0 {
 		return nil, fmt.Errorf("at least one step is required")
+	}
+
+	if len(b.steps) > 64 {
+		return nil, fmt.Errorf("too many steps, max 64")
 	}
 
 	steps := make([]TaskStep, 0, len(b.steps))
@@ -297,7 +301,7 @@ func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, han
 	return op
 }
 
-func decodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
+func DecodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 	coerced, ok := any(input).(*map[string]interface{})
 	if ok {
 		for k, v := range data {

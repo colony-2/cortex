@@ -5,26 +5,42 @@ import (
 	"fmt"
 
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	"github.com/mitchellh/mapstructure"
 )
 
 type SWFWorkflowControl struct {
-	engine   swf.SWFEngine
-	registry *worker.Registry
+	Engine   swf.SWFEngine
+	Registry *worker.Registry
 }
 
-func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []swf.JobSummary, nextPage string, err error) {
-	resp, err := s.engine.ListJobs(ctx, request)
+func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []workflowctl.JobItem, nextPage string, err error) {
+	resp, err := s.Engine.ListJobs(ctx, request)
 	if err != nil {
 		return nil, "", err
 	}
-	return resp.Jobs, resp.NextPageToken, nil
+
+	jobs = make([]workflowctl.JobItem, len(resp.Jobs))
+	for i, j := range resp.Jobs {
+		jobs[i] = workflowctl.JobItem{
+			JobSummary: j,
+			TaskData: &taskDataGetter{
+				engine:  s.Engine,
+				jobID:   j.JobID,
+				ordinal: j.TaskWaitInput,
+			},
+		}
+	}
+
+	return jobs, resp.NextPageToken, nil
 }
 
-func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, data swf.TaskData) error {
-	handle, err := s.engine.GetWaitingTask(ctx, jobId)
+func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, hash string, outType any) error {
+	handle, err := s.Engine.GetWaitingTask(ctx, jobId)
 	if err != nil {
 		return err
 	}
@@ -32,20 +48,110 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, 
 		return fmt.Errorf("unexpected task ordinal: %d (actual pending: %d)", taskOrdinal, handle.TaskOrdinalToComplete())
 	}
 
-	return handle.Finish(ctx, data)
+	out := ops.ActivityInvocationOutputRaw{
+		GitResult: contextual.GitCommitContext{
+			PersistHash: hash,
+			ParentHash:  hash,
+		},
+		Output: outType,
+	}
+
+	outData, err := swf.NewTaskData(out)
+	if err != nil {
+		return err
+	}
+	return handle.Finish(ctx, outData)
+}
+
+func structToMap(v any) error {
+	result := make(map[string]any)
+	config := &mapstructure.DecoderConfig{
+		Metadata: nil,
+		Result:   &result,
+		TagName:  "json",
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+
+	err = decoder.Decode(v)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
-	file, err := s.registry.GetRecipe(req.RecipeName)
+	file, err := s.Registry.GetRecipe(req.RecipeName)
 	if err != nil {
 		return "", err
 	}
 
-	return compiler.StartRecipeJob(ctx, req, s.engine, file.Recipe)
+	return compiler.StartRecipeJob(ctx, req, s.Engine, file.Recipe)
 }
 
 func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {
-	return s.engine.CancelJob(ctx, swf.CancelJob{JobId: jobId})
+	return s.Engine.CancelJob(ctx, swf.CancelJob{JobId: jobId})
 }
+
+type taskDataGetter struct {
+	loaded  bool
+	engine  swf.SWFEngine
+	jobID   swf.JobId
+	ordinal *int64
+	data    swf.TaskData
+}
+
+func (t *taskDataGetter) checkLoad() error {
+	if t.loaded {
+		return nil
+	}
+	if t.ordinal == nil {
+		return fmt.Errorf("ordinal is required")
+	}
+	handle, err := t.engine.GetWaitingTask(context.Background(), t.jobID)
+	if err != nil {
+		return err
+	}
+
+	targetCompletion := *t.ordinal + 1
+	if handle.TaskOrdinalToComplete() != targetCompletion {
+		return fmt.Errorf("unexpected task ordinal: %d (actual pending: %d)", targetCompletion, handle.TaskOrdinalToComplete())
+	}
+
+	data, err := handle.Data()
+	if err != nil {
+		return err
+	}
+	t.data = data
+	t.loaded = true
+	return nil
+}
+
+func (t *taskDataGetter) GetData() (swf.Data, error) {
+	if err := t.checkLoad(); err != nil {
+		return nil, err
+	}
+	return t.data.GetData()
+}
+
+func (t *taskDataGetter) GetDataOrPanic() swf.Data {
+	d, err := t.GetData()
+	if err != nil {
+		panic(err)
+	}
+	return d
+}
+
+func (t *taskDataGetter) GetArtifacts() ([]swf.Artifact, error) {
+	if err := t.checkLoad(); err != nil {
+		return nil, err
+	}
+	return t.data.GetArtifacts()
+}
+
+var _ swf.TaskData = &taskDataGetter{}
 
 var _ workflowctl.WorkflowControl = &SWFWorkflowControl{}

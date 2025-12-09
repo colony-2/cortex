@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -120,7 +121,9 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		}
 
 		var envelope workerops.ActivityInvocationOutput
-		if err := json.Unmarshal(outputData, &envelope); err != nil {
+		decoder := json.NewDecoder(strings.NewReader(string(outputData)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&envelope); err != nil {
 			return fmt.Errorf("decode activity output envelope: %w", err)
 		}
 

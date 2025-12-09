@@ -98,6 +98,7 @@ type FormResponse struct {
 	Fields         map[string]interface{} `json:"fields,omitempty"`   // For multi-field
 	SubmittedAt    time.Time              `json:"submitted_at"`
 	TimeToComplete int                    `json:"time_to_complete"`
+	Hash           string                 `json:"hash"`
 }
 
 // InputWorkflowParams represents parameters for the input collection workflow

@@ -10,8 +10,8 @@ import (
 type WorkflowControl interface {
 	StartJob(ctx context.Context, req StartJob) (swf.JobId, error)
 	Cancel(ctx context.Context, jobId swf.JobId) error
-	ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []swf.JobSummary, nextPage string, err error)
-	CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, data swf.TaskData) error
+	ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []JobItem, nextPage string, err error)
+	CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, hash string, data any) error
 }
 
 type StartJob struct {
@@ -19,4 +19,9 @@ type StartJob struct {
 	Inputs     map[string]interface{}      `json:"inputs,omitempty"`
 	JobContext contextual.JobContext       `json:"context,omitempty"`
 	GitContext contextual.GitCommitContext `json:"git,omitempty"`
+}
+
+type JobItem struct {
+	TaskData swf.TaskData
+	swf.JobSummary
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/activity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -254,7 +255,7 @@ func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options act
 
 type stubWorkflowControl struct{}
 
-func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, data swf.TaskData) error {
+func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, hash string, data any) error {
 	return nil
 }
 
@@ -272,7 +273,7 @@ func (s *stubWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error
 	return nil
 }
 
-func (s *stubWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) ([]swf.JobSummary, string, error) {
+func (s *stubWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) ([]workflowctl.JobItem, string, error) {
 	_ = ctx
 	_ = request
 	return nil, "", nil

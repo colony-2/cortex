@@ -10,6 +10,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/activity"
 	"github.com/invopop/jsonschema"
 )
 
@@ -22,9 +23,16 @@ type ActivityInvocationRequest struct {
 
 // ActivityInvocationOutput wraps the raw op output alongside workspace results.
 type ActivityInvocationOutput struct {
-	OpOutput  map[string]interface{}      `json:"output"`
 	GitResult contextual.GitCommitContext `json:"git,omitempty"`
 	NextTask  string                      `json:"nextTaskType,omitempty"`
+	OpOutput  map[string]interface{}      `json:"output"`
+}
+
+// variation of ActivityInvocationOutput that allows arbitrary output types to avoid double serialization
+type ActivityInvocationOutputRaw struct {
+	GitResult contextual.GitCommitContext `json:"git,omitempty"`
+	NextTask  string                      `json:"nextTaskType,omitempty"`
+	Output    any                         `json:"output"`
 }
 
 // ActivityRegistration holds the activity step and its generated schemas.
@@ -153,6 +161,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 				PersistHash: output.CommitHash,
 				ParentHash:  output.ParentHash,
 			},
+
 			NextTask: reg.NextTaskType,
 		}, opDeps.GetOutputArtifacts(), nil
 	}

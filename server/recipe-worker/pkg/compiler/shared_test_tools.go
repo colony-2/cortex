@@ -63,7 +63,7 @@ func ensureTestRepo() (string, string) {
 	return testRepoPath, testRepoHash
 }
 
-func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
+func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
 	worktree, err := os.MkdirTemp("", "vibethis-worktree-*")
 	if err != nil {

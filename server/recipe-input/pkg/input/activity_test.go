@@ -1,0 +1,116 @@
+package input
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/colony-2/swf-go/pkg/swf/toy"
+	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflow"
+	"github.com/stretchr/testify/require"
+)
+
+type gen struct {
+	count int
+	max   int
+}
+
+func (g *gen) Generate() (swf.JobId, error) {
+	g.count++
+	if g.count > g.max {
+		return "", fmt.Errorf("too many jobs")
+	}
+	return swf.JobId(fmt.Sprintf("job-%d", g.count)), nil
+}
+
+func TestSimpleInput(t *testing.T) {
+	op := GetOp()
+	opR := op.GetManagementService().(*inputManagementService)
+	coreops.Register(op)
+	recipeYaml := `
+---
+id: test-recipe
+op: input
+inputs:
+  form:
+    question: "how old are you"
+`
+
+	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
+	require.NoError(t, err)
+
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(t, err)
+	g := gen{max: 1}
+	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+
+	wf := workflow.SWFWorkflowControl{
+		Engine: eng,
+	}
+	deps := coreops.NewServiceDepsBuilder().
+		WithWorkflowControl(&wf).
+		WithSSEManager(NewSimpleSSEManager()).
+		Build()
+	require.NoError(t, op.GetManagementService().Initialize(deps))
+
+	workSet, err := compiler.NewRecipeWorker(deps, registry)
+	require.NoError(t, eng.RegisterWorkers(workSet))
+	jobCtx, gitCtx := compiler.GenerateTestContext()
+	in := map[string]interface{}{}
+
+	job := workflowctl.StartJob{
+		RecipeName: testRecipe.GetMetadata().ID,
+		Inputs:     in,
+		JobContext: jobCtx,
+		GitContext: gitCtx,
+	}
+
+	errCh := make(chan error)
+	go func() {
+		_, err := compiler.StartRecipeJob(context.Background(), job, eng, *testRecipe)
+		errCh <- err
+	}()
+
+	time.Sleep(300 * time.Millisecond)
+
+	inputs, err := opR.collectPendingInputs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, len(inputs))
+	pending := inputs[0]
+
+	result := opR.getDetails(context.Background(), pending.JobID)
+	if result.hasError() {
+		t.Fatalf("failed to get result: %v", result.err)
+	}
+	details := result.value
+	require.Equal(t, "how old are you", details.Form.Question)
+	res2 := opR.submitResponse(context.Background(), pending.JobID, FormResponse{
+		Response: "foolish",
+		Hash:     "abc123",
+	})
+	if res2.hasError() {
+		t.Fatalf("failed to submit response: %v", res2.err)
+	}
+	err = <-errCh
+	require.NoError(t, err)
+
+	res3, err := eng.GetJobResult(context.Background(), swf.JobId("job-1"))
+	require.NoError(t, err)
+
+	res4, err := res3.GetData()
+	require.NoError(t, err)
+
+	air := Output{}
+	require.NoError(t, json.Unmarshal(res4, &air))
+
+	require.Equal(t, "foolish", air.Response)
+
+}

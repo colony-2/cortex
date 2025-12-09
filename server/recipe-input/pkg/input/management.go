@@ -12,6 +12,7 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	ops2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -35,10 +36,10 @@ func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error
 	s.ctl = deps.WorkflowControl()
 	s.sse = deps.SSEManager()
 
-	if s.ctl != nil {
+	if s.ctl == nil {
 		return fmt.Errorf("workflow control must be provided")
 	}
-	if s.sse != nil {
+	if s.sse == nil {
 		return fmt.Errorf("sse manager must be provided")
 	}
 	return nil
@@ -74,68 +75,136 @@ func (s *inputManagementService) ListPending(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-// GetDetails returns details about a specific input request
 func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Request) {
-	if s.ctl == nil {
-		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
-		return
-	}
-	// Extract from chi if available, otherwise parse from URL path segments.
 	jobId := chi.URLParam(r, "jobId")
 	if jobId == "" {
 		http.Error(w, "jobId is required", http.StatusBadRequest)
 	}
-
-	job := s.findJob(r.Context(), jobId, w)
-	if job == nil {
+	res := s.getDetails(r.Context(), jobId)
+	if res.sendError(w) {
 		return
 	}
-
-	// Extract workflow info and search attributes
-	result := map[string]interface{}{
-		"job_id":     jobId,
-		"status":     job.Status,
-		"start_time": job.CreatedAt,
+	form := res.value.Form
+	d := details{
+		jobID:     res.value.JobID,
+		status:    res.value.Status,
+		startTime: res.value.StartTime,
+		form:      form,
 	}
-
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
+	if err := json.NewEncoder(w).Encode(d); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+
 }
 
-func (s *inputManagementService) findJob(ctx context.Context, jobId string, w http.ResponseWriter) *swf.JobSummary {
+type detailsInput struct {
+	JobID     swf.JobId `json:"jobId"`
+	Status    swf.JobStatus
+	StartTime time.Time `json:"startTime"`
+	Form      Config    `json:"form"`
+	Hash      string    `json:"hash"`
+}
+
+// GetDetails returns details about a specific input request
+func (s *inputManagementService) getDetails(ctx context.Context, jobId string) result[*detailsInput] {
+	if s.ctl == nil {
+		return result[*detailsInput]{err: "workflow control unavailable"}
+	}
+	// Extract from chi if available, otherwise parse from URL path segments.
+
+	res := s.findJob(ctx, jobId)
+	if res.hasError() {
+		return result[*detailsInput]{err: res.err, status: res.status}
+	}
+	job := res.value
+
+	req := ops2.ActivityInvocationRequest{}
+	td := job.TaskData
+	data, err := td.GetData()
+	if err != nil {
+		return result[*detailsInput]{err: err.Error()}
+	}
+
+	err = json.Unmarshal(data, &req)
+	if err != nil {
+		return result[*detailsInput]{err: err.Error()}
+	}
+
+	in := Input{}
+	err = ops.DecodeWithJsonTags(req.Input, &in)
+	if err != nil {
+		return result[*detailsInput]{err: err.Error()}
+	}
+
+	return result[*detailsInput]{value: &detailsInput{
+		JobID:     job.JobID,
+		Status:    job.Status,
+		StartTime: job.CreatedAt,
+		Form:      in.Form,
+		Hash:      req.GitTaskContext.PersistHash,
+	}}
+}
+
+type details struct {
+	jobID     swf.JobId
+	status    swf.JobStatus
+	startTime time.Time
+	form      Config
+	hash      string
+}
+
+func (s *inputManagementService) findJob(ctx context.Context, jobId string) result[*workflowctl.JobItem] {
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
 		JobIDs: []swf.JobId{swf.JobId(jobId)},
 		Stores: []swf.JobStore{swf.JobStoreActive},
 	})
 	if err != nil {
 		log.Printf("input_mgmt.get_details: query_failed job_id=%s error=%v", jobId, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return nil
+		return result[*workflowctl.JobItem]{
+			err: fmt.Errorf("failed to query workflow: %w", err).Error(),
+		}
 	}
 	if len(jobs) == 0 {
 		log.Printf("input_mgmt.get_details: not_found job_id=%s", jobId)
-		http.Error(w, "not found", http.StatusNotFound)
-		return nil
+		return result[*workflowctl.JobItem]{
+			err:    "not found",
+			status: http.StatusNotFound,
+		}
 	}
-	return &jobs[0]
+	return result[*workflowctl.JobItem]{
+		value: &jobs[0],
+	}
 }
 
-// SubmitResponse handles user form submission
-func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.Request) {
-	if s.ctl == nil {
-		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
-		return
+type result[T any] struct {
+	value  T
+	err    string
+	status int // HTTP Status Code to be used by the handler
+}
+
+func (res result[T]) hasError() bool {
+	return res.err != ""
+}
+
+func (res result[T]) sendError(w http.ResponseWriter) bool {
+	if res.err != "" {
+		if res.status == 0 {
+			res.status = http.StatusInternalServerError
+		}
+		http.Error(w, res.err, res.status)
+		return true
 	}
+	return false
+}
+
+func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.Request) {
 	jobId := chi.URLParam(r, "jobId")
 	if jobId == "" {
 		http.Error(w, "jobId is required", http.StatusBadRequest)
 		return
 	}
-
-	output := Output{}
-
+	output := FormResponse{}
 	if err := json.NewDecoder(r.Body).Decode(&output); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
@@ -146,45 +215,52 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Get user ID preference: body overrides header, fallback to default
-	userID := output.UserID
-	if userID == "" {
-		userID = r.Header.Get("X-User-ID")
-	}
-	if userID == "" {
-		userID = "anonymous"
+	if output.UserID == "" {
+		output.UserID = r.Header.Get("X-User-ID")
 	}
 
-	job := s.findJob(r.Context(), jobId, w)
-	if job == nil {
-		return
-	}
-	data, err := swf.NewTaskData(output)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	outStep := job.TaskWaitOutput
-	if outStep == nil {
-		http.Error(w, "workflow is not waiting for user input", http.StatusBadRequest)
-		return
-	}
-
-	err = s.ctl.CompleteTask(r.Context(), job.JobID, *outStep, data)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Notify via SSE if available
-	if s.sse != nil {
-		http.Error(w, "sse_broadcast_missing", http.StatusInternalServerError)
+	res := s.submitResponse(r.Context(), jobId, output)
+	if res.sendError(w) {
 		return
 	}
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": res.value})
+}
+
+// SubmitResponse handles user form submission
+func (s *inputManagementService) submitResponse(ctx context.Context, jobId string, output FormResponse) result[bool] {
+	if s.ctl == nil {
+		return result[bool]{err: "workflow control unavailable"}
+	}
+
+	// Get user ID preference: body overrides header, fallback to default
+	userID := output.UserID
+	if userID == "" {
+		userID = "anonymous"
+	}
+
+	res := s.findJob(ctx, jobId)
+	if res.hasError() {
+		return result[bool]{err: res.err, status: res.status}
+	}
+
+	outStep := res.value.TaskWaitOutput
+	if outStep == nil {
+		return result[bool]{err: "job is not waiting for user input"}
+	}
+
+	err := s.ctl.CompleteTask(ctx, res.value.JobID, *outStep, output.Hash, output)
+
+	if err != nil {
+		return result[bool]{err: err.Error()}
+	}
+
+	// Notify via SSE if available
+	if s.sse == nil {
+		return result[bool]{err: "sse subsystem missing"}
+	}
+	return result[bool]{value: true}
 }
 
 // Cancel handles cancellation of a pending input request
@@ -307,11 +383,11 @@ const pendingStatusQuery = "InputStatus = \"pending\""
 func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]PendingInput, error) {
 	// TODO: explore supporting pagination.
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
-		Statuses: []swf.JobStatus{swf.JobStatusReady},
-		Stores:   []swf.JobStore{swf.JobStoreActive},
+		//		Statuses: []swf.JobStatus{swf.JobStatusReady},
+		Stores: []swf.JobStore{swf.JobStoreActive},
 		JobTasks: []swf.JobTaskFilter{{
 			JobType:  "recipe",
-			TaskType: "input",
+			TaskType: "input:input",
 		}},
 		PageSize: 500,
 	})
@@ -327,14 +403,6 @@ func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]Pe
 	}
 
 	return out, nil
-}
-
-func stringAttr(attrs map[string]any, key string) string {
-	val, ok := attrs[key]
-	if !ok || val == nil {
-		return ""
-	}
-	return stringValue(val)
 }
 
 func stringValue(val any) string {

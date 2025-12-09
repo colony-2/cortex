@@ -73,7 +73,7 @@ func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]inter
 	err = s.eng.RegisterWorkers(workSet)
 	require.NoError(s.T(), err)
 
-	jobCtx, gitCtx := generateTestContext()
+	jobCtx, gitCtx := GenerateTestContext()
 
 	job := workflowctl.StartJob{
 		RecipeName: "test-recipe",
@@ -188,7 +188,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	s.eng.Run(stop) // we start after worker registration.
 
 	require.NoError(s.T(), err)
-	jobCtx, gitCtx := generateTestContext()
+	jobCtx, gitCtx := GenerateTestContext()
 	in := map[string]interface{}{}
 
 	job := workflowctl.StartJob{
