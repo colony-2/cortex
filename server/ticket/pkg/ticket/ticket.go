@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	internalservice "github.com/divisive-ai/vibethis/server/ticket/internal/service"
@@ -14,6 +15,7 @@ type (
 	State                   = model.State
 	ID                      = model.ID
 	ProjectID               = project.ID
+	CellID                  = cell.ID
 	EmailAddress            = model.EmailAddress
 	ActorType               = model.ActorType
 	Actor                   = model.Actor
@@ -92,6 +94,7 @@ var (
 	ErrEmptyTitle          = internalservice.ErrEmptyTitle
 	ErrEmptyStage          = internalservice.ErrEmptyStage
 	ErrInvalidProject      = internalservice.ErrInvalidProject
+	ErrInvalidCell         = internalservice.ErrInvalidCell
 	ErrIDGeneration        = internalservice.ErrIDGeneration
 	ErrVersionConflict     = internalservice.ErrVersionConflict
 	ErrInvalidEventKind    = internalservice.ErrInvalidEventKind
@@ -106,14 +109,6 @@ func NewService(config ServiceConfig) (Service, error) {
 }
 
 func NewServiceFromDB(db *gorm.DB) (Service, error) {
-	store, err := NewStore(db)
-	if err != nil {
-		return nil, err
-	}
-	eventStore, err := NewEventStore(db)
-	if err != nil {
-		return nil, err
-	}
 	projectStore, err := project.NewStore(db)
 	if err != nil {
 		return nil, err
@@ -122,7 +117,23 @@ func NewServiceFromDB(db *gorm.DB) (Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewService(ServiceConfig{Store: store, EventStore: eventStore, Projects: projectSvc})
+	cellStore, err := cell.NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projectSvc})
+	if err != nil {
+		return nil, err
+	}
+	store, err := NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	eventStore, err := NewEventStore(db)
+	if err != nil {
+		return nil, err
+	}
+	return NewService(ServiceConfig{Store: store, EventStore: eventStore, Projects: projectSvc, Cells: cellSvc})
 }
 
 func NewStore(db *gorm.DB) (Store, error) {

@@ -1,7 +1,8 @@
-package worker
+package registry
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,7 +11,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 // TestRegistryInput and TestRegistryOutput types for test activities
@@ -41,7 +41,7 @@ func init() {
 }
 
 func TestRegistry_NewRegistry(t *testing.T) {
-	logger := zaptest.NewLogger(t)
+	logger := stdout()
 	tempDir := t.TempDir()
 
 	registry, err := NewRegistry(logger, tempDir)
@@ -55,8 +55,15 @@ func TestRegistry_NewRegistry(t *testing.T) {
 	assert.NotNil(t, registry.cancel)
 }
 
+func stdout() *slog.Logger {
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	return slog.New(h)
+}
+
 func TestRegistry_StartStop(t *testing.T) {
-	logger := zaptest.NewLogger(t)
+	logger := stdout()
 	tempDir := t.TempDir()
 
 	registry, err := NewRegistry(logger, tempDir)
@@ -75,7 +82,7 @@ func TestRegistry_StartStop(t *testing.T) {
 }
 
 func TestRegistry_RecipeDiscovery(t *testing.T) {
-	logger := zaptest.NewLogger(t)
+	logger := stdout()
 	tempDir := t.TempDir()
 
 	// Create a simple recipe file
@@ -117,7 +124,7 @@ sequence:
 	assert.Equal(t, "1.0.0", recipes[0].Version)
 
 	// Test GetRecipe
-	r, err := registry.GetRecipe("test-recipe")
+	r, err := registry.GetRecipeFile("test-recipe")
 	require.NoError(t, err)
 	assert.Equal(t, "test-recipe", r.ID)
 }
@@ -125,7 +132,7 @@ sequence:
 // TestRegistry_MultiFileRecipe removed - unified format doesn't support multi-file recipes
 
 func TestRegistry_RecipeNotFound(t *testing.T) {
-	logger := zaptest.NewLogger(t)
+	logger := stdout()
 	tempDir := t.TempDir()
 
 	registry, err := NewRegistry(logger, tempDir)
@@ -142,7 +149,7 @@ func TestRegistry_FileWatchingDebounce(t *testing.T) {
 		t.Skip("Skipping file watching test")
 	}
 
-	logger := zaptest.NewLogger(t)
+	logger := stdout()
 	tempDir := t.TempDir()
 
 	// Create initial recipe
@@ -172,7 +179,7 @@ sequence:
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify initial recipe (uses unified format name)
-	recipe, err := registry.GetRecipe("watch-test")
+	recipe, err := registry.GetRecipeFile("watch-test")
 	require.NoError(t, err)
 	assert.Equal(t, "1.0.0", recipe.Version)
 
@@ -196,7 +203,7 @@ sequence:
 	time.Sleep(1 * time.Second)
 
 	// Check final version (unified format)
-	recipe, err = registry.GetRecipe("watch-test")
+	recipe, err = registry.GetRecipeFile("watch-test")
 	require.NoError(t, err)
 	assert.Equal(t, "1.0.5", recipe.Version) // Latest version
 }

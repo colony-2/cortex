@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"gorm.io/plugin/optimisticlock"
@@ -48,10 +49,11 @@ type Actor struct {
 }
 
 type Ticket struct {
-	ID          ID                     `gorm:"index"`
+	ID          ID                     `gorm:"column:id;type:char(27);index"`
 	Version     optimisticlock.Version `gorm:"column:version"`
-	CellName    core.CellName
-	ProjectID   project.ID `gorm:"column:project_id;index;not null"`
+	ProjectID   project.ID             `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	CellID      cell.ID                `gorm:"column:cell_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	CellName    core.CellName          `gorm:"column:cell_name;index;not null"`
 	Title       string
 	Description string
 	Stage       Stage

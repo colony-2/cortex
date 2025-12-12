@@ -152,6 +152,9 @@ func applyFilter(db *gorm.DB, filter model.SearchFilter) *gorm.DB {
 	if len(filter.Cells) > 0 {
 		db = db.Where("cell_name IN ?", filter.Cells)
 	}
+	if len(filter.CellIDs) > 0 {
+		db = db.Where("cell_id IN ?", filter.CellIDs)
+	}
 	if len(filter.Projects) > 0 {
 		db = db.Where("project_id IN ?", filter.Projects)
 	}

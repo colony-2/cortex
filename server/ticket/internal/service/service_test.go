@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
@@ -41,14 +42,28 @@ type stubProjects struct {
 	deleteFunc func(ctx context.Context, id project.ID) error
 }
 
+type stubCells struct {
+	createFunc  func(ctx context.Context, input cell.CreateInput) (*cell.Cell, error)
+	getFunc     func(ctx context.Context, id cell.ID) (*cell.Cell, error)
+	listFunc    func(ctx context.Context, filter cell.SearchFilter) (cell.Iterator[*cell.Cell], error)
+	updateFunc  func(ctx context.Context, id cell.ID, patch cell.UpdateInput) (*cell.Cell, error)
+	deleteFunc  func(ctx context.Context, id cell.ID) error
+	replaceFunc func(ctx context.Context, id cell.ID, deps []cell.ID) error
+	syncFunc    func(ctx context.Context, projectID project.ID, pop cell.Populator, opts cell.SyncOptions) (*cell.SyncResult, error)
+}
+
 type sliceIterator[T any] struct {
-	items []T
-	idx   int
+	items   []T
+	idx     int
+	doneErr error
 }
 
 func (it *sliceIterator[T]) Next(ctx context.Context) (T, error) {
 	var zero T
 	if it.idx >= len(it.items) {
+		if it.doneErr != nil {
+			return zero, it.doneErr
+		}
 		return zero, store.ErrIteratorDone
 	}
 	item := it.items[it.idx]
@@ -194,6 +209,55 @@ func (s *stubProjects) DeleteProject(ctx context.Context, id project.ID) error {
 	return nil
 }
 
+func (s *stubCells) CreateCell(ctx context.Context, input cell.CreateInput) (*cell.Cell, error) {
+	if s.createFunc != nil {
+		return s.createFunc(ctx, input)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubCells) GetCell(ctx context.Context, id cell.ID) (*cell.Cell, error) {
+	if s.getFunc != nil {
+		return s.getFunc(ctx, id)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubCells) ListCells(ctx context.Context, filter cell.SearchFilter) (cell.Iterator[*cell.Cell], error) {
+	if s.listFunc != nil {
+		return s.listFunc(ctx, filter)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubCells) UpdateCell(ctx context.Context, id cell.ID, patch cell.UpdateInput) (*cell.Cell, error) {
+	if s.updateFunc != nil {
+		return s.updateFunc(ctx, id, patch)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubCells) MarkDeleted(ctx context.Context, id cell.ID) error {
+	if s.deleteFunc != nil {
+		return s.deleteFunc(ctx, id)
+	}
+	return nil
+}
+
+func (s *stubCells) ReplaceDependencies(ctx context.Context, id cell.ID, deps []cell.ID) error {
+	if s.replaceFunc != nil {
+		return s.replaceFunc(ctx, id, deps)
+	}
+	return nil
+}
+
+func (s *stubCells) SyncFromPopulator(ctx context.Context, projectID project.ID, pop cell.Populator, opts cell.SyncOptions) (*cell.SyncResult, error) {
+	if s.syncFunc != nil {
+		return s.syncFunc(ctx, projectID, pop, opts)
+	}
+	return nil, errors.New("not implemented")
+}
+
 type fixedClock struct{ now time.Time }
 
 func (f fixedClock) Now() time.Time { return f.now }
@@ -210,10 +274,30 @@ func version(v int64) optimisticlock.Version {
 }
 
 const testProjectID = project.ID("prj123456789012345678901234")
+const testCellID = cell.ID("cel123456789012345678901234")
 
 var okProjects = &stubProjects{
 	getFunc: func(ctx context.Context, id project.ID) (*project.Project, error) {
 		return &project.Project{ID: id}, nil
+	},
+}
+
+var okCells = &stubCells{
+	listFunc: func(ctx context.Context, filter cell.SearchFilter) (cell.Iterator[*cell.Cell], error) {
+		name := "cell-a"
+		if len(filter.Names) > 0 {
+			name = filter.Names[0]
+		}
+		projectID := testProjectID
+		if len(filter.ProjectIDs) > 0 {
+			projectID = filter.ProjectIDs[0]
+		}
+		return &sliceIterator[*cell.Cell]{
+			items: []*cell.Cell{
+				{ID: testCellID, ProjectID: projectID, Name: name, WorkingPath: "/tmp/" + name},
+			},
+			doneErr: cell.ErrIteratorDone,
+		}, nil
 	},
 }
 
@@ -230,6 +314,7 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 		Store:      st,
 		EventStore: &stubEventStore{},
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: "abc"},
 	})
@@ -258,6 +343,7 @@ func TestCreateTicketInvalidState(t *testing.T) {
 		Store:      &stubStore{},
 		EventStore: &stubEventStore{},
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: time.Now()},
 		IDGen:      stubIDGen{id: "abc"},
 	})
@@ -290,6 +376,7 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 		},
 		EventStore: &stubEventStore{},
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: "abc"},
 	})
@@ -330,6 +417,7 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 				return &project.Project{ID: id}, nil
 			},
 		},
+		Cells: okCells,
 		Clock: fixedClock{now: now},
 		IDGen: stubIDGen{id: "abc"},
 	})
@@ -379,6 +467,7 @@ func TestUpdateTicketDescriptionChange(t *testing.T) {
 		Store:      st,
 		EventStore: events,
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
@@ -421,6 +510,7 @@ func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 		Store:      st,
 		EventStore: evtStore,
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: string(ticketID)},
 		EventIDGen: stubIDGen{id: "event-123456789012345678901"},
@@ -485,6 +575,7 @@ func TestAppendTicketEventStoresNotes(t *testing.T) {
 		Store:      store,
 		EventStore: events,
 		Projects:   okProjects,
+		Cells:      okCells,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
@@ -517,6 +608,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 			},
 		},
 		Projects: okProjects,
+		Cells:    okCells,
 	})
 	require.NoError(t, err)
 
@@ -537,11 +629,33 @@ func TestResetTicketMissingAnchor(t *testing.T) {
 	evtStore, err := eventstore.New(pg.DB)
 	require.NoError(t, err)
 
+	projStore, err := project.NewStore(pg.DB)
+	require.NoError(t, err)
+	projSvc, err := project.NewService(project.ServiceConfig{Store: projStore})
+	require.NoError(t, err)
+	proj, err := projSvc.CreateProject(context.Background(), project.CreateInput{
+		Name:        "reset-project",
+		GitRepoPath: "git@example.com/reset.git",
+	})
+	require.NoError(t, err)
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(context.Background(), cell.CreateInput{
+		ProjectID:   proj.ID,
+		Name:        "cell-reset",
+		WorkingPath: "/repo/reset",
+	})
+	require.NoError(t, err)
+
 	now := time.Now().UTC()
 	svc, err := New(ServiceConfig{
 		Store:      ticketStore,
 		EventStore: evtStore,
-		Projects:   okProjects,
+		Projects:   projSvc,
+		Cells:      cellSvc,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
@@ -549,7 +663,7 @@ func TestResetTicketMissingAnchor(t *testing.T) {
 	ctx := context.Background()
 	created, err := svc.CreateTicket(ctx, CreateInput{
 		Cell:      "cell-reset",
-		ProjectID: testProjectID,
+		ProjectID: proj.ID,
 		Title:     "Rollback",
 		Stage:     model.Stage("triage"),
 		State:     model.StateWorking,

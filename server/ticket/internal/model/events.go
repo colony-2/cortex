@@ -110,15 +110,15 @@ func cloneTicketFieldChanges(changes []TicketFieldChange) []TicketFieldChange {
 }
 
 type TicketEvent struct {
-	ID          TicketEventID          `gorm:"primaryKey"`
-	TicketID    ID                     `gorm:"index;not null"`
-	ProjectID   project.ID             `gorm:"column:project_id;index;not null"`
+	ID          TicketEventID          `gorm:"column:id;type:char(27);primaryKey"`
+	TicketID    ID                     `gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ProjectID   project.ID             `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
 	Kind        TicketEventKind        `gorm:"type:text"`
 	PayloadType TicketEventPayloadType `gorm:"column:payload_type;type:text;index"`
 	Actor       Actor                  `gorm:"embedded;embeddedPrefix:actor_"`
 	EventTime   time.Time              `gorm:"index"`
 	CreatedAt   time.Time
-	ResetID     *TicketResetID `gorm:"index"`
+	ResetID     *TicketResetID `gorm:"column:reset_id;type:char(27);index"`
 
 	TicketData    TicketEventPayload      `gorm:"embedded;embeddedPrefix:ticket_" json:"-"`
 	TicketChanges TicketFieldChangeList   `gorm:"column:ticket_changes;type:jsonb" json:"-"`
@@ -195,9 +195,9 @@ type TicketResetEventPayload struct {
 }
 
 type TicketReset struct {
-	ID        TicketResetID `gorm:"primaryKey"`
-	TicketID  ID            `gorm:"index;not null"`
-	ProjectID project.ID    `gorm:"column:project_id;index;not null"`
+	ID        TicketResetID `gorm:"column:id;type:char(27);primaryKey"`
+	TicketID  ID            `gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ProjectID project.ID    `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
 	Actor     Actor         `gorm:"embedded;embeddedPrefix:actor_"`
 	Reason    string        `gorm:"type:text"`
 	CreatedAt time.Time

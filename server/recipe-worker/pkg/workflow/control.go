@@ -6,16 +6,19 @@ import (
 
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
-	"github.com/mitchellh/mapstructure"
 )
+
+type RecipeProvider interface {
+	GetRecipe(name string) (*recipe.Recipe, error)
+}
 
 type SWFWorkflowControl struct {
 	Engine   swf.SWFEngine
-	Registry *worker.Registry
+	Registry RecipeProvider
 }
 
 func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []workflowctl.JobItem, nextPage string, err error) {
@@ -63,33 +66,13 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, 
 	return handle.Finish(ctx, outData)
 }
 
-func structToMap(v any) error {
-	result := make(map[string]any)
-	config := &mapstructure.DecoderConfig{
-		Metadata: nil,
-		Result:   &result,
-		TagName:  "json",
-	}
-
-	decoder, err := mapstructure.NewDecoder(config)
-	if err != nil {
-		return err
-	}
-
-	err = decoder.Decode(v)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
-	file, err := s.Registry.GetRecipe(req.RecipeName)
+	r, err := s.Registry.GetRecipe(req.RecipeName)
 	if err != nil {
 		return "", err
 	}
 
-	return compiler.StartRecipeJob(ctx, req, s.Engine, file.Recipe)
+	return compiler.StartRecipeJob(ctx, req, s.Engine, *r)
 }
 
 func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {

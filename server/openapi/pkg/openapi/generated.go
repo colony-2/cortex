@@ -19,26 +19,82 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for ContainerStatus.
+// Defines values for ActorType.
 const (
-	Error   ContainerStatus = "error"
-	None    ContainerStatus = "none"
-	Running ContainerStatus = "running"
-	Stopped ContainerStatus = "stopped"
+	Agent ActorType = "agent"
+	User  ActorType = "user"
 )
 
-// Defines values for GitStatusFileStatus.
+// Defines values for FieldType.
 const (
-	A     GitStatusFileStatus = "A"
-	C     GitStatusFileStatus = "C"
-	D     GitStatusFileStatus = "D"
-	Empty GitStatusFileStatus = "?"
-	M     GitStatusFileStatus = "M"
-	R     GitStatusFileStatus = "R"
-	U     GitStatusFileStatus = "U"
+	FieldTypeCheckboxGrid       FieldType = "checkbox_grid"
+	FieldTypeCheckboxes         FieldType = "checkboxes"
+	FieldTypeDate               FieldType = "date"
+	FieldTypeDropdown           FieldType = "dropdown"
+	FieldTypeFileUpload         FieldType = "file_upload"
+	FieldTypeLinearScale        FieldType = "linear_scale"
+	FieldTypeMultipleChoice     FieldType = "multiple_choice"
+	FieldTypeMultipleChoiceGrid FieldType = "multiple_choice_grid"
+	FieldTypeParagraphText      FieldType = "paragraph_text"
+	FieldTypeShortAnswer        FieldType = "short_answer"
+	FieldTypeTime               FieldType = "time"
 )
+
+// Defines values for InputSSEEventType.
+const (
+	Connected      InputSSEEventType = "connected"
+	Error          InputSSEEventType = "error"
+	Heartbeat      InputSSEEventType = "heartbeat"
+	InputCancelled InputSSEEventType = "input_cancelled"
+	InputPending   InputSSEEventType = "input_pending"
+)
+
+// Defines values for TicketState.
+const (
+	WaitingCapacity   TicketState = "waiting_capacity"
+	WaitingDependency TicketState = "waiting_dependency"
+	WaitingUser       TicketState = "waiting_user"
+	Working           TicketState = "working"
+)
+
+// Actor Actor performing the action. Provide `user` when type=user, or `agent` when type=agent.
+type Actor struct {
+	Agent *ActorAgent `json:"agent,omitempty"`
+	Type  ActorType   `json:"type"`
+	User  *ActorUser  `json:"user,omitempty"`
+}
+
+// ActorAgent defines model for ActorAgent.
+type ActorAgent struct {
+	// Cell Name of the agent cell
+	Cell           string `json:"cell"`
+	ExecutionId    string `json:"execution_id"`
+	InvocationHash string `json:"invocation_hash"`
+	WorkflowName   string `json:"workflow_name"`
+}
+
+// ActorPatch defines model for ActorPatch.
+type ActorPatch struct {
+	Agent *ActorAgent `json:"agent,omitempty"`
+	Type  *ActorType  `json:"type,omitempty"`
+	User  *ActorUser  `json:"user,omitempty"`
+}
+
+// ActorType defines model for ActorType.
+type ActorType string
+
+// ActorUser defines model for ActorUser.
+type ActorUser struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// Artifact defines model for Artifact.
+type Artifact struct {
+	Path string `json:"path"`
+}
 
 // Cell defines model for Cell.
 type Cell struct {
@@ -58,8 +114,31 @@ type Cell struct {
 	Type string `json:"type"`
 }
 
-// ContainerStatus Current container status
-type ContainerStatus string
+// CellCreateRequest defines model for CellCreateRequest.
+type CellCreateRequest struct {
+	Description *string `json:"description,omitempty"`
+
+	// Name Logical cell name
+	Name        string  `json:"name"`
+	Populator   *string `json:"populator,omitempty"`
+	PopulatorId *string `json:"populatorId,omitempty"`
+
+	// WorkingPath Filesystem path backing the cell
+	WorkingPath string `json:"workingPath"`
+}
+
+// CellDependenciesRequest defines model for CellDependenciesRequest.
+type CellDependenciesRequest struct {
+	// Dependencies Ordered list of dependency cell IDs (duplicates or self references ignored)
+	Dependencies []string `json:"dependencies"`
+}
+
+// CellUpdateRequest defines model for CellUpdateRequest.
+type CellUpdateRequest struct {
+	Description *string `json:"description,omitempty"`
+	Name        *string `json:"name,omitempty"`
+	WorkingPath *string `json:"workingPath,omitempty"`
+}
 
 // Edge defines model for Edge.
 type Edge struct {
@@ -73,74 +152,56 @@ type Edge struct {
 	Target string `json:"target"`
 }
 
-// FileInfo defines model for FileInfo.
-type FileInfo struct {
-	// IsDir Whether this is a directory
-	IsDir bool `json:"isDir"`
+// FieldType defines model for FieldType.
+type FieldType string
 
-	// Name File or directory name
-	Name string `json:"name"`
-
-	// Path Relative path from cell directory
-	Path string `json:"path"`
-
-	// Size File size in bytes (0 for directories)
-	Size int64 `json:"size"`
-
-	// Type File type or MIME type
-	Type string `json:"type"`
+// FieldValidation defines model for FieldValidation.
+type FieldValidation struct {
+	Max       *int    `json:"max,omitempty"`
+	MaxLength *int    `json:"max_length,omitempty"`
+	Min       *int    `json:"min,omitempty"`
+	MinLength *int    `json:"min_length,omitempty"`
+	Pattern   *string `json:"pattern,omitempty"`
 }
 
-// GitCommit defines model for GitCommit.
-type GitCommit struct {
-	// Author Commit author name and email
-	Author string `json:"author"`
-
-	// Date Commit timestamp
-	Date time.Time `json:"date"`
-
-	// Hash Full commit hash
-	Hash string `json:"hash"`
-
-	// Message Commit message
-	Message string `json:"message"`
-
-	// ShortHash Abbreviated commit hash
-	ShortHash string `json:"shortHash"`
+// FormContext defines model for FormContext.
+type FormContext struct {
+	Artifacts           *[]Artifact    `json:"artifacts,omitempty"`
+	ArtifactsFromOutput *string        `json:"artifacts_from_output,omitempty"`
+	ArtifactsGlob       *[]GlobPattern `json:"artifacts_glob,omitempty"`
 }
 
-// GitStatus defines model for GitStatus.
-type GitStatus struct {
-	// Ahead Number of commits ahead of remote
-	Ahead int `json:"ahead"`
-
-	// Behind Number of commits behind remote
-	Behind int `json:"behind"`
-
-	// Branch Current Git branch name
-	Branch string `json:"branch"`
-
-	// Clean Whether the working directory is clean
-	Clean bool `json:"clean"`
-
-	// Files List of modified files
-	Files []GitStatusFile `json:"files"`
-
-	// HasRemote Whether a remote is configured
-	HasRemote bool `json:"hasRemote"`
+// FormField defines model for FormField.
+type FormField struct {
+	Id          string           `json:"id"`
+	Options     *[]Option        `json:"options,omitempty"`
+	Placeholder *string          `json:"placeholder,omitempty"`
+	Question    string           `json:"question"`
+	Required    *bool            `json:"required,omitempty"`
+	Scale       *LinearScale     `json:"scale,omitempty"`
+	Type        FieldType        `json:"type"`
+	Validation  *FieldValidation `json:"validation,omitempty"`
 }
 
-// GitStatusFile defines model for GitStatusFile.
-type GitStatusFile struct {
-	// Path File path relative to repository root
-	Path string `json:"path"`
+// FormResponse defines model for FormResponse.
+type FormResponse struct {
+	ActivityId *string `json:"activity_id,omitempty"`
 
-	// Status Git status code (M=modified, A=added, D=deleted, ?=untracked, etc.)
-	Status GitStatusFileStatus `json:"status"`
+	// Fields Field responses for multi-field forms
+	Fields map[string]interface{} `json:"fields"`
+	Hash   *string                `json:"hash,omitempty"`
+
+	// Response Single-question response value
+	Response       *interface{} `json:"response,omitempty"`
+	SubmittedAt    *time.Time   `json:"submitted_at,omitempty"`
+	TimeToComplete *int         `json:"time_to_complete,omitempty"`
+	UserId         *string      `json:"user_id,omitempty"`
 }
 
-// GitStatusFileStatus Git status code (M=modified, A=added, D=deleted, ?=untracked, etc.)
-type GitStatusFileStatus string
+// GlobPattern defines model for GlobPattern.
+type GlobPattern struct {
+	Pattern string `json:"pattern"`
+}
 
 // Graph defines model for Graph.
 type Graph struct {
@@ -151,71 +212,492 @@ type Graph struct {
 	Edges []Edge `json:"edges"`
 }
 
-// Position defines model for Position.
-type Position struct {
-	// CellId ID of the cell this position belongs to
-	CellId string `json:"cellId"`
+// InputFormConfig Configuration for a single- or multi-question input form.
+type InputFormConfig struct {
+	Context *FormContext `json:"context,omitempty"`
 
-	// X X coordinate in the UI
-	X float64 `json:"x"`
+	// DefaultOnTimeout Default value to return if input times out
+	DefaultOnTimeout *interface{} `json:"default_on_timeout,omitempty"`
+	Fields           *[]FormField `json:"fields,omitempty"`
+	Options          *[]Option    `json:"options,omitempty"`
+	Question         *string      `json:"question,omitempty"`
+	Scale            *LinearScale `json:"scale,omitempty"`
 
-	// Y Y coordinate in the UI
-	Y float64 `json:"y"`
+	// Timeout Timeout in seconds
+	Timeout *int       `json:"timeout,omitempty"`
+	Title   *string    `json:"title,omitempty"`
+	Type    *FieldType `json:"type,omitempty"`
 }
 
-// UpdateDevcontainerJSONBody defines parameters for UpdateDevcontainer.
-type UpdateDevcontainerJSONBody struct {
-	// Content JSON content for the devcontainer.json file
-	Content string `json:"content"`
+// InputSSECancelledData defines model for InputSSECancelledData.
+type InputSSECancelledData struct {
+	JobId  string  `json:"jobId"`
+	Reason *string `json:"reason,omitempty"`
 }
 
-// ListCellFilesParams defines parameters for ListCellFiles.
-type ListCellFilesParams struct {
-	// Path Subdirectory path within the cell (optional)
-	Path *string `form:"path,omitempty" json:"path,omitempty"`
+// InputSSEConnectedData defines model for InputSSEConnectedData.
+type InputSSEConnectedData struct {
+	ClientId string `json:"client_id"`
 }
 
-// WriteCellFileJSONBody defines parameters for WriteCellFile.
-type WriteCellFileJSONBody struct {
-	// Content The content to write to the file
-	Content string `json:"content"`
+// InputSSEErrorData defines model for InputSSEErrorData.
+type InputSSEErrorData struct {
+	Error string `json:"error"`
 }
 
-// CreateGitCommitJSONBody defines parameters for CreateGitCommit.
-type CreateGitCommitJSONBody struct {
-	// Files Optional list of files to stage before committing
-	Files *[]string `json:"files,omitempty"`
+// InputSSEEvent Event envelope emitted by /api/user-inputs/stream.
+type InputSSEEvent struct {
+	Data InputSSEEvent_Data `json:"data"`
 
-	// Message Commit message
-	Message string `json:"message"`
+	// Type Input SSE event type emitted by /api/user-inputs/stream.
+	Type InputSSEEventType `json:"type"`
 }
 
-// GetGitDiffParams defines parameters for GetGitDiff.
-type GetGitDiffParams struct {
-	// Staged Whether to show staged changes only
-	Staged *bool `form:"staged,omitempty" json:"staged,omitempty"`
+// InputSSEEvent_Data defines model for InputSSEEvent.Data.
+type InputSSEEvent_Data struct {
+	union json.RawMessage
 }
 
-// GetGitHistoryParams defines parameters for GetGitHistory.
-type GetGitHistoryParams struct {
-	// Limit Maximum number of commits to retrieve
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+// InputSSEEventType Input SSE event type emitted by /api/user-inputs/stream.
+type InputSSEEventType string
+
+// InputSSEHeartbeatData defines model for InputSSEHeartbeatData.
+type InputSSEHeartbeatData struct {
+	Timestamp time.Time `json:"timestamp"`
 }
 
-// SavePositionsJSONBody defines parameters for SavePositions.
-type SavePositionsJSONBody = []Position
+// InputSSEPendingData defines model for InputSSEPendingData.
+type InputSSEPendingData struct {
+	// Id Workflow job ID
+	Id string `json:"id"`
+}
 
-// UpdateDevcontainerJSONRequestBody defines body for UpdateDevcontainer for application/json ContentType.
-type UpdateDevcontainerJSONRequestBody UpdateDevcontainerJSONBody
+// LinearScale defines model for LinearScale.
+type LinearScale struct {
+	Max      int     `json:"max"`
+	MaxLabel *string `json:"max_label,omitempty"`
+	Min      int     `json:"min"`
+	MinLabel *string `json:"min_label,omitempty"`
+}
 
-// WriteCellFileJSONRequestBody defines body for WriteCellFile for application/json ContentType.
-type WriteCellFileJSONRequestBody WriteCellFileJSONBody
+// ManagedCell defines model for ManagedCell.
+type ManagedCell struct {
+	CreatedAt time.Time  `json:"createdAt"`
+	DeletedAt *time.Time `json:"deletedAt"`
 
-// CreateGitCommitJSONRequestBody defines body for CreateGitCommit for application/json ContentType.
-type CreateGitCommitJSONRequestBody CreateGitCommitJSONBody
+	// Dependencies Outbound dependency cell IDs
+	Dependencies *[]string `json:"dependencies,omitempty"`
+	Description  *string   `json:"description,omitempty"`
 
-// SavePositionsJSONRequestBody defines body for SavePositions for application/json ContentType.
-type SavePositionsJSONRequestBody = SavePositionsJSONBody
+	// Id Cell identifier (KSUID)
+	Id   string `json:"id"`
+	Name string `json:"name"`
+
+	// Populator Source system that created or updated the cell
+	Populator *string `json:"populator,omitempty"`
+
+	// PopulatorId External identifier from the populator
+	PopulatorId *string   `json:"populatorId,omitempty"`
+	ProjectId   string    `json:"projectId"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+
+	// Version Optimistic lock version
+	Version     int64  `json:"version"`
+	WorkingPath string `json:"workingPath"`
+}
+
+// Option defines model for Option.
+type Option struct {
+	Label *string `json:"label,omitempty"`
+	Value string  `json:"value"`
+}
+
+// PendingInput defines model for PendingInput.
+type PendingInput struct {
+	// Id Workflow job ID
+	Id string `json:"id"`
+}
+
+// Project defines model for Project.
+type Project struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// GitRepoPath Filesystem path to the git repository
+	GitRepoPath string `json:"gitRepoPath"`
+
+	// Id Project identifier (KSUID)
+	Id string `json:"id"`
+
+	// Name Project display name (unique)
+	Name      string    `json:"name"`
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Version Optimistic lock version
+	Version int64 `json:"version"`
+}
+
+// ProjectCreateRequest defines model for ProjectCreateRequest.
+type ProjectCreateRequest struct {
+	// GitRepoPath Filesystem path to the git repository
+	GitRepoPath string `json:"gitRepoPath"`
+
+	// Name Project name
+	Name string `json:"name"`
+}
+
+// ProjectUpdateRequest defines model for ProjectUpdateRequest.
+type ProjectUpdateRequest struct {
+	GitRepoPath *string `json:"gitRepoPath,omitempty"`
+	Name        *string `json:"name,omitempty"`
+}
+
+// SSEEvent defines model for SSEEvent.
+type SSEEvent struct {
+	// Data Event payload
+	Data *map[string]interface{} `json:"data,omitempty"`
+
+	// Type Event type
+	Type *string `json:"type,omitempty"`
+}
+
+// Ticket defines model for Ticket.
+type Ticket struct {
+	CellId      string     `json:"cellId"`
+	CellName    string     `json:"cellName"`
+	CompletedAt *time.Time `json:"completedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+
+	// Creator Actor performing the action. Provide `user` when type=user, or `agent` when type=agent.
+	Creator     Actor      `json:"creator"`
+	Description *string    `json:"description,omitempty"`
+	Id          string     `json:"id"`
+	LastResetAt *time.Time `json:"lastResetAt"`
+	LastResetId *string    `json:"lastResetId"`
+	ProjectId   string     `json:"projectId"`
+
+	// Stage Logical stage label (e.g., triage, review, __completed__)
+	Stage string `json:"stage"`
+
+	// State Built-in ticket states
+	State      TicketState `json:"state"`
+	Title      string      `json:"title"`
+	UpdatedAt  time.Time   `json:"updatedAt"`
+	ValidFrom  time.Time   `json:"validFrom"`
+	ValidUntil time.Time   `json:"validUntil"`
+	Version    int64       `json:"version"`
+}
+
+// TicketCreateRequest defines model for TicketCreateRequest.
+type TicketCreateRequest struct {
+	// Actor Actor performing the action. Provide `user` when type=user, or `agent` when type=agent.
+	Actor Actor `json:"actor"`
+
+	// Cell Cell name within the project
+	Cell        string  `json:"cell"`
+	Description *string `json:"description,omitempty"`
+	Stage       string  `json:"stage"`
+
+	// State Built-in ticket states
+	State TicketState `json:"state"`
+	Title string      `json:"title"`
+}
+
+// TicketState Built-in ticket states
+type TicketState string
+
+// TicketUpdateRequest defines model for TicketUpdateRequest.
+type TicketUpdateRequest struct {
+	Actor       *ActorPatch `json:"actor,omitempty"`
+	CompletedAt *time.Time  `json:"completedAt,omitempty"`
+	Description *string     `json:"description,omitempty"`
+
+	// ExpectedVersion Optimistic version expected by the client
+	ExpectedVersion *int64  `json:"expectedVersion,omitempty"`
+	Stage           *string `json:"stage,omitempty"`
+
+	// State Built-in ticket states
+	State *TicketState `json:"state,omitempty"`
+}
+
+// UserInputDetails defines model for UserInputDetails.
+type UserInputDetails struct {
+	// Form Configuration for a single- or multi-question input form.
+	Form      InputFormConfig `json:"form"`
+	Hash      *string         `json:"hash,omitempty"`
+	JobId     string          `json:"jobId"`
+	StartTime time.Time       `json:"startTime"`
+	Status    string          `json:"status"`
+}
+
+// GetApiProjectsParams defines parameters for GetApiProjects.
+type GetApiProjectsParams struct {
+	// Ids Filter by project IDs
+	Ids *[]string `form:"ids,omitempty" json:"ids,omitempty"`
+
+	// Names Filter by exact project names
+	Names *[]string `form:"names,omitempty" json:"names,omitempty"`
+
+	// NameContains Case-insensitive substring match on project name
+	NameContains *string `form:"nameContains,omitempty" json:"nameContains,omitempty"`
+}
+
+// GetApiProjectsProjectIdCellsParams defines parameters for GetApiProjectsProjectIdCells.
+type GetApiProjectsProjectIdCellsParams struct {
+	// Ids Filter by cell IDs
+	Ids *[]string `form:"ids,omitempty" json:"ids,omitempty"`
+
+	// Names Filter by cell names
+	Names *[]string `form:"names,omitempty" json:"names,omitempty"`
+
+	// NameContains Case-insensitive substring match on cell name
+	NameContains *string `form:"nameContains,omitempty" json:"nameContains,omitempty"`
+
+	// PathPrefix Filter by working path prefix
+	PathPrefix *string `form:"pathPrefix,omitempty" json:"pathPrefix,omitempty"`
+
+	// IncludeDeleted Include soft-deleted cells
+	IncludeDeleted *bool `form:"includeDeleted,omitempty" json:"includeDeleted,omitempty"`
+
+	// DependsOn Return cells that depend on any provided cell IDs
+	DependsOn *[]string `form:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+
+	// Populator Filter by populator name
+	Populator *string `form:"populator,omitempty" json:"populator,omitempty"`
+
+	// PopulatorIds Filter by populator external IDs
+	PopulatorIds *[]string `form:"populatorIds,omitempty" json:"populatorIds,omitempty"`
+}
+
+// GetApiProjectsProjectIdTicketsParams defines parameters for GetApiProjectsProjectIdTickets.
+type GetApiProjectsProjectIdTicketsParams struct {
+	// Stages Filter tickets matching any stage
+	Stages *[]string `form:"stages,omitempty" json:"stages,omitempty"`
+
+	// StageNotIn Exclude tickets with these stages
+	StageNotIn *[]string `form:"stageNotIn,omitempty" json:"stageNotIn,omitempty"`
+
+	// States Filter by ticket states
+	States *[]TicketState `form:"states,omitempty" json:"states,omitempty"`
+
+	// Actors Filter by actor types
+	Actors *[]ActorType `form:"actors,omitempty" json:"actors,omitempty"`
+
+	// Cells Filter by cell names
+	Cells *[]string `form:"cells,omitempty" json:"cells,omitempty"`
+
+	// UpdatedAfter Return tickets updated after this timestamp (RFC3339)
+	UpdatedAfter *time.Time `form:"updatedAfter,omitempty" json:"updatedAfter,omitempty"`
+
+	// UpdatedBefore Return tickets updated before this timestamp (RFC3339)
+	UpdatedBefore *time.Time `form:"updatedBefore,omitempty" json:"updatedBefore,omitempty"`
+
+	// CreatedAfter Return tickets created after this timestamp (RFC3339)
+	CreatedAfter *time.Time `form:"createdAfter,omitempty" json:"createdAfter,omitempty"`
+
+	// CreatedBefore Return tickets created before this timestamp (RFC3339)
+	CreatedBefore *time.Time `form:"createdBefore,omitempty" json:"createdBefore,omitempty"`
+}
+
+// GetApiProjectsProjectIdTicketsStagesParams defines parameters for GetApiProjectsProjectIdTicketsStages.
+type GetApiProjectsProjectIdTicketsStagesParams struct {
+	// Stages Include only these stages
+	Stages *[]string `form:"stages,omitempty" json:"stages,omitempty"`
+
+	// StageNotIn Exclude these stages
+	StageNotIn *[]string `form:"stageNotIn,omitempty" json:"stageNotIn,omitempty"`
+
+	// States Filter by states
+	States *[]TicketState `form:"states,omitempty" json:"states,omitempty"`
+
+	// Actors Filter by actor types
+	Actors *[]ActorType `form:"actors,omitempty" json:"actors,omitempty"`
+
+	// Cells Filter by cell names
+	Cells         *[]string  `form:"cells,omitempty" json:"cells,omitempty"`
+	UpdatedAfter  *time.Time `form:"updatedAfter,omitempty" json:"updatedAfter,omitempty"`
+	UpdatedBefore *time.Time `form:"updatedBefore,omitempty" json:"updatedBefore,omitempty"`
+	CreatedAfter  *time.Time `form:"createdAfter,omitempty" json:"createdAfter,omitempty"`
+	CreatedBefore *time.Time `form:"createdBefore,omitempty" json:"createdBefore,omitempty"`
+}
+
+// GetApiProjectsProjectIdTicketsTicketIdAtParams defines parameters for GetApiProjectsProjectIdTicketsTicketIdAt.
+type GetApiProjectsProjectIdTicketsTicketIdAtParams struct {
+	// At Timestamp (RFC3339) to fetch the ticket state at
+	At time.Time `form:"at" json:"at"`
+}
+
+// PostApiUserInputsJobIdCancelJSONBody defines parameters for PostApiUserInputsJobIdCancel.
+type PostApiUserInputsJobIdCancelJSONBody struct {
+	// Reason Human-readable cancellation reason
+	Reason *string `json:"reason,omitempty"`
+}
+
+// PostApiProjectsJSONRequestBody defines body for PostApiProjects for application/json ContentType.
+type PostApiProjectsJSONRequestBody = ProjectCreateRequest
+
+// PatchApiProjectsProjectIdJSONRequestBody defines body for PatchApiProjectsProjectId for application/json ContentType.
+type PatchApiProjectsProjectIdJSONRequestBody = ProjectUpdateRequest
+
+// PostApiProjectsProjectIdCellsJSONRequestBody defines body for PostApiProjectsProjectIdCells for application/json ContentType.
+type PostApiProjectsProjectIdCellsJSONRequestBody = CellCreateRequest
+
+// PatchApiProjectsProjectIdCellsCellIdJSONRequestBody defines body for PatchApiProjectsProjectIdCellsCellId for application/json ContentType.
+type PatchApiProjectsProjectIdCellsCellIdJSONRequestBody = CellUpdateRequest
+
+// PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody defines body for PutApiProjectsProjectIdCellsCellIdDependencies for application/json ContentType.
+type PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody = CellDependenciesRequest
+
+// PostApiProjectsProjectIdTicketsJSONRequestBody defines body for PostApiProjectsProjectIdTickets for application/json ContentType.
+type PostApiProjectsProjectIdTicketsJSONRequestBody = TicketCreateRequest
+
+// PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody defines body for PatchApiProjectsProjectIdTicketsTicketId for application/json ContentType.
+type PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody = TicketUpdateRequest
+
+// PostApiUserInputsJobIdCancelJSONRequestBody defines body for PostApiUserInputsJobIdCancel for application/json ContentType.
+type PostApiUserInputsJobIdCancelJSONRequestBody PostApiUserInputsJobIdCancelJSONBody
+
+// PostApiUserInputsJobIdRespondJSONRequestBody defines body for PostApiUserInputsJobIdRespond for application/json ContentType.
+type PostApiUserInputsJobIdRespondJSONRequestBody = FormResponse
+
+// AsInputSSEConnectedData returns the union data inside the InputSSEEvent_Data as a InputSSEConnectedData
+func (t InputSSEEvent_Data) AsInputSSEConnectedData() (InputSSEConnectedData, error) {
+	var body InputSSEConnectedData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromInputSSEConnectedData overwrites any union data inside the InputSSEEvent_Data as the provided InputSSEConnectedData
+func (t *InputSSEEvent_Data) FromInputSSEConnectedData(v InputSSEConnectedData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeInputSSEConnectedData performs a merge with any union data inside the InputSSEEvent_Data, using the provided InputSSEConnectedData
+func (t *InputSSEEvent_Data) MergeInputSSEConnectedData(v InputSSEConnectedData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsInputSSEPendingData returns the union data inside the InputSSEEvent_Data as a InputSSEPendingData
+func (t InputSSEEvent_Data) AsInputSSEPendingData() (InputSSEPendingData, error) {
+	var body InputSSEPendingData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromInputSSEPendingData overwrites any union data inside the InputSSEEvent_Data as the provided InputSSEPendingData
+func (t *InputSSEEvent_Data) FromInputSSEPendingData(v InputSSEPendingData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeInputSSEPendingData performs a merge with any union data inside the InputSSEEvent_Data, using the provided InputSSEPendingData
+func (t *InputSSEEvent_Data) MergeInputSSEPendingData(v InputSSEPendingData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsInputSSECancelledData returns the union data inside the InputSSEEvent_Data as a InputSSECancelledData
+func (t InputSSEEvent_Data) AsInputSSECancelledData() (InputSSECancelledData, error) {
+	var body InputSSECancelledData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromInputSSECancelledData overwrites any union data inside the InputSSEEvent_Data as the provided InputSSECancelledData
+func (t *InputSSEEvent_Data) FromInputSSECancelledData(v InputSSECancelledData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeInputSSECancelledData performs a merge with any union data inside the InputSSEEvent_Data, using the provided InputSSECancelledData
+func (t *InputSSEEvent_Data) MergeInputSSECancelledData(v InputSSECancelledData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsInputSSEHeartbeatData returns the union data inside the InputSSEEvent_Data as a InputSSEHeartbeatData
+func (t InputSSEEvent_Data) AsInputSSEHeartbeatData() (InputSSEHeartbeatData, error) {
+	var body InputSSEHeartbeatData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromInputSSEHeartbeatData overwrites any union data inside the InputSSEEvent_Data as the provided InputSSEHeartbeatData
+func (t *InputSSEEvent_Data) FromInputSSEHeartbeatData(v InputSSEHeartbeatData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeInputSSEHeartbeatData performs a merge with any union data inside the InputSSEEvent_Data, using the provided InputSSEHeartbeatData
+func (t *InputSSEEvent_Data) MergeInputSSEHeartbeatData(v InputSSEHeartbeatData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsInputSSEErrorData returns the union data inside the InputSSEEvent_Data as a InputSSEErrorData
+func (t InputSSEEvent_Data) AsInputSSEErrorData() (InputSSEErrorData, error) {
+	var body InputSSEErrorData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromInputSSEErrorData overwrites any union data inside the InputSSEEvent_Data as the provided InputSSEErrorData
+func (t *InputSSEEvent_Data) FromInputSSEErrorData(v InputSSEErrorData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeInputSSEErrorData performs a merge with any union data inside the InputSSEEvent_Data, using the provided InputSSEErrorData
+func (t *InputSSEEvent_Data) MergeInputSSEErrorData(v InputSSEErrorData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t InputSSEEvent_Data) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *InputSSEEvent_Data) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -290,68 +772,99 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-	// CreateContainer request
-	CreateContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjects request
+	GetApiProjects(ctx context.Context, params *GetApiProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpdateDevcontainerWithBody request with any body
-	UpdateDevcontainerWithBody(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostApiProjectsWithBody request with any body
+	PostApiProjectsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	UpdateDevcontainer(ctx context.Context, cellId string, body UpdateDevcontainerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostApiProjects(ctx context.Context, body PostApiProjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ResetContainer request
-	ResetContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeleteApiProjectsProjectId request
+	DeleteApiProjectsProjectId(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RestartContainer request
-	RestartContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectId request
+	GetApiProjectsProjectId(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// StartContainer request
-	StartContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PatchApiProjectsProjectIdWithBody request with any body
+	PatchApiProjectsProjectIdWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetContainerStatus request
-	GetContainerStatus(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchApiProjectsProjectId(ctx context.Context, projectId string, body PatchApiProjectsProjectIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// StopContainer request
-	StopContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectIdCells request
+	GetApiProjectsProjectIdCells(ctx context.Context, projectId string, params *GetApiProjectsProjectIdCellsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListCellFiles request
-	ListCellFiles(ctx context.Context, cellId string, params *ListCellFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostApiProjectsProjectIdCellsWithBody request with any body
+	PostApiProjectsProjectIdCellsWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ReadCellFile request
-	ReadCellFile(ctx context.Context, cellId string, filePath string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostApiProjectsProjectIdCells(ctx context.Context, projectId string, body PostApiProjectsProjectIdCellsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// WriteCellFileWithBody request with any body
-	WriteCellFileWithBody(ctx context.Context, cellId string, filePath string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeleteApiProjectsProjectIdCellsCellId request
+	DeleteApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	WriteCellFile(ctx context.Context, cellId string, filePath string, body WriteCellFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectIdCellsCellId request
+	GetApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// CreateGitCommitWithBody request with any body
-	CreateGitCommitWithBody(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PatchApiProjectsProjectIdCellsCellIdWithBody request with any body
+	PatchApiProjectsProjectIdCellsCellIdWithBody(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	CreateGitCommit(ctx context.Context, cellId string, body CreateGitCommitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PatchApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, body PatchApiProjectsProjectIdCellsCellIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetGitDiff request
-	GetGitDiff(ctx context.Context, cellId string, params *GetGitDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PutApiProjectsProjectIdCellsCellIdDependenciesWithBody request with any body
+	PutApiProjectsProjectIdCellsCellIdDependenciesWithBody(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetGitHistory request
-	GetGitHistory(ctx context.Context, cellId string, params *GetGitHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PutApiProjectsProjectIdCellsCellIdDependencies(ctx context.Context, projectId string, cellId string, body PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetGitStatus request
-	GetGitStatus(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectIdGraph request
+	GetApiProjectsProjectIdGraph(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetGraph request
-	GetGraph(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectIdTickets request
+	GetApiProjectsProjectIdTickets(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetPositions request
-	GetPositions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// PostApiProjectsProjectIdTicketsWithBody request with any body
+	PostApiProjectsProjectIdTicketsWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// SavePositionsWithBody request with any body
-	SavePositionsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+	PostApiProjectsProjectIdTickets(ctx context.Context, projectId string, body PostApiProjectsProjectIdTicketsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	SavePositions(ctx context.Context, body SavePositionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiProjectsProjectIdTicketsStages request
+	GetApiProjectsProjectIdTicketsStages(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsStagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiProjectsProjectIdTicketsStates request
+	GetApiProjectsProjectIdTicketsStates(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiProjectsProjectIdTicketsTicketId request
+	GetApiProjectsProjectIdTicketsTicketId(ctx context.Context, projectId string, ticketId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PatchApiProjectsProjectIdTicketsTicketIdWithBody request with any body
+	PatchApiProjectsProjectIdTicketsTicketIdWithBody(ctx context.Context, projectId string, ticketId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PatchApiProjectsProjectIdTicketsTicketId(ctx context.Context, projectId string, ticketId string, body PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiProjectsProjectIdTicketsTicketIdAt request
+	GetApiProjectsProjectIdTicketsTicketIdAt(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdAtParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiUserInputsPending request
+	GetApiUserInputsPending(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiUserInputsStream request
+	GetApiUserInputsStream(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiUserInputsJobId request
+	GetApiUserInputsJobId(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiUserInputsJobIdCancelWithBody request with any body
+	PostApiUserInputsJobIdCancelWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostApiUserInputsJobIdCancel(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiUserInputsJobIdRespondWithBody request with any body
+	PostApiUserInputsJobIdRespondWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostApiUserInputsJobIdRespond(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-func (c *Client) CreateContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateContainerRequest(c.Server, cellId)
+func (c *Client) GetApiProjects(ctx context.Context, params *GetApiProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -362,8 +875,8 @@ func (c *Client) CreateContainer(ctx context.Context, cellId string, reqEditors 
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateDevcontainerWithBody(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateDevcontainerRequestWithBody(c.Server, cellId, contentType, body)
+func (c *Client) PostApiProjectsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -374,8 +887,8 @@ func (c *Client) UpdateDevcontainerWithBody(ctx context.Context, cellId string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) UpdateDevcontainer(ctx context.Context, cellId string, body UpdateDevcontainerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewUpdateDevcontainerRequest(c.Server, cellId, body)
+func (c *Client) PostApiProjects(ctx context.Context, body PostApiProjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -386,8 +899,8 @@ func (c *Client) UpdateDevcontainer(ctx context.Context, cellId string, body Upd
 	return c.Client.Do(req)
 }
 
-func (c *Client) ResetContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewResetContainerRequest(c.Server, cellId)
+func (c *Client) DeleteApiProjectsProjectId(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiProjectsProjectIdRequest(c.Server, projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -398,8 +911,8 @@ func (c *Client) ResetContainer(ctx context.Context, cellId string, reqEditors .
 	return c.Client.Do(req)
 }
 
-func (c *Client) RestartContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRestartContainerRequest(c.Server, cellId)
+func (c *Client) GetApiProjectsProjectId(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdRequest(c.Server, projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -410,8 +923,8 @@ func (c *Client) RestartContainer(ctx context.Context, cellId string, reqEditors
 	return c.Client.Do(req)
 }
 
-func (c *Client) StartContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStartContainerRequest(c.Server, cellId)
+func (c *Client) PatchApiProjectsProjectIdWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdRequestWithBody(c.Server, projectId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -422,8 +935,8 @@ func (c *Client) StartContainer(ctx context.Context, cellId string, reqEditors .
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetContainerStatus(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetContainerStatusRequest(c.Server, cellId)
+func (c *Client) PatchApiProjectsProjectId(ctx context.Context, projectId string, body PatchApiProjectsProjectIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdRequest(c.Server, projectId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -434,8 +947,8 @@ func (c *Client) GetContainerStatus(ctx context.Context, cellId string, reqEdito
 	return c.Client.Do(req)
 }
 
-func (c *Client) StopContainer(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewStopContainerRequest(c.Server, cellId)
+func (c *Client) GetApiProjectsProjectIdCells(ctx context.Context, projectId string, params *GetApiProjectsProjectIdCellsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdCellsRequest(c.Server, projectId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -446,8 +959,8 @@ func (c *Client) StopContainer(ctx context.Context, cellId string, reqEditors ..
 	return c.Client.Do(req)
 }
 
-func (c *Client) ListCellFiles(ctx context.Context, cellId string, params *ListCellFilesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewListCellFilesRequest(c.Server, cellId, params)
+func (c *Client) PostApiProjectsProjectIdCellsWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdCellsRequestWithBody(c.Server, projectId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -458,8 +971,8 @@ func (c *Client) ListCellFiles(ctx context.Context, cellId string, params *ListC
 	return c.Client.Do(req)
 }
 
-func (c *Client) ReadCellFile(ctx context.Context, cellId string, filePath string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewReadCellFileRequest(c.Server, cellId, filePath)
+func (c *Client) PostApiProjectsProjectIdCells(ctx context.Context, projectId string, body PostApiProjectsProjectIdCellsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdCellsRequest(c.Server, projectId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -470,8 +983,8 @@ func (c *Client) ReadCellFile(ctx context.Context, cellId string, filePath strin
 	return c.Client.Do(req)
 }
 
-func (c *Client) WriteCellFileWithBody(ctx context.Context, cellId string, filePath string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewWriteCellFileRequestWithBody(c.Server, cellId, filePath, contentType, body)
+func (c *Client) DeleteApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiProjectsProjectIdCellsCellIdRequest(c.Server, projectId, cellId)
 	if err != nil {
 		return nil, err
 	}
@@ -482,8 +995,8 @@ func (c *Client) WriteCellFileWithBody(ctx context.Context, cellId string, fileP
 	return c.Client.Do(req)
 }
 
-func (c *Client) WriteCellFile(ctx context.Context, cellId string, filePath string, body WriteCellFileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewWriteCellFileRequest(c.Server, cellId, filePath, body)
+func (c *Client) GetApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdCellsCellIdRequest(c.Server, projectId, cellId)
 	if err != nil {
 		return nil, err
 	}
@@ -494,8 +1007,8 @@ func (c *Client) WriteCellFile(ctx context.Context, cellId string, filePath stri
 	return c.Client.Do(req)
 }
 
-func (c *Client) CreateGitCommitWithBody(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGitCommitRequestWithBody(c.Server, cellId, contentType, body)
+func (c *Client) PatchApiProjectsProjectIdCellsCellIdWithBody(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdCellsCellIdRequestWithBody(c.Server, projectId, cellId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -506,8 +1019,8 @@ func (c *Client) CreateGitCommitWithBody(ctx context.Context, cellId string, con
 	return c.Client.Do(req)
 }
 
-func (c *Client) CreateGitCommit(ctx context.Context, cellId string, body CreateGitCommitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewCreateGitCommitRequest(c.Server, cellId, body)
+func (c *Client) PatchApiProjectsProjectIdCellsCellId(ctx context.Context, projectId string, cellId string, body PatchApiProjectsProjectIdCellsCellIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdCellsCellIdRequest(c.Server, projectId, cellId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -518,8 +1031,8 @@ func (c *Client) CreateGitCommit(ctx context.Context, cellId string, body Create
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetGitDiff(ctx context.Context, cellId string, params *GetGitDiffParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetGitDiffRequest(c.Server, cellId, params)
+func (c *Client) PutApiProjectsProjectIdCellsCellIdDependenciesWithBody(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiProjectsProjectIdCellsCellIdDependenciesRequestWithBody(c.Server, projectId, cellId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -530,8 +1043,8 @@ func (c *Client) GetGitDiff(ctx context.Context, cellId string, params *GetGitDi
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetGitHistory(ctx context.Context, cellId string, params *GetGitHistoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetGitHistoryRequest(c.Server, cellId, params)
+func (c *Client) PutApiProjectsProjectIdCellsCellIdDependencies(ctx context.Context, projectId string, cellId string, body PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutApiProjectsProjectIdCellsCellIdDependenciesRequest(c.Server, projectId, cellId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -542,8 +1055,8 @@ func (c *Client) GetGitHistory(ctx context.Context, cellId string, params *GetGi
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetGitStatus(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetGitStatusRequest(c.Server, cellId)
+func (c *Client) GetApiProjectsProjectIdGraph(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdGraphRequest(c.Server, projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -554,8 +1067,8 @@ func (c *Client) GetGitStatus(ctx context.Context, cellId string, reqEditors ...
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetGraph(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetGraphRequest(c.Server)
+func (c *Client) GetApiProjectsProjectIdTickets(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdTicketsRequest(c.Server, projectId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -566,8 +1079,8 @@ func (c *Client) GetGraph(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetPositions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetPositionsRequest(c.Server)
+func (c *Client) PostApiProjectsProjectIdTicketsWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdTicketsRequestWithBody(c.Server, projectId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -578,8 +1091,8 @@ func (c *Client) GetPositions(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
-func (c *Client) SavePositionsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSavePositionsRequestWithBody(c.Server, contentType, body)
+func (c *Client) PostApiProjectsProjectIdTickets(ctx context.Context, projectId string, body PostApiProjectsProjectIdTicketsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdTicketsRequest(c.Server, projectId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -590,8 +1103,8 @@ func (c *Client) SavePositionsWithBody(ctx context.Context, contentType string, 
 	return c.Client.Do(req)
 }
 
-func (c *Client) SavePositions(ctx context.Context, body SavePositionsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewSavePositionsRequest(c.Server, body)
+func (c *Client) GetApiProjectsProjectIdTicketsStages(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsStagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdTicketsStagesRequest(c.Server, projectId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -602,274 +1115,160 @@ func (c *Client) SavePositions(ctx context.Context, body SavePositionsJSONReques
 	return c.Client.Do(req)
 }
 
-// NewCreateContainerRequest generates requests for CreateContainer
-func NewCreateContainerRequest(server string, cellId string) (*http.Request, error) {
+func (c *Client) GetApiProjectsProjectIdTicketsStates(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdTicketsStatesRequest(c.Server, projectId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiProjectsProjectIdTicketsTicketId(ctx context.Context, projectId string, ticketId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdTicketsTicketIdRequest(c.Server, projectId, ticketId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchApiProjectsProjectIdTicketsTicketIdWithBody(ctx context.Context, projectId string, ticketId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdTicketsTicketIdRequestWithBody(c.Server, projectId, ticketId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PatchApiProjectsProjectIdTicketsTicketId(ctx context.Context, projectId string, ticketId string, body PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPatchApiProjectsProjectIdTicketsTicketIdRequest(c.Server, projectId, ticketId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiProjectsProjectIdTicketsTicketIdAt(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdAtParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdTicketsTicketIdAtRequest(c.Server, projectId, ticketId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiUserInputsPending(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiUserInputsPendingRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiUserInputsStream(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiUserInputsStreamRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiUserInputsJobId(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiUserInputsJobIdRequest(c.Server, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiUserInputsJobIdCancelWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiUserInputsJobIdCancelRequestWithBody(c.Server, jobId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiUserInputsJobIdCancel(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiUserInputsJobIdCancelRequest(c.Server, jobId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiUserInputsJobIdRespondWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiUserInputsJobIdRespondRequestWithBody(c.Server, jobId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiUserInputsJobIdRespond(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiUserInputsJobIdRespondRequest(c.Server, jobId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewGetApiProjectsRequest generates requests for GetApiProjects
+func NewGetApiProjectsRequest(server string, params *GetApiProjectsParams) (*http.Request, error) {
 	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/cells/%s/container/create", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewUpdateDevcontainerRequest calls the generic UpdateDevcontainer builder with application/json body
-func NewUpdateDevcontainerRequest(server string, cellId string, body UpdateDevcontainerJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewUpdateDevcontainerRequestWithBody(server, cellId, "application/json", bodyReader)
-}
-
-// NewUpdateDevcontainerRequestWithBody generates requests for UpdateDevcontainer with any type of body
-func NewUpdateDevcontainerRequestWithBody(server string, cellId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/devcontainer", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewResetContainerRequest generates requests for ResetContainer
-func NewResetContainerRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/reset", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewRestartContainerRequest generates requests for RestartContainer
-func NewRestartContainerRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/restart", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewStartContainerRequest generates requests for StartContainer
-func NewStartContainerRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/start", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetContainerStatusRequest generates requests for GetContainerStatus
-func NewGetContainerStatusRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/status", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewStopContainerRequest generates requests for StopContainer
-func NewStopContainerRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/container/stop", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewListCellFilesRequest generates requests for ListCellFiles
-func NewListCellFilesRequest(server string, cellId string, params *ListCellFilesParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/files", pathParam0)
+	operationPath := fmt.Sprintf("/api/projects")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -882,9 +1281,41 @@ func NewListCellFilesRequest(server string, cellId string, params *ListCellFiles
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Path != nil {
+		if params.Ids != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "path", runtime.ParamLocationQuery, *params.Path); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ids", runtime.ParamLocationQuery, *params.Ids); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Names != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "names", runtime.ParamLocationQuery, *params.Names); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.NameContains != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nameContains", runtime.ParamLocationQuery, *params.NameContains); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -909,129 +1340,27 @@ func NewListCellFilesRequest(server string, cellId string, params *ListCellFiles
 	return req, nil
 }
 
-// NewReadCellFileRequest generates requests for ReadCellFile
-func NewReadCellFileRequest(server string, cellId string, filePath string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "filePath", runtime.ParamLocationPath, filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/files/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewWriteCellFileRequest calls the generic WriteCellFile builder with application/json body
-func NewWriteCellFileRequest(server string, cellId string, filePath string, body WriteCellFileJSONRequestBody) (*http.Request, error) {
+// NewPostApiProjectsRequest calls the generic PostApiProjects builder with application/json body
+func NewPostApiProjectsRequest(server string, body PostApiProjectsJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewWriteCellFileRequestWithBody(server, cellId, filePath, "application/json", bodyReader)
+	return NewPostApiProjectsRequestWithBody(server, "application/json", bodyReader)
 }
 
-// NewWriteCellFileRequestWithBody generates requests for WriteCellFile with any type of body
-func NewWriteCellFileRequestWithBody(server string, cellId string, filePath string, contentType string, body io.Reader) (*http.Request, error) {
+// NewPostApiProjectsRequestWithBody generates requests for PostApiProjects with any type of body
+func NewPostApiProjectsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "filePath", runtime.ParamLocationPath, filePath)
-	if err != nil {
-		return nil, err
-	}
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/cells/%s/files/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PUT", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewCreateGitCommitRequest calls the generic CreateGitCommit builder with application/json body
-func NewCreateGitCommitRequest(server string, cellId string, body CreateGitCommitJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewCreateGitCommitRequestWithBody(server, cellId, "application/json", bodyReader)
-}
-
-// NewCreateGitCommitRequestWithBody generates requests for CreateGitCommit with any type of body
-func NewCreateGitCommitRequestWithBody(server string, cellId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/git/commit", pathParam0)
+	operationPath := fmt.Sprintf("/api/projects")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1051,13 +1380,13 @@ func NewCreateGitCommitRequestWithBody(server string, cellId string, contentType
 	return req, nil
 }
 
-// NewGetGitDiffRequest generates requests for GetGitDiff
-func NewGetGitDiffRequest(server string, cellId string, params *GetGitDiffParams) (*http.Request, error) {
+// NewDeleteApiProjectsProjectIdRequest generates requests for DeleteApiProjectsProjectId
+func NewDeleteApiProjectsProjectIdRequest(server string, projectId string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -1067,7 +1396,7 @@ func NewGetGitDiffRequest(server string, cellId string, params *GetGitDiffParams
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/cells/%s/git/diff", pathParam0)
+	operationPath := fmt.Sprintf("/api/projects/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1077,29 +1406,7 @@ func NewGetGitDiffRequest(server string, cellId string, params *GetGitDiffParams
 		return nil, err
 	}
 
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Staged != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "staged", runtime.ParamLocationQuery, *params.Staged); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,13 +1414,13 @@ func NewGetGitDiffRequest(server string, cellId string, params *GetGitDiffParams
 	return req, nil
 }
 
-// NewGetGitHistoryRequest generates requests for GetGitHistory
-func NewGetGitHistoryRequest(server string, cellId string, params *GetGitHistoryParams) (*http.Request, error) {
+// NewGetApiProjectsProjectIdRequest generates requests for GetApiProjectsProjectId
+func NewGetApiProjectsProjectIdRequest(server string, projectId string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
 
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -1123,63 +1430,7 @@ func NewGetGitHistoryRequest(server string, cellId string, params *GetGitHistory
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/cells/%s/git/history", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Limit != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetGitStatusRequest generates requests for GetGitStatus
-func NewGetGitStatusRequest(server string, cellId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/cells/%s/git/status", pathParam0)
+	operationPath := fmt.Sprintf("/api/projects/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1197,73 +1448,1097 @@ func NewGetGitStatusRequest(server string, cellId string) (*http.Request, error)
 	return req, nil
 }
 
-// NewGetGraphRequest generates requests for GetGraph
-func NewGetGraphRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/graph")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetPositionsRequest generates requests for GetPositions
-func NewGetPositionsRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/positions")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewSavePositionsRequest calls the generic SavePositions builder with application/json body
-func NewSavePositionsRequest(server string, body SavePositionsJSONRequestBody) (*http.Request, error) {
+// NewPatchApiProjectsProjectIdRequest calls the generic PatchApiProjectsProjectId builder with application/json body
+func NewPatchApiProjectsProjectIdRequest(server string, projectId string, body PatchApiProjectsProjectIdJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
 	bodyReader = bytes.NewReader(buf)
-	return NewSavePositionsRequestWithBody(server, "application/json", bodyReader)
+	return NewPatchApiProjectsProjectIdRequestWithBody(server, projectId, "application/json", bodyReader)
 }
 
-// NewSavePositionsRequestWithBody generates requests for SavePositions with any type of body
-func NewSavePositionsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+// NewPatchApiProjectsProjectIdRequestWithBody generates requests for PatchApiProjectsProjectId with any type of body
+func NewPatchApiProjectsProjectIdRequestWithBody(server string, projectId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdCellsRequest generates requests for GetApiProjectsProjectIdCells
+func NewGetApiProjectsProjectIdCellsRequest(server string, projectId string, params *GetApiProjectsProjectIdCellsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Ids != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ids", runtime.ParamLocationQuery, *params.Ids); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Names != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "names", runtime.ParamLocationQuery, *params.Names); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.NameContains != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nameContains", runtime.ParamLocationQuery, *params.NameContains); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.PathPrefix != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "pathPrefix", runtime.ParamLocationQuery, *params.PathPrefix); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.IncludeDeleted != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "includeDeleted", runtime.ParamLocationQuery, *params.IncludeDeleted); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.DependsOn != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "dependsOn", runtime.ParamLocationQuery, *params.DependsOn); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Populator != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "populator", runtime.ParamLocationQuery, *params.Populator); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.PopulatorIds != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "populatorIds", runtime.ParamLocationQuery, *params.PopulatorIds); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiProjectsProjectIdCellsRequest calls the generic PostApiProjectsProjectIdCells builder with application/json body
+func NewPostApiProjectsProjectIdCellsRequest(server string, projectId string, body PostApiProjectsProjectIdCellsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiProjectsProjectIdCellsRequestWithBody(server, projectId, "application/json", bodyReader)
+}
+
+// NewPostApiProjectsProjectIdCellsRequestWithBody generates requests for PostApiProjectsProjectIdCells with any type of body
+func NewPostApiProjectsProjectIdCellsRequestWithBody(server string, projectId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiProjectsProjectIdCellsCellIdRequest generates requests for DeleteApiProjectsProjectIdCellsCellId
+func NewDeleteApiProjectsProjectIdCellsCellIdRequest(server string, projectId string, cellId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdCellsCellIdRequest generates requests for GetApiProjectsProjectIdCellsCellId
+func NewGetApiProjectsProjectIdCellsCellIdRequest(server string, projectId string, cellId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchApiProjectsProjectIdCellsCellIdRequest calls the generic PatchApiProjectsProjectIdCellsCellId builder with application/json body
+func NewPatchApiProjectsProjectIdCellsCellIdRequest(server string, projectId string, cellId string, body PatchApiProjectsProjectIdCellsCellIdJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchApiProjectsProjectIdCellsCellIdRequestWithBody(server, projectId, cellId, "application/json", bodyReader)
+}
+
+// NewPatchApiProjectsProjectIdCellsCellIdRequestWithBody generates requests for PatchApiProjectsProjectIdCellsCellId with any type of body
+func NewPatchApiProjectsProjectIdCellsCellIdRequestWithBody(server string, projectId string, cellId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPutApiProjectsProjectIdCellsCellIdDependenciesRequest calls the generic PutApiProjectsProjectIdCellsCellIdDependencies builder with application/json body
+func NewPutApiProjectsProjectIdCellsCellIdDependenciesRequest(server string, projectId string, cellId string, body PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutApiProjectsProjectIdCellsCellIdDependenciesRequestWithBody(server, projectId, cellId, "application/json", bodyReader)
+}
+
+// NewPutApiProjectsProjectIdCellsCellIdDependenciesRequestWithBody generates requests for PutApiProjectsProjectIdCellsCellIdDependencies with any type of body
+func NewPutApiProjectsProjectIdCellsCellIdDependenciesRequestWithBody(server string, projectId string, cellId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "cellId", runtime.ParamLocationPath, cellId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/cells/%s/dependencies", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdGraphRequest generates requests for GetApiProjectsProjectIdGraph
+func NewGetApiProjectsProjectIdGraphRequest(server string, projectId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/graph", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdTicketsRequest generates requests for GetApiProjectsProjectIdTickets
+func NewGetApiProjectsProjectIdTicketsRequest(server string, projectId string, params *GetApiProjectsProjectIdTicketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Stages != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "stages", runtime.ParamLocationQuery, *params.Stages); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.StageNotIn != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "stageNotIn", runtime.ParamLocationQuery, *params.StageNotIn); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.States != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "states", runtime.ParamLocationQuery, *params.States); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Actors != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "actors", runtime.ParamLocationQuery, *params.Actors); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cells != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cells", runtime.ParamLocationQuery, *params.Cells); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UpdatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "updatedAfter", runtime.ParamLocationQuery, *params.UpdatedAfter); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UpdatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "updatedBefore", runtime.ParamLocationQuery, *params.UpdatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdAfter", runtime.ParamLocationQuery, *params.CreatedAfter); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdBefore", runtime.ParamLocationQuery, *params.CreatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiProjectsProjectIdTicketsRequest calls the generic PostApiProjectsProjectIdTickets builder with application/json body
+func NewPostApiProjectsProjectIdTicketsRequest(server string, projectId string, body PostApiProjectsProjectIdTicketsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiProjectsProjectIdTicketsRequestWithBody(server, projectId, "application/json", bodyReader)
+}
+
+// NewPostApiProjectsProjectIdTicketsRequestWithBody generates requests for PostApiProjectsProjectIdTickets with any type of body
+func NewPostApiProjectsProjectIdTicketsRequestWithBody(server string, projectId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdTicketsStagesRequest generates requests for GetApiProjectsProjectIdTicketsStages
+func NewGetApiProjectsProjectIdTicketsStagesRequest(server string, projectId string, params *GetApiProjectsProjectIdTicketsStagesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets/stages", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Stages != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "stages", runtime.ParamLocationQuery, *params.Stages); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.StageNotIn != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "stageNotIn", runtime.ParamLocationQuery, *params.StageNotIn); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.States != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "states", runtime.ParamLocationQuery, *params.States); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Actors != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "actors", runtime.ParamLocationQuery, *params.Actors); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cells != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cells", runtime.ParamLocationQuery, *params.Cells); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UpdatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "updatedAfter", runtime.ParamLocationQuery, *params.UpdatedAfter); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UpdatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "updatedBefore", runtime.ParamLocationQuery, *params.UpdatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedAfter != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdAfter", runtime.ParamLocationQuery, *params.CreatedAfter); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.CreatedBefore != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "createdBefore", runtime.ParamLocationQuery, *params.CreatedBefore); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdTicketsStatesRequest generates requests for GetApiProjectsProjectIdTicketsStates
+func NewGetApiProjectsProjectIdTicketsStatesRequest(server string, projectId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets/states", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdTicketsTicketIdRequest generates requests for GetApiProjectsProjectIdTicketsTicketId
+func NewGetApiProjectsProjectIdTicketsTicketIdRequest(server string, projectId string, ticketId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ticketId", runtime.ParamLocationPath, ticketId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPatchApiProjectsProjectIdTicketsTicketIdRequest calls the generic PatchApiProjectsProjectIdTicketsTicketId builder with application/json body
+func NewPatchApiProjectsProjectIdTicketsTicketIdRequest(server string, projectId string, ticketId string, body PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPatchApiProjectsProjectIdTicketsTicketIdRequestWithBody(server, projectId, ticketId, "application/json", bodyReader)
+}
+
+// NewPatchApiProjectsProjectIdTicketsTicketIdRequestWithBody generates requests for PatchApiProjectsProjectIdTicketsTicketId with any type of body
+func NewPatchApiProjectsProjectIdTicketsTicketIdRequestWithBody(server string, projectId string, ticketId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ticketId", runtime.ParamLocationPath, ticketId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdTicketsTicketIdAtRequest generates requests for GetApiProjectsProjectIdTicketsTicketIdAt
+func NewGetApiProjectsProjectIdTicketsTicketIdAtRequest(server string, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdAtParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "ticketId", runtime.ParamLocationPath, ticketId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/tickets/%s/at", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "at", runtime.ParamLocationQuery, params.At); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiUserInputsPendingRequest generates requests for GetApiUserInputsPending
+func NewGetApiUserInputsPendingRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1271,7 +2546,160 @@ func NewSavePositionsRequestWithBody(server string, contentType string, body io.
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/positions")
+	operationPath := fmt.Sprintf("/api/user-inputs/pending")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiUserInputsStreamRequest generates requests for GetApiUserInputsStream
+func NewGetApiUserInputsStreamRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/user-inputs/stream")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiUserInputsJobIdRequest generates requests for GetApiUserInputsJobId
+func NewGetApiUserInputsJobIdRequest(server string, jobId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/user-inputs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiUserInputsJobIdCancelRequest calls the generic PostApiUserInputsJobIdCancel builder with application/json body
+func NewPostApiUserInputsJobIdCancelRequest(server string, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiUserInputsJobIdCancelRequestWithBody(server, jobId, "application/json", bodyReader)
+}
+
+// NewPostApiUserInputsJobIdCancelRequestWithBody generates requests for PostApiUserInputsJobIdCancel with any type of body
+func NewPostApiUserInputsJobIdCancelRequestWithBody(server string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/user-inputs/%s/cancel", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiUserInputsJobIdRespondRequest calls the generic PostApiUserInputsJobIdRespond builder with application/json body
+func NewPostApiUserInputsJobIdRespondRequest(server string, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiUserInputsJobIdRespondRequestWithBody(server, jobId, "application/json", bodyReader)
+}
+
+// NewPostApiUserInputsJobIdRespondRequestWithBody generates requests for PostApiUserInputsJobIdRespond with any type of body
+func NewPostApiUserInputsJobIdRespondRequestWithBody(server string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/user-inputs/%s/respond", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1334,77 +2762,105 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
-	// CreateContainerWithResponse request
-	CreateContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*CreateContainerResponse, error)
+	// GetApiProjectsWithResponse request
+	GetApiProjectsWithResponse(ctx context.Context, params *GetApiProjectsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsResponse, error)
 
-	// UpdateDevcontainerWithBodyWithResponse request with any body
-	UpdateDevcontainerWithBodyWithResponse(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDevcontainerResponse, error)
+	// PostApiProjectsWithBodyWithResponse request with any body
+	PostApiProjectsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsResponse, error)
 
-	UpdateDevcontainerWithResponse(ctx context.Context, cellId string, body UpdateDevcontainerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDevcontainerResponse, error)
+	PostApiProjectsWithResponse(ctx context.Context, body PostApiProjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsResponse, error)
 
-	// ResetContainerWithResponse request
-	ResetContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*ResetContainerResponse, error)
+	// DeleteApiProjectsProjectIdWithResponse request
+	DeleteApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*DeleteApiProjectsProjectIdResponse, error)
 
-	// RestartContainerWithResponse request
-	RestartContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*RestartContainerResponse, error)
+	// GetApiProjectsProjectIdWithResponse request
+	GetApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdResponse, error)
 
-	// StartContainerWithResponse request
-	StartContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*StartContainerResponse, error)
+	// PatchApiProjectsProjectIdWithBodyWithResponse request with any body
+	PatchApiProjectsProjectIdWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdResponse, error)
 
-	// GetContainerStatusWithResponse request
-	GetContainerStatusWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*GetContainerStatusResponse, error)
+	PatchApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, body PatchApiProjectsProjectIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdResponse, error)
 
-	// StopContainerWithResponse request
-	StopContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*StopContainerResponse, error)
+	// GetApiProjectsProjectIdCellsWithResponse request
+	GetApiProjectsProjectIdCellsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdCellsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdCellsResponse, error)
 
-	// ListCellFilesWithResponse request
-	ListCellFilesWithResponse(ctx context.Context, cellId string, params *ListCellFilesParams, reqEditors ...RequestEditorFn) (*ListCellFilesResponse, error)
+	// PostApiProjectsProjectIdCellsWithBodyWithResponse request with any body
+	PostApiProjectsProjectIdCellsWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdCellsResponse, error)
 
-	// ReadCellFileWithResponse request
-	ReadCellFileWithResponse(ctx context.Context, cellId string, filePath string, reqEditors ...RequestEditorFn) (*ReadCellFileResponse, error)
+	PostApiProjectsProjectIdCellsWithResponse(ctx context.Context, projectId string, body PostApiProjectsProjectIdCellsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdCellsResponse, error)
 
-	// WriteCellFileWithBodyWithResponse request with any body
-	WriteCellFileWithBodyWithResponse(ctx context.Context, cellId string, filePath string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteCellFileResponse, error)
+	// DeleteApiProjectsProjectIdCellsCellIdWithResponse request
+	DeleteApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*DeleteApiProjectsProjectIdCellsCellIdResponse, error)
 
-	WriteCellFileWithResponse(ctx context.Context, cellId string, filePath string, body WriteCellFileJSONRequestBody, reqEditors ...RequestEditorFn) (*WriteCellFileResponse, error)
+	// GetApiProjectsProjectIdCellsCellIdWithResponse request
+	GetApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdCellsCellIdResponse, error)
 
-	// CreateGitCommitWithBodyWithResponse request with any body
-	CreateGitCommitWithBodyWithResponse(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGitCommitResponse, error)
+	// PatchApiProjectsProjectIdCellsCellIdWithBodyWithResponse request with any body
+	PatchApiProjectsProjectIdCellsCellIdWithBodyWithResponse(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdCellsCellIdResponse, error)
 
-	CreateGitCommitWithResponse(ctx context.Context, cellId string, body CreateGitCommitJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGitCommitResponse, error)
+	PatchApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, body PatchApiProjectsProjectIdCellsCellIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdCellsCellIdResponse, error)
 
-	// GetGitDiffWithResponse request
-	GetGitDiffWithResponse(ctx context.Context, cellId string, params *GetGitDiffParams, reqEditors ...RequestEditorFn) (*GetGitDiffResponse, error)
+	// PutApiProjectsProjectIdCellsCellIdDependenciesWithBodyWithResponse request with any body
+	PutApiProjectsProjectIdCellsCellIdDependenciesWithBodyWithResponse(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiProjectsProjectIdCellsCellIdDependenciesResponse, error)
 
-	// GetGitHistoryWithResponse request
-	GetGitHistoryWithResponse(ctx context.Context, cellId string, params *GetGitHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHistoryResponse, error)
+	PutApiProjectsProjectIdCellsCellIdDependenciesWithResponse(ctx context.Context, projectId string, cellId string, body PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiProjectsProjectIdCellsCellIdDependenciesResponse, error)
 
-	// GetGitStatusWithResponse request
-	GetGitStatusWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*GetGitStatusResponse, error)
+	// GetApiProjectsProjectIdGraphWithResponse request
+	GetApiProjectsProjectIdGraphWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdGraphResponse, error)
 
-	// GetGraphWithResponse request
-	GetGraphWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGraphResponse, error)
+	// GetApiProjectsProjectIdTicketsWithResponse request
+	GetApiProjectsProjectIdTicketsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsResponse, error)
 
-	// GetPositionsWithResponse request
-	GetPositionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPositionsResponse, error)
+	// PostApiProjectsProjectIdTicketsWithBodyWithResponse request with any body
+	PostApiProjectsProjectIdTicketsWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdTicketsResponse, error)
 
-	// SavePositionsWithBodyWithResponse request with any body
-	SavePositionsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SavePositionsResponse, error)
+	PostApiProjectsProjectIdTicketsWithResponse(ctx context.Context, projectId string, body PostApiProjectsProjectIdTicketsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdTicketsResponse, error)
 
-	SavePositionsWithResponse(ctx context.Context, body SavePositionsJSONRequestBody, reqEditors ...RequestEditorFn) (*SavePositionsResponse, error)
+	// GetApiProjectsProjectIdTicketsStagesWithResponse request
+	GetApiProjectsProjectIdTicketsStagesWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsStagesParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsStagesResponse, error)
+
+	// GetApiProjectsProjectIdTicketsStatesWithResponse request
+	GetApiProjectsProjectIdTicketsStatesWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsStatesResponse, error)
+
+	// GetApiProjectsProjectIdTicketsTicketIdWithResponse request
+	GetApiProjectsProjectIdTicketsTicketIdWithResponse(ctx context.Context, projectId string, ticketId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsTicketIdResponse, error)
+
+	// PatchApiProjectsProjectIdTicketsTicketIdWithBodyWithResponse request with any body
+	PatchApiProjectsProjectIdTicketsTicketIdWithBodyWithResponse(ctx context.Context, projectId string, ticketId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdTicketsTicketIdResponse, error)
+
+	PatchApiProjectsProjectIdTicketsTicketIdWithResponse(ctx context.Context, projectId string, ticketId string, body PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdTicketsTicketIdResponse, error)
+
+	// GetApiProjectsProjectIdTicketsTicketIdAtWithResponse request
+	GetApiProjectsProjectIdTicketsTicketIdAtWithResponse(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdAtParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsTicketIdAtResponse, error)
+
+	// GetApiUserInputsPendingWithResponse request
+	GetApiUserInputsPendingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsPendingResponse, error)
+
+	// GetApiUserInputsStreamWithResponse request
+	GetApiUserInputsStreamWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsStreamResponse, error)
+
+	// GetApiUserInputsJobIdWithResponse request
+	GetApiUserInputsJobIdWithResponse(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*GetApiUserInputsJobIdResponse, error)
+
+	// PostApiUserInputsJobIdCancelWithBodyWithResponse request with any body
+	PostApiUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error)
+
+	PostApiUserInputsJobIdCancelWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error)
+
+	// PostApiUserInputsJobIdRespondWithBodyWithResponse request with any body
+	PostApiUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error)
+
+	PostApiUserInputsJobIdRespondWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error)
 }
 
-type CreateContainerResponse struct {
+type GetApiProjectsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		// ContainerId ID of the created container
-		ContainerId *string `json:"containerId,omitempty"`
-	}
+	JSON200      *[]Project
 }
 
 // Status returns HTTPResponse.Status
-func (r CreateContainerResponse) Status() string {
+func (r GetApiProjectsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1412,20 +2868,21 @@ func (r CreateContainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r CreateContainerResponse) StatusCode() int {
+func (r GetApiProjectsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type UpdateDevcontainerResponse struct {
+type PostApiProjectsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON201      *Project
 }
 
 // Status returns HTTPResponse.Status
-func (r UpdateDevcontainerResponse) Status() string {
+func (r PostApiProjectsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1433,20 +2890,20 @@ func (r UpdateDevcontainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r UpdateDevcontainerResponse) StatusCode() int {
+func (r PostApiProjectsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type ResetContainerResponse struct {
+type DeleteApiProjectsProjectIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 }
 
 // Status returns HTTPResponse.Status
-func (r ResetContainerResponse) Status() string {
+func (r DeleteApiProjectsProjectIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1454,20 +2911,21 @@ func (r ResetContainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ResetContainerResponse) StatusCode() int {
+func (r DeleteApiProjectsProjectIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type RestartContainerResponse struct {
+type GetApiProjectsProjectIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *Project
 }
 
 // Status returns HTTPResponse.Status
-func (r RestartContainerResponse) Status() string {
+func (r GetApiProjectsProjectIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1475,20 +2933,21 @@ func (r RestartContainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r RestartContainerResponse) StatusCode() int {
+func (r GetApiProjectsProjectIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type StartContainerResponse struct {
+type PatchApiProjectsProjectIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *Project
 }
 
 // Status returns HTTPResponse.Status
-func (r StartContainerResponse) Status() string {
+func (r PatchApiProjectsProjectIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1496,33 +2955,21 @@ func (r StartContainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r StartContainerResponse) StatusCode() int {
+func (r PatchApiProjectsProjectIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetContainerStatusResponse struct {
+type GetApiProjectsProjectIdCellsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		// ContainerId Container ID (if exists)
-		ContainerId *string `json:"containerId,omitempty"`
-
-		// DevcontainerContent Content of the devcontainer.json file (if exists)
-		DevcontainerContent *string `json:"devcontainerContent,omitempty"`
-
-		// HasDevcontainer Whether a devcontainer.json file exists
-		HasDevcontainer *bool `json:"hasDevcontainer,omitempty"`
-
-		// Status Current container status
-		Status *ContainerStatus `json:"status,omitempty"`
-	}
+	JSON200      *[]ManagedCell
 }
 
 // Status returns HTTPResponse.Status
-func (r GetContainerStatusResponse) Status() string {
+func (r GetApiProjectsProjectIdCellsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1530,20 +2977,21 @@ func (r GetContainerStatusResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetContainerStatusResponse) StatusCode() int {
+func (r GetApiProjectsProjectIdCellsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type StopContainerResponse struct {
+type PostApiProjectsProjectIdCellsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON201      *ManagedCell
 }
 
 // Status returns HTTPResponse.Status
-func (r StopContainerResponse) Status() string {
+func (r PostApiProjectsProjectIdCellsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1551,26 +2999,20 @@ func (r StopContainerResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r StopContainerResponse) StatusCode() int {
+func (r PostApiProjectsProjectIdCellsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type ListCellFilesResponse struct {
+type DeleteApiProjectsProjectIdCellsCellIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *struct {
-		Files *[]FileInfo `json:"files,omitempty"`
-
-		// Path The requested path
-		Path *string `json:"path,omitempty"`
-	}
 }
 
 // Status returns HTTPResponse.Status
-func (r ListCellFilesResponse) Status() string {
+func (r DeleteApiProjectsProjectIdCellsCellIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1578,20 +3020,21 @@ func (r ListCellFilesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ListCellFilesResponse) StatusCode() int {
+func (r DeleteApiProjectsProjectIdCellsCellIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type ReadCellFileResponse struct {
+type GetApiProjectsProjectIdCellsCellIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *ManagedCell
 }
 
 // Status returns HTTPResponse.Status
-func (r ReadCellFileResponse) Status() string {
+func (r GetApiProjectsProjectIdCellsCellIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1599,20 +3042,21 @@ func (r ReadCellFileResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r ReadCellFileResponse) StatusCode() int {
+func (r GetApiProjectsProjectIdCellsCellIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type WriteCellFileResponse struct {
+type PatchApiProjectsProjectIdCellsCellIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *ManagedCell
 }
 
 // Status returns HTTPResponse.Status
-func (r WriteCellFileResponse) Status() string {
+func (r PatchApiProjectsProjectIdCellsCellIdResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1620,20 +3064,20 @@ func (r WriteCellFileResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r WriteCellFileResponse) StatusCode() int {
+func (r PatchApiProjectsProjectIdCellsCellIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type CreateGitCommitResponse struct {
+type PutApiProjectsProjectIdCellsCellIdDependenciesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 }
 
 // Status returns HTTPResponse.Status
-func (r CreateGitCommitResponse) Status() string {
+func (r PutApiProjectsProjectIdCellsCellIdDependenciesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1641,86 +3085,21 @@ func (r CreateGitCommitResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r CreateGitCommitResponse) StatusCode() int {
+func (r PutApiProjectsProjectIdCellsCellIdDependenciesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetGitDiffResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// Status returns HTTPResponse.Status
-func (r GetGitDiffResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetGitDiffResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetGitHistoryResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *[]GitCommit
-}
-
-// Status returns HTTPResponse.Status
-func (r GetGitHistoryResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetGitHistoryResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetGitStatusResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *GitStatus
-}
-
-// Status returns HTTPResponse.Status
-func (r GetGitStatusResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetGitStatusResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetGraphResponse struct {
+type GetApiProjectsProjectIdGraphResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *Graph
 }
 
 // Status returns HTTPResponse.Status
-func (r GetGraphResponse) Status() string {
+func (r GetApiProjectsProjectIdGraphResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1728,21 +3107,21 @@ func (r GetGraphResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetGraphResponse) StatusCode() int {
+func (r GetApiProjectsProjectIdGraphResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetPositionsResponse struct {
+type GetApiProjectsProjectIdTicketsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]Position
+	JSON200      *[]Ticket
 }
 
 // Status returns HTTPResponse.Status
-func (r GetPositionsResponse) Status() string {
+func (r GetApiProjectsProjectIdTicketsResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1750,20 +3129,174 @@ func (r GetPositionsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetPositionsResponse) StatusCode() int {
+func (r GetApiProjectsProjectIdTicketsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type SavePositionsResponse struct {
+type PostApiProjectsProjectIdTicketsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *Ticket
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiProjectsProjectIdTicketsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiProjectsProjectIdTicketsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdTicketsStagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]string
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdTicketsStagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdTicketsStagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdTicketsStatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]TicketState
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdTicketsStatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdTicketsStatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdTicketsTicketIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Ticket
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdTicketsTicketIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdTicketsTicketIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PatchApiProjectsProjectIdTicketsTicketIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Ticket
+}
+
+// Status returns HTTPResponse.Status
+func (r PatchApiProjectsProjectIdTicketsTicketIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PatchApiProjectsProjectIdTicketsTicketIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdTicketsTicketIdAtResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Ticket
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdTicketsTicketIdAtResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdTicketsTicketIdAtResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiUserInputsPendingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]PendingInput
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiUserInputsPendingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiUserInputsPendingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiUserInputsStreamResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 }
 
 // Status returns HTTPResponse.Status
-func (r SavePositionsResponse) Status() string {
+func (r GetApiUserInputsStreamResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -1771,217 +3304,387 @@ func (r SavePositionsResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r SavePositionsResponse) StatusCode() int {
+func (r GetApiUserInputsStreamResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-// CreateContainerWithResponse request returning *CreateContainerResponse
-func (c *ClientWithResponses) CreateContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*CreateContainerResponse, error) {
-	rsp, err := c.CreateContainer(ctx, cellId, reqEditors...)
+type GetApiUserInputsJobIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *UserInputDetails
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiUserInputsJobIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiUserInputsJobIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostApiUserInputsJobIdCancelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok *bool `json:"ok,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiUserInputsJobIdCancelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiUserInputsJobIdCancelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostApiUserInputsJobIdRespondResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok *bool `json:"ok,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiUserInputsJobIdRespondResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiUserInputsJobIdRespondResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// GetApiProjectsWithResponse request returning *GetApiProjectsResponse
+func (c *ClientWithResponses) GetApiProjectsWithResponse(ctx context.Context, params *GetApiProjectsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsResponse, error) {
+	rsp, err := c.GetApiProjects(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseCreateContainerResponse(rsp)
+	return ParseGetApiProjectsResponse(rsp)
 }
 
-// UpdateDevcontainerWithBodyWithResponse request with arbitrary body returning *UpdateDevcontainerResponse
-func (c *ClientWithResponses) UpdateDevcontainerWithBodyWithResponse(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateDevcontainerResponse, error) {
-	rsp, err := c.UpdateDevcontainerWithBody(ctx, cellId, contentType, body, reqEditors...)
+// PostApiProjectsWithBodyWithResponse request with arbitrary body returning *PostApiProjectsResponse
+func (c *ClientWithResponses) PostApiProjectsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsResponse, error) {
+	rsp, err := c.PostApiProjectsWithBody(ctx, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpdateDevcontainerResponse(rsp)
+	return ParsePostApiProjectsResponse(rsp)
 }
 
-func (c *ClientWithResponses) UpdateDevcontainerWithResponse(ctx context.Context, cellId string, body UpdateDevcontainerJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateDevcontainerResponse, error) {
-	rsp, err := c.UpdateDevcontainer(ctx, cellId, body, reqEditors...)
+func (c *ClientWithResponses) PostApiProjectsWithResponse(ctx context.Context, body PostApiProjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsResponse, error) {
+	rsp, err := c.PostApiProjects(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseUpdateDevcontainerResponse(rsp)
+	return ParsePostApiProjectsResponse(rsp)
 }
 
-// ResetContainerWithResponse request returning *ResetContainerResponse
-func (c *ClientWithResponses) ResetContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*ResetContainerResponse, error) {
-	rsp, err := c.ResetContainer(ctx, cellId, reqEditors...)
+// DeleteApiProjectsProjectIdWithResponse request returning *DeleteApiProjectsProjectIdResponse
+func (c *ClientWithResponses) DeleteApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*DeleteApiProjectsProjectIdResponse, error) {
+	rsp, err := c.DeleteApiProjectsProjectId(ctx, projectId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseResetContainerResponse(rsp)
+	return ParseDeleteApiProjectsProjectIdResponse(rsp)
 }
 
-// RestartContainerWithResponse request returning *RestartContainerResponse
-func (c *ClientWithResponses) RestartContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*RestartContainerResponse, error) {
-	rsp, err := c.RestartContainer(ctx, cellId, reqEditors...)
+// GetApiProjectsProjectIdWithResponse request returning *GetApiProjectsProjectIdResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdResponse, error) {
+	rsp, err := c.GetApiProjectsProjectId(ctx, projectId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseRestartContainerResponse(rsp)
+	return ParseGetApiProjectsProjectIdResponse(rsp)
 }
 
-// StartContainerWithResponse request returning *StartContainerResponse
-func (c *ClientWithResponses) StartContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*StartContainerResponse, error) {
-	rsp, err := c.StartContainer(ctx, cellId, reqEditors...)
+// PatchApiProjectsProjectIdWithBodyWithResponse request with arbitrary body returning *PatchApiProjectsProjectIdResponse
+func (c *ClientWithResponses) PatchApiProjectsProjectIdWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectIdWithBody(ctx, projectId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseStartContainerResponse(rsp)
+	return ParsePatchApiProjectsProjectIdResponse(rsp)
 }
 
-// GetContainerStatusWithResponse request returning *GetContainerStatusResponse
-func (c *ClientWithResponses) GetContainerStatusWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*GetContainerStatusResponse, error) {
-	rsp, err := c.GetContainerStatus(ctx, cellId, reqEditors...)
+func (c *ClientWithResponses) PatchApiProjectsProjectIdWithResponse(ctx context.Context, projectId string, body PatchApiProjectsProjectIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectId(ctx, projectId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetContainerStatusResponse(rsp)
+	return ParsePatchApiProjectsProjectIdResponse(rsp)
 }
 
-// StopContainerWithResponse request returning *StopContainerResponse
-func (c *ClientWithResponses) StopContainerWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*StopContainerResponse, error) {
-	rsp, err := c.StopContainer(ctx, cellId, reqEditors...)
+// GetApiProjectsProjectIdCellsWithResponse request returning *GetApiProjectsProjectIdCellsResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdCellsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdCellsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdCellsResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdCells(ctx, projectId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseStopContainerResponse(rsp)
+	return ParseGetApiProjectsProjectIdCellsResponse(rsp)
 }
 
-// ListCellFilesWithResponse request returning *ListCellFilesResponse
-func (c *ClientWithResponses) ListCellFilesWithResponse(ctx context.Context, cellId string, params *ListCellFilesParams, reqEditors ...RequestEditorFn) (*ListCellFilesResponse, error) {
-	rsp, err := c.ListCellFiles(ctx, cellId, params, reqEditors...)
+// PostApiProjectsProjectIdCellsWithBodyWithResponse request with arbitrary body returning *PostApiProjectsProjectIdCellsResponse
+func (c *ClientWithResponses) PostApiProjectsProjectIdCellsWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdCellsResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdCellsWithBody(ctx, projectId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseListCellFilesResponse(rsp)
+	return ParsePostApiProjectsProjectIdCellsResponse(rsp)
 }
 
-// ReadCellFileWithResponse request returning *ReadCellFileResponse
-func (c *ClientWithResponses) ReadCellFileWithResponse(ctx context.Context, cellId string, filePath string, reqEditors ...RequestEditorFn) (*ReadCellFileResponse, error) {
-	rsp, err := c.ReadCellFile(ctx, cellId, filePath, reqEditors...)
+func (c *ClientWithResponses) PostApiProjectsProjectIdCellsWithResponse(ctx context.Context, projectId string, body PostApiProjectsProjectIdCellsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdCellsResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdCells(ctx, projectId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseReadCellFileResponse(rsp)
+	return ParsePostApiProjectsProjectIdCellsResponse(rsp)
 }
 
-// WriteCellFileWithBodyWithResponse request with arbitrary body returning *WriteCellFileResponse
-func (c *ClientWithResponses) WriteCellFileWithBodyWithResponse(ctx context.Context, cellId string, filePath string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WriteCellFileResponse, error) {
-	rsp, err := c.WriteCellFileWithBody(ctx, cellId, filePath, contentType, body, reqEditors...)
+// DeleteApiProjectsProjectIdCellsCellIdWithResponse request returning *DeleteApiProjectsProjectIdCellsCellIdResponse
+func (c *ClientWithResponses) DeleteApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*DeleteApiProjectsProjectIdCellsCellIdResponse, error) {
+	rsp, err := c.DeleteApiProjectsProjectIdCellsCellId(ctx, projectId, cellId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseWriteCellFileResponse(rsp)
+	return ParseDeleteApiProjectsProjectIdCellsCellIdResponse(rsp)
 }
 
-func (c *ClientWithResponses) WriteCellFileWithResponse(ctx context.Context, cellId string, filePath string, body WriteCellFileJSONRequestBody, reqEditors ...RequestEditorFn) (*WriteCellFileResponse, error) {
-	rsp, err := c.WriteCellFile(ctx, cellId, filePath, body, reqEditors...)
+// GetApiProjectsProjectIdCellsCellIdWithResponse request returning *GetApiProjectsProjectIdCellsCellIdResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdCellsCellIdResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdCellsCellId(ctx, projectId, cellId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseWriteCellFileResponse(rsp)
+	return ParseGetApiProjectsProjectIdCellsCellIdResponse(rsp)
 }
 
-// CreateGitCommitWithBodyWithResponse request with arbitrary body returning *CreateGitCommitResponse
-func (c *ClientWithResponses) CreateGitCommitWithBodyWithResponse(ctx context.Context, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGitCommitResponse, error) {
-	rsp, err := c.CreateGitCommitWithBody(ctx, cellId, contentType, body, reqEditors...)
+// PatchApiProjectsProjectIdCellsCellIdWithBodyWithResponse request with arbitrary body returning *PatchApiProjectsProjectIdCellsCellIdResponse
+func (c *ClientWithResponses) PatchApiProjectsProjectIdCellsCellIdWithBodyWithResponse(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdCellsCellIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectIdCellsCellIdWithBody(ctx, projectId, cellId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseCreateGitCommitResponse(rsp)
+	return ParsePatchApiProjectsProjectIdCellsCellIdResponse(rsp)
 }
 
-func (c *ClientWithResponses) CreateGitCommitWithResponse(ctx context.Context, cellId string, body CreateGitCommitJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGitCommitResponse, error) {
-	rsp, err := c.CreateGitCommit(ctx, cellId, body, reqEditors...)
+func (c *ClientWithResponses) PatchApiProjectsProjectIdCellsCellIdWithResponse(ctx context.Context, projectId string, cellId string, body PatchApiProjectsProjectIdCellsCellIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdCellsCellIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectIdCellsCellId(ctx, projectId, cellId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseCreateGitCommitResponse(rsp)
+	return ParsePatchApiProjectsProjectIdCellsCellIdResponse(rsp)
 }
 
-// GetGitDiffWithResponse request returning *GetGitDiffResponse
-func (c *ClientWithResponses) GetGitDiffWithResponse(ctx context.Context, cellId string, params *GetGitDiffParams, reqEditors ...RequestEditorFn) (*GetGitDiffResponse, error) {
-	rsp, err := c.GetGitDiff(ctx, cellId, params, reqEditors...)
+// PutApiProjectsProjectIdCellsCellIdDependenciesWithBodyWithResponse request with arbitrary body returning *PutApiProjectsProjectIdCellsCellIdDependenciesResponse
+func (c *ClientWithResponses) PutApiProjectsProjectIdCellsCellIdDependenciesWithBodyWithResponse(ctx context.Context, projectId string, cellId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiProjectsProjectIdCellsCellIdDependenciesResponse, error) {
+	rsp, err := c.PutApiProjectsProjectIdCellsCellIdDependenciesWithBody(ctx, projectId, cellId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetGitDiffResponse(rsp)
+	return ParsePutApiProjectsProjectIdCellsCellIdDependenciesResponse(rsp)
 }
 
-// GetGitHistoryWithResponse request returning *GetGitHistoryResponse
-func (c *ClientWithResponses) GetGitHistoryWithResponse(ctx context.Context, cellId string, params *GetGitHistoryParams, reqEditors ...RequestEditorFn) (*GetGitHistoryResponse, error) {
-	rsp, err := c.GetGitHistory(ctx, cellId, params, reqEditors...)
+func (c *ClientWithResponses) PutApiProjectsProjectIdCellsCellIdDependenciesWithResponse(ctx context.Context, projectId string, cellId string, body PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiProjectsProjectIdCellsCellIdDependenciesResponse, error) {
+	rsp, err := c.PutApiProjectsProjectIdCellsCellIdDependencies(ctx, projectId, cellId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetGitHistoryResponse(rsp)
+	return ParsePutApiProjectsProjectIdCellsCellIdDependenciesResponse(rsp)
 }
 
-// GetGitStatusWithResponse request returning *GetGitStatusResponse
-func (c *ClientWithResponses) GetGitStatusWithResponse(ctx context.Context, cellId string, reqEditors ...RequestEditorFn) (*GetGitStatusResponse, error) {
-	rsp, err := c.GetGitStatus(ctx, cellId, reqEditors...)
+// GetApiProjectsProjectIdGraphWithResponse request returning *GetApiProjectsProjectIdGraphResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdGraphWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdGraphResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdGraph(ctx, projectId, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetGitStatusResponse(rsp)
+	return ParseGetApiProjectsProjectIdGraphResponse(rsp)
 }
 
-// GetGraphWithResponse request returning *GetGraphResponse
-func (c *ClientWithResponses) GetGraphWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetGraphResponse, error) {
-	rsp, err := c.GetGraph(ctx, reqEditors...)
+// GetApiProjectsProjectIdTicketsWithResponse request returning *GetApiProjectsProjectIdTicketsResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdTickets(ctx, projectId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetGraphResponse(rsp)
+	return ParseGetApiProjectsProjectIdTicketsResponse(rsp)
 }
 
-// GetPositionsWithResponse request returning *GetPositionsResponse
-func (c *ClientWithResponses) GetPositionsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetPositionsResponse, error) {
-	rsp, err := c.GetPositions(ctx, reqEditors...)
+// PostApiProjectsProjectIdTicketsWithBodyWithResponse request with arbitrary body returning *PostApiProjectsProjectIdTicketsResponse
+func (c *ClientWithResponses) PostApiProjectsProjectIdTicketsWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdTicketsResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdTicketsWithBody(ctx, projectId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetPositionsResponse(rsp)
+	return ParsePostApiProjectsProjectIdTicketsResponse(rsp)
 }
 
-// SavePositionsWithBodyWithResponse request with arbitrary body returning *SavePositionsResponse
-func (c *ClientWithResponses) SavePositionsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SavePositionsResponse, error) {
-	rsp, err := c.SavePositionsWithBody(ctx, contentType, body, reqEditors...)
+func (c *ClientWithResponses) PostApiProjectsProjectIdTicketsWithResponse(ctx context.Context, projectId string, body PostApiProjectsProjectIdTicketsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdTicketsResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdTickets(ctx, projectId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSavePositionsResponse(rsp)
+	return ParsePostApiProjectsProjectIdTicketsResponse(rsp)
 }
 
-func (c *ClientWithResponses) SavePositionsWithResponse(ctx context.Context, body SavePositionsJSONRequestBody, reqEditors ...RequestEditorFn) (*SavePositionsResponse, error) {
-	rsp, err := c.SavePositions(ctx, body, reqEditors...)
+// GetApiProjectsProjectIdTicketsStagesWithResponse request returning *GetApiProjectsProjectIdTicketsStagesResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsStagesWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsStagesParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsStagesResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdTicketsStages(ctx, projectId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseSavePositionsResponse(rsp)
+	return ParseGetApiProjectsProjectIdTicketsStagesResponse(rsp)
 }
 
-// ParseCreateContainerResponse parses an HTTP response from a CreateContainerWithResponse call
-func ParseCreateContainerResponse(rsp *http.Response) (*CreateContainerResponse, error) {
+// GetApiProjectsProjectIdTicketsStatesWithResponse request returning *GetApiProjectsProjectIdTicketsStatesResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsStatesWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsStatesResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdTicketsStates(ctx, projectId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdTicketsStatesResponse(rsp)
+}
+
+// GetApiProjectsProjectIdTicketsTicketIdWithResponse request returning *GetApiProjectsProjectIdTicketsTicketIdResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsTicketIdWithResponse(ctx context.Context, projectId string, ticketId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsTicketIdResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdTicketsTicketId(ctx, projectId, ticketId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdTicketsTicketIdResponse(rsp)
+}
+
+// PatchApiProjectsProjectIdTicketsTicketIdWithBodyWithResponse request with arbitrary body returning *PatchApiProjectsProjectIdTicketsTicketIdResponse
+func (c *ClientWithResponses) PatchApiProjectsProjectIdTicketsTicketIdWithBodyWithResponse(ctx context.Context, projectId string, ticketId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdTicketsTicketIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectIdTicketsTicketIdWithBody(ctx, projectId, ticketId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchApiProjectsProjectIdTicketsTicketIdResponse(rsp)
+}
+
+func (c *ClientWithResponses) PatchApiProjectsProjectIdTicketsTicketIdWithResponse(ctx context.Context, projectId string, ticketId string, body PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiProjectsProjectIdTicketsTicketIdResponse, error) {
+	rsp, err := c.PatchApiProjectsProjectIdTicketsTicketId(ctx, projectId, ticketId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePatchApiProjectsProjectIdTicketsTicketIdResponse(rsp)
+}
+
+// GetApiProjectsProjectIdTicketsTicketIdAtWithResponse request returning *GetApiProjectsProjectIdTicketsTicketIdAtResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsTicketIdAtWithResponse(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdAtParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsTicketIdAtResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdTicketsTicketIdAt(ctx, projectId, ticketId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdTicketsTicketIdAtResponse(rsp)
+}
+
+// GetApiUserInputsPendingWithResponse request returning *GetApiUserInputsPendingResponse
+func (c *ClientWithResponses) GetApiUserInputsPendingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsPendingResponse, error) {
+	rsp, err := c.GetApiUserInputsPending(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiUserInputsPendingResponse(rsp)
+}
+
+// GetApiUserInputsStreamWithResponse request returning *GetApiUserInputsStreamResponse
+func (c *ClientWithResponses) GetApiUserInputsStreamWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsStreamResponse, error) {
+	rsp, err := c.GetApiUserInputsStream(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiUserInputsStreamResponse(rsp)
+}
+
+// GetApiUserInputsJobIdWithResponse request returning *GetApiUserInputsJobIdResponse
+func (c *ClientWithResponses) GetApiUserInputsJobIdWithResponse(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*GetApiUserInputsJobIdResponse, error) {
+	rsp, err := c.GetApiUserInputsJobId(ctx, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiUserInputsJobIdResponse(rsp)
+}
+
+// PostApiUserInputsJobIdCancelWithBodyWithResponse request with arbitrary body returning *PostApiUserInputsJobIdCancelResponse
+func (c *ClientWithResponses) PostApiUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error) {
+	rsp, err := c.PostApiUserInputsJobIdCancelWithBody(ctx, jobId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiUserInputsJobIdCancelResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostApiUserInputsJobIdCancelWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error) {
+	rsp, err := c.PostApiUserInputsJobIdCancel(ctx, jobId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiUserInputsJobIdCancelResponse(rsp)
+}
+
+// PostApiUserInputsJobIdRespondWithBodyWithResponse request with arbitrary body returning *PostApiUserInputsJobIdRespondResponse
+func (c *ClientWithResponses) PostApiUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error) {
+	rsp, err := c.PostApiUserInputsJobIdRespondWithBody(ctx, jobId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiUserInputsJobIdRespondResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostApiUserInputsJobIdRespondWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error) {
+	rsp, err := c.PostApiUserInputsJobIdRespond(ctx, jobId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiUserInputsJobIdRespondResponse(rsp)
+}
+
+// ParseGetApiProjectsResponse parses an HTTP response from a GetApiProjectsWithResponse call
+func ParseGetApiProjectsResponse(rsp *http.Response) (*GetApiProjectsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &CreateContainerResponse{
+	response := &GetApiProjectsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			// ContainerId ID of the created container
-			ContainerId *string `json:"containerId,omitempty"`
-		}
+		var dest []Project
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -1992,15 +3695,41 @@ func ParseCreateContainerResponse(rsp *http.Response) (*CreateContainerResponse,
 	return response, nil
 }
 
-// ParseUpdateDevcontainerResponse parses an HTTP response from a UpdateDevcontainerWithResponse call
-func ParseUpdateDevcontainerResponse(rsp *http.Response) (*UpdateDevcontainerResponse, error) {
+// ParsePostApiProjectsResponse parses an HTTP response from a PostApiProjectsWithResponse call
+func ParsePostApiProjectsResponse(rsp *http.Response) (*PostApiProjectsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &UpdateDevcontainerResponse{
+	response := &PostApiProjectsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Project
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiProjectsProjectIdResponse parses an HTTP response from a DeleteApiProjectsProjectIdWithResponse call
+func ParseDeleteApiProjectsProjectIdResponse(rsp *http.Response) (*DeleteApiProjectsProjectIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiProjectsProjectIdResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -2008,82 +3737,22 @@ func ParseUpdateDevcontainerResponse(rsp *http.Response) (*UpdateDevcontainerRes
 	return response, nil
 }
 
-// ParseResetContainerResponse parses an HTTP response from a ResetContainerWithResponse call
-func ParseResetContainerResponse(rsp *http.Response) (*ResetContainerResponse, error) {
+// ParseGetApiProjectsProjectIdResponse parses an HTTP response from a GetApiProjectsProjectIdWithResponse call
+func ParseGetApiProjectsProjectIdResponse(rsp *http.Response) (*GetApiProjectsProjectIdResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &ResetContainerResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseRestartContainerResponse parses an HTTP response from a RestartContainerWithResponse call
-func ParseRestartContainerResponse(rsp *http.Response) (*RestartContainerResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &RestartContainerResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseStartContainerResponse parses an HTTP response from a StartContainerWithResponse call
-func ParseStartContainerResponse(rsp *http.Response) (*StartContainerResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &StartContainerResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseGetContainerStatusResponse parses an HTTP response from a GetContainerStatusWithResponse call
-func ParseGetContainerStatusResponse(rsp *http.Response) (*GetContainerStatusResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetContainerStatusResponse{
+	response := &GetApiProjectsProjectIdResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			// ContainerId Container ID (if exists)
-			ContainerId *string `json:"containerId,omitempty"`
-
-			// DevcontainerContent Content of the devcontainer.json file (if exists)
-			DevcontainerContent *string `json:"devcontainerContent,omitempty"`
-
-			// HasDevcontainer Whether a devcontainer.json file exists
-			HasDevcontainer *bool `json:"hasDevcontainer,omitempty"`
-
-			// Status Current container status
-			Status *ContainerStatus `json:"status,omitempty"`
-		}
+		var dest Project
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2094,43 +3763,22 @@ func ParseGetContainerStatusResponse(rsp *http.Response) (*GetContainerStatusRes
 	return response, nil
 }
 
-// ParseStopContainerResponse parses an HTTP response from a StopContainerWithResponse call
-func ParseStopContainerResponse(rsp *http.Response) (*StopContainerResponse, error) {
+// ParsePatchApiProjectsProjectIdResponse parses an HTTP response from a PatchApiProjectsProjectIdWithResponse call
+func ParsePatchApiProjectsProjectIdResponse(rsp *http.Response) (*PatchApiProjectsProjectIdResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &StopContainerResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseListCellFilesResponse parses an HTTP response from a ListCellFilesWithResponse call
-func ParseListCellFilesResponse(rsp *http.Response) (*ListCellFilesResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ListCellFilesResponse{
+	response := &PatchApiProjectsProjectIdResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Files *[]FileInfo `json:"files,omitempty"`
-
-			// Path The requested path
-			Path *string `json:"path,omitempty"`
-		}
+		var dest Project
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2141,86 +3789,22 @@ func ParseListCellFilesResponse(rsp *http.Response) (*ListCellFilesResponse, err
 	return response, nil
 }
 
-// ParseReadCellFileResponse parses an HTTP response from a ReadCellFileWithResponse call
-func ParseReadCellFileResponse(rsp *http.Response) (*ReadCellFileResponse, error) {
+// ParseGetApiProjectsProjectIdCellsResponse parses an HTTP response from a GetApiProjectsProjectIdCellsWithResponse call
+func ParseGetApiProjectsProjectIdCellsResponse(rsp *http.Response) (*GetApiProjectsProjectIdCellsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &ReadCellFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseWriteCellFileResponse parses an HTTP response from a WriteCellFileWithResponse call
-func ParseWriteCellFileResponse(rsp *http.Response) (*WriteCellFileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &WriteCellFileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseCreateGitCommitResponse parses an HTTP response from a CreateGitCommitWithResponse call
-func ParseCreateGitCommitResponse(rsp *http.Response) (*CreateGitCommitResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &CreateGitCommitResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseGetGitDiffResponse parses an HTTP response from a GetGitDiffWithResponse call
-func ParseGetGitDiffResponse(rsp *http.Response) (*GetGitDiffResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetGitDiffResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseGetGitHistoryResponse parses an HTTP response from a GetGitHistoryWithResponse call
-func ParseGetGitHistoryResponse(rsp *http.Response) (*GetGitHistoryResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetGitHistoryResponse{
+	response := &GetApiProjectsProjectIdCellsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []GitCommit
+		var dest []ManagedCell
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2231,22 +3815,64 @@ func ParseGetGitHistoryResponse(rsp *http.Response) (*GetGitHistoryResponse, err
 	return response, nil
 }
 
-// ParseGetGitStatusResponse parses an HTTP response from a GetGitStatusWithResponse call
-func ParseGetGitStatusResponse(rsp *http.Response) (*GetGitStatusResponse, error) {
+// ParsePostApiProjectsProjectIdCellsResponse parses an HTTP response from a PostApiProjectsProjectIdCellsWithResponse call
+func ParsePostApiProjectsProjectIdCellsResponse(rsp *http.Response) (*PostApiProjectsProjectIdCellsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetGitStatusResponse{
+	response := &PostApiProjectsProjectIdCellsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ManagedCell
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiProjectsProjectIdCellsCellIdResponse parses an HTTP response from a DeleteApiProjectsProjectIdCellsCellIdWithResponse call
+func ParseDeleteApiProjectsProjectIdCellsCellIdResponse(rsp *http.Response) (*DeleteApiProjectsProjectIdCellsCellIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiProjectsProjectIdCellsCellIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdCellsCellIdResponse parses an HTTP response from a GetApiProjectsProjectIdCellsCellIdWithResponse call
+func ParseGetApiProjectsProjectIdCellsCellIdResponse(rsp *http.Response) (*GetApiProjectsProjectIdCellsCellIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdCellsCellIdResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest GitStatus
+		var dest ManagedCell
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2257,15 +3883,57 @@ func ParseGetGitStatusResponse(rsp *http.Response) (*GetGitStatusResponse, error
 	return response, nil
 }
 
-// ParseGetGraphResponse parses an HTTP response from a GetGraphWithResponse call
-func ParseGetGraphResponse(rsp *http.Response) (*GetGraphResponse, error) {
+// ParsePatchApiProjectsProjectIdCellsCellIdResponse parses an HTTP response from a PatchApiProjectsProjectIdCellsCellIdWithResponse call
+func ParsePatchApiProjectsProjectIdCellsCellIdResponse(rsp *http.Response) (*PatchApiProjectsProjectIdCellsCellIdResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetGraphResponse{
+	response := &PatchApiProjectsProjectIdCellsCellIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ManagedCell
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutApiProjectsProjectIdCellsCellIdDependenciesResponse parses an HTTP response from a PutApiProjectsProjectIdCellsCellIdDependenciesWithResponse call
+func ParsePutApiProjectsProjectIdCellsCellIdDependenciesResponse(rsp *http.Response) (*PutApiProjectsProjectIdCellsCellIdDependenciesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutApiProjectsProjectIdCellsCellIdDependenciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdGraphResponse parses an HTTP response from a GetApiProjectsProjectIdGraphWithResponse call
+func ParseGetApiProjectsProjectIdGraphResponse(rsp *http.Response) (*GetApiProjectsProjectIdGraphResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdGraphResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -2283,22 +3951,22 @@ func ParseGetGraphResponse(rsp *http.Response) (*GetGraphResponse, error) {
 	return response, nil
 }
 
-// ParseGetPositionsResponse parses an HTTP response from a GetPositionsWithResponse call
-func ParseGetPositionsResponse(rsp *http.Response) (*GetPositionsResponse, error) {
+// ParseGetApiProjectsProjectIdTicketsResponse parses an HTTP response from a GetApiProjectsProjectIdTicketsWithResponse call
+func ParseGetApiProjectsProjectIdTicketsResponse(rsp *http.Response) (*GetApiProjectsProjectIdTicketsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetPositionsResponse{
+	response := &GetApiProjectsProjectIdTicketsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []Position
+		var dest []Ticket
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2309,17 +3977,281 @@ func ParseGetPositionsResponse(rsp *http.Response) (*GetPositionsResponse, error
 	return response, nil
 }
 
-// ParseSavePositionsResponse parses an HTTP response from a SavePositionsWithResponse call
-func ParseSavePositionsResponse(rsp *http.Response) (*SavePositionsResponse, error) {
+// ParsePostApiProjectsProjectIdTicketsResponse parses an HTTP response from a PostApiProjectsProjectIdTicketsWithResponse call
+func ParsePostApiProjectsProjectIdTicketsResponse(rsp *http.Response) (*PostApiProjectsProjectIdTicketsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &SavePositionsResponse{
+	response := &PostApiProjectsProjectIdTicketsResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdTicketsStagesResponse parses an HTTP response from a GetApiProjectsProjectIdTicketsStagesWithResponse call
+func ParseGetApiProjectsProjectIdTicketsStagesResponse(rsp *http.Response) (*GetApiProjectsProjectIdTicketsStagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdTicketsStagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []string
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdTicketsStatesResponse parses an HTTP response from a GetApiProjectsProjectIdTicketsStatesWithResponse call
+func ParseGetApiProjectsProjectIdTicketsStatesResponse(rsp *http.Response) (*GetApiProjectsProjectIdTicketsStatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdTicketsStatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []TicketState
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdTicketsTicketIdResponse parses an HTTP response from a GetApiProjectsProjectIdTicketsTicketIdWithResponse call
+func ParseGetApiProjectsProjectIdTicketsTicketIdResponse(rsp *http.Response) (*GetApiProjectsProjectIdTicketsTicketIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdTicketsTicketIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePatchApiProjectsProjectIdTicketsTicketIdResponse parses an HTTP response from a PatchApiProjectsProjectIdTicketsTicketIdWithResponse call
+func ParsePatchApiProjectsProjectIdTicketsTicketIdResponse(rsp *http.Response) (*PatchApiProjectsProjectIdTicketsTicketIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PatchApiProjectsProjectIdTicketsTicketIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdTicketsTicketIdAtResponse parses an HTTP response from a GetApiProjectsProjectIdTicketsTicketIdAtWithResponse call
+func ParseGetApiProjectsProjectIdTicketsTicketIdAtResponse(rsp *http.Response) (*GetApiProjectsProjectIdTicketsTicketIdAtResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdTicketsTicketIdAtResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiUserInputsPendingResponse parses an HTTP response from a GetApiUserInputsPendingWithResponse call
+func ParseGetApiUserInputsPendingResponse(rsp *http.Response) (*GetApiUserInputsPendingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiUserInputsPendingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PendingInput
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiUserInputsStreamResponse parses an HTTP response from a GetApiUserInputsStreamWithResponse call
+func ParseGetApiUserInputsStreamResponse(rsp *http.Response) (*GetApiUserInputsStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiUserInputsStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiUserInputsJobIdResponse parses an HTTP response from a GetApiUserInputsJobIdWithResponse call
+func ParseGetApiUserInputsJobIdResponse(rsp *http.Response) (*GetApiUserInputsJobIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiUserInputsJobIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserInputDetails
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiUserInputsJobIdCancelResponse parses an HTTP response from a PostApiUserInputsJobIdCancelWithResponse call
+func ParsePostApiUserInputsJobIdCancelResponse(rsp *http.Response) (*PostApiUserInputsJobIdCancelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiUserInputsJobIdCancelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok *bool `json:"ok,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiUserInputsJobIdRespondResponse parses an HTTP response from a PostApiUserInputsJobIdRespondWithResponse call
+func ParsePostApiUserInputsJobIdRespondResponse(rsp *http.Response) (*PostApiUserInputsJobIdRespondResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiUserInputsJobIdRespondResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok *bool `json:"ok,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	}
 
 	return response, nil
@@ -2328,65 +4260,86 @@ func ParseSavePositionsResponse(rsp *http.Response) (*SavePositionsResponse, err
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"GStLoHo9d/fh7t8BAAD//8JF03G2SgAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

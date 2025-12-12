@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
@@ -77,26 +78,38 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-create")
+
+	ctx := context.Background()
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(ctx, cell.CreateInput{
+		ProjectID:   projectID,
+		Name:        "cell-a",
+		WorkingPath: "/repo/cell-a",
+	})
+	require.NoError(t, err)
+
 	store, err := ticket.NewStore(pg.DB)
 	require.NoError(t, err)
 
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
 
-	projSvc, projectID := createProject(t, pg.DB, "svc-create")
-
 	now := time.Date(2024, 9, 11, 10, 30, 0, 0, time.UTC)
 	svc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      store,
 		EventStore: eventStore,
 		Projects:   projSvc,
+		Cells:      cellSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
 	})
 	require.NoError(t, err)
-
-	ctx := context.Background()
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:      "cell-a",
@@ -155,13 +168,26 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-events")
+
+	ctx := context.Background()
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(ctx, cell.CreateInput{
+		ProjectID:   projectID,
+		Name:        "cell-a",
+		WorkingPath: "/repo/cell-a",
+	})
+	require.NoError(t, err)
+
 	store, err := ticket.NewStore(pg.DB)
 	require.NoError(t, err)
 
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
-
-	projSvc, projectID := createProject(t, pg.DB, "svc-events")
 
 	now := time.Date(2024, 9, 11, 12, 0, 0, 0, time.UTC)
 	idGen := ticket.NewBase58Generator(ticket.DefaultIDLength)
@@ -169,13 +195,13 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 		Store:      store,
 		EventStore: eventStore,
 		Projects:   projSvc,
+		Cells:      cellSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      idGen,
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
 	creator := ticket.NewUserActor("user@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
@@ -336,13 +362,26 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-reset")
+
+	ctx := context.Background()
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(ctx, cell.CreateInput{
+		ProjectID:   projectID,
+		Name:        "cell-reset",
+		WorkingPath: "/repo/cell-reset",
+	})
+	require.NoError(t, err)
+
 	store, err := ticket.NewStore(pg.DB)
 	require.NoError(t, err)
 
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
-
-	projSvc, projectID := createProject(t, pg.DB, "svc-reset")
 
 	wait := make(chan struct{})
 	release := make(chan struct{})
@@ -363,13 +402,13 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 		Store:      store,
 		EventStore: eventStore,
 		Projects:   projSvc,
+		Cells:      cellSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: gen,
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
 	actor := ticket.NewUserActor("owner@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
@@ -482,13 +521,26 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 	pg := testutil.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-reset-slice")
+
+	ctx := context.Background()
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(ctx, cell.CreateInput{
+		ProjectID:   projectID,
+		Name:        "cell-stage",
+		WorkingPath: "/repo/cell-stage",
+	})
+	require.NoError(t, err)
+
 	store, err := ticket.NewStore(pg.DB)
 	require.NoError(t, err)
 
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
-
-	projSvc, projectID := createProject(t, pg.DB, "svc-reset-slice")
 
 	now := time.Date(2024, 9, 12, 8, 0, 0, 0, time.UTC)
 	clock := &stepClock{current: now}
@@ -496,13 +548,13 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 		Store:      store,
 		EventStore: eventStore,
 		Projects:   projSvc,
+		Cells:      cellSvc,
 		Clock:      clock,
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
 	creator := ticket.NewUserActor("stage@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{

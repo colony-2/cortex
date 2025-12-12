@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
+	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/idgen"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
@@ -23,6 +25,7 @@ var (
 	ErrEmptyTitle          = errors.New("ticket: title is required")
 	ErrEmptyStage          = errors.New("ticket: stage is required")
 	ErrInvalidProject      = errors.New("ticket: invalid project")
+	ErrInvalidCell         = errors.New("ticket: invalid cell")
 	ErrIDGeneration        = errors.New("ticket: id generation failed")
 	ErrVersionConflict     = errors.New("ticket: version conflict")
 	ErrInvalidEventKind    = errors.New("ticket: invalid event kind")
@@ -54,6 +57,7 @@ type ServiceConfig struct {
 	Store      store.Store
 	EventStore eventstore.Store
 	Projects   project.Service
+	Cells      cell.Service
 	Clock      Clock
 	IDGen      model.ShortIDGenerator
 	EventIDGen model.ShortIDGenerator
@@ -63,6 +67,7 @@ type service struct {
 	store      store.Store
 	events     eventstore.Store
 	projects   project.Service
+	cells      cell.Service
 	clock      Clock
 	idGen      model.ShortIDGenerator
 	eventIDGen model.ShortIDGenerator
@@ -78,6 +83,9 @@ func New(config ServiceConfig) (Service, error) {
 	}
 	if config.Projects == nil {
 		return nil, errors.New("ticket service: projects service is required")
+	}
+	if config.Cells == nil {
+		return nil, errors.New("ticket service: cells service is required")
 	}
 	if config.Clock == nil {
 		config.Clock = systemClock{}
@@ -96,6 +104,7 @@ func New(config ServiceConfig) (Service, error) {
 		store:      config.Store,
 		events:     config.EventStore,
 		projects:   config.Projects,
+		cells:      config.Cells,
 		clock:      config.Clock,
 		idGen:      config.IDGen,
 		eventIDGen: config.EventIDGen,
@@ -132,6 +141,11 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		return nil, err
 	}
 
+	cellRecord, err := s.resolveCell(ctx, project.ID(projectID), input.Cell)
+	if err != nil {
+		return nil, err
+	}
+
 	ticketID, err := s.idGen.NewID()
 	if err != nil {
 		return nil, errors.Join(ErrIDGeneration, err)
@@ -140,8 +154,9 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	now := s.clock.Now()
 	ticket := &model.Ticket{
 		ID:          model.ID(ticketID),
-		CellName:    input.Cell,
-		ProjectID:   project.ID(projectID),
+		CellID:      cellRecord.ID,
+		CellName:    core.CellName(cellRecord.Name),
+		ProjectID:   cellRecord.ProjectID,
 		Title:       input.Title,
 		Description: input.Description,
 		Stage:       input.Stage,
@@ -453,6 +468,32 @@ func applyTicketResetMetadata(ticket *model.Ticket, reset *model.TicketReset) {
 	ticket.LastResetID = &idCopy
 	atCopy := reset.CreatedAt.UTC()
 	ticket.LastResetAt = &atCopy
+}
+
+func (s *service) resolveCell(ctx context.Context, projectID project.ID, name core.CellName) (*cell.Cell, error) {
+	trimmed := strings.TrimSpace(string(name))
+	if trimmed == "" {
+		return nil, ErrInvalidCell
+	}
+	iter, err := s.cells.ListCells(ctx, cell.SearchFilter{
+		ProjectIDs: []project.ID{projectID},
+		Names:      []string{trimmed},
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close(ctx)
+	c, err := iter.Next(ctx)
+	if errors.Is(err, cell.ErrIteratorDone) {
+		return nil, ErrInvalidCell
+	}
+	if err != nil {
+		return nil, err
+	}
+	if c == nil || c.ProjectID != projectID {
+		return nil, ErrInvalidCell
+	}
+	return c, nil
 }
 
 func newValidator() (*validator.Validate, error) {

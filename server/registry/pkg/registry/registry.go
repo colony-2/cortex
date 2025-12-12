@@ -1,9 +1,10 @@
-package worker
+package registry
 
 import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +13,11 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/fsnotify/fsnotify"
-	"go.uber.org/zap"
 )
 
 // Registry manages the discovery and tracking of recipes
 type Registry struct {
-	logger       *zap.Logger
+	logger       *slog.Logger
 	recipesDir   string
 	recipes      map[string]*recipe.RecipeFile // key is recipe name
 	mu           sync.RWMutex
@@ -28,7 +28,7 @@ type Registry struct {
 }
 
 // NewRegistry creates a new recipe registry
-func NewRegistry(logger *zap.Logger, recipesDir string) (*Registry, error) {
+func NewRegistry(logger *slog.Logger, recipesDir string) (*Registry, error) {
 	absDir, err := filepath.Abs(recipesDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve recipes directory: %w", err)
@@ -75,8 +75,8 @@ func (r *Registry) Start() error {
 	go r.watchForChanges()
 
 	r.logger.Info("Recipe registry started",
-		zap.String("directory", r.recipesDir),
-		zap.Int("recipes", len(r.recipes)))
+		slog.String("directory", r.recipesDir),
+		slog.Int("recipes", len(r.recipes)))
 
 	return nil
 }
@@ -88,7 +88,7 @@ func (r *Registry) Stop() error {
 }
 
 // GetRecipe returns a recipe by name
-func (r *Registry) GetRecipe(name string) (*recipe.RecipeFile, error) {
+func (r *Registry) GetRecipeFile(name string) (*recipe.RecipeFile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -98,6 +98,15 @@ func (r *Registry) GetRecipe(name string) (*recipe.RecipeFile, error) {
 	}
 
 	return recipe, nil
+}
+
+func (r *Registry) GetRecipe(name string) (*recipe.Recipe, error) {
+	f, err := r.GetRecipeFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return &f.Recipe, nil
 }
 
 func (r *Registry) ListRecipes() []*recipe.RecipeFile {
@@ -139,8 +148,8 @@ func (r *Registry) discoverRecipes() error {
 			recipe, err := r.loadRecipeFile(path)
 			if err != nil {
 				r.logger.Error("Failed to load unified recipe",
-					zap.String("path", path),
-					zap.Error(err))
+					slog.String("path", path),
+					slog.Any("error", err))
 				return nil
 			}
 			if recipe != nil {
@@ -162,7 +171,7 @@ func (r *Registry) discoverRecipes() error {
 	// Stop workers for removed recipes
 	for name, _ := range r.recipes {
 		if _, exists := discovered[name]; !exists {
-			r.logger.Info("Recipe removed", zap.String("name", name))
+			r.logger.Info("Recipe removed", slog.String("name", name))
 			delete(r.recipes, name) // Remove from registry
 		}
 	}
@@ -173,13 +182,13 @@ func (r *Registry) discoverRecipes() error {
 
 		if !exists {
 			// New recipe
-			r.logger.Info("New recipe discovered", zap.String("name", name))
+			r.logger.Info("New recipe discovered", slog.String("name", name))
 		} else if oldRecipe.Hash != newRecipe.Hash {
 			// Changed recipe
 			r.logger.Info("Recipe changed",
-				zap.String("name", name),
-				zap.String("oldHash", oldRecipe.Hash),
-				zap.String("newHash", newRecipe.Hash))
+				slog.String("name", name),
+				slog.String("oldHash", oldRecipe.Hash),
+				slog.String("newHash", newRecipe.Hash))
 		}
 
 		r.recipes[name] = newRecipe
@@ -230,7 +239,7 @@ func (r *Registry) watchForChanges() {
 		}
 		debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
 			if err := r.discoverRecipes(); err != nil {
-				r.logger.Error("Failed to rediscover recipes", zap.Error(err))
+				r.logger.Error("Failed to rediscover recipes", slog.Any("error", err))
 			}
 		})
 	}
@@ -250,8 +259,8 @@ func (r *Registry) watchForChanges() {
 			}
 
 			r.logger.Debug("File system event",
-				zap.String("name", event.Name),
-				zap.String("op", event.Op.String()))
+				slog.String("name", event.Name),
+				slog.String("op", event.Op.String()))
 
 			debounce()
 
@@ -259,7 +268,7 @@ func (r *Registry) watchForChanges() {
 			if !ok {
 				return
 			}
-			r.logger.Error("File watcher error", zap.Error(err))
+			r.logger.Error("File watcher error", slog.Any("error", err))
 
 		case <-r.ctx.Done():
 			return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
@@ -24,6 +25,17 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 	proj, err := projSvc.CreateProject(ctx, project.CreateInput{
 		Name:        "op-integration",
 		GitRepoPath: "git@example.com/op-integration.git",
+	})
+	require.NoError(t, err)
+
+	cellStore, err := cell.NewStore(pg.DB)
+	require.NoError(t, err)
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projSvc})
+	require.NoError(t, err)
+	_, err = cellSvc.CreateCell(ctx, cell.CreateInput{
+		ProjectID:   proj.ID,
+		Name:        "cell-integration",
+		WorkingPath: "/repo/cell-integration",
 	})
 	require.NoError(t, err)
 

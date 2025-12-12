@@ -7,6 +7,7 @@ require (
 	github.com/colony-2/swf-go v0.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/divisive-ai/vibethis/server/git v0.0.0
+	github.com/divisive-ai/vibethis/server/registry v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0
 	github.com/fsnotify/fsnotify v1.7.0
@@ -117,6 +118,7 @@ require (
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
 replace github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
+replace github.com/divisive-ai/vibethis/server/registry => ../registry
 
 replace github.com/divisive-ai/vibethis/server/git => ../git
 
