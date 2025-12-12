@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,19 +11,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/divisive-ai/vibethis/server/recipe-input/pkg/input"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflow"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
 	"github.com/spf13/cobra"
-	enumspb "go.temporal.io/api/enums/v1"
-	"go.temporal.io/api/serviceerror"
 )
 
 var (
@@ -133,68 +132,23 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	// Create dependencies
 	graphBuilder := graph.NewBuilder(absNodesPath)
-	fileBrowser := files.NewBrowser(files.Config{})
-	gitRepo := git.NewRepository(git.Config{
-		DefaultAuthor: "Test User",
-		DefaultEmail:  "test@example.com",
-	})
-	containerManager := container.NewManager(container.Config{})
 
 	// Setup ops management services (input manager etc.)
-	sseManager := inputops.NewSimpleSSEManager()
+	sseManager := input.NewSimpleSSEManager()
 
-	// Start embedded Temporal server for testserver to power input manager
-	// Choose a free ephemeral port for Temporal frontend to avoid collisions
-	var temporalPort int
-	if ln, lerr := net.Listen("tcp", "127.0.0.1:0"); lerr == nil {
-		if addr, ok := ln.Addr().(*net.TCPAddr); ok {
-			temporalPort = addr.Port
-		}
-		_ = ln.Close()
-	} else {
-		temporalPort = 7233
-	}
-
-	temporalSrv, err := embeddedtemporal.NewServer(embeddedtemporal.Options{
-		FrontendIP:               "127.0.0.1",
-		FrontendPort:             temporalPort,
-		DatabaseFile:             filepath.Join(os.TempDir(), "vibethis-temporal.db"),
-		LogLevel:                 "error",
-		DisableScanners:          true,
-		DisableNexus:             true,
-		DisableParentClosePolicy: true,
-	})
+	recipePath := filepath.Join(absNodesPath, "recipes")
+	swf := toy.NewToyEngine([]swf.WorkSet{})
+	reg, err := worker.NewRegistry(nil, recipePath)
 	if err != nil {
-		return fmt.Errorf("failed to create embedded Temporal server: %w", err)
+		return fmt.Errorf("failed to create worker registry: %w", err)
 	}
-	// Start server and wait up to 30s for a client to be ready
-	if startErr := temporalSrv.Start(); startErr != nil {
-		_ = temporalSrv.Stop()
-		return fmt.Errorf("failed to start embedded Temporal server: %w", startErr)
+	wfc := workflow.SWFWorkflowControl{
+		Engine:   swf,
+		Registry: reg,
 	}
-	defer temporalSrv.Stop()
-
-	hostPort := temporalSrv.GetFrontendAddress()
-	var temporalClient client.Client
-	var lastDialErr error
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		cli, dialErr := embeddedtemporal.NewClient(embeddedtemporal.ClientOptions{HostPort: hostPort})
-		if dialErr == nil {
-			temporalClient = cli
-			break
-		}
-		lastDialErr = dialErr
-		time.Sleep(500 * time.Millisecond)
-	}
-	if temporalClient == nil {
-		return fmt.Errorf("timed out waiting for Temporal client (last error: %v)", lastDialErr)
-	}
-	defer temporalClient.Close()
-
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
-		WithWorkflowControl(&temporalWorkflowControl{client: temporalClient}).
+		WithWorkflowControl(&wfc).
 		WithDatabase(ticketDB).
 		Build()
 
@@ -216,9 +170,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	deps := web.Dependencies{
 		Storage:         store,
 		Graph:           graphBuilder,
-		Files:           fileBrowser,
-		Git:             gitRepo,
-		Container:       containerManager,
 		ExtensionRoutes: extensionRoutes,
 	}
 
@@ -265,92 +216,4 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	}
 
 	return nil
-}
-
-type temporalWorkflowControl struct {
-	client client.Client
-}
-
-func (c *temporalWorkflowControl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
-	if c == nil || c.client == nil {
-		return workflowctl.WorkflowSummary{}, workflowctl.ErrUnavailable
-	}
-	resp, err := c.client.DescribeWorkflowExecution(ctx, ref.WorkflowID, ref.RunID)
-	if err != nil {
-		return workflowctl.WorkflowSummary{}, mapTemporalError(err)
-	}
-	info := resp.GetWorkflowExecutionInfo()
-	if info == nil {
-		return workflowctl.WorkflowSummary{}, workflowctl.ErrUnavailable
-	}
-	summary := workflowctl.WorkflowSummary{
-		WorkflowID: info.GetExecution().GetWorkflowId(),
-		RunID:      info.GetExecution().GetRunId(),
-		Status:     mapTemporalStatus(info.GetStatus()),
-	}
-	if ts := info.GetStartTime(); ts != nil {
-		t := ts.AsTime()
-		summary.StartTime = &t
-	}
-	if ts := info.GetCloseTime(); ts != nil {
-		t := ts.AsTime()
-		summary.CloseTime = &t
-	}
-	return summary, nil
-}
-
-func (c *temporalWorkflowControl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
-	if c == nil || c.client == nil {
-		return workflowctl.ErrUnavailable
-	}
-	return mapTemporalError(c.client.SignalWorkflow(ctx, ref.WorkflowID, ref.RunID, signalName, payload))
-}
-
-func (c *temporalWorkflowControl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
-	if c == nil || c.client == nil {
-		return workflowctl.ErrUnavailable
-	}
-	return mapTemporalError(c.client.CancelWorkflow(ctx, ref.WorkflowID, ref.RunID))
-}
-
-func (c *temporalWorkflowControl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
-	return workflowctl.ResetResponse{}, workflowctl.ErrUnavailable
-}
-
-func (c *temporalWorkflowControl) StartWorkflow(ctx context.Context, req workflowctl.StartRequest) (workflowctl.StartResponse, error) {
-	return workflowctl.StartResponse{}, workflowctl.ErrUnavailable
-}
-
-func (c *temporalWorkflowControl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
-	return workflowctl.StartChildResponse{}, workflowctl.ErrUnavailable
-}
-
-func mapTemporalStatus(status enumspb.WorkflowExecutionStatus) workflowctl.WorkflowStatus {
-	switch status {
-	case enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED:
-		return workflowctl.StatusCompleted
-	case enumspb.WORKFLOW_EXECUTION_STATUS_FAILED:
-		return workflowctl.StatusFailed
-	case enumspb.WORKFLOW_EXECUTION_STATUS_CANCELED:
-		return workflowctl.StatusCanceled
-	case enumspb.WORKFLOW_EXECUTION_STATUS_TERMINATED:
-		return workflowctl.StatusTerminated
-	case enumspb.WORKFLOW_EXECUTION_STATUS_TIMED_OUT:
-		return workflowctl.StatusTimedOut
-	case enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING:
-		return workflowctl.StatusRunning
-	default:
-		return workflowctl.StatusUnspecified
-	}
-}
-
-func mapTemporalError(err error) error {
-	switch err.(type) {
-	case *serviceerror.NotFound:
-		return workflowctl.ErrNotFound
-	case *serviceerror.Unavailable:
-		return workflowctl.ErrUnavailable
-	default:
-		return err
-	}
 }

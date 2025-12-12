@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -10,9 +9,6 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
-	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
 	"github.com/gorilla/mux"
 )
 
@@ -27,17 +23,13 @@ type ExtensionRoute struct {
 type Handlers struct {
 	storage core.Storage
 	graph   core.GraphBuilder
-	files   files.Browser
-	git     git.Repository
 }
 
 // New creates a new handlers instance
-func New(storage core.Storage, graph core.GraphBuilder, files files.Browser, git git.Repository) *Handlers {
+func New(storage core.Storage, graph core.GraphBuilder) *Handlers {
 	return &Handlers{
 		storage: storage,
 		graph:   graph,
-		files:   files,
-		git:     git,
 	}
 }
 
@@ -52,24 +44,6 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
-
-	// Graph endpoints
-	api.HandleFunc("/graph", withHandlerLog("core:GetGraph", h.GetGraph)).Methods("GET")
-
-	// Position endpoints
-	api.HandleFunc("/positions", withHandlerLog("core:GetPositions", h.GetPositions)).Methods("GET")
-	api.HandleFunc("/positions", withHandlerLog("core:SavePositions", h.SavePositions)).Methods("POST")
-
-	// Cell endpoints
-	api.HandleFunc("/cells/{cellId}/files", withHandlerLog("core:GetFiles", h.GetFiles)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", withHandlerLog("core:GetFile", h.GetFile)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/files/{filePath:.*}", withHandlerLog("core:PutFile", h.PutFile)).Methods("PUT")
-
-	// Git endpoints
-	api.HandleFunc("/cells/{cellId}/git/status", withHandlerLog("core:GetGitStatus", h.GetGitStatus)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/diff", withHandlerLog("core:GetGitDiff", h.GetGitDiff)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/history", withHandlerLog("core:GetGitHistory", h.GetGitHistory)).Methods("GET")
-	api.HandleFunc("/cells/{cellId}/git/commit", withHandlerLog("core:CreateGitCommit", h.CreateGitCommit)).Methods("POST")
 
 	// Add extension routes if provided
 	if extensions != nil {
@@ -107,58 +81,6 @@ type logResponseWriter struct {
 func (l *logResponseWriter) WriteHeader(code int) {
 	l.status = code
 	l.ResponseWriter.WriteHeader(code)
-}
-
-// GetPositions handles GET /api/positions
-func (h *Handlers) GetPositions(w http.ResponseWriter, r *http.Request) {
-	positions, err := h.storage.GetPositions(r.Context())
-	if err != nil {
-		http.Error(w, "Failed to get positions", http.StatusInternalServerError)
-		return
-	}
-
-	// Convert core.Position to openapi.Position
-	apiPositions := make([]openapi.Position, len(positions))
-	for i, pos := range positions {
-		apiPositions[i] = openapi.Position{
-			CellId: pos.CellID,
-			X:      pos.X,
-			Y:      pos.Y,
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(apiPositions)
-}
-
-// SavePositions handles POST /api/positions
-func (h *Handlers) SavePositions(w http.ResponseWriter, r *http.Request) {
-	var apiPositions []openapi.Position
-
-	if r.Body == nil {
-		http.Error(w, "Request body is required", http.StatusBadRequest)
-		return
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&apiPositions); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-
-	// Convert openapi.Position to core.Position
-	for _, apiPos := range apiPositions {
-		corePos := core.Position{
-			CellID: apiPos.CellId,
-			X:      apiPos.X,
-			Y:      apiPos.Y,
-		}
-		if err := h.storage.SavePosition(r.Context(), corePos); err != nil {
-			http.Error(w, "Failed to save positions", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	w.WriteHeader(http.StatusOK)
 }
 
 // NewSPAHandler creates a handler for serving the single-page application

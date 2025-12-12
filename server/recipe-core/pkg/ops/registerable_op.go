@@ -90,24 +90,7 @@ func NewNoTaskStep[In any, Out any]() Step {
 
 // NewStep constructs a step with signature func(ctx context.Context, in In) (Out, error).
 func NewStep[In any, Out any](fn func(ctx context.Context, in In) (Out, error)) Step {
-	inputType := reflect.TypeOf((*In)(nil)).Elem()
-	outputType := reflect.TypeOf((*Out)(nil)).Elem()
-	invoker := func(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
-		var input In
-		if err := DecodeWithJsonTags(resolvedInput, &input); err != nil {
-			return nil, fmt.Errorf("error decoding input: %w", err)
-		}
-		objResult, err := fn(ctx, input)
-		if err != nil {
-			return nil, fmt.Errorf("error executing step: %w", err)
-		}
-		s := structs.New(objResult)
-		s.TagName = "json"
-		return s.Map(), nil
-	}
-	return &stepImpl{
-		inputType: inputType, outputType: outputType, invokeFn: invoker,
-	}
+	return NewStepWithDeps(func(deps OpDependencies, ctx context.Context, in In) (Out, error) { return fn(ctx, in) })
 }
 
 // NewStepWithDeps constructs a step with signature func(deps OpDependencies, ctx context.Context, in In) (Out, error).
@@ -152,6 +135,7 @@ type OpBuilder interface {
 	AddStep(name string, step Step) OpBuilder
 	WithManagementService(svc ManagementService) OpBuilder
 	Build() (RegisterableOp, error)
+	BuildOrPanic() RegisterableOp
 }
 
 func NewOp() OpBuilder {
@@ -195,6 +179,14 @@ func (b *opBuilder) AddStep(name string, step Step) OpBuilder {
 func (b *opBuilder) WithManagementService(svc ManagementService) OpBuilder {
 	b.mgmt = svc
 	return b
+}
+
+func (b *opBuilder) BuildOrPanic() RegisterableOp {
+	op, err := b.Build()
+	if err != nil {
+		panic(err)
+	}
+	return op
 }
 
 func (b *opBuilder) Build() (RegisterableOp, error) {

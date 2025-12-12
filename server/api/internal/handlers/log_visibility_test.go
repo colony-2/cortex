@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 )
@@ -17,9 +15,6 @@ import (
 func TestLogVisibilityInHandlers(t *testing.T) {
 	store := storage.NewMemoryStorage()
 	gb := graph.NewBuilder(".")
-	fb := files.NewBrowser(files.Config{})
-	gr := git.NewRepository(git.Config{DefaultAuthor: "Test", DefaultEmail: "test@example.com"})
-	cm := container.NewManager(container.Config{})
 
 	// Add a simple route that logs to the default logger
 	routes := []web.ExtensionRoute{
@@ -33,7 +28,7 @@ func TestLogVisibilityInHandlers(t *testing.T) {
 		},
 	}
 
-	deps := web.Dependencies{Storage: store, Graph: gb, Files: fb, Git: gr, Container: cm, ExtensionRoutes: routes}
+	deps := web.Dependencies{Storage: store, Graph: gb, ExtensionRoutes: routes}
 	api := web.NewServer(web.Config{Port: 0, CORSOrigins: []string{}}, deps)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/log-echo", nil)

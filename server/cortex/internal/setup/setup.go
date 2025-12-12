@@ -10,7 +10,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
 	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
 	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
 	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"

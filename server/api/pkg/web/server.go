@@ -10,8 +10,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
 	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/files/pkg/files"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
 )
 
 // Config defines configuration for the web server.
@@ -38,8 +36,6 @@ type Config struct {
 type Dependencies struct {
 	Storage  core.Storage
 	Graph    core.GraphBuilder
-	Files    files.Browser
-	Git      git.Repository
 	StaticFS http.FileSystem // Optional: filesystem for static files
 
 	// ExtensionRoutes allows external modules to add routes
@@ -63,7 +59,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Storage, deps.Graph, deps.Files, deps.Git)
+	h := handlers.New(deps.Storage, deps.Graph)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

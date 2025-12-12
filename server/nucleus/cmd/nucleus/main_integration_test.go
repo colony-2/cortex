@@ -1,5 +1,3 @@
-//go:build integration
-// +build integration
 
 package main
 
@@ -16,7 +14,6 @@ import (
 	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
 	"github.com/divisive-ai/vibethis/server/nucleus/internal/testutil"
 	"github.com/spf13/cobra"
-	"go.temporal.io/api/workflowservice/v1"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	"golang.org/x/net/context"

@@ -235,15 +235,11 @@ func (s TestingStub) Install() func() {
 }
 
 func GetOp() ops.RegisterableOp {
-	return ops.NewActivityMappedOpV2[Input, Output](
-		ops.OpMetadata{
-			Type:           opName,
-			Description:    "Manage ticket lifecycle actions as a batch",
-			Version:        "1.0.0",
-			DefaultTimeout: 2 * time.Minute,
-		},
-		execute,
-	)
+	return ops.NewOp().
+		WithDefaultTimeout(2*time.Minute).
+		WithType(opName).
+		AddStep("manage", ops.NewStepWithDeps(execute)).
+		BuildOrPanic()
 }
 
 func execute(inv ops.OpDependencies, ctx context.Context, input Input) (Output, error) {
