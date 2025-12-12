@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
@@ -14,16 +15,28 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 	t.Cleanup(func() { pg.Close(t) })
 
 	inv := newOpDepsWithDB(pg.DB)
+	ctx := context.Background()
+
+	projStore, err := project.NewStore(pg.DB)
+	require.NoError(t, err)
+	projSvc, err := project.NewService(project.ServiceConfig{Store: projStore})
+	require.NoError(t, err)
+	proj, err := projSvc.CreateProject(ctx, project.CreateInput{
+		Name:        "op-integration",
+		GitRepoPath: "git@example.com/op-integration.git",
+	})
+	require.NoError(t, err)
 
 	input := Input{
 		Actions: []Action{
 			{
 				Type: ActionCreateTicket,
 				Raw: mustMarshal(t, createTicketAction{
-					Cell:  "cell-integration",
-					Title: "Integration Test",
-					Stage: "Triage",
-					State: string(ticket.StateWorking),
+					Cell:      "cell-integration",
+					ProjectID: string(proj.ID),
+					Title:     "Integration Test",
+					Stage:     "Triage",
+					State:     string(ticket.StateWorking),
 				}),
 			},
 			{

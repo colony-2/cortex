@@ -5,7 +5,7 @@ import (
 	"math/big"
 )
 
-const DefaultIDLength = 26
+const DefaultIDLength = 27
 
 var base58Alphabet = []rune("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
 

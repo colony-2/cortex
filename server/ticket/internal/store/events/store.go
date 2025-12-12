@@ -107,7 +107,7 @@ func (s *store) LatestReset(ctx context.Context, ticketID model.ID) (*model.Tick
 	var reset model.TicketReset
 	query := s.db.WithContext(ctx).
 		Model(&model.TicketReset{}).
-		Select("id", "ticket_id", "created_at").
+		Select("id", "ticket_id", "project_id", "created_at").
 		Where("ticket_id = ?", ticketID).
 		Order("created_at DESC").
 		Limit(1)
@@ -143,6 +143,9 @@ func applyFilter(db *gorm.DB, filter model.TicketEventFilter) *gorm.DB {
 	}
 	if len(filter.PayloadTypes) > 0 {
 		db = db.Where("ticket_events.payload_type IN ?", filter.PayloadTypes)
+	}
+	if len(filter.Projects) > 0 {
+		db = db.Where("ticket_events.project_id IN ?", filter.Projects)
 	}
 	if filter.Since != nil {
 		db = db.Where("ticket_events.event_time >= ?", *filter.Since)

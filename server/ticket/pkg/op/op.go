@@ -151,6 +151,7 @@ type actorAgentPayload struct {
 
 type createTicketAction struct {
 	Cell        string        `json:"cell"`
+	ProjectID   string        `json:"project_id"`
 	Title       string        `json:"title"`
 	Stage       string        `json:"stage"`
 	State       string        `json:"state"`
@@ -443,8 +444,13 @@ func handleCreateTicket(
 	if err != nil {
 		return ActionResult{}, err
 	}
+	projectID := strings.TrimSpace(payload.ProjectID)
+	if projectID == "" {
+		return ActionResult{}, ticket.ErrInvalidProject
+	}
 	input := ticket.CreateInput{
 		Cell:        core.CellName(strings.TrimSpace(payload.Cell)),
+		ProjectID:   ticket.ProjectID(projectID),
 		Title:       strings.TrimSpace(payload.Title),
 		Description: strings.TrimSpace(payload.Description),
 		Stage:       normalizeStageValue(payload.Stage),
@@ -738,6 +744,7 @@ func applyTicketContext(patch map[string]any, tkt *ticket.Ticket) {
 		return
 	}
 	patch["ticket.id"] = string(tkt.ID)
+	patch["ticket.project_id"] = string(tkt.ProjectID)
 	patch["ticket.stage"] = string(tkt.Stage)
 	patch["ticket.state"] = string(tkt.State)
 	if tkt.Version.Valid {

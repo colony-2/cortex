@@ -4,13 +4,15 @@ import (
 	"time"
 
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	"gorm.io/plugin/optimisticlock"
 )
 
 type CreateInput struct {
 	Cell        core.CellName
-	Title       string `validate:"required"`
+	ProjectID   project.ID `validate:"required"`
+	Title       string     `validate:"required"`
 	Description string
 	Stage       model.Stage `validate:"required,stage"`
 	State       model.State `validate:"required,state"`

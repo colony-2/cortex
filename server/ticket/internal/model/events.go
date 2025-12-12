@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 )
 
 type (
@@ -108,14 +110,15 @@ func cloneTicketFieldChanges(changes []TicketFieldChange) []TicketFieldChange {
 }
 
 type TicketEvent struct {
-	ID          TicketEventID          `gorm:"primaryKey;type:char(26)"`
-	TicketID    ID                     `gorm:"type:char(26);index"`
+	ID          TicketEventID          `gorm:"primaryKey"`
+	TicketID    ID                     `gorm:"index;not null"`
+	ProjectID   project.ID             `gorm:"column:project_id;index;not null"`
 	Kind        TicketEventKind        `gorm:"type:text"`
 	PayloadType TicketEventPayloadType `gorm:"column:payload_type;type:text;index"`
 	Actor       Actor                  `gorm:"embedded;embeddedPrefix:actor_"`
 	EventTime   time.Time              `gorm:"index"`
 	CreatedAt   time.Time
-	ResetID     *TicketResetID `gorm:"type:char(26);index"`
+	ResetID     *TicketResetID `gorm:"index"`
 
 	TicketData    TicketEventPayload      `gorm:"embedded;embeddedPrefix:ticket_" json:"-"`
 	TicketChanges TicketFieldChangeList   `gorm:"column:ticket_changes;type:jsonb" json:"-"`
@@ -186,14 +189,15 @@ type ChangeSetEventPayload struct {
 }
 
 type TicketResetEventPayload struct {
-	ResetID       TicketResetID  `json:"reset_id" gorm:"type:char(26)"`
-	AnchorEventID *TicketEventID `json:"anchor_event_id,omitempty" gorm:"type:char(26)"`
+	ResetID       TicketResetID  `json:"reset_id"`
+	AnchorEventID *TicketEventID `json:"anchor_event_id,omitempty"`
 	Reason        string         `json:"reason,omitempty"`
 }
 
 type TicketReset struct {
-	ID        TicketResetID `gorm:"primaryKey;type:char(26)"`
-	TicketID  ID            `gorm:"type:char(26);index"`
+	ID        TicketResetID `gorm:"primaryKey"`
+	TicketID  ID            `gorm:"index;not null"`
+	ProjectID project.ID    `gorm:"column:project_id;index;not null"`
 	Actor     Actor         `gorm:"embedded;embeddedPrefix:actor_"`
 	Reason    string        `gorm:"type:text"`
 	CreatedAt time.Time
@@ -207,6 +211,7 @@ type TicketEventFilter struct {
 	Until        *time.Time
 	At           *time.Time
 	IncludeReset bool
+	Projects     []project.ID
 }
 
 func (TicketEvent) TableName() string { return "ticket_events" }

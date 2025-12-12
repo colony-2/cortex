@@ -4,7 +4,6 @@ go 1.24.1
 
 require (
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe v0.0.0
 	github.com/spf13/cobra v1.8.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.43.0
@@ -191,29 +190,20 @@ require (
 
 replace (
 	github.com/divisive-ai/vibethis/server/core => ../core
-	github.com/divisive-ai/vibethis/server/embeddedtemporal => ../embeddedtemporal
 	github.com/divisive-ai/vibethis/server/git => ../git
 	github.com/divisive-ai/vibethis/server/llm => ../llm
 	github.com/divisive-ai/vibethis/server/ops => ../ops
-	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
-	github.com/divisive-ai/vibethis/server/ticket => ../ticket
-	gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
-	github.com/colony-2/shai => ../../../shai
-	github.com/colony-2/strata/strata-go => ../../../strata-go
-	github.com/colony-2/swf-go => ../../../swf-go
-
-	github.com/divisive-ai/vibethis/server/core => ../core
-
-	github.com/divisive-ai/vibethis/server/git => ../git
-	github.com/divisive-ai/vibethis/server/graph => ../graph
-	github.com/divisive-ai/vibethis/server/llm => ../llm
 	github.com/divisive-ai/vibethis/server/openapi => ../openapi
-	github.com/divisive-ai/vibethis/server/ops => ../ops
+	github.com/divisive-ai/vibethis/server/storage => ../storage
+	github.com/divisive-ai/vibethis/server/graph => ../graph
+	github.com/divisive-ai/vibethis/server/ticket => ../ticket
+
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
 	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
-	github.com/divisive-ai/vibethis/server/storage => ../storage
-	github.com/divisive-ai/vibethis/server/ticket => ../ticket
+	gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
+	github.com/colony-2/shai => ../../../shai
+	github.com/colony-2/strata/strata-go => ../../../strata-go
+	github.com/colony-2/swf-go => ../../../swf-go
 )

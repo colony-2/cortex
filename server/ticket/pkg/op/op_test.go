@@ -97,17 +97,22 @@ func (s *stubService) ResetTicket(ctx context.Context, id ticket.ID, in ticket.T
 }
 
 type stubDeps struct {
-	db        *gorm.DB
-	artifacts []swf.Artifact
-	workflow  workflowctl.WorkflowControl
+	db             *gorm.DB
+	inputArtifacts []swf.Artifact
+	outputs        []swf.Artifact
+	workflow       workflowctl.WorkflowControl
 }
 
 func (d *stubDeps) Database() *gorm.DB { return d.db }
-func (d *stubDeps) AddArtifact(a swf.Artifact) error {
-	d.artifacts = append(d.artifacts, a)
+func (d *stubDeps) AddOutputArtifact(a swf.Artifact) error {
+	if a == nil {
+		return errors.New("nil artifact")
+	}
+	d.outputs = append(d.outputs, a)
 	return nil
 }
-func (d *stubDeps) GetInputArtifacts() []swf.Artifact { return d.artifacts }
+func (d *stubDeps) GetInputArtifacts() []swf.Artifact { return d.inputArtifacts }
+func (d *stubDeps) GetOutputArtifacts() []swf.Artifact { return d.outputs }
 func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }
@@ -124,6 +129,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 
 	created := &ticket.Ticket{
 		ID:        ticket.ID("TCK-001"),
+		ProjectID: ticket.ProjectID("proj-1"),
 		Stage:     ticket.Stage("triage"),
 		State:     ticket.StateWorking,
 		UpdatedAt: time.Date(2024, 9, 20, 10, 0, 0, 0, time.UTC),
@@ -135,11 +141,13 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 		require.Equal(t, ticket.ActorTypeAgent, input.Actor.Type)
 		require.Equal(t, "cell-x", input.Actor.Agent.CellName)
 		require.Equal(t, "recipe-alpha", input.Actor.Agent.WorkflowName)
+		require.Equal(t, ticket.ProjectID("proj-1"), input.ProjectID)
 		return created, nil
 	}
 
 	updated := &ticket.Ticket{
 		ID:        ticket.ID("TCK-001"),
+		ProjectID: ticket.ProjectID("proj-1"),
 		Stage:     ticket.Stage("execution"),
 		State:     ticket.StateWorking,
 		UpdatedAt: time.Date(2024, 9, 20, 11, 0, 0, 0, time.UTC),
@@ -159,10 +167,11 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 			{
 				Type: ActionCreateTicket,
 				Raw: mustMarshal(t, createTicketAction{
-					Cell:  "cell-x",
-					Title: "Bootstrap",
-					Stage: "Triage",
-					State: string(ticket.StateWorking),
+					Cell:      "cell-x",
+					ProjectID: "proj-1",
+					Title:     "Bootstrap",
+					Stage:     "Triage",
+					State:     string(ticket.StateWorking),
 					Actor: &actorPayload{
 						Type: "agent",
 						Agent: &actorAgentPayload{
@@ -190,6 +199,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	require.Equal(t, ticket.Stage("execution"), output.Ticket.Stage)
 	require.Equal(t, "TCK-001", output.ContextPatch["ticket.id"])
 	require.Equal(t, "execution", output.ContextPatch["ticket.stage"])
+	require.Equal(t, "proj-1", output.ContextPatch["ticket.project_id"])
 	require.Len(t, output.Results, 2)
 	require.Equal(t, ActionCreateTicket, output.Results[0].Type)
 	require.Equal(t, ActionUpdateTicket, output.Results[1].Type)

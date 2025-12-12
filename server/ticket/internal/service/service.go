@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/idgen"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
@@ -21,6 +22,7 @@ var (
 	ErrInvalidActor        = errors.New("ticket: invalid actor")
 	ErrEmptyTitle          = errors.New("ticket: title is required")
 	ErrEmptyStage          = errors.New("ticket: stage is required")
+	ErrInvalidProject      = errors.New("ticket: invalid project")
 	ErrIDGeneration        = errors.New("ticket: id generation failed")
 	ErrVersionConflict     = errors.New("ticket: version conflict")
 	ErrInvalidEventKind    = errors.New("ticket: invalid event kind")
@@ -51,6 +53,7 @@ type Service interface {
 type ServiceConfig struct {
 	Store      store.Store
 	EventStore eventstore.Store
+	Projects   project.Service
 	Clock      Clock
 	IDGen      model.ShortIDGenerator
 	EventIDGen model.ShortIDGenerator
@@ -59,6 +62,7 @@ type ServiceConfig struct {
 type service struct {
 	store      store.Store
 	events     eventstore.Store
+	projects   project.Service
 	clock      Clock
 	idGen      model.ShortIDGenerator
 	eventIDGen model.ShortIDGenerator
@@ -72,14 +76,17 @@ func New(config ServiceConfig) (Service, error) {
 	if config.EventStore == nil {
 		return nil, errors.New("ticket service: event store is required")
 	}
+	if config.Projects == nil {
+		return nil, errors.New("ticket service: projects service is required")
+	}
 	if config.Clock == nil {
 		config.Clock = systemClock{}
 	}
 	if config.IDGen == nil {
-		config.IDGen = idgen.NewBase58Generator(idgen.DefaultIDLength)
+		config.IDGen = idgen.NewKSUIDGenerator()
 	}
 	if config.EventIDGen == nil {
-		config.EventIDGen = config.IDGen
+		config.EventIDGen = idgen.NewKSUIDGenerator()
 	}
 	validate, err := newValidator()
 	if err != nil {
@@ -88,6 +95,7 @@ func New(config ServiceConfig) (Service, error) {
 	return &service{
 		store:      config.Store,
 		events:     config.EventStore,
+		projects:   config.Projects,
 		clock:      config.Clock,
 		idGen:      config.IDGen,
 		eventIDGen: config.EventIDGen,
@@ -113,6 +121,17 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		return nil, err
 	}
 
+	projectID := strings.TrimSpace(string(input.ProjectID))
+	if projectID == "" {
+		return nil, ErrInvalidProject
+	}
+	if _, err := s.projects.GetProject(ctx, project.ID(projectID)); err != nil {
+		if errors.Is(err, project.ErrNotFound) {
+			return nil, ErrInvalidProject
+		}
+		return nil, err
+	}
+
 	ticketID, err := s.idGen.NewID()
 	if err != nil {
 		return nil, errors.Join(ErrIDGeneration, err)
@@ -122,6 +141,7 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	ticket := &model.Ticket{
 		ID:          model.ID(ticketID),
 		CellName:    input.Cell,
+		ProjectID:   project.ID(projectID),
 		Title:       input.Title,
 		Description: input.Description,
 		Stage:       input.Stage,

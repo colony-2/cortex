@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type fixedClock struct{ now time.Time }
@@ -22,6 +24,21 @@ func (s *stepClock) Now() time.Time {
 	now := s.current
 	s.current = s.current.Add(time.Second)
 	return now
+}
+
+func createProject(t *testing.T, db *gorm.DB, name string) (project.Service, project.ID) {
+	t.Helper()
+	store, err := project.NewStore(db)
+	require.NoError(t, err)
+	svc, err := project.NewService(project.ServiceConfig{Store: store})
+	require.NoError(t, err)
+	ctx := context.Background()
+	proj, err := svc.CreateProject(ctx, project.CreateInput{
+		Name:        name,
+		GitRepoPath: "git@example.com/" + name + ".git",
+	})
+	require.NoError(t, err)
+	return svc, proj.ID
 }
 
 type blockingEventIDGen struct {
@@ -66,10 +83,13 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-create")
+
 	now := time.Date(2024, 9, 11, 10, 30, 0, 0, time.UTC)
 	svc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      store,
 		EventStore: eventStore,
+		Projects:   projSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
@@ -79,11 +99,12 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
-		Cell:  "cell-a",
-		Title: "Proposal review",
-		Stage: ticket.Stage("triage"),
-		State: ticket.StateWorking,
-		Actor: ticket.NewUserActor("designer@example.com"),
+		Cell:      "cell-a",
+		ProjectID: projectID,
+		Title:     "Proposal review",
+		Stage:     ticket.Stage("triage"),
+		State:     ticket.StateWorking,
+		Actor:     ticket.NewUserActor("designer@example.com"),
 	})
 	require.NoError(t, err)
 	require.NotZero(t, created.ID)
@@ -140,11 +161,14 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-events")
+
 	now := time.Date(2024, 9, 11, 12, 0, 0, 0, time.UTC)
 	idGen := ticket.NewBase58Generator(ticket.DefaultIDLength)
 	svc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      store,
 		EventStore: eventStore,
+		Projects:   projSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      idGen,
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
@@ -155,11 +179,12 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	creator := ticket.NewUserActor("user@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
-		Cell:  "cell-a",
-		Title: "Lifecycle",
-		Stage: ticket.Stage("triage"),
-		State: ticket.StateWorking,
-		Actor: creator,
+		Cell:      "cell-a",
+		ProjectID: projectID,
+		Title:     "Lifecycle",
+		Stage:     ticket.Stage("triage"),
+		State:     ticket.StateWorking,
+		Actor:     creator,
 	})
 	require.NoError(t, err)
 
@@ -317,14 +342,16 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-reset")
+
 	wait := make(chan struct{})
 	release := make(chan struct{})
 	gen := &blockingEventIDGen{
 		ids: []string{
-			"evtA2345678901234567890123",
-			"evtB2345678901234567890123",
-			"rstC2345678901234567890123",
-			"evtD2345678901234567890123",
+			"evtA23456789012345678901234",
+			"evtB23456789012345678901234",
+			"rstC23456789012345678901234",
+			"evtD23456789012345678901234",
 		},
 		blockAt: 2,
 		wait:    wait,
@@ -335,6 +362,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 	svc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      store,
 		EventStore: eventStore,
+		Projects:   projSvc,
 		Clock:      fixedClock{now: now},
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: gen,
@@ -345,11 +373,12 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 	actor := ticket.NewUserActor("owner@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
-		Cell:  "cell-reset",
-		Title: "Concurrent",
-		Stage: ticket.Stage("triage"),
-		State: ticket.StateWorking,
-		Actor: actor,
+		Cell:      "cell-reset",
+		ProjectID: projectID,
+		Title:     "Concurrent",
+		Stage:     ticket.Stage("triage"),
+		State:     ticket.StateWorking,
+		Actor:     actor,
 	})
 	require.NoError(t, err)
 	require.Nil(t, created.LastResetID)
@@ -459,11 +488,14 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 	eventStore, err := ticket.NewEventStore(pg.DB)
 	require.NoError(t, err)
 
+	projSvc, projectID := createProject(t, pg.DB, "svc-reset-slice")
+
 	now := time.Date(2024, 9, 12, 8, 0, 0, 0, time.UTC)
 	clock := &stepClock{current: now}
 	svc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      store,
 		EventStore: eventStore,
+		Projects:   projSvc,
 		Clock:      clock,
 		IDGen:      ticket.NewBase58Generator(ticket.DefaultIDLength),
 		EventIDGen: ticket.NewBase58Generator(ticket.DefaultIDLength),
@@ -474,11 +506,12 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 	creator := ticket.NewUserActor("stage@example.com")
 
 	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
-		Cell:  "cell-stage",
-		Title: "Stage reset",
-		Stage: ticket.Stage("triage"),
-		State: ticket.StateWorking,
-		Actor: creator,
+		Cell:      "cell-stage",
+		ProjectID: projectID,
+		Title:     "Stage reset",
+		Stage:     ticket.Stage("triage"),
+		State:     ticket.StateWorking,
+		Actor:     creator,
 	})
 	require.NoError(t, err)
 

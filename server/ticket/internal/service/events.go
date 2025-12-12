@@ -125,6 +125,7 @@ func (s *service) appendEventInTx(ctx context.Context, st store.Store, snapshot 
 		event := &model.TicketEvent{
 			ID:        model.TicketEventID(eventID),
 			TicketID:  id,
+			ProjectID: snapshot.ProjectID,
 			Kind:      kind,
 			Actor:     actor,
 			EventTime: eventTime,
@@ -324,6 +325,7 @@ func (s *service) ResetTicket(ctx context.Context, id model.ID, input TicketRese
 		reset := &model.TicketReset{
 			ID:        model.TicketResetID(resetID),
 			TicketID:  id,
+			ProjectID: ticketCurrent.ProjectID,
 			Actor:     actor,
 			Reason:    sanitized.Reason,
 			CreatedAt: resetTime,

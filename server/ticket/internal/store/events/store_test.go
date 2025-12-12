@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
@@ -22,12 +23,14 @@ func TestStoreAppendListReset(t *testing.T) {
 
 	ctx := context.Background()
 
-	ticketID := model.ID("12345678901234567890123456")
+	ticketID := model.ID("tic123456789012345678901234")
+	projectID := project.ID("prj123456789012345678901234")
 	now := time.Now().UTC()
 
 	first := &model.TicketEvent{
-		ID:        model.TicketEventID("evt12345678901234567890123"),
+		ID:        model.TicketEventID("evt123456789012345678901234"),
 		TicketID:  ticketID,
+		ProjectID: projectID,
 		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
 		EventTime: now,
 		CreatedAt: now,
@@ -37,8 +40,9 @@ func TestStoreAppendListReset(t *testing.T) {
 	})
 
 	second := &model.TicketEvent{
-		ID:        model.TicketEventID("evt22345678901234567890123"),
+		ID:        model.TicketEventID("evt223456789012345678901234"),
 		TicketID:  ticketID,
+		ProjectID: projectID,
 		Actor:     model.Actor{Type: model.ActorTypeAgent, Agent: &model.ActorAgent{CellName: "cell", WorkflowName: "wf", ExecutionID: "exec", InvocationHash: "hash"}},
 		EventTime: now.Add(time.Minute),
 		CreatedAt: now.Add(time.Minute),
@@ -80,8 +84,9 @@ func TestStoreAppendListReset(t *testing.T) {
 	require.Equal(t, model.WorkflowEventRunning, workflowEvents[0].Payload.Workflow.Type)
 
 	reset := &model.TicketReset{
-		ID:        model.TicketResetID("rst12345678901234567890123"),
+		ID:        model.TicketResetID("rst123456789012345678901234"),
 		TicketID:  ticketID,
+		ProjectID: projectID,
 		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
 		Reason:    "cleanup",
 		CreatedAt: now.Add(2 * time.Minute),
@@ -128,15 +133,17 @@ func TestStoreLatestReset(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	ticketID := model.ID("tic12345678901234567890123")
+	ticketID := model.ID("tic123456789012345678901234")
+	projectID := project.ID("prj123456789012345678901234")
 
 	latest, err := evtStore.LatestReset(ctx, ticketID)
 	require.NoError(t, err)
 	require.Nil(t, latest)
 
 	first := &model.TicketReset{
-		ID:        model.TicketResetID("rst12345678901234567890123"),
+		ID:        model.TicketResetID("rst123456789012345678901234"),
 		TicketID:  ticketID,
+		ProjectID: projectID,
 		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
 		Reason:    "first",
 		CreatedAt: time.Now().UTC().Add(-time.Hour),
@@ -144,8 +151,9 @@ func TestStoreLatestReset(t *testing.T) {
 	require.NoError(t, evtStore.MarkReset(ctx, ticketID, first, nil))
 
 	second := &model.TicketReset{
-		ID:        model.TicketResetID("rst22345678901234567890123"),
+		ID:        model.TicketResetID("rst223456789012345678901234"),
 		TicketID:  ticketID,
+		ProjectID: projectID,
 		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
 		Reason:    "second",
 		CreatedAt: time.Now().UTC(),

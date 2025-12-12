@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	internalservice "github.com/divisive-ai/vibethis/server/ticket/internal/service"
 	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
@@ -12,6 +13,7 @@ type (
 	Stage                   = model.Stage
 	State                   = model.State
 	ID                      = model.ID
+	ProjectID               = project.ID
 	EmailAddress            = model.EmailAddress
 	ActorType               = model.ActorType
 	Actor                   = model.Actor
@@ -89,6 +91,7 @@ var (
 	ErrInvalidActor        = internalservice.ErrInvalidActor
 	ErrEmptyTitle          = internalservice.ErrEmptyTitle
 	ErrEmptyStage          = internalservice.ErrEmptyStage
+	ErrInvalidProject      = internalservice.ErrInvalidProject
 	ErrIDGeneration        = internalservice.ErrIDGeneration
 	ErrVersionConflict     = internalservice.ErrVersionConflict
 	ErrInvalidEventKind    = internalservice.ErrInvalidEventKind
@@ -111,7 +114,15 @@ func NewServiceFromDB(db *gorm.DB) (Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewService(ServiceConfig{Store: store, EventStore: eventStore})
+	projectStore, err := project.NewStore(db)
+	if err != nil {
+		return nil, err
+	}
+	projectSvc, err := project.NewService(project.ServiceConfig{Store: projectStore})
+	if err != nil {
+		return nil, err
+	}
+	return NewService(ServiceConfig{Store: store, EventStore: eventStore, Projects: projectSvc})
 }
 
 func NewStore(db *gorm.DB) (Store, error) {

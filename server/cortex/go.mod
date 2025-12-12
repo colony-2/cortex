@@ -3,21 +3,19 @@ module github.com/divisive-ai/vibethis/server/cortex
 go 1.24.1
 
 require (
-	github.com/divisive-ai/vibethis/server/api v0.0.0
 	github.com/colony-2/shai v0.0.0
-	github.com/divisive-ai/vibethis/server/files v0.0.0
+	github.com/divisive-ai/vibethis/server/api v0.0.0
 	github.com/divisive-ai/vibethis/server/git v0.0.0
 	github.com/divisive-ai/vibethis/server/graph v0.0.0
 	github.com/divisive-ai/vibethis/server/ops v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
 	github.com/divisive-ai/vibethis/server/storage v0.0.0
-	github.com/divisive-ai/vibethis/server/ticket v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/ticket v0.0.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
-	go.temporal.io/sdk v1.35.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -136,16 +134,20 @@ require (
 )
 
 replace (
+	github.com/colony-2/shai => ../../../shai
+	github.com/colony-2/strata/strata-go => ../../../strata-go
+	github.com/colony-2/swf-go => ../../../swf-go
 	github.com/divisive-ai/vibethis/server/api => ../api
-	github.com/colony-2/shai => ../container
 	github.com/divisive-ai/vibethis/server/core => ../core
-	github.com/divisive-ai/vibethis/server/files => ../files
 	github.com/divisive-ai/vibethis/server/git => ../git
 	github.com/divisive-ai/vibethis/server/graph => ../graph
 	github.com/divisive-ai/vibethis/server/llm => ../llm
 	github.com/divisive-ai/vibethis/server/openapi => ../openapi
 	github.com/divisive-ai/vibethis/server/ops => ../ops
+
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
+	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
+	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 	github.com/divisive-ai/vibethis/server/storage => ../storage
 	github.com/divisive-ai/vibethis/server/ticket => ../ticket

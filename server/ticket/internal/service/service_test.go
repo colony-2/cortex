@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
 	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
 	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
@@ -30,6 +31,14 @@ type stubEventStore struct {
 	listFunc        func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
 	markResetFunc   func(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
 	latestResetFunc func(ctx context.Context, ticketID model.ID) (*model.TicketReset, error)
+}
+
+type stubProjects struct {
+	getFunc    func(ctx context.Context, id project.ID) (*project.Project, error)
+	createFunc func(ctx context.Context, input project.CreateInput) (*project.Project, error)
+	listFunc   func(ctx context.Context, filter project.SearchFilter) (project.Iterator[*project.Project], error)
+	updateFunc func(ctx context.Context, id project.ID, patch project.UpdateInput) (*project.Project, error)
+	deleteFunc func(ctx context.Context, id project.ID) error
 }
 
 type sliceIterator[T any] struct {
@@ -150,6 +159,41 @@ func (s *stubEventStore) LatestReset(ctx context.Context, ticketID model.ID) (*m
 	return nil, nil
 }
 
+func (s *stubProjects) CreateProject(ctx context.Context, input project.CreateInput) (*project.Project, error) {
+	if s.createFunc != nil {
+		return s.createFunc(ctx, input)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubProjects) GetProject(ctx context.Context, id project.ID) (*project.Project, error) {
+	if s.getFunc != nil {
+		return s.getFunc(ctx, id)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubProjects) ListProjects(ctx context.Context, filter project.SearchFilter) (project.Iterator[*project.Project], error) {
+	if s.listFunc != nil {
+		return s.listFunc(ctx, filter)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubProjects) UpdateProject(ctx context.Context, id project.ID, patch project.UpdateInput) (*project.Project, error) {
+	if s.updateFunc != nil {
+		return s.updateFunc(ctx, id, patch)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubProjects) DeleteProject(ctx context.Context, id project.ID) error {
+	if s.deleteFunc != nil {
+		return s.deleteFunc(ctx, id)
+	}
+	return nil
+}
+
 type fixedClock struct{ now time.Time }
 
 func (f fixedClock) Now() time.Time { return f.now }
@@ -165,6 +209,14 @@ func version(v int64) optimisticlock.Version {
 	return optimisticlock.Version{Int64: v, Valid: true}
 }
 
+const testProjectID = project.ID("prj123456789012345678901234")
+
+var okProjects = &stubProjects{
+	getFunc: func(ctx context.Context, id project.ID) (*project.Project, error) {
+		return &project.Project{ID: id}, nil
+	},
+}
+
 func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	ticketCaptured := make(chan *model.Ticket, 1)
 	st := &stubStore{
@@ -177,6 +229,7 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      st,
 		EventStore: &stubEventStore{},
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: "abc"},
 	})
@@ -184,11 +237,12 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 
 	actor := NewUserActor("user@example.com")
 	created, err := svc.CreateTicket(context.Background(), CreateInput{
-		Cell:  "cell-a",
-		Title: "Demo",
-		Stage: model.CompletedStage,
-		State: model.StateWorking,
-		Actor: actor,
+		Cell:      "cell-a",
+		ProjectID: testProjectID,
+		Title:     "Demo",
+		Stage:     model.CompletedStage,
+		State:     model.StateWorking,
+		Actor:     actor,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, created.CompletedAt)
@@ -203,17 +257,19 @@ func TestCreateTicketInvalidState(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      &stubStore{},
 		EventStore: &stubEventStore{},
+		Projects:   okProjects,
 		Clock:      fixedClock{now: time.Now()},
 		IDGen:      stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
 	_, err = svc.CreateTicket(context.Background(), CreateInput{
-		Cell:  "cell-a",
-		Title: "Demo",
-		Stage: "triage",
-		State: model.State("bad"),
-		Actor: NewUserActor("user@example.com"),
+		Cell:      "cell-a",
+		ProjectID: testProjectID,
+		Title:     "Demo",
+		Stage:     "triage",
+		State:     model.State("bad"),
+		Actor:     NewUserActor("user@example.com"),
 	})
 	require.ErrorIs(t, err, ErrInvalidState)
 }
@@ -233,6 +289,7 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 			},
 		},
 		EventStore: &stubEventStore{},
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: "abc"},
 	})
@@ -252,6 +309,7 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 		Version:   version(2),
 		Stage:     "triage",
 		State:     model.StateWorking,
+		ProjectID: testProjectID,
 		Creator:   NewUserActor("user@example.com"),
 		UpdatedAt: now.Add(-time.Hour),
 	}
@@ -267,8 +325,13 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      st,
 		EventStore: &stubEventStore{},
-		Clock:      fixedClock{now: now},
-		IDGen:      stubIDGen{id: "abc"},
+		Projects: &stubProjects{
+			getFunc: func(ctx context.Context, id project.ID) (*project.Project, error) {
+				return &project.Project{ID: id}, nil
+			},
+		},
+		Clock: fixedClock{now: now},
+		IDGen: stubIDGen{id: "abc"},
 	})
 	require.NoError(t, err)
 
@@ -288,6 +351,7 @@ func TestUpdateTicketDescriptionChange(t *testing.T) {
 		Version:     version(3),
 		Stage:       "triage",
 		State:       model.StateWorking,
+		ProjectID:   testProjectID,
 		Description: "initial",
 		Creator:     NewUserActor("user@example.com"),
 		UpdatedAt:   now.Add(-time.Hour),
@@ -314,6 +378,7 @@ func TestUpdateTicketDescriptionChange(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      st,
 		EventStore: events,
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
@@ -340,7 +405,7 @@ func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 
 	st := &stubStore{
 		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
-			return &model.Ticket{ID: id}, nil
+			return &model.Ticket{ID: id, ProjectID: testProjectID}, nil
 		},
 	}
 
@@ -355,6 +420,7 @@ func TestAppendWorkflowEventStoresPayload(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      st,
 		EventStore: evtStore,
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 		IDGen:      stubIDGen{id: string(ticketID)},
 		EventIDGen: stubIDGen{id: "event-123456789012345678901"},
@@ -400,7 +466,7 @@ func TestAppendTicketEventStoresNotes(t *testing.T) {
 
 	store := &stubStore{
 		getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
-			return &model.Ticket{ID: ticketID, ValidUntil: infinity()}, nil
+			return &model.Ticket{ID: ticketID, ProjectID: testProjectID, ValidUntil: infinity()}, nil
 		},
 	}
 
@@ -418,6 +484,7 @@ func TestAppendTicketEventStoresNotes(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      store,
 		EventStore: events,
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
@@ -441,7 +508,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store: &stubStore{
 			getFunc: func(context.Context, model.ID) (*model.Ticket, error) {
-				return &model.Ticket{ID: model.ID("ticket-note-1"), ValidUntil: infinity()}, nil
+				return &model.Ticket{ID: model.ID("ticket-note-1"), ProjectID: testProjectID, ValidUntil: infinity()}, nil
 			},
 		},
 		EventStore: &stubEventStore{
@@ -449,6 +516,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 				return nil, nil
 			},
 		},
+		Projects: okProjects,
 	})
 	require.NoError(t, err)
 
@@ -473,17 +541,19 @@ func TestResetTicketMissingAnchor(t *testing.T) {
 	svc, err := New(ServiceConfig{
 		Store:      ticketStore,
 		EventStore: evtStore,
+		Projects:   okProjects,
 		Clock:      fixedClock{now: now},
 	})
 	require.NoError(t, err)
 
 	ctx := context.Background()
 	created, err := svc.CreateTicket(ctx, CreateInput{
-		Cell:  "cell-reset",
-		Title: "Rollback",
-		Stage: model.Stage("triage"),
-		State: model.StateWorking,
-		Actor: NewUserActor("owner@example.com"),
+		Cell:      "cell-reset",
+		ProjectID: testProjectID,
+		Title:     "Rollback",
+		Stage:     model.Stage("triage"),
+		State:     model.StateWorking,
+		Actor:     NewUserActor("owner@example.com"),
 	})
 	require.NoError(t, err)
 
