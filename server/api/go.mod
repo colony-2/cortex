@@ -4,17 +4,25 @@ go 1.24.1
 
 require (
 	github.com/colony-2/swf-go v0.0.0
+	github.com/divisive-ai/vibethis/server/cell v0.0.0
 	github.com/divisive-ai/vibethis/server/core v0.0.0
 	github.com/divisive-ai/vibethis/server/git v0.0.0
 	github.com/divisive-ai/vibethis/server/graph v0.0.0
+	github.com/divisive-ai/vibethis/server/openapi v0.0.0
 	github.com/divisive-ai/vibethis/server/ops v0.0.0
+	github.com/divisive-ai/vibethis/server/project v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-input v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
+	github.com/divisive-ai/vibethis/server/registry v0.0.0
 	github.com/divisive-ai/vibethis/server/storage v0.0.0
 	github.com/divisive-ai/vibethis/server/ticket v0.0.0
 	github.com/gorilla/mux v1.8.1
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
+	gorm.io/driver/sqlite v1.5.7
+	gorm.io/gorm v1.30.0
+	gorm.io/plugin/optimisticlock v1.3.3
 )
 
 require (
@@ -44,11 +52,14 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-openapi/jsonpointer v0.21.0 // indirect
+	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
@@ -71,6 +82,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/josharian/intern v1.0.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
@@ -78,11 +90,14 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
+	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
-	github.com/oapi-codegen/runtime v1.1.2 // indirect
+	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
+	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/openai/openai-go v1.11.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
+	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.21.0 // indirect
@@ -97,18 +112,17 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd // indirect
+	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0 // indirect
 	go.opentelemetry.io/otel v1.38.0 // indirect
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genai v1.16.0 // indirect
@@ -118,15 +132,13 @@ require (
 	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
-	gorm.io/driver/sqlite v1.5.7 // indirect
-	gorm.io/gorm v1.30.0 // indirect
-	gorm.io/plugin/optimisticlock v1.3.3 // indirect
 )
 
 replace (
 	github.com/colony-2/shai => ../../../shai
 	github.com/colony-2/strata/strata-go => ../../../strata-go
 	github.com/colony-2/swf-go => ../../../swf-go
+	github.com/divisive-ai/vibethis/server/cell => ../cell
 
 	github.com/divisive-ai/vibethis/server/core => ../core
 
@@ -135,10 +147,12 @@ replace (
 	github.com/divisive-ai/vibethis/server/llm => ../llm
 	github.com/divisive-ai/vibethis/server/openapi => ../openapi
 	github.com/divisive-ai/vibethis/server/ops => ../ops
+	github.com/divisive-ai/vibethis/server/project => ../project
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
 	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
+	github.com/divisive-ai/vibethis/server/registry => ../registry
 	github.com/divisive-ai/vibethis/server/storage => ../storage
 	github.com/divisive-ai/vibethis/server/ticket => ../ticket
 	gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3

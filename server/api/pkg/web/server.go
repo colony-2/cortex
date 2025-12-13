@@ -9,7 +9,10 @@ import (
 
 	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
 	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 )
 
 // Config defines configuration for the web server.
@@ -40,6 +43,19 @@ type Dependencies struct {
 
 	// ExtensionRoutes allows external modules to add routes
 	ExtensionRoutes []ExtensionRoute
+
+	// Optional domain services for OpenAPI handlers
+	Projects project.Service
+	Cells    cell.Service
+	Tickets  ticket.Service
+
+	// GraphFactory builds a graph builder per project (overrides Graph when set)
+	GraphFactory handlers.GraphFactory
+
+	// Optional dependency lister for cells (used to render dependencies)
+	CellDeps interface {
+		ListDependencies(ctx context.Context, projectID project.ID, from cell.ID) ([]cell.ID, error)
+	}
 }
 
 // ExtensionRoute represents a route added by an external module
@@ -59,7 +75,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Storage, deps.Graph)
+	h := handlers.New(deps.Storage, deps.Graph, deps.GraphFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

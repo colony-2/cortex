@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,14 +16,17 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
 	"github.com/divisive-ai/vibethis/server/api/pkg/web"
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
 	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
 	"github.com/divisive-ai/vibethis/server/recipe-input/pkg/input"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
 	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflow"
+	"github.com/divisive-ai/vibethis/server/registry/pkg/registry"
 	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
 )
 
@@ -133,12 +137,64 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	// Create dependencies
 	graphBuilder := graph.NewBuilder(absNodesPath)
 
+	// Persistence-backed services (projects, cells, tickets)
+	projectStore, err := project.NewStore(ticketDB)
+	if err != nil {
+		return fmt.Errorf("failed to create project store: %w", err)
+	}
+	projectSvc, err := project.NewService(project.ServiceConfig{Store: projectStore})
+	if err != nil {
+		return fmt.Errorf("failed to create project service: %w", err)
+	}
+
+	cellStore, err := cell.NewStore(ticketDB)
+	if err != nil {
+		return fmt.Errorf("failed to create cell store: %w", err)
+	}
+	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projectSvc})
+	if err != nil {
+		return fmt.Errorf("failed to create cell service: %w", err)
+	}
+
+	ticketStore, err := ticket.NewStore(ticketDB)
+	if err != nil {
+		return fmt.Errorf("failed to create ticket store: %w", err)
+	}
+	eventStore, err := ticket.NewEventStore(ticketDB)
+	if err != nil {
+		return fmt.Errorf("failed to create ticket event store: %w", err)
+	}
+	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
+		Store:      ticketStore,
+		EventStore: eventStore,
+		Projects:   projectSvc,
+		Cells:      cellSvc,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create ticket service: %w", err)
+	}
+
+	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
+		if projectSvc == nil {
+			return graphBuilder, nil
+		}
+		prj, err := projectSvc.GetProject(ctx, project.ID(projectID))
+		if err != nil {
+			return nil, err
+		}
+		root := prj.GitRepoPath
+		if strings.TrimSpace(root) == "" {
+			root = absNodesPath
+		}
+		return graph.NewBuilder(root), nil
+	}
+
 	// Setup ops management services (input manager etc.)
 	sseManager := input.NewSimpleSSEManager()
 
 	recipePath := filepath.Join(absNodesPath, "recipes")
 	swf := toy.NewToyEngine([]swf.WorkSet{})
-	reg, err := worker.NewRegistry(nil, recipePath)
+	reg, err := registry.NewRegistry(nil, recipePath)
 	if err != nil {
 		return fmt.Errorf("failed to create worker registry: %w", err)
 	}
@@ -170,6 +226,11 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	deps := web.Dependencies{
 		Storage:         store,
 		Graph:           graphBuilder,
+		GraphFactory:    graphFactory,
+		Projects:        projectSvc,
+		Cells:           cellSvc,
+		Tickets:         ticketSvc,
+		CellDeps:        cellStore,
 		ExtensionRoutes: extensionRoutes,
 	}
 

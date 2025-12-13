@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -8,7 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/gorilla/mux"
 )
 
@@ -19,17 +23,32 @@ type ExtensionRoute struct {
 	Handler http.HandlerFunc
 }
 
+// GraphFactory constructs a GraphBuilder for a specific project context.
+type GraphFactory func(ctx context.Context, projectID string) (core.GraphBuilder, error)
+
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	storage core.Storage
-	graph   core.GraphBuilder
+	storage      core.Storage
+	graph        core.GraphBuilder
+	graphFactory GraphFactory
+
+	projects project.Service
+	cells    cell.Service
+	tickets  ticket.Service
+
+	cellDeps cellDependencyLister
 }
 
 // New creates a new handlers instance
-func New(storage core.Storage, graph core.GraphBuilder) *Handlers {
+func New(storage core.Storage, graph core.GraphBuilder, factory GraphFactory, projects project.Service, cells cell.Service, tickets ticket.Service, cellDeps cellDependencyLister) *Handlers {
 	return &Handlers{
-		storage: storage,
-		graph:   graph,
+		storage:      storage,
+		graph:        graph,
+		graphFactory: factory,
+		projects:     projects,
+		cells:        cells,
+		tickets:      tickets,
+		cellDeps:     cellDeps,
 	}
 }
 
@@ -44,6 +63,9 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
+
+	// OpenAPI endpoints
+	registerAPIRoutes(api, h)
 
 	// Add extension routes if provided
 	if extensions != nil {
