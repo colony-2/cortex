@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,9 +15,11 @@ import (
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	recipecore "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/gorilla/mux"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
 )
@@ -49,6 +52,9 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}", withHandlerLog("tickets:get", h.handleGetTicket)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}", withHandlerLog("tickets:update", h.handleUpdateTicket)).Methods(http.MethodPatch)
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}/at", withHandlerLog("tickets:getAt", h.handleGetTicketAt)).Methods(http.MethodGet)
+
+	api.HandleFunc("/projects/{projectId}/recipes", withHandlerLog("recipes:list", h.handleListRecipes)).Methods(http.MethodGet)
+	api.HandleFunc("/projects/{projectId}/recipes/{recipeId}", withHandlerLog("recipes:get", h.handleGetRecipe)).Methods(http.MethodGet)
 }
 
 func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {
@@ -349,29 +355,62 @@ func (h *Handlers) handleReplaceDependencies(w http.ResponseWriter, r *http.Requ
 func (h *Handlers) handleGetGraph(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	projectID := project.ID(vars["projectId"])
-	builder := h.graph
-	if h.graphFactory != nil {
-		gb, err := h.graphFactory(r.Context(), string(projectID))
-		if err != nil {
-			status := http.StatusInternalServerError
-			if errors.Is(err, project.ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
-				status = http.StatusNotFound
-			}
-			writeError(w, fmt.Errorf("graph factory: %w", err), status)
-			return
-		}
-		builder = gb
-	}
-	if builder == nil {
-		http.Error(w, "graph builder unavailable", http.StatusNotImplemented)
+	if h.cells == nil {
+		http.Error(w, "cell service unavailable", http.StatusNotImplemented)
 		return
 	}
-	graph, err := builder.BuildGraph(r.Context())
+
+	graph, err := h.buildGraphResponse(r.Context(), projectID)
 	if err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, toOpenAPIGraph(graph))
+	writeJSON(w, http.StatusOK, graph)
+}
+
+func (h *Handlers) buildGraphResponse(ctx context.Context, projectID project.ID) (openapi.Graph, error) {
+	it, err := h.cells.ListCells(ctx, cell.SearchFilter{ProjectIDs: []project.ID{projectID}})
+	if err != nil {
+		return openapi.Graph{}, err
+	}
+	defer it.Close(ctx)
+
+	var (
+		cellsOut []openapi.Cell
+		edges    []openapi.Edge
+	)
+	for {
+		c, err := it.Next(ctx)
+		if errors.Is(err, cell.ErrIteratorDone) {
+			break
+		}
+		if err != nil {
+			return openapi.Graph{}, err
+		}
+		deps, err := h.listCellDeps(ctx, c.ProjectID, c.ID)
+		if err != nil {
+			return openapi.Graph{}, err
+		}
+		cellsOut = append(cellsOut, toOpenAPICell(c, deps))
+		edges = append(edges, depsToEdges(c.ID, deps)...)
+	}
+
+	return openapi.Graph{
+		Cells: cellsOut,
+		Edges: edges,
+	}, nil
+}
+
+func depsToEdges(from cell.ID, deps []cell.ID) []openapi.Edge {
+	edges := make([]openapi.Edge, 0, len(deps))
+	for _, dep := range deps {
+		edges = append(edges, openapi.Edge{
+			Id:     fmt.Sprintf("%s-%s", from, dep),
+			Source: string(from),
+			Target: string(dep),
+		})
+	}
+	return edges
 }
 
 func (h *Handlers) handleListTickets(w http.ResponseWriter, r *http.Request) {
@@ -634,6 +673,176 @@ func (h *Handlers) handleGetTicketAt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPITicket(tk))
+}
+
+func (h *Handlers) handleListRecipes(w http.ResponseWriter, r *http.Request) {
+	if h.projects == nil {
+		http.Error(w, "project service unavailable", http.StatusNotImplemented)
+		return
+	}
+	if h.recipes == nil {
+		http.Error(w, "recipe registry unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := project.ID(vars["projectId"])
+	prj, err := h.projects.GetProject(r.Context(), projectID)
+	if err != nil {
+		writeDomainError(w, err, projectErrorStatus(err))
+		return
+	}
+	repoPath := strings.TrimSpace(prj.GitRepoPath)
+	if repoPath == "" {
+		writeError(w, fmt.Errorf("project gitRepoPath is empty"), http.StatusBadRequest)
+		return
+	}
+	typeFilters, err := parseRecipeTypes(r.URL.Query()["types"])
+	if err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	idFilters := make(map[string]struct{})
+	for _, id := range r.URL.Query()["ids"] {
+		idFilters[id] = struct{}{}
+	}
+	nameContains := strings.ToLower(r.URL.Query().Get("nameContains"))
+
+	reg, _, cleanup, err := h.recipes(r.Context(), projectID, repoPath)
+	if err != nil {
+		writeError(w, err, http.StatusInternalServerError)
+		return
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	recipes := reg.ListRecipes()
+	sort.Slice(recipes, func(i, j int) bool {
+		return recipes[i].ID < recipes[j].ID
+	})
+
+	var result []openapi.RecipeSummary
+	for _, rec := range recipes {
+		if len(idFilters) > 0 {
+			if _, ok := idFilters[rec.ID]; !ok {
+				continue
+			}
+		}
+		if nameContains != "" && !strings.Contains(strings.ToLower(rec.ID), nameContains) {
+			continue
+		}
+		rt := recipeType(rec.Recipe)
+		if len(typeFilters) > 0 {
+			if _, ok := typeFilters[rt]; !ok {
+				continue
+			}
+		}
+		summary := buildRecipeSummary(rec)
+		result = append(result, summary)
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handlers) handleGetRecipe(w http.ResponseWriter, r *http.Request) {
+	if h.projects == nil {
+		http.Error(w, "project service unavailable", http.StatusNotImplemented)
+		return
+	}
+	if h.recipes == nil {
+		http.Error(w, "recipe registry unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := project.ID(vars["projectId"])
+	recipeID := vars["recipeId"]
+	prj, err := h.projects.GetProject(r.Context(), projectID)
+	if err != nil {
+		writeDomainError(w, err, projectErrorStatus(err))
+		return
+	}
+	repoPath := strings.TrimSpace(prj.GitRepoPath)
+	if repoPath == "" {
+		writeError(w, fmt.Errorf("project gitRepoPath is empty"), http.StatusBadRequest)
+		return
+	}
+
+	reg, _, cleanup, err := h.recipes(r.Context(), projectID, repoPath)
+	if err != nil {
+		writeError(w, err, http.StatusInternalServerError)
+		return
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	rec, err := reg.GetRecipeFile(recipeID)
+	if err != nil {
+		writeError(w, err, http.StatusNotFound)
+		return
+	}
+
+	summary := buildRecipeSummary(rec)
+	raw, parsed := marshalRecipe(rec)
+	detail := openapi.RecipeDetail{
+		Meta:    summary,
+		RawYaml: raw,
+		Recipe:  parsed,
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func parseRecipeTypes(raw []string) (map[openapi.RecipeType]struct{}, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	out := make(map[openapi.RecipeType]struct{})
+	for _, t := range raw {
+		rt := openapi.RecipeType(t)
+		switch rt {
+		case openapi.Op, openapi.Sequence, openapi.State:
+			out[rt] = struct{}{}
+		default:
+			return nil, fmt.Errorf("invalid recipe type: %s", t)
+		}
+	}
+	return out, nil
+}
+
+func buildRecipeSummary(rec *recipecore.RecipeFile) openapi.RecipeSummary {
+	return openapi.RecipeSummary{
+		Id:           rec.ID,
+		Version:      rec.Version,
+		Description:  rec.Description,
+		Type:         recipeType(rec.Recipe),
+		Hash:         rec.Hash,
+		LastModified: rec.LastModified,
+	}
+}
+
+func marshalRecipe(rec *recipecore.RecipeFile) (string, map[string]interface{}) {
+	raw := ""
+	if data, err := yaml.Marshal(rec.Recipe); err == nil {
+		raw = string(data)
+	}
+	parsed := map[string]interface{}{}
+	if raw != "" {
+		_ = yaml.Unmarshal([]byte(raw), &parsed)
+	}
+	return raw, parsed
+}
+
+func recipeType(rec recipecore.Recipe) openapi.RecipeType {
+	switch rec.RecipeImpl.(type) {
+	case *recipecore.RecipeState:
+		return openapi.State
+	case *recipecore.RecipeSequence:
+		return openapi.Sequence
+	case *recipecore.RecipeOp:
+		return openapi.Op
+	default:
+		return openapi.RecipeType("")
+	}
 }
 
 func (h *Handlers) listCellDeps(ctx context.Context, projectID project.ID, cellID cell.ID) ([]cell.ID, error) {

@@ -52,6 +52,9 @@ type Dependencies struct {
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
 
+	// RecipeRegistryFactory builds a registry per project rooted at its git repo .vibethis/recipes directory.
+	RecipeRegistryFactory handlers.RecipeRegistryFactory
+
 	// Optional dependency lister for cells (used to render dependencies)
 	CellDeps interface {
 		ListDependencies(ctx context.Context, projectID project.ID, from cell.ID) ([]cell.ID, error)
@@ -75,7 +78,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Storage, deps.Graph, deps.GraphFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
+	h := handlers.New(deps.Storage, deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

@@ -12,6 +12,7 @@ import (
 	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
 	"github.com/divisive-ai/vibethis/server/core/pkg/core"
 	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/divisive-ai/vibethis/server/registry/pkg/registry"
 	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/gorilla/mux"
 )
@@ -26,11 +27,16 @@ type ExtensionRoute struct {
 // GraphFactory constructs a GraphBuilder for a specific project context.
 type GraphFactory func(ctx context.Context, projectID string) (core.GraphBuilder, error)
 
+// RecipeRegistryFactory constructs a recipe registry rooted in the project's repository.
+// It returns the registry instance, the recipes root directory, and an optional cleanup function.
+type RecipeRegistryFactory func(ctx context.Context, projectID project.ID, repoPath string) (*registry.Registry, string, func(), error)
+
 // Handlers contains all HTTP handlers
 type Handlers struct {
 	storage      core.Storage
 	graph        core.GraphBuilder
 	graphFactory GraphFactory
+	recipes      RecipeRegistryFactory
 
 	projects project.Service
 	cells    cell.Service
@@ -40,16 +46,37 @@ type Handlers struct {
 }
 
 // New creates a new handlers instance
-func New(storage core.Storage, graph core.GraphBuilder, factory GraphFactory, projects project.Service, cells cell.Service, tickets ticket.Service, cellDeps cellDependencyLister) *Handlers {
+func New(storage core.Storage, graph core.GraphBuilder, factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, cellDeps cellDependencyLister) *Handlers {
+	if recipes == nil {
+		recipes = defaultRecipeRegistryFactory
+	}
 	return &Handlers{
 		storage:      storage,
 		graph:        graph,
 		graphFactory: factory,
+		recipes:      recipes,
 		projects:     projects,
 		cells:        cells,
 		tickets:      tickets,
 		cellDeps:     cellDeps,
 	}
+}
+
+func defaultRecipeRegistryFactory(_ context.Context, projectID project.ID, repoPath string) (*registry.Registry, string, func(), error) {
+	recipesDir := filepath.Join(repoPath, ".vibethis", "recipes")
+	reg, err := registry.NewRegistry(nil, recipesDir)
+	if err != nil {
+		return nil, recipesDir, nil, err
+	}
+	if err := reg.Start(); err != nil {
+		return nil, recipesDir, nil, err
+	}
+	cleanup := func() {
+		if err := reg.Stop(); err != nil {
+			log.Printf("failed to stop recipe registry for project %s: %v", projectID, err)
+		}
+	}
+	return reg, recipesDir, cleanup, nil
 }
 
 // SetupRoutes configures all HTTP routes

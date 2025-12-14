@@ -19,6 +19,8 @@ tags:
     description: CRUD and search for ticket workflow items
   - name: UserInputs
     description: Extension handlers for recipe input management and SSE streaming
+  - name: Recipes
+    description: List and view recipes discovered in a project repository
 
 paths:
   /api/projects/{projectId}/graph:
@@ -753,6 +755,98 @@ paths:
               schema:
                 type: string
 
+  /api/projects/{projectId}/recipes:
+    get:
+      tags: [Recipes]
+      summary: List recipes for a project
+      description: Lists recipes discovered under the project's `.vibethis/recipes` directory.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: Project identifier
+          schema:
+            type: string
+        - name: ids
+          in: query
+          description: Filter by recipe IDs
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+        - name: nameContains
+          in: query
+          description: Case-insensitive substring match on recipe ID
+          required: false
+          schema:
+            type: string
+        - name: types
+          in: query
+          description: Filter by recipe type
+          required: false
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/RecipeType'
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: Recipes list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecipeSummary'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /api/projects/{projectId}/recipes/{recipeId}:
+    get:
+      tags: [Recipes]
+      summary: Get recipe detail
+      description: Returns a recipe definition discovered under the project's `.vibethis/recipes` directory.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: Project identifier
+          schema:
+            type: string
+        - name: recipeId
+          in: path
+          required: true
+          description: Recipe identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recipe detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeDetail'
+        '404':
+          description: Project or recipe not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
   /api/user-inputs/pending:
     get:
       tags: [UserInputs]
@@ -1362,6 +1456,41 @@ components:
         default_on_timeout:
           description: Default value to return if input times out
       description: Configuration for a single- or multi-question input form.
+
+    RecipeType:
+      type: string
+      enum: [state, sequence, op]
+
+    RecipeSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/RecipeType'
+        hash:
+          type: string
+        lastModified:
+          type: string
+          format: date-time
+      required: [id, version, description, type, hash, lastModified]
+
+    RecipeDetail:
+      type: object
+      properties:
+        meta:
+          $ref: '#/components/schemas/RecipeSummary'
+        rawYaml:
+          type: string
+        recipe:
+          description: Parsed recipe structure
+          type: object
+          additionalProperties: {}
+      required: [meta, rawYaml, recipe]
 
     PendingInput:
       type: object

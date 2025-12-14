@@ -89,7 +89,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 		},
 	}
 
-	h := New(storage.NewMemoryStorage(), graphBuilder, nil, projectSvc, cellSvc, ticketSvc, cellStore)
+	h := New(storage.NewMemoryStorage(), graphBuilder, nil, nil, projectSvc, cellSvc, ticketSvc, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
@@ -134,6 +134,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 	if cellResp.JSON201 == nil {
 		t.Fatalf("expected cell JSON201, got %#v", cellResp)
 	}
+	createdCellID := cellResp.JSON201.Id
 	// List cells
 	cellsResp, err := client.GetApiProjectsProjectIdCellsWithResponse(ctx, projID, nil)
 	if err != nil {
@@ -148,8 +149,20 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("graph: %v", err)
 	}
-	if graphResp.JSON200 == nil || len(graphResp.JSON200.Cells) != 1 {
-		t.Fatalf("expected graph cell, got %#v", graphResp.JSON200)
+	if graphResp.JSON200 == nil || len(graphResp.JSON200.Cells) == 0 {
+		t.Fatalf("expected graph cells, got %#v", graphResp.JSON200)
+	}
+	var foundCreated bool
+	for _, gc := range graphResp.JSON200.Cells {
+		if gc.Id == createdCellID {
+			foundCreated = true
+			if gc.Name != "cell-a" {
+				t.Fatalf("expected graph cell name to match created cell, got %q", gc.Name)
+			}
+		}
+	}
+	if !foundCreated {
+		t.Fatalf("graph response missing created cell %s in %#v", createdCellID, graphResp.JSON200.Cells)
 	}
 
 	// Create ticket
