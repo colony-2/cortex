@@ -1,0 +1,30 @@
+{
+  "name": "be-nucleus",
+  "root": "server/nucleus",
+  "projectType": "application",
+  "tags": ["backend", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./cmd/nucleus/main.go",
+        "outputPath": "build/nucleus",
+        "cwd": "server/nucleus"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go install ./cmd/nucleus",
+        "cwd": "server/nucleus"
+      }
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go test -v -tags=integration ./...",
+        "cwd": "server/nucleus"
+      }
+    }
+  }
+}

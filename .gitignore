@@ -51,3 +51,4 @@ server/vibethis/vibethis
 /vibethis/
 **/playwright-report/*
 **/test-results/*
+.nx

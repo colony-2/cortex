@@ -1,0 +1,17 @@
+{
+  "name": "be-git",
+  "root": "server/git",
+  "projectType": "library",
+  "tags": ["backend", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    }
+  }
+}

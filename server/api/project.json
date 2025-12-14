@@ -1,0 +1,25 @@
+{
+  "name": "be-api",
+  "root": "server/api",
+  "projectType": "library",
+  "tags": ["backend", "go"],
+  "targets": {
+    "build-test-server": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go build -o build/testserver ./cmd/testserver",
+        "cwd": "server/api",
+        "outputs": ["{projectRoot}/build/testserver"]
+      }
+    },
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    }
+  }
+}

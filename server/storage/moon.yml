@@ -1,6 +1,0 @@
-id: 'be-storage'
-language: 'go'
-type: 'library'
-
-project:
-  description: Provides persistent storage implementations using BoltDB and in-memory storage.

@@ -1,0 +1,42 @@
+{
+  "name": "web-shared",
+  "root": "web/shared",
+  "sourceRoot": "web/shared/src",
+  "projectType": "library",
+  "tags": ["frontend", "shared"],
+  "targets": {
+    "compile": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc",
+        "cwd": "web/shared",
+        "outputs": ["{projectRoot}/dist"]
+      }
+    },
+    "bundle": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["compile"],
+      "options": {
+        "command": "vite build --logLevel warn",
+        "cwd": "web/shared",
+        "outputs": ["{projectRoot}/dist"]
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["compile", "bundle"],
+      "options": {
+        "command": "echo build complete",
+        "cwd": "web/shared",
+        "outputs": ["{projectRoot}/dist"]
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint src",
+        "cwd": "web/shared"
+      }
+    }
+  }
+}

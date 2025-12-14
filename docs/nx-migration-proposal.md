@@ -7,14 +7,27 @@
 
 ## Workspace setup (single PR)
 - Add a root `package.json` with `nx`, `@nx/js`, `@nx/workspace`, `@nx/vite`, `@nx/react`, and `@nx-go/nx-go` (Go plugin) as dev dependencies; reuse project-level dependencies already present.
-- Create `nx.json` + `workspace.json` (or per-project `project.json`) at repo root. Set `defaultBase` to the main branch, enable task caching, and define named inputs for Go (`go.mod`, `go.sum`, `**/*.go`) and Node (`package.json`, `package-lock.json`, `tsconfig*.json`, `src/**`).
-- Configure target defaults: `build` and `test` run in parallel with cache, `lint` optional, `integration` uncached by default, and `serve` marked `cache: false`.
+- Create `nx.json` + `workspace.json` (or per-project `project.json`) at repo root. Set `defaultBase` to the main branch and enable caching.
+- Define named inputs once to avoid repetition:
+  - `go`: `["go.mod","go.sum","{projectRoot}/**/*.go"]`
+  - `ts`: `["package.json","package-lock.json","{projectRoot}/tsconfig*.json","{projectRoot}/src/**/*"]`
+- Configure `targetDefaults` once (shared by every project that declares the target):
+  - `build`: `inputs: ["default","go?","ts?"], outputs: ["{projectRoot}/build","{projectRoot}/dist"], cache: true`
+  - `test`: same inputs, `cache: true`
+  - `lint`: `cache: true`
+  - `integration`: `cache: false`
+  - `serve`: `cache: false`
 - Add `tsconfig.base.json` for shared TS path aliases (to match existing package import paths) and hook Vite targets into it.
 - Add root `tools/` with helper scripts if needed (e.g., OpenAPI codegen wrappers) and wire them via `nx:run-commands`.
 - Remove all `moon.yml` files in the same PR once Nx configs are in place.
 
+## Shared target patterns (minimize duplication)
+- Go libraries/apps: declare `build` (`@nx-go/nx-go:build`) and `test` (`@nx-go/nx-go:test`) with no per-project inputs/outputs because `targetDefaults` + `go` named input handle that.
+- Vite/React packages: declare `build`/`serve`/`test` using `@nx/vite:*` with only `configFile` overrides; outputs come from `targetDefaults`.
+- Run-command tasks: only specify the `command`/`cwd`/`dependsOn`; inputs/outputs rely on the defaults unless a task produces non-standard paths (call out where custom outputs are needed below).
+
 ## Project definitions and targets
-Each entry lists how the Moon project maps to Nx (`projectType`, executor, and targets). All Go projects use the Go plugin executors (`@nx-go/nx-go:build` / `:test`) unless otherwise noted. All Node/TS projects use `nx:run-commands` or the Nx Vite/React executors. `outputs` mirror Moon where defined.
+Each entry lists how the Moon project maps to Nx (`projectType`, executor, and targets). All Go projects use the Go plugin executors (`@nx-go/nx-go:build` / `:test`) unless otherwise noted; Vite/React packages use the Nx Vite executors. Inputs/outputs/caching are inherited from `targetDefaults` unless called out as custom (e.g., generated code or copied bundles).
 
 ### API and OpenAPI
 - `api-openapi` (api/openapi, tool): target `build` (`nx:run-commands` `echo "OpenAPI spec is ready"`), output `vibethis-api.yaml`; tagged `api`.

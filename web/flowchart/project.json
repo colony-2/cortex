@@ -1,0 +1,28 @@
+{
+  "name": "ui-flowchart",
+  "root": "web/flowchart",
+  "sourceRoot": "web/flowchart/src",
+  "projectType": "library",
+  "tags": ["frontend", "react"],
+  "targets": {
+    "build": {
+      "executor": "@nx/vite:build",
+      "options": {
+        "configFile": "web/flowchart/vite.config.ts",
+        "outputPath": "web/flowchart/dist"
+      }
+    },
+    "serve": {
+      "executor": "@nx/vite:dev",
+      "options": {
+        "configFile": "web/flowchart/vite.config.ts"
+      }
+    },
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": {
+        "configFile": "web/flowchart/vite.config.ts"
+      }
+    }
+  }
+}

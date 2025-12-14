@@ -1,0 +1,17 @@
+{
+  "name": "recipe-worker",
+  "root": "server/recipe-worker",
+  "projectType": "library",
+  "tags": ["backend", "workflow", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "rwshim-go",
+  "root": "rwshim/rwshimgo",
+  "projectType": "library",
+  "tags": ["infrastructure", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./integration_test.sh",
+        "cwd": "rwshim/rwshimgo"
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "recipe-history",
+  "root": "server/recipe-history",
+  "projectType": "library",
+  "tags": ["backend", "workflow", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    }
+  }
+}

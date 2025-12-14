@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "npmScope": "vibethis",
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "!{projectRoot}/dist/**", "!{projectRoot}/build/**", "!{projectRoot}/node_modules/**"],
+    "go": ["go.mod", "go.sum", "{projectRoot}/**/*.go"],
+    "ts": ["package.json", "package-lock.json", "{projectRoot}/tsconfig*.json", "{projectRoot}/src/**/*"]
+  },
+  "targetDefaults": {
+    "build": {
+      "inputs": ["default"],
+      "outputs": ["{projectRoot}/build", "{projectRoot}/dist"],
+      "cache": true
+    },
+    "test": {
+      "inputs": ["default"],
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "integration": {
+      "cache": false
+    },
+    "serve": {
+      "cache": false
+    }
+  },
+  "projects": {
+    "api-openapi": "api/openapi",
+    "be-openapi": "server/openapi",
+    "be-api": "server/api",
+    "be-core": "server/core",
+    "be-graph": "server/graph",
+    "be-git": "server/git",
+    "be-storage": "server/storage",
+    "server-ticket": "server/ticket",
+    "be-rucc": "server/rucc",
+    "server-ops": "server/ops",
+    "server-llm": "server/llm",
+    "recipe-core": "server/recipe-core",
+    "recipe-history": "server/recipe-history",
+    "recipe-worker": "server/recipe-worker",
+    "be-nucleus": "server/nucleus",
+    "cortex": "server/cortex",
+    "ui-app": "web/app",
+    "ui-flowchart": "web/flowchart",
+    "web-shared": "web/shared",
+    "ui-kanban": "web/kanban",
+    "fe-openapi": "web/openapi",
+    "shai-docker": "docker",
+    "rwshim-clib": "rwshim/clib",
+    "rwshim-go": "rwshim/rwshimgo"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "be-graph",
+  "root": "server/graph",
+  "projectType": "library",
+  "tags": ["backend", "go"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./..."
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    }
+  }
+}

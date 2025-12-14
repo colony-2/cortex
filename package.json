@@ -1,0 +1,13 @@
+{
+  "name": "vibethis",
+  "private": true,
+  "version": "0.0.0",
+  "devDependencies": {
+    "@nx-go/nx-go": "^3.3.1",
+    "@nx/react": "^20.3.0",
+    "@nx/vite": "^20.3.0",
+    "@nx/workspace": "^20.3.0",
+    "@nx/js": "^20.3.0",
+    "nx": "^20.3.0"
+  }
+}
