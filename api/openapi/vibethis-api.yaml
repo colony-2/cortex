@@ -425,6 +425,50 @@ paths:
               schema:
                 type: string
 
+  /api/projects/{projectId}/cells/sync:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
+    post:
+      tags: [Cells]
+      summary: Synchronize cells from a provider
+      description: Runs the configured cell populator (default `graph/moon` using the Moon project graph) to upsert cells and dependencies for the project.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CellSyncRequest'
+      responses:
+        '200':
+          description: Synchronization result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CellSyncResult'
+        '400':
+          description: Invalid project or populator
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Project not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        '500':
+          description: Synchronization failed
+          content:
+            text/plain:
+              schema:
+                type: string
+
   /api/projects/{projectId}/tickets:
     get:
       tags: [Tickets]
@@ -1133,6 +1177,54 @@ components:
         - workingPath
         - createdAt
         - updatedAt
+
+    CellSyncRequest:
+      type: object
+      properties:
+        populator:
+          type: string
+          description: Populator to use for synchronization (defaults to graph/moon).
+          default: graph/moon
+        pruneMissing:
+          type: boolean
+          description: Soft-delete cells not returned by the populator.
+          default: false
+
+    CellSyncResult:
+      type: object
+      properties:
+        populator:
+          type: string
+        created:
+          type: integer
+          format: int32
+        updated:
+          type: integer
+          format: int32
+        restored:
+          type: integer
+          format: int32
+        deleted:
+          type: integer
+          format: int32
+        skipped:
+          type: integer
+          format: int32
+        dependenciesUpdated:
+          type: integer
+          format: int32
+        affectedIds:
+          type: array
+          items:
+            type: string
+      required:
+        - populator
+        - created
+        - updated
+        - restored
+        - deleted
+        - skipped
+        - dependenciesUpdated
 
     CellCreateRequest:
       type: object

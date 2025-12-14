@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -28,6 +29,34 @@ type cellDependencyLister interface {
 	ListDependencies(ctx context.Context, projectID project.ID, from cell.ID) ([]cell.ID, error)
 }
 
+type graphBuilderPopulator struct {
+	name    string
+	builder core.GraphBuilder
+}
+
+func (p *graphBuilderPopulator) Name() string { return p.name }
+
+func (p *graphBuilderPopulator) Populate(ctx context.Context, _ project.ID) ([]cell.PopulatorCell, error) {
+	if p.builder == nil {
+		return nil, errors.New("graph populator: builder is nil")
+	}
+	g, err := p.builder.BuildGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cells := make([]cell.PopulatorCell, 0, len(g.Cells))
+	for _, c := range g.Cells {
+		cells = append(cells, cell.PopulatorCell{
+			Name:         c.ID,
+			Description:  "",
+			WorkingPath:  c.Path,
+			ExternalID:   c.ID,
+			Dependencies: c.Dependencies,
+		})
+	}
+	return cells, nil
+}
+
 // registerAPIRoutes wires the OpenAPI endpoints into the /api subrouter.
 func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects", withHandlerLog("projects:list", h.handleListProjects)).Methods(http.MethodGet)
@@ -42,6 +71,7 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/cells/{cellId}", withHandlerLog("cells:update", h.handleUpdateCell)).Methods(http.MethodPatch)
 	api.HandleFunc("/projects/{projectId}/cells/{cellId}", withHandlerLog("cells:delete", h.handleDeleteCell)).Methods(http.MethodDelete)
 	api.HandleFunc("/projects/{projectId}/cells/{cellId}/dependencies", withHandlerLog("cells:dependencies", h.handleReplaceDependencies)).Methods(http.MethodPut)
+	api.HandleFunc("/projects/{projectId}/cells/sync", withHandlerLog("cells:sync", h.handleSyncCells)).Methods(http.MethodPost)
 
 	api.HandleFunc("/projects/{projectId}/graph", withHandlerLog("graph:get", h.handleGetGraph)).Methods(http.MethodGet)
 
@@ -350,6 +380,96 @@ func (h *Handlers) handleReplaceDependencies(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
+	if h.cells == nil {
+		http.Error(w, "cell service unavailable", http.StatusNotImplemented)
+		return
+	}
+	if h.projects == nil {
+		http.Error(w, "project service unavailable", http.StatusNotImplemented)
+		return
+	}
+
+	var body openapi.CellSyncRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	vars := mux.Vars(r)
+	projectID := project.ID(vars["projectId"])
+	prj, err := h.projects.GetProject(r.Context(), projectID)
+	if err != nil {
+		writeDomainError(w, err, projectErrorStatus(err))
+		return
+	}
+
+	popName := "graph/moon"
+	if body.Populator != nil {
+		if trimmed := strings.TrimSpace(*body.Populator); trimmed != "" {
+			popName = trimmed
+		}
+	}
+
+	var pop cell.Populator
+	switch popName {
+	case "graph/moon":
+		if h.graphFactory != nil {
+			gb, err := h.graphFactory(r.Context(), string(projectID))
+			if err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, project.ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
+					status = http.StatusNotFound
+				}
+				writeError(w, fmt.Errorf("graph factory: %w", err), status)
+				return
+			}
+			pop = &graphBuilderPopulator{name: popName, builder: gb}
+		} else {
+			root := strings.TrimSpace(prj.GitRepoPath)
+			if root == "" {
+				root = "."
+			}
+			pop = cell.NewGraphPopulator(root)
+		}
+	default:
+		writeError(w, fmt.Errorf("unsupported populator: %s", popName), http.StatusBadRequest)
+		return
+	}
+
+	opts := cell.SyncOptions{PruneMissing: false}
+	if body.PruneMissing != nil {
+		opts.PruneMissing = *body.PruneMissing
+	}
+
+	result, err := h.cells.SyncFromPopulator(r.Context(), projectID, pop, opts)
+	if err != nil {
+		writeDomainError(w, err, cellErrorStatus(err))
+		return
+	}
+
+	var affected *[]string
+	if len(result.AffectedIDs) > 0 {
+		ids := make([]string, len(result.AffectedIDs))
+		for i, id := range result.AffectedIDs {
+			ids[i] = string(id)
+		}
+		affected = &ids
+	}
+
+	resp := openapi.CellSyncResult{
+		Populator:           popName,
+		Created:             int32(result.Created),
+		Updated:             int32(result.Updated),
+		Restored:            int32(result.Restored),
+		Deleted:             int32(result.Deleted),
+		Skipped:             int32(result.Skipped),
+		DependenciesUpdated: int32(result.DependenciesUpdated),
+		AffectedIds:         affected,
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *Handlers) handleGetGraph(w http.ResponseWriter, r *http.Request) {

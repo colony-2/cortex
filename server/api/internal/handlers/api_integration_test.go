@@ -38,7 +38,8 @@ func (f *fakeGraphBuilder) GetCell(ctx context.Context, cellID string) (*core.Ce
 
 func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 	// SQLite in-memory DB shared across services.
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
