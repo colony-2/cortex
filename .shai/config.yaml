@@ -5,6 +5,8 @@ user: devuser
 workspace: /src
 resources:
   default:
+    vars:
+      - source: "GOPRIVATE"
     calls:
       - name: uname
         command: uname -a

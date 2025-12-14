@@ -3,11 +3,11 @@ module github.com/divisive-ai/vibethis/server/ticket
 go 1.24.1
 
 require (
-	github.com/colony-2/swf-go v0.0.0
-	github.com/divisive-ai/vibethis/server/cell v0.0.0
-	github.com/divisive-ai/vibethis/server/core v0.0.0
-	github.com/divisive-ai/vibethis/server/project v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
+	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/cell v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/project v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -26,7 +26,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0 // indirect
+	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -64,18 +64,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/graph => ../graph
 
-replace github.com/divisive-ai/vibethis/server/cell => ../cell
 
-replace github.com/divisive-ai/vibethis/server/project => ../project
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
-
-replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
-
-replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go

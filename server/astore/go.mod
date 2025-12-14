@@ -3,8 +3,8 @@ module github.com/divisive-ai/vibethis/server/astore
 go 1.24.1
 
 require (
-	github.com/colony-2/strata/strata-go v0.0.0
-	github.com/colony-2/swf-go v0.0.0
+	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000
+	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -37,6 +37,4 @@ require (
 	gorm.io/gorm v1.30.0 // indirect
 )
 
-replace github.com/colony-2/swf-go => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go => ../../../strata-go

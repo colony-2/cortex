@@ -3,9 +3,9 @@ module github.com/divisive-ai/vibethis/server/recipe-history
 go 1.24.1
 
 require (
-	github.com/divisive-ai/vibethis/server/ops v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
+	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	google.golang.org/protobuf v1.36.8
@@ -43,7 +43,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da // indirect
-	github.com/divisive-ai/vibethis/server/git v0.0.0 // indirect
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
@@ -173,24 +173,3 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace (
-	github.com/colony-2/shai => ../../../shai
-	github.com/colony-2/strata/strata-go => ../../../strata-go
-	github.com/colony-2/swf-go => ../../../swf-go
-
-	github.com/divisive-ai/vibethis/server/core => ../core
-
-	github.com/divisive-ai/vibethis/server/files => ../files
-	github.com/divisive-ai/vibethis/server/git => ../git
-	github.com/divisive-ai/vibethis/server/graph => ../graph
-	github.com/divisive-ai/vibethis/server/llm => ../llm
-	github.com/divisive-ai/vibethis/server/openapi => ../openapi
-	github.com/divisive-ai/vibethis/server/ops => ../ops
-	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
-	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
-	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
-	github.com/divisive-ai/vibethis/server/storage => ../storage
-	github.com/divisive-ai/vibethis/server/ticket => ../ticket
-	gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
-)

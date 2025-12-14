@@ -2,12 +2,10 @@ module github.com/divisive-ai/vibethis/server/git
 
 go 1.24.1
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
 require (
-	github.com/colony-2/swf-go v0.0.0
+	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.11.1
@@ -20,7 +18,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0 // indirect
+	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -68,6 +66,4 @@ require (
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
-replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go

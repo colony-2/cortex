@@ -3,7 +3,11 @@
     "allow": [
       "Bash(grep:*)",
       "Bash(go get:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(go work sync:*)",
+      "Bash(go env:*)",
+      "Bash(go list:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

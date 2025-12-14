@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/project v0.0.0
+	github.com/divisive-ai/vibethis/server/project v0.0.0-00010101000000-000000000000
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/driver/postgres v1.5.11
@@ -13,7 +13,7 @@ require (
 )
 
 require (
-	github.com/divisive-ai/vibethis/server/core v0.0.0 // indirect
+	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 // indirect
 	github.com/jackc/pgx/v5 v5.5.5 // indirect
@@ -28,16 +28,9 @@ require (
 	gorm.io/driver/sqlite v1.5.7 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/project => ../project
 
-replace github.com/divisive-ai/vibethis/server/graph => ../graph
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 
-replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go

@@ -3,9 +3,9 @@ module github.com/divisive-ai/vibethis/server/recipe-input
 go 1.24.1
 
 require (
-	github.com/colony-2/swf-go v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0
+	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.11.1
 )
@@ -17,10 +17,10 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0 // indirect
+	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/divisive-ai/vibethis/server/git v0.0.0 // indirect
-	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0 // indirect
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
+	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
@@ -61,22 +61,12 @@ require (
 	gorm.io/gorm v1.30.0 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/llm => ../llm
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
-replace github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 
-replace github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 
-replace github.com/divisive-ai/vibethis/server/git => ../git
 
-replace github.com/colony-2/swf-go v0.0.0 => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go v0.0.0 => ../../../strata-go
 
-replace github.com/colony-2/shai v0.0.0 => ../../../shai
 
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3

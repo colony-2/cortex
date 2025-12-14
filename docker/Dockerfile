@@ -101,7 +101,7 @@ RUN set -euxo pipefail && python3 -m pip --version
 # - Google Gemini CLI
 # - Claude Code CLI
 # - Moonrepo CLI
-RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli claude-code @moonrepo/cli && npm cache clean --force
+RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code @moonrepo/cli && npm cache clean --force
 
 ## Users, shells, bootstrap, workspace (late config layer)
 RUN set -euxo pipefail && useradd -m -u 1000 -s /bin/bash devuser
@@ -117,14 +117,7 @@ RUN set -euxo pipefail && \
 RUN set -euxo pipefail && \
     git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/devuser/.oh-my-zsh && \
     cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc && \
-    chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc && \
-    printf '\n# Auto-cd to /src for interactive zsh\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.zshrc && \
-    printf '# Auto-cd to /src for login zsh\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.zprofile && \
-    chown devuser:devuser /home/devuser/.zprofile
-RUN set -euxo pipefail && \
-    printf '\n# Auto-cd to /src for interactive bash\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.bashrc && \
-    printf '# Auto-cd to /src for login bash\nif [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.bash_profile && \
-    chown devuser:devuser /home/devuser/.bashrc /home/devuser/.bash_profile
+    chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc
 # Workspace
 RUN set -euxo pipefail && mkdir -p /src
 WORKDIR /src
@@ -204,7 +197,7 @@ RUN set -euxo pipefail \
     && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
     && rm -f /tmp/node.tar.xz \
     && npm -g install npm@latest yarn pnpm \
-    && npm -g install @openai/codex @google/gemini-cli claude-code @moonrepo/cli \
+    && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code @moonrepo/cli \
     && npm cache clean --force \
     && npm -g install playwright \
     && npx playwright install --with-deps chromium \
@@ -225,12 +218,7 @@ RUN set -euxo pipefail \
     && cp /home/devuser/.oh-my-zsh/templates/zshrc.zsh-template /home/devuser/.zshrc \
     && chown -R devuser:devuser /home/devuser/.oh-my-zsh /home/devuser/.zshrc \
     && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.zshrc \
-    && printf '\n# Auto-cd to /src for interactive zsh\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.zshrc \
-    && printf '# Auto-cd to /src for login zsh\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.zprofile \
     && printf '\nexport HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /home/devuser/.bashrc \
-    && printf '\n# Auto-cd to /src for interactive bash\nif [ -t 1 ] && [ -d /src ]; then cd /src; fi\n' >> /home/devuser/.bashrc \
-    && printf '# Auto-cd to /src for login bash\nif [ -f ~/.bashrc ]; then . ~/.bashrc; fi\nif [ -d /src ]; then cd /src; fi\n' > /home/devuser/.bash_profile \
-    && chown devuser:devuser /home/devuser/.bashrc /home/devuser/.bash_profile /home/devuser/.zprofile \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' > /etc/profile.d/10-proxy.sh \
     && chmod 0644 /etc/profile.d/10-proxy.sh \
     && printf 'export HTTP_PROXY=http://127.0.0.1:8888\nexport HTTPS_PROXY=http://127.0.0.1:8888\nexport NO_PROXY=localhost,127.0.0.1,::1\nexport http_proxy=http://127.0.0.1:8888\nexport https_proxy=http://127.0.0.1:8888\nexport no_proxy=localhost,127.0.0.1,::1\n' >> /etc/zsh/zshenv \

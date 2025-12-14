@@ -3,13 +3,13 @@ module github.com/divisive-ai/vibethis/server/recipe-worker
 go 1.24.1
 
 require (
-	github.com/colony-2/strata/strata-go v0.0.0
-	github.com/colony-2/swf-go v0.0.0
+	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000
+	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/davecgh/go-spew v1.1.1
-	github.com/divisive-ai/vibethis/server/git v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
-	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0
-	github.com/divisive-ai/vibethis/server/registry v0.0.0
+	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0-00010101000000-000000000000
+	github.com/divisive-ai/vibethis/server/registry v0.0.0-00010101000000-000000000000
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
@@ -38,7 +38,7 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251125194837-642b26da9860 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/divisive-ai/vibethis/server/core v0.0.0 // indirect
+	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000 // indirect
 	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
@@ -115,18 +115,10 @@ require (
 	gorm.io/plugin/optimisticlock v1.3.3 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
-replace github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 
-replace github.com/divisive-ai/vibethis/server/registry => ../registry
 
-replace github.com/divisive-ai/vibethis/server/git => ../git
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 
-replace github.com/colony-2/swf-go => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go => ../../../strata-go

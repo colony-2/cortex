@@ -4,7 +4,6 @@ go 1.24
 
 toolchain go1.24.1
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2

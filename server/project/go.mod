@@ -30,12 +30,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
-replace github.com/divisive-ai/vibethis/server/core => ../core
 
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3
 
-replace github.com/colony-2/swf-go => ../../../swf-go
 
-replace github.com/colony-2/strata/strata-go => ../../../strata-go
