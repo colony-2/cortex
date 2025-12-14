@@ -12,26 +12,16 @@ export interface DependencyEdge {
   target: string;
 }
 
-export interface CellPosition {
-  cellId: string;
-  x: number;
-  y: number;
-}
-
 export interface RelationshipGraph {
   cells: DependencyCell[];
   edges: DependencyEdge[];
 }
 
-export interface DependencyGraph {
-  cells: DependencyCell[];
-  edges: DependencyEdge[];
-}
-
-export interface FileItem {
+export interface Project {
+  id: string;
+  version?: number;
   name: string;
-  path: string;
-  isDir: boolean;
-  size: number;
-  type: string;
+  gitRepoPath: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

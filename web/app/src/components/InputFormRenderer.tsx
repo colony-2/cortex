@@ -10,18 +10,17 @@ import {
   TimePicker, 
   Upload, 
   Button, 
-  Space,
-  message 
+  Space, 
 } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
+import type { Rule } from 'antd/es/form';
 import type { Dayjs } from 'dayjs';
-import dayjs from 'dayjs';
 import type { 
   InputForm, 
   InputField, 
-  FormContext, 
-  FormResponse 
+  FormResponse,
+  FormContext
 } from '@vibethis/shared';
 
 const { TextArea } = Input;
@@ -36,11 +35,13 @@ interface InputFormRendererProps {
 
 export default function InputFormRenderer({ 
   form, 
-  context, 
+  context,
   onSubmit, 
   onCancel, 
   loading = false 
 }: InputFormRendererProps) {
+  // Context is accepted for future use (display/telemetry) even if not rendered currently.
+  void context;
   const [antForm] = Form.useForm();
   const [fileList, setFileList] = useState<Record<string, UploadFile[]>>({});
 
@@ -92,7 +93,7 @@ export default function InputFormRenderer({
   };
 
   const renderField = (field: InputField) => {
-    const rules = [
+    const rules: Rule[] = [
       {
         required: field.required,
         message: `${field.label} is required`,

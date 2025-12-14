@@ -1,0 +1,17 @@
+id: ui-kanban
+project:
+  description: Kanban board module for tickets
+
+tasks:
+  build:
+    command: npm
+    args: [run, build]
+    platform: node
+    inputs:
+      - src/**/*
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - vite.config.ts
+    outputs:
+      - dist

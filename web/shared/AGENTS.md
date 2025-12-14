@@ -6,9 +6,9 @@ Shared library module for the vibethis frontend, distributed as `@graph-visualiz
 ## Architecture
 
 ### Core Data Layer (`types.ts`, `api.ts`)
-- **Type System**: Comprehensive TypeScript interfaces for graph data, file system navigation, and form input structures
+- **Type System**: TypeScript interfaces for graph data and form input structures
 - **API Client**: Centralized HTTP client with environment-aware configuration and error handling
-- **Graph Operations**: Cell/edge management, position persistence, file browsing
+- **Graph Operations**: Cell/edge fetching
 
 ### Real-time Input Management (`inputActivityService.ts`, `InputActivityContext.tsx`)
 - **Service Layer**: EventSource-based SSE connection with automatic reconnection and caching
@@ -16,8 +16,8 @@ Shared library module for the vibethis frontend, distributed as `@graph-visualiz
 - **Event System**: Custom EventEmitter for decoupled event handling
 
 ### URL State Management (`urlState.ts`)
-- **Path Parsing**: Extracts application state from URL paths (`/cell/:cellId/:tab/:subtab`)
-- **Navigation Helpers**: Pure functions that return navigation paths for React Router integration
+- **Path Parsing**: Extracts application state from URL paths (supports optional project prefix: `/project/:projectId/cell/:cellId/:tab/:subtab`)
+- **Navigation Helpers**: Pure functions that return navigation paths for React Router integration, including project-aware routes
 
 ## Key Interfaces
 
@@ -36,11 +36,6 @@ interface RelationshipGraph {
   edges: DependencyEdge[];
 }
 
-interface CellPosition {
-  cellId: string;
-  x: number;
-  y: number;
-}
 ```
 
 ### Input Activity Management
@@ -64,11 +59,12 @@ interface PendingInput {
 
 ### API Functions
 ```typescript
+// Project operations
+listProjects(): Promise<Project[]>
+createProject(input: { name: string; gitRepoPath: string }): Promise<Project>
+
 // Graph operations
-fetchGraph(): Promise<RelationshipGraph>
-fetchPositions(): Promise<CellPosition[]>
-savePositions(positions: CellPosition[]): Promise<void>
-fetchFiles(cellId: string, path?: string): Promise<{files: any[], path: string}>
+fetchGraph(projectId: string): Promise<RelationshipGraph>
 
 // Input activity operations
 inputActivityService.getPendingInputs(cellId?: string): Promise<PendingInput[]>
@@ -87,16 +83,10 @@ useInputActivityForCell(cellId: string): {pendingInputs: PendingInput[], pending
 
 ### Basic API Usage
 ```typescript
-import { fetchGraph, savePositions } from '@graph-visualizer/shared';
+import { fetchGraph } from '@graph-visualizer/shared';
 
 // Load graph data
-const graph = await fetchGraph();
-
-// Save node positions after layout changes
-await savePositions([
-  { cellId: 'cell1', x: 100, y: 200 },
-  { cellId: 'cell2', x: 300, y: 400 }
-]);
+const graph = await fetchGraph('project-id');
 ```
 
 ### Input Activity Integration
@@ -133,10 +123,10 @@ function CellComponent({ cellId }: { cellId: string }) {
 import { getURLState, navigateToPath } from '@graph-visualizer/shared';
 
 // Parse current URL state
-const { cellId, tab, subtab } = getURLState();
+const { projectId, cellId, tab, subtab } = getURLState();
 
 // Generate navigation paths
-const newPath = navigateToPath({ cellId: 'cell1', tab: 'files' });
+const newPath = navigateToPath({ projectId: 'proj1', cellId: 'cell1', tab: 'inputs' });
 navigate(newPath); // Use with React Router
 ```
 

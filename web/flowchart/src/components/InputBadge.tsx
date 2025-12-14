@@ -9,12 +9,14 @@ interface InputBadgeProps {
   onClick?: () => void;
   size?: 'small' | 'default';
   cellId: string;
+  projectId?: string;
 }
 
 const InputBadge: FC<InputBadgeProps> = ({ 
   count, 
   status = 'pending', 
   cellId,
+  projectId,
   size = 'small' 
 }) => {
   const navigate = useNavigate();
@@ -26,6 +28,7 @@ const InputBadge: FC<InputBadgeProps> = ({
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent cell selection when clicking badge
     const path = navigateToPath({ 
+      projectId,
       cellId, 
       tab: 'inputs'
     });

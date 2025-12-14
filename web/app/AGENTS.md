@@ -1,7 +1,7 @@
 # VibethisUI Main Application
 
 ## Overview
-React-based graph visualization application that provides an interactive interface for exploring dependency graphs, managing file systems, and handling workflow inputs. Built with Ant Design components and integrates multiple specialized modules for a comprehensive development workflow experience.
+React-based graph visualization application that provides an interactive interface for exploring dependency graphs and handling workflow inputs. Built with Ant Design components and integrates shared/flowchart modules for a streamlined experience.
 
 ## Architecture
 
@@ -14,22 +14,17 @@ React-based graph visualization application that provides an interactive interfa
 ### Component Hierarchy
 ```
 App (BrowserRouter + InputActivityProvider)
+│   ├── Project selector (header)
 ├── MainView (Split layout)
 │   ├── GraphFlow (Left panel - from @vibethis/flowchart)
 │   └── SidePanel (Right panel - contextual tabs)
-│       ├── InputFormsTab (Workflow input management)
-│       ├── FileBrowser (from @vibethis/files)
-│       ├── EnvEditor (from @vibethis/config)
-│       └── GitChanges (from @vibethis/changes)
+│       └── InputFormsTab (Workflow input management)
 └── InputFormRenderer (Dynamic form generation)
 ```
 
 ### Module Dependencies
 - `@vibethis/shared`: Core types, API layer, and utilities
 - `@vibethis/flowchart`: Graph visualization with ReactFlow
-- `@vibethis/files`: File browser component
-- `@vibethis/config`: Environment configuration editor
-- `@vibethis/changes`: Git change tracking and visualization
 
 ## Key Interfaces
 
@@ -83,10 +78,9 @@ interface InputFormRendererProps {
 ### API Layer
 ```typescript
 // API functions in @vibethis/shared
-async function fetchGraph(): Promise<RelationshipGraph>
-async function fetchPositions(): Promise<CellPosition[]>
-async function savePositions(positions: CellPosition[]): Promise<void>
-async function fetchFiles(cellId: string, path?: string): Promise<{files: any[], path: string}>
+async function fetchGraph(projectId: string): Promise<RelationshipGraph>
+async function listProjects(): Promise<Project[]>
+async function createProject(input: { name: string; gitRepoPath: string }): Promise<Project>
 ```
 
 ## Usage Examples
@@ -116,23 +110,10 @@ function App() {
 const handleCellSelect = useCallback((cell: DependencyCell | null) => {
   setSelectedCell(cell);
   if (cell) {
-    const path = navigateToPath({ cellId: cell.id, tab: tab || 'files' });
+    const path = navigateToPath({ projectId, cellId: cell.id, tab: tab || 'inputs' });
     navigate(path);
   }
-}, [navigate, tab]);
-```
-
-### Dynamic Tab Configuration
-```typescript
-// SidePanel.tsx - Conditional tab rendering
-const items = showCellTabs ? [
-  { key: 'files', label: 'Files', children: <FileBrowser cell={selectedCell} /> },
-  { key: 'inputs', label: 'Inputs', children: <InputFormsTab cell={selectedCell} /> },
-  { key: 'config', label: 'Config', children: <CellConfigTabs /> },
-  { key: 'changes', label: 'Changes', children: <GitChanges /> }
-] : [
-  { key: 'config', label: 'Configuration', children: <ConfigurationTabs /> }
-];
+}, [navigate, projectId, tab]);
 ```
 
 ### Form Rendering with Validation

@@ -6,7 +6,11 @@ import SidePanel from './SidePanel';
 import type { DependencyCell } from '@vibethis/shared';
 import { navigateToPath } from '@vibethis/shared';
 
-export default function MainView() {
+interface MainViewProps {
+  projectId: string;
+}
+
+export default function MainView({ projectId }: MainViewProps) {
   const { cellId, tab } = useParams<{ cellId?: string; tab?: string; subtab?: string }>();
   const navigate = useNavigate();
   const [selectedCell, setSelectedCell] = useState<DependencyCell | null>(null);
@@ -15,15 +19,15 @@ export default function MainView() {
     setSelectedCell(cell);
     if (cell) {
       // Navigate to the cell detail page
-      const path = navigateToPath({ cellId: cell.id, tab: tab || 'files' });
+      const path = navigateToPath({ projectId, cellId: cell.id, tab: tab || 'inputs' });
       navigate(path);
     }
-  }, [navigate, tab]);
+  }, [navigate, tab, projectId]);
 
   return (
     <Splitter style={{ height: '100vh' }}>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
-        <GraphFlow selectedCellId={cellId} onCellSelect={handleCellSelect} />
+        <GraphFlow projectId={projectId} selectedCellId={cellId} onCellSelect={handleCellSelect} />
       </Splitter.Panel>
       <Splitter.Panel defaultSize="50%" min="20%" max="80%">
         <SidePanel selectedCell={selectedCell} />

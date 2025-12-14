@@ -1,7 +1,7 @@
 # Web Flowchart Module
 
 ## Overview
-React-based graph visualization component using @xyflow/react to render interactive dependency relationships between "cells". Provides draggable, zoomable flowchart interface with persistent positioning and real-time input activity tracking.
+React-based graph visualization component using @xyflow/react to render interactive dependency relationships between "cells". Provides draggable, zoomable flowchart interface with real-time input activity tracking and requires a selected project to load data.
 
 ## Architecture
 
@@ -41,22 +41,11 @@ interface InputBadgeProps {
 ### API Integration
 ```typescript
 // Core graph data fetching
-fetchGraph(): Promise<RelationshipGraph>
-fetchPositions(): Promise<CellPosition[]>
-savePositions(positions: CellPosition[]): Promise<void>
+fetchGraph(projectId: string): Promise<RelationshipGraph>
 
-// Data types
 interface RelationshipGraph {
   cells: DependencyCell[];
   edges: DependencyEdge[];
-}
-
-interface DependencyCell {
-  id: string;
-  name: string;
-  path: string;
-  type: string;
-  dependencies: string[];
 }
 ```
 
@@ -79,16 +68,6 @@ window.dispatchEvent(new CustomEvent('cellSelected', { detail: { cellId: 'cell-1
 
 // Graph refresh events  
 window.addEventListener('relationshipsUpdated', handleGraphRefresh);
-```
-
-### Position Management
-```typescript
-// Auto-save after drag (500ms debounce)
-const positions: CellPosition[] = [
-  { cellId: 'cell-1', x: 100, y: 200 },
-  { cellId: 'cell-2', x: 300, y: 400 }
-];
-await savePositions(positions);
 ```
 
 ## Usage Examples

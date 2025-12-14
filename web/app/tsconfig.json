@@ -26,47 +26,26 @@
       "@vibethis/shared": [
         "../shared/src/index.ts"
       ],
-      "@vibethis/changes": [
-        "../changes/src/index.tsx"
-      ],
-      "@vibethis/config": [
-        "../config/src/index.tsx"
-      ],
-      "@vibethis/files": [
-        "../files/src/index.tsx"
-      ],
       "@vibethis/flowchart": [
         "../flowchart/src/index.tsx"
       ],
-      "@graph-visualizer/changes": [
-        "../changes/src/index.ts"
-      ],
-      "@graph-visualizer/changes/*": [
-        "../changes/src/*"
-      ],
-      "@graph-visualizer/config": [
-        "../config/src/index.ts"
-      ],
-      "@graph-visualizer/config/*": [
-        "../config/src/*"
-      ],
-      "@graph-visualizer/files": [
-        "../files/src/index.ts"
-      ],
-      "@graph-visualizer/files/*": [
-        "../files/src/*"
+      "@vibethis/kanban": [
+        "../kanban/src/index.ts"
       ],
       "@graph-visualizer/flowchart": [
         "../flowchart/src/index.ts"
       ],
-      "@graph-visualizer/flowchart/*": [
-        "../flowchart/src/*"
+      "@graph-visualizer/kanban": [
+        "../kanban/src/index.ts"
       ],
       "@graph-visualizer/shared": [
         "../shared/src/index.ts"
       ],
       "@graph-visualizer/shared/*": [
         "../shared/src/*"
+      ],
+      "@graph-visualizer/flowchart/*": [
+        "../flowchart/src/*"
       ]
     }
   },
@@ -80,16 +59,10 @@
   ],
   "references": [
     {
-      "path": "../changes"
-    },
-    {
-      "path": "../config"
-    },
-    {
-      "path": "../files"
-    },
-    {
       "path": "../flowchart"
+    },
+    {
+      "path": "../kanban"
     },
     {
       "path": "../shared"

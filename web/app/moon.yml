@@ -5,10 +5,8 @@ project:
 tasks:
   build:
     deps:
-      - ui-config:build
-      - ui-changes:build
-      - ui-files:build
       - ui-flowchart:build
+      - ui-kanban:build
       - shared:build
   integration2:
     command: npx

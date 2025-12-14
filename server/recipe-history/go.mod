@@ -152,7 +152,7 @@ require (
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/api v0.224.0 // indirect
@@ -173,14 +173,6 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-
-replace github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
-
-replace github.com/divisive-ai/vibethis/server/ops => ../ops
-
-replace github.com/divisive-ai/vibethis/server/git => ../git
-
 replace (
 	github.com/colony-2/shai => ../../../shai
 	github.com/colony-2/strata/strata-go => ../../../strata-go
@@ -195,8 +187,8 @@ replace (
 	github.com/divisive-ai/vibethis/server/openapi => ../openapi
 	github.com/divisive-ai/vibethis/server/ops => ../ops
 	github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
-	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 	github.com/divisive-ai/vibethis/server/recipe-input => ../recipe-input
+	github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
 	github.com/divisive-ai/vibethis/server/recipe-worker => ../recipe-worker
 	github.com/divisive-ai/vibethis/server/storage => ../storage
 	github.com/divisive-ai/vibethis/server/ticket => ../ticket

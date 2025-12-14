@@ -15,7 +15,7 @@ vi.mock('react-router-dom', async () => {
 
 // Mock navigateToPath
 vi.mock('@vibethis/shared', () => ({
-  navigateToPath: vi.fn((params) => `/cell/${params.cellId}/${params.tab}`),
+  navigateToPath: vi.fn((params) => params.projectId ? `/project/${params.projectId}/cell/${params.cellId}/${params.tab}` : `/cell/${params.cellId}/${params.tab}`),
 }));
 
 describe('InputBadge', () => {
@@ -70,14 +70,6 @@ describe('InputBadge', () => {
     
     // Verify the badge has the onClick handler
     if (badge) {
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true });
-      let propagationStopped = false;
-      
-      // Override stopPropagation to track if it was called
-      event.stopPropagation = () => {
-        propagationStopped = true;
-      };
-      
       // The component's onClick should call stopPropagation
       // We can't directly test this without triggering the actual component handler
       // So we just verify the badge exists and is clickable
@@ -111,8 +103,6 @@ describe('InputBadge', () => {
     const { container } = renderWithRouter({ status: 'urgent' });
     
     const badge = container.querySelector('.ant-badge');
-    const style = window.getComputedStyle(badge as Element);
-    
     // Check that animation is applied (the actual animation is defined in the component)
     expect(badge).toBeDefined();
   });

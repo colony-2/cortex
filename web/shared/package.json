@@ -17,6 +17,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@vibethis/openapi-client": "file:../openapi",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   }

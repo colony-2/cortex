@@ -27,6 +27,9 @@ resources:
       - source: ${{ env.HOME }}/.claude.json.backup
         target: /home/devuser/.claude.json.backup
         mode: rw
+      - source: /src/vibethis/.moon/
+        target: /src/.moon/
+        mode: rw
       - source: /src/strata-go
         target: /strata-go
         mode: ro

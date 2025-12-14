@@ -15,6 +15,7 @@ interface ProFlowCellProps {
     selected?: boolean;
     pendingInputCount?: number;
     inputUrgency?: 'pending' | 'urgent' | 'overdue';
+    projectId?: string;
   };
   id: string;
 }
@@ -51,6 +52,7 @@ const ProFlowCell: FC<ProFlowCellProps> = ({ data, id }) => {
           count={data.pendingInputCount}
           status={data.inputUrgency}
           cellId={id}
+          projectId={data.projectId}
           size="small"
         />
       )}

@@ -7,10 +7,10 @@ require (
 	github.com/colony-2/swf-go v0.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/divisive-ai/vibethis/server/git v0.0.0
-	github.com/divisive-ai/vibethis/server/registry v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0
 	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/divisive-ai/vibethis/server/registry v0.0.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
@@ -101,7 +101,7 @@ require (
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
@@ -118,6 +118,7 @@ require (
 replace github.com/divisive-ai/vibethis/server/recipe-core => ../recipe-core
 
 replace github.com/divisive-ai/vibethis/server/recipe-template => ../recipe-template
+
 replace github.com/divisive-ai/vibethis/server/registry => ../registry
 
 replace github.com/divisive-ai/vibethis/server/git => ../git

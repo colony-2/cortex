@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { message, Spin, Card, Button, Alert, Collapse } from 'antd';
-import { fetchGraph, fetchPositions, savePositions, useInputActivity, type RelationshipGraph, type DependencyCell, type CellPosition, type DependencyEdge } from '@vibethis/shared';
+import { message, Spin, Card, Button, Alert, Collapse, Empty } from 'antd';
+import { fetchGraph, useInputActivity, type RelationshipGraph, type DependencyCell, type DependencyEdge } from '@vibethis/shared';
 import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {
@@ -26,17 +26,23 @@ interface FlowEdge {
 }
 
 export interface GraphFlowProps {
+  projectId: string | null;
   selectedCellId?: string;
   onCellSelect?: (cell: DependencyCell | null) => void;
 }
 
-export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowProps) {
+type LocalPosition = {
+  cellId: string;
+  x: number;
+  y: number;
+};
+
+export default function GraphFlow({ projectId, selectedCellId, onCellSelect }: GraphFlowProps) {
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<DependencyCell | null>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graphRef = useRef<RelationshipGraph | null>(null);
   const isInitialLoad = useRef(true);
   const { pendingInputsByCellId } = useInputActivity();
@@ -47,7 +53,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
     onCellSelect?.(cell);
   }, [onCellSelect]);
 
-  const layoutCells = useCallback((graphData: RelationshipGraph, savedPositions: CellPosition[], selectedCellId?: string, pendingInputsByCellId?: Map<string, any[]>) => {
+  const layoutCells = useCallback((graphData: RelationshipGraph, savedPositions: LocalPosition[] = [], selectedCellId?: string, pendingInputsByCellId?: Map<string, any[]>) => {
     // Handle null or undefined cells
     if (!graphData.cells || !Array.isArray(graphData.cells)) {
       setNodes([]);
@@ -110,7 +116,8 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
           logo: '📦',
           selected: selectedCellId === cell.id,
           pendingInputCount,
-          inputUrgency
+          inputUrgency,
+          projectId
         },
       };
     });
@@ -133,7 +140,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
   useEffect(() => {
     if (graphRef.current && !loading) {
       // Get current positions from nodes
-      const currentPositions: CellPosition[] = nodes.map(node => ({
+      const currentPositions: LocalPosition[] = nodes.map(node => ({
         cellId: node.id,
         x: node.position.x,
         y: node.position.y
@@ -145,35 +152,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
   }, [pendingInputsByCellId, loading, nodes, selectedCellId, layoutCells]);
 
   const onNodesChange = useCallback((changes: any) => {
-    setNodes((nds) => {
-      const updatedNodes = applyNodeChanges(changes, nds as any) as FlowNode[];
-      
-      // Check if this was a position change (drag)
-      const positionChange = changes.find((c: any) => c.type === 'position' && c.dragging === false);
-      if (positionChange) {
-        // Save positions after drag ends
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-        }
-        
-        saveTimeoutRef.current = setTimeout(async () => {
-          const positions = updatedNodes.map(n => ({
-            cellId: n.id,
-            x: n.position.x,
-            y: n.position.y
-          }));
-          
-          try {
-            await savePositions(positions);
-          } catch (err) {
-            console.error('Failed to save positions:', err);
-            message.error('Failed to save cell positions');
-          }
-        }, 500);
-      }
-      
-      return updatedNodes;
-    });
+    setNodes((nds) => applyNodeChanges(changes, nds as any) as FlowNode[]);
   }, []);
 
   useEffect(() => {
@@ -184,15 +163,18 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
     
     // Listen for dependency update events
     const handleDependencyUpdate = async () => {
+      if (!projectId) return;
       try {
-        const [graphData, positions] = await Promise.all([
-          fetchGraph(),
-          fetchPositions()
-        ]);
-        
+        const graphData = await fetchGraph(projectId);
+        const currentPositions: LocalPosition[] = nodes.map((node) => ({
+          cellId: node.id,
+          x: node.position.x,
+          y: node.position.y,
+        }));
+
         graphRef.current = graphData;
-        layoutCells(graphData, positions, selectedCell?.id, pendingInputsByCellId);
-        
+        layoutCells(graphData, currentPositions, selectedCell?.id, pendingInputsByCellId);
+
         // Update selectedCell with fresh data if one is selected
         if (selectedCell) {
           const updatedCell = graphData.cells.find((c: DependencyCell) => c.id === selectedCell.id);
@@ -216,21 +198,22 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
       window.removeEventListener('cellSelected', handleCellSelection as EventListener);
       window.removeEventListener('relationshipsUpdated', handleDependencyUpdate as EventListener);
     };
-  }, [handleCellClick, layoutCells, selectedCell?.id, onCellSelect]);
+  }, [handleCellClick, layoutCells, selectedCell?.id, onCellSelect, nodes, pendingInputsByCellId, projectId]);
 
   // Load data only on initial mount
   useEffect(() => {
     if (!isInitialLoad.current) return;
     
     async function loadData() {
+      if (!projectId) {
+        setLoading(false);
+        isInitialLoad.current = false;
+        return;
+      }
       try {
-        const [graphData, positions] = await Promise.all([
-          fetchGraph(),
-          fetchPositions()
-        ]);
-        
+        const graphData = await fetchGraph(projectId);
         graphRef.current = graphData;
-        layoutCells(graphData, positions, selectedCellId, pendingInputsByCellId);
+        layoutCells(graphData, [], selectedCellId, pendingInputsByCellId);
         setLoading(false);
         isInitialLoad.current = false;
       } catch (err) {
@@ -243,7 +226,7 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
     }
 
     loadData();
-  }, []); // Empty dependency array - only load on mount
+  }, [projectId, selectedCellId, pendingInputsByCellId]); // Reload when project changes
   
   // Handle external cell selection
   useEffect(() => {
@@ -272,6 +255,14 @@ export default function GraphFlow({ selectedCellId, onCellSelect }: GraphFlowPro
       })));
     }
   }, [selectedCellId, selectedCell?.id]); // Include selectedCell?.id to track changes
+
+  if (!projectId) {
+    return (
+      <div className="loading-container">
+        <Empty description="Select a project to view the graph" />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
