@@ -6,7 +6,8 @@ workspace: /src
 resources:
   default:
     vars:
-      - source: "GOPRIVATE"
+      - source: GOPRIVATE
+      - source: MOON_TOOLCHAIN_FORCE_GLOBALS
     calls:
       - name: uname
         command: uname -a

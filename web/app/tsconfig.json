@@ -27,25 +27,19 @@
         "../shared/src/index.ts"
       ],
       "@colony2/flowchart": [
-        "../flowchart/src/index.tsx"
-      ],
-      "@colony2/kanban": [
-        "../kanban/src/index.ts"
-      ],
-      "@colony2/flowchart": [
         "../flowchart/src/index.ts"
       ],
       "@colony2/kanban": [
         "../kanban/src/index.ts"
-      ],
-      "@colony2/shared": [
-        "../shared/src/index.ts"
       ],
       "@colony2/shared/*": [
         "../shared/src/*"
       ],
       "@colony2/flowchart/*": [
         "../flowchart/src/*"
+      ],
+      "@colony2/kanban/*": [
+        "../kanban/src/*"
       ]
     }
   },

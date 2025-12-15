@@ -101,7 +101,7 @@ RUN set -euxo pipefail && python3 -m pip --version
 # - Google Gemini CLI
 # - Claude Code CLI
 # - Moonrepo CLI
-RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code nx && npm cache clean --force
+RUN set -euxo pipefail && npm -g install @openai/codex @google/gemini-cli @anthropic-ai/claude-code @moonrepo/cli && npm cache clean --force
 
 ## Users, shells, bootstrap, workspace (late config layer)
 RUN set -euxo pipefail && useradd -m -u 1000 -s /bin/bash devuser

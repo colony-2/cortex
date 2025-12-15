@@ -30,6 +30,9 @@
       ],
       "@colony2/openapi-client/*": [
         "../openapi/src/*"
+      ],
+      "@colony2/shared/*": [
+        "../shared/src/*"
       ]
     }
   },
@@ -43,6 +46,9 @@
   "references": [
     {
       "path": "../openapi"
+    },
+    {
+      "path": "../shared"
     }
   ]
 }
