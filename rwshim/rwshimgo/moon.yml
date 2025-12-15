@@ -1,0 +1,16 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+
+id: 'rwshim-go'
+language: 'go'
+type: 'library'
+
+project:
+  description: Provides rwshim golang functionality
+
+tasks:
+  
+  integration:
+    command: './integration_test.sh'
+    description: 'Run integration tests with C shim in Docker'
+    options:
+      outputStyle: buffer-only-failure

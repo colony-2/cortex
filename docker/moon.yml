@@ -1,0 +1,30 @@
+id: shai-docker
+
+tasks:
+  build:
+    platform: system
+    command: docker build -t debian-dev:dev --target dev .
+    inputs:
+      - Dockerfile
+      - scripts/**
+      - supervisord/**
+      - shai-allowed-domains.conf
+    options:
+      cache: true
+      outputStyle: buffer-only-failure
+
+  integration:
+    platform: system
+    command: bash tests/integration/test_image.sh
+    deps:
+      - build
+    inputs:
+      - tests/**
+      - Dockerfile
+      - scripts/**
+      - supervisord/**
+      - shai-allowed-domains.conf
+    options:
+      cache: false
+      outputStyle: buffer-only-failure
+

@@ -1,0 +1,30 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+workspace:
+  inheritedTasks:
+    exclude:
+      - build
+
+tasks:
+  build:
+    command: go build -o build/nucleus ./cmd/nucleus
+    inputs:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+    platform: 'system'
+    outputs:
+      - build/nucleus
+    options:
+        runInCI: true
+        outputStyle: buffer-only-failure
+
+  install:
+    command: go install ./cmd/nucleus
+    description: Install Ono server and CLI tools
+
+  integration:
+    command: go test -v -tags=integration ./...
+    description: Run all integration tests
+    options:
+        outputStyle: buffer-only-failure

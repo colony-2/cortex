@@ -1,0 +1,18 @@
+$schema: '../../../.moon/cache/schemas/project.json'
+
+id: 'rwshim-clib'
+project:
+  description: 'A c shim to intercept read and write operations.'
+tasks:
+  build:
+    command: "docker"
+    args:
+      - "build"
+      - "-t"
+      - "rwshim:latest"
+      - "."
+  test:
+    command: "./run_tests_docker.sh"
+    description: "Run intercept shim tests in Docker container"
+    options:
+      outputStyle: buffer-only-failure
