@@ -1,9 +1,5 @@
 module github.com/divisive-ai/vibethis/server/llm
 
-go 1.24
-
-toolchain go1.24.1
-
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2

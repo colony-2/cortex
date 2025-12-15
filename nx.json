@@ -3,18 +3,42 @@
   "npmScope": "vibethis",
   "defaultBase": "main",
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "!{projectRoot}/dist/**", "!{projectRoot}/build/**", "!{projectRoot}/node_modules/**"],
-    "go": ["go.mod", "go.sum", "{projectRoot}/**/*.go"],
-    "ts": ["package.json", "package-lock.json", "{projectRoot}/tsconfig*.json", "{projectRoot}/src/**/*"]
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/dist/**",
+      "!{projectRoot}/build/**",
+      "!{projectRoot}/node_modules/**"
+    ],
+    "go": [
+      "go.mod",
+      "go.sum",
+      "{projectRoot}/**/*.go"
+    ],
+    "ts": [
+      "package.json",
+      "package-lock.json",
+      "{projectRoot}/tsconfig*.json",
+      "{projectRoot}/src/**/*"
+    ],
+    "sharedGlobals": [
+      "{workspaceRoot}/go.work"
+    ]
   },
   "targetDefaults": {
     "build": {
-      "inputs": ["default"],
-      "outputs": ["{projectRoot}/build", "{projectRoot}/dist"],
+      "inputs": [
+        "default"
+      ],
+      "outputs": [
+        "{projectRoot}/build",
+        "{projectRoot}/dist"
+      ],
       "cache": true
     },
     "test": {
-      "inputs": ["default"],
+      "inputs": [
+        "default"
+      ],
       "cache": true
     },
     "lint": {
@@ -52,5 +76,8 @@
     "shai-docker": "docker",
     "rwshim-clib": "rwshim/clib",
     "rwshim-go": "rwshim/rwshimgo"
-  }
+  },
+  "plugins": [
+    "@nx-go/nx-go"
+  ]
 }

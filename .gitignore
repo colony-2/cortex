@@ -19,8 +19,6 @@ server/static/dist/
 # Output of the go coverage tool
 *.out
 
-# Go workspace file
-go.work
 
 # IDE files
 .idea/

@@ -1,5 +1,5 @@
 # Base: Debian slim with dev tools and CLIs
-# Includes: Go 1.24.1, Rust (stable), Python, Node, C/C++, Java, jq, git
+# Includes: Go, Rust (stable), Python, Node, C/C++, Java, jq, git
 # Adds user: devuser (uid 1000)
 # Default working directory: /src
 
@@ -10,9 +10,9 @@ LABEL org.opencontainers.image.source="local" \
 
 ## Versions and config
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GO_VERSION=1.24.1
-ARG NODE_MAJOR=22
-ARG NODE_VERSION=22.9.0
+ARG GO_VERSION=1.25.1
+ARG NODE_MAJOR=24
+ARG NODE_VERSION=24.12.0
 
 # Ensure predictable shell behavior for RUN chains
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

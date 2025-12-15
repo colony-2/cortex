@@ -1,7 +1,5 @@
 module github.com/divisive-ai/vibethis/server/cortex
 
-go 1.24.1
-
 require (
 	github.com/colony-2/shai v0.0.0-00010101000000-000000000000
 	github.com/divisive-ai/vibethis/server/api v0.0.0-00010101000000-000000000000

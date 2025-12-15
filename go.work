@@ -1,0 +1,35 @@
+go 1.25.5
+
+use (
+	./server/api
+	./server/astore
+	./server/cell
+	./server/core
+	./server/cortex
+	./server/git
+	./server/graph
+	./server/llm
+	./server/nucleus
+	./server/openapi
+	./server/ops
+	./server/project
+	./server/recipe-child
+	./server/recipe-core
+	./server/recipe-history
+	./server/recipe-input
+	./server/recipe-template
+	./server/recipe-worker
+	./server/registry
+	./server/rstore
+	./server/rucc
+	./server/storage
+	./server/ticket
+)
+
+replace github.com/colony-2/shai => ../swf-go/shai
+
+replace github.com/colony-2/strata/strata-go => ../swf-go/strata-go
+
+replace github.com/colony-2/swf-go => ../swf-go
+
+replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3

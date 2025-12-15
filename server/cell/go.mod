@@ -1,6 +1,6 @@
 module github.com/divisive-ai/vibethis/server/cell
 
-go 1.24.1
+go 1.25.5
 
 require (
 	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000
