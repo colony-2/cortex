@@ -25,11 +25,3 @@ use (
 	./server/storage
 	./server/ticket
 )
-
-replace github.com/colony-2/shai => ../shai
-
-replace github.com/colony-2/strata/strata-go => ../strata-go
-
-replace github.com/colony-2/swf-go => ../swf-go
-
-replace gorm.io/plugin/optimisticlock => github.com/go-gorm/optimisticlock v1.1.3

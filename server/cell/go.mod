@@ -7,7 +7,7 @@ require (
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.30.0
-	gorm.io/plugin/optimisticlock v1.3.3
+	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (

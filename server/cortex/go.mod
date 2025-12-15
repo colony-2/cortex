@@ -1,7 +1,6 @@
 module github.com/colony-2/colony2/server/cortex
 
 require (
-	github.com/colony-2/shai v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -117,6 +116,6 @@ require (
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/driver/sqlite v1.5.7 // indirect
 	gorm.io/gorm v1.30.0 // indirect
-	gorm.io/plugin/optimisticlock v1.3.3 // indirect
+	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
 

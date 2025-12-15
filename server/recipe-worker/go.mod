@@ -3,8 +3,6 @@ module github.com/colony-2/colony2/server/recipe-worker
 go 1.25.5
 
 require (
-	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000
-	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/davecgh/go-spew v1.1.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/cel-go v0.26.0
@@ -107,7 +105,7 @@ require (
 	gorm.io/driver/mysql v1.5.6 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/driver/sqlite v1.5.7 // indirect
-	gorm.io/plugin/optimisticlock v1.3.3 // indirect
+	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
 
 

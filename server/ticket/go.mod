@@ -3,7 +3,6 @@ module github.com/colony-2/colony2/server/ticket
 go 1.25.5
 
 require (
-	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -14,7 +13,7 @@ require (
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
-	gorm.io/plugin/optimisticlock v1.3.3
+	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (
@@ -22,7 +21,6 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect

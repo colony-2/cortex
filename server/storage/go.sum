@@ -1,0 +1,6 @@
+github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
+github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
+github.com/colony-2/colony2/server/core v0.0.0-20251215180046-f877f2f639bf h1:l1ntTt8CvJagOiVsnqT+K+yqP6URGUrQPLRDTDSHqCU=
+github.com/colony-2/colony2/server/core v0.0.0-20251215180046-f877f2f639bf/go.mod h1:ODE1SUsyurWnakjEv9ioXzg1iyH5nxZHOLR/XRW85ow=
+golang.org/x/sys v0.33.0 h1:q3i8TbbEz+JRD9ywIRlyRAQbM0qF7hu24q3teo2hbuw=
+golang.org/x/sys v0.33.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=

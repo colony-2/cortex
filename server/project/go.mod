@@ -8,7 +8,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.30.0
-	gorm.io/plugin/optimisticlock v1.3.3
+	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (

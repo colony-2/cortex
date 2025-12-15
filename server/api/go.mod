@@ -3,13 +3,12 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
-	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
-	gorm.io/plugin/optimisticlock v1.3.3
+	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (
@@ -26,8 +25,6 @@ require (
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/shai v0.0.0-00010101000000-000000000000 // indirect
-	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
