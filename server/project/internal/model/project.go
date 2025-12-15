@@ -14,6 +14,7 @@ type Project struct {
 	Name                string                 `gorm:"uniqueIndex"`
 	GitRepoPath         string                 `gorm:"column:git_repo_path"`
 	DefaultTicketRecipe *string                `gorm:"column:default_ticket_recipe"`
+	GitRepoBranch       *string                `gorm:"column:git_repo_branch"`
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

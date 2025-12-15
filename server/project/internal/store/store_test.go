@@ -28,6 +28,7 @@ func TestStoreCRUD(t *testing.T) {
 		Name:                "Alpha",
 		GitRepoPath:         "git@example.com/alpha.git",
 		DefaultTicketRecipe: &recipe,
+		GitRepoBranch:       ptr("main"),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -39,6 +40,8 @@ func TestStoreCRUD(t *testing.T) {
 	require.Equal(t, project.GitRepoPath, fetched.GitRepoPath)
 	require.NotNil(t, fetched.DefaultTicketRecipe)
 	require.Equal(t, recipe, *fetched.DefaultTicketRecipe)
+	require.NotNil(t, fetched.GitRepoBranch)
+	require.Equal(t, "main", *fetched.GitRepoBranch)
 	require.WithinDuration(t, project.CreatedAt, fetched.CreatedAt, time.Second)
 	require.WithinDuration(t, project.UpdatedAt, fetched.UpdatedAt, time.Second)
 
@@ -116,3 +119,5 @@ func collectAll(t *testing.T, ctx context.Context, iter store.Iterator[*model.Pr
 	}
 	return projects
 }
+
+func ptr[T any](v T) *T { return &v }

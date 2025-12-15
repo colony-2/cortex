@@ -37,6 +37,7 @@ func TestServiceCRUD(t *testing.T) {
 	require.Equal(t, now, created.CreatedAt)
 	require.Equal(t, now, created.UpdatedAt)
 	require.Nil(t, created.DefaultTicketRecipe)
+	require.Nil(t, created.GitRepoBranch)
 
 	fetched, err := svc.GetProject(ctx, created.ID)
 	require.NoError(t, err)
@@ -51,22 +52,29 @@ func TestServiceCRUD(t *testing.T) {
 
 	newName := "Alpha Prime"
 	newRecipe := "tickets.yaml"
+	newBranch := "main"
 	updated, err := svc.UpdateProject(ctx, created.ID, service.UpdateInput{
 		Name:                &newName,
 		DefaultTicketRecipe: &newRecipe,
+		GitRepoBranch:       &newBranch,
 	})
 	require.NoError(t, err)
 	require.Equal(t, newName, updated.Name)
 	require.NotNil(t, updated.DefaultTicketRecipe)
 	require.Equal(t, newRecipe, *updated.DefaultTicketRecipe)
+	require.NotNil(t, updated.GitRepoBranch)
+	require.Equal(t, newBranch, *updated.GitRepoBranch)
 	require.True(t, updated.UpdatedAt.After(updated.CreatedAt))
 
 	clearRecipe := " "
+	clearBranch := " "
 	updated, err = svc.UpdateProject(ctx, created.ID, service.UpdateInput{
 		DefaultTicketRecipe: &clearRecipe,
+		GitRepoBranch:       &clearBranch,
 	})
 	require.NoError(t, err)
 	require.Nil(t, updated.DefaultTicketRecipe)
+	require.Nil(t, updated.GitRepoBranch)
 
 	require.NoError(t, svc.DeleteProject(ctx, created.ID))
 	_, err = svc.GetProject(ctx, created.ID)

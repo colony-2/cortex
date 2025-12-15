@@ -69,12 +69,14 @@ type CreateInput struct {
 	Name                string
 	GitRepoPath         string
 	DefaultTicketRecipe *string
+	GitRepoBranch       *string
 }
 
 type UpdateInput struct {
 	Name                *string
 	GitRepoPath         *string
 	DefaultTicketRecipe *string
+	GitRepoBranch       *string
 }
 
 func (s *service) CreateProject(ctx context.Context, input CreateInput) (*model.Project, error) {
@@ -96,6 +98,7 @@ func (s *service) CreateProject(ctx context.Context, input CreateInput) (*model.
 		Name:                name,
 		GitRepoPath:         repo,
 		DefaultTicketRecipe: normalizeOptionalString(input.DefaultTicketRecipe),
+		GitRepoBranch:       normalizeOptionalString(input.GitRepoBranch),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	}
@@ -145,6 +148,10 @@ func (s *service) UpdateProject(ctx context.Context, id model.ID, patch UpdateIn
 	}
 	if patch.DefaultTicketRecipe != nil {
 		existing.DefaultTicketRecipe = normalizeOptionalString(patch.DefaultTicketRecipe)
+		updated = true
+	}
+	if patch.GitRepoBranch != nil {
+		existing.GitRepoBranch = normalizeOptionalString(patch.GitRepoBranch)
 		updated = true
 	}
 	if !updated {
