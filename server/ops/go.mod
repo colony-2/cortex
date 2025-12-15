@@ -3,10 +3,6 @@ module github.com/divisive-ai/vibethis/server/ops
 go 1.25.5
 
 require (
-	github.com/colony-2/shai v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/llm v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
@@ -29,9 +25,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
-	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
-	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000 // indirect
+	github.com/colony-2/shai v0.0.0-20251214230818-6cb8e30456ba // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.23 // indirect
@@ -114,10 +108,3 @@ require (
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
-
-
-
-
-
-
-

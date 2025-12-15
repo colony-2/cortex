@@ -3,7 +3,6 @@ module github.com/divisive-ai/vibethis/server/recipe-template
 go 1.25.5
 
 require (
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/google/cel-go v0.26.0
 	github.com/stretchr/testify v1.11.1
 )

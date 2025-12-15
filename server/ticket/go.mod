@@ -4,10 +4,6 @@ go 1.25.5
 
 require (
 	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/cell v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/project v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -28,7 +24,6 @@ require (
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
 	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-chi/chi/v5 v5.0.10 // indirect

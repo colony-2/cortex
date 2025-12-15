@@ -57,5 +57,8 @@ else
   log "dev-egress-setup exited with $status"
 fi
 
+sed -i 's/^nameserver .*/nameserver 127.0.0.1/' /etc/resolv.conf
+
+
 log "bootstrap completed"
 exit 0

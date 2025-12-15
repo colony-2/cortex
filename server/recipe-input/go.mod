@@ -4,8 +4,6 @@ go 1.25.5
 
 require (
 	github.com/colony-2/swf-go v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.11.1
 )
@@ -19,8 +17,6 @@ require (
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
 	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000 // indirect
-	github.com/divisive-ai/vibethis/server/recipe-template v0.0.0-00010101000000-000000000000 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

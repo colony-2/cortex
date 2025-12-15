@@ -26,9 +26,9 @@ use (
 	./server/ticket
 )
 
-replace github.com/colony-2/shai => ../swf-go/shai
+replace github.com/colony-2/shai => ../shai
 
-replace github.com/colony-2/strata/strata-go => ../swf-go/strata-go
+replace github.com/colony-2/strata/strata-go => ../strata-go
 
 replace github.com/colony-2/swf-go => ../swf-go
 

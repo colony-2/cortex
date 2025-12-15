@@ -2,14 +2,6 @@ module github.com/divisive-ai/vibethis/server/cortex
 
 require (
 	github.com/colony-2/shai v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/api v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/git v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/ops v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-core v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/recipe-worker v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/storage v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/ticket v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -35,9 +27,6 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000 // indirect
-	github.com/divisive-ai/vibethis/server/llm v0.0.0-00010101000000-000000000000 // indirect
-	github.com/divisive-ai/vibethis/server/openapi v0.0.0-00010101000000-000000000000 // indirect
 	github.com/docker/docker v28.3.0+incompatible // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect

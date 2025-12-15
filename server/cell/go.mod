@@ -3,8 +3,6 @@ module github.com/divisive-ai/vibethis/server/cell
 go 1.25.5
 
 require (
-	github.com/divisive-ai/vibethis/server/graph v0.0.0-00010101000000-000000000000
-	github.com/divisive-ai/vibethis/server/project v0.0.0-00010101000000-000000000000
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/driver/postgres v1.5.11
@@ -13,7 +11,6 @@ require (
 )
 
 require (
-	github.com/divisive-ai/vibethis/server/core v0.0.0-00010101000000-000000000000 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20231201235250-de7065d80cb9 // indirect
 	github.com/jackc/pgx/v5 v5.5.5 // indirect
