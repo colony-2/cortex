@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/ops
+module github.com/colony-2/colony2/server/ops
 
 go 1.25.5
 

@@ -3,7 +3,7 @@ package recipe
 import (
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )

@@ -18,7 +18,7 @@ The rwshim/clib is a C-based interception library that uses LD_PRELOAD to monito
 Target App → intercept.so → Unix Socket → Monitor Process → Policy Decision → Allow/Deny
 ```
 
-The shim connects to `/tmp/vibethis-rwshim.sock` for each intercepted operation, sends operation details, and waits for ALLOW/DENY response.
+The shim connects to `/tmp/colony2-rwshim.sock` for each intercepted operation, sends operation details, and waits for ALLOW/DENY response.
 
 ### Policy Engine
 
@@ -127,7 +127,7 @@ export DYLD_INSERT_LIBRARIES=./intercept.dylib
 
 ### Socket Configuration
 
-- Socket path: `/tmp/vibethis-rwshim.sock` (hardcoded)
+- Socket path: `/tmp/colony2-rwshim.sock` (hardcoded)
 - Protocol: Unix domain socket, SOCK_STREAM
 - Timeout: None (blocking operations)
 

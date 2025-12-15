@@ -3,9 +3,9 @@ package ops
 import (
 	"context"
 
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/commandop"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/sleepop"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/sleepop"
 )
 
 // Test activity input/output types

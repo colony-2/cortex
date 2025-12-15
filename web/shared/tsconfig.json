@@ -27,10 +27,10 @@
     ],
     "composite": true,
     "paths": {
-      "@vibethis/openapi-client": [
+      "@colony2/openapi-client": [
         "../openapi/src/index.ts"
       ],
-      "@vibethis/openapi-client/*": [
+      "@colony2/openapi-client/*": [
         "../openapi/src/*"
       ]
     }

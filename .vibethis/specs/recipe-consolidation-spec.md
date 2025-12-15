@@ -74,8 +74,8 @@ import (
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
     "go.temporal.io/sdk/testsuite"
-    "github.com/vibethis/recipe-worker/pkg/worker"
-    "github.com/vibethis/recipe-worker/pkg/compiler"
+    "github.com/colony2/recipe-worker/pkg/worker"
+    "github.com/colony2/recipe-worker/pkg/compiler"
 )
 
 type TestCase struct {

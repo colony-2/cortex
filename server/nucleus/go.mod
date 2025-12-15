@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/nucleus
+module github.com/colony-2/colony2/server/nucleus
 
 go 1.25.5
 

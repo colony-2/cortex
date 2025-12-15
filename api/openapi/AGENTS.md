@@ -6,13 +6,13 @@ OpenAPI 3.0.3 specification for the VibeThis REST API, providing comprehensive d
 ## Architecture
 
 ### Core Components
-- **vibethis-api.yaml**: Complete OpenAPI specification with all endpoints, schemas, and examples
+- **colony2-api.yaml**: Complete OpenAPI specification with all endpoints, schemas, and examples
 - **moon.yml**: Build system configuration defining the api-openapi project type
 - **API Structure**: Five main endpoint categories organized by functional domain
 
 ### Component Relationships
 ```
-OpenAPI Spec (vibethis-api.yaml)
+OpenAPI Spec (colony2-api.yaml)
 ├── Graph Operations (/api/graph)
 ├── Position Management (/api/positions) 
 ├── File Operations (/api/cells/{cellId}/files)
@@ -158,11 +158,11 @@ tasks:
   build:
     command: 'echo'
     args: ['OpenAPI spec is ready']
-    inputs: [vibethis-api.yaml]
+    inputs: [colony2-api.yaml]
 ```
 
 ### API Validation Tools
-- openapi-generator-cli: `openapi-generator-cli validate -i vibethis-api.yaml`
-- swagger-cli: `swagger-cli validate vibethis-api.yaml`
+- openapi-generator-cli: `openapi-generator-cli validate -i colony2-api.yaml`
+- swagger-cli: `swagger-cli validate colony2-api.yaml`
 - Import into Swagger UI, ReDoc, Postman, or Insomnia for interactive documentation
 - Use OpenAPI Generator for client code generation in multiple languages

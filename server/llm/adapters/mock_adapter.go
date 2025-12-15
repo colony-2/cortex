@@ -1,14 +1,14 @@
 package llmadapters
 
 import (
-    "context"
-    "encoding/json"
-    "errors"
-    "fmt"
-    "sync"
-    "time"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
 
-	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
+	f2 "github.com/colony-2/colony2/server/core/pkg/file"
 )
 
 // MockAdapter implements all adapter interfaces for testing
@@ -83,12 +83,12 @@ func (m *MockAdapter) Generate(ctx context.Context, prompt string, config Config
 	}
 
 	// Check for error injection
-    if m.ErrorOn == "Generate" {
-        err := errors.New(m.ErrorMessage)
-        call.Error = err
-        m.CallHistory = append(m.CallHistory, call)
-        return Response{}, err
-    }
+	if m.ErrorOn == "Generate" {
+		err := errors.New(m.ErrorMessage)
+		call.Error = err
+		m.CallHistory = append(m.CallHistory, call)
+		return Response{}, err
+	}
 
 	// Return configured response
 	var response Response
@@ -138,12 +138,12 @@ func (m *MockAdapter) GenerateWithTools(ctx context.Context, prompt string, tool
 	}
 
 	// Check for error injection
-    if m.ErrorOn == "GenerateWithTools" {
-        err := errors.New(m.ErrorMessage)
-        call.Error = err
-        m.CallHistory = append(m.CallHistory, call)
-        return Response{}, err
-    }
+	if m.ErrorOn == "GenerateWithTools" {
+		err := errors.New(m.ErrorMessage)
+		call.Error = err
+		m.CallHistory = append(m.CallHistory, call)
+		return Response{}, err
+	}
 
 	// Return configured response or generate one with tool calls
 	var response Response
@@ -193,12 +193,12 @@ func (m *MockAdapter) StreamGenerate(ctx context.Context, prompt string, config 
 	}
 
 	// Check for error injection
-    if m.ErrorOn == "StreamGenerate" {
-        err := errors.New(m.ErrorMessage)
-        call.Error = err
-        m.CallHistory = append(m.CallHistory, call)
-        return nil, err
-    }
+	if m.ErrorOn == "StreamGenerate" {
+		err := errors.New(m.ErrorMessage)
+		call.Error = err
+		m.CallHistory = append(m.CallHistory, call)
+		return nil, err
+	}
 
 	// Create stream channel
 	stream := make(chan Token, len(m.StreamTokens))
@@ -246,12 +246,12 @@ func (m *MockAdapter) GenerateWithFiles(ctx context.Context, prompt string, file
 	}
 
 	// Check for error injection
-    if m.ErrorOn == "GenerateWithFiles" {
-        err := errors.New(m.ErrorMessage)
-        call.Error = err
-        m.CallHistory = append(m.CallHistory, call)
-        return Response{}, err
-    }
+	if m.ErrorOn == "GenerateWithFiles" {
+		err := errors.New(m.ErrorMessage)
+		call.Error = err
+		m.CallHistory = append(m.CallHistory, call)
+		return Response{}, err
+	}
 
 	// Return configured response
 	var response Response

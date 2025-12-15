@@ -16,19 +16,19 @@ React-based graph visualization application that provides an interactive interfa
 App (BrowserRouter + InputActivityProvider)
 │   ├── Project selector (header)
 ├── MainView (Split layout)
-│   ├── GraphFlow (Left panel - from @vibethis/flowchart)
+│   ├── GraphFlow (Left panel - from @colony2/flowchart)
 │   └── SidePanel (Right panel - contextual tabs)
 │       └── InputFormsTab (Workflow input management)
 └── InputFormRenderer (Dynamic form generation)
 ```
 
 ### Module Dependencies
-- `@vibethis/shared`: Core types, API layer, and utilities
-- `@vibethis/flowchart`: Graph visualization with ReactFlow
+- `@colony2/shared`: Core types, API layer, and utilities
+- `@colony2/flowchart`: Graph visualization with ReactFlow
 
 ## Key Interfaces
 
-### Core Types (from @vibethis/shared)
+### Core Types (from @colony2/shared)
 ```typescript
 interface DependencyCell {
   id: string;
@@ -77,7 +77,7 @@ interface InputFormRendererProps {
 
 ### API Layer
 ```typescript
-// API functions in @vibethis/shared
+// API functions in @colony2/shared
 async function fetchGraph(projectId: string): Promise<RelationshipGraph>
 async function listProjects(): Promise<Project[]>
 async function createProject(input: { name: string; gitRepoPath: string }): Promise<Project>
@@ -152,8 +152,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts'),
-      '@vibethis/flowchart': resolve(__dirname, '../flowchart/src/index.ts'),
+      '@colony2/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@colony2/flowchart': resolve(__dirname, '../flowchart/src/index.ts'),
       // Other module aliases
     }
   },

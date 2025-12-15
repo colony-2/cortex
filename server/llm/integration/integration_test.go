@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/divisive-ai/vibethis/server/llm/adapters"
+	"github.com/colony-2/colony2/server/llm/adapters"
 	"os"
 	"strings"
 	"testing"

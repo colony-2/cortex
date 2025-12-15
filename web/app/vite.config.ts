@@ -30,9 +30,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts'),
-      '@vibethis/kanban': resolve(__dirname, '../kanban/src/index.ts'),
-      '@vibethis/flowchart': resolve(__dirname, '../flowchart/src/index.ts')
+      '@colony2/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@colony2/kanban': resolve(__dirname, '../kanban/src/index.ts'),
+      '@colony2/flowchart': resolve(__dirname, '../flowchart/src/index.ts')
     },
     dedupe: ['react', 'react-dom', '@ant-design/icons', 'antd']
   },

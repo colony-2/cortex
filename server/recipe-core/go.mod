@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/recipe-core
+module github.com/colony-2/colony2/server/recipe-core
 
 go 1.25.5
 

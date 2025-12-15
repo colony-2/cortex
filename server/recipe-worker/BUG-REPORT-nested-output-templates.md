@@ -58,7 +58,7 @@ The template resolution in `processNodeOutputs` appears to handle top-level temp
 
 ## Files Affected
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/state-machine-composition.yaml`
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/state-machine-composition.yaml`
 - Template resolution logic in `pkg/compiler/compiler.go` - `processNodeOutputs` function
 
 ## Test Cases Affected

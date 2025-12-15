@@ -1,10 +1,10 @@
-// Package graph provides graph building and dependency management for vibethis.
+// Package graph provides graph building and dependency management for colony2.
 package graph
 
 import (
 	"context"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/graph/internal/builder"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/graph/internal/builder"
 )
 
 // Builder provides graph building functionality.

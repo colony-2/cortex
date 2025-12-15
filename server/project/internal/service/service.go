@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/project/internal/idgen"
-	"github.com/divisive-ai/vibethis/server/project/internal/model"
-	"github.com/divisive-ai/vibethis/server/project/internal/store"
+	"github.com/colony-2/colony2/server/project/internal/idgen"
+	"github.com/colony-2/colony2/server/project/internal/model"
+	"github.com/colony-2/colony2/server/project/internal/store"
 	"gorm.io/gorm"
 )
 

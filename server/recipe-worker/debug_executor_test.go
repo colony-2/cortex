@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
 )
@@ -115,7 +115,7 @@ inputs:
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
 			ActorName:  "test-user",
-			ActorEmail: "test-user@vibethis",
+			ActorEmail: "test-user@colony2",
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The core module provides foundational domain types and interfaces for the vibethis dependency graph system. It defines shared contracts for graph representation, storage operations, and data structures used across all server modules.
+The core module provides foundational domain types and interfaces for the colony2 dependency graph system. It defines shared contracts for graph representation, storage operations, and data structures used across all server modules.
 
 ## Architecture
 
@@ -129,7 +129,7 @@ func graphHandler(graphBuilder core.GraphBuilder) http.HandlerFunc {
 
 Module configuration in go.mod:
 ```
-module github.com/divisive-ai/vibethis/server/core
+module github.com/colony-2/colony2/server/core
 go 1.24
 ```
 
@@ -141,5 +141,5 @@ language: go
 
 Consumer modules use local replace directives:
 ```
-replace github.com/divisive-ai/vibethis/server/core => ../core
+replace github.com/colony-2/colony2/server/core => ../core
 ```

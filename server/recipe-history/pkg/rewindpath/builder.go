@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	runmetadata "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-history/pkg/storybuilder"
+	runmetadata "github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
+	"github.com/colony-2/colony2/server/recipe-history/pkg/storybuilder"
 )
 
 // StoryProvider fetches recipe execution stories keyed by workflow identifiers.

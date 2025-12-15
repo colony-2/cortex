@@ -3,8 +3,8 @@ package template
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/require"
 )
 

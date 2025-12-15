@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // SleepConfig defines the configuration for sleep activities - ALL fields MUST have json tags

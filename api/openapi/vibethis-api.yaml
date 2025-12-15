@@ -803,7 +803,7 @@ paths:
     get:
       tags: [Recipes]
       summary: List recipes for a project
-      description: Lists recipes discovered under the project's `.vibethis/recipes` directory.
+      description: Lists recipes discovered under the project's `.colony2/recipes` directory.
       parameters:
         - name: projectId
           in: path
@@ -860,7 +860,7 @@ paths:
     get:
       tags: [Recipes]
       summary: Get recipe detail
-      description: Returns a recipe definition discovered under the project's `.vibethis/recipes` directory.
+      description: Returns a recipe definition discovered under the project's `.colony2/recipes` directory.
       parameters:
         - name: projectId
           in: path

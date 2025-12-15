@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
-  "npmScope": "vibethis",
+  "npmScope": "colony2",
   "defaultBase": "main",
   "namedInputs": {
     "default": [

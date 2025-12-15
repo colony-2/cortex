@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 )
 
 // ResetChildWorkflowActivityName is the registered Temporal activity name used by recipe-worker.

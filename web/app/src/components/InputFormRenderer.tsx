@@ -21,7 +21,7 @@ import type {
   InputField, 
   FormResponse,
   FormContext
-} from '@vibethis/shared';
+} from '@colony2/shared';
 
 const { TextArea } = Input;
 

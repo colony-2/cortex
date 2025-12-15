@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // PersistCommit performs the Git commit and thin pack generation
@@ -52,7 +52,7 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 
 	var commitHash string
 	hasChanges := len(strings.TrimSpace(string(statusOutput))) > 0
-	
+
 	if hasChanges {
 		// There are changes to commit
 		// Stage all changes (both untracked and modified)
@@ -69,12 +69,12 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 			if len(parts) == 2 {
 				name := parts[0]
 				email := strings.TrimSuffix(parts[1], ">")
-				
+
 				_, err = common.ExecuteGitCommand(ctx, input.RepoPath, "config", "user.name", name)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set git user name: %w", err)
 				}
-				
+
 				_, err = common.ExecuteGitCommand(ctx, input.RepoPath, "config", "user.email", email)
 				if err != nil {
 					return nil, fmt.Errorf("failed to set git user email: %w", err)
@@ -125,16 +125,16 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 	} else {
 		// Create bundle containing commits from root to current
 		// This ensures the bundle can be applied when only root is available
-		_, err = common.ExecuteGitCommand(ctx, input.RepoPath, 
+		_, err = common.ExecuteGitCommand(ctx, input.RepoPath,
 			"bundle", "create", packPath,
 			"HEAD", fmt.Sprintf("^%s", input.RootHash))
 		if err != nil {
 			// If that fails (maybe root is HEAD), include just this commit
-			_, err = common.ExecuteGitCommand(ctx, input.RepoPath, 
+			_, err = common.ExecuteGitCommand(ctx, input.RepoPath,
 				"bundle", "create", packPath,
 				"-1", "HEAD")
 			if err != nil {
-				return nil, fmt.Errorf("failed to create thin pack for commit %s: %w", 
+				return nil, fmt.Errorf("failed to create thin pack for commit %s: %w",
 					commitHash[:7], err)
 			}
 		}

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.

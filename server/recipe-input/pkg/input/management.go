@@ -9,10 +9,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	ops2 "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
-	ops2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 	"github.com/go-chi/chi/v5"
 )
 

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
 // DetachedWorkspaceOptions controls how detached workspaces are named.

@@ -1,6 +1,6 @@
 package ticket
 
-import "github.com/divisive-ai/vibethis/server/ticket/internal/idgen"
+import "github.com/colony-2/colony2/server/ticket/internal/idgen"
 
 const DefaultIDLength = idgen.DefaultIDLength
 

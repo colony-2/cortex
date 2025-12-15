@@ -3,7 +3,7 @@ package client
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
+	"github.com/colony-2/colony2/server/nucleus/internal/config"
 	"go.temporal.io/sdk/client"
 )
 
@@ -40,11 +40,11 @@ func TestNewTemporalClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := NewTemporalClient(tt.config)
-			
+
 			if tt.wantErr && err == nil {
 				t.Skip("Skipping test - cannot test invalid connection without real Temporal server")
 			}
-			
+
 			if !tt.wantErr && err != nil {
 				t.Skip("Skipping test - requires running Temporal server")
 			}

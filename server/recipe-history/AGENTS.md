@@ -61,7 +61,7 @@ import (
     
     "go.temporal.io/sdk/client"
     "go.uber.org/zap"
-    "github.com/divisive-ai/vibethis/server/recipe-history/pkg/history"
+    "github.com/colony-2/colony2/server/recipe-history/pkg/history"
 )
 
 func getRecipe(name string) (*recipe.Recipe, error) {
@@ -136,7 +136,7 @@ func monitorFailedJobs(client *history.Client, recipeName string) {
 - `go.temporal.io/sdk v1.34.0`: Temporal Go SDK for workflow interactions
 - `go.temporal.io/api v1.50.0`: Temporal API types and protobuf definitions
 - `go.uber.org/zap v1.27.0`: Structured logging
-- `github.com/divisive-ai/vibethis/server/recipe-core`: Core recipe types and interfaces
+- `github.com/colony-2/colony2/server/recipe-core`: Core recipe types and interfaces
 
 ### Environment Requirements
 - Temporal server connection (configured via client.Options)

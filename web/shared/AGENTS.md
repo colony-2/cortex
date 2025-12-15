@@ -1,7 +1,7 @@
 # web/shared
 
 ## Overview
-Shared library module for the vibethis frontend, distributed as `@graph-visualizer/shared`. Provides common types, API client functions, real-time input activity management, and URL state utilities used across web application modules.
+Shared library module for the colony2 frontend, distributed as `@colony2/shared`. Provides common types, API client functions, real-time input activity management, and URL state utilities used across web application modules.
 
 ## Architecture
 
@@ -83,7 +83,7 @@ useInputActivityForCell(cellId: string): {pendingInputs: PendingInput[], pending
 
 ### Basic API Usage
 ```typescript
-import { fetchGraph } from '@graph-visualizer/shared';
+import { fetchGraph } from '@colony2/shared';
 
 // Load graph data
 const graph = await fetchGraph('project-id');
@@ -91,7 +91,7 @@ const graph = await fetchGraph('project-id');
 
 ### Input Activity Integration
 ```typescript
-import { InputActivityProvider, useInputActivityForCell } from '@graph-visualizer/shared';
+import { InputActivityProvider, useInputActivityForCell } from '@colony2/shared';
 
 // App-level setup
 function App() {
@@ -120,7 +120,7 @@ function CellComponent({ cellId }: { cellId: string }) {
 
 ### URL State Management
 ```typescript
-import { getURLState, navigateToPath } from '@graph-visualizer/shared';
+import { getURLState, navigateToPath } from '@colony2/shared';
 
 // Parse current URL state
 const { projectId, cellId, tab, subtab } = getURLState();

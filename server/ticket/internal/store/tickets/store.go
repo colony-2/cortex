@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"gorm.io/gorm"
 )
 

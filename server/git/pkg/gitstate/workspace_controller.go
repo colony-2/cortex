@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+	"github.com/colony-2/colony2/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/gitcommit"
+	"github.com/colony-2/colony2/server/git/pkg/gitshallow"
 )
 
 // Controller orchestrates cloning, restoring, and persisting git state per activity invocation.
@@ -149,7 +149,7 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 	commitMessage := buildCommitMessage(task, "pending", "")
 	author := task.GetGitAuthor()
 	if author == "" && task.GetCellName() != "" {
-		author = fmt.Sprintf("%s <%s@vibethis>", task.GetCellName(), task.GetCellName())
+		author = fmt.Sprintf("%s <%s@colony2>", task.GetCellName(), task.GetCellName())
 	}
 
 	persistInput := gitcommit.PersistCommitActivity{

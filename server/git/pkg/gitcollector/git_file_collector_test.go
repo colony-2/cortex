@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/git/internal/commands"
+	"github.com/colony-2/colony2/server/git/internal/commands"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

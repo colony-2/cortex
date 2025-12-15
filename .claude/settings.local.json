@@ -62,7 +62,7 @@
       "Bash(chmod:*)",
       "Bash(pkill:*)",
       "Bash(go install:*)",
-      "Bash(vibethis:*)",
+      "Bash(colony2:*)",
       "Bash(timeout 5 moon run:*)",
       "Bash(go tool cover:*)",
       "WebFetch(domain:moonrepo.dev)",

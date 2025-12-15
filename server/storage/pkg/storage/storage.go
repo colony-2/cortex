@@ -1,10 +1,10 @@
-// Package storage provides storage implementations for vibethis.
+// Package storage provides storage implementations for colony2.
 package storage
 
 import (
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/storage/internal/bolt"
-	"github.com/divisive-ai/vibethis/server/storage/internal/memory"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/storage/internal/bolt"
+	"github.com/colony-2/colony2/server/storage/internal/memory"
 )
 
 // Config defines configuration options for storage backends.

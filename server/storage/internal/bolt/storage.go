@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/boltdb/bolt"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/core"
 )
 
 const (
@@ -25,7 +25,7 @@ type Storage struct {
 
 // New creates a new BoltDB storage implementation
 func New(dbPath string, readOnly bool) (core.Storage, error) {
-	dbFile := filepath.Join(dbPath, ".vibethis.db")
+	dbFile := filepath.Join(dbPath, ".colony2.db")
 
 	db, err := bolt.Open(dbFile, 0600, &bolt.Options{
 		ReadOnly: readOnly,

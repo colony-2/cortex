@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 
 	"time"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // Note: All configuration is provided via LLMInferenceInput.

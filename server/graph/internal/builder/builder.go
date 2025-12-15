@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/core"
 )
 
 // MoonGraph represents the moon project-graph JSON output

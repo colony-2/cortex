@@ -80,7 +80,7 @@ This suggests the state machine execution engine is not processing terminal stat
 ### Code Investigation Needed
 
 The issue likely lies in the state machine execution logic in:
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/pkg/compiler/compiler.go` - `executeStateMachine()` function
+- `/Users/jnadeau/src/colony2/server/recipe-worker/pkg/compiler/compiler.go` - `executeStateMachine()` function
 - State machine execution may not be checking for terminal states with custom outputs
 - Terminal state output templates may not be resolved and returned
 
@@ -92,9 +92,9 @@ The issue likely lies in the state machine execution logic in:
 
 ## Files Affected
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/state-machine-composition.yaml` - recipe with terminal outputs
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/state-machine-composition.test.yaml` - failing tests
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/simple-state-machine.test.yaml` - currently expects generic output
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/state-machine-composition.yaml` - recipe with terminal outputs
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/state-machine-composition.test.yaml` - failing tests
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/simple-state-machine.test.yaml` - currently expects generic output
 
 ## Expected Fix
 

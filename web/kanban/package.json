@@ -1,5 +1,5 @@
 {
-  "name": "@vibethis/kanban",
+  "name": "@colony2/kanban",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
@@ -14,8 +14,8 @@
     "antd": "^5.26.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@vibethis/shared": "file:../shared",
-    "@vibethis/openapi-client": "file:../openapi"
+    "@colony2/shared": "file:../shared",
+    "@colony2/openapi-client": "file:../openapi"
   },
   "devDependencies": {
     "@types/react": "^18.3.23",

@@ -3,9 +3,9 @@ package compiler
 import (
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
-	"github.com/divisive-ai/vibethis/server/recipe-template/pkg/template"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 )
 
 // ExecuteStateMap runs the state machine with the new StateMap format

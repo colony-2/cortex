@@ -1,17 +1,17 @@
 **Extension Ops (Runtime-Discovered)**
 
 - Goal: Allow projects to add custom operations without changing server code.
-- Where: Project-local directories under `.vibethis/ops/<op_name>` discovered at runtime.
+- Where: Project-local directories under `.colony2/ops/<op_name>` discovered at runtime.
 
 **How It Works**
 
-- Discovery: `server/ops/pkg/extensions` scans for `.vibethis/ops/*/op.yaml` starting from the current working directory and walking up to find the project root. You can also set `VIBETHIS_PROJECT_ROOT` to pin the root.
+- Discovery: `server/ops/pkg/extensions` scans for `.colony2/ops/*/op.yaml` starting from the current working directory and walking up to find the project root. You can also set `VIBETHIS_PROJECT_ROOT` to pin the root.
 - Registration: `extensions.DiscoverAndRegister(startDir)` registers each discovered op as a `RegisterableOp`. The standard `export.GetAll()` now appends discovered ops automatically.
 - Execution: These ops run as Temporal activities (not inline). The op’s process receives the input as JSON over stdin and must write JSON to stdout as its result.
 
 **Directory Layout**
 
-- `.vibethis/ops/<op_name>/` must contain:
+- `.colony2/ops/<op_name>/` must contain:
   - `op.yaml` (required): Defines metadata, command, and optional settings.
   - Additional files (optional): Scripts, binaries, or other resources referenced by the op.
 
@@ -97,7 +97,7 @@ timeout: 10s
 
 **Example: Simple Python Op**
 
-- `.vibethis/ops/python_sum/op.yaml` and `.vibethis/ops/python_sum/sum.py`:
+- `.colony2/ops/python_sum/op.yaml` and `.colony2/ops/python_sum/sum.py`:
 
 `op.yaml`:
 ```yaml

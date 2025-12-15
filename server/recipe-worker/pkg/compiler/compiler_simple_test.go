@@ -3,9 +3,9 @@ package compiler
 import (
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 )
 
 func TestSimpleRecipeStructure(t *testing.T) {
@@ -29,7 +29,7 @@ func TestSimpleRecipeStructure(t *testing.T) {
 	// Create activity registry
 	registry, err := ops.NewActivityRegistry()
 	assert.NoError(t, err)
-	
+
 	// Verify the structure
 	assert.NotNil(t, node)
 	nodeOp := node.NodeImpl.(*recipe.NodeOp)

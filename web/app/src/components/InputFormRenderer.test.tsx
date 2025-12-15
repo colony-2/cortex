@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InputFormRenderer from './InputFormRenderer';
-import type { InputForm, FormContext } from '@vibethis/shared';
+import type { InputForm, FormContext } from '@colony2/shared';
 
 describe('InputFormRenderer', () => {
   const mockOnSubmit = vi.fn();

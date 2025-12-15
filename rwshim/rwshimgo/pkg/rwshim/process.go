@@ -4,8 +4,8 @@ import (
 	"os"
 	"syscall"
 	"time"
-	
-	"github.com/divisive-ai/vibethis/rwshim/rwshimgo/internal"
+
+	"github.com/colony-2/colony2/rwshim/rwshimgo/internal"
 )
 
 // Process represents a monitored process

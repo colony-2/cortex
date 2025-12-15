@@ -11,12 +11,12 @@ import (
 	"sync"
 	"testing"
 
-	gitexport "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -118,7 +118,7 @@ func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
 			ActorName:  "test-actor",
-			ActorEmail: "test-actor@vibethis",
+			ActorEmail: "test-actor@colony2",
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/project/internal/model"
-	"github.com/divisive-ai/vibethis/server/project/internal/service"
-	"github.com/divisive-ai/vibethis/server/project/internal/store"
-	"github.com/divisive-ai/vibethis/server/project/internal/testutil"
+	"github.com/colony-2/colony2/server/project/internal/model"
+	"github.com/colony-2/colony2/server/project/internal/service"
+	"github.com/colony-2/colony2/server/project/internal/store"
+	"github.com/colony-2/colony2/server/project/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

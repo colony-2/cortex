@@ -3,7 +3,7 @@ package compiler
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -25,7 +25,7 @@ On validation failure, Cortex prints a human-readable list of errors and exits n
 - **TemplateResolver (`internal/shared/template.go`)** - Template resolution with Go templates, CEL expressions, and simple references
 
 ### Dependencies
-- **Storage** - BoltDB persistence layer (`.vibethis` directory)
+- **Storage** - BoltDB persistence layer (`.colony2` directory)
 - **Graph** - Project dependency graph builder
 - **Files** - File system browser
 - **Git** - Git repository operations
@@ -167,6 +167,6 @@ type Config struct {
 - **Moon Tasks**: `build`, `build-frontend-copy`, `serve`, `install`
 
 ### Database Location
-- Database directory: `{RootPath}/.vibethis`
+- Database directory: `{RootPath}/.colony2`
 - Automatically created when `--new` flag is used
 - BoltDB storage with configurable read-only mode

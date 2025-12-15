@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 )
 
 // TestInvestigateStateOutputStorage investigates what's happening with state output storage

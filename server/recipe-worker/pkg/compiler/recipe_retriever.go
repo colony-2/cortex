@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"gopkg.in/yaml.v3"
 )
 

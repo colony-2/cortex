@@ -1,6 +1,6 @@
 package service
 
-import "github.com/divisive-ai/vibethis/server/ticket/internal/model"
+import "github.com/colony-2/colony2/server/ticket/internal/model"
 
 func NewUserActor(email string) model.Actor {
 	return model.Actor{

@@ -6,17 +6,17 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/static"
-	"github.com/divisive-ai/vibethis/server/git/pkg/git"
-	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	inputops "github.com/divisive-ai/vibethis/server/ops/pkg/input"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
-	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
+	"github.com/colony-2/colony2/server/api/pkg/web"
+	"github.com/colony-2/colony2/server/cortex/internal/config"
+	"github.com/colony-2/colony2/server/cortex/internal/shared"
+	"github.com/colony-2/colony2/server/cortex/internal/static"
+	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/colony2/server/graph/pkg/graph"
+	inputops "github.com/colony-2/colony2/server/ops/pkg/input"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/storage/pkg/storage"
+	"github.com/colony-2/colony2/server/ticket/pkg/database"
 )
 
 // WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.
@@ -62,7 +62,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	// Initialize storage with default database path, allow override for tests/CI
 	dbDir := os.Getenv("VIBETHIS_DB_DIR")
 	if dbDir == "" {
-		dbDir = filepath.Join(cfg.RootPath, ".vibethis")
+		dbDir = filepath.Join(cfg.RootPath, ".colony2")
 	}
 
 	// Ensure database directory exists when creating new or when overridden via env
@@ -102,8 +102,8 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	// Initialize git repository
 	gitRepo := git.NewRepository(git.Config{
-		DefaultAuthor: "github.com/divisive-ai/vibethis/server",
-		DefaultEmail:  "github.com/divisive-ai/vibethis/server@example.com",
+		DefaultAuthor: "github.com/colony-2/colony2/server",
+		DefaultEmail:  "github.com/colony-2/colony2/server@example.com",
 	})
 
 	// Initialize container manager

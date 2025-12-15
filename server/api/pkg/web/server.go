@@ -1,4 +1,4 @@
-// Package web provides the HTTP server and API for vibethis.
+// Package web provides the HTTP server and API for colony2.
 package web
 
 import (
@@ -7,12 +7,12 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/divisive-ai/vibethis/server/api/internal/handlers"
-	"github.com/divisive-ai/vibethis/server/api/internal/middleware"
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/api/internal/handlers"
+	"github.com/colony-2/colony2/server/api/internal/middleware"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 )
 
 // Config defines configuration for the web server.
@@ -52,7 +52,7 @@ type Dependencies struct {
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
 
-	// RecipeRegistryFactory builds a registry per project rooted at its git repo .vibethis/recipes directory.
+	// RecipeRegistryFactory builds a registry per project rooted at its git repo .colony2/recipes directory.
 	RecipeRegistryFactory handlers.RecipeRegistryFactory
 
 	// Optional dependency lister for cells (used to render dependencies)

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
 type (

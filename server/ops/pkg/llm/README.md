@@ -17,7 +17,7 @@ This package provides a Temporal activity for integrating with various LLM provi
 Before using the activity, initialize the LLM adapter registry in your worker:
 
 ```go
-import "github.com/divisive-ai/vibethis/server/activity/pkg/llm"
+import "github.com/colony-2/colony2/server/activity/pkg/llm"
 
 // During worker initialization
 if err := llm.InitializeRegistry(); err != nil {

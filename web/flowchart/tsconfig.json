@@ -25,13 +25,13 @@
     ],
     "composite": true,
     "paths": {
-      "@vibethis/shared": [
+      "@colony2/shared": [
         "../shared/src"
       ],
-      "@graph-visualizer/shared": [
+      "@colony2/shared": [
         "../shared/src/index.ts"
       ],
-      "@graph-visualizer/shared/*": [
+      "@colony2/shared/*": [
         "../shared/src/*"
       ]
     }

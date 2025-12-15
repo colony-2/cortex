@@ -92,7 +92,7 @@ recipe:
 ```
 
 - The YAML block is parsed from the invocation tracker data (`invocationTracker.nextInvocation`).
-- Default author: `"<cellname> <cellname>@vibethis"`. Recipes may override via `git_author` input (validated before persist).
+- Default author: `"<cellname> <cellname>@colony2"`. Recipes may override via `git_author` input (validated before persist).
 - Logs & observability emit the same metadata, enabling thin-pack snapshots to be correlated with exact workflow attempts.
 
 ## Workspace & Storage Semantics

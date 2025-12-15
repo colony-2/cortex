@@ -1,4 +1,4 @@
-// Package core defines the core domain types and interfaces used across all vibethis modules.
+// Package core defines the core domain types and interfaces used across all colony2 modules.
 package core
 
 // Cell represents a single cell in the dependency graph.

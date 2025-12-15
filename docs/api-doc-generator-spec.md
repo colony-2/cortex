@@ -13,7 +13,7 @@ package apidoc
 
 type APIDocInput struct {
     SourceDir     string   `json:"source_dir" validate:"required,dir"`
-    OutputBaseDir string   `json:"output_base_dir,omitempty"` // Default: .vibethis/api
+    OutputBaseDir string   `json:"output_base_dir,omitempty"` // Default: .colony2/api
     Languages     []string `json:"languages,omitempty"`        // Optional: specific languages to document
     MinLines      int      `json:"min_lines,omitempty"`       // Min lines to generate docs (default: 50)
 }
@@ -491,7 +491,7 @@ rm -f tags
 
 ```
 project/
-├── .vibethis/
+├── .colony2/
 │   └── api/
 │       ├── go/
 │       │   └── api.txt          # Plain text API signatures
@@ -548,7 +548,7 @@ inputs:
   output_base_dir:
     type: string
     description: Output directory for documentation
-    default: .vibethis/api
+    default: .colony2/api
   min_lines:
     type: integer
     description: Minimum lines to generate docs
@@ -594,7 +594,7 @@ type APIDocActivity struct{}
 func (a *APIDocActivity) Execute(ctx context.Context, input APIDocInput) (APIDocOutput, error) {
     // Set defaults
     if input.OutputBaseDir == "" {
-        input.OutputBaseDir = filepath.Join(input.SourceDir, ".vibethis", "api")
+        input.OutputBaseDir = filepath.Join(input.SourceDir, ".colony2", "api")
     }
     if input.MinLines == 0 {
         input.MinLines = 50
@@ -759,16 +759,16 @@ func normalizeLanguageName(lang string) string {
 ### CLI Usage
 ```bash
 # Generate docs for current directory
-vibethis run generate-api-docs --source_dir .
+colony2 run generate-api-docs --source_dir .
 
 # Generate docs only for Go and Python
-vibethis run generate-api-docs --source_dir . --languages go,python
+colony2 run generate-api-docs --source_dir . --languages go,python
 
 # Generate docs with minimum 100 lines threshold
-vibethis run generate-api-docs --source_dir . --min_lines 100
+colony2 run generate-api-docs --source_dir . --min_lines 100
 
 # Generate docs in custom output directory
-vibethis run generate-api-docs --source_dir . --output_base_dir ./docs/api
+colony2 run generate-api-docs --source_dir . --output_base_dir ./docs/api
 ```
 
 ### Programmatic Usage

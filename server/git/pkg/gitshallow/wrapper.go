@@ -3,7 +3,7 @@ package gitshallow
 import (
 	"context"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // GitShallowInput defines the input for git shallow clone activities - ALL fields MUST have json tags

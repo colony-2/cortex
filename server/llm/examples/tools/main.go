@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"time"
 
-	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	adapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func main() {
@@ -98,10 +98,10 @@ func toolCallingExample() error {
 	}
 
 	ctx := context.Background()
-	
+
 	for _, prompt := range prompts {
 		fmt.Printf("\n--- Prompt: %s ---\n", prompt)
-		
+
 		// Generate with tools
 		response, err := adapter.GenerateWithTools(ctx, prompt, tools, config)
 		if err != nil {
@@ -124,7 +124,7 @@ func toolCallingExample() error {
 				fmt.Printf("Tool Error: %v\n", err)
 				continue
 			}
-			
+
 			fmt.Printf("Tool Result: %s\n", result)
 
 			// You would typically send the tool result back to the LLM
@@ -149,12 +149,12 @@ func executeToolCall(toolCall adapters.ToolCall) (string, error) {
 		if unit == "" {
 			unit = "celsius"
 		}
-		
+
 		// Simulate weather data
 		temp := rand.Intn(35) + 5
 		conditions := []string{"sunny", "cloudy", "rainy", "partly cloudy"}
 		condition := conditions[rand.Intn(len(conditions))]
-		
+
 		return fmt.Sprintf(`{"temperature": %d, "unit": "%s", "condition": "%s", "location": "%s"}`,
 			temp, unit, condition, location), nil
 
@@ -169,23 +169,23 @@ func executeToolCall(toolCall adapters.ToolCall) (string, error) {
 		if n, ok := args["num_results"].(float64); ok {
 			numResults = int(n)
 		}
-		
+
 		// Simulate search results
 		results := []map[string]string{
 			{
-				"title": "James Webb Space Telescope - NASA",
-				"url": "https://www.nasa.gov/webb",
+				"title":   "James Webb Space Telescope - NASA",
+				"url":     "https://www.nasa.gov/webb",
 				"snippet": "The James Webb Space Telescope is NASA's largest and most powerful space telescope...",
 			},
 			{
-				"title": "Webb Telescope Images - Latest Discoveries",
-				"url": "https://webbtelescope.org/images",
+				"title":   "Webb Telescope Images - Latest Discoveries",
+				"url":     "https://webbtelescope.org/images",
 				"snippet": "Stunning images from the James Webb Space Telescope revealing the early universe...",
 			},
 		}
-		
+
 		data, _ := json.Marshal(map[string]interface{}{
-			"query": query,
+			"query":   query,
 			"results": results[:min(numResults, len(results))],
 		})
 		return string(data), nil

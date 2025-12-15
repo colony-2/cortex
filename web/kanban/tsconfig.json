@@ -22,13 +22,13 @@
       "vite/client"
     ],
     "paths": {
-      "@vibethis/shared": [
+      "@colony2/shared": [
         "../shared/src/index.ts"
       ],
-      "@vibethis/openapi-client": [
+      "@colony2/openapi-client": [
         "../openapi/src/index.ts"
       ],
-      "@vibethis/openapi-client/*": [
+      "@colony2/openapi-client/*": [
         "../openapi/src/*"
       ]
     }

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	ops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	ops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"go.temporal.io/sdk/workflow"
 )
 

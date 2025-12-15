@@ -1,5 +1,5 @@
 {
-  "name": "@vibethis/openapi-client",
+  "name": "@colony2/openapi-client",
   "version": "1.0.0",
   "description": "Generated TypeScript client from VibeThis OpenAPI specification",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --clean && tsc --emitDeclarationOnly",
-    "generate": "openapi --input ../../api/openapi/vibethis-api.yaml --output ./src/generated --client fetch",
+    "generate": "openapi --input ../../api/openapi/colony2-api.yaml --output ./src/generated --client fetch",
     "clean": "rm -rf src/generated dist"
   },
   "devDependencies": {

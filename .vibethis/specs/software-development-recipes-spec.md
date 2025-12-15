@@ -1078,7 +1078,7 @@ global:
 
 ### Cell-Specific Overrides
 ```yaml
-# /cells/frontend/.vibethis/recipes/config.yaml
+# /cells/frontend/.colony2/recipes/config.yaml
 overrides:
   code:
     quality:

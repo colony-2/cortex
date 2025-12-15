@@ -14,7 +14,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 // Mock navigateToPath
-vi.mock('@vibethis/shared', () => ({
+vi.mock('@colony2/shared', () => ({
   navigateToPath: vi.fn((params) => params.projectId ? `/project/${params.projectId}/cell/${params.cellId}/${params.tab}` : `/cell/${params.cellId}/${params.tab}`),
 }));
 

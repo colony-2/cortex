@@ -3,8 +3,8 @@ package ticket_test
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/ticket/internal/testutil"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 )
 

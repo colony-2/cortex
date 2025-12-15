@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // Config represents the configuration for the input activity

@@ -6,28 +6,28 @@ import (
 	"fmt"
 	"os"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // LLMActivity represents the input for the Temporal activity wrapper
 type LLMActivity struct {
 	// Core fields
-	Prompt       string                 `json:"prompt"`
-	SystemPrompt string                 `json:"systemPrompt,omitempty"`
-	ModelName    string                 `json:"modelName"`
-	AdapterName  string                 `json:"adapterName"`
-	
+	Prompt       string `json:"prompt"`
+	SystemPrompt string `json:"systemPrompt,omitempty"`
+	ModelName    string `json:"modelName"`
+	AdapterName  string `json:"adapterName"`
+
 	// Configuration
-	Temperature   float64                `json:"temperature,omitempty"`
-	MaxTokens     int                    `json:"maxTokens,omitempty"`
-	TopP          float64                `json:"topP,omitempty"`
-	StopSequences []string               `json:"stopSequences,omitempty"`
-	
+	Temperature   float64  `json:"temperature,omitempty"`
+	MaxTokens     int      `json:"maxTokens,omitempty"`
+	TopP          float64  `json:"topP,omitempty"`
+	StopSequences []string `json:"stopSequences,omitempty"`
+
 	// For structured responses - provide JSON schema
-	ResponseSchema json.RawMessage       `json:"responseSchema,omitempty"`
-	
+	ResponseSchema json.RawMessage `json:"responseSchema,omitempty"`
+
 	// Additional options
-	Metadata map[string]interface{}    `json:"metadata,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // LLMActivityOutput wraps the task output for Temporal
@@ -45,7 +45,7 @@ var globalRegistry llmadapters.Registry
 // This should be called during worker initialization
 func InitializeRegistry() error {
 	globalRegistry = llmadapters.NewRegistry()
-	
+
 	// Register OpenAI adapter if API key is available
 	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
 		adapter, err := llmadapters.NewOpenAIAdapter(apiKey)
@@ -56,7 +56,7 @@ func InitializeRegistry() error {
 			return fmt.Errorf("failed to register OpenAI adapter: %w", err)
 		}
 	}
-	
+
 	// Register Anthropic adapter if API key is available
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		adapter, err := llmadapters.NewAnthropicAdapter(apiKey)
@@ -67,7 +67,7 @@ func InitializeRegistry() error {
 			return fmt.Errorf("failed to register Anthropic adapter: %w", err)
 		}
 	}
-	
+
 	// Register Gemini adapter if API key is available
 	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
 		adapter, err := llmadapters.NewGeminiAdapter(apiKey)
@@ -78,7 +78,7 @@ func InitializeRegistry() error {
 			return fmt.Errorf("failed to register Gemini adapter: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -97,7 +97,7 @@ func ExecuteLLMTask(ctx context.Context, input LLMActivity) (*LLMActivityOutput,
 	if globalRegistry == nil {
 		return nil, fmt.Errorf("LLM registry not initialized. Call InitializeRegistry() first")
 	}
-	
+
 	// Convert activity input to task input
 	taskInput := LLMTaskInput{
 		Prompt:        input.Prompt,
@@ -110,24 +110,24 @@ func ExecuteLLMTask(ctx context.Context, input LLMActivity) (*LLMActivityOutput,
 		StopSequences: input.StopSequences,
 		Metadata:      input.Metadata,
 	}
-	
+
 	// If response schema is provided, include it
 	if len(input.ResponseSchema) > 0 {
 		taskInput.ResponseStructureJSON = input.ResponseSchema
 	}
-	
+
 	// Execute the task
 	output, err := LLMTask(ctx, taskInput, globalRegistry)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Marshal the response to JSON
 	responseJSON, err := json.Marshal(output.Response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal response: %w", err)
 	}
-	
+
 	return &LLMActivityOutput{
 		Response:     responseJSON,
 		Telemetry:    output.Telemetry,

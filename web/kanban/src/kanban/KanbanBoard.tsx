@@ -17,8 +17,8 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ManagedCell, Ticket } from '@vibethis/openapi-client';
-import { ActorType, CellsService, TicketState, TicketsService } from '@vibethis/openapi-client';
+import type { ManagedCell, Ticket } from '@colony2/openapi-client';
+import { ActorType, CellsService, TicketState, TicketsService } from '@colony2/openapi-client';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;

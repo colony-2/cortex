@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // CommandExecutionConfig defines the configuration for command execution activities - ALL fields MUST have json tags

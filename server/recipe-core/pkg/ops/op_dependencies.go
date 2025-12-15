@@ -3,8 +3,8 @@ package ops
 import (
 	"errors"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
 	"gorm.io/gorm"
 )
 

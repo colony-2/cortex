@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { Badge } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { navigateToPath } from '@vibethis/shared';
+import { navigateToPath } from '@colony2/shared';
 
 interface InputBadgeProps {
   count: number;

@@ -2,7 +2,7 @@
 
 ## Overview
 A two-part system for generating and querying API documentation:
-1. **Recipe Op**: Generates native documentation in `.vibethis/api/<language>/` directories
+1. **Recipe Op**: Generates native documentation in `.colony2/api/<language>/` directories
 2. **Query Tool**: MCP server or LLM tool that chunks and searches documentation on-demand
 
 ## Part 1: Documentation Generation Recipe Op
@@ -10,7 +10,7 @@ A two-part system for generating and querying API documentation:
 ### Directory Structure
 ```
 cell/
-├── .vibethis/
+├── .colony2/
 │   └── api/
 │       ├── go/
 │       │   ├── api.txt          # go doc -all output
@@ -42,7 +42,7 @@ import (
 
 type APIDocConfig struct {
     TokeiPath        string        `json:"tokei_path,omitempty"`
-    OutputBaseDir    string        `json:"output_base_dir,omitempty"`  // Default: .vibethis/api
+    OutputBaseDir    string        `json:"output_base_dir,omitempty"`  // Default: .colony2/api
     MinLanguageLines int           `json:"min_language_lines,omitempty"` // Min lines to generate docs
     Timeout          time.Duration `json:"timeout,omitempty"`
 }
@@ -59,7 +59,7 @@ type APIDocOutput struct {
 }
 
 func (a *APIDocActivity) Execute(ctx context.Context, config APIDocConfig, input APIDocInput) (APIDocOutput, error) {
-    baseDir := filepath.Join(input.SourceDir, ".vibethis", "api")
+    baseDir := filepath.Join(input.SourceDir, ".colony2", "api")
     
     // Step 1: Detect languages using tokei
     languages, err := a.detectLanguages(ctx, input.SourceDir)
@@ -116,7 +116,7 @@ func (a *APIDocActivity) docsAreFresh(docDir, sourceDir string) bool {
     // Check if any source file is newer
     fresh := true
     filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
-        if err != nil || info.IsDir() || strings.Contains(path, ".vibethis") {
+        if err != nil || info.IsDir() || strings.Contains(path, ".colony2") {
             return nil
         }
         // Only check relevant source files
@@ -311,7 +311,7 @@ class APISearchServer:
     
     def __init__(self, api_dirs: List[Path]):
         self.api_dirs = api_dirs
-        self.cache_dir = Path.home() / '.cache' / 'vibethis_api_search'
+        self.cache_dir = Path.home() / '.cache' / 'colony2_api_search'
         self.chunker = SmartChunker(self.cache_dir / 'chunks')
         self.chunks_by_dir = {}
         self._load_all_chunks()
@@ -481,8 +481,8 @@ if __name__ == "__main__":
 #!/bin/bash
 # start_api_server.sh
 
-# Find all .vibethis/api directories in current project
-API_DIRS=$(find . -type d -path "*/.vibethis/api" | tr '\n' ':')
+# Find all .colony2/api directories in current project
+API_DIRS=$(find . -type d -path "*/.colony2/api" | tr '\n' ':')
 
 # Start MCP server with those directories
 API_DOC_DIRS="$API_DIRS" python server/mcp/api_search_server.py
@@ -498,7 +498,7 @@ API_DOC_DIRS="$API_DIRS" python server/mcp/api_search_server.py
       "command": "python",
       "args": ["server/mcp/api_search_server.py"],
       "env": {
-        "API_DOC_DIRS": ".vibethis/api:../other_project/.vibethis/api"
+        "API_DOC_DIRS": ".colony2/api:../other_project/.colony2/api"
       }
     }
   }
@@ -509,17 +509,17 @@ API_DOC_DIRS="$API_DIRS" python server/mcp/api_search_server.py
 
 ### What Gets Cached
 
-1. **Documentation Files** (in `.vibethis/api/`)
+1. **Documentation Files** (in `.colony2/api/`)
    - Native tool output stored directly
    - Freshness check: compare doc file mtime to source files
    - Regenerate only if source is newer
 
-2. **Chunked Documents** (in `~/.cache/vibethis_api_search/chunks/`)
+2. **Chunked Documents** (in `~/.cache/colony2_api_search/chunks/`)
    - Smart chunks of each doc file
    - Key: hash of doc file path
    - Invalidate if doc file mtime > cache mtime
 
-3. **Search Index** (in `~/.cache/vibethis_api_search/index/`)
+3. **Search Index** (in `~/.cache/colony2_api_search/index/`)
    - Inverted index: terms → chunk IDs
    - Chunk ID → chunk content mapping
    - Rebuild if any doc file is newer than index
@@ -633,7 +633,7 @@ class SearchIndex:
 4. **Multi-Project Support**: Can search across multiple projects
 5. **Language Filtering**: Can search within specific languages
 6. **Zero Preprocessing for Queries**: Chunks on first search, caches thereafter
-7. **Portable**: Documentation in `.vibethis/api` travels with the code
+7. **Portable**: Documentation in `.colony2/api` travels with the code
 
 ## Usage
 

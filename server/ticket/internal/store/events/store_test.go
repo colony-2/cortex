@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
-	"github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
-	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
-	"github.com/divisive-ai/vibethis/server/ticket/internal/testutil"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
+	"github.com/colony-2/colony2/server/ticket/internal/store/events"
+	store "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
+	"github.com/colony-2/colony2/server/ticket/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/ops/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/temporal"

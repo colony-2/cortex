@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 )
 
 func TestSequenceOutputIntegration(t *testing.T) {

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/cell/internal/model"
-	"github.com/divisive-ai/vibethis/server/cell/internal/store"
-	"github.com/divisive-ai/vibethis/server/cell/internal/testutil"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/cell/internal/model"
+	"github.com/colony-2/colony2/server/cell/internal/store"
+	"github.com/colony-2/colony2/server/cell/internal/testutil"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
 type fixedClock struct{ now time.Time }

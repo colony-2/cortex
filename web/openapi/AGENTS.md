@@ -6,7 +6,7 @@ TypeScript client library auto-generated from VibeThis OpenAPI specification. Pr
 ## Architecture
 
 ### Code Generation Pipeline
-- **Source**: `/api/openapi/vibethis-api.yaml` OpenAPI 3.0 specification  
+- **Source**: `/api/openapi/colony2-api.yaml` OpenAPI 3.0 specification  
 - **Generator**: openapi-typescript-codegen with axios HTTP client
 - **Output**: TypeScript interfaces, service classes, and error handling
 - **Build**: tsup bundler producing CJS, ESM, and TypeScript definitions
@@ -99,7 +99,7 @@ interface Position {
 
 ### Basic API Configuration
 ```typescript
-import { OpenAPI, GraphService } from '@vibethis/openapi-client';
+import { OpenAPI, GraphService } from '@colony2/openapi-client';
 
 // Configure base URL (defaults to http://localhost:8080)
 OpenAPI.BASE = process.env.REACT_APP_API_URL || 'http://localhost:8080';
@@ -110,7 +110,7 @@ const graph = await GraphService.getGraph();
 
 ### File Operations
 ```typescript
-import { FilesService } from '@vibethis/openapi-client';
+import { FilesService } from '@colony2/openapi-client';
 
 // List files in cell directory
 const {files} = await FilesService.listCellFiles('my-cell-id', 'src/');
@@ -126,7 +126,7 @@ await FilesService.writeCellFile('my-cell-id', 'README.md', {
 
 ### Git Integration
 ```typescript
-import { GitService } from '@vibethis/openapi-client';
+import { GitService } from '@colony2/openapi-client';
 
 // Get current git status
 const status = await GitService.getGitStatus('my-cell-id');
@@ -143,7 +143,7 @@ await GitService.createGitCommit('my-cell-id', {
 
 ### Container Management
 ```typescript
-import { ContainerService } from '@vibethis/openapi-client';
+import { ContainerService } from '@colony2/openapi-client';
 
 // Check container status
 const {status, hasDevcontainer} = await ContainerService.getContainerStatus('my-cell-id');
@@ -157,7 +157,7 @@ if (hasDevcontainer && status === 'stopped') {
 
 ### Error Handling
 ```typescript
-import { ApiError } from '@vibethis/openapi-client';
+import { ApiError } from '@colony2/openapi-client';
 
 try {
   const files = await FilesService.listCellFiles('invalid-cell-id');
@@ -173,7 +173,7 @@ try {
 ### Build Scripts
 ```json
 {
-  "generate": "openapi-typescript-codegen --input ../../api/openapi/vibethis-api.yaml --output ./src/generated --client axios",
+  "generate": "openapi-typescript-codegen --input ../../api/openapi/colony2-api.yaml --output ./src/generated --client axios",
   "build": "tsup src/index.ts --format cjs,esm --dts --clean",
   "clean": "rm -rf src/generated dist"
 }
@@ -181,7 +181,7 @@ try {
 
 ### Runtime Configuration
 ```typescript
-import { OpenAPI } from '@vibethis/openapi-client';
+import { OpenAPI } from '@colony2/openapi-client';
 
 // Configure authentication
 OpenAPI.TOKEN = 'bearer-token';

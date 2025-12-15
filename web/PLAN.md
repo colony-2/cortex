@@ -8,7 +8,7 @@
 - **App shell & routing** (`web/app/src/App.tsx`, `MainView.tsx`): keep BrowserRouter + AntD Splitter layout; add project-aware routes and project selector; expose flowchart + kanban views.
 - **Flowchart** (`web/flowchart/src/*`, used in `MainView`): keep ReactFlow UX and pending-input badges; switch data to `GET /api/projects/{projectId}/graph`; update types for cells/edges; replace/remove position persistence (no `/positions` in new spec—choose new store or drop save).
 - **Input workflows** (`web/app/src/components/InputFormsTab.tsx`, `InputFormRenderer.tsx`, shared `inputActivityService` + context): keep UI and SSE wiring; align schemas and URLs to new `UserInputs` endpoints; ensure IDs include project + cell as required by spec.
-- **Shared library** (`web/shared/src/*`): keep; regenerate API client via `web/openapi` from `api/openapi/vibethis-api.yaml`; replace custom fetchers with generated client; add project-aware URL state helpers; refresh graph/cell/ticket types.
+- **Shared library** (`web/shared/src/*`): keep; regenerate API client via `web/openapi` from `api/openapi/colony2-api.yaml`; replace custom fetchers with generated client; add project-aware URL state helpers; refresh graph/cell/ticket types.
 - **UI stack/tooling** (Ant Design, Vite configs, XYFlow, Monaco where still used): keep.
 
 ## What to remove (no matching endpoints in new spec)

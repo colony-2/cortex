@@ -118,7 +118,7 @@ The system uses the existing `server/container` module to manage devcontainer li
   "mounts": [
     // Additional cell-specific mounts
     {
-      "source": "${CELL_PATH}/.vibethis/recipes",
+      "source": "${CELL_PATH}/.colony2/recipes",
       "target": "/recipes/cell",
       "type": "bind",
       "readonly": true

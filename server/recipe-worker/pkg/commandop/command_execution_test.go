@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	ops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 func TestCommandExecutionActivity_GetMetadata(t *testing.T) {

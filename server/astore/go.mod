@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/astore
+module github.com/colony-2/colony2/server/astore
 
 require (
 	github.com/colony-2/strata/strata-go v0.0.0-00010101000000-000000000000

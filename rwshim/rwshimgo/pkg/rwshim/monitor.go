@@ -3,13 +3,13 @@ package rwshim
 import (
 	"context"
 	"fmt"
-	
-	"github.com/divisive-ai/vibethis/rwshim/rwshimgo/internal"
+
+	"github.com/colony-2/colony2/rwshim/rwshimgo/internal"
 )
 
 const (
 	// DefaultSocketPath is the default Unix domain socket path
-	DefaultSocketPath = "/tmp/vibethis-rwshim.sock"
+	DefaultSocketPath = "/tmp/colony2-rwshim.sock"
 )
 
 // Monitor manages the Unix domain socket server and intercepts I/O operations
@@ -30,7 +30,7 @@ func NewMonitor(policy PolicyFunc) *Monitor {
 		publicResp := policy(publicReq)
 		return internal.Response{Allow: publicResp.Allow}
 	}
-	
+
 	return &Monitor{
 		impl: internal.NewMonitorImpl(DefaultSocketPath, internalPolicy),
 	}
@@ -49,7 +49,7 @@ func NewMonitorWithPath(socketPath string, policy PolicyFunc) *Monitor {
 		publicResp := policy(publicReq)
 		return internal.Response{Allow: publicResp.Allow}
 	}
-	
+
 	return &Monitor{
 		impl: internal.NewMonitorImpl(socketPath, internalPolicy),
 	}

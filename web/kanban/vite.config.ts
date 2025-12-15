@@ -7,16 +7,16 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/index.ts',
-      name: '@vibethis/kanban',
+      name: '@colony2/kanban',
       formats: ['es', 'cjs'],
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'antd', '@vibethis/shared', '@vibethis/openapi-client'],
+      external: ['react', 'react-dom', 'antd', '@colony2/shared', '@colony2/openapi-client'],
     },
   },
   resolve: {
     alias: {
-      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@colony2/shared': resolve(__dirname, '../shared/src/index.ts'),
     },
     dedupe: ['react', 'react-dom'],
   },

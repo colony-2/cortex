@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/testsuite"
 )

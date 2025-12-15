@@ -53,7 +53,7 @@ interface RelationshipGraph {
 
 ### Main Component Usage
 ```typescript
-import { GraphFlow } from '@graph-visualizer/flowchart';
+import { GraphFlow } from '@colony2/flowchart';
 
 <GraphFlow 
   selectedCellId="cell-123"
@@ -74,7 +74,7 @@ window.addEventListener('relationshipsUpdated', handleGraphRefresh);
 
 ### Basic Integration
 ```typescript
-import { GraphFlow } from '@graph-visualizer/flowchart';
+import { GraphFlow } from '@colony2/flowchart';
 import { useState } from 'react';
 
 function App() {
@@ -124,11 +124,11 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/index.ts',
-      name: '@vibethis/flowchart',
+      name: '@colony2/flowchart',
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'antd', '@vibethis/shared', '@xyflow/react']
+      external: ['react', 'react-dom', 'antd', '@colony2/shared', '@xyflow/react']
     }
   }
 });
@@ -138,4 +138,4 @@ export default defineConfig({
 - `@xyflow/react`: ^12.3.5 - Core flowchart rendering
 - `antd`: ^5.26.1 - UI components (Tag, Badge, Space)
 - `dagre`: ^0.8.5 - Graph layout algorithms  
-- `@vibethis/shared`: Local module for API/types
+- `@colony2/shared`: Local module for API/types

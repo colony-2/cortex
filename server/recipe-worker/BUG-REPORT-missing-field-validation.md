@@ -68,8 +68,8 @@ The test expects an error but may not be getting one if validation is not enforc
 
 ## Files Affected
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/test-missing-fields.yaml`
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/test-missing-fields.test.yaml`
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/test-missing-fields.yaml`
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/test-missing-fields.test.yaml`
 - Operation validation logic in activities
 - Test framework validation error handling
 

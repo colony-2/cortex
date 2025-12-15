@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // GitShallowCloneInput represents the input parameters for the GitShallowClone activity

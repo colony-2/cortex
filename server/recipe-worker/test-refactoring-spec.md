@@ -188,7 +188,7 @@ type SingleStateMetadata struct {
 
 **Changes Applied:**
 - Updated `pkg/ops/activity_registry_test.go`:
-  - Fixed imports to use `recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"` instead of non-existent `types` package
+  - Fixed imports to use `recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"` instead of non-existent `types` package
   - Removed generic type parameters from `Register` function calls (no longer a generic function)
   - Added error handling for `NewActivityRegistry()` calls with `require.NoError()`
 - Updated `pkg/worker/parser_test.go`:

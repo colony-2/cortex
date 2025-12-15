@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/story"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -423,8 +423,8 @@ func inlineMarkerEvent(id int64, ts time.Time, env story.MarkerEnvelope) *histor
 		EventTime: timestamppb.New(ts),
 		Attributes: &historypb.HistoryEvent_MarkerRecordedEventAttributes{
 			MarkerRecordedEventAttributes: &historypb.MarkerRecordedEventAttributes{
-				MarkerName: "SideEffect",
-				Details:    map[string]*commonpb.Payloads{"data": payloads},
+				MarkerName:                   "SideEffect",
+				Details:                      map[string]*commonpb.Payloads{"data": payloads},
 				WorkflowTaskCompletedEventId: id - 1,
 			},
 		},
@@ -443,9 +443,9 @@ func activityScheduledEvent(id int64, ts time.Time, req *workerops.ActivityInvoc
 		EventTime: timestamppb.New(ts),
 		Attributes: &historypb.HistoryEvent_ActivityTaskScheduledEventAttributes{
 			ActivityTaskScheduledEventAttributes: &historypb.ActivityTaskScheduledEventAttributes{
-				ActivityId:   fmt.Sprintf("act-%d", id),
-				ActivityType: &commonpb.ActivityType{Name: req.Invocation.NodePath},
-				Input:        payloads,
+				ActivityId:                   fmt.Sprintf("act-%d", id),
+				ActivityType:                 &commonpb.ActivityType{Name: req.Invocation.NodePath},
+				Input:                        payloads,
 				WorkflowTaskCompletedEventId: id - 1,
 			},
 		},

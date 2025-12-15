@@ -4,7 +4,7 @@
 
 **Requirements**
 
-- Extension ops declare input/output JSON Schemas in `.vibethis/ops/<op>/op.yaml`:
+- Extension ops declare input/output JSON Schemas in `.colony2/ops/<op>/op.yaml`:
   - `input_schema` (object): JSON Schema (Draft 2020) for `inputs`.
   - `output_schema` (object): JSON Schema for the op’s outputs (used for docs; optional for runtime validation).
 
@@ -71,7 +71,7 @@ output_schema:
 - CLI:
   - `cortex schema`: prints schema that includes extension ops and their input schemas.
   - `cortex validate -f recipe.yaml`: validates recipes using extension ops’ schemas.
-- Project root detection: Discovery starts from CWD and walks up for `.vibethis/ops`; set `VIBETHIS_PROJECT_ROOT` to pin a non-standard working dir when running `cortex` outside the repo root.
+- Project root detection: Discovery starts from CWD and walks up for `.colony2/ops`; set `VIBETHIS_PROJECT_ROOT` to pin a non-standard working dir when running `cortex` outside the repo root.
 
 **Edge Cases**
 
@@ -81,7 +81,7 @@ output_schema:
 
 **Minimal Test Plan**
 
-- Place a sample op under `.vibethis/ops/python_sum` with `op.yaml` including `input_schema`.
+- Place a sample op under `.colony2/ops/python_sum` with `op.yaml` including `input_schema`.
 - Run `cortex schema` from project root and verify the `Node` oneOf includes `op: "python_sum"` and `inputs` with required `numbers`.
 - Create a recipe using `op: python_sum`:
   - Validate passes when inputs conform to the schema.

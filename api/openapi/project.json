@@ -9,7 +9,7 @@
       "options": {
         "command": "echo \"OpenAPI spec is ready\"",
         "cwd": "api/openapi",
-        "outputs": ["{projectRoot}/vibethis-api.yaml"]
+        "outputs": ["{projectRoot}/colony2-api.yaml"]
       }
     }
   }

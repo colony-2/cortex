@@ -62,7 +62,7 @@ Template resolution fails because the `search` node is not available in the CEL 
 
 ### Code Analysis
 
-**Location**: `/Users/jnadeau/src/vibethis/server/recipe-worker/pkg/compiler/compiler.go`  
+**Location**: `/Users/jnadeau/src/colony2/server/recipe-worker/pkg/compiler/compiler.go`  
 **Function**: `innerSequence()` (lines 185-230)
 
 **Issue**: In the sequence execution loop:
@@ -129,10 +129,10 @@ data: static_value
 
 ## Related Files
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/TEMPLATE_REFERENCE_CHEATSHEET.md` (Documents the pattern)
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/pkg/compiler/compiler.go` (Sequence execution)  
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/pkg/compiler/template_resolver.go` (Context management)
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/simple_workflow.yaml` (Failing test case)
+- `/Users/jnadeau/src/colony2/server/recipe-worker/TEMPLATE_REFERENCE_CHEATSHEET.md` (Documents the pattern)
+- `/Users/jnadeau/src/colony2/server/recipe-worker/pkg/compiler/compiler.go` (Sequence execution)  
+- `/Users/jnadeau/src/colony2/server/recipe-worker/pkg/compiler/template_resolver.go` (Context management)
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/simple_workflow.yaml` (Failing test case)
 
 ## Next Steps
 

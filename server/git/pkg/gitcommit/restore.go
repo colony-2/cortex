@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // RestoreCommit restores repository to a specific commit state
@@ -34,7 +34,7 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 		if err != nil {
 			return nil, fmt.Errorf("failed to check git status: %w", err)
 		}
-		
+
 		if len(statusOutput) > 0 {
 			return nil, fmt.Errorf("uncommitted changes in repository, use force flag to override")
 		}
@@ -48,7 +48,7 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 			checkoutArgs = append(checkoutArgs, "-f")
 		}
 		checkoutArgs = append(checkoutArgs, input.TargetCommit)
-		
+
 		_, err := common.ExecuteGitCommand(ctx, input.RepoPath, checkoutArgs...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to checkout commit: %w", err)
@@ -89,7 +89,7 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 
 	// Build commit graph from pack files
 	commitGraph := buildCommitGraph(packFiles)
-	
+
 	// Find path from root to target
 	packChain, err := findPackChain(commitGraph, input.RootHash, input.TargetCommit)
 	if err != nil {
@@ -104,13 +104,13 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 		if err != nil {
 			return nil, fmt.Errorf("failed to stat pack file %s: %w", packPath, err)
 		}
-		
+
 		if fileInfo.Size() == 0 {
 			// Empty file means no changes, skip
 			appliedPacks = append(appliedPacks, packPath)
 			continue
 		}
-		
+
 		// Apply the bundle
 		// First, unbundle to get the commits into the repository
 		_, err = common.ExecuteGitCommand(ctx, input.RepoPath, "bundle", "unbundle", packPath)
@@ -121,10 +121,10 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 				return nil, fmt.Errorf("failed to apply thin pack %s: %w", packPath, err)
 			}
 		}
-		
+
 		appliedPacks = append(appliedPacks, packPath)
 	}
-	
+
 	// After applying all packs, checkout the target commit
 	if len(appliedPacks) > 0 {
 		_, err := common.ExecuteGitCommand(ctx, input.RepoPath, "checkout", input.TargetCommit)
@@ -141,8 +141,8 @@ func RestoreCommit(ctx context.Context, input RestoreCommitActivity) (*RestoreCo
 
 	// Check if current commit matches target (comparing first 7 chars for short hash compatibility)
 	if !strings.HasPrefix(currentCommit, input.TargetCommit[:min(7, len(input.TargetCommit))]) &&
-	   !strings.HasPrefix(input.TargetCommit, currentCommit[:min(7, len(currentCommit))]) {
-		return nil, fmt.Errorf("restore failed: current commit %s does not match target %s", 
+		!strings.HasPrefix(input.TargetCommit, currentCommit[:min(7, len(currentCommit))]) {
+		return nil, fmt.Errorf("restore failed: current commit %s does not match target %s",
 			currentCommit[:7], input.TargetCommit[:7])
 	}
 
@@ -162,18 +162,18 @@ func findThinPacks(storageLocation, rootHash string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to find thin packs: %w", err)
 	}
-	
+
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no thin packs found for root hash %s", rootHash[:7])
 	}
-	
+
 	return matches, nil
 }
 
 // buildCommitGraph builds a graph of commits from pack file names
 func buildCommitGraph(packFiles []string) map[string]*common.ThinPackMetadata {
 	graph := make(map[string]*common.ThinPackMetadata)
-	
+
 	for _, packFile := range packFiles {
 		metadata, err := common.ParseThinPackName(packFile)
 		if err != nil {
@@ -181,7 +181,7 @@ func buildCommitGraph(packFiles []string) map[string]*common.ThinPackMetadata {
 		}
 		graph[metadata.CommitHash] = metadata
 	}
-	
+
 	return graph
 }
 
@@ -189,7 +189,7 @@ func buildCommitGraph(packFiles []string) map[string]*common.ThinPackMetadata {
 func findPackChain(graph map[string]*common.ThinPackMetadata, rootHash, targetCommit string) ([]string, error) {
 	// Find the target in the graph
 	targetShort := targetCommit[:min(7, len(targetCommit))]
-	
+
 	var targetMetadata *common.ThinPackMetadata
 	for commitHash, metadata := range graph {
 		if strings.HasPrefix(commitHash, targetShort) || strings.HasPrefix(targetShort, commitHash) {
@@ -197,18 +197,18 @@ func findPackChain(graph map[string]*common.ThinPackMetadata, rootHash, targetCo
 			break
 		}
 	}
-	
+
 	if targetMetadata == nil {
 		return nil, fmt.Errorf("target commit %s not found in thin packs", targetShort)
 	}
-	
+
 	// Build chain from root to target
 	chain := []string{}
 	current := targetMetadata
-	
+
 	for current != nil && current.CommitHash != rootHash[:7] {
 		chain = append([]string{current.FilePath}, chain...) // Prepend to maintain order
-		
+
 		// Find parent in graph
 		var parent *common.ThinPackMetadata
 		for _, metadata := range graph {
@@ -217,28 +217,28 @@ func findPackChain(graph map[string]*common.ThinPackMetadata, rootHash, targetCo
 				break
 			}
 		}
-		
+
 		// If we can't find parent but we've reached a commit that has root as parent, we're done
 		if parent == nil && current.ParentHash == rootHash[:7] {
 			break
 		}
-		
+
 		current = parent
 	}
-	
+
 	if len(chain) == 0 {
 		return nil, fmt.Errorf("could not build chain from root to target")
 	}
-	
+
 	// Sort chain to ensure correct order (parent before child)
 	sort.Slice(chain, func(i, j int) bool {
 		metaI, _ := common.ParseThinPackName(chain[i])
 		metaJ, _ := common.ParseThinPackName(chain[j])
-		
+
 		// If j's parent is i's commit, i should come before j
 		return metaJ.ParentHash == metaI.CommitHash
 	})
-	
+
 	return chain, nil
 }
 

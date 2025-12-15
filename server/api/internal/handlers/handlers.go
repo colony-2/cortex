@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/registry/pkg/registry"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/registry/pkg/registry"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/gorilla/mux"
 )
 
@@ -63,7 +63,7 @@ func New(storage core.Storage, graph core.GraphBuilder, factory GraphFactory, re
 }
 
 func defaultRecipeRegistryFactory(_ context.Context, projectID project.ID, repoPath string) (*registry.Registry, string, func(), error) {
-	recipesDir := filepath.Join(repoPath, ".vibethis", "recipes")
+	recipesDir := filepath.Join(repoPath, ".colony2", "recipes")
 	reg, err := registry.NewRegistry(nil, recipesDir)
 	if err != nil {
 		return nil, recipesDir, nil, err

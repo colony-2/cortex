@@ -30,8 +30,8 @@
 Each entry lists how the Moon project maps to Nx (`projectType`, executor, and targets). All Go projects use the Go plugin executors (`@nx-go/nx-go:build` / `:test`) unless otherwise noted; Vite/React packages use the Nx Vite executors. Inputs/outputs/caching are inherited from `targetDefaults` unless called out as custom (e.g., generated code or copied bundles).
 
 ### API and OpenAPI
-- `api-openapi` (api/openapi, tool): target `build` (`nx:run-commands` `echo "OpenAPI spec is ready"`), output `vibethis-api.yaml`; tagged `api`.
-- `be-openapi` (server/openapi, lib): target `build` (`nx:run-commands` running `go run github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0 -config codegen.yml -o pkg/openapi/generated.go ../../api/openapi/vibethis-api.yaml`), `outputs: ["pkg/openapi/generated.go"]`, `dependsOn: ["api-openapi:build"]`.
+- `api-openapi` (api/openapi, tool): target `build` (`nx:run-commands` `echo "OpenAPI spec is ready"`), output `colony2-api.yaml`; tagged `api`.
+- `be-openapi` (server/openapi, lib): target `build` (`nx:run-commands` running `go run github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0 -config codegen.yml -o pkg/openapi/generated.go ../../api/openapi/colony2-api.yaml`), `outputs: ["pkg/openapi/generated.go"]`, `dependsOn: ["api-openapi:build"]`.
 - `fe-openapi` (web/openapi, lib): target `build` (`nx:run-commands` invoking `npm run generate && npm run build` or direct `openapi-typescript-codegen` + `tsup`), `outputs: ["src/generated/**/*","dist/**/*"]`, `dependsOn: ["api-openapi:build"]`; target `test` as a no-op (`true`) to mirror Moon.
 
 ### Backend services and libs

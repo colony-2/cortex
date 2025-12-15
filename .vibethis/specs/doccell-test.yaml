@@ -10,4 +10,4 @@ sequence:
   - id: file_collector
     op: git_file_collector
     inputs:
-      context_dir: "/Users/jnadeau/src/vibethis"
+      context_dir: "/Users/jnadeau/src/colony2"

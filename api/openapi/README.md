@@ -4,7 +4,7 @@ This directory contains the OpenAPI specification for the VibeThis API.
 
 ## Files
 
-- `vibethis-api.yaml` - The complete OpenAPI 3.0.3 specification for all API endpoints
+- `colony2-api.yaml` - The complete OpenAPI 3.0.3 specification for all API endpoints
 
 ## Overview
 
@@ -45,8 +45,8 @@ To validate the OpenAPI specification:
 
 ```bash
 # Using openapi-generator-cli
-openapi-generator-cli validate -i vibethis-api.yaml
+openapi-generator-cli validate -i colony2-api.yaml
 
 # Using swagger-cli
-swagger-cli validate vibethis-api.yaml
+swagger-cli validate colony2-api.yaml
 ```

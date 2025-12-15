@@ -10,7 +10,7 @@ This specification defines new Git operations for the existing `server/git` modu
 server/
 ├── ops/           # Existing recipe operations
 ├── git/           # Existing Git operations module
-│   ├── go.mod     # module github.com/divisive-ai/vibethis/server/git
+│   ├── go.mod     # module github.com/colony-2/colony2/server/git
 │   ├── go.sum
 │   ├── internal/
 │   │   └── commands/  # Internal Git command execution
@@ -27,7 +27,7 @@ The existing `server/git` module already provides Git operations. We'll extend i
 
 ```go
 // server/git/go.mod (existing, to be updated)
-module github.com/divisive-ai/vibethis/server/git
+module github.com/colony-2/colony2/server/git
 
 go 1.23.0
 
@@ -47,12 +47,12 @@ import (
     "go.temporal.io/sdk/worker"
     
     // Import from existing Git module
-    "github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
-    "github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+    "github.com/colony-2/colony2/server/git/pkg/gitcommit"
+    "github.com/colony-2/colony2/server/git/pkg/gitshallow"
     
     // Import other recipe operations
-    "github.com/divisive-ai/vibethis/server/ops/pkg/recipe"
-    "github.com/divisive-ai/vibethis/server/ops/pkg/llm"
+    "github.com/colony-2/colony2/server/ops/pkg/recipe"
+    "github.com/colony-2/colony2/server/ops/pkg/llm"
 )
 
 func main() {
@@ -111,7 +111,7 @@ import (
     "os"
     
     // Can leverage existing internal commands package
-    "github.com/divisive-ai/vibethis/server/git/internal/commands"
+    "github.com/colony-2/colony2/server/git/internal/commands"
 )
 
 // ExecuteGitCommand runs a git command with context
@@ -151,7 +151,7 @@ package gitcommit
 import (
     "context"
     "time"
-    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+    "github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // PersistCommitActivity defines the recipe operation for persisting Git commits
@@ -184,7 +184,7 @@ package gitcommit
 
 import (
     "context"
-    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+    "github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // PersistCommit performs the Git commit and thin pack generation
@@ -254,7 +254,7 @@ package gitcommit
 
 import (
     "context"
-    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+    "github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // RestoreCommit restores repository to a specific commit state
@@ -319,7 +319,7 @@ package gitshallow
 
 import (
     "context"
-    "github.com/divisive-ai/vibethis/server/git/pkg/common"
+    "github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 // GitShallowCloneInput (existing type, moved here)
@@ -357,11 +357,11 @@ import (
     "go.temporal.io/sdk/workflow"
     
     // Import from git module
-    "github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
-    "github.com/divisive-ai/vibethis/server/git/pkg/gitshallow"
+    "github.com/colony-2/colony2/server/git/pkg/gitcommit"
+    "github.com/colony-2/colony2/server/git/pkg/gitshallow"
     
     // Import other recipe operations
-    "github.com/divisive-ai/vibethis/server/ops/pkg/llm"
+    "github.com/colony-2/colony2/server/ops/pkg/llm"
 )
 
 func ProcessCodeWorkflow(ctx workflow.Context, input WorkflowInput) error {

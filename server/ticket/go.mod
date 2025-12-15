@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/ticket
+module github.com/colony-2/colony2/server/ticket
 
 go 1.25.5
 

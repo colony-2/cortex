@@ -38,8 +38,8 @@ Phase 1 establishes the execution contract that every recipe run must satisfy be
    - `context.worktree` / `context.blobstore` / `context.ticketid` / `context.cellname` – top-level execution metadata keys (no further nesting).
    - `ticket_id`, `cell_name` – lifted out for convenience.
 4. Compute deterministic paths:
-   - `worktree = <workspaceRoot>/<runID>/work` isolates filesystem state per workflow attempt (`workspaceRoot` defaults to `/tmp/vibethis/workflows`, configurable via `VIBETHIS_WORKSPACE_ROOT`).
-   - `blobStoreURI = <persistBase>/<cellName>/<ticketID>` points to the shared blob namespace (defaults to `file:///tmp/vibethis/blobstore`, can be an `s3://` URI or other adapter-supported backend).
+   - `worktree = <workspaceRoot>/<runID>/work` isolates filesystem state per workflow attempt (`workspaceRoot` defaults to `/tmp/colony2/workflows`, configurable via `VIBETHIS_WORKSPACE_ROOT`).
+   - `blobStoreURI = <persistBase>/<cellName>/<ticketID>` points to the shared blob namespace (defaults to `file:///tmp/colony2/blobstore`, can be an `s3://` URI or other adapter-supported backend).
    - Git thin packs will later live beneath `<blobStoreURI>/git/thin-packs`, leveraging `{commit}-{parent}-{root}.pack` filenames for uniqueness without run IDs.
 5. Thread the `executionContext` through sequence/state helpers so every op sees the most recent `PersistHash` and metadata.
 

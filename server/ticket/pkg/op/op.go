@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -37,7 +37,7 @@ var (
 
 func initMetrics() {
 	metricInitOnce.Do(func() {
-		meter := otel.Meter("github.com/divisive-ai/vibethis/server/ticket/pkg/op")
+		meter := otel.Meter("github.com/colony-2/colony2/server/ticket/pkg/op")
 		var err error
 		actionCounter, err = meter.Int64Counter(
 			"ticket_manage_action_total",

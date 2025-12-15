@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/core"
 )
 
 type fakeGraphBuilder struct {

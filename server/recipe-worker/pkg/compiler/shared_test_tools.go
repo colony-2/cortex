@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 )
 
 var (
@@ -65,11 +65,11 @@ func ensureTestRepo() (string, string) {
 
 func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
-	worktree, err := os.MkdirTemp("", "vibethis-worktree-*")
+	worktree, err := os.MkdirTemp("", "colony2-worktree-*")
 	if err != nil {
 		panic(err)
 	}
-	blobDir, err := os.MkdirTemp("", "vibethis-blobstore-*")
+	blobDir, err := os.MkdirTemp("", "colony2-blobstore-*")
 	if err != nil {
 		panic(err)
 	}
@@ -79,7 +79,7 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
 			ActorName:  "test-actor",
-			ActorEmail: "test-actor@vibethis",
+			ActorEmail: "test-actor@colony2",
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,

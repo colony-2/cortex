@@ -87,8 +87,8 @@ package llm
 import (
     "context"
     "encoding/json"
-    "github.com/vibethis/server/ops/pkg/types"
-    "github.com/vibethis/server/llm/adapters"
+    "github.com/colony2/server/ops/pkg/types"
+    "github.com/colony2/server/llm/adapters"
 )
 
 // LLMInferenceConfig provides configuration
@@ -493,7 +493,7 @@ func (e *FileToolExecutor) executeWriteFile(
 package registry
 
 import (
-    "github.com/vibethis/server/ops/pkg/llm"
+    "github.com/colony2/server/ops/pkg/llm"
 )
 
 // RegisterLLMActivities registers all LLM-related activities

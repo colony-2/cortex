@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-history/pkg/storybuilder"
+	"github.com/colony-2/colony2/server/recipe-history/pkg/storybuilder"
 	"github.com/stretchr/testify/require"
 )
 

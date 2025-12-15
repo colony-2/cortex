@@ -3,7 +3,7 @@ package client
 import (
 	"fmt"
 
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
+	"github.com/colony-2/colony2/server/nucleus/internal/config"
 	"go.temporal.io/sdk/client"
 )
 

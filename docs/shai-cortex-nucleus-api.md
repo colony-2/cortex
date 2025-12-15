@@ -103,13 +103,13 @@ No changes to existing fields or defaults; if `PostSetupExec` is nil, behavior i
 ```go
 import (
   "context"
-  shai "github.com/divisive-ai/vibethis/server/container/pkg/shai"
+  shai "github.com/colony-2/colony2/server/container/pkg/shai"
 )
 
 // inside Cortex code
 cfg := shai.EphemeralConfig{
   WorkingDir:     repoRoot,               // host path containing devcontainer.json
-  ReadWritePaths: []string{".cache", ".vibethis"}, // overlays
+  ReadWritePaths: []string{".cache", ".colony2"}, // overlays
   HideProgressMarkers: true,              // keep logs clean; still get structured progress
   PostSetupExec: &shai.ExecSpec{
     // Run Nucleus inside container; use relative path under workspace
@@ -151,7 +151,7 @@ _ = sess.Stop(shutdownCtx)
 
 Notes:
 - The example runs `go run` to avoid shipping a prebuilt Nucleus binary; if the container image includes the binary, replace `Command` accordingly.
-- `ReadWritePaths` should include any directories where Nucleus will write (e.g., `.vibethis`, caches, temp dirs). The base workspace remains read-only for safety.
+- `ReadWritePaths` should include any directories where Nucleus will write (e.g., `.colony2`, caches, temp dirs). The base workspace remains read-only for safety.
 
 ## Non-Goals
 - No special-casing of Nucleus in Shai.

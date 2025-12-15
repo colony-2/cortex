@@ -6,14 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitstate"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-template/pkg/template"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext) (map[string]interface{}, error) {

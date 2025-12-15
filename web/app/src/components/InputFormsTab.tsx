@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { List, Typography, Badge, Empty, Spin, message, Divider } from 'antd';
 import { ClockCircleOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import type { DependencyCell } from '@vibethis/shared';
+import type { DependencyCell } from '@colony2/shared';
 import { 
   inputActivityService, 
   type PendingInput, 
   type InputFormDetails,
   type InputEvent,
   type FormResponse 
-} from '@vibethis/shared';
+} from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 
 const { Title, Text } = Typography;

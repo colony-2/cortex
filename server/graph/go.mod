@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/graph
+module github.com/colony-2/colony2/server/graph
 
 
 

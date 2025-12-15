@@ -96,7 +96,7 @@ type PolicyBuilder struct {
 ### Basic Monitor Setup
 
 ```go
-import "github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
+import "github.com/colony-2/colony2/rwshim/rwshimgo/pkg/rwshim"
 
 // Create and start monitor
 monitor := rwshim.NewMonitor(rwshim.AllowAll)
@@ -202,7 +202,7 @@ rwshim.MatchLargeOperations(threshold)      // Operations over size threshold
 ### Socket Configuration
 
 ```go
-// Default socket path: /tmp/vibethis-rwshim.sock
+// Default socket path: /tmp/colony2-rwshim.sock
 monitor := rwshim.NewMonitor(policy)
 
 // Custom socket path

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
@@ -111,7 +111,7 @@ func (d *stubDeps) AddOutputArtifact(a swf.Artifact) error {
 	d.outputs = append(d.outputs, a)
 	return nil
 }
-func (d *stubDeps) GetInputArtifacts() []swf.Artifact { return d.inputArtifacts }
+func (d *stubDeps) GetInputArtifacts() []swf.Artifact  { return d.inputArtifacts }
 func (d *stubDeps) GetOutputArtifacts() []swf.Artifact { return d.outputs }
 func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow

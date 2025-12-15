@@ -5,21 +5,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
 	"gopkg.in/yaml.v3"
 )
 
 func TestParseExampleRecipes(t *testing.T) {
 	// Find the examples directory relative to this test file
 	examplesDir := filepath.Join("..", "..", "examples")
-	
+
 	// Check if examples directory exists
 	if _, err := os.Stat(examplesDir); os.IsNotExist(err) {
 		t.Skip("Examples directory not found")
 	}
-	
+
 	tests := []struct {
 		name     string
 		filename string
@@ -33,29 +33,29 @@ func TestParseExampleRecipes(t *testing.T) {
 			filename: "template_features.yaml",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			recipePath := filepath.Join(examplesDir, tt.filename)
-			
+
 			// Check if recipe file exists
 			if _, err := os.Stat(recipePath); os.IsNotExist(err) {
 				t.Skipf("Recipe file not found: %s", recipePath)
 			}
-			
+
 			// Read recipe file
 			recipeData, err := os.ReadFile(recipePath)
 			require.NoError(t, err, "Failed to read recipe file")
-			
+
 			// Parse recipe YAML
 			var recipeDef recipe.Recipe
 			err = yaml.Unmarshal(recipeData, &recipeDef)
 			require.NoError(t, err, "Failed to parse recipe YAML")
-			
+
 			// Basic validation
 			metadata := recipeDef.RecipeImpl.GetMetadata()
 			assert.NotEmpty(t, metadata.Version, "Recipe should have a version")
-			
+
 			// Check that recipe has at least one node type defined
 			hasNode := false
 			if recipeDef.RecipeImpl != nil {
@@ -168,13 +168,13 @@ func TestRecipeStructureValidation(t *testing.T) {
 			wantError: false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Basic structural validation
 			metadata := tt.recipe.RecipeImpl.GetMetadata()
 			assert.NotEmpty(t, metadata.Version, "Recipe should have a version")
-			
+
 			// Check recipe structure
 			nodeCount := 0
 			if tt.recipe.RecipeImpl != nil {
@@ -193,7 +193,7 @@ func TestRecipeStructureValidation(t *testing.T) {
 					}
 				}
 			}
-			
+
 			// A recipe should define exactly one type
 			if !tt.wantError {
 				assert.Equal(t, 1, nodeCount, "Recipe should define exactly one of: op, sequence, or states")

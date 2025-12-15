@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/executor"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
 )
@@ -57,7 +57,7 @@ outputs:
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
 			ActorName:  "test-actor",
-			ActorEmail: "test-actor@vibethis",
+			ActorEmail: "test-actor@colony2",
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: persistWorktree,
@@ -68,8 +68,8 @@ outputs:
 			JobID:    "git-decorator-test",
 		},
 		GitBase: contextual.GitBaseContext{
-			BaseRepo: repoPath,
-			BaseHash: baseHash,
+			BaseRepo:  repoPath,
+			BaseHash:  baseHash,
 			GitAuthor: "Test User <test@example.com>",
 		},
 	}

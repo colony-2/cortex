@@ -528,7 +528,7 @@ tools:
 
 #### Cell-Specific Tool Override
 ```yaml
-# /cells/${CELL_ID}/.vibethis/tools.yaml
+# /cells/${CELL_ID}/.colony2/tools.yaml
 tools:
   bash:
     additionalCommands:

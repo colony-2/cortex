@@ -1,10 +1,11 @@
 //go:build test44
+
 package compiler
 
 import (
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -46,7 +47,7 @@ outputs:
 	var r recipe.Recipe
 	err := yaml.Unmarshal([]byte(recipeYAML), &r)
 	require.NoError(t, err)
-	
+
 	// Check that it's a RecipeSequence
 	recipeSeq, ok := r.RecipeImpl.(*recipe.RecipeSequence)
 	require.True(t, ok, "Expected RecipeSequence")
@@ -65,19 +66,19 @@ outputs:
 	// Simulate sequence node execution by adding their outputs
 	// This mimics what happens in the actual compiler during sequence execution
 	ctx.AddSequenceNode("step1", map[string]interface{}{
-		"stdout": "Hello from step 1\n",
-		"stderr": "",
+		"stdout":    "Hello from step 1\n",
+		"stderr":    "",
 		"exit_code": 0,
 	})
 
 	ctx.AddSequenceNode("step2", map[string]interface{}{
-		"stdout": "Processing data\n",
-		"stderr": "",
+		"stdout":    "Processing data\n",
+		"stderr":    "",
 		"exit_code": 0,
 	})
 
 	ctx.AddSequenceNode("step3", map[string]interface{}{
-		"slept": "1s",
+		"slept":           "1s",
 		"actual_duration": 1000,
 	})
 
@@ -176,26 +177,26 @@ outputs:
 
 	// Simulate execution of sequence nodes
 	ctx.AddSequenceNode("step1", map[string]interface{}{
-		"stdout": "first step\n",
-		"stderr": "",
+		"stdout":    "first step\n",
+		"stderr":    "",
 		"exit_code": 0,
 	})
 
 	ctx.AddSequenceNode("step2", map[string]interface{}{
-		"slept": "2s",
+		"slept":           "2s",
 		"actual_duration": 2000,
 	})
 
 	ctx.AddSequenceNode("step3", map[string]interface{}{
-		"stdout": "Step 3 complete\n",
-		"stderr": "",
+		"stdout":    "Step 3 complete\n",
+		"stderr":    "",
 		"exit_code": 0,
 	})
 
 	// Get the outputs from the parsed recipe
 	recipeSeq, ok := r.RecipeImpl.(*recipe.RecipeSequence)
 	require.True(t, ok, "Expected RecipeSequence")
-	
+
 	// Test the output templates from the recipe
 	tests := []struct {
 		name     string

@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -10,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/client"
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/testutil"
+	"github.com/colony-2/colony2/server/nucleus/internal/client"
+	"github.com/colony-2/colony2/server/nucleus/internal/config"
+	"github.com/colony-2/colony2/server/nucleus/internal/testutil"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -66,7 +65,7 @@ func TestMainFunction(t *testing.T) {
 			rootCmd.PersistentFlags().StringP("recipes-path", "r", "", "Path to recipes directory (required)")
 			rootCmd.PersistentFlags().String("namespace", "default", "Temporal namespace")
 			rootCmd.PersistentFlags().BoolP("debug", "d", false, "Enable debug logging")
-			
+
 			rootCmd.MarkPersistentFlagRequired("name")
 			rootCmd.MarkPersistentFlagRequired("recipes-path")
 
@@ -76,10 +75,10 @@ func TestMainFunction(t *testing.T) {
 			rootCmd.SetErr(buf)
 
 			os.Args = tt.args
-			
+
 			// We can't actually test main() directly, but we can test the command execution
 			err := rootCmd.Execute()
-			
+
 			if tt.wantExit == 0 && err != nil {
 				t.Errorf("expected success, got error: %v", err)
 			} else if tt.wantExit != 0 && err == nil {
@@ -162,9 +161,9 @@ inputs:
 // TestParseConfigEdgeCases tests additional parseConfig scenarios
 func TestParseConfigEdgeCases(t *testing.T) {
 	tests := []struct {
-		name      string
-		setupCmd  func() *cobra.Command
-		wantErr   bool
+		name        string
+		setupCmd    func() *cobra.Command
+		wantErr     bool
 		errContains string
 	}{
 		{
@@ -174,7 +173,7 @@ func TestParseConfigEdgeCases(t *testing.T) {
 				// Don't define any flags - this will cause GetString to fail
 				return cmd
 			},
-			wantErr: true,
+			wantErr:     true,
 			errContains: "failed to get",
 		},
 	}
@@ -201,7 +200,7 @@ func TestParseConfigEdgeCases(t *testing.T) {
 func TestSetupLoggerPanic(t *testing.T) {
 	// This is a bit tricky to test since zap.NewDevelopment() and zap.NewProduction()
 	// rarely fail. We'll just ensure the function works in normal cases.
-	
+
 	tests := []struct {
 		name  string
 		debug bool

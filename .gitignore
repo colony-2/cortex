@@ -44,9 +44,9 @@ graph_positions.db
 .moon/cache
 .moon/docker
 .example/.moon/cache
-server/vibethis/static/assets
-server/vibethis/vibethis
-/vibethis/
+server/colony2/static/assets
+server/colony2/colony2
+/colony2/
 **/playwright-report/*
 **/test-results/*
 .nx

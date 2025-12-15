@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-child/pkg/recipe"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
 )
 

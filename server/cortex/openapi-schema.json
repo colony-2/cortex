@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "Recipe": {
-        "$id": "https://vibethis.com/schemas/recipe.schema.json",
+        "$id": "https://colony2.com/schemas/recipe.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "definitions": {

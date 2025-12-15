@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse, Empty } from 'antd';
-import { fetchGraph, useInputActivity, type RelationshipGraph, type DependencyCell, type DependencyEdge } from '@vibethis/shared';
+import { fetchGraph, useInputActivity, type RelationshipGraph, type DependencyCell, type DependencyEdge } from '@colony2/shared';
 import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {

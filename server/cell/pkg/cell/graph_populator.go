@@ -3,9 +3,9 @@ package cell
 import (
 	"context"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/graph/pkg/graph"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
 // GraphPopulator adapts the graph builder into a cell populator.

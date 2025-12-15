@@ -6,7 +6,7 @@ This module generates strongly-typed Go code from the VibeThis OpenAPI specifica
 ## Architecture
 
 ### Code Generation Pipeline
-- **Source**: `api/openapi/vibethis-api.yaml` - OpenAPI 3.0.3 specification
+- **Source**: `api/openapi/colony2-api.yaml` - OpenAPI 3.0.3 specification
 - **Generator**: `oapi-codegen v2.1.0` - Go code generation tool
 - **Configuration**: `codegen.yml` - Generation settings (models, client, embedded spec)
 - **Output**: `pkg/openapi/generated.go` - Generated Go types and client
@@ -85,7 +85,7 @@ type Edge struct {
 
 ### Basic Client Setup
 ```go
-import "github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
+import "github.com/colony-2/colony2/server/openapi/pkg/openapi"
 
 // Create basic HTTP client
 client, err := openapi.NewClient("http://localhost:8080")
@@ -185,7 +185,7 @@ tasks:
   build:
     script: |
       rm -f pkg/openapi/generated.go
-      go run github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0 -config codegen.yml -o pkg/openapi/generated.go ../../api/openapi/vibethis-api.yaml
+      go run github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0 -config codegen.yml -o pkg/openapi/generated.go ../../api/openapi/colony2-api.yaml
     deps:
       - 'api-openapi:build'  # Ensure spec is built first
 ```

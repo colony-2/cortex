@@ -8,7 +8,7 @@ Recipe Core is a Go library for defining, parsing, validating, and transforming 
 - Nodes support shared references, conditional execution via CEL, and simple metadata.
 - Ops are pluggable via a registry, including input/output typing and whether they run as Temporal activities or inline.
 
-Module path: `github.com/divisive-ai/vibethis/server/recipe-core`.
+Module path: `github.com/colony-2/colony2/server/recipe-core`.
 
 ## Layout
 
@@ -118,7 +118,7 @@ package myops
 
 import (
     "context"
-    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+    "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 type EchoIn struct { Message string `json:"message"` }
@@ -165,7 +165,7 @@ Parse and validate:
 ```go
 import (
   "fmt"
-  "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+  "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 )
 
 data := `id: demo\nversion: 1.0.0\nop: echo\ninputs: { message: "hi" }\n`

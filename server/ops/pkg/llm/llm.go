@@ -6,28 +6,28 @@ import (
 	"fmt"
 	"reflect"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // LLMTaskInput represents the input parameters for the LLMTask activity
 type LLMTaskInput struct {
 	// Required fields
-	Prompt       string `json:"prompt"`
-	ModelName    string `json:"modelName"`
-	AdapterName  string `json:"adapterName"` // e.g., "openai", "anthropic", "bedrock"
-	
+	Prompt      string `json:"prompt"`
+	ModelName   string `json:"modelName"`
+	AdapterName string `json:"adapterName"` // e.g., "openai", "anthropic", "bedrock"
+
 	// Optional fields
-	SystemPrompt  string                 `json:"systemPrompt,omitempty"`
-	Temperature   float64                `json:"temperature,omitempty"`
-	MaxTokens     int                    `json:"maxTokens,omitempty"`
-	TopP          float64                `json:"topP,omitempty"`
-	StopSequences []string               `json:"stopSequences,omitempty"`
-	
+	SystemPrompt  string   `json:"systemPrompt,omitempty"`
+	Temperature   float64  `json:"temperature,omitempty"`
+	MaxTokens     int      `json:"maxTokens,omitempty"`
+	TopP          float64  `json:"topP,omitempty"`
+	StopSequences []string `json:"stopSequences,omitempty"`
+
 	// Response structure - if provided, will request JSON response format
 	// This should be a pointer to a struct with json tags
-	ResponseStructure interface{}          `json:"-"`
-	ResponseStructureJSON json.RawMessage    `json:"responseStructure,omitempty"`
-	
+	ResponseStructure     interface{}     `json:"-"`
+	ResponseStructureJSON json.RawMessage `json:"responseStructure,omitempty"`
+
 	// Additional metadata
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -36,10 +36,10 @@ type LLMTaskInput struct {
 type LLMTaskOutput struct {
 	// Response content - either structured data or plain text
 	Response interface{} `json:"response"`
-	
+
 	// Telemetry information
 	Telemetry LLMTelemetry `json:"telemetry"`
-	
+
 	// Model information
 	Model        string `json:"model"`
 	FinishReason string `json:"finishReason"`
@@ -59,17 +59,17 @@ var ModelPricing = map[string]struct {
 	OutputPricePer1K float64
 }{
 	// OpenAI models
-	"gpt-4":                   {InputPricePer1K: 0.03, OutputPricePer1K: 0.06},
-	"gpt-4-turbo":             {InputPricePer1K: 0.01, OutputPricePer1K: 0.03},
-	"gpt-3.5-turbo":           {InputPricePer1K: 0.0005, OutputPricePer1K: 0.0015},
-	
+	"gpt-4":         {InputPricePer1K: 0.03, OutputPricePer1K: 0.06},
+	"gpt-4-turbo":   {InputPricePer1K: 0.01, OutputPricePer1K: 0.03},
+	"gpt-3.5-turbo": {InputPricePer1K: 0.0005, OutputPricePer1K: 0.0015},
+
 	// Anthropic models
-	"claude-3-opus":           {InputPricePer1K: 0.015, OutputPricePer1K: 0.075},
-	"claude-3-sonnet":         {InputPricePer1K: 0.003, OutputPricePer1K: 0.015},
-	"claude-3-haiku":          {InputPricePer1K: 0.00025, OutputPricePer1K: 0.00125},
-	
+	"claude-3-opus":   {InputPricePer1K: 0.015, OutputPricePer1K: 0.075},
+	"claude-3-sonnet": {InputPricePer1K: 0.003, OutputPricePer1K: 0.015},
+	"claude-3-haiku":  {InputPricePer1K: 0.00025, OutputPricePer1K: 0.00125},
+
 	// Bedrock models (example pricing)
-	"anthropic.claude-v2":     {InputPricePer1K: 0.008, OutputPricePer1K: 0.024},
+	"anthropic.claude-v2":          {InputPricePer1K: 0.008, OutputPricePer1K: 0.024},
 	"amazon.titan-text-express-v1": {InputPricePer1K: 0.0002, OutputPricePer1K: 0.0006},
 }
 
@@ -108,19 +108,19 @@ func LLMTask(ctx context.Context, input LLMTaskInput, registry llmadapters.Regis
 	if input.ResponseStructure != nil {
 		responseStruct = input.ResponseStructure
 		config.ResponseFormat = "json"
-		
+
 		// Add schema information to the prompt
 		schemaJSON, err := generateJSONSchema(input.ResponseStructure)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate JSON schema: %w", err)
 		}
-		
-		input.Prompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s", 
+
+		input.Prompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s",
 			input.Prompt, string(schemaJSON))
 	} else if len(input.ResponseStructureJSON) > 0 {
 		// If JSON schema was provided directly
 		config.ResponseFormat = "json"
-		input.Prompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s", 
+		input.Prompt = fmt.Sprintf("%s\n\nPlease respond with a JSON object that matches this schema:\n%s",
 			input.Prompt, string(input.ResponseStructureJSON))
 	}
 
@@ -179,14 +179,14 @@ func calculateCost(model string, usage llmadapters.Usage) float64 {
 
 	inputCost := float64(usage.PromptTokens) / 1000.0 * pricing.InputPricePer1K
 	outputCost := float64(usage.CompletionTokens) / 1000.0 * pricing.OutputPricePer1K
-	
+
 	return inputCost + outputCost
 }
 
 // generateJSONSchema generates a simple JSON schema from a Go struct
 func generateJSONSchema(v interface{}) ([]byte, error) {
 	schema := map[string]interface{}{
-		"type": "object",
+		"type":       "object",
 		"properties": make(map[string]interface{}),
 	}
 

@@ -65,10 +65,10 @@ import (
     "context"
     "path/filepath"
     "time"
-    "github.com/vibethis/server/recipe-worker/pkg/worker"
-    "github.com/vibethis/server/llm/adapters"
-    "github.com/vibethis/server/git/pkg/common"
-    "github.com/vibethis/server/git/internal/commands"
+    "github.com/colony2/server/recipe-worker/pkg/worker"
+    "github.com/colony2/server/llm/adapters"
+    "github.com/colony2/server/git/pkg/common"
+    "github.com/colony2/server/git/internal/commands"
 )
 
 // GitFileCollectorConfig provides configuration for the activity
@@ -399,7 +399,7 @@ func (a *GitFileCollectorActivity) collectFiles(
 package activity
 
 import (
-    "github.com/vibethis/server/git/pkg/gitcollector"
+    "github.com/colony2/server/git/pkg/gitcollector"
 )
 
 // RegisterGitActivities registers all git-related activities

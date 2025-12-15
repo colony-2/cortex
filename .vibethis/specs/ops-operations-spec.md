@@ -35,8 +35,8 @@ import (
     "context"
     "os/exec"
     "path/filepath"
-    "github.com/vibethis/server/ops/pkg/types"
-    "github.com/vibethis/server/llm/adapters"
+    "github.com/colony2/server/ops/pkg/types"
+    "github.com/colony2/server/llm/adapters"
 )
 
 // GitFileCollectorConfig provides configuration for the activity
@@ -193,8 +193,8 @@ package llm
 
 import (
     "context"
-    "github.com/vibethis/server/ops/pkg/types"
-    "github.com/vibethis/server/llm/adapters"
+    "github.com/colony2/server/ops/pkg/types"
+    "github.com/colony2/server/llm/adapters"
 )
 
 // LLMInferenceConfig provides configuration
@@ -320,10 +320,10 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 package registry
 
 import (
-    "github.com/vibethis/server/ops/pkg/types"
-    "github.com/vibethis/server/ops/pkg/git"
-    "github.com/vibethis/server/ops/pkg/llm"
-    "github.com/vibethis/server/ops/pkg/command"
+    "github.com/colony2/server/ops/pkg/types"
+    "github.com/colony2/server/ops/pkg/git"
+    "github.com/colony2/server/ops/pkg/llm"
+    "github.com/colony2/server/ops/pkg/command"
 )
 
 // GetAllActivities returns all available activities for registration
@@ -354,7 +354,7 @@ func RegisterAll(worker Worker) {
 package worker
 
 import (
-    "github.com/vibethis/server/ops/pkg/registry"
+    "github.com/colony2/server/ops/pkg/registry"
 )
 
 func (w *Worker) Start() error {

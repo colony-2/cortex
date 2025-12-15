@@ -1,11 +1,11 @@
 package cell
 
 import (
-	"github.com/divisive-ai/vibethis/server/cell/internal/idgen"
-	"github.com/divisive-ai/vibethis/server/cell/internal/model"
-	"github.com/divisive-ai/vibethis/server/cell/internal/service"
-	"github.com/divisive-ai/vibethis/server/cell/internal/store"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/cell/internal/idgen"
+	"github.com/colony-2/colony2/server/cell/internal/model"
+	"github.com/colony-2/colony2/server/cell/internal/service"
+	"github.com/colony-2/colony2/server/cell/internal/store"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 	"gorm.io/gorm"
 )
 

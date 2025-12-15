@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	invschema "github.com/invopop/jsonschema"
 	jsonschemav6 "github.com/santhosh-tekuri/jsonschema/v6"
 	yaml "gopkg.in/yaml.v3"
@@ -172,9 +172,9 @@ func parseDurationOrZero(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// DiscoverAndRegister finds extension ops under .vibethis/ops and registers them.
+// DiscoverAndRegister finds extension ops under .colony2/ops and registers them.
 // The search ascends from startDir to root looking for a project root that contains
-// a .vibethis/ops directory. If startDir is empty, os.Getwd() is used.
+// a .colony2/ops directory. If startDir is empty, os.Getwd() is used.
 func DiscoverAndRegister(startDir string) ([]ops.RegisterableOp, error) {
 	opsFound, err := Discover(startDir)
 	if err != nil {
@@ -197,7 +197,7 @@ func Discover(startDir string) ([]ops.RegisterableOp, error) {
 		return nil, nil
 	}
 
-	base := filepath.Join(projectRoot, ".vibethis", "ops")
+	base := filepath.Join(projectRoot, ".colony2", "ops")
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -352,14 +352,14 @@ func findProjectRoot(startDir string) (string, error) {
 
 	// If env var is provided, prefer it
 	if pr := strings.TrimSpace(os.Getenv("VIBETHIS_PROJECT_ROOT")); pr != "" {
-		if _, err := os.Stat(filepath.Join(pr, ".vibethis")); err == nil {
+		if _, err := os.Stat(filepath.Join(pr, ".colony2")); err == nil {
 			return pr, nil
 		}
 	}
 
 	dir := startDir
 	for {
-		if _, err := os.Stat(filepath.Join(dir, ".vibethis", "ops")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, ".colony2", "ops")); err == nil {
 			return dir, nil
 		}
 		parent := filepath.Dir(dir)

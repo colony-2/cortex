@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
-	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
-	store "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
+	eventstore "github.com/colony-2/colony2/server/ticket/internal/store/events"
+	store "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
 	"gorm.io/gorm/clause"
 	"gorm.io/plugin/optimisticlock"
 )

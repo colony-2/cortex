@@ -2,7 +2,7 @@ package bolt
 
 import (
 	"context"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/core"
 	"os"
 	"testing"
 )

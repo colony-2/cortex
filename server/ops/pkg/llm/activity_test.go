@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func TestExecuteLLMTask(t *testing.T) {
@@ -56,15 +56,15 @@ func TestExecuteLLMTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
-	
+
 	if response != "Test response from activity" {
 		t.Errorf("Expected response 'Test response from activity', got %s", response)
 	}
-	
+
 	if output.Telemetry.TotalTokens != 40 {
 		t.Errorf("Expected 40 total tokens, got %d", output.Telemetry.TotalTokens)
 	}
-	
+
 	if output.Model != "gpt-3.5-turbo" {
 		t.Errorf("Expected model 'gpt-3.5-turbo', got %s", output.Model)
 	}
@@ -78,7 +78,7 @@ func TestExecuteLLMTask_WithResponseSchema(t *testing.T) {
 			if !contains(prompt, "JSON object") {
 				t.Error("Expected prompt to include JSON schema instruction")
 			}
-			
+
 			return llmadapters.Response{
 				Content: `{"status": "success", "count": 42}`,
 				Usage: llmadapters.Usage{
@@ -131,11 +131,11 @@ func TestExecuteLLMTask_WithResponseSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
-	
+
 	if responseMap["status"] != "success" {
 		t.Errorf("Expected status 'success', got %v", responseMap["status"])
 	}
-	
+
 	count, ok := responseMap["count"].(float64)
 	if !ok || count != 42 {
 		t.Errorf("Expected count 42, got %v", responseMap["count"])
@@ -145,7 +145,7 @@ func TestExecuteLLMTask_WithResponseSchema(t *testing.T) {
 func TestExecuteLLMTask_RegistryNotInitialized(t *testing.T) {
 	// Clear the registry
 	SetRegistry(nil)
-	
+
 	input := LLMActivity{
 		Prompt:      "Test",
 		ModelName:   "gpt-3.5-turbo",
@@ -157,7 +157,7 @@ func TestExecuteLLMTask_RegistryNotInitialized(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when registry is not initialized")
 	}
-	
+
 	expectedError := "LLM registry not initialized"
 	if !contains(err.Error(), expectedError) {
 		t.Errorf("Expected error containing '%s', got '%s'", expectedError, err.Error())
@@ -214,7 +214,7 @@ func TestGetRegistry(t *testing.T) {
 	// Create a test registry
 	registry := llmadapters.NewRegistry()
 	SetRegistry(registry)
-	
+
 	// Get registry
 	retrieved := GetRegistry()
 	if retrieved != registry {

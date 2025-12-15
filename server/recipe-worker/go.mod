@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/recipe-worker
+module github.com/colony-2/colony2/server/recipe-worker
 
 go 1.25.5
 

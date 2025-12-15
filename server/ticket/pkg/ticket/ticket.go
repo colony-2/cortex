@@ -1,12 +1,12 @@
 package ticket
 
 import (
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
-	internalservice "github.com/divisive-ai/vibethis/server/ticket/internal/service"
-	eventstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/events"
-	internalstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
+	internalservice "github.com/colony-2/colony2/server/ticket/internal/service"
+	eventstore "github.com/colony-2/colony2/server/ticket/internal/store/events"
+	internalstore "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
 	"gorm.io/gorm"
 )
 

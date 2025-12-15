@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/cortex/internal/shared"
+	"github.com/colony-2/colony2/server/cortex/internal/shared"
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

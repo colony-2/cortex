@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	adapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func main() {
 	fmt.Println("=== Error Handling Examples ===")
-	
+
 	// Create adapter
 	adapter, err := adapters.NewOpenAIAdapter("")
 	if err != nil {
@@ -64,13 +64,13 @@ func handleRateLimiting(ctx context.Context, adapter adapters.Adapter) {
 				// Retry
 				response, err = adapter.Generate(ctx, fmt.Sprintf("Count to %d", i+1), config)
 			}
-			
+
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				continue
 			}
 		}
-		
+
 		fmt.Printf("Response %d: %s\n", i+1, truncate(response.Content, 50))
 	}
 }
@@ -78,7 +78,7 @@ func handleRateLimiting(ctx context.Context, adapter adapters.Adapter) {
 func handleContextLength(ctx context.Context, adapter adapters.Adapter) {
 	// Create a very long prompt
 	longPrompt := strings.Repeat("This is a very long text. ", 10000)
-	
+
 	config := adapters.Config{
 		Model:     "gpt-3.5-turbo",
 		MaxTokens: 100,
@@ -88,7 +88,7 @@ func handleContextLength(ctx context.Context, adapter adapters.Adapter) {
 	if err != nil {
 		if errors.Is(err, adapters.ErrContextLengthExceeded) {
 			fmt.Println("Context too long! Reducing prompt size...")
-			
+
 			// Retry with shorter prompt
 			shortPrompt := "Summarize: " + longPrompt[:1000] + "..."
 			response, err := adapter.Generate(ctx, shortPrompt, config)
@@ -115,7 +115,7 @@ func handleInvalidConfig(ctx context.Context, adapter adapters.Adapter) {
 	if err != nil {
 		if errors.Is(err, adapters.ErrInvalidConfig) {
 			fmt.Println("Invalid config detected! Fixing...")
-			
+
 			// Fix configuration
 			config.Temperature = 0.7
 			response, err := adapter.Generate(ctx, "Hello", config)
@@ -139,7 +139,7 @@ func handleModelError(ctx context.Context, adapter adapters.Adapter) {
 	if err != nil {
 		if errors.Is(err, adapters.ErrModelNotSupported) {
 			fmt.Println("Model not supported! Falling back...")
-			
+
 			// Fallback to a known model
 			config.Model = "gpt-3.5-turbo"
 			response, err := adapter.Generate(ctx, "Hello", config)
@@ -169,7 +169,7 @@ func retryWithBackoff(ctx context.Context, adapter adapters.Adapter) {
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		response, err = adapter.Generate(ctx, prompt, config)
-		
+
 		if err == nil {
 			fmt.Printf("Success on attempt %d\n", attempt+1)
 			fmt.Printf("Response: %s\n", truncate(response.Content, 100))

@@ -55,7 +55,7 @@ Extend the `workflowctl.WorkflowControl` abstraction with a `StartRecipe` entry 
   ```
 - Keep the existing struct tags so `server/ticket` continues to embed `Actor` into GORM models without extra glue.
 - Update `server/ticket/internal/model` to import `identity` and alias (`type Actor = identity.Actor`, etc.) so the public ticket API is unchanged. Update helper constructors to delegate to the new package.
-- Adjust go.mod files: add a `require github.com/divisive-ai/vibethis/server/recipe-core v0.0.0` entry in `server/ticket`, with a local `replace` mirroring existing patterns.
+- Adjust go.mod files: add a `require github.com/colony-2/colony2/server/recipe-core v0.0.0` entry in `server/ticket`, with a local `replace` mirroring existing patterns.
 
 ### 2. New StartRecipe API Surface & Context Contract
 - Extend the interface in `pkg/workflowctl/workflowctl.go`:

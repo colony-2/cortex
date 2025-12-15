@@ -3,7 +3,7 @@ package ops
 import (
 	"gorm.io/gorm"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 )
 
 // ServiceDependencies2 defines the typed dependencies exposed to management services

@@ -5,11 +5,11 @@ Go library for rwshim read/write interception. Hosts Unix socket server, launche
 ## Core API
 
 The public API is available through two import paths:
-- `github.com/divisive-ai/vibethis/rwshim/rwshimgo` - Backwards compatibility
-- `github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim` - Recommended
+- `github.com/colony-2/colony2/rwshim/rwshimgo` - Backwards compatibility
+- `github.com/colony-2/colony2/rwshim/rwshimgo/pkg/rwshim` - Recommended
 
 ```go
-import "github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
+import "github.com/colony-2/colony2/rwshim/rwshimgo/pkg/rwshim"
 
 // Start monitor
 monitor := rwshim.NewMonitor(rwshim.AllowAll)

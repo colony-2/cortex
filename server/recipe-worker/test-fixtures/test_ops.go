@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 type testWriteFileInput struct {

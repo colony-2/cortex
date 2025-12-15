@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func TestEnhancedLLMTask_SimpleMode(t *testing.T) {
@@ -16,7 +16,7 @@ func TestEnhancedLLMTask_SimpleMode(t *testing.T) {
 			if config.SystemPrompt != "You are a helpful assistant" {
 				t.Errorf("Expected system prompt 'You are a helpful assistant', got '%s'", config.SystemPrompt)
 			}
-			
+
 			return llmadapters.Response{
 				Content: "Simple mode response",
 				Usage: llmadapters.Usage{
@@ -75,17 +75,17 @@ func TestEnhancedLLMTask_PersonaMode(t *testing.T) {
 			if !contains(config.SystemPrompt, expectedStart) {
 				t.Errorf("System prompt should start with '%s', got '%s'", expectedStart, config.SystemPrompt)
 			}
-			
+
 			// Check for capabilities in system prompt
 			if !contains(config.SystemPrompt, "web_search") {
 				t.Error("System prompt should contain capability 'web_search'")
 			}
-			
+
 			// Check for goals in system prompt
 			if !contains(config.SystemPrompt, "Find comprehensive, accurate information") {
 				t.Error("System prompt should contain goal")
 			}
-			
+
 			return llmadapters.Response{
 				Content: "Research analysis complete",
 				Usage: llmadapters.Usage{
@@ -158,7 +158,7 @@ func TestEnhancedLLMTask_TechnicalWriterPersona(t *testing.T) {
 			if !contains(config.SystemPrompt, "Technical Documentation Specialist") {
 				t.Error("System prompt should contain 'Technical Documentation Specialist'")
 			}
-			
+
 			return llmadapters.Response{
 				Content: "# API Documentation\n\nThis API provides...",
 				Usage: llmadapters.Usage{
@@ -235,12 +235,12 @@ func TestEnhancedLLMTask_CustomerSupportPersona(t *testing.T) {
 			if !contains(config.SystemPrompt, "Customer Support Specialist") {
 				t.Error("System prompt should contain 'Customer Support Specialist'")
 			}
-			
+
 			// Check for empathetic communication capability
 			if !contains(config.SystemPrompt, "empathetic_communication") {
 				t.Error("System prompt should contain 'empathetic_communication' capability")
 			}
-			
+
 			return llmadapters.Response{
 				Content: "I understand your concern about the billing issue. Let me help you resolve this right away.",
 				Usage: llmadapters.Usage{
@@ -318,7 +318,7 @@ func TestEnhancedLLMTask_WithFileContext(t *testing.T) {
 				// Note: In the actual implementation, files would be included
 				// For this test, we're just checking the flow works
 			}
-			
+
 			return llmadapters.Response{
 				Content: `{"review": "Code looks good", "issues": []}`,
 				Usage: llmadapters.Usage{
@@ -483,7 +483,7 @@ func TestEnhancedLLMTask_BackwardCompatibility(t *testing.T) {
 			if config.SystemPrompt != "Original system prompt" {
 				t.Errorf("Expected system prompt 'Original system prompt', got '%s'", config.SystemPrompt)
 			}
-			
+
 			return llmadapters.Response{
 				Content: "Backward compatible response",
 				Usage: llmadapters.Usage{

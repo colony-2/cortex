@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	adapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func main() {
@@ -63,7 +63,7 @@ func openAIExample() error {
 
 	fmt.Printf("Response: %s\n", response.Content)
 	fmt.Printf("Tokens used: %d\n", response.Usage.TotalTokens)
-	
+
 	return nil
 }
 
@@ -93,7 +93,7 @@ func anthropicExample() error {
 	}
 
 	fmt.Printf("Haiku:\n%s\n", response.Content)
-	
+
 	return nil
 }
 
@@ -123,7 +123,7 @@ func geminiExample() error {
 	}
 
 	fmt.Printf("Response: %s\n", response.Content)
-	
+
 	return nil
 }
 
@@ -159,13 +159,13 @@ func registryExample() error {
 			Model:     "gpt-3.5-turbo",
 			MaxTokens: 50,
 		}
-		
+
 		ctx := context.Background()
 		response, err := adapter.Generate(ctx, "Say hello!", config)
 		if err != nil {
 			return err
 		}
-		
+
 		fmt.Printf("Registry response: %s\n", response.Content)
 	}
 

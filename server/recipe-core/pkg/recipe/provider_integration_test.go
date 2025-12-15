@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	rops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	rops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
 	yamlv3 "gopkg.in/yaml.v3"
 )

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/story"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"

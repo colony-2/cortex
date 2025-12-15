@@ -32,8 +32,8 @@ index abcdef0..1234567 100644
 -import (
 -    "fmt"
 -
--    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
--    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+-    "github.com/colony-2/colony2/server/recipe-core/pkg/cel"
+-    "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 -    "github.com/invopop/jsonschema"
 -    yamlv3 "gopkg.in/yaml.v3"
 -)
@@ -41,8 +41,8 @@ index abcdef0..1234567 100644
 +    "fmt"
 +    "reflect"
 +
-+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
-+    "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
++    "github.com/colony-2/colony2/server/recipe-core/pkg/cel"
++    "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 +    "github.com/invopop/jsonschema"
 +    yamlv3 "gopkg.in/yaml.v3"
 +)

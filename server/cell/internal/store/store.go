@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/cell/internal/model"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/cell/internal/model"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

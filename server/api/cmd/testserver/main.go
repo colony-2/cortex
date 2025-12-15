@@ -12,21 +12,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/colony-2/colony2/server/api/internal/opssetup"
+	"github.com/colony-2/colony2/server/api/pkg/web"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/graph/pkg/graph"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
+	"github.com/colony-2/colony2/server/registry/pkg/registry"
+	"github.com/colony-2/colony2/server/storage/pkg/storage"
+	"github.com/colony-2/colony2/server/ticket/pkg/database"
+	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/toy"
-	"github.com/divisive-ai/vibethis/server/api/internal/opssetup"
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-input/pkg/input"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/workflow"
-	"github.com/divisive-ai/vibethis/server/registry/pkg/registry"
-	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/database"
-	"github.com/divisive-ai/vibethis/server/ticket/pkg/ticket"
 	"github.com/spf13/cobra"
 )
 
@@ -58,8 +58,8 @@ func Execute() error {
 
 	rootCmd := &cobra.Command{
 		Use:   "testserver [path]",
-		Short: "Test server for vibethis e2e testing",
-		Long: `A standalone test server for vibethis that can be used for e2e testing.
+		Short: "Test server for colony2 e2e testing",
+		Long: `A standalone test server for colony2 that can be used for e2e testing.
 Supports memory storage and configurable node directories.`,
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
 		Args:    cobra.MaximumNArgs(1),
@@ -82,7 +82,7 @@ Supports memory storage and configurable node directories.`,
 	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist (always uses memory storage)")
 	rootCmd.Flags().StringSliceVar(&corsOrigins, "cors-origins", []string{"http://localhost:3000"}, "Allowed CORS origins")
 	rootCmd.Flags().StringVar(&staticPath, "static", "", "Path to static files (leave empty to disable)")
-	rootCmd.Flags().StringVar(&storagePath, "storage", ".vibethis", "Path to storage directory (ignored if --memory is true)")
+	rootCmd.Flags().StringVar(&storagePath, "storage", ".colony2", "Path to storage directory (ignored if --memory is true)")
 
 	return rootCmd.Execute()
 }
@@ -110,7 +110,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		}
 		fmt.Printf("Using file storage at: %s\n", absStoragePath)
 		store, err = storage.NewBoltStorage(storage.Config{
-			DatabasePath: filepath.Join(absStoragePath, "vibethis.db"),
+			DatabasePath: filepath.Join(absStoragePath, "colony2.db"),
 			ReadOnly:     false,
 		})
 		if err != nil {
@@ -118,7 +118,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		}
 	}
 
-	ticketFallback := filepath.Join(os.TempDir(), "vibethis-ticket.db")
+	ticketFallback := filepath.Join(os.TempDir(), "colony2-ticket.db")
 	if absStoragePath != "" {
 		ticketFallback = filepath.Join(absStoragePath, "ticket.db")
 	}

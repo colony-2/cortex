@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Badge, Empty, Tabs } from 'antd';
 import { FormOutlined } from '@ant-design/icons';
-import type { DependencyCell } from '@vibethis/shared';
-import { inputActivityService } from '@vibethis/shared';
+import type { DependencyCell } from '@colony2/shared';
+import { inputActivityService } from '@colony2/shared';
 import InputFormsTab from './InputFormsTab';
 
 interface SidePanelProps {

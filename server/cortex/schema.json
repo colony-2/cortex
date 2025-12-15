@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe/recipe",
+  "$id": "https://github.com/colony-2/colony2/server/recipe-core/pkg/recipe/recipe",
   "$defs": {
     "Node": {
       "oneOf": [

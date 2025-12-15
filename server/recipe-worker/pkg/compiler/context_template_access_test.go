@@ -7,9 +7,9 @@ import (
 	"context"
 	"testing"
 
-	recipeops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	gitrecipe "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	gitrecipe "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )

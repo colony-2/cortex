@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // mockAdapter implements llmadapters.Adapter for testing
@@ -93,9 +93,9 @@ func TestLLMTask_TextResponse(t *testing.T) {
 func TestLLMTask_StructuredResponse(t *testing.T) {
 	// Define a test structure
 	type TestResponse struct {
-		Name    string `json:"name"`
-		Age     int    `json:"age"`
-		Active  bool   `json:"active"`
+		Name   string `json:"name"`
+		Age    int    `json:"age"`
+		Active bool   `json:"active"`
 	}
 
 	// Create mock adapter that returns JSON
@@ -105,7 +105,7 @@ func TestLLMTask_StructuredResponse(t *testing.T) {
 			if config.ResponseFormat != "json" {
 				t.Error("Expected ResponseFormat to be 'json'")
 			}
-			
+
 			return llmadapters.Response{
 				Content: `{"name": "John Doe", "age": 30, "active": true}`,
 				Usage: llmadapters.Usage{
@@ -214,17 +214,17 @@ func TestLLMTask_JSONSchemaResponse(t *testing.T) {
 	if !ok {
 		t.Fatal("Response is not an interface{}")
 	}
-	
+
 	// Convert to map for verification
 	respJSON, _ := json.Marshal(resp)
 	var respMap map[string]interface{}
 	json.Unmarshal(respJSON, &respMap)
-	
+
 	items, ok := respMap["items"].([]interface{})
 	if !ok || len(items) != 2 {
 		t.Error("Expected items array with 2 elements")
 	}
-	
+
 	count, ok := respMap["count"].(float64) // JSON numbers are float64
 	if !ok || count != 2 {
 		t.Error("Expected count to be 2")
@@ -349,14 +349,14 @@ func TestLLMTask_ValidationErrors(t *testing.T) {
 
 func TestGenerateJSONSchema(t *testing.T) {
 	type TestStruct struct {
-		Name     string   `json:"name"`
-		Age      int      `json:"age"`
-		Email    string   `json:"email,omitempty"`
-		Tags     []string `json:"tags"`
-		Active   bool     `json:"active"`
+		Name     string                 `json:"name"`
+		Age      int                    `json:"age"`
+		Email    string                 `json:"email,omitempty"`
+		Tags     []string               `json:"tags"`
+		Active   bool                   `json:"active"`
 		Metadata map[string]interface{} `json:"metadata,omitempty"`
-		ignored  string   // No JSON tag
-		Ignored2 string   `json:"-"` // Explicitly ignored
+		ignored  string                 // No JSON tag
+		Ignored2 string                 `json:"-"` // Explicitly ignored
 	}
 
 	schema, err := generateJSONSchema(&TestStruct{})
@@ -401,7 +401,7 @@ func TestGenerateJSONSchema(t *testing.T) {
 	if !ok {
 		t.Fatal("Required fields not found or wrong type")
 	}
-	
+
 	// Should have name, age, tags, active (not email or metadata which have omitempty)
 	if len(required) != 4 {
 		t.Errorf("Expected 4 required fields, got %d", len(required))

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Git module provides comprehensive Git repository operations for the vibethis system. It offers both direct repository management through the Repository interface and specialized activities for file collection, commit persistence, and shallow cloning operations that integrate with the recipe workflow system.
+The Git module provides comprehensive Git repository operations for the colony2 system. It offers both direct repository management through the Repository interface and specialized activities for file collection, commit persistence, and shallow cloning operations that integrate with the recipe workflow system.
 
 ## Architecture
 

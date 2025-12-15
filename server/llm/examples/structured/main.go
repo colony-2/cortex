@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	adapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // Define a struct for our expected response

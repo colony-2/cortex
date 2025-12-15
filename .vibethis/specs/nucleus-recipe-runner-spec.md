@@ -148,7 +148,7 @@ func (n *Nucleus) ConfigureRecipePaths() []string {
     paths := []string{}
     
     // Cell-specific recipes (highest priority)
-    cellRecipePath := fmt.Sprintf("/cells/%s/.vibethis/recipes", n.cellContext.CellID)
+    cellRecipePath := fmt.Sprintf("/cells/%s/.colony2/recipes", n.cellContext.CellID)
     if exists(cellRecipePath) {
         paths = append(paths, cellRecipePath)
     }

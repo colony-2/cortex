@@ -2,7 +2,7 @@
 
 ## Overview
 
-The storage module provides persistent and in-memory storage implementations for the vibethis system. It manages cell positions and container ID mappings with support for both BoltDB-backed persistence and memory-based storage for testing.
+The storage module provides persistent and in-memory storage implementations for the colony2 system. It manages cell positions and container ID mappings with support for both BoltDB-backed persistence and memory-based storage for testing.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ func NewMemoryStorage() core.Storage
 
 ### BoltDB Storage
 ```go
-import "github.com/divisive-ai/vibethis/server/storage"
+import "github.com/colony-2/colony2/server/storage"
 
 // Create persistent storage
 config := storage.Config{
@@ -115,14 +115,14 @@ err = store.SavePosition(ctx, pos) // Returns "storage is read-only" error
 ## Configuration
 
 ### BoltDB Configuration
-- `DatabasePath`: Directory where `.vibethis.db` file will be created
+- `DatabasePath`: Directory where `.colony2.db` file will be created
 - `ReadOnly`: Set to `true` to prevent write operations
 - Database uses two buckets: `positions` and `container_ids`
 - File permissions: 0600 (owner read/write only)
 
 ### Dependencies
 - `github.com/boltdb/bolt`: Embedded key-value database
-- `github.com/divisive-ai/vibethis/server/core`: Core types and interfaces
+- `github.com/colony-2/colony2/server/core`: Core types and interfaces
 
 ### Error Handling
 - Thread-safe operations with mutex protection

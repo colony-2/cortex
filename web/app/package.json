@@ -1,5 +1,5 @@
 {
-  "name": "@graph-visualizer/app",
+  "name": "@colony2/app",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
@@ -12,9 +12,9 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
-    "@graph-visualizer/kanban": "file:../kanban",
-    "@graph-visualizer/flowchart": "file:../flowchart",
-    "@graph-visualizer/shared": "file:../shared",
+    "@colony2/kanban": "file:../kanban",
+    "@colony2/flowchart": "file:../flowchart",
+    "@colony2/shared": "file:../shared",
     "@monaco-editor/react": "^4.6.0",
     "@remix-run/router": "^1.23.0",
     "@rjsf/core": "^5.17.1",

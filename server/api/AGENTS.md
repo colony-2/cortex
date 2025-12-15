@@ -1,7 +1,7 @@
 # server/api
 
 ## Overview
-The server/api module provides the HTTP REST API server for the vibethis application. It serves as the primary interface between frontend clients and backend services, handling graph visualization, file management, Git operations, and container orchestration for component cells (directories with devcontainer support).
+The server/api module provides the HTTP REST API server for the colony2 application. It serves as the primary interface between frontend clients and backend services, handling graph visualization, file management, Git operations, and container orchestration for component cells (directories with devcontainer support).
 
 ## Architecture
 
@@ -85,9 +85,9 @@ func (h *Handlers) UpdateDevcontainer(w http.ResponseWriter, r *http.Request)
 ### Creating and Starting Server
 ```go
 import (
-    "github.com/divisive-ai/vibethis/server/api/pkg/web"
-    "github.com/divisive-ai/vibethis/server/storage/pkg/storage"
-    "github.com/divisive-ai/vibethis/server/graph/pkg/graph"
+    "github.com/colony-2/colony2/server/api/pkg/web"
+    "github.com/colony-2/colony2/server/storage/pkg/storage"
+    "github.com/colony-2/colony2/server/graph/pkg/graph"
     // ... other imports
 )
 

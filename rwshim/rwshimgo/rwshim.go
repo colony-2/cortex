@@ -2,7 +2,7 @@
 // All functionality is now in the pkg/rwshim package.
 package rwshimgo
 
-import "github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
+import "github.com/colony-2/colony2/rwshim/rwshimgo/pkg/rwshim"
 
 // Re-export all public types and functions for backwards compatibility
 

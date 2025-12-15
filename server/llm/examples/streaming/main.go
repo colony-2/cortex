@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	adapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	adapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 func main() {
@@ -50,7 +50,7 @@ func streamingExample(ctx context.Context) error {
 	prompt := "Tell me a short story about a robot learning to paint"
 	fmt.Printf("Prompt: %s\n\n", prompt)
 	fmt.Println("Response:")
-	
+
 	tokenChan, err := adapter.StreamGenerate(ctx, prompt, config)
 	if err != nil {
 		return fmt.Errorf("failed to start stream: %w", err)
@@ -78,6 +78,6 @@ func streamingExample(ctx context.Context) error {
 	}
 
 	fmt.Printf("\n\nStreaming complete. Tokens received: %d\n", totalTokens)
-	
+
 	return nil
 }

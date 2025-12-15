@@ -6,9 +6,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/client"
-	"github.com/divisive-ai/vibethis/server/nucleus/internal/config"
-	recipeworker "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+	"github.com/colony-2/colony2/server/nucleus/internal/client"
+	"github.com/colony-2/colony2/server/nucleus/internal/config"
+	recipeworker "github.com/colony-2/colony2/server/recipe-worker/pkg/worker"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )

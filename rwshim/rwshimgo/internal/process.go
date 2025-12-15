@@ -13,12 +13,12 @@ import (
 
 // ProcessImpl represents a monitored process
 type ProcessImpl struct {
-	cmd        *exec.Cmd
-	monitor    *MonitorImpl
-	shimPath   string
-	mu         sync.Mutex
-	started    bool
-	finished   chan struct{}
+	cmd      *exec.Cmd
+	monitor  *MonitorImpl
+	shimPath string
+	mu       sync.Mutex
+	started  bool
+	finished chan struct{}
 }
 
 // ProcessOption configures process execution
@@ -74,7 +74,7 @@ func NewProcess(ctx context.Context, m *MonitorImpl, command string, args []stri
 	}
 
 	cmd := exec.CommandContext(ctx, command, args...)
-	
+
 	// Copy current environment
 	cmd.Env = append([]string{}, os.Environ()...)
 
@@ -161,7 +161,7 @@ func (p *ProcessImpl) Wait() error {
 		return fmt.Errorf("process not started")
 	}
 	p.mu.Unlock()
-	
+
 	<-p.finished
 	if p.cmd.ProcessState.ExitCode() == 0 {
 		return nil
@@ -228,8 +228,8 @@ func findShimLibrary() (string, error) {
 		"./intercept.so",
 		"../clib/intercept.so",
 		"./clib/intercept.so",
-		"/usr/local/lib/vibethis/intercept.so",
-		"/usr/lib/vibethis/intercept.so",
+		"/usr/local/lib/colony2/intercept.so",
+		"/usr/lib/colony2/intercept.so",
 	}
 
 	// Also check if we're on macOS and look for .dylib
@@ -237,7 +237,7 @@ func findShimLibrary() (string, error) {
 		dylibPaths := make([]string, 0, len(searchPaths)*2)
 		for _, path := range searchPaths {
 			dylibPaths = append(dylibPaths, path)
-			dylibPaths = append(dylibPaths, filepath.Join(filepath.Dir(path), 
+			dylibPaths = append(dylibPaths, filepath.Join(filepath.Dir(path),
 				filepath.Base(path[:len(path)-3])+".dylib"))
 		}
 		searchPaths = dylibPaths
@@ -265,6 +265,6 @@ func findShimLibrary() (string, error) {
 
 // isDarwin checks if we're running on macOS
 func isDarwin() bool {
-	return os.Getenv("GOOS") == "darwin" || 
+	return os.Getenv("GOOS") == "darwin" ||
 		(os.Getenv("GOOS") == "" && filepath.Base(os.Args[0]) == "darwin")
 }

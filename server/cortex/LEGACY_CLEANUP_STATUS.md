@@ -7,7 +7,7 @@ This document catalogs all remaining TODOs, deprecations, and legacy references 
 ### ✅ COMPLETED - All critical TODOs have been addressed
 
 #### 1. Output Template Resolution - IMPLEMENTED
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/template.go`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/template.go`
 **Status**: ✅ Implemented  
 **Description**: Created comprehensive template resolution system with support for:
 - Simple variable references ({{ .nodes.X.outputs.Y }})
@@ -16,7 +16,7 @@ This document catalogs all remaining TODOs, deprecations, and legacy references 
 - Recursive resolution for nested structures
 
 #### 2. CEL Expression Evaluation - IMPLEMENTED
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/cel.go`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/cel.go`
 **Status**: ✅ Implemented  
 **Description**: Created full CEL evaluation system with:
 - Expression compilation and caching
@@ -26,12 +26,12 @@ This document catalogs all remaining TODOs, deprecations, and legacy references 
 - Standard recipe functions
 
 ### 3. Type Validation
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/validator.go:70`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/validator.go:70`
 **Status**: 🟡 Low Priority - Deferred  
 **Description**: Enhanced type validation for recipe inputs/outputs. Basic validation is working, advanced type checking can be added as needed.
 
 ### 4. Output Reference Validation  
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/validator.go:83`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/validator.go:83`
 **Status**: 🟡 Low Priority - Deferred  
 **Description**: Validation to ensure output templates reference valid step outputs. Basic validation is working, enhanced checks can be added later.
 
@@ -58,7 +58,7 @@ All test files have been updated to use the new shared components.
 **Description**: Successfully migrated from old `steps` format to new `sequence` format. File now validates correctly with the updated schema.
 
 ### 2. Schema Fix Specification
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/schema-fix-spec-v2.md`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/schema-fix-spec-v2.md`
 - Contains references to old `Steps` field validation
 - Lines 124-135 describe step validation logic that's no longer applicable
 
@@ -80,7 +80,7 @@ All test files have been updated to use the new shared components.
 ## Critical Command Infrastructure Issues
 
 ### 1. Schema Command - Fixed
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/schema.go`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/schema.go`
 
 **Status**: ✅ **FIXED**
 
@@ -97,7 +97,7 @@ All test files have been updated to use the new shared components.
 - `./cortex validate test-recipe.yaml` successfully validates recipes using the generated schema
 
 ### 2. Validate Command - Verified Working
-**Location**: `/Users/jnadeau/src/vibethis/server/cortex/cmd/cortex/validate.go`
+**Location**: `/Users/jnadeau/src/colony2/server/cortex/cmd/cortex/validate.go`
 
 **Status**: ✅ **VERIFIED WORKING**
 
@@ -136,28 +136,28 @@ All test files have been updated to use the new shared components.
 During the legacy removal refactoring, several test files were disabled. All critical test coverage has now been restored with new comprehensive test files:
 
 #### 1. Complex CEL Expression Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/cel_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/cel_test.go`
 **Status**: ✅ Restored
 - **Coverage**: Complex AND/OR conditions, nested object access, list operations, string operations, mathematical expressions, type checking, ternary operators
 - **Test scenarios**: 17+ comprehensive test cases covering all CEL expression patterns
 - **Features**: Expression validation, performance testing, scoped evaluation
 
 #### 2. State Transition Logic Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/state_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/state_test.go`
 **Status**: ✅ Restored
 - **Coverage**: State transition evaluation, CEL-based transitions, default transitions, complex conditions
 - **Test scenarios**: Complete state machine execution flows, diamond patterns, revision flows
 - **Features**: Transition evaluation with outputs, state machine simulation
 
 #### 3. Retry Loop Logic Testing - RESTORED  
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/state_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/state_test.go`
 **Status**: ✅ Restored
 - **Coverage**: Retry policy evaluation, max attempts checking, exponential backoff calculation
 - **Test scenarios**: Retry within limits, max attempts reached, backoff with coefficient, interval capping
 - **Features**: Complete retry policy simulation with time-based backoff
 
 #### 4. Step Dependency Management Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/dependency_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/dependency_test.go`
 **Status**: ✅ Restored with full implementation
 - **Coverage**: Dependency extraction, grouping, circular detection, topological sorting
 - **Test scenarios**: Independent nodes, linear chains, diamond patterns, complex mixed dependencies
@@ -165,21 +165,21 @@ During the legacy removal refactoring, several test files were disabled. All cri
 - **Features**: Execution order optimization, dependency graph visualization
 
 #### 5. Scoped Template Resolution Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/scope_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/scope_test.go`
 **Status**: ✅ Restored
 - **Coverage**: Nested scope resolution, scope isolation, parent/child relationships, sibling access control
 - **Test scenarios**: Local vs parent scope, deeply nested compositions (5+ levels), scope cleanup
 - **Features**: Complete ExecutionScope implementation with hierarchy management
 
 #### 6. Scoped CEL Evaluation Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/scope_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/scope_test.go`
 **Status**: ✅ Restored
 - **Coverage**: CEL evaluation within execution scopes, parent scope access in expressions
 - **Test scenarios**: Local scope evaluation, parent scope references, nested data access
 - **Features**: Scoped CEL evaluation with proper context isolation
 
 #### 7. Complex Nested Execution Testing - RESTORED
-**New location**: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/scope_test.go`
+**New location**: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/scope_test.go`
 **Status**: ✅ Restored
 - **Coverage**: Deeply nested composition execution with mixed node types
 - **Test scenarios**: Sequential > Parallel > States nesting, scope creation for all levels
@@ -189,13 +189,13 @@ During the legacy removal refactoring, several test files were disabled. All cri
 
 All previously missing functions have been implemented:
 
-1. **`GroupByDependencies()` function** - ✅ Implemented in `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/dependency.go`
-2. **`DependenciesMet()` function** - ✅ Implemented in `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/dependency.go`
+1. **`GroupByDependencies()` function** - ✅ Implemented in `/Users/jnadeau/src/colony2/server/cortex/internal/shared/dependency.go`
+2. **`DependenciesMet()` function** - ✅ Implemented in `/Users/jnadeau/src/colony2/server/cortex/internal/shared/dependency.go`
 3. **`evaluateTransitions()` function** - ✅ Already exists in statemachine/compiler.go:303
 4. **`shouldRetry()` function** - ✅ Already exists in statemachine/compiler.go:292
-5. **Template resolution** - ✅ Implemented in `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/template.go`
-6. **CEL evaluation** - ✅ Implemented in `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/cel.go`
-7. **Scoped execution** - ✅ Implemented in `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/scope_test.go`
+5. **Template resolution** - ✅ Implemented in `/Users/jnadeau/src/colony2/server/cortex/internal/shared/template.go`
+6. **CEL evaluation** - ✅ Implemented in `/Users/jnadeau/src/colony2/server/cortex/internal/shared/cel.go`
+7. **Scoped execution** - ✅ Implemented in `/Users/jnadeau/src/colony2/server/cortex/internal/shared/scope_test.go`
 
 ### ✅ **Test Coverage Recovery Complete**
 

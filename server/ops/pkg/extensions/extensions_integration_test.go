@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	ext "github.com/divisive-ai/vibethis/server/ops/pkg/extensions"
-	rops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	rec "github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
+	ext "github.com/colony-2/colony2/server/ops/pkg/extensions"
+	rops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	rec "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	yamlv3 "gopkg.in/yaml.v3"
 )
 
@@ -18,8 +18,8 @@ import (
 func TestExtension_Discover_Schema_And_YAMLValidation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Build .vibethis/ops/example/op.yaml
-	opDir := filepath.Join(tmpDir, ".vibethis", "ops", "example")
+	// Build .colony2/ops/example/op.yaml
+	opDir := filepath.Join(tmpDir, ".colony2", "ops", "example")
 	if err := os.MkdirAll(opDir, 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}

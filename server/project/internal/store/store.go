@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/project/internal/model"
+	"github.com/colony-2/colony2/server/project/internal/model"
 	"gorm.io/gorm"
 )
 

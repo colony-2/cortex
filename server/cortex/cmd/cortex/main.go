@@ -1,4 +1,4 @@
-// Package main provides the entry point for the vibethis application.
+// Package main provides the entry point for the colony2 application.
 package main
 
 import (
@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/cortex/internal/config"
-	"github.com/divisive-ai/vibethis/server/cortex/internal/setup"
+	"github.com/colony-2/colony2/server/cortex/internal/config"
+	"github.com/colony-2/colony2/server/cortex/internal/setup"
 
 	"github.com/spf13/cobra"
 )
@@ -95,10 +95,10 @@ managing dependencies, and working with development containers.`,
 	serverCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
 	// Add subcommands
-    rootCmd.AddCommand(serverCmd)
-    rootCmd.AddCommand(executeCmd)
-    rootCmd.AddCommand(validateCmd)
-    rootCmd.AddCommand(schemaCmd)
+	rootCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(executeCmd)
+	rootCmd.AddCommand(validateCmd)
+	rootCmd.AddCommand(schemaCmd)
 
 	return rootCmd.Execute()
 }

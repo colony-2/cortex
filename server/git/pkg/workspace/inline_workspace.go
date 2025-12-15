@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/gitcommit"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/git/pkg/gitcommit"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"go.temporal.io/sdk/temporal"
 )
 

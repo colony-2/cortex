@@ -31,7 +31,7 @@ type WorkerIntegrationTestSuite struct {
 ## Proposed Test Structure
 
 ### Location
-Create new test file: `/Users/jnadeau/src/vibethis/server/cortex/internal/shared/workflow_test.go`
+Create new test file: `/Users/jnadeau/src/colony2/server/cortex/internal/shared/workflow_test.go`
 
 ### Test Suite Structure
 

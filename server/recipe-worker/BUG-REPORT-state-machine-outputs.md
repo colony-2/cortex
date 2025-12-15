@@ -63,8 +63,8 @@ Both `simple-state-machine` and `state-machine-composition` tests expect the sam
 
 ## Files Affected
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/simple-state-machine.test.yaml` - expects generic result
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/state-machine-composition.test.yaml` - fails due to mismatch
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/simple-state-machine.test.yaml` - expects generic result
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/state-machine-composition.test.yaml` - fails due to mismatch
 
 ## Next Steps
 

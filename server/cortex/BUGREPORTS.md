@@ -7,7 +7,7 @@ VibeThis Bug Reports (from cortex)
 - Root Cause: The package `server/recipe-worker/pkg/ops` contains files `test_activities.go` and `test_activities_typed.go` that register many test activities in an `init()` function. These files are not test-only (they do not have `_test.go` suffix nor build tags), so they are compiled in normal builds. The `cortex` binary imports `server/recipe-worker/pkg/ops` via `cmd/cortex/execute.go` (needed for `ActivityRegistry`), which causes those `init()` functions to run at process startup, registering test ops into the global registry in `server/recipe-core/pkg/ops`.
 - Evidence:
   - `server/recipe-worker/pkg/ops/test_activities.go` and `test_activities_typed.go` call `recipeops.Register(...)` in `init()` for many synthetic ops.
-  - `server/cortex/cmd/cortex/execute.go` imports `github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops`, which triggers the init-time registrations when the cortex binary starts, even if the `execute` command isn’t used.
+  - `server/cortex/cmd/cortex/execute.go` imports `github.com/colony-2/colony2/server/recipe-worker/pkg/ops`, which triggers the init-time registrations when the cortex binary starts, even if the `execute` command isn’t used.
 - Recommended Fix (upstream – outside cortex):
   - Make test activities test-only by renaming to `_test.go` or adding an exclusion build tag, e.g. add to both files:
     //go:build testonly

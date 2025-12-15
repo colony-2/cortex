@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/recipe-history
+module github.com/colony-2/colony2/server/recipe-history
 
 go 1.25.5
 

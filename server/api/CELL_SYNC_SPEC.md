@@ -6,11 +6,11 @@ Expose an HTTP endpoint that lets the UI trigger a cell sync against a graph pro
 ## Current State (what we can reuse)
 - **Cell service sync**: `server/cell/internal/service/service.go` already implements `SyncFromPopulator(projectID, populator, opts)` and returns `SyncResult{Created, Updated, Restored, Deleted, Skipped, DependenciesUpdated, AffectedIDs}`.
 - **Moon populator**: `server/cell/pkg/cell/graph_populator.go` exposes `NewGraphPopulator(rootPath)` with the name `graph/moon`, backed by `graph.NewBuilder` (executes `moon project-graph --json`).
-- **API surface**: `api/openapi/vibethis-api.yaml` currently has cell CRUD only; no sync route. `server/api/internal/handlers/api.go` wires CRUD routes and has service + graph factory plumbing we can lean on. `server/openapi/pkg/openapi/generated.go` is generated from the spec via `codegen.yml`.
+- **API surface**: `api/openapi/colony2-api.yaml` currently has cell CRUD only; no sync route. `server/api/internal/handlers/api.go` wires CRUD routes and has service + graph factory plumbing we can lean on. `server/openapi/pkg/openapi/generated.go` is generated from the spec via `codegen.yml`.
 - **Project roots**: handlers fetch projects via `h.projects` (see list/get/update/delete); `GitRepoPath` is already used in the testserver’s `graphFactory` for graph building.
 
 ## Step 1 — Add OpenAPI route in `/src/api`
-Add a new path to `api/openapi/vibethis-api.yaml`:
+Add a new path to `api/openapi/colony2-api.yaml`:
 - **Path**: `POST /api/projects/{projectId}/cells/sync`
 - **Tag**: `Cells`
 - **Request body** (`application/json`, schema `CellSyncRequest`):

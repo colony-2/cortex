@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/storage
+module github.com/colony-2/colony2/server/storage
 
 toolchain go1.24.1
 

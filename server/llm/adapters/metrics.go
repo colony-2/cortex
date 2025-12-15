@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
+	f2 "github.com/colony-2/colony2/server/core/pkg/file"
 )
 
 // MetricsCollector tracks adapter usage

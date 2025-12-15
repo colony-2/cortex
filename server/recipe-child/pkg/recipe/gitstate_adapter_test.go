@@ -3,7 +3,7 @@ package recipe
 import (
 	"testing"
 
-	ops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	ops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/workflow"
 )

@@ -2,13 +2,13 @@
 
 ## Overview
 
-The rucc module is a placeholder Go library within the vibethis server ecosystem. Currently contains minimal scaffolding with no functional implementation, serving as a foundation for future development.
+The rucc module is a placeholder Go library within the colony2 server ecosystem. Currently contains minimal scaffolding with no functional implementation, serving as a foundation for future development.
 
 ## Architecture
 
 ### Core Components
 - **Package Structure**: Single `rucc` package with placeholder implementation
-- **Module Identity**: `github.com/divisive-ai/vibethis/server/rucc`
+- **Module Identity**: `github.com/colony-2/colony2/server/rucc`
 - **Build System**: Moon-based build configuration (`be-rucc` library target)
 
 ### Dependencies
@@ -35,7 +35,7 @@ func TestPlaceholder(t *testing.T)
 
 ### Basic Import
 ```go
-import "github.com/divisive-ai/vibethis/server/rucc"
+import "github.com/colony-2/colony2/server/rucc"
 
 // No functional APIs available yet
 ```
@@ -56,7 +56,7 @@ moon run be-rucc
 
 ### Module Configuration (go.mod)
 ```
-module github.com/divisive-ai/vibethis/server/rucc
+module github.com/colony-2/colony2/server/rucc
 go 1.24.1
 ```
 

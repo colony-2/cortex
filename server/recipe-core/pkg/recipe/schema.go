@@ -1,12 +1,12 @@
 package recipe
 
 import (
-    "encoding/json"
-    "fmt"
-    "log"
-    "reflect"
+	"encoding/json"
+	"fmt"
+	"log"
+	"reflect"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/invopop/jsonschema"
 )
 
@@ -48,84 +48,83 @@ func stripSchema(s *jsonschema.Schema) *jsonschema.Schema {
 }
 
 func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
-    nmd := r.Reflect(NodeMetadata{})
-    opList := ops.List()
-    items := make([]*jsonschema.Schema, 0, len(opList))
-    seen := make(map[string]bool)
-    for _, op := range opList {
-        opTypeName := op.GetMetadata().Type
-        if seen[opTypeName] {
-            continue
-        }
-        seen[opTypeName] = true
-        local, err := cloneSchema(nmd)
-        if err != nil {
-            return nil, err
-        }
-        opType := &jsonschema.Schema{}
-        opType.Const = opTypeName
-        opType.Type = "string"
-        local.Properties.Set("op", opType)
-        local.Type = "object"
-        chain := op.TaskChain()
-        if len(chain) == 0 {
-            return nil, fmt.Errorf("op %q has no task steps", op.GetName())
-        }
-        firstStep := chain[0]
-        inT := firstStep.InputType
-        if inT.Kind() != reflect.Struct {
-            if !(inT.Kind() == reflect.Pointer && inT.Elem().Kind() == reflect.Struct) {
-                return nil, fmt.Errorf("op %q inputs must be a struct, got %s", op.GetName(), inT.String())
-            }
-        }
-        var inputStruct interface{}
-        if inT.Kind() == reflect.Pointer {
-            inputStruct = reflect.New(inT.Elem()).Interface()
-        } else {
-            inputStruct = reflect.New(inT).Elem().Interface()
-        }
-        inputsSchema := stripSchema(r.Reflect(inputStruct))
+	nmd := r.Reflect(NodeMetadata{})
+	opList := ops.List()
+	items := make([]*jsonschema.Schema, 0, len(opList))
+	seen := make(map[string]bool)
+	for _, op := range opList {
+		opTypeName := op.GetMetadata().Type
+		if seen[opTypeName] {
+			continue
+		}
+		seen[opTypeName] = true
+		local, err := cloneSchema(nmd)
+		if err != nil {
+			return nil, err
+		}
+		opType := &jsonschema.Schema{}
+		opType.Const = opTypeName
+		opType.Type = "string"
+		local.Properties.Set("op", opType)
+		local.Type = "object"
+		chain := op.TaskChain()
+		if len(chain) == 0 {
+			return nil, fmt.Errorf("op %q has no task steps", op.GetName())
+		}
+		firstStep := chain[0]
+		inT := firstStep.InputType
+		if inT.Kind() != reflect.Struct {
+			if !(inT.Kind() == reflect.Pointer && inT.Elem().Kind() == reflect.Struct) {
+				return nil, fmt.Errorf("op %q inputs must be a struct, got %s", op.GetName(), inT.String())
+			}
+		}
+		var inputStruct interface{}
+		if inT.Kind() == reflect.Pointer {
+			inputStruct = reflect.New(inT.Elem()).Interface()
+		} else {
+			inputStruct = reflect.New(inT).Elem().Interface()
+		}
+		inputsSchema := stripSchema(r.Reflect(inputStruct))
 
-        // Tighten required fields for certain well-known ops without changing unmarshalling
-        switch opTypeName {
-        case "command_execution":
-            // Require 'run' when inputs are provided
-            if inputsSchema == nil {
-                inputsSchema = &jsonschema.Schema{Type: "object"}
-            }
-            inputsSchema.Required = append(inputsSchema.Required, "run")
+		// Tighten required fields for certain well-known ops without changing unmarshalling
+		switch opTypeName {
+		case "command_execution":
+			// Require 'run' when inputs are provided
+			if inputsSchema == nil {
+				inputsSchema = &jsonschema.Schema{Type: "object"}
+			}
+			inputsSchema.Required = append(inputsSchema.Required, "run")
 
-        case "recipe":
-            // Require config.recipe (worker's recipe-invocation op uses nested config.recipe)
-            cfg := &jsonschema.Schema{Type: "object"}
-            cfg.Properties = jsonschema.NewProperties()
-            cfg.Properties.Set("recipe", &jsonschema.Schema{Type: "string"})
-            cfg.Required = append(cfg.Required, "recipe")
+		case "recipe":
+			// Require config.recipe (worker's recipe-invocation op uses nested config.recipe)
+			cfg := &jsonschema.Schema{Type: "object"}
+			cfg.Properties = jsonschema.NewProperties()
+			cfg.Properties.Set("recipe", &jsonschema.Schema{Type: "string"})
+			cfg.Required = append(cfg.Required, "recipe")
 
-            is := &jsonschema.Schema{Type: "object"}
-            is.Properties = jsonschema.NewProperties()
-            is.Properties.Set("config", cfg)
-            is.Required = append(is.Required, "config")
-            inputsSchema = is
-        }
+			is := &jsonschema.Schema{Type: "object"}
+			is.Properties = jsonschema.NewProperties()
+			is.Properties.Set("config", cfg)
+			is.Required = append(is.Required, "config")
+			inputsSchema = is
+		}
 
-        local.Properties.Set("inputs", inputsSchema)
-        // 'inputs' are optional at YAML level; only 'op' is required
-        local.Required = append(local.Required, "op")
+		local.Properties.Set("inputs", inputsSchema)
+		// 'inputs' are optional at YAML level; only 'op' is required
+		local.Required = append(local.Required, "op")
 		local.Title = op.GetName()
 		items = append(items, local)
 	}
-    seq := stripSchema(r.Reflect(NodeSequence{}))
-    seq.Title = "Sequence"
-    // Require presence of the sequence key to avoid oneOf ambiguity
-    seq.Required = append(seq.Required, "sequence")
-    items = append(items, seq)
-    state := stripSchema(r.Reflect(NodeState{}))
-    state.Title = "State"
-    // Require presence of the state key to avoid oneOf ambiguity
-    state.Required = append(state.Required, "state")
-    items = append(items, state)
-
+	seq := stripSchema(r.Reflect(NodeSequence{}))
+	seq.Title = "Sequence"
+	// Require presence of the sequence key to avoid oneOf ambiguity
+	seq.Required = append(seq.Required, "sequence")
+	items = append(items, seq)
+	state := stripSchema(r.Reflect(NodeState{}))
+	state.Title = "State"
+	// Require presence of the state key to avoid oneOf ambiguity
+	state.Required = append(state.Required, "state")
+	items = append(items, state)
 
 	nodeopSchema := &jsonschema.Schema{
 		Title: "Node",
@@ -172,17 +171,17 @@ func oneOfSchema(name string, t ...any) *jsonschema.Schema {
 }
 
 func (Recipe) JSONSchema() *jsonschema.Schema {
-    // Build a OneOf with required discriminators to avoid ambiguity
-    reflector := sharedReflector
-    reflector.Anonymous = true
-    seq := stripSchema(reflector.Reflect(RecipeSequence{}))
-    seq.Required = append(seq.Required, "sequence")
-    state := stripSchema(reflector.Reflect(RecipeState{}))
-    state.Required = append(state.Required, "state")
-    op := stripSchema(reflector.Reflect(RecipeOp{}))
-    op.Required = append(op.Required, "op")
-    reflector.Anonymous = false
-    return &jsonschema.Schema{Title: "recipe", OneOf: []*jsonschema.Schema{seq, state, op}}
+	// Build a OneOf with required discriminators to avoid ambiguity
+	reflector := sharedReflector
+	reflector.Anonymous = true
+	seq := stripSchema(reflector.Reflect(RecipeSequence{}))
+	seq.Required = append(seq.Required, "sequence")
+	state := stripSchema(reflector.Reflect(RecipeState{}))
+	state.Required = append(state.Required, "state")
+	op := stripSchema(reflector.Reflect(RecipeOp{}))
+	op.Required = append(op.Required, "op")
+	reflector.Anonymous = false
+	return &jsonschema.Schema{Title: "recipe", OneOf: []*jsonschema.Schema{seq, state, op}}
 }
 
 //func (Node) JSONSchema() *jsonschema.Schema {

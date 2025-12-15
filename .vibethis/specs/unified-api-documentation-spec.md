@@ -12,8 +12,8 @@ A complete system for generating, indexing, and querying API documentation optim
 
 ### 2. Storage Layer
 - **api-documentation-system-spec.md**: Directory structure and MCP server
-- Location: `.vibethis/api/<language>/` for documentation files
-- Cache: `~/.cache/vibethis/` for chunks and models
+- Location: `.colony2/api/<language>/` for documentation files
+- Cache: `~/.cache/colony2/` for chunks and models
 
 ### 3. Intelligence Layer
 - **learned-chunking-spec.md**: ML-based document chunking
@@ -32,7 +32,7 @@ graph TD
     A[Source Code] --> B[Git File Collector]
     B --> C[API Generator Op]
     C --> D[Native Doc Tools]
-    D --> E[.vibethis/api/]
+    D --> E[.colony2/api/]
     
     E --> F[Learned Chunker]
     F --> G[Chunk Cache]
@@ -62,7 +62,7 @@ sequence:
     op: api_generator
     inputs:
       source_dir: "{{ .cell_dir }}"
-      output_dir: "{{ .cell_dir }}/.vibethis/api"
+      output_dir: "{{ .cell_dir }}/.colony2/api"
       
   - id: generate_overview
     op: llm_inference
@@ -108,7 +108,7 @@ class DocumentIndexer:
 @app.call_tool()
 async def search_api(query: str, language: str = None):
     # Load or build index
-    indexer = DocumentIndexer(Path(".vibethis/api"))
+    indexer = DocumentIndexer(Path(".colony2/api"))
     
     # Search with smart ranking
     results = indexer.search(
@@ -125,7 +125,7 @@ async def search_api(query: str, language: str = None):
 
 ```
 project/
-├── .vibethis/
+├── .colony2/
 │   ├── api/                      # Generated documentation
 │   │   ├── go/
 │   │   │   ├── api.txt           # go doc output
@@ -139,7 +139,7 @@ project/
 │   │       └── .index/
 │   └── VIBETHIS.md               # Cell overview
 │
-~/.cache/vibethis/
+~/.cache/colony2/
 ├── models/                        # Trained ML models
 │   ├── go_chunk_classifier.pkl
 │   ├── python_chunk_classifier.pkl
@@ -165,12 +165,12 @@ defaults:
 ```json
 {
   "mcpServers": {
-    "vibethis-api": {
+    "colony2-api": {
       "command": "python",
-      "args": ["~/.vibethis/mcp/api_search_server.py"],
+      "args": ["~/.colony2/mcp/api_search_server.py"],
       "env": {
-        "API_DOC_DIRS": ".vibethis/api",
-        "CACHE_DIR": "~/.cache/vibethis"
+        "API_DOC_DIRS": ".colony2/api",
+        "CACHE_DIR": "~/.cache/colony2"
       }
     }
   }
@@ -292,11 +292,11 @@ def rank_results(query: str, chunks: List[Chunk]) -> List[ScoredChunk]:
 pip install tantivy scikit-learn mcp
 
 # Generate documentation
-vibethis recipe run cell_documentation_generator \
+colony2 recipe run cell_documentation_generator \
   --input cell_directory=./my_cell
 
 # Start MCP server
-python ~/.vibethis/mcp/api_search_server.py
+python ~/.colony2/mcp/api_search_server.py
 ```
 
 ### 2. CI/CD Integration
@@ -304,21 +304,21 @@ python ~/.vibethis/mcp/api_search_server.py
 # .github/workflows/docs.yml
 - name: Generate API Docs
   run: |
-    vibethis recipe run cell_documentation_generator \
+    colony2 recipe run cell_documentation_generator \
       --input cell_directory=.
     
 - name: Upload Documentation
   uses: actions/upload-artifact@v2
   with:
     name: api-docs
-    path: .vibethis/api/
+    path: .colony2/api/
 ```
 
 ### 3. Pre-trained Models
 ```bash
 # Download pre-trained chunking models
-curl -L https://models.vibethis.io/chunkers/latest.tar.gz | \
-  tar -xz -C ~/.cache/vibethis/models/
+curl -L https://models.colony2.io/chunkers/latest.tar.gz | \
+  tar -xz -C ~/.cache/colony2/models/
 
 # Models for common languages
 # - go_chunk_classifier.pkl
@@ -332,10 +332,10 @@ curl -L https://models.vibethis.io/chunkers/latest.tar.gz | \
 ### Generate Documentation
 ```bash
 # Basic generation
-vibethis doc generate ./my_cell
+colony2 doc generate ./my_cell
 
 # With options
-vibethis doc generate ./my_cell \
+colony2 doc generate ./my_cell \
   --include-private \
   --formats json,html,markdown
 ```
@@ -359,7 +359,7 @@ vibethis doc generate ./my_cell \
 ### Training Custom Chunker
 ```python
 # For specialized documentation format
-from vibethis.chunking import ChunkingSystemBootstrap
+from colony2.chunking import ChunkingSystemBootstrap
 
 bootstrap = ChunkingSystemBootstrap(llm_client)
 bootstrap.train_for_language(

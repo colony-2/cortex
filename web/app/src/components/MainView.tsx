@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Splitter } from 'antd';
-import { GraphFlow } from '@vibethis/flowchart';
+import { GraphFlow } from '@colony2/flowchart';
 import SidePanel from './SidePanel';
-import type { DependencyCell } from '@vibethis/shared';
-import { navigateToPath } from '@vibethis/shared';
+import type { DependencyCell } from '@colony2/shared';
+import { navigateToPath } from '@colony2/shared';
 
 interface MainViewProps {
   projectId: string;

@@ -10,6 +10,6 @@ sequence:
   - id: file_collector
     op: git_file_collector
     inputs:
-      context_dir: "/Users/jnadeau/src/vibethis/server/git/pkg/common"
+      context_dir: "/Users/jnadeau/src/colony2/server/git/pkg/common"
       include_untracked: false
       use_gitignore: true

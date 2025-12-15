@@ -6,18 +6,18 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@vibethis/shared': resolve(__dirname, '../shared/src/index.ts')
+      '@colony2/shared': resolve(__dirname, '../shared/src/index.ts')
     }
   },
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: '@vibethis/flowchart',
+      name: '@colony2/flowchart',
       fileName: 'index',
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons', '@vibethis/shared', '@xyflow/react', 'dagre'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons', '@colony2/shared', '@xyflow/react', 'dagre'],
       output: {
         globals: {
           react: 'React',

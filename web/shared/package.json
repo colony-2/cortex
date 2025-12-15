@@ -1,5 +1,5 @@
 {
-  "name": "@graph-visualizer/shared",
+  "name": "@colony2/shared",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
@@ -17,7 +17,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@vibethis/openapi-client": "file:../openapi",
+    "@colony2/openapi-client": "file:../openapi",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   }

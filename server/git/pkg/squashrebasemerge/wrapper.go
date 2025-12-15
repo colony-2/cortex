@@ -3,7 +3,7 @@ package squashrebasemerge
 import (
 	"context"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // SquashRebaseMergeInput defines the parameters for the squash-rebase-merge git op.

@@ -3,7 +3,7 @@ package statemachine
 import (
 	"testing"
 
-	yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+	yamlpkg "github.com/colony-2/colony2/server/recipe-core/pkg/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/sdk/testsuite"

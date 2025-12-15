@@ -3,9 +3,9 @@ package model
 import (
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
 type SearchFilter struct {

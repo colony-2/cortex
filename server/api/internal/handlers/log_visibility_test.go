@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	"github.com/divisive-ai/vibethis/server/graph/pkg/graph"
-	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/colony-2/colony2/server/api/pkg/web"
+	"github.com/colony-2/colony2/server/graph/pkg/graph"
+	"github.com/colony-2/colony2/server/storage/pkg/storage"
 )
 
 // Test that log.Printf from HTTP handlers shows up in go test output

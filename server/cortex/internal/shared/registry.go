@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/api/pkg/web"
-	export3 "github.com/divisive-ai/vibethis/server/git/pkg/export"
-	"github.com/divisive-ai/vibethis/server/ops/pkg/export"
-	ops2 "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	export2 "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/export"
-	ticketop "github.com/divisive-ai/vibethis/server/ticket/pkg/op"
+	"github.com/colony-2/colony2/server/api/pkg/web"
+	export3 "github.com/colony-2/colony2/server/git/pkg/export"
+	"github.com/colony-2/colony2/server/ops/pkg/export"
+	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	export2 "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
+	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 )
 
 // RegisterOps registers all ops with the ops registry

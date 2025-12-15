@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/divisive-ai/vibethis/rwshim/rwshimgo/pkg/rwshim"
+	"github.com/colony-2/colony2/rwshim/rwshimgo/pkg/rwshim"
 )
 
 func main() {
@@ -64,13 +64,13 @@ func customPolicyExample() {
 	customPolicy := func(req rwshim.Request) rwshim.Response {
 		fmt.Printf("Intercepted: %s fd=%d size=%d file=%s\n",
 			req.Operation, req.FD, req.Size, req.Filename)
-		
+
 		// Deny writes to /etc
 		if req.Operation == rwshim.OpWrite && len(req.Filename) >= 4 && req.Filename[:4] == "/etc" {
 			fmt.Printf("  -> DENIED (write to /etc)\n")
 			return rwshim.Response{Allow: false}
 		}
-		
+
 		fmt.Printf("  -> ALLOWED\n")
 		return rwshim.Response{Allow: true}
 	}
@@ -128,7 +128,7 @@ func policyBuilderExample() {
 
 	// Test the policy
 	ctx := context.Background()
-	
+
 	// This should work (writes to stdout)
 	proc1, _ := monitor.StartProcess(ctx, "echo", []string{"This works"})
 	proc1.Start()
@@ -170,7 +170,7 @@ func multiProcessExample() {
 
 	// Start multiple processes
 	fmt.Println("Starting multiple processes...")
-	
+
 	// Process 1: continuous output
 	proc1, _ := monitor.StartProcess(ctx, "bash", []string{"-c", "while true; do echo 'Process 1'; sleep 1; done"})
 	proc1.Start()

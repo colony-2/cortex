@@ -73,7 +73,7 @@
 # All tests pass
 go test ./pkg/gitcommit -v
 PASS
-ok github.com/divisive-ai/vibethis/server/git/pkg/gitcommit 6.580s
+ok github.com/colony-2/colony2/server/git/pkg/gitcommit 6.580s
 ```
 
 ## Coverage Analysis

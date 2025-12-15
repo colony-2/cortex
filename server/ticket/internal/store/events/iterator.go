@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	ticketstore "github.com/divisive-ai/vibethis/server/ticket/internal/store/tickets"
+	ticketstore "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
 )
 
 type sliceIterator[T any] struct {

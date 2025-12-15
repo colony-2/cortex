@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	f2 "github.com/divisive-ai/vibethis/server/core/pkg/file"
-	llmadapters "github.com/divisive-ai/vibethis/server/llm/adapters"
+	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
 // executeBasic handles basic LLM generation without files or tools

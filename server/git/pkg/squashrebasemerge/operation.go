@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/common"
 )
 
 const defaultTargetBranch = "refs/heads/main"
@@ -247,7 +247,7 @@ func resolveWorkspaceSnapshot(input SquashRebaseMergeInput) (workspaceSnapshot, 
 	if ctxMap != nil {
 		snapshot.CellName, _ = stringFromMap(ctxMap, "cellname")
 		if snapshot.GitAuthor == "" && snapshot.CellName != "" {
-			snapshot.GitAuthor = fmt.Sprintf("%s <%s@vibethis>", snapshot.CellName, snapshot.CellName)
+			snapshot.GitAuthor = fmt.Sprintf("%s <%s@colony2>", snapshot.CellName, snapshot.CellName)
 		}
 	}
 

@@ -53,8 +53,8 @@ Create `server/cortex/internal/shared` package with:
 package shared
 
 import (
-    "github.com/divisive-ai/vibethis/server/ops/pkg/activity"
-    "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/worker"
+    "github.com/colony-2/colony2/server/ops/pkg/activity"
+    "github.com/colony-2/colony2/server/recipe-worker/pkg/worker"
 )
 
 type RegistryManager struct {
@@ -100,7 +100,7 @@ func (rm *RegistryManager) GetExecutor() *executor.StandaloneExecutor {
 package shared
 
 import (
-    yamlpkg "github.com/divisive-ai/vibethis/server/recipe-core/pkg/yaml"
+    yamlpkg "github.com/colony-2/colony2/server/recipe-core/pkg/yaml"
 )
 
 type RecipeValidator struct {

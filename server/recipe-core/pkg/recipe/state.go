@@ -1,6 +1,6 @@
 package recipe
 
-import "github.com/divisive-ai/vibethis/server/recipe-core/pkg/cel"
+import "github.com/colony-2/colony2/server/recipe-core/pkg/cel"
 
 // StateMap represents a state machine configuration
 type StateMap struct {

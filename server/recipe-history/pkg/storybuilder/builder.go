@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	coreops "github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/recipe"
-	runmetadata "github.com/divisive-ai/vibethis/server/recipe-core/pkg/runmetadata"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/story"
-	"github.com/divisive-ai/vibethis/server/recipe-worker/pkg/compiler"
-	workerops "github.com/divisive-ai/vibethis/server/recipe-worker/pkg/ops"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	runmetadata "github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/story"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	enumspb "go.temporal.io/api/enums/v1"
 	historypb "go.temporal.io/api/history/v1"
 	"go.temporal.io/api/workflowservice/v1"
@@ -28,10 +28,10 @@ type Builder struct {
 	nodes       map[string]*StoryNode
 	parents     map[string]string
 
-	runsByInvocation map[string]*NodeRun
+	runsByInvocation     map[string]*NodeRun
 	runsByInvocationHash map[string]*NodeRun
 	runsByChildRunID     map[string]*NodeRun
-	runsByScheduleID map[int64]*NodeRun
+	runsByScheduleID     map[int64]*NodeRun
 
 	timeline         []TimelineEntry
 	metadata         StoryMetadata
@@ -52,19 +52,19 @@ type nodeDescriptor struct {
 func New(recipeName string, r *recipe.Recipe) *Builder {
 	desc := buildNodeDescriptors(r)
 	b := &Builder{
-		recipeName:       recipeName,
-		recipe:           r,
-		descriptors:      desc,
-		nodes:            make(map[string]*StoryNode),
-		parents:          make(map[string]string),
-		runsByInvocation: make(map[string]*NodeRun),
+		recipeName:           recipeName,
+		recipe:               r,
+		descriptors:          desc,
+		nodes:                make(map[string]*StoryNode),
+		parents:              make(map[string]string),
+		runsByInvocation:     make(map[string]*NodeRun),
 		runsByInvocationHash: make(map[string]*NodeRun),
 		runsByChildRunID:     make(map[string]*NodeRun),
-		runsByScheduleID: make(map[int64]*NodeRun),
-		timeline:         make([]TimelineEntry, 0, 64),
-		converter:        converter.GetDefaultDataConverter(),
-		initialInputs:    make(map[string]interface{}),
-		syntheticEventID: -1,
+		runsByScheduleID:     make(map[int64]*NodeRun),
+		timeline:             make([]TimelineEntry, 0, 64),
+		converter:            converter.GetDefaultDataConverter(),
+		initialInputs:        make(map[string]interface{}),
+		syntheticEventID:     -1,
 	}
 	if r != nil {
 		meta := r.GetMetdata()
@@ -408,11 +408,11 @@ func (b *Builder) handleActivityScheduled(event *historypb.HistoryEvent) {
 	invHash := invocationHashFromCore(req.Invocation)
 	node := b.getOrCreateNode(req.Invocation.NodePath, req.Invocation.RecipeID)
 	run := &NodeRun{
-		InvocationID: invID,
+		InvocationID:   invID,
 		InvocationHash: invHash,
-		Status:       "scheduled",
-		Attempt:      1,
-		Inputs:       cloneMap(req.Input),
+		Status:         "scheduled",
+		Attempt:        1,
+		Inputs:         cloneMap(req.Input),
 	}
 	node.Runs = append(node.Runs, run)
 	run.ScheduleEventID = event.GetEventId()
@@ -529,7 +529,6 @@ func (b *Builder) handleMarker(event *historypb.HistoryEvent) {
 	}
 }
 
-
 const (
 	userResponseSignalPrefix = "user-response:"
 	metadataSignalName       = "recipe_run_metadata"
@@ -610,9 +609,9 @@ func (b *Builder) handleInlineMarker(event *historypb.HistoryEvent, env *story.M
 		run := &NodeRun{
 			InvocationID:   invID,
 			InvocationHash: invID,
-			Status:       "running",
-			Attempt:      len(node.Runs) + 1,
-			Inputs:       cloneMap(payload.Inputs),
+			Status:         "running",
+			Attempt:        len(node.Runs) + 1,
+			Inputs:         cloneMap(payload.Inputs),
 		}
 		if !payload.StartedAt.IsZero() {
 			started := payload.StartedAt
@@ -815,10 +814,10 @@ func (b *Builder) ensureRunForInvocation(inv story.MarkerInvocation) *NodeRun {
 	}
 	node := b.getOrCreateNode(inv.NodePath, inv.RecipeID)
 	run := &NodeRun{
-		InvocationID: invID,
+		InvocationID:   invID,
 		InvocationHash: invID,
-		Status:       "pending",
-		Attempt:      len(node.Runs) + 1,
+		Status:         "pending",
+		Attempt:        len(node.Runs) + 1,
 	}
 	node.Runs = append(node.Runs, run)
 	b.indexRun(run)

@@ -3,7 +3,7 @@ package thinpackrebase
 import (
 	"context"
 
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // ThinpackRebaseInput captures the parameters required to rebase a thin-pack backed workspace.

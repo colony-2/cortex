@@ -3,8 +3,8 @@ package workflowctl
 import (
 	"context"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/divisive-ai/vibethis/server/recipe-core/pkg/contextual"
 )
 
 type WorkflowControl interface {

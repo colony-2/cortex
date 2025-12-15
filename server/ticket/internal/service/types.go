@@ -3,9 +3,9 @@ package service
 import (
 	"time"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/ticket/internal/model"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"gorm.io/plugin/optimisticlock"
 )
 

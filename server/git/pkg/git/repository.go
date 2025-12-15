@@ -1,9 +1,9 @@
-// Package git provides Git repository operations for vibethis.
+// Package git provides Git repository operations for colony2.
 package git
 
 import (
 	"context"
-	"github.com/divisive-ai/vibethis/server/git/internal/commands"
+	"github.com/colony-2/colony2/server/git/internal/commands"
 	"time"
 )
 

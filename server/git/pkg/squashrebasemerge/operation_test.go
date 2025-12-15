@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/git/pkg/common"
+	"github.com/colony-2/colony2/server/git/pkg/common"
 	"github.com/stretchr/testify/require"
 )
 

@@ -1,4 +1,4 @@
-module github.com/divisive-ai/vibethis/server/llm
+module github.com/colony-2/colony2/server/llm
 
 
 require (

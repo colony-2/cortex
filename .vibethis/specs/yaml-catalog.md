@@ -69,7 +69,7 @@ These files define workflows with steps, activities, inputs, outputs, and state 
 - **./server/nucleus/cmd/nucleus/testdata/recipes/invalid-recipe.yaml** - Invalid nucleus recipe
 
 ### 2. API Specification Files
-- **./api/openapi/vibethis-api.yaml** - Main VibeThis REST API specification (OpenAPI 3.0.3)
+- **./api/openapi/colony2-api.yaml** - Main VibeThis REST API specification (OpenAPI 3.0.3)
   - Comprehensive cell management API
   - Git operations endpoints
   - Container/DevContainer management

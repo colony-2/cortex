@@ -23,28 +23,28 @@
       "vite/client"
     ],
     "paths": {
-      "@vibethis/shared": [
+      "@colony2/shared": [
         "../shared/src/index.ts"
       ],
-      "@vibethis/flowchart": [
+      "@colony2/flowchart": [
         "../flowchart/src/index.tsx"
       ],
-      "@vibethis/kanban": [
+      "@colony2/kanban": [
         "../kanban/src/index.ts"
       ],
-      "@graph-visualizer/flowchart": [
+      "@colony2/flowchart": [
         "../flowchart/src/index.ts"
       ],
-      "@graph-visualizer/kanban": [
+      "@colony2/kanban": [
         "../kanban/src/index.ts"
       ],
-      "@graph-visualizer/shared": [
+      "@colony2/shared": [
         "../shared/src/index.ts"
       ],
-      "@graph-visualizer/shared/*": [
+      "@colony2/shared/*": [
         "../shared/src/*"
       ],
-      "@graph-visualizer/flowchart/*": [
+      "@colony2/flowchart/*": [
         "../flowchart/src/*"
       ]
     }

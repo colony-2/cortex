@@ -781,7 +781,7 @@ func (a *APIGeneratorActivity) Execute(
     output.PrimaryLanguage = primaryLang
     
     // Step 2: Use ScriptRunner for API extraction
-    scriptsDir := filepath.Join(runtime.GOROOT(), "src", "github.com/divisive-ai/vibethis/server/ops/pkg/apigen/scripts")
+    scriptsDir := filepath.Join(runtime.GOROOT(), "src", "github.com/colony-2/colony2/server/ops/pkg/apigen/scripts")
     if envDir := os.Getenv("APIGEN_SCRIPTS_DIR"); envDir != "" {
         scriptsDir = envDir
     }

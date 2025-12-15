@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/core"
 )
 
 // Storage implements core.Storage using in-memory maps

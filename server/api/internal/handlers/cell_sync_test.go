@@ -8,12 +8,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/divisive-ai/vibethis/server/cell/pkg/cell"
-	"github.com/divisive-ai/vibethis/server/core/pkg/core"
-	"github.com/divisive-ai/vibethis/server/openapi/pkg/openapi"
-	"github.com/divisive-ai/vibethis/server/project/pkg/project"
-	"github.com/divisive-ai/vibethis/server/registry/pkg/registry"
-	"github.com/divisive-ai/vibethis/server/storage/pkg/storage"
+	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/registry/pkg/registry"
+	"github.com/colony-2/colony2/server/storage/pkg/storage"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

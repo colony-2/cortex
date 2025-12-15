@@ -6,7 +6,7 @@ A self-training system that uses LLM guidance to learn how to chunk documentatio
 ## Architecture
 
 ```
-.cache/vibethis/
+.cache/colony2/
 ├── models/
 │   ├── go_chunk_classifier.pkl
 │   ├── python_chunk_classifier.pkl
@@ -261,8 +261,8 @@ class ChunkClassifierTrainer:
     
     def __init__(self, language: str):
         self.language = language
-        self.model_path = Path.home() / '.cache' / 'vibethis' / 'models' / f'{language}_chunk_classifier.pkl'
-        self.training_data_path = Path.home() / '.cache' / 'vibethis' / 'training_data' / f'{language}_training.json'
+        self.model_path = Path.home() / '.cache' / 'colony2' / 'models' / f'{language}_chunk_classifier.pkl'
+        self.training_data_path = Path.home() / '.cache' / 'colony2' / 'training_data' / f'{language}_training.json'
         self.extractor = FeatureExtractor()
     
     def prepare_training_data(self, samples: List[str], annotations: List[List[str]]) -> Tuple[np.ndarray, np.ndarray]:
@@ -359,7 +359,7 @@ class LearnedChunker:
     
     def __init__(self, language: str):
         self.language = language
-        self.model_path = Path.home() / '.cache' / 'vibethis' / 'models' / f'{language}_chunk_classifier.pkl'
+        self.model_path = Path.home() / '.cache' / 'colony2' / 'models' / f'{language}_chunk_classifier.pkl'
         self.extractor = FeatureExtractor()
         self.classifier = None
         self._load_model()
@@ -483,14 +483,14 @@ class ChunkingSystemBootstrap:
     
     def __init__(self, llm_client):
         self.llm_client = llm_client
-        self.config_path = Path.home() / '.cache' / 'vibethis' / 'configs' / 'chunking_config.json'
+        self.config_path = Path.home() / '.cache' / 'colony2' / 'configs' / 'chunking_config.json'
     
     def bootstrap(self, api_dirs: List[Path], force_retrain: bool = False):
         """
         Bootstrap classifiers for all languages found in API directories.
         
         Args:
-            api_dirs: List of .vibethis/api directories
+            api_dirs: List of .colony2/api directories
             force_retrain: Retrain even if models exist
         """
         languages_seen = set()
@@ -512,7 +512,7 @@ class ChunkingSystemBootstrap:
                 languages_seen.add(language)
                 
                 # Check if already trained
-                model_path = Path.home() / '.cache' / 'vibethis' / 'models' / f'{language}_chunk_classifier.pkl'
+                model_path = Path.home() / '.cache' / 'colony2' / 'models' / f'{language}_chunk_classifier.pkl'
                 if model_path.exists() and not force_retrain:
                     print(f"Model for {language} already exists, skipping...")
                     continue
@@ -634,10 +634,10 @@ class SmartTantivyIndexer:
 # One-time bootstrap (could be part of initial setup)
 llm_client = YourLLMClient()
 bootstrap = ChunkingSystemBootstrap(llm_client)
-bootstrap.bootstrap([Path(".vibethis/api")])
+bootstrap.bootstrap([Path(".colony2/api")])
 
 # Runtime usage (no LLM needed)
-indexer = SmartTantivyIndexer(Path(".vibethis/api"))
+indexer = SmartTantivyIndexer(Path(".colony2/api"))
 indexer.index_documentation()
 
 # Chunker can be used standalone
@@ -660,9 +660,9 @@ if chunker.is_trained():
 
 ```bash
 # CLI commands for model management
-vibethis-chunker train --language go --samples /path/to/samples
-vibethis-chunker list    # List trained models
-vibethis-chunker test --language python --file test.txt
-vibethis-chunker export --language go --output go_model.pkl
-vibethis-chunker import --language go --input go_model.pkl
+colony2-chunker train --language go --samples /path/to/samples
+colony2-chunker list    # List trained models
+colony2-chunker test --language python --file test.txt
+colony2-chunker export --language go --output go_model.pkl
+colony2-chunker import --language go --input go_model.pkl
 ```

@@ -58,7 +58,7 @@ None available - shared references are a core feature for recipe modularity.
 
 ## Files Affected
 
-- `/Users/jnadeau/src/vibethis/server/recipe-worker/test-fixtures/recipes/unified-data-pipeline.yaml`
+- `/Users/jnadeau/src/colony2/server/recipe-worker/test-fixtures/recipes/unified-data-pipeline.yaml`
 - Recipe parser logic that validates operation names
 - Shared operation resolution logic (missing or not integrated)
 

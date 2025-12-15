@@ -1,6 +1,6 @@
 # server/graph
 
-The graph module builds and manages dependency graphs for the vibethis system by integrating with the Moon build system. It discovers project structure, analyzes dependencies, and provides APIs for graph visualization and traversal.
+The graph module builds and manages dependency graphs for the colony2 system by integrating with the Moon build system. It discovers project structure, analyzes dependencies, and provides APIs for graph visualization and traversal.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ type Edge struct {
 
 ### Basic Graph Building
 ```go
-import "github.com/divisive-ai/vibethis/server/graph"
+import "github.com/colony-2/colony2/server/graph"
 
 builder := graph.NewBuilder("/path/to/workspace")
 graph, err := builder.BuildGraph(context.Background())

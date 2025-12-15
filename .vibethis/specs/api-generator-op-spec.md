@@ -25,7 +25,7 @@ import (
     "encoding/json"
     "time"
     
-    "github.com/divisive-ai/vibethis/server/ops/pkg/types"
+    "github.com/colony-2/colony2/server/ops/pkg/types"
 )
 
 // APIGeneratorConfig provides configuration for the API generator activity
@@ -45,7 +45,7 @@ type APIGeneratorInput struct {
     // Required: Source directory to analyze
     SourceDir string `json:"source_dir" validate:"required,dir"`
     
-    // Optional: Output directory (defaults to source_dir/vibethis.api)
+    // Optional: Output directory (defaults to source_dir/colony2.api)
     OutputDir string `json:"output_dir,omitempty"`
     
     // Optional: Documentation detail level
@@ -169,7 +169,7 @@ import (
     "sort"
     "time"
     
-    "github.com/divisive-ai/vibethis/server/ops/pkg/types"
+    "github.com/colony-2/colony2/server/ops/pkg/types"
 )
 
 // APIGeneratorActivity implements the API documentation generator
@@ -215,7 +215,7 @@ func (a *APIGeneratorActivity) Execute(
         config.TokeiPath = "tokei"
     }
     if config.DefaultOutputDir == "" {
-        config.DefaultOutputDir = "vibethis.api"
+        config.DefaultOutputDir = "colony2.api"
     }
     if config.ToolTimeout == 0 {
         config.ToolTimeout = 60 * time.Second
@@ -704,7 +704,7 @@ func (a *APIGeneratorActivity) generateFallbackAPIDocs(ctx context.Context, sour
 # server/ops/config/activities.yaml
 api_generator:
   tokei_path: "tokei"  # Or full path if not in PATH
-  default_output_dir: "vibethis.api"
+  default_output_dir: "colony2.api"
   tool_timeout: 60s
 ```
 
@@ -715,7 +715,7 @@ api_generator:
 package activity
 
 import (
-    "github.com/divisive-ai/vibethis/server/ops/pkg/apigen"
+    "github.com/colony-2/colony2/server/ops/pkg/apigen"
 )
 
 func RegisterActivities(registry *Registry) {
@@ -735,7 +735,7 @@ sequence:
     op: api_generator
     inputs:
       source_dir: "{{ .inputs.cell_directory }}"
-      output_dir: "{{ .inputs.cell_directory }}/vibethis.api"
+      output_dir: "{{ .inputs.cell_directory }}/colony2.api"
       detail_level: "standard"
       include_private: false
       output_formats: ["json", "text"]

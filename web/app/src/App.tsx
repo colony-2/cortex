@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined } from '@ant-design/icons';
 import { Button, Empty, Form, Input, Layout, Menu, Modal, Select, Space, Typography, message } from 'antd';
-import { InputActivityProvider, createProject, listProjects, type Project } from '@vibethis/shared';
+import { InputActivityProvider, createProject, listProjects, type Project } from '@colony2/shared';
 import MainView from './components/MainView';
-import { KanbanBoard } from '@vibethis/kanban';
+import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 
 const { Header, Content, Sider } = Layout;
@@ -35,7 +35,7 @@ function AppShell() {
       const data = await listProjects();
       setProjects(data);
       if (!selectedProjectId && data.length > 0) {
-        const savedId = localStorage.getItem('vibethis:selectedProjectId');
+        const savedId = localStorage.getItem('colony2:selectedProjectId');
         const validSaved = savedId && data.find((p) => p.id === savedId);
         setSelectedProjectId((validSaved && savedId) || data[0].id);
       }
@@ -53,7 +53,7 @@ function AppShell() {
 
   useEffect(() => {
     if (selectedProjectId) {
-      localStorage.setItem('vibethis:selectedProjectId', selectedProjectId);
+      localStorage.setItem('colony2:selectedProjectId', selectedProjectId);
     }
   }, [selectedProjectId]);
 
