@@ -4,8 +4,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"go.temporal.io/sdk/temporal"
-	"go.temporal.io/sdk/workflow"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
 // ChildLaunchResult captures the scheduled child workflow future and resolved inputs.

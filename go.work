@@ -9,13 +9,10 @@ use (
 	./server/git
 	./server/graph
 	./server/llm
-	./server/nucleus
 	./server/openapi
 	./server/ops
 	./server/project
-	./server/recipe-child
 	./server/recipe-core
-	./server/recipe-history
 	./server/recipe-input
 	./server/recipe-template
 	./server/recipe-worker

@@ -10,7 +10,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/runmetadata"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
-	"go.temporal.io/sdk/temporal"
 )
 
 // Input defines the payload for the recipe_set op.

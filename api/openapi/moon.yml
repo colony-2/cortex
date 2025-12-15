@@ -3,7 +3,7 @@ type: 'unknown'
 
 project:
   name: 'api-openapi'
-  description: 'OpenAPI specifications for the vibethis API'
+  description: 'OpenAPI specifications for the colony2 API'
 
 fileGroups:
   specs:
@@ -17,9 +17,9 @@ tasks:
     command: 'echo'
     args: ['OpenAPI spec is ready']
     inputs:
-      - vibethis-api.yaml
+      - 'colony2-api.yaml'
     outputs:
-      - 'vibethis-api.yaml'
+      - 'colony2-api.yaml'
     options:
       runInCI: true
       outputStyle: buffer-only-failure
