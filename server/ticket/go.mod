@@ -3,6 +3,11 @@ module github.com/colony-2/colony2/server/ticket
 go 1.25.5
 
 require (
+	github.com/colony-2/colony2/server/cell v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/swf-go v0.0.0-20251215181630-013d92f662fe
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -20,7 +25,9 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20251215180756-22e51ef4f103 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -56,8 +63,3 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-
-
-
-

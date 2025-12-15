@@ -14,14 +14,18 @@
       }
     },
     "build": {
-      "executor": "@nx-go/nx-go:build",
+      "executor": "nx:run-commands",
       "dependsOn": ["codegen"],
       "options": {
-        "main": "./..."
+        "command": "go build ./...",
+        "cwd": "server/openapi"
       }
     },
     "test": {
       "executor": "@nx-go/nx-go:test"
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
     }
   }
 }

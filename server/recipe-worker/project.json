@@ -5,13 +5,17 @@
   "tags": ["backend", "workflow", "go"],
   "targets": {
     "build": {
-      "executor": "@nx-go/nx-go:build",
+      "executor": "nx:run-commands",
       "options": {
-        "main": "./..."
+        "command": "go build ./...",
+        "cwd": "server/recipe-worker"
       }
     },
     "test": {
       "executor": "@nx-go/nx-go:test"
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
     }
   }
 }

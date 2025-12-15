@@ -3,6 +3,7 @@ module github.com/colony-2/colony2/server/recipe-template
 go 1.25.5
 
 require (
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251215180756-22e51ef4f103
 	github.com/google/cel-go v0.26.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -15,6 +16,8 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
+	github.com/colony-2/swf-go v0.0.0-20251215181630-013d92f662fe // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.0.10 // indirect
@@ -52,8 +55,3 @@ require (
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
-
-
-
-
-

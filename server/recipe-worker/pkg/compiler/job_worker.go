@@ -10,7 +10,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
-	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
+	"github.com/colony-2/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gopkg.in/yaml.v3"
 )

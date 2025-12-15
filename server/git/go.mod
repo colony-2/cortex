@@ -2,11 +2,10 @@ module github.com/colony-2/colony2/server/git
 
 go 1.25.5
 
-
-
 require (
+	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251215180756-22e51ef4f103
 	github.com/stretchr/testify v1.11.1
-
 )
 
 require (
@@ -15,6 +14,8 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
+	github.com/colony-2/swf-go v0.0.0-20251215181630-013d92f662fe // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -61,5 +62,3 @@ require (
 )
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-
-

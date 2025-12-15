@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
+	"github.com/colony-2/strata-go/pkg/client/artifact"
 	"gopkg.in/yaml.v3"
 )
 

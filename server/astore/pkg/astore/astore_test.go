@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/colony-2/strata/strata-go/pkg/client/artifact"
+	"github.com/colony-2/strata-go/pkg/client/artifact"
 	"github.com/stretchr/testify/require"
 )
 

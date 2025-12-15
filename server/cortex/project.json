@@ -61,6 +61,9 @@
         "command": "./test.sh",
         "cwd": "server/cortex"
       }
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
     }
   }
 }

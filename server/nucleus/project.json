@@ -25,6 +25,9 @@
         "command": "go test -v -tags=integration ./...",
         "cwd": "server/nucleus"
       }
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
     }
   }
 }

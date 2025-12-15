@@ -1,6 +1,6 @@
 {
-  "name": "be-rucc",
-  "root": "server/rucc",
+  "name": "server-project",
+  "root": "server/project",
   "projectType": "library",
   "tags": ["backend", "go"],
   "targets": {
@@ -8,7 +8,7 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "go build ./...",
-        "cwd": "server/rucc"
+        "cwd": "server/project"
       }
     },
     "test": {

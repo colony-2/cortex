@@ -13,7 +13,6 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/gitcommit"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
-	"go.temporal.io/sdk/temporal"
 )
 
 // InlineWorkspaceOptions provides knobs for deriving child workspace metadata.
@@ -91,7 +90,7 @@ func WithInlineWorkspace[In any, Out any](ctx context.Context, parentCtx GitTask
 func runInlinePersistStage(ctx workflow.Context, gitCtx GitTaskContext) (inlinePersistResult, error) {
 	laOpts := workflow.LocalActivityOptions{
 		StartToCloseTimeout: 2 * time.Minute,
-		RetryPolicy: &temporal.RetryPolicy{
+		RetryPolicy: &recipe.RetryPolicy{
 			InitialInterval:    time.Second,
 			BackoffCoefficient: 2,
 			MaximumAttempts:    3,

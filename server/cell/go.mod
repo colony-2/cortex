@@ -3,6 +3,9 @@ module github.com/colony-2/colony2/server/cell
 go 1.25.5
 
 require (
+	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/graph v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/driver/postgres v1.5.11
@@ -24,10 +27,3 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	gorm.io/driver/sqlite v1.5.7 // indirect
 )
-
-
-
-
-
-
-

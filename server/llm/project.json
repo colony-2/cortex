@@ -5,9 +5,10 @@
   "tags": ["backend", "go"],
   "targets": {
     "build": {
-      "executor": "@nx-go/nx-go:build",
+      "executor": "nx:run-commands",
       "options": {
-        "main": "./..."
+        "command": "go build ./...",
+        "cwd": "server/llm"
       }
     },
     "test": {
@@ -19,6 +20,9 @@
         "command": "go test -v -tags=integration ./integration/...",
         "cwd": "server/llm"
       }
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
     }
   }
 }
