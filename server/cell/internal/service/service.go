@@ -53,11 +53,14 @@ type Populator interface {
 }
 
 type PopulatorCell struct {
-	Name         string
-	Description  string
-	WorkingPath  string
-	ExternalID   string
-	Dependencies []string
+	Name          string
+	Description   string
+	WorkingPath   string
+	ExternalID    string
+	Dependencies  []string
+	GitRepoName   string
+	GitBranch     string
+	DefaultRecipe string
 }
 
 type service struct {
@@ -92,18 +95,24 @@ type systemClock struct{}
 func (systemClock) Now() time.Time { return time.Now().UTC() }
 
 type CreateInput struct {
-	ProjectID   project.ID
-	Name        string
-	Description string
-	WorkingPath string
-	Populator   string
-	PopulatorID string
+	ProjectID     project.ID
+	Name          string
+	Description   string
+	WorkingPath   string
+	Populator     string
+	PopulatorID   string
+	GitRepoName   string
+	GitBranch     string
+	DefaultRecipe string
 }
 
 type UpdateInput struct {
-	Name        *string
-	Description *string
-	WorkingPath *string
+	Name          *string
+	Description   *string
+	WorkingPath   *string
+	GitRepoName   *string
+	GitBranch     *string
+	DefaultRecipe *string
 }
 
 type SyncOptions struct {
@@ -138,15 +147,18 @@ func (s *service) CreateCell(ctx context.Context, input CreateInput) (*model.Cel
 	}
 	now := s.clock.Now()
 	cell := &model.Cell{
-		ID:          model.ID(id),
-		ProjectID:   input.ProjectID,
-		Name:        name,
-		Description: strings.TrimSpace(input.Description),
-		WorkingPath: path,
-		Populator:   strings.TrimSpace(input.Populator),
-		PopulatorID: strings.TrimSpace(input.PopulatorID),
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:            model.ID(id),
+		ProjectID:     input.ProjectID,
+		Name:          name,
+		Description:   strings.TrimSpace(input.Description),
+		WorkingPath:   path,
+		Populator:     strings.TrimSpace(input.Populator),
+		PopulatorID:   strings.TrimSpace(input.PopulatorID),
+		GitRepoName:   optionalString(input.GitRepoName),
+		GitBranch:     optionalString(input.GitBranch),
+		DefaultRecipe: optionalString(input.DefaultRecipe),
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if err := s.store.Create(ctx, cell); err != nil {
 		return nil, err
@@ -194,6 +206,18 @@ func (s *service) UpdateCell(ctx context.Context, id model.ID, patch UpdateInput
 			return nil, ErrEmptyWorkingPath
 		}
 		existing.WorkingPath = path
+		updated = true
+	}
+	if patch.GitRepoName != nil {
+		existing.GitRepoName = optionalString(*patch.GitRepoName)
+		updated = true
+	}
+	if patch.GitBranch != nil {
+		existing.GitBranch = optionalString(*patch.GitBranch)
+		updated = true
+	}
+	if patch.DefaultRecipe != nil {
+		existing.DefaultRecipe = optionalString(*patch.DefaultRecipe)
 		updated = true
 	}
 	if !updated {
@@ -277,11 +301,14 @@ func (s *service) SyncFromPopulator(ctx context.Context, projectID project.ID, p
 	clean := make([]PopulatorCell, 0, len(rawCells))
 	for _, pc := range rawCells {
 		clean = append(clean, PopulatorCell{
-			Name:         strings.TrimSpace(pc.Name),
-			Description:  strings.TrimSpace(pc.Description),
-			WorkingPath:  strings.TrimSpace(pc.WorkingPath),
-			ExternalID:   strings.TrimSpace(pc.ExternalID),
-			Dependencies: trimStrings(pc.Dependencies),
+			Name:          strings.TrimSpace(pc.Name),
+			Description:   strings.TrimSpace(pc.Description),
+			WorkingPath:   strings.TrimSpace(pc.WorkingPath),
+			ExternalID:    strings.TrimSpace(pc.ExternalID),
+			Dependencies:  trimStrings(pc.Dependencies),
+			GitRepoName:   strings.TrimSpace(pc.GitRepoName),
+			GitBranch:     strings.TrimSpace(pc.GitBranch),
+			DefaultRecipe: strings.TrimSpace(pc.DefaultRecipe),
 		})
 	}
 
@@ -340,15 +367,18 @@ func (s *service) SyncFromPopulator(ctx context.Context, projectID project.ID, p
 					return errors.Join(ErrIDGeneration, err)
 				}
 				newCell := &model.Cell{
-					ID:          model.ID(id),
-					ProjectID:   projectID,
-					Name:        pc.Name,
-					Description: pc.Description,
-					WorkingPath: pc.WorkingPath,
-					Populator:   popName,
-					PopulatorID: pc.ExternalID,
-					CreatedAt:   now,
-					UpdatedAt:   now,
+					ID:            model.ID(id),
+					ProjectID:     projectID,
+					Name:          pc.Name,
+					Description:   pc.Description,
+					WorkingPath:   pc.WorkingPath,
+					Populator:     popName,
+					PopulatorID:   pc.ExternalID,
+					GitRepoName:   optionalString(pc.GitRepoName),
+					GitBranch:     optionalString(pc.GitBranch),
+					DefaultRecipe: optionalString(pc.DefaultRecipe),
+					CreatedAt:     now,
+					UpdatedAt:     now,
 				}
 				if err := txStore.Create(ctx, newCell); err != nil {
 					return err
@@ -363,6 +393,9 @@ func (s *service) SyncFromPopulator(ctx context.Context, projectID project.ID, p
 				matched.WorkingPath = pc.WorkingPath
 				matched.Populator = popName
 				matched.PopulatorID = pc.ExternalID
+				matched.GitRepoName = optionalString(pc.GitRepoName)
+				matched.GitBranch = optionalString(pc.GitBranch)
+				matched.DefaultRecipe = optionalString(pc.DefaultRecipe)
 				matched.DeletedAt = nil
 				matched.UpdatedAt = now
 				err := txStore.Update(ctx, matched)
@@ -478,4 +511,11 @@ func trimStrings(values []string) []string {
 		}
 	}
 	return out
+}
+
+func optionalString(value string) *string {
+	if trimmed := strings.TrimSpace(value); trimmed != "" {
+		return &trimmed
+	}
+	return nil
 }

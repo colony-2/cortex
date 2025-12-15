@@ -84,10 +84,13 @@ func TestCreateGetUpdate(t *testing.T) {
 
 	ctx := context.Background()
 	cell, err := svc.CreateCell(ctx, CreateInput{
-		ProjectID:   proj.ID,
-		Name:        "cell-a",
-		Description: "desc",
-		WorkingPath: "/repo/cell-a",
+		ProjectID:     proj.ID,
+		Name:          "cell-a",
+		Description:   "desc",
+		WorkingPath:   "/repo/cell-a",
+		GitRepoName:   "repo-1",
+		GitBranch:     "main",
+		DefaultRecipe: "build",
 	})
 	if err != nil {
 		t.Fatalf("create cell: %v", err)
@@ -100,18 +103,42 @@ func TestCreateGetUpdate(t *testing.T) {
 	if fetched.Name != "cell-a" || fetched.WorkingPath != "/repo/cell-a" {
 		t.Fatalf("unexpected fetched cell: %+v", fetched)
 	}
+	if fetched.GitRepoName == nil || *fetched.GitRepoName != "repo-1" {
+		t.Fatalf("git repo not set: %+v", fetched.GitRepoName)
+	}
+	if fetched.GitBranch == nil || *fetched.GitBranch != "main" {
+		t.Fatalf("git branch not set: %+v", fetched.GitBranch)
+	}
+	if fetched.DefaultRecipe == nil || *fetched.DefaultRecipe != "build" {
+		t.Fatalf("default recipe not set: %+v", fetched.DefaultRecipe)
+	}
 
 	newName := "cell-a-renamed"
 	newPath := "/repo/cell-a2"
+	newRepo := "repo-2"
+	newBranch := "feature/x"
+	clearRecipe := ""
 	updated, err := svc.UpdateCell(ctx, cell.ID, UpdateInput{
-		Name:        &newName,
-		WorkingPath: &newPath,
+		Name:          &newName,
+		WorkingPath:   &newPath,
+		GitRepoName:   &newRepo,
+		GitBranch:     &newBranch,
+		DefaultRecipe: &clearRecipe,
 	})
 	if err != nil {
 		t.Fatalf("update cell: %v", err)
 	}
 	if updated.Name != newName || updated.WorkingPath != newPath {
 		t.Fatalf("update did not apply: %+v", updated)
+	}
+	if updated.GitRepoName == nil || *updated.GitRepoName != newRepo {
+		t.Fatalf("git repo update failed: %+v", updated.GitRepoName)
+	}
+	if updated.GitBranch == nil || *updated.GitBranch != newBranch {
+		t.Fatalf("git branch update failed: %+v", updated.GitBranch)
+	}
+	if updated.DefaultRecipe != nil {
+		t.Fatalf("expected default recipe cleared: %+v", updated.DefaultRecipe)
 	}
 }
 
@@ -150,8 +177,8 @@ func TestSyncFromPopulator(t *testing.T) {
 	pop := stubPopulator{
 		name: "graph/moon",
 		cells: []PopulatorCell{
-			{Name: "cell-a", WorkingPath: "/a", ExternalID: "node-a", Dependencies: []string{"cell-b"}},
-			{Name: "cell-b", WorkingPath: "/b", ExternalID: "node-b"},
+			{Name: "cell-a", WorkingPath: "/a", ExternalID: "node-a", Dependencies: []string{"cell-b"}, GitRepoName: "repo-1", GitBranch: "main", DefaultRecipe: "build"},
+			{Name: "cell-b", WorkingPath: "/b", ExternalID: "node-b", GitRepoName: "repo-1", GitBranch: "main"},
 		},
 	}
 
@@ -161,6 +188,24 @@ func TestSyncFromPopulator(t *testing.T) {
 	}
 	if result.Created != 2 || result.DependenciesUpdated != 2 {
 		t.Fatalf("unexpected sync result: %+v", result)
+	}
+	it, err := svc.ListCells(ctx, model.SearchFilter{Names: []string{"cell-a"}})
+	if err != nil {
+		t.Fatalf("list cells: %v", err)
+	}
+	defer it.Close(ctx)
+	cellA, err := it.Next(ctx)
+	if err != nil {
+		t.Fatalf("next cell: %v", err)
+	}
+	if cellA.GitRepoName == nil || *cellA.GitRepoName != "repo-1" {
+		t.Fatalf("git repo not set from populator: %+v", cellA.GitRepoName)
+	}
+	if cellA.GitBranch == nil || *cellA.GitBranch != "main" {
+		t.Fatalf("git branch not set from populator: %+v", cellA.GitBranch)
+	}
+	if cellA.DefaultRecipe == nil || *cellA.DefaultRecipe != "build" {
+		t.Fatalf("default recipe not set from populator: %+v", cellA.DefaultRecipe)
 	}
 
 	// Run again with one cell removed to exercise prune.

@@ -66,13 +66,15 @@ type systemClock struct{}
 func (systemClock) Now() time.Time { return time.Now().UTC() }
 
 type CreateInput struct {
-	Name        string
-	GitRepoPath string
+	Name                string
+	GitRepoPath         string
+	DefaultTicketRecipe *string
 }
 
 type UpdateInput struct {
-	Name        *string
-	GitRepoPath *string
+	Name                *string
+	GitRepoPath         *string
+	DefaultTicketRecipe *string
 }
 
 func (s *service) CreateProject(ctx context.Context, input CreateInput) (*model.Project, error) {
@@ -90,11 +92,12 @@ func (s *service) CreateProject(ctx context.Context, input CreateInput) (*model.
 	}
 	now := s.clock.Now()
 	project := &model.Project{
-		ID:          model.ID(id),
-		Name:        name,
-		GitRepoPath: repo,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:                  model.ID(id),
+		Name:                name,
+		GitRepoPath:         repo,
+		DefaultTicketRecipe: normalizeOptionalString(input.DefaultTicketRecipe),
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	if err := s.store.Create(ctx, project); err != nil {
 		return nil, err
@@ -140,6 +143,10 @@ func (s *service) UpdateProject(ctx context.Context, id model.ID, patch UpdateIn
 		existing.GitRepoPath = repo
 		updated = true
 	}
+	if patch.DefaultTicketRecipe != nil {
+		existing.DefaultTicketRecipe = normalizeOptionalString(patch.DefaultTicketRecipe)
+		updated = true
+	}
 	if !updated {
 		return existing, nil
 	}
@@ -158,4 +165,15 @@ func (s *service) DeleteProject(ctx context.Context, id model.ID) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+func normalizeOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

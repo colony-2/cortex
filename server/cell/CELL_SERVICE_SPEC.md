@@ -30,6 +30,9 @@ type Cell struct {
     WorkingPath string                 `gorm:"column:working_path;not null"`  // absolute or repo-relative path
     Populator   string                 `gorm:"column:populator;default:''"`   // e.g., "graph/moon"
     PopulatorID string                 `gorm:"column:populator_id;default:'';index"`
+    GitRepoName *string                `gorm:"column:git_repo_name"`          // optional git repo name; null when unknown
+    GitBranch   *string                `gorm:"column:git_branch"`             // optional git branch; null when unknown
+    DefaultRecipe *string              `gorm:"column:default_recipe"`         // optional default recipe; null when unknown
     CreatedAt   time.Time
     UpdatedAt   time.Time
     DeletedAt   *time.Time             `gorm:"column:deleted_at;index"`       // nil when active
@@ -94,6 +97,9 @@ type PopulatorCell struct {
     WorkingPath string
     ExternalID  string   // stable ID from the populator source (e.g., moon node ID)
     Dependencies []string // names of dependent cells in the same project
+    GitRepoName string
+    GitBranch   string
+    DefaultRecipe string
 }
 ```
 - Graph adapter: wrap `graph.Builder` to implement `Populator` by translating `core.Cell` values (`ID` -> `Name`, `Path` -> `WorkingPath`, description from Moon when available). Builder construction is outside the interface; service consumers pass a configured populator (root path comes from the adapter).

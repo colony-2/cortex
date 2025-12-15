@@ -11,17 +11,20 @@ type ID string
 
 // Cell represents a stored cell.
 type Cell struct {
-	ID          ID                     `gorm:"type:char(27);primaryKey"`
-	Version     optimisticlock.Version `gorm:"column:version"`
-	ProjectID   project.ID             `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
-	Name        string                 `gorm:"column:name;not null"`
-	Description string                 `gorm:"column:description;default:''"`
-	WorkingPath string                 `gorm:"column:working_path;not null"`
-	Populator   string                 `gorm:"column:populator;default:''"`
-	PopulatorID string                 `gorm:"column:populator_id;default:'';index"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   *time.Time `gorm:"column:deleted_at;index"`
+	ID            ID                     `gorm:"type:char(27);primaryKey"`
+	Version       optimisticlock.Version `gorm:"column:version"`
+	ProjectID     project.ID             `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	Name          string                 `gorm:"column:name;not null"`
+	Description   string                 `gorm:"column:description;default:''"`
+	WorkingPath   string                 `gorm:"column:working_path;not null"`
+	Populator     string                 `gorm:"column:populator;default:''"`
+	PopulatorID   string                 `gorm:"column:populator_id;default:'';index"`
+	GitRepoName   *string                `gorm:"column:git_repo_name"`
+	GitBranch     *string                `gorm:"column:git_branch"`
+	DefaultRecipe *string                `gorm:"column:default_recipe"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	DeletedAt     *time.Time `gorm:"column:deleted_at;index"`
 }
 
 func (Cell) TableName() string { return "cells" }

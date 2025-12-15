@@ -22,12 +22,14 @@ func TestStoreCRUD(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
+	recipe := "tickets.yaml"
 	project := &model.Project{
-		ID:          model.ID("0ujtsYcgvSTl8PAuAdqWYSMnLOv"),
-		Name:        "Alpha",
-		GitRepoPath: "git@example.com/alpha.git",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:                  model.ID("0ujtsYcgvSTl8PAuAdqWYSMnLOv"),
+		Name:                "Alpha",
+		GitRepoPath:         "git@example.com/alpha.git",
+		DefaultTicketRecipe: &recipe,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 	require.NoError(t, s.Create(ctx, project))
 
@@ -35,6 +37,8 @@ func TestStoreCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, project.Name, fetched.Name)
 	require.Equal(t, project.GitRepoPath, fetched.GitRepoPath)
+	require.NotNil(t, fetched.DefaultTicketRecipe)
+	require.Equal(t, recipe, *fetched.DefaultTicketRecipe)
 	require.WithinDuration(t, project.CreatedAt, fetched.CreatedAt, time.Second)
 	require.WithinDuration(t, project.UpdatedAt, fetched.UpdatedAt, time.Second)
 
