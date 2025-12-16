@@ -68,14 +68,11 @@ outputs:
 			JobID:    "git-decorator-test",
 		},
 		GitBase: contextual.GitBaseContext{
-			BaseRepo:  repoPath,
-			BaseHash:  baseHash,
-			GitAuthor: "Test User <test@example.com>",
+			BaseRepo:         repoPath,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			GitAuthor:        "Test User <test@example.com>",
 		},
-	}
-	gitCtx := contextual.GitCommitContext{
-		PersistHash: "",
-		ParentHash:  baseHash,
 	}
 
 	registry, err := ops.NewActivityRegistry()
@@ -88,7 +85,7 @@ outputs:
 		t.Fatalf("failed to create executor: %v", err)
 	}
 
-	_, err = exec.Execute(context.Background(), r, inputs, jobCtx, gitCtx)
+	_, err = exec.Execute(context.Background(), r, inputs, jobCtx, baseHash)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}

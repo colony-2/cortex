@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
@@ -63,7 +64,7 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
-	out, err := ExecuteRecipe(wCtx, r, input.Inputs, input.JobContext, input.GitContext)
+	out, err := ExecuteRecipe(wCtx, r, input.Inputs, input.JobContext, contextual.GitCommitContext{ParentRef: input.GitRef})
 	if err != nil {
 		return nil, err
 	}

@@ -40,12 +40,18 @@ func (c *Controller) prepareWorkspace(ctx context.Context, task *GitTaskContext)
 	if task.GetBaseRepo() == "" {
 		return fmt.Errorf("git workspace requires base repository path")
 	}
-	if task.GetBaseHash() == "" {
-		return fmt.Errorf("git workspace requires base hash")
+	if task.GetBaseRef() == "" {
+		return fmt.Errorf("git workspace requires base ref")
 	}
 
 	if err := c.cloneIfNeeded(ctx, task); err != nil {
 		return err
+	}
+
+	if task.ResolvedBaseHash == "" {
+		if head, err := common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD"); err == nil {
+			task.ResolvedBaseHash = head
+		}
 	}
 
 	adapter, err := c.adapterFor(task.GetBlobStoreURI())
@@ -69,20 +75,49 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 		return fmt.Errorf("git workspace requires worktree path")
 	}
 
-	if task.GetPersistHash() == "" {
-		return nil
-	}
+	targetRef := strings.TrimSpace(task.GetBaseRef())
+	targetHash := strings.TrimSpace(task.GetPersistHash())
 
 	if !dirExists(filepath.Join(task.GetWorktreePath(), ".git")) {
 		return fmt.Errorf("git workspace missing .git directory: %s", task.GetWorktreePath())
 	}
 
+	if targetRef == "" && targetHash == "" {
+		return nil
+	}
+
+	// Ref-first path: follow the ref tip and update resolved hash without thin packs.
+	if targetHash == "" && targetRef != "" {
+		hash, err := checkoutAndTrackRef(ctx, task.GetWorktreePath(), targetRef)
+		if err != nil {
+			return err
+		}
+		task.ResolvedBaseHash = hash
+		task.ParentHash = ""
+		task.PersistHash = ""
+		return c.ensureCleanAfterRestore(ctx, task)
+	}
+
+	// if hashes are populated, operate in hash mode
+
 	current, err := common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD")
 	if err != nil {
 		return fmt.Errorf("determine current commit: %w", err)
 	}
-	if hashesEqual(current, task.GetPersistHash()) {
+	if hashesEqual(current, targetHash) {
+		task.ResolvedBaseHash = current
 		return c.ensureCleanAfterRestore(ctx, task)
+	}
+
+	rootHash := strings.TrimSpace(task.GetResolvedBaseHash())
+	if rootHash == "" {
+		rootHash = strings.TrimSpace(task.GetParentHash())
+	}
+	if rootHash == "" {
+		rootHash = targetHash
+	}
+	if rootHash == "" {
+		return fmt.Errorf("git workspace requires resolved base hash for restore")
 	}
 
 	adapter, err := c.adapterFor(task.GetBlobStoreURI())
@@ -98,7 +133,7 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 	packEntries, err := adapter.ListBlobs(ctx, task.GetBlobStoreURI(), filepath.Join(thinPackSubdir, "*.pack"))
 	if err == nil {
 		expectedCommit := shortHash(task.GetPersistHash())
-		expectedRoot := shortHash(task.GetBaseHash())
+		expectedRoot := shortHash(rootHash)
 		found := false
 		for _, entry := range packEntries {
 			name := filepath.Base(entry)
@@ -114,7 +149,7 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 	restoreInput := gitcommit.RestoreCommitActivity{
 		RepoPath:        task.GetWorktreePath(),
 		TargetCommit:    task.GetPersistHash(),
-		RootHash:        task.GetBaseHash(),
+		RootHash:        rootHash,
 		StorageLocation: thinPackDir,
 		Force:           true,
 	}
@@ -122,7 +157,11 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 		return fmt.Errorf("restore git state: %w", err)
 	}
 
-	return c.ensureCleanAfterRestore(ctx, task)
+	if err := c.ensureCleanAfterRestore(ctx, task); err != nil {
+		return err
+	}
+	task.ResolvedBaseHash = targetHash
+	return nil
 }
 
 // Persist captures repository changes, writes thin packs, and returns the new commit hash alongside refreshed context.
@@ -146,6 +185,16 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 		return nil, fmt.Errorf("ensure thin-pack dir: %w", err)
 	}
 
+	rootHash := task.GetResolvedBaseHash()
+	if strings.TrimSpace(rootHash) == "" {
+		var err error
+		rootHash, err = common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD")
+		if err != nil {
+			return nil, fmt.Errorf("resolve base hash: %w", err)
+		}
+		task.ResolvedBaseHash = rootHash
+	}
+
 	commitMessage := buildCommitMessage(task, "pending", "")
 	author := task.GetGitAuthor()
 	if author == "" && task.GetCellName() != "" {
@@ -155,7 +204,7 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 	persistInput := gitcommit.PersistCommitActivity{
 		RepoPath:        task.GetWorktreePath(),
 		StorageLocation: thinPackDir,
-		RootHash:        task.GetBaseHash(),
+		RootHash:        rootHash,
 		CommitMessage:   commitMessage,
 		Author:          author,
 	}
@@ -165,12 +214,15 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 		return nil, fmt.Errorf("persist commit failed %w", err)
 	}
 
-	relativePackPath, err := filepath.Rel(localRoot, output.ThinPackPath)
-	if err != nil {
-		return nil, fmt.Errorf("compute thin-pack path: %w", err)
-	}
-	if _, err := adapter.PutBlob(ctx, task.GetBlobStoreURI(), relativePackPath, output.ThinPackPath); err != nil {
-		return nil, fmt.Errorf("store thin-pack: %w", err)
+	if output.HasChanges && output.ThinPackPath != "" {
+		relativePackPath, err := filepath.Rel(localRoot, output.ThinPackPath)
+		if err != nil {
+			return nil, fmt.Errorf("compute thin-pack path: %w", err)
+		}
+		if _, err := adapter.PutBlob(ctx, task.GetBlobStoreURI(), relativePackPath, output.ThinPackPath); err != nil {
+			return nil, fmt.Errorf("store thin-pack: %w", err)
+		}
+		task.ThinPackPath = filepath.ToSlash(relativePackPath)
 	}
 
 	//updated.ThinPackPath = filepath.ToSlash(relativePackPath)
@@ -180,6 +232,16 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 		if err := common.EnsureCleanAfterRestore(ctx, task.GetWorktreePath(), scopePath, output.CommitHash); err != nil {
 			return nil, fmt.Errorf("failed to ensure clean repo after persist: %w", err)
 		}
+	}
+
+	if output.HasChanges {
+		task.ParentHash = output.ParentHash
+		task.PersistHash = output.CommitHash
+		task.ResolvedBaseHash = output.CommitHash
+	} else {
+		task.ParentHash = output.ParentHash
+		task.PersistHash = ""
+		task.ResolvedBaseHash = rootHash
 	}
 
 	return output, nil
@@ -258,6 +320,25 @@ func (c *Controller) adapterFor(uri string) (StorageAdapter, error) {
 	return adapter, nil
 }
 
+func checkoutAndTrackRef(ctx context.Context, repoPath, ref string) (string, error) {
+	if strings.TrimSpace(ref) == "" {
+		return "", fmt.Errorf("checkout requires ref")
+	}
+
+	if _, err := common.ExecuteGitCommand(ctx, repoPath, "fetch", "--all", "--tags", "--prune"); err != nil {
+		return "", fmt.Errorf("fetch ref %s: %w", ref, err)
+	}
+	if _, err := common.ExecuteGitCommand(ctx, repoPath, "checkout", ref); err != nil {
+		return "", fmt.Errorf("checkout ref %s: %w", ref, err)
+	}
+
+	hash, err := common.GetCommitHash(ctx, repoPath, "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolve ref %s: %w", ref, err)
+	}
+	return hash, nil
+}
+
 func (c *Controller) cloneIfNeeded(ctx context.Context, task *GitTaskContext) error {
 	if dirExists(filepath.Join(task.GetWorktreePath(), ".git")) {
 		return nil
@@ -279,10 +360,14 @@ func (c *Controller) cloneIfNeeded(ctx context.Context, task *GitTaskContext) er
 	input := gitshallow.GitShallowCloneInput{
 		SourceDir:  source,
 		TargetDir:  task.GetWorktreePath(),
-		CommitHash: task.GetBaseHash(),
+		CommitHash: task.GetBaseRef(),
 	}
 	if _, err := gitshallow.GitShallowClone(ctx, input); err != nil {
 		return fmt.Errorf("clone workspace: %w", err)
+	}
+
+	if head, err := common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD"); err == nil {
+		task.ResolvedBaseHash = head
 	}
 	return nil
 }

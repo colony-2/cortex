@@ -79,7 +79,7 @@ func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]inter
 		RecipeName: "test-recipe",
 		Inputs:     input,
 		JobContext: jobCtx,
-		GitContext: gitCtx,
+		GitRef:     gitCtx.ParentRef,
 	}
 
 	jobId, err := StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
@@ -195,7 +195,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     in,
 		JobContext: jobCtx,
-		GitContext: gitCtx,
+		GitRef:     gitCtx.ParentRef,
 	}
 
 	jobId, err := StartRecipeJob(context.Background(), job, s.eng, *testRecipe)

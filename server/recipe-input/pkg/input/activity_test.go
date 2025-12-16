@@ -70,7 +70,7 @@ inputs:
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     in,
 		JobContext: jobCtx,
-		GitContext: gitCtx,
+		GitRef:     gitCtx.ParentRef,
 	}
 
 	errCh := make(chan error)

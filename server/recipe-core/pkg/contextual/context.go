@@ -16,9 +16,10 @@ type EnvironmentContext struct {
 
 // GitBaseContext captures immutable git state information at a point in time.
 type GitBaseContext struct {
-	BaseRepo  string `json:"repo,omitempty"`
-	BaseHash  string `json:"hash,omitempty"`
-	GitAuthor string `json:"author,omitempty"`
+	BaseRepo         string `json:"repo,omitempty"`
+	BaseRef          string `json:"ref,omitempty"`
+	ResolvedBaseHash string `json:"resolved_hash,omitempty"`
+	GitAuthor        string `json:"author,omitempty"`
 }
 
 // WorkflowContext provides high-level workflow/session identifiers.
@@ -48,6 +49,7 @@ type TaskExecutionContext struct {
 
 // WorkspaceResult captures the output of inline/detached workspace executions.
 type GitCommitContext struct {
-	PersistHash string `json:"commit"` // SHA-1 hash of created commit
-	ParentHash  string `json:"parent"` // SHA-1 hash of parent commit
+	ParentRef   string `json:"parent_ref,omitempty"`  // ref carrying workspace state until a hash exists
+	PersistHash string `json:"hash,omitempty"`        // materialized SHA after a commit is created
+	ParentHash  string `json:"parent_hash,omitempty"` // parent SHA once materialized
 }

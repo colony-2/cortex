@@ -130,15 +130,17 @@ func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 			JobID:    "test-job-id",
 		},
 		GitBase: contextual.GitBaseContext{
-			BaseRepo:  baseRepo,
-			BaseHash:  baseHash,
-			GitAuthor: "",
+			BaseRepo:         baseRepo,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			GitAuthor:        "",
 		},
 	}
 
 	g := contextual.GitCommitContext{
-		PersistHash: baseHash,
-		ParentHash:  "not-available",
+		ParentRef:   baseHash,
+		ParentHash:  "",
+		PersistHash: "",
 	}
 
 	return job, g
@@ -326,7 +328,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				t.Run(tc.Name, func(t *testing.T) {
 					// Execute recipe using standalone executor
 					jobCtx, gitCtx := generateTestContext()
-					result, err := exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx)
+					result, err := exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
 
 					// Check results
 					if tc.WantErr {

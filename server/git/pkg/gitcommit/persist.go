@@ -104,25 +104,18 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 		commitHash = parentHash
 	}
 
-	// Generate thin pack
-	// Format: {commit_hash}-{parent_hash}-{root_hash}.pack
-	packName := fmt.Sprintf("%s-%s-%s.pack",
-		commitHash[:7],
-		parentHash[:7],
-		input.RootHash[:7])
-	packPath := filepath.Join(input.StorageLocation, packName)
+	var packPath string
+	var packSize int64
 
-	// Use git bundle for a portable format
-	// This creates a bundle that includes the commit and its dependencies
-	// If commit is same as parent (no changes), create a marker file instead
-	if commitHash == parentHash {
-		// Create an empty marker file for no-change commits
-		file, err := os.Create(packPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create marker file: %w", err)
-		}
-		file.Close()
-	} else {
+	if hasChanges {
+		// Generate thin pack
+		// Format: {commit_hash}-{parent_hash}-{root_hash}.pack
+		packName := fmt.Sprintf("%s-%s-%s.pack",
+			commitHash[:7],
+			parentHash[:7],
+			input.RootHash[:7])
+		packPath = filepath.Join(input.StorageLocation, packName)
+
 		// Create bundle containing commits from root to current
 		// This ensures the bundle can be applied when only root is available
 		_, err = common.ExecuteGitCommand(ctx, input.RepoPath,
@@ -138,19 +131,20 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 					commitHash[:7], err)
 			}
 		}
-	}
-
-	// Get pack file size
-	fileInfo, err := os.Stat(packPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat thin pack: %w", err)
+		// Get pack file size
+		fileInfo, err := os.Stat(packPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to stat thin pack: %w", err)
+		}
+		packSize = fileInfo.Size()
 	}
 
 	return &PersistCommitOutput{
 		CommitHash:   commitHash,
 		ParentHash:   parentHash,
 		ThinPackPath: packPath,
-		ThinPackSize: fileInfo.Size(),
+		ThinPackSize: packSize,
 		CreatedAt:    time.Now(),
+		HasChanges:   hasChanges,
 	}, nil
 }

@@ -16,18 +16,19 @@ type writeFile struct {
 	Content string
 }
 
-func newTaskContext(baseRepo, baseHash, worktree, blobStore, cell string) *GitTaskContext {
+func newTaskContext(baseRepo, baseRef, worktree, blobStore, cell string) *GitTaskContext {
 	return &GitTaskContext{
-		BaseRepo:     baseRepo,
-		BaseHash:     baseHash,
-		PersistHash:  baseHash,
-		PreviousHash: baseHash,
-		WorktreePath: worktree,
-		BlobStoreURI: "file://" + blobStore,
-		CellName:     cell,
-		TicketID:     "ticket-123",
-		NodePath:     "node",
-		InvokeSeq:    1,
+		BaseRepo:         baseRepo,
+		BaseRef:          baseRef,
+		ResolvedBaseHash: baseRef,
+		PersistHash:      baseRef,
+		ParentHash:       baseRef,
+		WorktreePath:     worktree,
+		BlobStoreURI:     "file://" + blobStore,
+		CellName:         cell,
+		TicketID:         "ticket-123",
+		NodePath:         "node",
+		InvokeSeq:        1,
 	}
 }
 
@@ -56,7 +57,7 @@ func TestControllerLifecycle(t *testing.T) {
 	require.NotEqual(t, baseHash, output.CommitHash)
 
 	ctx.PersistHash = output.CommitHash
-	ctx.PreviousHash = output.ParentHash
+	ctx.ParentHash = output.ParentHash
 	ctx.ThinPackPath = output.ThinPackPath
 
 	head := gitRevParse(t, worktree, "HEAD")
@@ -150,7 +151,7 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	require.False(t, statBefore.IsDir())
 
 	ctx.PersistHash = output.CommitHash
-	ctx.PreviousHash = output.ParentHash
+	ctx.ParentHash = output.ParentHash
 	ctx.ThinPackPath = output.ThinPackPath
 
 	require.NoError(t, controller.Restore(context.Background(), ctx))
@@ -165,20 +166,21 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 
 func TestBuildCommitMessage(t *testing.T) {
 	ctx := &GitTaskContext{
-		BaseRepo:     "/repo",
-		BaseHash:     strings.Repeat("a", 40),
-		PreviousHash: strings.Repeat("b", 40),
-		PersistHash:  strings.Repeat("c", 40),
-		BlobStoreURI: "file:///blob",
-		ThinPackPath: "git/thin-packs/cb-pack.pack",
-		TicketID:     "TICK-1",
-		CellName:     "cells/alpha",
-		NodePath:     "cells/alpha/op",
-		InvokeSeq:    3,
+		BaseRepo:         "/repo",
+		BaseRef:          "main",
+		ResolvedBaseHash: strings.Repeat("a", 40),
+		ParentHash:       strings.Repeat("b", 40),
+		PersistHash:      strings.Repeat("c", 40),
+		BlobStoreURI:     "file:///blob",
+		ThinPackPath:     "git/thin-packs/cb-pack.pack",
+		TicketID:         "TICK-1",
+		CellName:         "cells/alpha",
+		NodePath:         "cells/alpha/op",
+		InvokeSeq:        3,
 	}
 	message := buildCommitMessage(ctx, ctx.PersistHash, ctx.ThinPackPath)
-	require.Contains(t, message, ctx.BaseHash)
-	require.Contains(t, message, ctx.PreviousHash)
+	require.Contains(t, message, ctx.ResolvedBaseHash)
+	require.Contains(t, message, ctx.ParentHash)
 	require.Contains(t, message, ctx.PersistHash)
 	require.Contains(t, message, ctx.BlobStoreURI)
 	require.Contains(t, message, ctx.ThinPackPath)

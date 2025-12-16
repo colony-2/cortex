@@ -47,6 +47,7 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 		GitResult: contextual.GitCommitContext{
 			PersistHash: gitCtx.PersistHash,
 			ParentHash:  gitCtx.ParentHash,
+			ParentRef:   gitCtx.ParentRef,
 		},
 		NextTask: "",
 	}

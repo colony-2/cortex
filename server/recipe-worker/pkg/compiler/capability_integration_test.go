@@ -158,14 +158,12 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 				JobID:    "capability-job",
 			},
 			GitBase: contextual.GitBaseContext{
-				BaseRepo: repoPath,
-				BaseHash: baseHash,
+				BaseRepo:         repoPath,
+				BaseRef:          baseHash,
+				ResolvedBaseHash: baseHash,
 			},
 		},
-		GitContext: contextual.GitCommitContext{
-			PersistHash: baseHash,
-			ParentHash:  baseHash,
-		},
+		GitRef: baseHash,
 	}
 
 	type jobResult struct {
@@ -238,7 +236,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	envelope := workerops.ActivityInvocationOutput{
 		OpOutput: map[string]interface{}{"second": true},
 		GitResult: contextual.GitCommitContext{
-			ParentHash:  req.GitTaskContext.PreviousHash,
+			ParentHash:  req.GitTaskContext.ParentHash,
 			PersistHash: req.GitTaskContext.PersistHash,
 		},
 	}

@@ -37,7 +37,7 @@ func (e *StandaloneExecutor) Execute(
 	r recipe.Recipe,
 	inputs map[string]interface{},
 	jobCtx contextual.JobContext,
-	gitCtx contextual.GitCommitContext,
+	gitRef string,
 ) (map[string]interface{}, error) {
 
 	workset, err := compiler.NewRecipeWorker(e.deps, e.registry)
@@ -51,7 +51,7 @@ func (e *StandaloneExecutor) Execute(
 		RecipeName: r.GetMetadata().ID,
 		Inputs:     inputs,
 		JobContext: jobCtx,
-		GitContext: gitCtx,
+		GitRef:     gitRef,
 	}
 
 	id, err := compiler.StartRecipeJob(ctx, job, eng, r)

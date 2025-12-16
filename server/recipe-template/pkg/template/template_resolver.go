@@ -77,9 +77,10 @@ type ResolutionContext struct {
 	lastExecution map[string]interface{}
 }
 
-func (rc *ResolutionContext) UpdateGitState(parentHash string, persistHash string) {
-	rc.commitContext.ParentHash = parentHash
-	rc.commitContext.PersistHash = persistHash
+func (rc *ResolutionContext) UpdateGitState(commit contextual.GitCommitContext) {
+	rc.commitContext.ParentRef = commit.ParentRef
+	rc.commitContext.ParentHash = commit.ParentHash
+	rc.commitContext.PersistHash = commit.PersistHash
 }
 
 func (rc *ResolutionContext) GetGitCommitContext() contextual.GitCommitContext {

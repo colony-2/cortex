@@ -117,12 +117,9 @@ func TestPersistCommit_NoChangesToCommit(t *testing.T) {
 	// Should succeed but commit hash should be the same
 	assert.Equal(t, currentCommitBefore, output.CommitHash)
 	assert.Equal(t, output.CommitHash, output.ParentHash) // No new commit created
-	
-	// Should create an empty marker file
-	assert.FileExists(t, output.ThinPackPath)
-	info, err := os.Stat(output.ThinPackPath)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), info.Size()) // Empty marker file
+	assert.False(t, output.HasChanges)
+	assert.Empty(t, output.ThinPackPath)
+	assert.Equal(t, int64(0), output.ThinPackSize)
 }
 
 func TestPersistCommit_WithTimeout(t *testing.T) {
@@ -179,7 +176,7 @@ func TestPersistCommit_EmptyCommitMessage(t *testing.T) {
 
 	// Should use default message
 	assert.NotEmpty(t, output.CommitHash)
-	
+
 	// Verify commit was created with default message
 	cmd := exec.Command("git", "log", "-1", "--pretty=%s")
 	cmd.Dir = repoPath
@@ -296,7 +293,7 @@ func TestRestoreCommit_UncommittedChangesWithForce(t *testing.T) {
 	// Should succeed with force
 	assert.True(t, output.Success)
 	assert.Equal(t, rootCommit, output.CurrentCommit)
-	
+
 	// Uncommitted changes should be gone
 	assert.NoFileExists(t, testFile)
 }
@@ -512,7 +509,7 @@ func TestPersistRestoreRoundTrip(t *testing.T) {
 	// Verify restoration
 	assert.True(t, restoreOutput.Success)
 	assert.Equal(t, persistOutput.CommitHash, restoreOutput.CurrentCommit)
-	
+
 	// File should be restored with correct content
 	assert.FileExists(t, testFile)
 	content, err := os.ReadFile(testFile)

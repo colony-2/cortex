@@ -91,15 +91,17 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 			JobID:    "test-job-id",
 		},
 		GitBase: contextual.GitBaseContext{
-			BaseRepo:  baseRepo,
-			BaseHash:  baseHash,
-			GitAuthor: "",
+			BaseRepo:         baseRepo,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			GitAuthor:        "",
 		},
 	}
 
 	g := contextual.GitCommitContext{
-		PersistHash: baseHash,
-		ParentHash:  "not-available",
+		PersistHash: "",
+		ParentRef:   baseHash,
+		ParentHash:  "",
 	}
 
 	return job, g

@@ -159,13 +159,15 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			},
 		},
 		GitTaskContext: gitstate.GitTaskContext{
-			BaseRepo:     repoDir,
-			BaseHash:     baseHash,
-			PersistHash:  baseHash,
-			WorktreePath: worktreePath,
-			BlobStoreURI: "file://" + filepath.ToSlash(blobStore),
-			TicketID:     "T-1",
-			CellName:     "cells/beta",
+			BaseRepo:         repoDir,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			PersistHash:      "",
+			ParentHash:       "",
+			WorktreePath:     worktreePath,
+			BlobStoreURI:     "file://" + filepath.ToSlash(blobStore),
+			TicketID:         "T-1",
+			CellName:         "cells/beta",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -174,7 +176,8 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	patch, ok := output.OpOutput["git_context_patch"].(map[string]interface{})
 	require.True(t, ok)
 	assert.Equal(t, newBase, patch["base_hash"])
-	assert.NotEmpty(t, output.GitResult.PersistHash)
+	assert.Equal(t, baseHash, output.GitResult.ParentRef)
+	assert.Empty(t, output.GitResult.PersistHash)
 }
 
 func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
@@ -223,13 +226,13 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	_, _, err = handler(context.Background(), ActivityInvocationRequest{
 		Input: input,
 		GitTaskContext: gitstate.GitTaskContext{
-			BaseRepo:     repoPath,
-			BaseHash:     baseHash,
-			PersistHash:  baseHash,
-			WorktreePath: worktreeDir,
-			BlobStoreURI: "file://" + filepath.ToSlash(blobDir),
-			TicketID:     "TEST-1",
-			CellName:     "cells/cell-a",
+			BaseRepo:         repoPath,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			WorktreePath:     worktreeDir,
+			BlobStoreURI:     "file://" + filepath.ToSlash(blobDir),
+			TicketID:         "TEST-1",
+			CellName:         "cells/cell-a",
 		},
 	}, nil)
 	require.NoError(t, err)

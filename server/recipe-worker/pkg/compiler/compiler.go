@@ -128,7 +128,7 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		}
 
 		gitResult := envelope.GitResult
-		resCtx.UpdateGitState(gitResult.ParentHash, gitResult.PersistHash)
+		resCtx.UpdateGitState(gitResult)
 		stepInput = envelope.OpOutput
 		if envelope.NextTask == "" {
 			break

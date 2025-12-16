@@ -150,16 +150,22 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 			return zero, nil, err
 		}
 
-		output, err := controller.Persist(context.Background(), &req.GitTaskContext)
+		_, err = controller.Persist(context.Background(), &req.GitTaskContext)
 		if err != nil {
 			return zero, nil, err
+		}
+
+		parentRef := ""
+		if req.GitTaskContext.PersistHash == "" {
+			parentRef = req.GitTaskContext.BaseRef
 		}
 
 		return ActivityInvocationOutput{
 			OpOutput: outputData,
 			GitResult: contextual.GitCommitContext{
-				PersistHash: output.CommitHash,
-				ParentHash:  output.ParentHash,
+				PersistHash: req.GitTaskContext.PersistHash,
+				ParentHash:  req.GitTaskContext.ParentHash,
+				ParentRef:   parentRef,
 			},
 
 			NextTask: reg.NextTaskType,

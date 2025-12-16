@@ -24,6 +24,7 @@ type PersistCommitOutput struct {
 	ThinPackPath string    `json:"thin_pack_path"` // Full path to generated thin pack
 	ThinPackSize int64     `json:"thin_pack_size"` // Size of thin pack in bytes
 	CreatedAt    time.Time `json:"created_at"`     // Timestamp of operation
+	HasChanges   bool      `json:"has_changes"`    // True when a new commit was created
 }
 
 // RestoreCommitActivity defines the recipe operation for restoring Git commits
@@ -41,9 +42,9 @@ type RestoreCommitActivity struct {
 
 // RestoreCommitOutput represents the output from restore operation
 type RestoreCommitOutput struct {
-	Success          bool      `json:"success"`                        // Whether restore succeeded
-	CurrentCommit    string    `json:"current_commit"`                 // Current commit hash after restore
-	RestoredFrom     string    `json:"restored_from"`                  // Source of restore: "repository" or "thin_packs"
-	ThinPacksApplied []string  `json:"thin_packs_applied,omitempty"`  // List of applied thin packs
-	RestoredAt       time.Time `json:"restored_at"`                    // Timestamp of operation
+	Success          bool      `json:"success"`                      // Whether restore succeeded
+	CurrentCommit    string    `json:"current_commit"`               // Current commit hash after restore
+	RestoredFrom     string    `json:"restored_from"`                // Source of restore: "repository" or "thin_packs"
+	ThinPacksApplied []string  `json:"thin_packs_applied,omitempty"` // List of applied thin packs
+	RestoredAt       time.Time `json:"restored_at"`                  // Timestamp of operation
 }

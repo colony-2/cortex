@@ -14,8 +14,9 @@ func buildCommitMessage(ctx *GitTaskContext, persistHash, thinPackPath string) s
 
 ---
 git:
-  base_hash: %s
-  previous_hash: %s
+  base_ref: %s
+  resolved_base_hash: %s
+  parent_hash: %s
   persist_hash: %s
   blob_store_uri: %s
   thin_pack_path: %s
@@ -31,8 +32,9 @@ invocation:
 `,
 		ctx.NodePath,
 		ctx.InvokeSeq,
-		ctx.BaseHash,
-		ctx.PreviousHash,
+		ctx.BaseRef,
+		ctx.ResolvedBaseHash,
+		ctx.ParentHash,
 		persistHash,
 		ctx.BlobStoreURI,
 		thinPackPath,

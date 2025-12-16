@@ -126,13 +126,10 @@ inputs:
 			JobID:    "debug-job",
 		},
 		GitBase: contextual.GitBaseContext{
-			BaseRepo: repo,
-			BaseHash: hash,
+			BaseRepo:         repo,
+			BaseRef:          hash,
+			ResolvedBaseHash: hash,
 		},
-	}
-	gitCtx := contextual.GitCommitContext{
-		PersistHash: hash,
-		ParentHash:  hash,
 	}
 
 	// Execute recipe
@@ -141,7 +138,7 @@ inputs:
 		r,
 		map[string]interface{}{},
 		jobCtx,
-		gitCtx,
+		hash,
 	)
 
 	if err != nil {
