@@ -42,9 +42,41 @@ type TaskContext struct {
 	Invocation Invocation
 }
 
+func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionContext {
+	return TaskExecutionContext{
+		Actor:       ctx.Actor,
+		Environment: ctx.Environment,
+		Workflow:    ctx.Workflow,
+		GitBase:     ctx.GitBase,
+		GitCommit:   ctx2.GitCommit,
+		Invocation:  ctx2.Invocation,
+	}
+}
+
 type TaskExecutionContext struct {
-	JobContext
-	TaskContext
+	// embed these directly from task and job contexts for easier resolution.
+	Actor       ActorContext       `json:"actor,omitempty"`
+	Environment EnvironmentContext `json:"environment,omitempty"`
+	Workflow    WorkflowContext    `json:"workflow,omitempty"`
+	GitBase     GitBaseContext     `json:"git,omitempty"`
+	GitCommit   *GitCommitContext
+	Invocation  Invocation
+}
+
+func (t TaskExecutionContext) TaskContext() TaskContext {
+	return TaskContext{
+		GitCommit:  t.GitCommit,
+		Invocation: t.Invocation,
+	}
+}
+
+func (t TaskExecutionContext) JobContext() JobContext {
+	return JobContext{
+		Actor:       t.Actor,
+		Environment: t.Environment,
+		Workflow:    t.Workflow,
+		GitBase:     t.GitBase,
+	}
 }
 
 // WorkspaceResult captures the output of inline/detached workspace executions.

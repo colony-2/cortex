@@ -529,15 +529,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 
 	startJob := workflowctl.StartJob{
 		RecipeName: recipeName,
-		Inputs: map[string]interface{}{
-			"ticket_id": string(ticket.ID),
-			"expected_version": func() int64 {
-				if ticket.Version.Valid {
-					return ticket.Version.Int64
-				}
-				return 1
-			}(),
-		},
+		Inputs:     map[string]interface{}{},
 		JobContext: contextual.JobContext{
 			Actor: contextual.ActorContext{
 				TicketID:   string(ticket.ID),

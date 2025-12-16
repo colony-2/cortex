@@ -2,15 +2,8 @@ id: internal://new_ticket
 version: "0.0.1"
 desc: Default new ticket auto-complete recipe
 op: ticket.manage
-input_schema:
-  ticket_id:
-    type: string
-    required: true
-  expected_version:
-    type: number
-    required: true
 inputs:
-  ticket_id: "{{ inputs.ticket_id }}"
+  ticket_id: "{{ context.actor.ticket_id }}"
   actions:
     - type: update_ticket
       expected_version: 1

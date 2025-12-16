@@ -17,11 +17,13 @@ require (
 	github.com/colony-2/colony2/server/storage v0.0.0-20251216033137-495e22ae6fa6
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251216033137-495e22ae6fa6
 	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5
+	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
+	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/optimisticlock v1.1.3

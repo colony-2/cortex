@@ -516,3 +516,44 @@ func TestScopeVisibility_Negative(t *testing.T) {
 	_, err = recipeCtx.resolveTemplate("{{ sequence.outer.outputs.val }}")
 	require.Error(t, err)
 }
+
+func TestResolveTemplate_ContextActorTicketID(t *testing.T) {
+	// Create context with actor ticket_id set
+	commitCtx := &contextual.GitCommitContext{}
+	jobCtx := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "ticket-12345",
+			ActorName:  "test-user",
+			ActorEmail: "test@example.com",
+		},
+	}
+
+	recipeCtx, err := NewRecipeResolutionContext(commitCtx, nil, jobCtx)
+	require.NoError(t, err)
+
+	// Test resolving context.actor.ticket_id
+	result, err := recipeCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ticket-12345", result)
+
+	// Test resolving other actor fields
+	result, err = recipeCtx.resolveTemplate("{{ context.actor.actor_name }}")
+	require.NoError(t, err)
+	assert.Equal(t, "test-user", result)
+
+	result, err = recipeCtx.resolveTemplate("{{ context.actor.actor_email }}")
+	require.NoError(t, err)
+	assert.Equal(t, "test@example.com", result)
+
+	// Test in a sequence context - should inherit from parent
+	seqCtx := newSequenceCtx(t, recipeCtx, "test-seq", map[string]interface{}{})
+	result, err = seqCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ticket-12345", result)
+
+	// Test in a state machine context
+	smCtx := newStateMachineCtx(t, recipeCtx, "test-sm", map[string]interface{}{})
+	result, err = smCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ticket-12345", result)
+}

@@ -3,12 +3,13 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/colony-2/colony2/server/api/internal/recipes"
+	"github.com/colony-2/colony2/server/api/internal/testsupport"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
@@ -20,20 +21,17 @@ import (
 	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"os"
+	"github.com/segmentio/ksuid"
+	"log/slog"
 )
 
 func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	ctx := context.Background()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.Exec("PRAGMA journal_mode=WAL").Error)
-	require.NoError(t, db.Exec("PRAGMA busy_timeout=5000").Error)
+	pg := testsupport.StartEmbeddedPostgres(t)
+	defer pg.Close(t)
+	db := pg.DB
 	repoRoot := t.TempDir()
 	worktree := repoRoot + "/api"
 	require.NoError(t, os.MkdirAll(worktree, 0o755))
@@ -77,7 +75,35 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	if _, ok := workset.TaskWorkers["ticket.manage:ticket.manage"]; !ok {
 		t.Fatalf("workset missing ticket.manage:ticket.manage task, keys=%v", worksetTaskKeys(workset.TaskWorkers))
 	}
-	engine := toy.NewToyEngine([]swf.WorkSet{*workset})
+
+	// Install PGWF schema for workflow engine
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, impl.InstallPGWF(ctx, sqlDB))
+
+	// Start embedded Strata daemon
+	strata, err := impl.StartEmbeddedStrata()
+	require.NoError(t, err)
+	defer strata.Shutdown()
+
+	// Build embedded workflow engine
+	taskWorkers := make([]swf.TaskWorker, 0, len(workset.TaskWorkers))
+	for _, tw := range workset.TaskWorkers {
+		taskWorkers = append(taskWorkers, tw)
+	}
+	engine, err := swf.NewEngineBuilder(ksuid.New().String()).
+		WithAwaitRecycleThreshold(5 * time.Second).
+		WithPostgresDSN(pg.DSN()).
+		WithStrata(strata.BaseURL).
+		WithStrataAPIKey(strata.APIKey).
+		WithLogger(slog.Default()).
+		WithMaxActive(100).
+		PlusWorkers(workset.JobWorker, taskWorkers...).
+		Build(impl.Builder)
+	require.NoError(t, err)
+
+	// Start worker loops
+	go engine.Run(ctx)
 
 	// Embedded recipe provider
 	provider, err := recipes.NewEmbeddedProvider()
@@ -92,6 +118,11 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 		Recipes:    provider,
 	})
 	require.NoError(t, err)
+
+	// Install testing stub to prevent the ticket.manage operation from creating
+	// a new service instance (which would run migrations and deadlock)
+	stub := ticketop.TestingStub{Service: ticketSvc}
+	defer stub.Install()()
 
 	// Seed project and cell
 	proj, err := projectSvc.CreateProject(ctx, project.CreateInput{
@@ -138,22 +169,8 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	}
 	require.NotEmpty(t, jobID, "expected workflow event with job id")
 
-	ctxTimeout, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	var resultErr error
-	for ctxTimeout.Err() == nil {
-		status, _ := engine.CheckJobStatus(ctxTimeout, swf.JobId(jobID))
-		if status == swf.JobStatusCompleted {
-			_, resultErr = engine.GetJobResult(ctxTimeout, swf.JobId(jobID))
-			break
-		}
-		if status == swf.JobStatusCancelled {
-			resultErr = fmt.Errorf("job ended with status %s", status)
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	require.NoError(t, resultErr)
+	// Wait for job completion
+	require.NoError(t, swf.WaitForJobToComplete(ctx, 30*time.Second, swf.JobId(jobID), engine))
 
 	updated, err := ticketSvc.GetTicketAt(ctx, created.ID, time.Now().UTC())
 	require.NoError(t, err)

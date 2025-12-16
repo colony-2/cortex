@@ -1,6 +1,7 @@
 package template
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
 )
 
@@ -109,26 +112,35 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 				ExecutionID: generateExecutionID(),
 				Timestamp:   time.Now(),
 			},
-			Context: contextual.TaskExecutionContext{
-				JobContext: execCtx,
-				TaskContext: contextual.TaskContext{
-					Invocation: tracker.nextInvocation(),
-					GitCommit:  commitContext,
-				},
-			},
+			Context: contextual.NewTaskExecutionContext(execCtx, contextual.TaskContext{
+				Invocation: tracker.nextInvocation(),
+				GitCommit:  commitContext,
+			}),
 		},
 	}
 
 	// Initialize CEL environment
+	// Note: We use a custom type adapter to properly handle Go struct embedding
+	// CEL doesn't natively understand Go's anonymous struct fields, so we need to
+	// provide a flattened view that matches JSON serialization behavior
 	env, err := cel.NewEnv(
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("sequence", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
 		cel.Variable("states", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
 		cel.Variable("scope", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("context", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("context", cel.ObjectType("contextual.TaskExecutionContext")),
 		ext.NativeTypes(
 			reflect.TypeOf(StepOutput{}),
 			reflect.TypeOf(RunOutput{}),
+			reflect.TypeOf(contextual.TaskExecutionContext{}),
+			reflect.TypeOf(contextual.JobContext{}),
+			reflect.TypeOf(contextual.TaskContext{}),
+			reflect.TypeOf(contextual.ActorContext{}),
+			reflect.TypeOf(contextual.EnvironmentContext{}),
+			reflect.TypeOf(contextual.WorkflowContext{}),
+			reflect.TypeOf(contextual.GitBaseContext{}),
+			reflect.TypeOf(contextual.GitCommitContext{}),
+			reflect.TypeOf(contextual.Invocation{}),
 			ext.ParseStructTag("json"),
 		),
 	)
@@ -182,7 +194,7 @@ func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recip
 	}
 
 	scopeId := scopeId(metadata, fallback, scopeType)
-	child, err := newResolutionContext(rc.commitContext, rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TaskExecutionContext().JobContext)
+	child, err := newResolutionContext(rc.commitContext, rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TaskExecutionContext().JobContext())
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +287,7 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 		return nil, fmt.Errorf("failed to create CEL program: %w", err)
 	}
 
-	// Pass templateData fields as CEL variables without coercing structs to maps
+	// Pass templateData fields as CEL variables with native types
 	result, _, err := program.Eval(map[string]interface{}{
 		"inputs":   rc.TemplateData.ContainerInputs,
 		"sequence": rc.TemplateData.Sequence,
@@ -369,6 +381,37 @@ func (rc *ResolutionContext) validateCELExpression(expr string) error {
 	}
 
 	return nil
+}
+
+// embeddedStructAdapter is a custom CEL type adapter that handles Go struct embedding
+// by flattening anonymous embedded fields to match JSON serialization behavior
+type embeddedStructAdapter struct {
+	types.Adapter
+}
+
+func newEmbeddedStructAdapter() *embeddedStructAdapter {
+	return &embeddedStructAdapter{
+		Adapter: types.DefaultTypeAdapter,
+	}
+}
+
+func (a *embeddedStructAdapter) NativeToValue(value interface{}) ref.Val {
+	// Check if this is a TaskExecutionContext that needs flattening
+	if ctx, ok := value.(contextual.TaskExecutionContext); ok {
+		// Convert to JSON and back to get the flattened structure
+		data, err := json.Marshal(ctx)
+		if err != nil {
+			return types.NewErr("failed to marshal context: %v", err)
+		}
+		var flattened map[string]interface{}
+		if err := json.Unmarshal(data, &flattened); err != nil {
+			return types.NewErr("failed to unmarshal context: %v", err)
+		}
+		return a.Adapter.NativeToValue(flattened)
+	}
+
+	// For all other types, use the default adapter
+	return a.Adapter.NativeToValue(value)
 }
 
 // Helper functions for ID generation
