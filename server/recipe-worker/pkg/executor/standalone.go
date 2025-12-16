@@ -7,6 +7,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -54,7 +55,7 @@ func (e *StandaloneExecutor) Execute(
 		GitRef:     gitRef,
 	}
 
-	id, err := compiler.StartRecipeJob(ctx, job, eng, r)
+	id, err := starter.StartRecipeJob(ctx, job, eng, r)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/strata-go/pkg/client/artifact"
 	"gopkg.in/yaml.v3"
 )
@@ -73,7 +74,7 @@ func newRetriever(artifacts []artifact.Artifact) *recipeRetriever {
 		fullArtifactName := art.Name()
 
 		// 1. Strip the constant suffix to get the pure recipe name
-		recipeName := strings.TrimSuffix(fullArtifactName, RecipeArtifactSuffix)
+		recipeName := strings.TrimSuffix(fullArtifactName, starter.RecipeArtifactSuffix)
 
 		if recipeName == fullArtifactName {
 			// ignoring, not a recipe

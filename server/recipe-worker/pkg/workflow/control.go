@@ -6,8 +6,8 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -72,7 +72,7 @@ func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.Start
 		return "", err
 	}
 
-	return compiler.StartRecipeJob(ctx, req, s.Engine, *r)
+	return starter.StartRecipeJob(ctx, req, s.Engine, *r)
 }
 
 func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {

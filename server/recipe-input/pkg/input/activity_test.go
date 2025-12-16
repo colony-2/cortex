@@ -9,6 +9,7 @@ import (
 
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -75,7 +76,7 @@ inputs:
 
 	errCh := make(chan error)
 	go func() {
-		_, err := compiler.StartRecipeJob(context.Background(), job, eng, *testRecipe)
+		_, err := starter.StartRecipeJob(context.Background(), job, eng, *testRecipe)
 		errCh <- err
 	}()
 

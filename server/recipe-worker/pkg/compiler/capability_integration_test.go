@@ -17,6 +17,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -172,14 +173,14 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	}
 	jobCh := make(chan jobResult, 1)
 	go func() {
-		id, err := StartRecipeJob(context.Background(), start, engine, rec)
+		id, err := starter.StartRecipeJob(context.Background(), start, engine, rec)
 		jobCh <- jobResult{id: id, err: err}
 	}()
 
 	// Wait for the second step to become pending (disallowed as task).
 	var handles []swf.TaskHandle
 	for i := 0; i < 20; i++ {
-		handles, err = engine.FindTasksWaitingForCapability(context.Background(), RecipeJobType, opType+":second")
+		handles, err = engine.FindTasksWaitingForCapability(context.Background(), starter.RecipeJobType, opType+":second")
 		require.NoError(t, err)
 		if len(handles) > 0 {
 			break
