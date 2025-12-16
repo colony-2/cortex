@@ -24,7 +24,7 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a1"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) {
 		return rOut{Echo: in.Msg}, nil
 	})
-	out2, err := act.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": "yo"})
+	out2, err := act.TaskChain()[0].Invoke(&testDeps{}, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"echo": "yo"}, out2)
 }
@@ -32,13 +32,13 @@ func TestRegisterableOp_Activity_And_Inline(t *testing.T) {
 func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	// Invalid input data fails operation with clear errors [pkg/ops/registerable_op.go]
 	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a2"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
-	_, err := act.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": 123})
+	_, err := act.TaskChain()[0].Invoke(&testDeps{}, context.Background(), map[string]interface{}{"msg": 123})
 	assert.Error(t, err)
 
 	actOnly := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "act-only"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) { return rOut{}, nil })
 
 	// Zero-valued contexts handled gracefully in operations [pkg/ops/registerable_op.go]
-	out, err := actOnly.ExecuteV2(&testDeps{}, context.Background(), map[string]interface{}{"msg": "ok"})
+	out, err := actOnly.TaskChain()[0].Invoke(&testDeps{}, context.Background(), map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"echo": ""}, out)
 }
@@ -66,7 +66,7 @@ func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {
 		return rOut{Echo: in.Msg}, nil
 	})
 
-	_, err := activity.ExecuteV2(deps, context.Background(), map[string]interface{}{"msg": "yo"})
+	_, err := activity.TaskChain()[0].Invoke(deps, context.Background(), map[string]interface{}{"msg": "yo"})
 	require.NoError(t, err)
 	assert.True(t, activityInvoked)
 }

@@ -11,6 +11,14 @@ type testDeps struct {
 	artifacts []swf.Artifact
 }
 
+func (d *testDeps) AddOutputArtifact(artifact swf.Artifact) error {
+	return nil
+}
+
+func (d *testDeps) GetOutputArtifacts() []swf.Artifact {
+	return nil
+}
+
 func (d *testDeps) Database() *gorm.DB { return nil }
 
 func (d *testDeps) AddArtifact(a swf.Artifact) error {
@@ -21,3 +29,5 @@ func (d *testDeps) AddArtifact(a swf.Artifact) error {
 func (d *testDeps) GetInputArtifacts() []swf.Artifact { return d.artifacts }
 
 func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }
+
+var _ OpDependencies = &testDeps{}
