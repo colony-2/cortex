@@ -32,8 +32,8 @@ resources:
       - source: ${{ env.HOME }}/.claude.json.backup
         target: /home/devuser/.claude.json.backup
         mode: rw
-      - source: /src/colony2/.moon/
-        target: /src/.moon/
+      - source: /src/colony2/.moon/lcache
+        target: /src/.moon/cache
         mode: rw
       - source: /src/strata-go
         target: /strata-go

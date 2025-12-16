@@ -18,7 +18,6 @@ use (
 	./server/recipe-worker
 	./server/registry
 	./server/rstore
-	./server/rucc
 	./server/storage
 	./server/ticket
 )

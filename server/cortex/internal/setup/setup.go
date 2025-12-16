@@ -12,48 +12,11 @@ import (
 	"github.com/colony-2/colony2/server/cortex/internal/static"
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
-	inputops "github.com/colony-2/colony2/server/ops/pkg/input"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	inputops "github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/storage/pkg/storage"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 )
-
-// WorkflowControl implements ops.ServiceDependencies2 using a suite-backed controller when available.
-
-// suiteWorkflowCtl adapts the Temporal WorkflowTestSuite environment to workflowctl.WorkflowControl
-type suiteWorkflowCtl struct {
-	env *testsuite.TestWorkflowEnvironment
-}
-
-func (c *suiteWorkflowCtl) Describe(ctx context.Context, ref workflowctl.ExecutionRef) (workflowctl.WorkflowSummary, error) {
-	status := workflowctl.StatusRunning
-	if c.env.IsWorkflowCompleted() {
-		status = workflowctl.StatusCompleted
-	}
-	return workflowctl.WorkflowSummary{WorkflowID: ref.WorkflowID, Status: status}, nil
-}
-
-func (c *suiteWorkflowCtl) Signal(ctx context.Context, ref workflowctl.ExecutionRef, signalName string, payload any) error {
-	c.env.SignalWorkflow(signalName, payload)
-	return nil
-}
-
-func (c *suiteWorkflowCtl) Cancel(ctx context.Context, ref workflowctl.ExecutionRef, reason string) error {
-	return nil
-}
-
-func (c *suiteWorkflowCtl) ResetWorkflow(ctx context.Context, req workflowctl.ResetRequest) (workflowctl.ResetResponse, error) {
-	return workflowctl.ResetResponse{Execution: req.Execution, Completed: req.WaitForResult}, nil
-}
-
-func (c *suiteWorkflowCtl) StartWorkflow(ctx context.Context, req workflowctl.StartRequest) (workflowctl.StartResponse, error) {
-	return workflowctl.StartResponse{Execution: workflowctl.ExecutionRef{WorkflowID: req.WorkflowID}}, nil
-}
-
-func (c *suiteWorkflowCtl) StartChildWorkflow(ctx context.Context, req workflowctl.StartChildRequest) (workflowctl.StartChildResponse, error) {
-	return workflowctl.StartChildResponse{Execution: workflowctl.ExecutionRef{WorkflowID: req.WorkflowID}}, nil
-}
 
 // InitializeDependencies initializes all application dependencies
 func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Dependencies, func(), error) {
@@ -106,9 +69,6 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		DefaultEmail:  "github.com/colony-2/colony2/server@example.com",
 	})
 
-	// Initialize container manager
-	containerMgr := container.NewManager(container.Config{})
-	// Provide a basic SSE manager and a WorkflowTestSuite-backed controller
 	sseMgr := inputops.NewSimpleSSEManager()
 	ts := &testsuite.WorkflowTestSuite{}
 	env := ts.NewTestWorkflowEnvironment()
