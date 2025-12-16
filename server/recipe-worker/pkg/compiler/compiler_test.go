@@ -199,7 +199,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 		GitRef:     gitCtx.ParentRef,
 	}
 
-	jobId, err := StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
+	jobId, err := starter.StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
 	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobId, s.eng))
 	r, err := s.eng.GetJobResult(context.Background(), jobId)

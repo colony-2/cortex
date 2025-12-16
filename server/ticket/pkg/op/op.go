@@ -85,8 +85,9 @@ type (
 	}
 
 	Action struct {
-		Type ActionType      `json:"type"`
-		Raw  json.RawMessage `json:"-"`
+		Type   ActionType             `json:"type"`
+		Raw    json.RawMessage        `json:"-"`
+		Extras map[string]interface{} `json:"-,remain"`
 	}
 
 	Output struct {
@@ -239,7 +240,7 @@ func GetOp() ops.RegisterableOp {
 	return ops.NewOp().
 		WithDefaultTimeout(2*time.Minute).
 		WithType(opName).
-		AddStep("manage", ops.NewStepWithDeps(execute)).
+		AddStep(opName, ops.NewStepWithDeps(execute)).
 		BuildOrPanic()
 }
 
@@ -271,6 +272,13 @@ func execute(inv ops.OpDependencies, ctx context.Context, input Input) (Output, 
 
 	for idx, action := range input.Actions {
 		actionStart := time.Now()
+		if len(action.Raw) == 0 && len(action.Extras) > 0 {
+			rawBytes, err := json.Marshal(action.Extras)
+			if err != nil {
+				return Output{}, workflow.NewNonRetryableApplicationError("ticket.manage: marshal action extras: %v", err)
+			}
+			action.Raw = rawBytes
+		}
 		result, err := executeAction(ctx, inv, svc, action, fallbackActor, &currentTicket, &ticketID, contextPatch)
 		status := "success"
 		if err != nil {

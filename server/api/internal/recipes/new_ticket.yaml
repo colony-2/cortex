@@ -13,6 +13,6 @@ inputs:
   ticket_id: "{{ inputs.ticket_id }}"
   actions:
     - type: update_ticket
-      expected_version: "{{ inputs.expected_version }}"
+      expected_version: 1
       stage: "__completed__"
       state: "waiting_user"

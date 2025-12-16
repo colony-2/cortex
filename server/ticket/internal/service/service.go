@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -524,6 +525,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	if cellRecord.GitBranch != nil && strings.TrimSpace(*cellRecord.GitBranch) != "" {
 		ref = strings.TrimSpace(*cellRecord.GitBranch)
 	}
+	blobStore := filepath.Join(projectRecord.GitRepoPath, ".colony2", "blobstore")
 
 	startJob := workflowctl.StartJob{
 		RecipeName: recipeName,
@@ -543,6 +545,10 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 			},
 			Workflow: contextual.WorkflowContext{
 				CellName: string(ticket.CellName),
+			},
+			Environment: contextual.EnvironmentContext{
+				WorktreePath: cellRecord.WorkingPath,
+				BlobStoreURI: "file://" + blobStore,
 			},
 			GitBase: contextual.GitBaseContext{
 				BaseRepo: repo,

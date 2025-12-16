@@ -144,7 +144,11 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 			return zero, nil, err
 		}
 
-		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(deps.Database()).WithWorkflowControl(deps.WorkflowControl()).Build()
+		db := deps.Database()
+		if tx, ok := swf.TxFromCtx(ctx); ok && tx != nil {
+			db = tx
+		}
+		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(db).WithWorkflowControl(deps.WorkflowControl()).Build()
 		outputData, err := reg.Step.Invoke(opDeps, ctx, req.Input)
 		if err != nil {
 			return zero, nil, err
