@@ -16,6 +16,10 @@ type Recipe struct {
 	RecipeImpl
 }
 
+type RecipeProvider interface {
+	GetRecipe(name string) (*Recipe, error)
+}
+
 func (r Recipe) GetMetdata() RecipeMetadata {
 	switch t := r.RecipeImpl.(type) {
 	case *RecipeState:

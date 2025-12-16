@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -10,10 +11,15 @@ import (
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/ticket/internal/idgen"
 	"github.com/colony-2/colony2/server/ticket/internal/model"
 	eventstore "github.com/colony-2/colony2/server/ticket/internal/store/events"
 	store "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/go-playground/validator/v10"
 	"github.com/imdario/mergo"
 	"gorm.io/plugin/optimisticlock"
@@ -61,6 +67,8 @@ type ServiceConfig struct {
 	Clock      Clock
 	IDGen      model.ShortIDGenerator
 	EventIDGen model.ShortIDGenerator
+	Engine     swf.SWFEngine
+	Recipes    recipe.RecipeProvider
 }
 
 type service struct {
@@ -72,6 +80,8 @@ type service struct {
 	idGen      model.ShortIDGenerator
 	eventIDGen model.ShortIDGenerator
 	validate   *validator.Validate
+	engine     swf.SWFEngine
+	recipes    recipe.RecipeProvider
 }
 
 func New(config ServiceConfig) (Service, error) {
@@ -109,6 +119,8 @@ func New(config ServiceConfig) (Service, error) {
 		idGen:      config.IDGen,
 		eventIDGen: config.EventIDGen,
 		validate:   validate,
+		engine:     config.Engine,
+		recipes:    config.Recipes,
 	}, nil
 }
 
@@ -134,7 +146,8 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	if projectID == "" {
 		return nil, ErrInvalidProject
 	}
-	if _, err := s.projects.GetProject(ctx, project.ID(projectID)); err != nil {
+	projectRecord, err := s.projects.GetProject(ctx, project.ID(projectID))
+	if err != nil {
 		if errors.Is(err, project.ErrNotFound) {
 			return nil, ErrInvalidProject
 		}
@@ -171,15 +184,31 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	ticket.ValidFrom = now
 	ticket.ValidUntil = infinity()
 
-	if err := s.store.Create(ctx, ticket); err != nil {
+	var created *model.Ticket
+	err = s.store.WithTx(ctx, func(ctx context.Context, st store.Store) error {
+		if err := st.Create(ctx, ticket); err != nil {
+			return err
+		}
+
+		// Kick off recipe job only when dependencies are provided.
+		if s.engine != nil && s.recipes != nil {
+			if err := s.startTicketRecipe(ctx, st, ticket, projectRecord, cellRecord); err != nil {
+				return err
+			}
+		}
+
+		created = ticket
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	if err := s.attachLastReset(ctx, ticket); err != nil {
+	if err := s.attachLastReset(ctx, created); err != nil {
 		return nil, err
 	}
 
-	return ticket, nil
+	return created, nil
 }
 
 func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInput) (*model.Ticket, error) {
@@ -468,6 +497,78 @@ func applyTicketResetMetadata(ticket *model.Ticket, reset *model.TicketReset) {
 	ticket.LastResetID = &idCopy
 	atCopy := reset.CreatedAt.UTC()
 	ticket.LastResetAt = &atCopy
+}
+
+func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket *model.Ticket, projectRecord *project.Project, cellRecord *cell.Cell) error {
+	if st == nil || ticket == nil || projectRecord == nil || cellRecord == nil {
+		return errors.New("ticket: missing dependencies for recipe start")
+	}
+
+	recipeName := defaultRecipeName(cellRecord, projectRecord)
+	rec, err := s.recipes.GetRecipe(recipeName)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return fmt.Errorf("ticket: recipe %q resolved to nil", recipeName)
+	}
+
+	repo := projectRecord.GitRepoPath
+	if cellRecord.GitRepoName != nil && strings.TrimSpace(*cellRecord.GitRepoName) != "" {
+		repo = strings.TrimSpace(*cellRecord.GitRepoName)
+	}
+	ref := "main"
+	if projectRecord.GitRepoBranch != nil && strings.TrimSpace(*projectRecord.GitRepoBranch) != "" {
+		ref = strings.TrimSpace(*projectRecord.GitRepoBranch)
+	}
+	if cellRecord.GitBranch != nil && strings.TrimSpace(*cellRecord.GitBranch) != "" {
+		ref = strings.TrimSpace(*cellRecord.GitBranch)
+	}
+
+	startJob := workflowctl.StartJob{
+		RecipeName: recipeName,
+		Inputs: map[string]interface{}{
+			"ticket_id": string(ticket.ID),
+			"expected_version": func() int64 {
+				if ticket.Version.Valid {
+					return ticket.Version.Int64
+				}
+				return 1
+			}(),
+		},
+		JobContext: contextual.JobContext{
+			Actor: contextual.ActorContext{
+				TicketID:   string(ticket.ID),
+				ActorEmail: actorEmail(ticket.Creator),
+			},
+			Workflow: contextual.WorkflowContext{
+				CellName: string(ticket.CellName),
+			},
+			GitBase: contextual.GitBaseContext{
+				BaseRepo: repo,
+				BaseRef:  ref,
+			},
+		},
+		GitRef: ref,
+	}
+
+	jobCtx := ctx
+	if tx := st.DB(); tx != nil {
+		jobCtx = swf.WithTx(ctx, tx)
+	}
+
+	jobID, err := starter.StartRecipeJob(jobCtx, startJob, s.engine, *rec)
+	if err != nil {
+		return err
+	}
+
+	workflowPayload := model.WorkflowEventPayload{
+		Type:       model.WorkflowEventRunning,
+		WorkflowID: model.WorkflowID(jobID),
+		RunID:      model.WorkflowRunID(jobID),
+	}
+	_, err = s.appendEventInTx(ctx, st, ticket, ticket.ID, ticket.Creator, model.TicketEventKindWorkflow, model.TicketEventBody{Workflow: &workflowPayload}, s.clock.Now())
+	return err
 }
 
 func (s *service) resolveCell(ctx context.Context, projectID project.ID, name core.CellName) (*cell.Cell, error) {

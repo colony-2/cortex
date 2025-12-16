@@ -3,9 +3,25 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
+	github.com/colony-2/colony2/server/cell v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/core v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/git v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/graph v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/openapi v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/ops v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/project v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/registry v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/storage v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/ticket v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
+	github.com/stretchr/testify v1.11.1
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/optimisticlock v1.1.3
@@ -24,7 +40,11 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20251215180756-22e51ef4f103 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251215180756-22e51ef4f103 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/shai v0.0.0-20251214230818-6cb8e30456ba // indirect
+	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -55,6 +75,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
@@ -86,7 +107,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
-	github.com/stoewer/go-strcase v1.2.0 // indirect
+	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
@@ -103,15 +124,14 @@ require (
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/net v0.43.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genai v1.16.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
-	google.golang.org/grpc v1.75.0 // indirect
-	google.golang.org/protobuf v1.36.8 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
+	google.golang.org/grpc v1.75.1 // indirect
+	google.golang.org/protobuf v1.36.10 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 )

@@ -110,15 +110,15 @@ func cloneTicketFieldChanges(changes []TicketFieldChange) []TicketFieldChange {
 }
 
 type TicketEvent struct {
-	ID          TicketEventID          `gorm:"column:id;type:char(27);primaryKey"`
-	TicketID    ID                     `gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	ProjectID   project.ID             `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
-	Kind        TicketEventKind        `gorm:"type:text"`
-	PayloadType TicketEventPayloadType `gorm:"column:payload_type;type:text;index"`
-	Actor       Actor                  `gorm:"embedded;embeddedPrefix:actor_"`
-	EventTime   time.Time              `gorm:"index"`
-	CreatedAt   time.Time
-	ResetID     *TicketResetID `gorm:"column:reset_id;type:char(27);index"`
+	ID          TicketEventID          `json:"id" gorm:"column:id;type:char(27);primaryKey"`
+	TicketID    ID                     `json:"ticket_id" gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ProjectID   project.ID             `json:"project_id" gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	Kind        TicketEventKind        `json:"kind" gorm:"type:text"`
+	PayloadType TicketEventPayloadType `json:"payload_type" gorm:"column:payload_type;type:text;index"`
+	Actor       Actor                  `json:"actor" gorm:"embedded;embeddedPrefix:actor_"`
+	EventTime   time.Time              `json:"event_time" gorm:"index"`
+	CreatedAt   time.Time              `json:"created_at"`
+	ResetID     *TicketResetID         `json:"reset_id,omitempty" gorm:"column:reset_id;type:char(27);index"`
 
 	TicketData    TicketEventPayload      `gorm:"embedded;embeddedPrefix:ticket_" json:"-"`
 	TicketChanges TicketFieldChangeList   `gorm:"column:ticket_changes;type:jsonb" json:"-"`
@@ -127,7 +127,7 @@ type TicketEvent struct {
 	ChangeSetData ChangeSetEventPayload   `gorm:"embedded;embeddedPrefix:changeset_" json:"-"`
 	ResetData     TicketResetEventPayload `gorm:"embedded;embeddedPrefix:reset_" json:"-"`
 
-	Payload TicketEventBody `gorm:"-"`
+	Payload TicketEventBody `json:"payload,omitempty" gorm:"-"`
 }
 
 type TicketEventBody struct {
@@ -195,12 +195,12 @@ type TicketResetEventPayload struct {
 }
 
 type TicketReset struct {
-	ID        TicketResetID `gorm:"column:id;type:char(27);primaryKey"`
-	TicketID  ID            `gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
-	ProjectID project.ID    `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
-	Actor     Actor         `gorm:"embedded;embeddedPrefix:actor_"`
-	Reason    string        `gorm:"type:text"`
-	CreatedAt time.Time
+	ID        TicketResetID `json:"id" gorm:"column:id;type:char(27);primaryKey"`
+	TicketID  ID            `json:"ticket_id" gorm:"column:ticket_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ProjectID project.ID    `json:"project_id" gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	Actor     Actor         `json:"actor" gorm:"embedded;embeddedPrefix:actor_"`
+	Reason    string        `json:"reason" gorm:"type:text"`
+	CreatedAt time.Time     `json:"created_at"`
 }
 
 type TicketEventFilter struct {

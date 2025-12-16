@@ -12,9 +12,7 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
-type RecipeProvider interface {
-	GetRecipe(name string) (*recipe.Recipe, error)
-}
+type RecipeProvider = recipe.RecipeProvider
 
 type SWFWorkflowControl struct {
 	Engine   swf.SWFEngine
