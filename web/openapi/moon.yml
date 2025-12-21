@@ -22,8 +22,6 @@ tasks:
     deps:
       - 'api-openapi:build'
       - '~:remove-files'
-    inputs:
-      - './colony2-api.yaml'
     outputs:
       - 'src/generated/**/*'
 

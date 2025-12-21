@@ -3,10 +3,9 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 
 # Project discovery
 projects:
-  - docker
-  - server/*/
-  - "web/*/"
-  - "api/*/"
+  - server/*/moon.yml
+  - web/*/moon.yml
+  - api/*/moon.yml
 
 # Runner configuration
 runner:
