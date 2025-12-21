@@ -24,7 +24,7 @@ tasks:
       outputStyle: buffer-only-failure
   
   compile:
-    command: 'tsc'
+    script: 'tsc'
     platform: 'node'
     inputs:
       - 'src/**/*' 
@@ -38,7 +38,7 @@ tasks:
       outputStyle: buffer-only-failure
       
   bundle:
-    command: vite
+    script: vite
     args: [build, --logLevel, warn]
     deps:
       - '~:compile'

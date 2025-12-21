@@ -7,7 +7,7 @@ fileGroups:
 
   # absolute path (leading slash) → resolved from workspace root
   lockfile:
-    - 'package-lock.json'
+    - 'pnpm-lock.yaml'
 
   config:
     - 'vite.config.[jt]s'
@@ -31,8 +31,8 @@ tasks:
       runInCI: true
       outputStyle: buffer-only-failure
   test:
-    command: npx
-    args: [vitest, run, --reporter=dot]
+    command: pnpm
+    args: [exec, vitest, run, --reporter=dot]
     deps:
       - "^:build"
     inputs:

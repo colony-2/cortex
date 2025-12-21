@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 server/vendor/
 
 # Build outputs
@@ -42,6 +43,7 @@ graph_positions.db
 
 # moon
 .moon/cache
+.moon/lcache
 .moon/docker
 .example/.moon/cache
 server/colony2/static/assets

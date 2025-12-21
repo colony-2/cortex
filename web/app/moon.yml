@@ -9,8 +9,8 @@ tasks:
       - ui-kanban:build
       - shared:build
   integration2:
-    command: npx
-    args: [playwright, test, --reporter=list]
+    command: pnpm
+    args: [exec, playwright, test, --reporter=list]
     inputs:
       - tests/**/*
       - playwright.config.ts

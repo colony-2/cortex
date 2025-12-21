@@ -4,13 +4,12 @@ project:
 
 tasks:
   build:
-    command: npm
-    args: [run, build]
+    script: pnpm run build
     platform: node
     inputs:
       - src/**/*
       - package.json
-      - package-lock.json
+      - pnpm-lock.yaml
       - tsconfig.json
       - vite.config.ts
     outputs:

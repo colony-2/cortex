@@ -2,32 +2,34 @@ id: 'fe-openapi'
 type: 'library'
 language: 'typescript'
 
+workspace:
+  inheritedTasks:
+    exclude: ['build', 'test']
+
 project:
   name: 'web-openapi'
   description: 'Generated TypeScript client from OpenAPI specification'
 
 tasks:
-  # Override the global test task since this package has no tests
-  test:
-    command: 'true'
-    platform: system
-    
+  remove-files:
+    script: |
+      set -e
+      rm -f ./colony2-api.yaml
+      rm -rf src/generated
+      mkdir -p src/generated
   build:
     script: |
-      rm -rf src/generated
-      npx openapi-typescript-codegen --input ../../api/openapi/colony2-api.yaml --output ./src/generated --client axios
-      npx tsup src/index.ts --format cjs,esm --clean --silent
+      pnpm exec openapi --input $workspaceRoot/api/openapi/colony2-api.yaml --output ./src/generated --client fetch 
+      pnpm exec tsup src/generated/index.ts --format cjs,esm --clean --silent
       npx tsc --emitDeclarationOnly
+    deps:
+#      - '~:copy-spec'
+      - '~:remove-files'
     inputs:
-      - 'src/**/*.ts'
-      - 'tsconfig.json'
-      - 'package.json'
+      - './colony2-api.yaml'
     outputs:
       - 'src/generated/**/*'
-      - 'dist/**/*'
-    deps:
-      - 'api-openapi:build'
-    platform: system
-    options:
-      runInCI: true
-      outputStyle: buffer-only-failure
+
+  test:
+    command: 'true'
+
