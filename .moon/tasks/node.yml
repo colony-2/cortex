@@ -14,10 +14,11 @@ fileGroups:
     - 'tsconfig.json'
     - 'package.json'
 
+
 tasks:
   build:
-    command: vite
-    args: [build, --logLevel, warn]
+    command: pnpm
+    args: [exec, vite, build, --logLevel, trace]
     inputs:
       - '@group(sources)'
       - '@group(config)'
@@ -26,9 +27,7 @@ tasks:
       - dist/
     deps:
       - "^:build"
-    platform: node
     options:
-      runInCI: true
       outputStyle: buffer-only-failure
   test:
     command: pnpm
@@ -40,9 +39,7 @@ tasks:
       - tests/**/*
       - '@group(config)'
       - '@group(lockfile)'
-    platform: node
     options:
-      runInCI: true
       outputStyle: buffer-only-failure
 
   lint:
@@ -52,7 +49,5 @@ tasks:
       - '@group(sources)'
       - .eslintrc*
       - '@group(lockfile)'
-    platform: node
     options:
-      runInCI: true
       outputStyle: buffer-only-failure

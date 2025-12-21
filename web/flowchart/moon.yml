@@ -2,4 +2,3 @@ id: ui-flowchart
 project:
   description: Graph visualization component for rendering interactive flowcharts and dependency graphs.
 
-tasks:

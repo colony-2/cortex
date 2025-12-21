@@ -2,15 +2,3 @@ id: ui-kanban
 project:
   description: Kanban board module for tickets
 
-tasks:
-  build:
-    script: pnpm run build
-    platform: node
-    inputs:
-      - src/**/*
-      - package.json
-      - pnpm-lock.yaml
-      - tsconfig.json
-      - vite.config.ts
-    outputs:
-      - dist

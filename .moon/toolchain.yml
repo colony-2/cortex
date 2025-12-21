@@ -3,11 +3,14 @@ $schema: './cache/schemas/toolchain.json'
 
 # Define tools and their versions
 node:
-  version: '24.3.0'
+  #https://github.com/moonrepo/moon/issues/2269
+  #version: '24.3.0'
   packageManager: 'pnpm'
   pnpm:
-    version: '9.15.4'
+    #https://github.com/moonrepo/moon/issues/2269
+    #version: '9.15.4'
   syncPackageManagerField: false
+
 
 # TypeScript configuration  
 typescript:

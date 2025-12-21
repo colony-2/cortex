@@ -1,11 +1,17 @@
 # https://moonrepo.dev/docs/config/project
 $schema: '../../../.moon/cache/schemas/project.json'
 
+
 project:
   name: 'web-shared'
   description: 'Shared utilities and types'
   channel: '#frontend'
-  
+
+
+workspace:
+  inheritedTasks:
+    exclude: ['build']
+
 language: 'typescript'
 type: 'library'
 
@@ -25,7 +31,6 @@ tasks:
   
   compile:
     script: 'tsc'
-    platform: 'node'
     inputs:
       - 'src/**/*' 
       - 'tsconfig.json'
@@ -38,8 +43,9 @@ tasks:
       outputStyle: buffer-only-failure
       
   bundle:
-    script: vite
-    args: [build, --logLevel, warn]
+    platform: system
+    command: vite
+    args: [build, --logLevel, warn, --emptyOutDir]
     deps:
       - '~:compile'
     inputs:

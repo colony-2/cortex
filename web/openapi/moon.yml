@@ -2,10 +2,6 @@ id: 'fe-openapi'
 type: 'library'
 language: 'typescript'
 
-workspace:
-  inheritedTasks:
-    exclude: ['build', 'test']
-
 project:
   name: 'web-openapi'
   description: 'Generated TypeScript client from OpenAPI specification'
@@ -18,12 +14,13 @@ tasks:
       rm -rf src/generated
       mkdir -p src/generated
   build:
+    platform: system
     script: |
       pnpm exec openapi --input $workspaceRoot/api/openapi/colony2-api.yaml --output ./src/generated --client fetch 
       pnpm exec tsup src/generated/index.ts --format cjs,esm --clean --silent
       npx tsc --emitDeclarationOnly
     deps:
-#      - '~:copy-spec'
+      - 'api-openapi:build'
       - '~:remove-files'
     inputs:
       - './colony2-api.yaml'
