@@ -8,12 +8,10 @@ import (
 
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
-	"github.com/colony-2/colony2/server/storage/pkg/storage"
 )
 
 // Test that log.Printf from HTTP handlers shows up in go test output
 func TestLogVisibilityInHandlers(t *testing.T) {
-	store := storage.NewMemoryStorage()
 	gb := graph.NewBuilder(".")
 
 	// Add a simple route that logs to the default logger
@@ -28,7 +26,7 @@ func TestLogVisibilityInHandlers(t *testing.T) {
 		},
 	}
 
-	deps := web.Dependencies{Storage: store, Graph: gb, ExtensionRoutes: routes}
+	deps := web.Dependencies{Graph: gb, ExtensionRoutes: routes}
 	api := web.NewServer(web.Config{Port: 0, CORSOrigins: []string{}}, deps)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/log-echo", nil)

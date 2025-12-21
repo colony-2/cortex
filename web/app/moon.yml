@@ -7,7 +7,7 @@ tasks:
     deps:
       - ui-flowchart:build
       - ui-kanban:build
-      - shared:build
+      - ui-shared:build
   integration2:
     command: pnpm
     args: [exec, playwright, test, --reporter=list]

@@ -24,3 +24,13 @@ tasks:
     options:
       runInCI: true
       outputStyle: buffer-only-failure
+
+  # Build test server binary for e2e testing
+  serve:
+    command: 'go'
+    args:
+      - 'run'
+      - './cmd/testserver'
+    platform: 'system'
+    options:
+      runInCI: false

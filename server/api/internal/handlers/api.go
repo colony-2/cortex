@@ -113,7 +113,7 @@ func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	defer it.Close(r.Context())
 
-	var result []openapi.Project
+	result := make([]openapi.Project, 0, 10)
 	for {
 		p, err := it.Next(r.Context())
 		if errors.Is(err, project.ErrIteratorDone) {

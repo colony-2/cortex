@@ -22,7 +22,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
-	"github.com/colony-2/colony2/server/storage/pkg/storage"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -80,7 +79,7 @@ Supports memory storage and configurable node directories.`,
 
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
 	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist (always uses memory storage)")
-	rootCmd.Flags().StringSliceVar(&corsOrigins, "cors-origins", []string{"http://localhost:3000"}, "Allowed CORS origins")
+	rootCmd.Flags().StringSliceVar(&corsOrigins, "cors-origins", []string{"http://localhost:3000", "http://localhost:5173"}, "Allowed CORS origins")
 	rootCmd.Flags().StringVar(&staticPath, "static", "", "Path to static files (leave empty to disable)")
 	rootCmd.Flags().StringVar(&storagePath, "storage", ".colony2", "Path to storage directory (ignored if --memory is true)")
 
@@ -90,46 +89,15 @@ Supports memory storage and configurable node directories.`,
 func runServer(port int, corsOrigins []string, staticPath, nodesPath string, useMemory bool, storagePath string) error {
 	// Resolve absolute paths
 	absNodesPath, err := filepath.Abs(nodesPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve nodes path: %w", err)
-	}
 
-	// Create storage
-	var (
-		store          core.Storage
-		absStoragePath string
-	)
-	if useMemory {
-		fmt.Println("Using in-memory storage")
-		store = storage.NewMemoryStorage()
-	} else {
-		var err error
-		absStoragePath, err = filepath.Abs(storagePath)
-		if err != nil {
-			return fmt.Errorf("failed to resolve storage path: %w", err)
-		}
-		fmt.Printf("Using file storage at: %s\n", absStoragePath)
-		store, err = storage.NewBoltStorage(storage.Config{
-			DatabasePath: filepath.Join(absStoragePath, "colony2.db"),
-			ReadOnly:     false,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to create file storage: %w", err)
-		}
-	}
-
-	ticketFallback := filepath.Join(os.TempDir(), "colony2-ticket.db")
-	if absStoragePath != "" {
-		ticketFallback = filepath.Join(absStoragePath, "ticket.db")
-	}
-	ticketDB, closeTicketDB, err := database.Open(database.Config{FallbackPath: ticketFallback})
+	pgDB, closeDB, err := database.Open(database.Config{DSN: os.Getenv("NEON_C2_DEV_DSN")})
 	if err != nil {
 		return fmt.Errorf("failed to open ticket database: %w", err)
 	}
 	defer func() {
-		if closeTicketDB != nil {
-			if cerr := closeTicketDB(); cerr != nil {
-				fmt.Printf("Warning: ticket database close failed: %v\n", cerr)
+		if closeDB != nil {
+			if closeErr := closeDB(); closeErr != nil {
+				fmt.Printf("Warning: ticket database close failed: %v\n", closeErr)
 			}
 		}
 	}()
@@ -138,7 +106,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	graphBuilder := graph.NewBuilder(absNodesPath)
 
 	// Persistence-backed services (projects, cells, tickets)
-	projectStore, err := project.NewStore(ticketDB)
+	projectStore, err := project.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create project store: %w", err)
 	}
@@ -147,7 +115,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		return fmt.Errorf("failed to create project service: %w", err)
 	}
 
-	cellStore, err := cell.NewStore(ticketDB)
+	cellStore, err := cell.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create cell store: %w", err)
 	}
@@ -156,11 +124,11 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		return fmt.Errorf("failed to create cell service: %w", err)
 	}
 
-	ticketStore, err := ticket.NewStore(ticketDB)
+	ticketStore, err := ticket.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create ticket store: %w", err)
 	}
-	eventStore, err := ticket.NewEventStore(ticketDB)
+	eventStore, err := ticket.NewEventStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create ticket event store: %w", err)
 	}
@@ -193,19 +161,19 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	sseManager := input.NewSimpleSSEManager()
 
 	recipePath := filepath.Join(absNodesPath, "recipes")
-	swf := toy.NewToyEngine([]swf.WorkSet{})
+	eng := toy.NewToyEngine([]swf.WorkSet{})
 	reg, err := registry.NewRegistry(nil, recipePath)
 	if err != nil {
 		return fmt.Errorf("failed to create worker registry: %w", err)
 	}
 	wfc := workflow.SWFWorkflowControl{
-		Engine:   swf,
+		Engine:   eng,
 		Registry: reg,
 	}
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithWorkflowControl(&wfc).
-		WithDatabase(ticketDB).
+		WithDatabase(pgDB).
 		Build()
 
 	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
@@ -224,7 +192,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	// Create dependencies
 	deps := web.Dependencies{
-		Storage:         store,
 		Graph:           graphBuilder,
 		GraphFactory:    graphFactory,
 		Projects:        projectSvc,

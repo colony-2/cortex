@@ -11,7 +11,6 @@ import (
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/storage/pkg/storage"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"gorm.io/driver/sqlite"
@@ -90,7 +89,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 		},
 	}
 
-	h := New(storage.NewMemoryStorage(), graphBuilder, nil, nil, projectSvc, cellSvc, ticketSvc, cellStore)
+	h := New(graphBuilder, nil, nil, projectSvc, cellSvc, ticketSvc, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()

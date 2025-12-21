@@ -13,7 +13,6 @@ import (
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
-	"github.com/colony-2/colony2/server/storage/pkg/storage"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -76,7 +75,7 @@ func TestHandleSyncCells_Success(t *testing.T) {
 		return nil, repoPath, func() {}, nil
 	}
 
-	h := New(storage.NewMemoryStorage(), nil, graphFactory, noopRecipes, projectSvc, cellSvc, nil, cellStore)
+	h := New(nil, graphFactory, noopRecipes, projectSvc, cellSvc, nil, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
@@ -156,7 +155,7 @@ func TestHandleSyncCells_UnsupportedPopulator(t *testing.T) {
 		return nil, repoPath, func() {}, nil
 	}
 
-	h := New(storage.NewMemoryStorage(), nil, nil, noopRecipes, projectSvc, cellSvc, nil, cellStore)
+	h := New(nil, nil, noopRecipes, projectSvc, cellSvc, nil, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()

@@ -36,9 +36,6 @@ func New(db *gorm.DB) (Store, error) {
 	if err := db.AutoMigrate(&model.Ticket{}); err != nil {
 		return nil, fmt.Errorf("tickets store: auto migrate: %w", err)
 	}
-	if err := ensureTemporalSetup(db); err != nil {
-		return nil, err
-	}
 	return &store{db: db}, nil
 }
 
@@ -171,44 +168,6 @@ func applyFilter(db *gorm.DB, filter model.SearchFilter) *gorm.DB {
 		db = db.Where("created_at <= ?", *filter.CreatedBefore)
 	}
 	return db
-}
-
-func ensureTemporalSetup(db *gorm.DB) error {
-	if db == nil {
-		return nil
-	}
-	if db.Dialector.Name() != "postgres" {
-		return nil
-	}
-	if err := db.Exec("CREATE EXTENSION IF NOT EXISTS btree_gist").Error; err != nil {
-		return fmt.Errorf("tickets store: enable btree_gist: %w", err)
-	}
-	if err := backfillTemporalColumns(db); err != nil {
-		return err
-	}
-	if err := db.Exec("ALTER TABLE tickets DROP CONSTRAINT IF EXISTS tickets_pkey").Error; err != nil {
-		return fmt.Errorf("tickets store: drop primary key: %w", err)
-	}
-	if err := db.Exec("ALTER TABLE tickets ADD PRIMARY KEY (id, valid_from)").Error; err != nil {
-		return fmt.Errorf("tickets store: add composite primary key: %w", err)
-	}
-	if !db.Migrator().HasConstraint(&model.Ticket{}, temporalRangeConstraint) {
-		stmt := "ALTER TABLE tickets ADD CONSTRAINT " + temporalRangeConstraint + " EXCLUDE USING gist (id WITH =, tsrange(valid_from, valid_until) WITH &&)"
-		if err := db.Exec(stmt).Error; err != nil {
-			return fmt.Errorf("tickets store: add exclusion constraint: %w", err)
-		}
-	}
-	return nil
-}
-
-func backfillTemporalColumns(db *gorm.DB) error {
-	if err := db.Exec("UPDATE tickets SET valid_from = NOW() WHERE valid_from IS NULL OR valid_from = '0001-01-01'::timestamp").Error; err != nil {
-		return fmt.Errorf("tickets store: backfill valid_from: %w", err)
-	}
-	if err := db.Exec("UPDATE tickets SET valid_until = 'infinity'::timestamp WHERE valid_until IS NULL OR valid_until = '0001-01-01'::timestamp").Error; err != nil {
-		return fmt.Errorf("tickets store: backfill valid_until: %w", err)
-	}
-	return nil
 }
 
 func temporalInfinity() time.Time {

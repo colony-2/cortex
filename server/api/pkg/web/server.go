@@ -37,7 +37,6 @@ type Config struct {
 
 // Dependencies contains all the dependencies required by the web server.
 type Dependencies struct {
-	Storage  core.Storage
 	Graph    core.GraphBuilder
 	StaticFS http.FileSystem // Optional: filesystem for static files
 
@@ -78,7 +77,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Storage, deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
+	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

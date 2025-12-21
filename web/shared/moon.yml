@@ -1,3 +1,4 @@
+id: 'ui-shared'
 # https://moonrepo.dev/docs/config/project
 $schema: '../../../.moon/cache/schemas/project.json'
 
