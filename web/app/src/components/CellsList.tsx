@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Empty, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { Button, Card, Empty, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { syncCells } from '@colony2/shared';
 
 type ManagedCell = {
   id: string;
@@ -22,6 +23,7 @@ const { Title, Text } = Typography;
 export default function CellsList({ projectId }: CellsListProps) {
   const [cells, setCells] = useState<ManagedCell[]>([]);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
@@ -53,6 +55,26 @@ export default function CellsList({ projectId }: CellsListProps) {
     }
   }, [projectId]);
 
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await syncCells(projectId);
+      message.success('Cells synced successfully');
+      // Reload cells after sync
+      const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`);
+      if (response.ok) {
+        const data = await response.json();
+        setCells(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to sync cells', err);
+      const messageText = err instanceof Error ? err.message : 'Failed to sync cells';
+      message.error(messageText);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const filteredCells = useMemo(() => {
     if (!search) {
       return cells;
@@ -77,13 +99,18 @@ export default function CellsList({ projectId }: CellsListProps) {
         </Space>
       }
       extra={
-        <Input.Search
-          placeholder="Search by name, path, or populator"
-          allowClear
-          onSearch={setSearch}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 320 }}
-        />
+        <Space>
+          <Button type="primary" onClick={handleSync} loading={syncing}>
+            Sync
+          </Button>
+          <Input.Search
+            placeholder="Search by name, path, or populator"
+            allowClear
+            onSearch={setSearch}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 320 }}
+          />
+        </Space>
       }
       style={{ height: '100%' }}
       bodyStyle={{ height: '100%', display: 'flex', flexDirection: 'column' }}

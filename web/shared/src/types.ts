@@ -22,6 +22,8 @@ export interface Project {
   version?: number;
   name: string;
   gitRepoPath: string;
+  gitRepoBranch?: string;
+  defaultTicketRecipe?: string;
   createdAt?: string;
   updatedAt?: string;
 }

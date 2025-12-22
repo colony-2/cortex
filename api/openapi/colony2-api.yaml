@@ -1103,6 +1103,12 @@ components:
         gitRepoPath:
           type: string
           description: Filesystem path to the git repository
+        gitRepoBranch:
+          type: string
+          description: Git branch to use for operations (optional, defaults to repository default branch)
+        defaultTicketRecipe:
+          type: string
+          description: Default recipe name to use when creating new tickets (optional)
         createdAt:
           type: string
           format: date-time
@@ -1127,8 +1133,16 @@ components:
       properties:
         name:
           type: string
+          description: Project display name
         gitRepoPath:
           type: string
+          description: Filesystem path to the git repository
+        gitRepoBranch:
+          type: string
+          description: Git branch to use for operations
+        defaultTicketRecipe:
+          type: string
+          description: Default recipe name for new tickets
 
     ManagedCell:
       type: object

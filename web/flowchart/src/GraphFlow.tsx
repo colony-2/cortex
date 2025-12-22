@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ReactFlow, applyNodeChanges, Background, Controls, MiniMap } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { message, Spin, Card, Button, Alert, Collapse, Empty } from 'antd';
-import { fetchGraph, useInputActivity, type RelationshipGraph, type DependencyCell, type DependencyEdge } from '@colony2/shared';
+import { fetchGraph, syncCells, useInputActivity, type RelationshipGraph, type DependencyCell, type DependencyEdge } from '@colony2/shared';
 import ProFlowCell from './ProFlowCell';
 
 interface FlowNode {
@@ -41,6 +41,7 @@ export default function GraphFlow({ projectId, selectedCellId, onCellSelect }: G
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [edges, setEdges] = useState<FlowEdge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<DependencyCell | null>(null);
   const graphRef = useRef<RelationshipGraph | null>(null);
@@ -135,7 +136,31 @@ export default function GraphFlow({ projectId, selectedCellId, onCellSelect }: G
     setNodes(newNodes);
     setEdges(newEdges);
   }, []); // No dependencies - pure function
-  
+
+  const handleSync = useCallback(async () => {
+    if (!projectId) return;
+    setSyncing(true);
+    try {
+      await syncCells(projectId);
+      message.success('Cells synced successfully');
+      // Reload graph after sync
+      const graphData = await fetchGraph(projectId);
+      const currentPositions: LocalPosition[] = nodes.map((node) => ({
+        cellId: node.id,
+        x: node.position.x,
+        y: node.position.y,
+      }));
+      graphRef.current = graphData;
+      layoutCells(graphData, currentPositions, selectedCell?.id, pendingInputsByCellId);
+    } catch (err) {
+      console.error('Failed to sync cells', err);
+      const messageText = err instanceof Error ? err.message : 'Failed to sync cells';
+      message.error(messageText);
+    } finally {
+      setSyncing(false);
+    }
+  }, [projectId, nodes, selectedCell?.id, pendingInputsByCellId, layoutCells]);
+
   // Update nodes when input activity changes
   useEffect(() => {
     if (graphRef.current && !loading) {
@@ -307,21 +332,28 @@ export default function GraphFlow({ projectId, selectedCellId, onCellSelect }: G
   }
 
   return (
-    <div data-testid="react-flow-wrapper" style={{ height: '100%' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={{ custom: ProFlowCell as any }}
-        onNodesChange={onNodesChange}
-        nodesDraggable={true}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        fitView
-      >
-        <Background />
-        <Controls />
-        <MiniMap />
-      </ReactFlow>
+    <div data-testid="react-flow-wrapper" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', background: '#fff' }}>
+        <Button type="primary" onClick={handleSync} loading={syncing}>
+          Sync
+        </Button>
+      </div>
+      <div style={{ flex: 1 }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={{ custom: ProFlowCell as any }}
+          onNodesChange={onNodesChange}
+          nodesDraggable={true}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          fitView
+        >
+          <Background />
+          <Controls />
+          <MiniMap />
+        </ReactFlow>
+      </div>
     </div>
   );
 }

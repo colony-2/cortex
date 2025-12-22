@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined, SettingOutlined } from '@ant-design/icons';
 import { Button, Empty, Form, Input, Layout, Menu, Modal, Select, Space, Typography, message } from 'antd';
 import { InputActivityProvider, createProject, listProjects, type Project } from '@colony2/shared';
 import MainView from './components/MainView';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
+import ProjectSettingsModal from './components/ProjectSettingsModal';
 
 const { Header, Content, Sider } = Layout;
 
@@ -25,6 +26,7 @@ function AppShell() {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [creating, setCreating] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [form] = Form.useForm();
   const location = useLocation();
   const navigate = useNavigate();
@@ -100,6 +102,9 @@ function AppShell() {
       case 'cells-list':
         navigate(`/project/${selectedProject.id}/cells/list`);
         break;
+      case 'settings':
+        setIsSettingsModalOpen(true);
+        break;
       default:
         navigate(`/project/${selectedProject.id}/kanban`);
     }
@@ -151,6 +156,15 @@ function AppShell() {
                 key: 'cells-list',
                 label: 'Cells — List',
                 icon: <OrderedListOutlined />,
+                disabled: !selectedProject,
+              },
+              {
+                type: 'divider',
+              },
+              {
+                key: 'settings',
+                label: 'Settings',
+                icon: <SettingOutlined />,
                 disabled: !selectedProject,
               },
             ]}
@@ -220,6 +234,13 @@ function AppShell() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <ProjectSettingsModal
+        project={selectedProject}
+        open={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onUpdate={loadProjects}
+      />
     </Layout>
   );
 }

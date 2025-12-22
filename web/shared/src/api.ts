@@ -37,3 +37,28 @@ export async function createProject(input: { name: string; gitRepoPath: string }
   await handleResponse(response, 'Create project');
   return response.json();
 }
+
+export async function syncCells(projectId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells/sync`, {
+    method: 'POST',
+  });
+  await handleResponse(response, 'Sync cells');
+}
+
+export async function updateProject(
+  projectId: string,
+  input: {
+    name?: string;
+    gitRepoPath?: string;
+    gitRepoBranch?: string;
+    defaultTicketRecipe?: string;
+  }
+): Promise<Project> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  await handleResponse(response, 'Update project');
+  return response.json();
+}

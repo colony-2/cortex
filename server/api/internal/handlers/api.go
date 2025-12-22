@@ -176,8 +176,10 @@ func (h *Handlers) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated, err := h.projects.UpdateProject(r.Context(), project.ID(id), project.UpdateInput{
-		Name:        body.Name,
-		GitRepoPath: body.GitRepoPath,
+		Name:                body.Name,
+		GitRepoPath:         body.GitRepoPath,
+		GitRepoBranch:       body.GitRepoBranch,
+		DefaultTicketRecipe: body.DefaultTicketRecipe,
 	})
 	if err != nil {
 		status := projectErrorStatus(err)
@@ -974,12 +976,14 @@ func (h *Handlers) listCellDeps(ctx context.Context, projectID project.ID, cellI
 
 func toOpenAPIProject(p *project.Project) openapi.Project {
 	return openapi.Project{
-		Id:          string(p.ID),
-		Name:        p.Name,
-		GitRepoPath: p.GitRepoPath,
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
-		Version:     p.Version.Int64,
+		Id:                  string(p.ID),
+		Name:                p.Name,
+		GitRepoPath:         p.GitRepoPath,
+		GitRepoBranch:       p.GitRepoBranch,
+		DefaultTicketRecipe: p.DefaultTicketRecipe,
+		CreatedAt:           p.CreatedAt,
+		UpdatedAt:           p.UpdatedAt,
+		Version:             p.Version.Int64,
 	}
 }
 
