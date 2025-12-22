@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/colony-2/colony2/server/api/internal/engine"
 	"github.com/colony-2/colony2/server/api/internal/opssetup"
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
@@ -24,8 +25,6 @@ import (
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
-	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/spf13/cobra"
 )
 
@@ -160,16 +159,51 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	// Setup ops management services (input manager etc.)
 	sseManager := input.NewSimpleSSEManager()
 
+	// Validate PostgreSQL DSN is set
+	dsn := os.Getenv("NEON_C2_DEV_DSN")
+	if dsn == "" {
+		return fmt.Errorf("NEON_C2_DEV_DSN must be set for real workflow engine")
+	}
+
+	// Register all ops globally (required before engine setup)
+	opssetup.RegisterOps()
+
+	// Create initial dependencies for engine setup
+	tempDeps := ops.NewServiceDepsBuilder().
+		WithSSEManager(sseManager).
+		WithDatabase(pgDB).
+		Build()
+
+	// Create real workflow engine with PGWF and Strata
+	engineSetup, err := engine.NewSetup(engine.Config{
+		PostgresDB:   pgDB,
+		PostgresDSN:  dsn,
+		StoragePath:  storagePath,
+		Dependencies: tempDeps,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to setup workflow engine: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := engineSetup.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("Warning: engine shutdown failed: %v\n", err)
+		}
+	}()
+
+	// Continue with existing flow
 	recipePath := filepath.Join(absNodesPath, "recipes")
-	eng := toy.NewToyEngine([]swf.WorkSet{})
 	reg, err := registry.NewRegistry(nil, recipePath)
 	if err != nil {
 		return fmt.Errorf("failed to create worker registry: %w", err)
 	}
+
 	wfc := workflow.SWFWorkflowControl{
-		Engine:   eng,
+		Engine:   engineSetup.Engine(),
 		Registry: reg,
 	}
+
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithWorkflowControl(&wfc).

@@ -7,7 +7,7 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
 	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5
+	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -28,7 +28,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/colony2/server/graph v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect

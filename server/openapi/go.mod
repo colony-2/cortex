@@ -1,6 +1,6 @@
 module github.com/colony-2/colony2/server/openapi
 
-go 1.24.0
+go 1.25.5
 
 require (
 	github.com/getkin/kin-openapi v0.133.0

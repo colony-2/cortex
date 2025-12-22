@@ -14,9 +14,9 @@ require (
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251216033137-495e22ae6fa6
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251216033137-495e22ae6fa6
 	github.com/colony-2/colony2/server/registry v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/storage v0.0.0-20251216033137-495e22ae6fa6
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5
+	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
+	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
@@ -44,7 +44,6 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -55,10 +54,9 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20251215180756-22e51ef4f103 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/pgwf v0.0.0-20251125194837-642b26da9860 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/colony-2/shai v0.0.0-20251214230818-6cb8e30456ba // indirect
-	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

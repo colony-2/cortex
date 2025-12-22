@@ -40,6 +40,9 @@
       ],
       "@colony2/kanban/*": [
         "../kanban/src/*"
+      ],
+      "@colony2/openapi-client/*": [
+        "../openapi/src/*"
       ]
     }
   },
@@ -57,6 +60,9 @@
     },
     {
       "path": "../kanban"
+    },
+    {
+      "path": "../openapi"
     },
     {
       "path": "../shared"

@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5
+	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8
 	github.com/fatih/structs v1.1.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/google/cel-go v0.26.0
@@ -23,7 +23,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect

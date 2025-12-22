@@ -14,9 +14,9 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251126023645-3cf5a829bccb // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20251215212925-211b625056e5 // indirect
+	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect

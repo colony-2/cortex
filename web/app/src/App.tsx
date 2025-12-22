@@ -6,6 +6,7 @@ import { InputActivityProvider, createProject, listProjects, type Project } from
 import MainView from './components/MainView';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
+import CellDetailPage from './components/CellDetailPage';
 import ProjectSettingsModal from './components/ProjectSettingsModal';
 
 const { Header, Content, Sider } = Layout;
@@ -86,7 +87,7 @@ function AppShell() {
     const path = location.pathname;
     if (path.includes('/kanban')) return 'tickets';
     if (path.includes('/cells/list')) return 'cells-list';
-    if (path.includes('/cells') || path.includes('/cell/')) return 'cells-graph';
+    if (path.includes('/cells') || path.includes('/cell/')) return 'cells-list';
     return 'tickets';
   })();
 
@@ -191,10 +192,10 @@ function AppShell() {
               <Route path="/project/:projectId/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
 
               {/* Cell detail routes */}
-              <Route path="/cell/:cellId" element={<MainView projectId={selectedProject.id} />} />
+              <Route path="/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />
               <Route path="/cell/:cellId/:tab" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/cell/:cellId/:tab/:subtab" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cell/:cellId" element={<MainView projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/cell/:cellId/:tab" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/cell/:cellId/:tab/:subtab" element={<MainView projectId={selectedProject.id} />} />
 

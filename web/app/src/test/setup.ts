@@ -14,3 +14,11 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// Mock window.getComputedStyle for Ant Design Table component
+Object.defineProperty(window, 'getComputedStyle', {
+  writable: true,
+  value: () => ({
+    getPropertyValue: () => '',
+  }),
+});

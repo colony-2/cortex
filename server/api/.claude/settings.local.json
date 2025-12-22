@@ -3,7 +3,9 @@
     "allow": [
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(go mod:*)"
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)"
     ],
     "deny": []
   }

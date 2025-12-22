@@ -17,6 +17,9 @@ importers:
       '@colony2/kanban':
         specifier: file:../kanban
         version: file:../kanban
+      '@colony2/openapi-client':
+        specifier: file:../openapi
+        version: file:../openapi
       '@colony2/shared':
         specifier: file:../shared
         version: file:../shared
