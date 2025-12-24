@@ -13,7 +13,6 @@ import (
 	"github.com/colony-2/strata-go/pkg/daemon"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
-	"github.com/segmentio/ksuid"
 	"gorm.io/gorm"
 )
 
@@ -148,8 +147,7 @@ func NewSetup(cfg Config) (*Setup, error) {
 	strataBaseURL := fmt.Sprintf("http://%s", strataAddr)
 
 	// Build real workflow engine
-	engineID := ksuid.New().String()
-	engine, err := swf.NewEngineBuilder(engineID).
+	engine, err := swf.NewEngineBuilder().
 		WithAwaitRecycleThreshold(cfg.AwaitRecycleThreshold).
 		WithPostgresDSN(cfg.PostgresDSN).
 		WithStrata(strataBaseURL).

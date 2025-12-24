@@ -7,7 +7,7 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
 	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8
+	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16

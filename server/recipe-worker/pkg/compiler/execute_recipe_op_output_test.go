@@ -55,7 +55,7 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 
 	stub := &stubJobContext{
 		out:      taskData,
-		jobID:    "stub-job",
+		jobKey:   swf.JobKey{TenantId: "test-tenant", JobId: "stub-job"},
 		taskType: opType + ":" + opType,
 	}
 
@@ -85,14 +85,14 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 
 // Minimal JobContext stub to capture DoTask invocations.
 type stubJobContext struct {
-	jobID        swf.JobId
+	jobKey       swf.JobKey
 	out          swf.TaskData
 	calls        int
 	taskType     string
 	lastTaskType string
 }
 
-func (s *stubJobContext) GetJobId() swf.JobId              { return s.jobID }
+func (s *stubJobContext) GetJobKey() swf.JobKey            { return s.jobKey }
 func (s *stubJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (s *stubJobContext) AwaitDuration(swf.Duration) error { return nil }
 func (s *stubJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {

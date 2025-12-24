@@ -528,6 +528,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	blobStore := filepath.Join(projectRecord.GitRepoPath, ".colony2", "blobstore")
 
 	startJob := workflowctl.StartJob{
+		TenantId:   string(ticket.ProjectID),
 		RecipeName: recipeName,
 		Inputs:     map[string]interface{}{},
 		JobContext: contextual.JobContext{
@@ -555,15 +556,15 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 		jobCtx = swf.WithTx(ctx, tx)
 	}
 
-	jobID, err := starter.StartRecipeJob(jobCtx, startJob, s.engine, *rec)
+	jobKey, err := starter.StartRecipeJob(jobCtx, startJob, s.engine, *rec)
 	if err != nil {
 		return err
 	}
 
 	workflowPayload := model.WorkflowEventPayload{
 		Type:       model.WorkflowEventRunning,
-		WorkflowID: model.WorkflowID(jobID),
-		RunID:      model.WorkflowRunID(jobID),
+		WorkflowID: model.WorkflowID(jobKey.JobId),
+		RunID:      model.WorkflowRunID(jobKey.JobId),
 	}
 	_, err = s.appendEventInTx(ctx, st, ticket, ticket.ID, ticket.Creator, model.TicketEventKindWorkflow, model.TicketEventBody{Workflow: &workflowPayload}, s.clock.Now())
 	return err

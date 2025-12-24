@@ -3,20 +3,20 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/core v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/git v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/graph v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/openapi v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/ops v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/project v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/registry v0.0.0-20251216033137-495e22ae6fa6
-	github.com/colony-2/colony2/server/ticket v0.0.0-20251216033137-495e22ae6fa6
+	github.com/colony-2/colony2/server/cell v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/git v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/graph v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/openapi v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/ops v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/project v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/registry v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/ticket v0.0.0-20251223231518-40e1581edd70
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8
+	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
@@ -52,11 +52,11 @@ require (
 	github.com/cockroachdb/pebble v1.0.0 // indirect
 	github.com/cockroachdb/redact v1.0.8 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251215180756-22e51ef4f103 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251223231518-40e1581edd70 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
-	github.com/colony-2/shai v0.0.0-20251214230818-6cb8e30456ba // indirect
+	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -88,7 +88,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
@@ -110,6 +109,7 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect

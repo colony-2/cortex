@@ -13,7 +13,7 @@ type Context struct {
 }
 
 func (c Context) GetJobId() string {
-	return string(c.JobContext.GetJobId())
+	return c.JobContext.GetJobKey().JobId
 }
 
 func (c Context) GetLogger() *slog.Logger {

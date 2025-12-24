@@ -23,7 +23,6 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"github.com/stretchr/testify/require"
-	"github.com/segmentio/ksuid"
 	"log/slog"
 )
 
@@ -91,7 +90,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	for _, tw := range workset.TaskWorkers {
 		taskWorkers = append(taskWorkers, tw)
 	}
-	engine, err := swf.NewEngineBuilder(ksuid.New().String()).
+	engine, err := swf.NewEngineBuilder().
 		WithAwaitRecycleThreshold(5 * time.Second).
 		WithPostgresDSN(pg.DSN()).
 		WithStrata(strata.BaseURL).
@@ -170,7 +169,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	require.NotEmpty(t, jobID, "expected workflow event with job id")
 
 	// Wait for job completion
-	require.NoError(t, swf.WaitForJobToComplete(ctx, 30*time.Second, swf.JobId(jobID), engine))
+	require.NoError(t, swf.WaitForJobToComplete(ctx, 30*time.Second, swf.JobKey{TenantId: string(proj.ID), JobId: jobID}, engine))
 
 	updated, err := ticketSvc.GetTicketAt(ctx, created.ID, time.Now().UTC())
 	require.NoError(t, err)

@@ -31,7 +31,7 @@ func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsR
 			JobSummary: j,
 			TaskData: &taskDataGetter{
 				engine:  s.Engine,
-				jobID:   j.JobID,
+				jobKey:  j.JobKey,
 				ordinal: j.TaskWaitInput,
 			},
 		}
@@ -40,8 +40,8 @@ func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsR
 	return jobs, resp.NextPageToken, nil
 }
 
-func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, hash string, outType any) error {
-	handle, err := s.Engine.GetWaitingTask(ctx, jobId)
+func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, outType any) error {
+	handle, err := s.Engine.GetWaitingTask(ctx, jobKey)
 	if err != nil {
 		return err
 	}
@@ -64,23 +64,23 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, 
 	return handle.Finish(ctx, outData)
 }
 
-func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
+func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobKey, error) {
 	r, err := s.Registry.GetRecipe(req.RecipeName)
 	if err != nil {
-		return "", err
+		return swf.JobKey{}, err
 	}
 
 	return starter.StartRecipeJob(ctx, req, s.Engine, *r)
 }
 
-func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {
-	return s.Engine.CancelJob(ctx, swf.CancelJob{JobId: jobId})
+func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) error {
+	return s.Engine.CancelJob(ctx, swf.CancelJob{JobKey: jobKey})
 }
 
 type taskDataGetter struct {
 	loaded  bool
 	engine  swf.SWFEngine
-	jobID   swf.JobId
+	jobKey  swf.JobKey
 	ordinal *int64
 	data    swf.TaskData
 }
@@ -92,7 +92,7 @@ func (t *taskDataGetter) checkLoad() error {
 	if t.ordinal == nil {
 		return fmt.Errorf("ordinal is required")
 	}
-	handle, err := t.engine.GetWaitingTask(context.Background(), t.jobID)
+	handle, err := t.engine.GetWaitingTask(context.Background(), t.jobKey)
 	if err != nil {
 		return err
 	}

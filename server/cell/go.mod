@@ -3,9 +3,9 @@ module github.com/colony-2/colony2/server/cell
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103
-	github.com/colony-2/colony2/server/graph v0.0.0-20251215180756-22e51ef4f103
-	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103
+	github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/graph v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/project v0.0.0-20251223231518-40e1581edd70
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/driver/postgres v1.5.11
@@ -14,7 +14,6 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -22,10 +21,9 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/lib/pq v1.10.9 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
-	gorm.io/driver/sqlite v1.5.7 // indirect
 )

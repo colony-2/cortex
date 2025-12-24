@@ -24,12 +24,12 @@ type gen struct {
 	max   int
 }
 
-func (g *gen) Generate() (swf.JobId, error) {
+func (g *gen) Generate(tenantId string) (swf.JobKey, error) {
 	g.count++
 	if g.count > g.max {
-		return "", fmt.Errorf("too many jobs")
+		return swf.JobKey{}, fmt.Errorf("too many jobs")
 	}
-	return swf.JobId(fmt.Sprintf("job-%d", g.count)), nil
+	return swf.JobKey{TenantId: tenantId, JobId: fmt.Sprintf("job-%d", g.count)}, nil
 }
 
 func TestSimpleInput(t *testing.T) {
@@ -68,6 +68,7 @@ inputs:
 	in := map[string]interface{}{}
 
 	job := workflowctl.StartJob{
+		TenantId:   "test-tenant",
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     in,
 		JobContext: jobCtx,
@@ -103,7 +104,7 @@ inputs:
 	err = <-errCh
 	require.NoError(t, err)
 
-	res3, err := eng.GetJobResult(context.Background(), swf.JobId("job-1"))
+	res3, err := eng.GetJobResult(context.Background(), swf.JobKey{TenantId: "test-tenant", JobId: "job-1"})
 	require.NoError(t, err)
 
 	res4, err := res3.GetData()

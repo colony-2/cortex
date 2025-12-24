@@ -3,15 +3,15 @@ module github.com/colony-2/colony2/server/cortex
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/api v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/git v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/graph v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/ops v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/storage v0.0.0-20251216001846-7c2abf00eaae
-	github.com/colony-2/colony2/server/ticket v0.0.0-20251216001846-7c2abf00eaae
+	github.com/colony-2/colony2/server/api v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/git v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/graph v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/ops v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/storage v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/ticket v0.0.0-20251223231518-40e1581edd70
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -33,17 +33,17 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/cell v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/openapi v0.0.0-20251216001846-7c2abf00eaae // indirect
-	github.com/colony-2/colony2/server/project v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251215180756-22e51ef4f103 // indirect
-	github.com/colony-2/colony2/server/registry v0.0.0-20251216001846-7c2abf00eaae // indirect
+	github.com/colony-2/colony2/server/cell v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/openapi v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/project v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/registry v0.0.0-20251223231518-40e1581edd70 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
-	github.com/colony-2/shai v0.0.0-20251214230818-6cb8e30456ba // indirect
+	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20251222235350-334d42d1ecb8 // indirect
+	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -73,7 +73,6 @@ require (
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
@@ -92,6 +91,7 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
@@ -102,9 +102,6 @@ require (
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.62.0 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect

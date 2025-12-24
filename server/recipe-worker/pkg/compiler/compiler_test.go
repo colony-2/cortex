@@ -77,16 +77,17 @@ func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]inter
 	jobCtx, gitCtx := GenerateTestContext()
 
 	job := workflowctl.StartJob{
+		TenantId:   "test-tenant",
 		RecipeName: "test-recipe",
 		Inputs:     input,
 		JobContext: jobCtx,
 		GitRef:     gitCtx.ParentRef,
 	}
 
-	jobId, err := starter.StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
+	jobKey, err := starter.StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
-	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobId, s.eng))
-	r, err := s.eng.GetJobResult(context.Background(), jobId)
+	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobKey, s.eng))
+	r, err := s.eng.GetJobResult(context.Background(), jobKey)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
 	require.NoError(s.T(), err)

@@ -86,7 +86,7 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 	}
 	form := res.value.Form
 	d := details{
-		jobID:     res.value.JobID,
+		jobKey:    res.value.JobKey,
 		status:    res.value.Status,
 		startTime: res.value.StartTime,
 		form:      form,
@@ -99,7 +99,7 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 }
 
 type detailsInput struct {
-	JobID     swf.JobId `json:"jobId"`
+	JobKey    swf.JobKey `json:"jobKey"`
 	Status    swf.JobStatus
 	StartTime time.Time `json:"startTime"`
 	Form      Config    `json:"form"`
@@ -138,7 +138,7 @@ func (s *inputManagementService) getDetails(ctx context.Context, jobId string) r
 	}
 
 	return result[*detailsInput]{value: &detailsInput{
-		JobID:     job.JobID,
+		JobKey:    job.JobKey,
 		Status:    job.Status,
 		StartTime: job.CreatedAt,
 		Form:      in.Form,
@@ -147,7 +147,7 @@ func (s *inputManagementService) getDetails(ctx context.Context, jobId string) r
 }
 
 type details struct {
-	jobID     swf.JobId
+	jobKey    swf.JobKey
 	status    swf.JobStatus
 	startTime time.Time
 	form      Config
@@ -156,7 +156,6 @@ type details struct {
 
 func (s *inputManagementService) findJob(ctx context.Context, jobId string) result[*workflowctl.JobItem] {
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
-		JobIDs: []swf.JobId{swf.JobId(jobId)},
 		Stores: []swf.JobStore{swf.JobStoreActive},
 	})
 	if err != nil {
@@ -165,7 +164,16 @@ func (s *inputManagementService) findJob(ctx context.Context, jobId string) resu
 			err: fmt.Errorf("failed to query workflow: %w", err).Error(),
 		}
 	}
-	if len(jobs) == 0 {
+
+	// Filter jobs by JobId in memory since we don't know the TenantId
+	var matchingJobs []workflowctl.JobItem
+	for _, job := range jobs {
+		if job.JobKey.JobId == jobId {
+			matchingJobs = append(matchingJobs, job)
+		}
+	}
+
+	if len(matchingJobs) == 0 {
 		log.Printf("input_mgmt.get_details: not_found job_id=%s", jobId)
 		return result[*workflowctl.JobItem]{
 			err:    "not found",
@@ -173,7 +181,7 @@ func (s *inputManagementService) findJob(ctx context.Context, jobId string) resu
 		}
 	}
 	return result[*workflowctl.JobItem]{
-		value: &jobs[0],
+		value: &matchingJobs[0],
 	}
 }
 
@@ -250,7 +258,7 @@ func (s *inputManagementService) submitResponse(ctx context.Context, jobId strin
 		return result[bool]{err: "job is not waiting for user input"}
 	}
 
-	err := s.ctl.CompleteTask(ctx, res.value.JobID, *outStep, output.Hash, output)
+	err := s.ctl.CompleteTask(ctx, res.value.JobKey, *outStep, output.Hash, output)
 
 	if err != nil {
 		return result[bool]{err: err.Error()}
@@ -285,7 +293,7 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err := s.ctl.Cancel(r.Context(), swf.JobId(jobId))
+	err := s.ctl.Cancel(r.Context(), swf.JobKey{JobId: jobId})
 	if err != nil {
 		log.Printf("input_mgmt.cancel: cancel_failed job_id=%s error=%v", jobId, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -398,7 +406,7 @@ func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]Pe
 	out := make([]PendingInput, len(jobs))
 	for i, job := range jobs {
 		out[i] = PendingInput{
-			JobID: string(job.JobID),
+			JobID: job.JobKey.JobId,
 		}
 	}
 

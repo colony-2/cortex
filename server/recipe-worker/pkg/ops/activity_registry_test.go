@@ -258,21 +258,21 @@ func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options act
 
 type stubWorkflowControl struct{}
 
-func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobId swf.JobId, taskOrdinal int64, hash string, data any) error {
+func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, data any) error {
 	return nil
 }
 
 var _ workflowctl.WorkflowControl = &stubWorkflowControl{}
 
-func (s *stubWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobId, error) {
+func (s *stubWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobKey, error) {
 	_ = ctx
 	_ = req
-	return swf.JobId(""), nil
+	return swf.JobKey{}, nil
 }
 
-func (s *stubWorkflowControl) Cancel(ctx context.Context, jobId swf.JobId) error {
+func (s *stubWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) error {
 	_ = ctx
-	_ = jobId
+	_ = jobKey
 	return nil
 }
 

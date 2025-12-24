@@ -15,12 +15,12 @@ const (
 	RecipeArtifactSuffix = ".recipe.yaml"
 )
 
-func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobId, error) {
+func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobKey, error) {
 	artifacts := make([]artifact.Artifact, len(recipes))
 	for i, r := range recipes {
 		recipeYaml, err := yaml.Marshal(&r)
 		if err != nil {
-			return "", err
+			return swf.JobKey{}, err
 		}
 		name := r.GetMetadata().ID + RecipeArtifactSuffix
 		artifacts[i] = artifact.FromBytes(name, "", recipeYaml)
@@ -29,10 +29,11 @@ func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine s
 	inputData, err := swf.NewTaskData(startJob, artifacts...)
 
 	if err != nil {
-		return "", err
+		return swf.JobKey{}, err
 	}
 
 	job := swf.StartJob{
+		TenantId:  startJob.TenantId,
 		JobType:   RecipeJobType,
 		Data:      inputData,
 		RunPolicy: swf.DefaultRunPolicy(),

@@ -49,17 +49,18 @@ func (e *StandaloneExecutor) Execute(
 	eng := toy.NewToyEngine([]swf.WorkSet{*workset})
 
 	job := workflowctl.StartJob{
+		TenantId:   "default",
 		RecipeName: r.GetMetadata().ID,
 		Inputs:     inputs,
 		JobContext: jobCtx,
 		GitRef:     gitRef,
 	}
 
-	id, err := starter.StartRecipeJob(ctx, job, eng, r)
+	jobKey, err := starter.StartRecipeJob(ctx, job, eng, r)
 	if err != nil {
 		return nil, err
 	}
-	out, err := eng.GetJobResult(ctx, id)
+	out, err := eng.GetJobResult(ctx, jobKey)
 	if err != nil {
 		return nil, err
 	}
