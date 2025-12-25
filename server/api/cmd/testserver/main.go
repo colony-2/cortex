@@ -96,14 +96,15 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		return fmt.Errorf("failed to resolve nodes path: %w", err)
 	}
 
-	pgDB, closeDB, err := database.Open(database.Config{DSN: os.Getenv("NEON_C2_DEV_DSN")})
+	dsn := os.Getenv("NEON_C2_DEV_DSN")
+	pgDB, closeDB, err := database.Open(database.Config{DSN: dsn})
 	if err != nil {
-		return fmt.Errorf("failed to open ticket database: %w", err)
+		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer func() {
 		if closeDB != nil {
 			if closeErr := closeDB(); closeErr != nil {
-				fmt.Printf("Warning: ticket database close failed: %v\n", closeErr)
+				fmt.Printf("Warning: database close failed: %v\n", closeErr)
 			}
 		}
 	}()
@@ -143,7 +144,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	sseManager := input.NewSimpleSSEManager()
 
 	// Validate PostgreSQL DSN is set
-	dsn := os.Getenv("NEON_C2_DEV_DSN")
 	if dsn == "" {
 		return fmt.Errorf("NEON_C2_DEV_DSN must be set for real workflow engine")
 	}

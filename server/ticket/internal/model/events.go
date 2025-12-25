@@ -214,9 +214,6 @@ type TicketEventFilter struct {
 	Projects     []project.ID
 }
 
-func (TicketEvent) TableName() string { return "ticket_events" }
-
-func (TicketReset) TableName() string { return "ticket_resets" }
 
 func (e *TicketEvent) SetPayload(kind TicketEventKind, body TicketEventBody) {
 	if e == nil {

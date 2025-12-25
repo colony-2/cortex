@@ -15,7 +15,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f // indirect
+	github.com/colony-2/swf-go v0.0.0-20251225045112-c3914b94b494 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fatih/structs v1.1.0 // indirect

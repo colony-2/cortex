@@ -19,8 +19,6 @@ type Project struct {
 	UpdatedAt           time.Time
 }
 
-func (Project) TableName() string { return "projects" }
-
 type ShortIDGenerator interface {
 	NewID() (string, error)
 }

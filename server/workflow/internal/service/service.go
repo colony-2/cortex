@@ -102,6 +102,7 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 		if len(resp.Jobs) == 0 {
 			break
 		}
+		fmt.Println(resp.Jobs)
 		for _, job := range resp.Jobs {
 			summary, ok, err := s.buildSummary(ctx, req.ProjectID, job)
 			if err != nil {

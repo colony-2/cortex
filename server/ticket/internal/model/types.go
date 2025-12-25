@@ -78,8 +78,6 @@ type ShortIDGenerator interface {
 	NewID() (string, error)
 }
 
-func (Ticket) TableName() string { return "tickets" }
-
 var builtinStates = []State{
 	StateWaitingUser,
 	StateWaitingDependency,

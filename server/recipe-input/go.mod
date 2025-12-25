@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f
+	github.com/colony-2/swf-go v0.0.0-20251225045112-c3914b94b494
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.11.1
 )
@@ -16,7 +16,6 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect

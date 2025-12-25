@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // Config defines options for opening the ticket database.
@@ -23,11 +24,12 @@ type Config struct {
 // Open returns a gorm.DB configured for ticket storage along with a cleanup
 // function that releases the underlying connection pool.
 func Open(cfg Config) (*gorm.DB, func() error, error) {
-	if cfg.DSN == "" {
-		cfg.DSN = os.Getenv("TICKET_DATABASE_DSN")
-	}
 	if cfg.DSN != "" {
-		db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{})
+		db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{
+			NamingStrategy: schema.NamingStrategy{
+				TablePrefix: "public.",
+			},
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("ticketdb: open postgres: %w", err)
 		}
