@@ -85,6 +85,9 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 
 	api.HandleFunc("/projects/{projectId}/recipes", withHandlerLog("recipes:list", h.handleListRecipes)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeId}", withHandlerLog("recipes:get", h.handleGetRecipe)).Methods(http.MethodGet)
+
+	api.HandleFunc("/projects/{projectId}/workflows", withHandlerLog("workflows:list", h.handleListWorkflows)).Methods(http.MethodGet)
+	api.HandleFunc("/projects/{projectId}/workflows/{workflowId}", withHandlerLog("workflows:get", h.handleGetWorkflow)).Methods(http.MethodGet)
 }
 
 func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {

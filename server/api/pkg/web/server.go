@@ -13,6 +13,7 @@ import (
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 )
 
 // Config defines configuration for the web server.
@@ -44,9 +45,10 @@ type Dependencies struct {
 	ExtensionRoutes []ExtensionRoute
 
 	// Optional domain services for OpenAPI handlers
-	Projects project.Service
-	Cells    cell.Service
-	Tickets  ticket.Service
+	Projects  project.Service
+	Cells     cell.Service
+	Tickets   ticket.Service
+	Workflows workflow.Service
 
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
@@ -77,7 +79,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.CellDeps)
+	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

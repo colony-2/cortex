@@ -25,6 +25,8 @@ import (
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
+	workflowsvc "github.com/colony-2/colony2/server/workflow/pkg/workflow"
+	strataclient "github.com/colony-2/strata-go/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -204,6 +206,25 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		Registry: reg,
 	}
 
+	strataClient, err := strataclient.New(strataclient.Config{
+		BaseURL: engineSetup.StrataBaseURL(),
+		APIKey:  "local",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create strata client: %w", err)
+	}
+
+	workflowSvc, err := workflowsvc.New(workflowsvc.ServiceConfig{
+		Engine:   engineSetup.Engine(),
+		Strata:   strataClient,
+		Tickets:  ticketSvc,
+		Cells:    cellSvc,
+		Projects: projectSvc,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create workflow service: %w", err)
+	}
+
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithWorkflowControl(&wfc).
@@ -231,6 +252,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		Projects:        projectSvc,
 		Cells:           cellSvc,
 		Tickets:         ticketSvc,
+		Workflows:       workflowSvc,
 		CellDeps:        cellStore,
 		ExtensionRoutes: extensionRoutes,
 	}

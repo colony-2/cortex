@@ -75,7 +75,7 @@ func TestHandleSyncCells_Success(t *testing.T) {
 		return nil, repoPath, func() {}, nil
 	}
 
-	h := New(nil, graphFactory, noopRecipes, projectSvc, cellSvc, nil, cellStore)
+	h := New(nil, graphFactory, noopRecipes, projectSvc, cellSvc, nil, nil, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
@@ -155,7 +155,7 @@ func TestHandleSyncCells_UnsupportedPopulator(t *testing.T) {
 		return nil, repoPath, func() {}, nil
 	}
 
-	h := New(nil, nil, noopRecipes, projectSvc, cellSvc, nil, cellStore)
+	h := New(nil, nil, noopRecipes, projectSvc, cellSvc, nil, nil, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()

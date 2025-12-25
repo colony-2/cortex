@@ -20,6 +20,7 @@ import (
 type Setup struct {
 	engine   swf.SWFEngine
 	strata   *daemon.Daemon
+	baseURL  string
 	cancelFn context.CancelFunc
 }
 
@@ -186,6 +187,7 @@ func NewSetup(cfg Config) (*Setup, error) {
 	return &Setup{
 		engine:   engine,
 		strata:   strata,
+		baseURL:  strataBaseURL,
 		cancelFn: cancel,
 	}, nil
 }
@@ -193,6 +195,11 @@ func NewSetup(cfg Config) (*Setup, error) {
 // Engine returns the workflow engine.
 func (s *Setup) Engine() swf.SWFEngine {
 	return s.engine
+}
+
+// StrataBaseURL returns the base URL for the embedded Strata daemon.
+func (s *Setup) StrataBaseURL() string {
+	return s.baseURL
 }
 
 // Shutdown gracefully shuts down the engine and Strata daemon.

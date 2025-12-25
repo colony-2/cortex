@@ -14,6 +14,7 @@ import (
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
+	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/gorilla/mux"
 )
 
@@ -37,15 +38,16 @@ type Handlers struct {
 	graphFactory GraphFactory
 	recipes      RecipeRegistryFactory
 
-	projects project.Service
-	cells    cell.Service
-	tickets  ticket.Service
+	projects  project.Service
+	cells     cell.Service
+	tickets   ticket.Service
+	workflows workflow.Service
 
 	cellDeps cellDependencyLister
 }
 
 // New creates a new handlers instance
-func New(graph core.GraphBuilder, factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, cellDeps cellDependencyLister) *Handlers {
+func New(graph core.GraphBuilder, factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, cellDeps cellDependencyLister) *Handlers {
 	if recipes == nil {
 		recipes = defaultRecipeRegistryFactory
 	}
@@ -56,6 +58,7 @@ func New(graph core.GraphBuilder, factory GraphFactory, recipes RecipeRegistryFa
 		projects:     projects,
 		cells:        cells,
 		tickets:      tickets,
+		workflows:    workflows,
 		cellDeps:     cellDeps,
 	}
 }

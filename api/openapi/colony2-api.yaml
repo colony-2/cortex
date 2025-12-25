@@ -21,6 +21,8 @@ tags:
     description: Extension handlers for recipe input management and SSE streaming
   - name: Recipes
     description: List and view recipes discovered in a project repository
+  - name: Workflows
+    description: Workflow execution listing and detail retrieval
 
 paths:
   /api/projects/{projectId}/graph:
@@ -799,6 +801,113 @@ paths:
               schema:
                 type: string
 
+  /api/projects/{projectId}/workflows:
+    get:
+      tags: [Workflows]
+      summary: List workflows for a project
+      description: Returns workflows scoped to the project (filtered by tenant field in swf-go)
+      operationId: getApiProjectsWorkflows
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/WorkflowStatus'
+          style: form
+          explode: true
+        - name: ticket_id
+          in: query
+          schema:
+            type: string
+        - name: cell_id
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of workflow summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowSummary'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/workflows/{workflowId}:
+    get:
+      tags: [Workflows]
+      summary: Get workflow detail
+      description: Returns workflow detail. Validates workflow belongs to project via tenant field.
+      operationId: getApiProjectsWorkflows1
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: includeRawJobData
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Workflow detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDetail'
+        '403':
+          description: Workflow does not belong to this project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Workflow not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/projects/{projectId}/recipes:
     get:
       tags: [Recipes]
@@ -1325,6 +1434,13 @@ components:
         agent:
           $ref: '#/components/schemas/ActorAgent'
 
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
     TicketState:
       type: string
       enum: [waiting_user, waiting_dependency, waiting_capacity, working]
@@ -1429,6 +1545,195 @@ components:
           type: string
         actor:
           $ref: '#/components/schemas/ActorPatch'
+
+    WorkflowStatus:
+      type: string
+      enum:
+        - running
+        - completed
+        - failed
+        - canceled
+        - terminated
+        - timed_out
+        - unknown
+      description: Normalized workflow execution status
+
+    ChapterStatus:
+      type: string
+      enum:
+        - pending
+        - running
+        - completed
+        - failed
+        - skipped
+      description: Chapter (operation) execution status
+
+    ArtifactReference:
+      type: object
+      required:
+        - artifact_id
+        - artifact_type
+        - name
+        - created_at
+      properties:
+        artifact_id:
+          type: string
+        artifact_type:
+          type: string
+        name:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ChapterDetail:
+      type: object
+      required:
+        - chapter_number
+        - chapter_type
+        - status
+      properties:
+        chapter_number:
+          type: integer
+        chapter_type:
+          type: string
+        op_name:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ChapterStatus'
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        end_time:
+          type: string
+          format: date-time
+          nullable: true
+        input:
+          type: object
+          additionalProperties: true
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactReference'
+
+    WorkflowSummary:
+      type: object
+      required:
+        - workflow_id
+        - run_id
+        - status
+        - recipe_name
+        - created_at
+      properties:
+        workflow_id:
+          type: string
+          description: "Workflow/job ID (KSUID)"
+          example: "2U9V0W1X2Y3Z4A5B6C7D8E9F0G"
+        run_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkflowStatus'
+        recipe_name:
+          type: string
+        ticket_id:
+          type: string
+          nullable: true
+        ticket_title:
+          type: string
+          nullable: true
+        cell_id:
+          type: string
+          nullable: true
+        cell_name:
+          type: string
+          nullable: true
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        close_time:
+          type: string
+          format: date-time
+          nullable: true
+        actor:
+          $ref: '#/components/schemas/Actor'
+        created_at:
+          type: string
+          format: date-time
+
+    WorkflowDetail:
+      type: object
+      required:
+        - workflow_id
+        - run_id
+        - status
+        - recipe_name
+        - chapters
+        - created_at
+      properties:
+        workflow_id:
+          type: string
+        run_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/WorkflowStatus'
+        recipe_name:
+          type: string
+        ticket_id:
+          type: string
+          nullable: true
+        ticket:
+          $ref: '#/components/schemas/Ticket'
+          nullable: true
+        cell_id:
+          type: string
+          nullable: true
+        cell_name:
+          type: string
+          nullable: true
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        close_time:
+          type: string
+          format: date-time
+          nullable: true
+        actor:
+          $ref: '#/components/schemas/Actor'
+        git_ref:
+          type: string
+          nullable: true
+        git_commit:
+          type: string
+          nullable: true
+        chapters:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChapterDetail'
+        raw_job_data:
+          type: object
+          additionalProperties: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
 
     FieldType:
       type: string
