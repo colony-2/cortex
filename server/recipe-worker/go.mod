@@ -3,9 +3,9 @@ module github.com/colony-2/colony2/server/recipe-worker
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/git v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
 	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f
 	github.com/invopop/jsonschema v0.13.0
@@ -21,8 +21,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -39,12 +38,10 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.62.0 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect

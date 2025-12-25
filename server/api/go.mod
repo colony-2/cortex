@@ -3,25 +3,24 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/git v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/graph v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/openapi v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/ops v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/project v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/registry v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/ticket v0.0.0-20251223231518-40e1581edd70
-	github.com/colony-2/colony2/server/workflow v0.0.0-20251223231518-40e1581edd70
+	github.com/colony-2/colony2/server/cell v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/git v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/graph v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/openapi v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/ops v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/project v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/registry v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/ticket v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/workflow v0.0.0-20251225022150-97f04a11c9ec
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
 	github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -53,8 +52,8 @@ require (
 	github.com/cockroachdb/pebble v1.0.0 // indirect
 	github.com/cockroachdb/redact v1.0.8 // indirect
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20251223231518-40e1581edd70 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251223231518-40e1581edd70 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20251225022150-97f04a11c9ec // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
@@ -127,6 +126,7 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect

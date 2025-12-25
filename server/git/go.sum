@@ -29,10 +29,10 @@ github.com/cockroachdb/redact v1.0.8 h1:8QG/764wK+vmEYoOlfobpe12EQcS81ukx/a4hdVM
 github.com/cockroachdb/redact v1.0.8/go.mod h1:BVNblN9mBWFyMyqK1k3AAiSxhvhfK2oOZZ2lK+dpvRg=
 github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 h1:IKgmqgMQlVJIZj19CdocBeSfSaiCbEBZGKODaixqtHM=
 github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2/go.mod h1:8BT+cPK6xvFOcRlk0R8eg+OTkcqI6baNH4xAkpiYVvQ=
-github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70 h1:eunki/Y6pqFF7rtt8xc7ksRwycadBW2FjOaDFoxwubg=
-github.com/colony-2/colony2/server/core v0.0.0-20251223231518-40e1581edd70/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
-github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70 h1:lMtT0E5N1PVXpv118tVaz+qE9jLwgXJFZtpLnX0pX1I=
-github.com/colony-2/colony2/server/recipe-core v0.0.0-20251223231518-40e1581edd70/go.mod h1:qer5CLnlvWFQJVMgsYaVfOEKbzw7r2pkmMjXBmi1FG0=
+github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec h1:zLgHFRMFNIGMZfQxYx2H+4zMXc/R2ZNA7+rcvY3SFao=
+github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
+github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec h1:eGFw8fBkLZ8CxlLHCxI7guqxs0wJwGrHjPanHxMgdHU=
+github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec/go.mod h1:gXx9pDz/sZM3pn8i7BvMGyqdjRnrJUKdBHvFUobzHOU=
 github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac h1:1KbEwfMlMwVOSDRtcEDqpD5PHYuDdBzOLWdK157wPNo=
 github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac/go.mod h1:QJKHOf9Ybwm9V+74tls15xhPVbcDLBwkZ2dcVNAkLuw=
 github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc h1:3ih7zEBLCJ3VC2K2DUF6jeqisxGWeqH9M1cjXHcUDrM=
