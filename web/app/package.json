@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
-    "@colony2/kanban": "file:../kanban",
     "@colony2/flowchart": "file:../flowchart",
+    "@colony2/kanban": "file:../kanban",
     "@colony2/openapi-client": "file:../openapi",
     "@colony2/shared": "file:../shared",
     "@monaco-editor/react": "^4.6.0",
@@ -26,6 +26,7 @@
     "js-yaml": "^4.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-json-view": "^1.21.3",
     "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
@@ -43,5 +44,4 @@
     "vite": "^5.4.0",
     "vitest": "^3.2.4"
   }
-
 }

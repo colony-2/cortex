@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -1121,6 +1123,12 @@ func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 }
 
 func writeError(w http.ResponseWriter, err error, status int) {
+	// Log stack trace for 500 errors
+	if status == http.StatusInternalServerError {
+		stack := debug.Stack()
+		log.Printf("Internal Server Error: %v\nStack trace:\n%s", err, stack)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})

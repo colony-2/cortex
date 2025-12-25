@@ -14,12 +14,14 @@ import (
 
 	"github.com/colony-2/colony2/server/api/internal/engine"
 	"github.com/colony-2/colony2/server/api/internal/opssetup"
+	"github.com/colony-2/colony2/server/api/internal/recipes"
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
@@ -90,6 +92,9 @@ Supports memory storage and configurable node directories.`,
 func runServer(port int, corsOrigins []string, staticPath, nodesPath string, useMemory bool, storagePath string) error {
 	// Resolve absolute paths
 	absNodesPath, err := filepath.Abs(nodesPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve nodes path: %w", err)
+	}
 
 	pgDB, closeDB, err := database.Open(database.Config{DSN: os.Getenv("NEON_C2_DEV_DSN")})
 	if err != nil {
@@ -133,30 +138,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	if err != nil {
 		return fmt.Errorf("failed to create ticket event store: %w", err)
 	}
-	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
-		Store:      ticketStore,
-		EventStore: eventStore,
-		Projects:   projectSvc,
-		Cells:      cellSvc,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create ticket service: %w", err)
-	}
-
-	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
-		if projectSvc == nil {
-			return graphBuilder, nil
-		}
-		prj, err := projectSvc.GetProject(ctx, project.ID(projectID))
-		if err != nil {
-			return nil, err
-		}
-		root := prj.GitRepoPath
-		if strings.TrimSpace(root) == "" {
-			root = absNodesPath
-		}
-		return graph.NewBuilder(root), nil
-	}
 
 	// Setup ops management services (input manager etc.)
 	sseManager := input.NewSimpleSSEManager()
@@ -194,11 +175,50 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		}
 	}()
 
-	// Continue with existing flow
+	// Create recipe registry (required for ticket workflow autostart)
 	recipePath := filepath.Join(absNodesPath, "recipes")
 	reg, err := registry.NewRegistry(nil, recipePath)
 	if err != nil {
 		return fmt.Errorf("failed to create worker registry: %w", err)
+	}
+
+	// Create recipe provider with fallback to registry-only if embedded provider fails
+	var recipeProvider recipe.RecipeProvider = reg
+	embeddedProvider, err := recipes.NewEmbeddedProvider()
+	if err != nil {
+		fmt.Printf("Warning: failed to create embedded recipe provider: %v\n", err)
+		fmt.Printf("Continuing with registry-only provider. internal:// recipes will not be available.\n")
+	} else {
+		// Create chained provider: try registry first, then embedded provider
+		recipeProvider = recipes.NewChainedProvider(reg, embeddedProvider)
+	}
+
+	// Create ticket service with engine and recipe provider for workflow autostart
+	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
+		Store:      ticketStore,
+		EventStore: eventStore,
+		Projects:   projectSvc,
+		Cells:      cellSvc,
+		Engine:     engineSetup.Engine(),
+		Recipes:    recipeProvider,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create ticket service: %w", err)
+	}
+
+	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
+		if projectSvc == nil {
+			return graphBuilder, nil
+		}
+		prj, err := projectSvc.GetProject(ctx, project.ID(projectID))
+		if err != nil {
+			return nil, err
+		}
+		root := prj.GitRepoPath
+		if strings.TrimSpace(root) == "" {
+			root = absNodesPath
+		}
+		return graph.NewBuilder(root), nil
 	}
 
 	wfc := workflow.SWFWorkflowControl{

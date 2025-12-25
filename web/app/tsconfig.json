@@ -43,6 +43,9 @@
       ],
       "@colony2/openapi-client/*": [
         "../openapi/src/*"
+      ],
+      "@colony2/openapi-client": [
+        "../openapi/src/index.ts"
       ]
     }
   },

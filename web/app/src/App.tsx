@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined, SettingOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { Button, Empty, Form, Input, Layout, Menu, Modal, Select, Space, Typography, message } from 'antd';
 import { InputActivityProvider, createProject, listProjects, type Project } from '@colony2/shared';
 import MainView from './components/MainView';
@@ -8,6 +8,8 @@ import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
 import ProjectSettingsModal from './components/ProjectSettingsModal';
+import WorkflowListPage from './components/WorkflowListPage';
+import WorkflowDetailPage from './components/WorkflowDetailPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -85,6 +87,7 @@ function AppShell() {
 
   const navKey = (() => {
     const path = location.pathname;
+    if (path.includes('/workflows')) return 'workflows';
     if (path.includes('/kanban')) return 'tickets';
     if (path.includes('/cells/list')) return 'cells-list';
     if (path.includes('/cells') || path.includes('/cell/')) return 'cells-list';
@@ -96,6 +99,9 @@ function AppShell() {
     switch (key) {
       case 'tickets':
         navigate(`/project/${selectedProject.id}/kanban`);
+        break;
+      case 'workflows':
+        navigate(`/project/${selectedProject.id}/workflows`);
         break;
       case 'cells-graph':
         navigate(`/project/${selectedProject.id}/cells/graph`);
@@ -148,6 +154,12 @@ function AppShell() {
                 disabled: !selectedProject,
               },
               {
+                key: 'workflows',
+                label: 'Workflows',
+                icon: <ThunderboltOutlined />,
+                disabled: !selectedProject,
+              },
+              {
                 key: 'cells-graph',
                 label: 'Cells — Graph',
                 icon: <ClusterOutlined />,
@@ -190,6 +202,11 @@ function AppShell() {
               {/* Kanban view */}
               <Route path="/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
+
+              {/* Workflow views */}
+              <Route path="/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/workflows/:workflowId" element={<WorkflowDetailPage projectId={selectedProject.id} />} />
 
               {/* Cell detail routes */}
               <Route path="/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />
