@@ -87,9 +87,11 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 
 	summaries := make([]model.WorkflowSummary, 0, target)
 	pageToken := ""
+	jobStatuses := workflowStatusesToJobStatuses(req.Statuses)
 	for {
 		resp, err := s.engine.ListJobs(ctx, swf.ListJobsRequest{
 			TenantIds:     []string{req.ProjectID},
+			Statuses:      jobStatuses,
 			Stores:        []swf.JobStore{swf.JobStoreActive, swf.JobStoreArchived},
 			CreatedAfter:  req.Since,
 			CreatedBefore: req.Until,
@@ -102,16 +104,12 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 		if len(resp.Jobs) == 0 {
 			break
 		}
-		fmt.Println(resp.Jobs)
 		for _, job := range resp.Jobs {
 			summary, ok, err := s.buildSummary(ctx, req.ProjectID, job)
 			if err != nil {
 				return nil, err
 			}
 			if !ok {
-				continue
-			}
-			if !statusMatches(req.Statuses, summary.Status) {
 				continue
 			}
 			if req.TicketID != nil && (summary.TicketID == nil || *summary.TicketID != *req.TicketID) {
@@ -401,6 +399,38 @@ func mapWorkflowStatus(status swf.JobStatus) model.WorkflowStatus {
 	}
 }
 
+func workflowStatusesToJobStatuses(statuses []model.WorkflowStatus) []swf.JobStatus {
+	if len(statuses) == 0 {
+		// When no status filter is provided, query all possible job statuses
+		return []swf.JobStatus{
+			swf.JobStatusActive,
+			swf.JobStatusPendingJobs,
+			swf.JobStatusAwaitingFuture,
+			swf.JobStatusReady,
+			swf.JobStatusCompleted,
+			swf.JobStatusCancelled,
+			swf.JobStatusExpired,
+			swf.JobStatusCrashConcern,
+		}
+	}
+	jobStatuses := make([]swf.JobStatus, 0, len(statuses)*4)
+	for _, status := range statuses {
+		switch status {
+		case model.WorkflowStatusRunning:
+			jobStatuses = append(jobStatuses, swf.JobStatusActive, swf.JobStatusPendingJobs, swf.JobStatusAwaitingFuture, swf.JobStatusReady)
+		case model.WorkflowStatusCompleted:
+			jobStatuses = append(jobStatuses, swf.JobStatusCompleted)
+		case model.WorkflowStatusCanceled:
+			jobStatuses = append(jobStatuses, swf.JobStatusCancelled)
+		case model.WorkflowStatusTimedOut:
+			jobStatuses = append(jobStatuses, swf.JobStatusExpired)
+		case model.WorkflowStatusFailed:
+			jobStatuses = append(jobStatuses, swf.JobStatusCrashConcern)
+		}
+	}
+	return jobStatuses
+}
+
 func mapChapterStatus(payloadKind string) model.ChapterStatus {
 	switch payloadKind {
 	case "App", "AppChildJob":
@@ -430,18 +460,6 @@ func parseRawJobPayload(payload json.RawMessage) *map[string]interface{} {
 		return nil
 	}
 	return &m
-}
-
-func statusMatches(filters []model.WorkflowStatus, status model.WorkflowStatus) bool {
-	if len(filters) == 0 {
-		return true
-	}
-	for _, f := range filters {
-		if f == status {
-			return true
-		}
-	}
-	return false
 }
 
 func actorFromStartJob(startJob *workflowctl.StartJob) model.Actor {

@@ -90,6 +90,8 @@ Supports memory storage and configurable node directories.`,
 }
 
 func runServer(port int, corsOrigins []string, staticPath, nodesPath string, useMemory bool, storagePath string) error {
+	setupLogger()
+
 	// Resolve absolute paths
 	absNodesPath, err := filepath.Abs(nodesPath)
 	if err != nil {

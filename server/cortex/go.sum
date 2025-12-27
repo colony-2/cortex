@@ -110,6 +110,10 @@ github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f h1:3drsfkjNwb5/YrZ
 github.com/colony-2/swf-go v0.0.0-20251224222757-781d6407038f/go.mod h1:uUDy+33kTrWIqfpUnCKkfzjQ36EteGcAhOQqTon7dE8=
 github.com/colony-2/swf-go v0.0.0-20251225045112-c3914b94b494 h1:23BXBrjXoB7Y4uVSpJt+C2vHRFP+vIOCo3Loat1ms8M=
 github.com/colony-2/swf-go v0.0.0-20251225045112-c3914b94b494/go.mod h1:uUDy+33kTrWIqfpUnCKkfzjQ36EteGcAhOQqTon7dE8=
+github.com/colony-2/swf-go v0.0.0-20251225073048-a35aed42ef06 h1:gU4qFI0HCFO9v4cxHGjDizh959EkS8QVqDzAsLYg2r0=
+github.com/colony-2/swf-go v0.0.0-20251225073048-a35aed42ef06/go.mod h1:uUDy+33kTrWIqfpUnCKkfzjQ36EteGcAhOQqTon7dE8=
+github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa h1:1HQBJcTPm3BMLCcy0ELonx2pBpFblg4M44hn8xC1FPg=
+github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa/go.mod h1:uUDy+33kTrWIqfpUnCKkfzjQ36EteGcAhOQqTon7dE8=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
 github.com/containerd/errdefs v1.0.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=

@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251225045112-c3914b94b494
+	github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa
 	github.com/stretchr/testify v1.11.1
 )
 

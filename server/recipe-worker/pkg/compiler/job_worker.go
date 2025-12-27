@@ -3,6 +3,8 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -55,8 +57,16 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 		return nil, err
 	}
 
+	working, err := os.MkdirTemp("", "recipe-worker-artifacts")
+	if err != nil {
+		return nil, err
+	}
+	runContext := input.JobContext
+	runContext.Environment.WorktreePath = filepath.Join(working, "git")
+	runContext.Environment.BlobStoreURI = filepath.Join(working, "blob")
+
 	wCtx := workflow.Context{JobContext: ctx}
-	out, err := ExecuteRecipe(wCtx, r, input.Inputs, input.JobContext, contextual.GitCommitContext{ParentRef: input.GitRef})
+	out, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
 	if err != nil {
 		return nil, err
 	}
