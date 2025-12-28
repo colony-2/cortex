@@ -1,0 +1,4 @@
+id: 'server-recipes'
+language: 'go'
+type: 'library'
+

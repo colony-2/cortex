@@ -27,7 +27,6 @@ type Cell struct {
 	DeletedAt     *time.Time `gorm:"column:deleted_at;index"`
 }
 
-
 // Dependency represents a cell-to-cell dependency edge.
 type Dependency struct {
 	ID         uint       `gorm:"primaryKey;autoIncrement"`
@@ -37,6 +36,9 @@ type Dependency struct {
 	CreatedAt  time.Time
 }
 
+func (d *Dependency) TableName() string {
+	return "public.cell_dependencies"
+}
 
 type ShortIDGenerator interface {
 	NewID() (string, error)

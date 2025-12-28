@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/strata-go/pkg/client/story"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -81,5 +82,38 @@ func TestChapterToDetailInputOutputAndError(t *testing.T) {
 	}
 	if detailErr.ChapterType != "workflow" {
 		t.Fatalf("expected default chapter type workflow, got %q", detailErr.ChapterType)
+	}
+}
+
+func TestWorkflowStatusesToJobStatuses_NilReturnsNil(t *testing.T) {
+	// Test with nil statuses - should return nil to indicate "all statuses"
+	// The SWF engine will interpret nil as "no filter"
+	result := workflowStatusesToJobStatuses(nil)
+
+	if result != nil {
+		t.Fatalf("expected nil when input is nil, got %v (len=%d)", result, len(result))
+	}
+}
+
+func TestWorkflowStatusesToJobStatuses_EmptyReturnsNil(t *testing.T) {
+	// Test with empty slice - should return nil to indicate "all statuses"
+	// The SWF engine will interpret nil as "no filter"
+	result := workflowStatusesToJobStatuses([]model.WorkflowStatus{})
+
+	if result != nil {
+		t.Fatalf("expected nil when input is empty, got %v (len=%d)", result, len(result))
+	}
+}
+
+func TestWorkflowStatusesToJobStatuses_SpecificStatus(t *testing.T) {
+	// Test with specific status - should only return those job statuses
+	result := workflowStatusesToJobStatuses([]model.WorkflowStatus{model.WorkflowStatusCompleted})
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 job status for 'completed', got %d", len(result))
+	}
+
+	if result[0] != swf.JobStatusCompleted {
+		t.Errorf("expected JobStatusCompleted, got %q", result[0])
 	}
 }

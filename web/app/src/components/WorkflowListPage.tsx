@@ -105,7 +105,7 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       dataIndex: 'workflow_id',
       key: 'workflow_id',
       render: (id: string) => (
-        <a onClick={() => navigate(`/projects/${projectId}/workflows/${id}`)}>
+        <a onClick={() => navigate(`/project/${projectId}/workflows/${id}`)}>
           {id.slice(-12)}
         </a>
       ),
@@ -131,7 +131,7 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       key: 'ticket',
       render: (_, record: WorkflowSummary) =>
         record.ticket_id ? (
-          <a onClick={() => navigate(`/projects/${projectId}/tickets/${record.ticket_id}`)}>
+          <a onClick={() => navigate(`/project/${projectId}/tickets/${record.ticket_id}`)}>
             {record.ticket_title || record.ticket_id.slice(-8)}
           </a>
         ) : (
@@ -240,7 +240,7 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
             pageSizeOptions: ['20', '50', '100', '200'],
           }}
           onRow={(record) => ({
-            onClick: () => navigate(`/projects/${projectId}/workflows/${record.workflow_id}`),
+            onClick: () => navigate(`/project/${projectId}/workflows/${record.workflow_id}`),
             style: { cursor: 'pointer' },
           })}
         />

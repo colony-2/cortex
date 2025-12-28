@@ -4,6 +4,7 @@ use (
 	./server/api
 	./server/astore
 	./server/cell
+        ./server/recipes
 	./server/core
 	./server/cortex
 	./server/git

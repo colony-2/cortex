@@ -101,17 +101,22 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 		if err != nil {
 			return nil, err
 		}
+		fmt.Printf("DEBUG ListWorkflows: PGWF returned %d jobs for project %s (statuses=%v)\n", len(resp.Jobs), req.ProjectID, jobStatuses)
 		if len(resp.Jobs) == 0 {
 			break
 		}
-		for _, job := range resp.Jobs {
+		for i, job := range resp.Jobs {
+			fmt.Printf("DEBUG ListWorkflows: Job %d: ID=%s TenantId=%s Status=%s CreatedAt=%v ArchivedAt=%v\n",
+				i, job.JobKey.JobId, job.JobKey.TenantId, job.Status, job.CreatedAt, job.ArchivedAt)
 			summary, ok, err := s.buildSummary(ctx, req.ProjectID, job)
 			if err != nil {
 				return nil, err
 			}
 			if !ok {
+				fmt.Printf("DEBUG ListWorkflows: Job %s SKIPPED by buildSummary (ok=false)\n", job.JobKey.JobId)
 				continue
 			}
+			fmt.Printf("DEBUG ListWorkflows: Job %s INCLUDED (status=%s)\n", job.JobKey.JobId, summary.Status)
 			if req.TicketID != nil && (summary.TicketID == nil || *summary.TicketID != *req.TicketID) {
 				continue
 			}
@@ -226,10 +231,15 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 }
 
 func (s *Service) buildSummary(ctx context.Context, projectID string, job swf.JobSummary) (model.WorkflowSummary, bool, error) {
-	startJob, _ := s.loadStartJob(ctx, job.JobKey)
+	startJob, err := s.loadStartJob(ctx, job.JobKey)
+	if err != nil {
+		fmt.Printf("DEBUG buildSummary: Failed to load start job for %s: %v\n", job.JobKey.JobId, err)
+	}
 	if startJob == nil {
+		fmt.Printf("DEBUG buildSummary: No start job data for %s (strata=%v)\n", job.JobKey.JobId, s.strata != nil)
 		return model.WorkflowSummary{}, false, nil
 	}
+	fmt.Printf("DEBUG buildSummary: Successfully loaded start job for %s (recipe=%s)\n", job.JobKey.JobId, startJob.RecipeName)
 
 	status := mapWorkflowStatus(job.Status)
 	createdAt := job.CreatedAt
@@ -275,6 +285,7 @@ func (s *Service) loadStartJob(ctx context.Context, jobKey swf.JobKey) (*workflo
 	if s.strata == nil {
 		return nil, nil
 	}
+	fmt.Printf("DEBUG loadStartJob: jobKey.TenantId=%s jobKey.JobId=%s\n", jobKey.TenantId, jobKey.JobId)
 	chap, err := s.strata.Chapter(ctx, jobKey.ToStoryKey(), 0)
 	if err != nil {
 		return nil, err
@@ -401,17 +412,9 @@ func mapWorkflowStatus(status swf.JobStatus) model.WorkflowStatus {
 
 func workflowStatusesToJobStatuses(statuses []model.WorkflowStatus) []swf.JobStatus {
 	if len(statuses) == 0 {
-		// When no status filter is provided, query all possible job statuses
-		return []swf.JobStatus{
-			swf.JobStatusActive,
-			swf.JobStatusPendingJobs,
-			swf.JobStatusAwaitingFuture,
-			swf.JobStatusReady,
-			swf.JobStatusCompleted,
-			swf.JobStatusCancelled,
-			swf.JobStatusExpired,
-			swf.JobStatusCrashConcern,
-		}
+		// No status filter - return nil to query all statuses
+		// swf-go correctly handles nil as "all statuses"
+		return nil
 	}
 	jobStatuses := make([]swf.JobStatus, 0, len(statuses)*4)
 	for _, status := range statuses {

@@ -236,7 +236,7 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
               <Descriptions.Item label="Ticket" span={2}>
                 <a
                   onClick={() =>
-                    navigate(`/projects/${projectId}/tickets/${workflow.ticket_id}`)
+                    navigate(`/project/${projectId}/tickets/${workflow.ticket_id}`)
                   }
                 >
                   {workflow.ticket?.title || workflow.ticket_id}

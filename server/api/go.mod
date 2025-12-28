@@ -17,7 +17,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251225022150-97f04a11c9ec
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251225022150-97f04a11c9ec
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa
+	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
@@ -54,8 +54,8 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/pgwf v0.0.0-20251222213127-346dbf4f38ac // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
+	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

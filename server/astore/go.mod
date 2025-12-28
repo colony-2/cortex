@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa
+	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -12,7 +12,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.9.0 // indirect

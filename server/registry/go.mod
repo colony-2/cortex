@@ -15,9 +15,9 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251222213401-e6267e1316bc // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20251227041413-d5b2aa235afa // indirect
+	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
