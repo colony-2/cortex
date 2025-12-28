@@ -284,16 +284,477 @@ func (r *Repository) UnstageFiles(ctx context.Context, nodePath string, files []
 	return nil
 }
 
-// InitRepository removed - this module only works with existing repositories
+// Clone creates a local copy of a remote repository
+func (r *Repository) Clone(ctx context.Context, url string, localPath string, branch string, depth *int, singleBranch bool, bare bool) error {
+	args := []string{"clone"}
+
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
+
+	if depth != nil {
+		args = append(args, "--depth", fmt.Sprintf("%d", *depth))
+	}
+
+	if singleBranch {
+		args = append(args, "--single-branch")
+	}
+
+	if bare {
+		args = append(args, "--bare")
+	}
+
+	args = append(args, url, localPath)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// Fetch downloads objects and refs from remote repository
+func (r *Repository) Fetch(ctx context.Context, nodePath string, remote string, branch string, prune bool, tags bool) error {
+	if !isGitRepo(nodePath) {
+		return fmt.Errorf("not a git repository")
+	}
+
+	args := []string{"fetch"}
+
+	if remote == "" {
+		remote = "origin"
+	}
+	args = append(args, remote)
+
+	if branch != "" {
+		args = append(args, branch)
+	}
+
+	if prune {
+		args = append(args, "--prune")
+	}
+
+	if tags {
+		args = append(args, "--tags")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = nodePath
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to fetch: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// Pull fetches from remote and integrates into current branch
+func (r *Repository) Pull(ctx context.Context, nodePath string, remote string, branch string, fastForward bool, rebase bool) (updated bool, oldCommit string, newCommit string, conflictFiles []string, err error) {
+	if !isGitRepo(nodePath) {
+		return false, "", "", nil, fmt.Errorf("not a git repository")
+	}
+
+	// Get current commit
+	oldCommit, err = r.GetCurrentCommit(ctx, nodePath)
+	if err != nil {
+		return false, "", "", nil, err
+	}
+
+	args := []string{"pull"}
+
+	if remote == "" {
+		remote = "origin"
+	}
+	args = append(args, remote)
+
+	if branch != "" {
+		args = append(args, branch)
+	}
+
+	if fastForward {
+		args = append(args, "--ff-only")
+	}
+
+	if rebase {
+		args = append(args, "--rebase")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = nodePath
+
+	output, pullErr := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	// Get new commit
+	newCommit, _ = r.GetCurrentCommit(ctx, nodePath)
+
+	// Check for conflicts
+	if pullErr != nil {
+		if strings.Contains(outputStr, "CONFLICT") {
+			// Parse conflict files
+			cmd := exec.CommandContext(ctx, "git", "diff", "--name-only", "--diff-filter=U")
+			cmd.Dir = nodePath
+			if conflictOutput, err := cmd.Output(); err == nil {
+				lines := strings.Split(string(conflictOutput), "\n")
+				for _, line := range lines {
+					if line != "" {
+						conflictFiles = append(conflictFiles, line)
+					}
+				}
+			}
+			return false, oldCommit, newCommit, conflictFiles, fmt.Errorf("merge conflict")
+		}
+		return false, oldCommit, newCommit, nil, fmt.Errorf("failed to pull: %w\nOutput: %s", pullErr, output)
+	}
+
+	updated = oldCommit != newCommit
+	return updated, oldCommit, newCommit, nil, nil
+}
+
+// Push uploads local commits to remote repository
+func (r *Repository) Push(ctx context.Context, nodePath string, remote string, branch string, force bool, setUpstream bool) (pushed bool, rejected bool, commitsPushed int, err error) {
+	if !isGitRepo(nodePath) {
+		return false, false, 0, fmt.Errorf("not a git repository")
+	}
+
+	args := []string{"push"}
+
+	if remote == "" {
+		remote = "origin"
+	}
+	args = append(args, remote)
+
+	if branch != "" {
+		args = append(args, branch)
+	}
+
+	if force {
+		args = append(args, "--force")
+	}
+
+	if setUpstream {
+		args = append(args, "--set-upstream")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = nodePath
+
+	output, pushErr := cmd.CombinedOutput()
+	outputStr := string(output)
+
+	if pushErr != nil {
+		if strings.Contains(outputStr, "rejected") || strings.Contains(outputStr, "non-fast-forward") {
+			return false, true, 0, fmt.Errorf("push rejected: not a fast-forward")
+		}
+		return false, false, 0, fmt.Errorf("failed to push: %w\nOutput: %s", pushErr, output)
+	}
+
+	// Check if anything was pushed
+	if strings.Contains(outputStr, "Everything up-to-date") {
+		return false, false, 0, nil
+	}
+
+	return true, false, 0, nil
+}
+
+// IsAncestor determines if one commit is an ancestor of another
+func (r *Repository) IsAncestor(ctx context.Context, nodePath string, ancestor string, descendant string) (bool, error) {
+	if !isGitRepo(nodePath) {
+		return false, fmt.Errorf("not a git repository")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "merge-base", "--is-ancestor", ancestor, descendant)
+	cmd.Dir = nodePath
+
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+
+	// Exit code 1 means not an ancestor, other codes are errors
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() == 1 {
+			return false, nil
+		}
+	}
+
+	return false, fmt.Errorf("failed to check ancestry: %w", err)
+}
+
+// GetRemoteHead retrieves the commit hash of a remote branch
+func (r *Repository) GetRemoteHead(ctx context.Context, nodePath string, remote string, branch string) (string, error) {
+	if !isGitRepo(nodePath) {
+		return "", fmt.Errorf("not a git repository")
+	}
+
+	if remote == "" {
+		remote = "origin"
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", remote, branch)
+	cmd.Dir = nodePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get remote head: %w", err)
+	}
+
+	// Parse output (format: "hash\tref")
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			return parts[0], nil
+		}
+	}
+
+	return "", fmt.Errorf("branch not found on remote")
+}
+
+// GetCurrentCommit returns the commit hash of the current HEAD
+func (r *Repository) GetCurrentCommit(ctx context.Context, nodePath string) (string, error) {
+	if !isGitRepo(nodePath) {
+		return "", fmt.Errorf("not a git repository")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	cmd.Dir = nodePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current commit: %w", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+// Checkout switches to a different branch or commit
+func (r *Repository) Checkout(ctx context.Context, nodePath string, ref string, createBranch string, force bool, detach bool) error {
+	if !isGitRepo(nodePath) {
+		return fmt.Errorf("not a git repository")
+	}
+
+	args := []string{"checkout"}
+
+	if force {
+		args = append(args, "--force")
+	}
+
+	if detach {
+		args = append(args, "--detach")
+	}
+
+	if createBranch != "" {
+		args = append(args, "-b", createBranch)
+	}
+
+	args = append(args, ref)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = nodePath
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to checkout: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// InitRepository creates a new git repository
+func (r *Repository) InitRepository(ctx context.Context, path string, bare bool, defaultBranch string) error {
+	args := []string{"init"}
+
+	if bare {
+		args = append(args, "--bare")
+	}
+
+	if defaultBranch != "" {
+		args = append(args, "--initial-branch", defaultBranch)
+	} else {
+		args = append(args, "--initial-branch", "main")
+	}
+
+	args = append(args, path)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to init repository: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// AddRemote adds a remote repository reference
+func (r *Repository) AddRemote(ctx context.Context, nodePath string, name string, url string) error {
+	if !isGitRepo(nodePath) {
+		return fmt.Errorf("not a git repository")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "remote", "add", name, url)
+	cmd.Dir = nodePath
+
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to add remote: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// Remote represents a remote repository reference
+type Remote struct {
+	Name     string
+	FetchURL string
+	PushURL  string
+}
+
+// ListRemotes returns all configured remotes
+func (r *Repository) ListRemotes(ctx context.Context, nodePath string) ([]Remote, error) {
+	if !isGitRepo(nodePath) {
+		return nil, fmt.Errorf("not a git repository")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "remote", "-v")
+	cmd.Dir = nodePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list remotes: %w", err)
+	}
+
+	remotes := make(map[string]*Remote)
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Format: "name\turl (fetch|push)"
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			continue
+		}
+
+		name := parts[0]
+		url := parts[1]
+		opType := strings.Trim(parts[2], "()")
+
+		if remotes[name] == nil {
+			remotes[name] = &Remote{Name: name}
+		}
+
+		if opType == "fetch" {
+			remotes[name].FetchURL = url
+		} else if opType == "push" {
+			remotes[name].PushURL = url
+		}
+	}
+
+	result := make([]Remote, 0, len(remotes))
+	for _, remote := range remotes {
+		result = append(result, *remote)
+	}
+
+	return result, nil
+}
+
+// GetFileAtCommit retrieves file content from a specific commit
+func (r *Repository) GetFileAtCommit(ctx context.Context, nodePath string, commit string, filePath string) ([]byte, error) {
+	if !isGitRepo(nodePath) {
+		return nil, fmt.Errorf("not a git repository")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", "show", fmt.Sprintf("%s:%s", commit, filePath))
+	cmd.Dir = nodePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file at commit: %w", err)
+	}
+
+	return output, nil
+}
+
+// FileInfo represents information about a file in a repository
+type FileInfo struct {
+	Path  string
+	IsDir bool
+	Size  int64
+}
+
+// ListFilesAtCommit lists all files in a directory at a specific commit
+func (r *Repository) ListFilesAtCommit(ctx context.Context, nodePath string, commit string, dirPath string) ([]FileInfo, error) {
+	if !isGitRepo(nodePath) {
+		return nil, fmt.Errorf("not a git repository")
+	}
+
+	// Use git ls-tree to list files
+	args := []string{"ls-tree", "-l", commit}
+	if dirPath != "" {
+		args = append(args, dirPath)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = nodePath
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files at commit: %w", err)
+	}
+
+	var files []FileInfo
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Format: "mode type hash size\tname"
+		parts := strings.Fields(line)
+		if len(parts) < 4 {
+			continue
+		}
+
+		mode := parts[0]
+		objType := parts[1]
+		size := int64(0)
+
+		// Parse size (might be "-" for directories)
+		if parts[3] != "-" {
+			if s, err := strconv.ParseInt(parts[3], 10, 64); err == nil {
+				size = s
+			}
+		}
+
+		// Get name (after tab)
+		tabIndex := strings.Index(line, "\t")
+		if tabIndex == -1 {
+			continue
+		}
+		name := line[tabIndex+1:]
+
+		files = append(files, FileInfo{
+			Path:  name,
+			IsDir: objType == "tree" || mode == "040000",
+			Size:  size,
+		})
+	}
+
+	return files, nil
+}
 
 // isGitRepo checks if a directory is a git repository
 func isGitRepo(dirPath string) bool {
 	cmd := exec.Command("git", "rev-parse", "--git-dir")
 	cmd.Dir = dirPath
-	
+
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	
+
 	return cmd.Run() == nil
 }

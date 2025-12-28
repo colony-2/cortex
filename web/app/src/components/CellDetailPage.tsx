@@ -20,6 +20,7 @@ import {
 import { EditOutlined, PlusOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import type { ManagedCell, Ticket } from '@colony2/openapi-client';
 import { ActorType, CellsService, TicketState, TicketsService } from '@colony2/openapi-client';
+import { TicketDetailModal } from '@colony2/shared';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -38,6 +39,7 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [editForm] = Form.useForm();
   const [ticketForm] = Form.useForm();
 
@@ -270,6 +272,10 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
               rowKey="id"
               dataSource={tickets}
               pagination={{ pageSize: 10 }}
+              onRow={(record) => ({
+                onClick: () => setSelectedTicket(record),
+                style: { cursor: 'pointer' },
+              })}
               columns={[
                 {
                   title: 'Title',
@@ -411,6 +417,14 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* Ticket Detail Modal */}
+      <TicketDetailModal
+        visible={selectedTicket !== null}
+        onClose={() => setSelectedTicket(null)}
+        ticket={selectedTicket}
+        projectId={projectId}
+      />
     </div>
   );
 }

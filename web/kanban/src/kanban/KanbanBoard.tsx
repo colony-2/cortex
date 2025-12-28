@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import type { ManagedCell, Ticket } from '@colony2/openapi-client';
 import { ActorType, CellsService, TicketState, TicketsService } from '@colony2/openapi-client';
+import { TicketDetailModal } from '@colony2/shared';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -44,6 +45,7 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const [cells, setCells] = useState<ManagedCell[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -147,7 +149,13 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
               <Card title={<StageHeader stage={stage} count={ticketsByStage.get(stage)?.length || 0} />}>
                 {ticketsByStage.get(stage)?.length ? (
                   ticketsByStage.get(stage)?.map((ticket) => (
-                    <Card key={ticket.id} size="small" style={{ marginBottom: 8 }}>
+                    <Card
+                      key={ticket.id}
+                      size="small"
+                      style={{ marginBottom: 8, cursor: 'pointer' }}
+                      hoverable
+                      onClick={() => setSelectedTicket(ticket)}
+                    >
                       <Title level={5} style={{ marginBottom: 4 }}>
                         {ticket.title}
                       </Title>
@@ -188,6 +196,13 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         stages={stages}
         states={availableStates}
         setCreating={setCreating}
+      />
+
+      <TicketDetailModal
+        visible={selectedTicket !== null}
+        onClose={() => setSelectedTicket(null)}
+        ticket={selectedTicket}
+        projectId={projectId}
       />
     </div>
   );

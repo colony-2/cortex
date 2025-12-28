@@ -84,6 +84,7 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}", withHandlerLog("tickets:get", h.handleGetTicket)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}", withHandlerLog("tickets:update", h.handleUpdateTicket)).Methods(http.MethodPatch)
 	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}/at", withHandlerLog("tickets:getAt", h.handleGetTicketAt)).Methods(http.MethodGet)
+	api.HandleFunc("/projects/{projectId}/tickets/{ticketId}/events", withHandlerLog("tickets:events", h.handleListTicketEvents)).Methods(http.MethodGet)
 
 	api.HandleFunc("/projects/{projectId}/recipes", withHandlerLog("recipes:list", h.handleListRecipes)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeId}", withHandlerLog("recipes:get", h.handleGetRecipe)).Methods(http.MethodGet)

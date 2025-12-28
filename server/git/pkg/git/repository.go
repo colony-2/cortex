@@ -3,6 +3,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"github.com/colony-2/colony2/server/git/internal/commands"
 	"time"
 )
@@ -32,6 +33,131 @@ type Commit struct {
 	ShortHash string    `json:"shortHash"`
 }
 
+// CloneOptions configures repository clone operations.
+type CloneOptions struct {
+	Branch       string // Specific branch to clone (empty = default branch)
+	Depth        *int   // Shallow clone depth (nil = full clone)
+	SingleBranch bool   // Clone only the specified branch
+	Bare         bool   // Create a bare repository
+}
+
+// FetchOptions configures fetch operations.
+type FetchOptions struct {
+	Remote string // Remote name (default: "origin")
+	Branch string // Specific branch to fetch (empty = all branches)
+	Prune  bool   // Remove remote-tracking references that no longer exist
+	Tags   bool   // Fetch tags
+}
+
+// PullOptions configures pull operations.
+type PullOptions struct {
+	Remote      string // Remote name (default: "origin")
+	Branch      string // Remote branch (empty = tracking branch)
+	FastForward bool   // Only allow fast-forward merges
+	Rebase      bool   // Rebase instead of merge
+}
+
+// PullResult contains the result of a pull operation.
+type PullResult struct {
+	Updated       bool     // Whether local branch was updated
+	OldCommit     string   // Commit hash before pull
+	NewCommit     string   // Commit hash after pull
+	ConflictFiles []string // Files with conflicts (if any)
+}
+
+// PushOptions configures push operations.
+type PushOptions struct {
+	Remote      string // Remote name (default: "origin")
+	Branch      string // Local branch to push (empty = current branch)
+	Force       bool   // Force push (overwrite remote)
+	SetUpstream bool   // Set upstream tracking branch
+}
+
+// PushResult contains the result of a push operation.
+type PushResult struct {
+	Pushed        bool // Whether any commits were pushed
+	Rejected      bool // Whether push was rejected
+	CommitsPushed int  // Number of commits pushed
+}
+
+// CheckoutOptions configures checkout operations.
+type CheckoutOptions struct {
+	CreateBranch string // Create new branch at ref (empty = no creation)
+	Force        bool   // Discard local changes
+	Detach       bool   // Detach HEAD (create detached HEAD state)
+}
+
+// InitOptions configures repository initialization.
+type InitOptions struct {
+	Bare          bool   // Create bare repository
+	DefaultBranch string // Name of default branch (empty = "main")
+}
+
+// Remote represents a remote repository reference.
+type Remote struct {
+	Name     string
+	FetchURL string
+	PushURL  string
+}
+
+// FileInfo represents information about a file in a repository.
+type FileInfo struct {
+	Path  string
+	IsDir bool
+	Size  int64
+}
+
+// AuthType represents the type of authentication to use.
+type AuthType int
+
+const (
+	// AuthTypeNone indicates no authentication.
+	AuthTypeNone AuthType = iota
+	// AuthTypeSSH indicates SSH key authentication.
+	AuthTypeSSH
+	// AuthTypeHTTPS indicates HTTPS authentication.
+	AuthTypeHTTPS
+)
+
+// AuthConfig configures authentication for remote operations.
+type AuthConfig struct {
+	Type          AuthType
+	SSHKeyPath    string // Path to SSH private key
+	SSHPassword   string // SSH key passphrase
+	HTTPSUsername string // HTTPS username
+	HTTPSPassword string // HTTPS password/token
+}
+
+// GitError wraps git operation errors with additional context.
+type GitError struct {
+	Op     string // Operation that failed (e.g., "clone", "push")
+	Path   string // Repository path
+	Err    error  // Underlying error
+	Stderr string // Git command stderr output (if applicable)
+}
+
+func (e *GitError) Error() string {
+	if e.Stderr != "" {
+		return "git " + e.Op + " at " + e.Path + ": " + e.Err.Error() + "\n" + e.Stderr
+	}
+	return "git " + e.Op + " at " + e.Path + ": " + e.Err.Error()
+}
+
+func (e *GitError) Unwrap() error {
+	return e.Err
+}
+
+// Standard error variables.
+var (
+	ErrNotRepository      = errors.New("not a git repository")
+	ErrNotFound           = errors.New("not found")
+	ErrNotFastForward     = errors.New("not a fast-forward")
+	ErrConflict           = errors.New("merge conflict")
+	ErrAuthFailed         = errors.New("authentication failed")
+	ErrUncommittedChanges = errors.New("uncommitted changes")
+	ErrNetworkFailure     = errors.New("network failure")
+)
+
 // Repository provides Git operations for node directories.
 type Repository interface {
 	// GetStatus returns the current Git status of a node directory.
@@ -51,6 +177,45 @@ type Repository interface {
 
 	// UnstageFiles unstages the specified files.
 	UnstageFiles(ctx context.Context, nodePath string, files []string) error
+
+	// Clone creates a local copy of a remote repository.
+	Clone(ctx context.Context, url string, localPath string, options CloneOptions) error
+
+	// Fetch downloads objects and refs from remote repository.
+	Fetch(ctx context.Context, nodePath string, options FetchOptions) error
+
+	// Pull fetches from remote and integrates into current branch.
+	Pull(ctx context.Context, nodePath string, options PullOptions) (*PullResult, error)
+
+	// Push uploads local commits to remote repository.
+	Push(ctx context.Context, nodePath string, options PushOptions) (*PushResult, error)
+
+	// IsAncestor determines if one commit is an ancestor of another.
+	IsAncestor(ctx context.Context, nodePath string, ancestor string, descendant string) (bool, error)
+
+	// GetRemoteHead retrieves the commit hash of a remote branch.
+	GetRemoteHead(ctx context.Context, nodePath string, remote string, branch string) (string, error)
+
+	// GetCurrentCommit returns the commit hash of the current HEAD.
+	GetCurrentCommit(ctx context.Context, nodePath string) (string, error)
+
+	// Checkout switches to a different branch or commit.
+	Checkout(ctx context.Context, nodePath string, ref string, options CheckoutOptions) error
+
+	// InitRepository creates a new git repository.
+	InitRepository(ctx context.Context, path string, options InitOptions) error
+
+	// AddRemote adds a remote repository reference.
+	AddRemote(ctx context.Context, nodePath string, name string, url string) error
+
+	// ListRemotes returns all configured remotes.
+	ListRemotes(ctx context.Context, nodePath string) ([]Remote, error)
+
+	// GetFileAtCommit retrieves file content from a specific commit.
+	GetFileAtCommit(ctx context.Context, nodePath string, commit string, filePath string) ([]byte, error)
+
+	// ListFilesAtCommit lists all files in a directory at a specific commit.
+	ListFilesAtCommit(ctx context.Context, nodePath string, commit string, dirPath string) ([]FileInfo, error)
 }
 
 // Config defines configuration for Git operations.
@@ -60,6 +225,9 @@ type Config struct {
 
 	// DefaultEmail is used when no Git email is configured.
 	DefaultEmail string
+
+	// Auth configures authentication for remote operations.
+	Auth *AuthConfig
 }
 
 // NewRepository creates a new Git repository interface.
@@ -134,4 +302,103 @@ func (a *repoAdapter) StageFiles(ctx context.Context, nodePath string, files []s
 
 func (a *repoAdapter) UnstageFiles(ctx context.Context, nodePath string, files []string) error {
 	return a.repo.UnstageFiles(ctx, nodePath, files)
+}
+
+func (a *repoAdapter) Clone(ctx context.Context, url string, localPath string, options CloneOptions) error {
+	return a.repo.Clone(ctx, url, localPath, options.Branch, options.Depth, options.SingleBranch, options.Bare)
+}
+
+func (a *repoAdapter) Fetch(ctx context.Context, nodePath string, options FetchOptions) error {
+	return a.repo.Fetch(ctx, nodePath, options.Remote, options.Branch, options.Prune, options.Tags)
+}
+
+func (a *repoAdapter) Pull(ctx context.Context, nodePath string, options PullOptions) (*PullResult, error) {
+	updated, oldCommit, newCommit, conflictFiles, err := a.repo.Pull(ctx, nodePath, options.Remote, options.Branch, options.FastForward, options.Rebase)
+	if err != nil {
+		return nil, err
+	}
+	return &PullResult{
+		Updated:       updated,
+		OldCommit:     oldCommit,
+		NewCommit:     newCommit,
+		ConflictFiles: conflictFiles,
+	}, nil
+}
+
+func (a *repoAdapter) Push(ctx context.Context, nodePath string, options PushOptions) (*PushResult, error) {
+	pushed, rejected, commitsPushed, err := a.repo.Push(ctx, nodePath, options.Remote, options.Branch, options.Force, options.SetUpstream)
+	if err != nil {
+		return nil, err
+	}
+	return &PushResult{
+		Pushed:        pushed,
+		Rejected:      rejected,
+		CommitsPushed: commitsPushed,
+	}, nil
+}
+
+func (a *repoAdapter) IsAncestor(ctx context.Context, nodePath string, ancestor string, descendant string) (bool, error) {
+	return a.repo.IsAncestor(ctx, nodePath, ancestor, descendant)
+}
+
+func (a *repoAdapter) GetRemoteHead(ctx context.Context, nodePath string, remote string, branch string) (string, error) {
+	return a.repo.GetRemoteHead(ctx, nodePath, remote, branch)
+}
+
+func (a *repoAdapter) GetCurrentCommit(ctx context.Context, nodePath string) (string, error) {
+	return a.repo.GetCurrentCommit(ctx, nodePath)
+}
+
+func (a *repoAdapter) Checkout(ctx context.Context, nodePath string, ref string, options CheckoutOptions) error {
+	return a.repo.Checkout(ctx, nodePath, ref, options.CreateBranch, options.Force, options.Detach)
+}
+
+func (a *repoAdapter) InitRepository(ctx context.Context, path string, options InitOptions) error {
+	return a.repo.InitRepository(ctx, path, options.Bare, options.DefaultBranch)
+}
+
+func (a *repoAdapter) AddRemote(ctx context.Context, nodePath string, name string, url string) error {
+	return a.repo.AddRemote(ctx, nodePath, name, url)
+}
+
+func (a *repoAdapter) ListRemotes(ctx context.Context, nodePath string) ([]Remote, error) {
+	remotes, err := a.repo.ListRemotes(ctx, nodePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert internal Remote to public Remote
+	result := make([]Remote, len(remotes))
+	for i, r := range remotes {
+		result[i] = Remote{
+			Name:     r.Name,
+			FetchURL: r.FetchURL,
+			PushURL:  r.PushURL,
+		}
+	}
+
+	return result, nil
+}
+
+func (a *repoAdapter) GetFileAtCommit(ctx context.Context, nodePath string, commit string, filePath string) ([]byte, error) {
+	return a.repo.GetFileAtCommit(ctx, nodePath, commit, filePath)
+}
+
+func (a *repoAdapter) ListFilesAtCommit(ctx context.Context, nodePath string, commit string, dirPath string) ([]FileInfo, error) {
+	files, err := a.repo.ListFilesAtCommit(ctx, nodePath, commit, dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert internal FileInfo to public FileInfo
+	result := make([]FileInfo, len(files))
+	for i, f := range files {
+		result[i] = FileInfo{
+			Path:  f.Path,
+			IsDir: f.IsDir,
+			Size:  f.Size,
+		}
+	}
+
+	return result, nil
 }

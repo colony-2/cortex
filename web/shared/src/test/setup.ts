@@ -1,4 +1,17 @@
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
+
+// Add custom matchers
+expect.extend({
+  toBeInTheDocument(received) {
+    const pass = received !== null && received !== undefined;
+    return {
+      pass,
+      message: () => pass
+        ? `expected element not to be in the document`
+        : `expected element to be in the document`,
+    };
+  },
+});
 
 // Mock window.matchMedia for Ant Design components
 Object.defineProperty(window, 'matchMedia', {
@@ -14,3 +27,10 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// Mock ResizeObserver for Ant Design components
+global.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};

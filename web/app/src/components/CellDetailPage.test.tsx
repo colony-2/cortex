@@ -20,9 +20,24 @@ vi.mock('@colony2/openapi-client', async () => {
       getApiProjectsTicketsStages: vi.fn(),
       getApiProjectsTicketsStates: vi.fn(),
       postApiProjectsTickets: vi.fn(),
+      listTicketEvents: vi.fn(),
     },
   };
 });
+
+// Mock the TicketDetailModal component
+vi.mock('@colony2/shared', () => ({
+  TicketDetailModal: ({ visible, onClose, ticket }: any) => {
+    return visible ? (
+      <div data-testid="ticket-detail-modal">
+        <div>Modal for ticket: {ticket?.id}</div>
+        <button onClick={onClose} data-testid="close-modal">
+          Close
+        </button>
+      </div>
+    ) : null;
+  },
+}));
 
 // Mock react-router-dom hooks
 const mockNavigate = vi.fn();
@@ -80,6 +95,7 @@ describe('CellDetailPage', () => {
     vi.mocked(TicketsService.getApiProjectsTickets).mockResolvedValue(mockTickets);
     vi.mocked(TicketsService.getApiProjectsTicketsStages).mockResolvedValue(['backlog', 'todo', 'done']);
     vi.mocked(TicketsService.getApiProjectsTicketsStates).mockResolvedValue(Object.values(TicketState));
+    vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -369,6 +385,110 @@ describe('CellDetailPage', () => {
     // Should not call the API if validation fails
     await waitFor(() => {
       expect(TicketsService.postApiProjectsTickets).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should open ticket detail modal when table row is clicked', async () => {
+    const user = userEvent.setup();
+
+    renderComponent();
+
+    // Wait for tickets to load
+    await waitFor(() => {
+      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+    });
+
+    // Click on the ticket row
+    const ticketRow = screen.getByText('Test Ticket 1').closest('tr');
+    expect(ticketRow).toBeDefined();
+
+    if (ticketRow) {
+      await user.click(ticketRow);
+    }
+
+    // Modal should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('ticket-detail-modal')).toBeDefined();
+      expect(screen.getByText('Modal for ticket: ticket-1')).toBeDefined();
+    });
+  });
+
+  it('should close ticket detail modal when close button is clicked', async () => {
+    const user = userEvent.setup();
+
+    renderComponent();
+
+    // Wait for tickets to load
+    await waitFor(() => {
+      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+    });
+
+    // Click on a ticket row
+    const ticketRow = screen.getByText('Test Ticket 1').closest('tr');
+    if (ticketRow) {
+      await user.click(ticketRow);
+    }
+
+    // Modal should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId('ticket-detail-modal')).toBeDefined();
+    });
+
+    // Close modal
+    const closeButton = screen.getByTestId('close-modal');
+    await user.click(closeButton);
+
+    // Modal should be hidden
+    await waitFor(() => {
+      expect(screen.queryByTestId('ticket-detail-modal')).toBeNull();
+    });
+  });
+
+  it('should display correct ticket in detail modal', async () => {
+    const user = userEvent.setup();
+    const multipleTickets: Ticket[] = [
+      mockTickets[0],
+      {
+        id: 'ticket-2',
+        version: 1,
+        projectId: 'test-project',
+        cellId: 'test-cell-id',
+        cellName: 'Test Cell',
+        title: 'Test Ticket 2',
+        description: 'Second ticket',
+        stage: 'doing',
+        state: TicketState.WORKING,
+        creator: {
+          type: ActorType.USER,
+          user: { email: 'test@example.com' },
+        },
+        createdAt: '2024-01-03T00:00:00Z',
+        updatedAt: '2024-01-04T00:00:00Z',
+        validFrom: '2024-01-03T00:00:00Z',
+        validUntil: '9999-12-31T23:59:59Z',
+      },
+    ];
+
+    vi.mocked(TicketsService.getApiProjectsTickets).mockResolvedValue(multipleTickets);
+
+    renderComponent();
+
+    // Wait for tickets to load
+    await waitFor(() => {
+      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+      expect(screen.getByText('Test Ticket 2')).toBeDefined();
+    });
+
+    // Click on the second ticket
+    const ticket2Row = screen.getByText('Test Ticket 2').closest('tr');
+    if (ticket2Row) {
+      await user.click(ticket2Row);
+    }
+
+    // Modal should show the correct ticket
+    await waitFor(() => {
+      expect(screen.getByTestId('ticket-detail-modal')).toBeDefined();
+      expect(screen.getByText('Modal for ticket: ticket-2')).toBeDefined();
     });
   });
 });
