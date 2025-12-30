@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 )
 
 // CreateInput contains parameters for creating a new recipe.
@@ -64,11 +63,11 @@ type RecipeInfo struct {
 	PublishedBy     *string
 }
 
-// RecipeWithContent contains a recipe with its parsed content and metadata.
+// RecipeWithContent contains a recipe with its raw YAML content and metadata.
 type RecipeWithContent struct {
 	Name        string
 	CommitHash  string
-	Content     *recipe.Recipe
+	Content     []byte // Raw YAML bytes - preserves original formatting
 	IsPublished bool
 	PublishedAt *time.Time
 	PublishedBy *string

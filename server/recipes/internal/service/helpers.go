@@ -14,6 +14,7 @@ import (
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
+	"github.com/colony-2/colony2/server/recipes/internal/store"
 )
 
 // ensureProject validates that a project exists.
@@ -173,7 +174,7 @@ func (s *service) getPublishedRecipesMap(ctx context.Context, projectID project.
 	result := make(map[string]*model.PublishedRecipe)
 	for {
 		recipe, err := iter.Next(ctx)
-		if errors.Is(err, model.ErrIteratorDone) {
+		if errors.Is(err, store.ErrIteratorDone) {
 			break
 		}
 		if err != nil {

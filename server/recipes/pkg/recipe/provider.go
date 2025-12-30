@@ -42,7 +42,13 @@ func (p *Provider) GetRecipe(name string) (*recipecore.Recipe, error) {
 		return nil, fmt.Errorf("recipe %q not found: %w", recipeName, err)
 	}
 
-	return recipeWithContent.Content, nil
+	// Parse the raw YAML content
+	parsedRecipe, err := recipecore.LoadRecipeFromString(recipeWithContent.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse recipe %q: %w", recipeName, err)
+	}
+
+	return parsedRecipe, nil
 }
 
 // parseRecipeRef parses "name@ref" into (name, ref).

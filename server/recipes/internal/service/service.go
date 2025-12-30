@@ -553,17 +553,11 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 		return nil, fmt.Errorf("%w: failed to get recipe at commit %s", model.ErrNotFound, commitHash)
 	}
 
-	// 4. Parse recipe content
-	rec, err := recipe.LoadRecipeFromString(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse recipe: %w", err)
-	}
-
-	// 5. Build result with metadata
+	// 4. Build result with raw content (no parsing - invalid recipes can be saved, just not published)
 	result := &model.RecipeWithContent{
 		Name:       name,
 		CommitHash: commitHash,
-		Content:    rec,
+		Content:    content,
 	}
 
 	// If published and this is the published version, include publish metadata

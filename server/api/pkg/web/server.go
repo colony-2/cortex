@@ -12,6 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 )
@@ -49,6 +50,7 @@ type Dependencies struct {
 	Cells     cell.Service
 	Tickets   ticket.Service
 	Workflows workflow.Service
+	RecipeSvc recipesvc.Service
 
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
@@ -79,7 +81,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.CellDeps)
+	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

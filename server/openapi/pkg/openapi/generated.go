@@ -117,6 +117,13 @@ const (
 	Unknown    WorkflowStatus = "unknown"
 )
 
+// Defines values for ListRecipesParamsStatus.
+const (
+	All         ListRecipesParamsStatus = "all"
+	Published   ListRecipesParamsStatus = "published"
+	Unpublished ListRecipesParamsStatus = "unpublished"
+)
+
 // Actor Actor performing the action. Provide `user` when type=user, or `agent` when type=agent.
 type Actor struct {
 	Agent *ActorAgent `json:"agent,omitempty"`
@@ -270,6 +277,21 @@ type ChapterDetail struct {
 
 // ChapterStatus Chapter (operation) execution status
 type ChapterStatus string
+
+// CreateRecipeRequest Request to create a new recipe
+type CreateRecipeRequest struct {
+	// AutoPublish Automatically publish after creation
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
+	// Content Recipe YAML content
+	Content string `json:"content"`
+
+	// Description Recipe description
+	Description *string `json:"description,omitempty"`
+
+	// Name Hierarchical recipe name
+	Name string `json:"name"`
+}
 
 // Edge defines model for Edge.
 type Edge struct {
@@ -517,8 +539,37 @@ type ProjectUpdateRequest struct {
 	Name *string `json:"name,omitempty"`
 }
 
-// RecipeDetail defines model for RecipeDetail.
+// PublishRecipeRequest Request to publish a recipe version
+type PublishRecipeRequest struct {
+	// CommitHash Commit to publish (empty = latest)
+	CommitHash *string `json:"commitHash,omitempty"`
+
+	// ExpectedCommit Expected current published commit (optimistic locking)
+	ExpectedCommit *string `json:"expectedCommit,omitempty"`
+
+	// PublishedBy User who is publishing
+	PublishedBy *string `json:"publishedBy,omitempty"`
+}
+
+// PublishedRecipe Response after publishing a recipe
+type PublishedRecipe struct {
+	// Name Recipe name
+	Name string `json:"name"`
+
+	// PublishedAt When it was published
+	PublishedAt time.Time `json:"publishedAt"`
+
+	// PublishedBy Who published it
+	PublishedBy *string `json:"publishedBy"`
+
+	// PublishedCommit Commit that was published
+	PublishedCommit string `json:"publishedCommit"`
+}
+
+// RecipeDetail DEPRECATED: Use RecipeWithContent for new implementations
 type RecipeDetail struct {
+	// Meta DEPRECATED: Use RecipeInfo for new implementations
+	// Deprecated:
 	Meta    RecipeSummary `json:"meta"`
 	RawYaml string        `json:"rawYaml"`
 
@@ -526,7 +577,38 @@ type RecipeDetail struct {
 	Recipe map[string]interface{} `json:"recipe"`
 }
 
-// RecipeSummary defines model for RecipeSummary.
+// RecipeHistoryResponse Response containing recipe version history
+type RecipeHistoryResponse struct {
+	Versions []RecipeVersion `json:"versions"`
+}
+
+// RecipeInfo Summary information about a recipe
+type RecipeInfo struct {
+	// LatestCommit Git commit hash of latest version
+	LatestCommit string `json:"latestCommit"`
+
+	// LatestCommitAt Timestamp of latest commit
+	LatestCommitAt time.Time `json:"latestCommitAt"`
+
+	// Name Hierarchical recipe name (e.g., "workflows/ci/build")
+	Name string `json:"name"`
+
+	// PublishedAt Timestamp when published
+	PublishedAt *time.Time `json:"publishedAt"`
+
+	// PublishedBy User who published the recipe
+	PublishedBy *string `json:"publishedBy"`
+
+	// PublishedCommit Git commit hash of published version
+	PublishedCommit *string `json:"publishedCommit"`
+}
+
+// RecipeListResponse Response containing list of recipes
+type RecipeListResponse struct {
+	Recipes []RecipeInfo `json:"recipes"`
+}
+
+// RecipeSummary DEPRECATED: Use RecipeInfo for new implementations
 type RecipeSummary struct {
 	Description  string     `json:"description"`
 	Hash         string     `json:"hash"`
@@ -538,6 +620,51 @@ type RecipeSummary struct {
 
 // RecipeType defines model for RecipeType.
 type RecipeType string
+
+// RecipeVersion Version information from recipe history
+type RecipeVersion struct {
+	// Author Commit author
+	Author string `json:"author"`
+
+	// CommitHash Full git commit hash
+	CommitHash string `json:"commitHash"`
+
+	// CreatedAt When this version was created
+	CreatedAt time.Time `json:"createdAt"`
+
+	// IsPublished Whether this version is currently published
+	IsPublished bool `json:"isPublished"`
+
+	// Message Commit message
+	Message string `json:"message"`
+
+	// ShortHash Short git commit hash
+	ShortHash string `json:"shortHash"`
+}
+
+// RecipeWithContent Recipe with full content and metadata
+type RecipeWithContent struct {
+	// CommitHash Git commit hash of this version
+	CommitHash string `json:"commitHash"`
+
+	// Content Parsed recipe object
+	Content map[string]interface{} `json:"content"`
+
+	// IsPublished Whether this version is published
+	IsPublished bool `json:"isPublished"`
+
+	// Name Recipe name
+	Name string `json:"name"`
+
+	// PublishedAt When this was published
+	PublishedAt *time.Time `json:"publishedAt"`
+
+	// PublishedBy Who published this version
+	PublishedBy *string `json:"publishedBy"`
+
+	// RawYaml Raw YAML content
+	RawYaml string `json:"rawYaml"`
+}
 
 // ResetEventPayload defines model for ResetEventPayload.
 type ResetEventPayload struct {
@@ -668,6 +795,21 @@ type TicketUpdateRequest struct {
 	State *TicketState `json:"state,omitempty"`
 }
 
+// UpdateRecipeRequest Request to update an existing recipe
+type UpdateRecipeRequest struct {
+	// AutoPublish Automatically publish after update
+	AutoPublish *bool `json:"autoPublish,omitempty"`
+
+	// Content Updated recipe YAML content
+	Content string `json:"content"`
+
+	// ExpectedCommit Expected current commit hash (optimistic locking)
+	ExpectedCommit *string `json:"expectedCommit,omitempty"`
+
+	// Message Commit message
+	Message *string `json:"message,omitempty"`
+}
+
 // UserInputDetails defines model for UserInputDetails.
 type UserInputDetails struct {
 	// Form Configuration for a single- or multi-question input form.
@@ -779,16 +921,19 @@ type GetApiProjectsProjectIdCellsParams struct {
 	PopulatorIds *[]string `form:"populatorIds,omitempty" json:"populatorIds,omitempty"`
 }
 
-// GetApiProjectsProjectIdRecipesParams defines parameters for GetApiProjectsProjectIdRecipes.
-type GetApiProjectsProjectIdRecipesParams struct {
-	// Ids Filter by recipe IDs
-	Ids *[]string `form:"ids,omitempty" json:"ids,omitempty"`
+// ListRecipesParams defines parameters for ListRecipes.
+type ListRecipesParams struct {
+	// Status Filter by publish status
+	Status *ListRecipesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
 
-	// NameContains Case-insensitive substring match on recipe ID
-	NameContains *string `form:"nameContains,omitempty" json:"nameContains,omitempty"`
+// ListRecipesParamsStatus defines parameters for ListRecipes.
+type ListRecipesParamsStatus string
 
-	// Types Filter by recipe type
-	Types *[]RecipeType `form:"types,omitempty" json:"types,omitempty"`
+// GetRecipeParams defines parameters for GetRecipe.
+type GetRecipeParams struct {
+	// Ref Git reference (commit, tag, branch). Empty = published version
+	Ref *string `form:"ref,omitempty" json:"ref,omitempty"`
 }
 
 // GetApiProjectsProjectIdTicketsParams defines parameters for GetApiProjectsProjectIdTickets.
@@ -903,6 +1048,15 @@ type PatchApiProjectsProjectIdCellsCellIdJSONRequestBody = CellUpdateRequest
 
 // PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody defines body for PutApiProjectsProjectIdCellsCellIdDependencies for application/json ContentType.
 type PutApiProjectsProjectIdCellsCellIdDependenciesJSONRequestBody = CellDependenciesRequest
+
+// CreateRecipeJSONRequestBody defines body for CreateRecipe for application/json ContentType.
+type CreateRecipeJSONRequestBody = CreateRecipeRequest
+
+// UpdateRecipeJSONRequestBody defines body for UpdateRecipe for application/json ContentType.
+type UpdateRecipeJSONRequestBody = UpdateRecipeRequest
+
+// PublishRecipeJSONRequestBody defines body for PublishRecipe for application/json ContentType.
+type PublishRecipeJSONRequestBody = PublishRecipeRequest
 
 // PostApiProjectsProjectIdTicketsJSONRequestBody defines body for PostApiProjectsProjectIdTickets for application/json ContentType.
 type PostApiProjectsProjectIdTicketsJSONRequestBody = TicketCreateRequest
@@ -1180,11 +1334,35 @@ type ClientInterface interface {
 	// GetApiProjectsProjectIdGraph request
 	GetApiProjectsProjectIdGraph(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApiProjectsProjectIdRecipes request
-	GetApiProjectsProjectIdRecipes(ctx context.Context, projectId string, params *GetApiProjectsProjectIdRecipesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// ListRecipes request
+	ListRecipes(ctx context.Context, projectId string, params *ListRecipesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApiProjectsProjectIdRecipesRecipeId request
-	GetApiProjectsProjectIdRecipesRecipeId(ctx context.Context, projectId string, recipeId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// CreateRecipeWithBody request with any body
+	CreateRecipeWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateRecipe(ctx context.Context, projectId string, body CreateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteRecipe request
+	DeleteRecipe(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRecipe request
+	GetRecipe(ctx context.Context, projectId string, recipeName string, params *GetRecipeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateRecipeWithBody request with any body
+	UpdateRecipeWithBody(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateRecipe(ctx context.Context, projectId string, recipeName string, body UpdateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRecipeHistory request
+	GetRecipeHistory(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishRecipeWithBody request with any body
+	PublishRecipeWithBody(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PublishRecipe(ctx context.Context, projectId string, recipeName string, body PublishRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnpublishRecipe request
+	UnpublishRecipe(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiProjectsProjectIdTickets request
 	GetApiProjectsProjectIdTickets(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1468,8 +1646,8 @@ func (c *Client) GetApiProjectsProjectIdGraph(ctx context.Context, projectId str
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApiProjectsProjectIdRecipes(ctx context.Context, projectId string, params *GetApiProjectsProjectIdRecipesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiProjectsProjectIdRecipesRequest(c.Server, projectId, params)
+func (c *Client) ListRecipes(ctx context.Context, projectId string, params *ListRecipesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRecipesRequest(c.Server, projectId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1480,8 +1658,116 @@ func (c *Client) GetApiProjectsProjectIdRecipes(ctx context.Context, projectId s
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApiProjectsProjectIdRecipesRecipeId(ctx context.Context, projectId string, recipeId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiProjectsProjectIdRecipesRecipeIdRequest(c.Server, projectId, recipeId)
+func (c *Client) CreateRecipeWithBody(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRecipeRequestWithBody(c.Server, projectId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateRecipe(ctx context.Context, projectId string, body CreateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateRecipeRequest(c.Server, projectId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteRecipe(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteRecipeRequest(c.Server, projectId, recipeName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetRecipe(ctx context.Context, projectId string, recipeName string, params *GetRecipeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRecipeRequest(c.Server, projectId, recipeName, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateRecipeWithBody(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateRecipeRequestWithBody(c.Server, projectId, recipeName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateRecipe(ctx context.Context, projectId string, recipeName string, body UpdateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateRecipeRequest(c.Server, projectId, recipeName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetRecipeHistory(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRecipeHistoryRequest(c.Server, projectId, recipeName)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PublishRecipeWithBody(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishRecipeRequestWithBody(c.Server, projectId, recipeName, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PublishRecipe(ctx context.Context, projectId string, recipeName string, body PublishRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishRecipeRequest(c.Server, projectId, recipeName, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UnpublishRecipe(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnpublishRecipeRequest(c.Server, projectId, recipeName)
 	if err != nil {
 		return nil, err
 	}
@@ -2442,8 +2728,8 @@ func NewGetApiProjectsProjectIdGraphRequest(server string, projectId string) (*h
 	return req, nil
 }
 
-// NewGetApiProjectsProjectIdRecipesRequest generates requests for GetApiProjectsProjectIdRecipes
-func NewGetApiProjectsProjectIdRecipesRequest(server string, projectId string, params *GetApiProjectsProjectIdRecipesParams) (*http.Request, error) {
+// NewListRecipesRequest generates requests for ListRecipes
+func NewListRecipesRequest(server string, projectId string, params *ListRecipesParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2471,41 +2757,9 @@ func NewGetApiProjectsProjectIdRecipesRequest(server string, projectId string, p
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if params.Ids != nil {
+		if params.Status != nil {
 
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ids", runtime.ParamLocationQuery, *params.Ids); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.NameContains != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "nameContains", runtime.ParamLocationQuery, *params.NameContains); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		if params.Types != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "types", runtime.ParamLocationQuery, *params.Types); err != nil {
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "status", runtime.ParamLocationQuery, *params.Status); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err
@@ -2530,8 +2784,55 @@ func NewGetApiProjectsProjectIdRecipesRequest(server string, projectId string, p
 	return req, nil
 }
 
-// NewGetApiProjectsProjectIdRecipesRecipeIdRequest generates requests for GetApiProjectsProjectIdRecipesRecipeId
-func NewGetApiProjectsProjectIdRecipesRecipeIdRequest(server string, projectId string, recipeId string) (*http.Request, error) {
+// NewCreateRecipeRequest calls the generic CreateRecipe builder with application/json body
+func NewCreateRecipeRequest(server string, projectId string, body CreateRecipeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateRecipeRequestWithBody(server, projectId, "application/json", bodyReader)
+}
+
+// NewCreateRecipeRequestWithBody generates requests for CreateRecipe with any type of body
+func NewCreateRecipeRequestWithBody(server string, projectId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteRecipeRequest generates requests for DeleteRecipe
+func NewDeleteRecipeRequest(server string, projectId string, recipeName string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -2543,7 +2844,7 @@ func NewGetApiProjectsProjectIdRecipesRecipeIdRequest(server string, projectId s
 
 	var pathParam1 string
 
-	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeId", runtime.ParamLocationPath, recipeId)
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
 	if err != nil {
 		return nil, err
 	}
@@ -2563,7 +2864,260 @@ func NewGetApiProjectsProjectIdRecipesRecipeIdRequest(server string, projectId s
 		return nil, err
 	}
 
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetRecipeRequest generates requests for GetRecipe
+func NewGetRecipeRequest(server string, projectId string, recipeName string, params *GetRecipeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Ref != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "ref", runtime.ParamLocationQuery, *params.Ref); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateRecipeRequest calls the generic UpdateRecipe builder with application/json body
+func NewUpdateRecipeRequest(server string, projectId string, recipeName string, body UpdateRecipeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateRecipeRequestWithBody(server, projectId, recipeName, "application/json", bodyReader)
+}
+
+// NewUpdateRecipeRequestWithBody generates requests for UpdateRecipe with any type of body
+func NewUpdateRecipeRequestWithBody(server string, projectId string, recipeName string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetRecipeHistoryRequest generates requests for GetRecipeHistory
+func NewGetRecipeHistoryRequest(server string, projectId string, recipeName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes/%s/history", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPublishRecipeRequest calls the generic PublishRecipe builder with application/json body
+func NewPublishRecipeRequest(server string, projectId string, recipeName string, body PublishRecipeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPublishRecipeRequestWithBody(server, projectId, recipeName, "application/json", bodyReader)
+}
+
+// NewPublishRecipeRequestWithBody generates requests for PublishRecipe with any type of body
+func NewPublishRecipeRequestWithBody(server string, projectId string, recipeName string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes/%s/publish", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUnpublishRecipeRequest generates requests for UnpublishRecipe
+func NewUnpublishRecipeRequest(server string, projectId string, recipeName string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "recipeName", runtime.ParamLocationPath, recipeName)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/recipes/%s/unpublish", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3776,11 +4330,35 @@ type ClientWithResponsesInterface interface {
 	// GetApiProjectsProjectIdGraphWithResponse request
 	GetApiProjectsProjectIdGraphWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdGraphResponse, error)
 
-	// GetApiProjectsProjectIdRecipesWithResponse request
-	GetApiProjectsProjectIdRecipesWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdRecipesParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdRecipesResponse, error)
+	// ListRecipesWithResponse request
+	ListRecipesWithResponse(ctx context.Context, projectId string, params *ListRecipesParams, reqEditors ...RequestEditorFn) (*ListRecipesResponse, error)
 
-	// GetApiProjectsProjectIdRecipesRecipeIdWithResponse request
-	GetApiProjectsProjectIdRecipesRecipeIdWithResponse(ctx context.Context, projectId string, recipeId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdRecipesRecipeIdResponse, error)
+	// CreateRecipeWithBodyWithResponse request with any body
+	CreateRecipeWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRecipeResponse, error)
+
+	CreateRecipeWithResponse(ctx context.Context, projectId string, body CreateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRecipeResponse, error)
+
+	// DeleteRecipeWithResponse request
+	DeleteRecipeWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*DeleteRecipeResponse, error)
+
+	// GetRecipeWithResponse request
+	GetRecipeWithResponse(ctx context.Context, projectId string, recipeName string, params *GetRecipeParams, reqEditors ...RequestEditorFn) (*GetRecipeResponse, error)
+
+	// UpdateRecipeWithBodyWithResponse request with any body
+	UpdateRecipeWithBodyWithResponse(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateRecipeResponse, error)
+
+	UpdateRecipeWithResponse(ctx context.Context, projectId string, recipeName string, body UpdateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateRecipeResponse, error)
+
+	// GetRecipeHistoryWithResponse request
+	GetRecipeHistoryWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*GetRecipeHistoryResponse, error)
+
+	// PublishRecipeWithBodyWithResponse request with any body
+	PublishRecipeWithBodyWithResponse(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishRecipeResponse, error)
+
+	PublishRecipeWithResponse(ctx context.Context, projectId string, recipeName string, body PublishRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishRecipeResponse, error)
+
+	// UnpublishRecipeWithResponse request
+	UnpublishRecipeWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*UnpublishRecipeResponse, error)
 
 	// GetApiProjectsProjectIdTicketsWithResponse request
 	GetApiProjectsProjectIdTicketsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdTicketsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsResponse, error)
@@ -4119,17 +4697,16 @@ func (r GetApiProjectsProjectIdGraphResponse) StatusCode() int {
 	return 0
 }
 
-type GetApiProjectsProjectIdRecipesResponse struct {
+type ListRecipesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *[]RecipeSummary
-	JSON404      *struct {
-		Message *string `json:"message,omitempty"`
-	}
+	JSON200      *RecipeListResponse
+	JSON400      *ErrorResponse
+	JSON500      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r GetApiProjectsProjectIdRecipesResponse) Status() string {
+func (r ListRecipesResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -4137,24 +4714,24 @@ func (r GetApiProjectsProjectIdRecipesResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetApiProjectsProjectIdRecipesResponse) StatusCode() int {
+func (r ListRecipesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
 	return 0
 }
 
-type GetApiProjectsProjectIdRecipesRecipeIdResponse struct {
+type CreateRecipeResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON200      *RecipeDetail
-	JSON404      *struct {
-		Message *string `json:"message,omitempty"`
-	}
+	JSON201      *RecipeVersion
+	JSON400      *ErrorResponse
+	JSON409      *ErrorResponse
+	JSON500      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
-func (r GetApiProjectsProjectIdRecipesRecipeIdResponse) Status() string {
+func (r CreateRecipeResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -4162,7 +4739,153 @@ func (r GetApiProjectsProjectIdRecipesRecipeIdResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetApiProjectsProjectIdRecipesRecipeIdResponse) StatusCode() int {
+func (r CreateRecipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteRecipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteRecipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteRecipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetRecipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RecipeWithContent
+	JSON404      *ErrorResponse
+	JSON409      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRecipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRecipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateRecipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RecipeVersion
+	JSON400      *ErrorResponse
+	JSON404      *ErrorResponse
+	JSON409      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateRecipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateRecipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetRecipeHistoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RecipeHistoryResponse
+	JSON404      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRecipeHistoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRecipeHistoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PublishRecipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PublishedRecipe
+	JSON404      *ErrorResponse
+	JSON409      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PublishRecipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PublishRecipeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UnpublishRecipeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON404      *ErrorResponse
+	JSON500      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r UnpublishRecipeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnpublishRecipeResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -4670,22 +5393,100 @@ func (c *ClientWithResponses) GetApiProjectsProjectIdGraphWithResponse(ctx conte
 	return ParseGetApiProjectsProjectIdGraphResponse(rsp)
 }
 
-// GetApiProjectsProjectIdRecipesWithResponse request returning *GetApiProjectsProjectIdRecipesResponse
-func (c *ClientWithResponses) GetApiProjectsProjectIdRecipesWithResponse(ctx context.Context, projectId string, params *GetApiProjectsProjectIdRecipesParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdRecipesResponse, error) {
-	rsp, err := c.GetApiProjectsProjectIdRecipes(ctx, projectId, params, reqEditors...)
+// ListRecipesWithResponse request returning *ListRecipesResponse
+func (c *ClientWithResponses) ListRecipesWithResponse(ctx context.Context, projectId string, params *ListRecipesParams, reqEditors ...RequestEditorFn) (*ListRecipesResponse, error) {
+	rsp, err := c.ListRecipes(ctx, projectId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetApiProjectsProjectIdRecipesResponse(rsp)
+	return ParseListRecipesResponse(rsp)
 }
 
-// GetApiProjectsProjectIdRecipesRecipeIdWithResponse request returning *GetApiProjectsProjectIdRecipesRecipeIdResponse
-func (c *ClientWithResponses) GetApiProjectsProjectIdRecipesRecipeIdWithResponse(ctx context.Context, projectId string, recipeId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdRecipesRecipeIdResponse, error) {
-	rsp, err := c.GetApiProjectsProjectIdRecipesRecipeId(ctx, projectId, recipeId, reqEditors...)
+// CreateRecipeWithBodyWithResponse request with arbitrary body returning *CreateRecipeResponse
+func (c *ClientWithResponses) CreateRecipeWithBodyWithResponse(ctx context.Context, projectId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateRecipeResponse, error) {
+	rsp, err := c.CreateRecipeWithBody(ctx, projectId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetApiProjectsProjectIdRecipesRecipeIdResponse(rsp)
+	return ParseCreateRecipeResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateRecipeWithResponse(ctx context.Context, projectId string, body CreateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateRecipeResponse, error) {
+	rsp, err := c.CreateRecipe(ctx, projectId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateRecipeResponse(rsp)
+}
+
+// DeleteRecipeWithResponse request returning *DeleteRecipeResponse
+func (c *ClientWithResponses) DeleteRecipeWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*DeleteRecipeResponse, error) {
+	rsp, err := c.DeleteRecipe(ctx, projectId, recipeName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteRecipeResponse(rsp)
+}
+
+// GetRecipeWithResponse request returning *GetRecipeResponse
+func (c *ClientWithResponses) GetRecipeWithResponse(ctx context.Context, projectId string, recipeName string, params *GetRecipeParams, reqEditors ...RequestEditorFn) (*GetRecipeResponse, error) {
+	rsp, err := c.GetRecipe(ctx, projectId, recipeName, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRecipeResponse(rsp)
+}
+
+// UpdateRecipeWithBodyWithResponse request with arbitrary body returning *UpdateRecipeResponse
+func (c *ClientWithResponses) UpdateRecipeWithBodyWithResponse(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateRecipeResponse, error) {
+	rsp, err := c.UpdateRecipeWithBody(ctx, projectId, recipeName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateRecipeResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateRecipeWithResponse(ctx context.Context, projectId string, recipeName string, body UpdateRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateRecipeResponse, error) {
+	rsp, err := c.UpdateRecipe(ctx, projectId, recipeName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateRecipeResponse(rsp)
+}
+
+// GetRecipeHistoryWithResponse request returning *GetRecipeHistoryResponse
+func (c *ClientWithResponses) GetRecipeHistoryWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*GetRecipeHistoryResponse, error) {
+	rsp, err := c.GetRecipeHistory(ctx, projectId, recipeName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRecipeHistoryResponse(rsp)
+}
+
+// PublishRecipeWithBodyWithResponse request with arbitrary body returning *PublishRecipeResponse
+func (c *ClientWithResponses) PublishRecipeWithBodyWithResponse(ctx context.Context, projectId string, recipeName string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishRecipeResponse, error) {
+	rsp, err := c.PublishRecipeWithBody(ctx, projectId, recipeName, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishRecipeResponse(rsp)
+}
+
+func (c *ClientWithResponses) PublishRecipeWithResponse(ctx context.Context, projectId string, recipeName string, body PublishRecipeJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishRecipeResponse, error) {
+	rsp, err := c.PublishRecipe(ctx, projectId, recipeName, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishRecipeResponse(rsp)
+}
+
+// UnpublishRecipeWithResponse request returning *UnpublishRecipeResponse
+func (c *ClientWithResponses) UnpublishRecipeWithResponse(ctx context.Context, projectId string, recipeName string, reqEditors ...RequestEditorFn) (*UnpublishRecipeResponse, error) {
+	rsp, err := c.UnpublishRecipe(ctx, projectId, recipeName, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnpublishRecipeResponse(rsp)
 }
 
 // GetApiProjectsProjectIdTicketsWithResponse request returning *GetApiProjectsProjectIdTicketsResponse
@@ -5163,70 +5964,341 @@ func ParseGetApiProjectsProjectIdGraphResponse(rsp *http.Response) (*GetApiProje
 	return response, nil
 }
 
-// ParseGetApiProjectsProjectIdRecipesResponse parses an HTTP response from a GetApiProjectsProjectIdRecipesWithResponse call
-func ParseGetApiProjectsProjectIdRecipesResponse(rsp *http.Response) (*GetApiProjectsProjectIdRecipesResponse, error) {
+// ParseListRecipesResponse parses an HTTP response from a ListRecipesWithResponse call
+func ParseListRecipesResponse(rsp *http.Response) (*ListRecipesResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetApiProjectsProjectIdRecipesResponse{
+	response := &ListRecipesResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []RecipeSummary
+		var dest RecipeListResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest struct {
-			Message *string `json:"message,omitempty"`
-		}
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON404 = &dest
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
 	return response, nil
 }
 
-// ParseGetApiProjectsProjectIdRecipesRecipeIdResponse parses an HTTP response from a GetApiProjectsProjectIdRecipesRecipeIdWithResponse call
-func ParseGetApiProjectsProjectIdRecipesRecipeIdResponse(rsp *http.Response) (*GetApiProjectsProjectIdRecipesRecipeIdResponse, error) {
+// ParseCreateRecipeResponse parses an HTTP response from a CreateRecipeWithResponse call
+func ParseCreateRecipeResponse(rsp *http.Response) (*CreateRecipeResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetApiProjectsProjectIdRecipesRecipeIdResponse{
+	response := &CreateRecipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest RecipeVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteRecipeResponse parses an HTTP response from a DeleteRecipeWithResponse call
+func ParseDeleteRecipeResponse(rsp *http.Response) (*DeleteRecipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteRecipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRecipeResponse parses an HTTP response from a GetRecipeWithResponse call
+func ParseGetRecipeResponse(rsp *http.Response) (*GetRecipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRecipeResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest RecipeDetail
+		var dest RecipeWithContent
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest struct {
-			Message *string `json:"message,omitempty"`
-		}
+		var dest ErrorResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateRecipeResponse parses an HTTP response from a UpdateRecipeWithResponse call
+func ParseUpdateRecipeResponse(rsp *http.Response) (*UpdateRecipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateRecipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RecipeVersion
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRecipeHistoryResponse parses an HTTP response from a GetRecipeHistoryWithResponse call
+func ParseGetRecipeHistoryResponse(rsp *http.Response) (*GetRecipeHistoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRecipeHistoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RecipeHistoryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePublishRecipeResponse parses an HTTP response from a PublishRecipeWithResponse call
+func ParsePublishRecipeResponse(rsp *http.Response) (*PublishRecipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PublishRecipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PublishedRecipe
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUnpublishRecipeResponse parses an HTTP response from a UnpublishRecipeWithResponse call
+func ParseUnpublishRecipeResponse(rsp *http.Response) (*UnpublishRecipeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnpublishRecipeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
 
 	}
 
@@ -5641,124 +6713,150 @@ func ParsePostApiUserInputsJobIdRespondResponse(rsp *http.Response) (*PostApiUse
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"L7k02rEAAA==",
+	"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",
+	"aTll6cLfv7//3wAAAP//GU8fKnPfAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

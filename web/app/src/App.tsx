@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AppstoreOutlined, ClusterOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, ClusterOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import { Button, Empty, Form, Input, Layout, Menu, Modal, Select, Space, Typography, message } from 'antd';
 import { InputActivityProvider, createProject, listProjects, type Project } from '@colony2/shared';
 import MainView from './components/MainView';
@@ -10,6 +10,8 @@ import CellDetailPage from './components/CellDetailPage';
 import ProjectSettingsModal from './components/ProjectSettingsModal';
 import WorkflowListPage from './components/WorkflowListPage';
 import WorkflowDetailPage from './components/WorkflowDetailPage';
+import RecipeListPage from './components/RecipeListPage';
+import RecipeDetailPage from './components/RecipeDetailPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -87,6 +89,7 @@ function AppShell() {
 
   const navKey = (() => {
     const path = location.pathname;
+    if (path.includes('/recipes')) return 'recipes';
     if (path.includes('/workflows')) return 'workflows';
     if (path.includes('/kanban')) return 'tickets';
     if (path.includes('/cells/list')) return 'cells-list';
@@ -102,6 +105,9 @@ function AppShell() {
         break;
       case 'workflows':
         navigate(`/project/${selectedProject.id}/workflows`);
+        break;
+      case 'recipes':
+        navigate(`/project/${selectedProject.id}/recipes`);
         break;
       case 'cells-graph':
         navigate(`/project/${selectedProject.id}/cells/graph`);
@@ -160,6 +166,12 @@ function AppShell() {
                 disabled: !selectedProject,
               },
               {
+                key: 'recipes',
+                label: 'Recipes',
+                icon: <FileTextOutlined />,
+                disabled: !selectedProject,
+              },
+              {
                 key: 'cells-graph',
                 label: 'Cells — Graph',
                 icon: <ClusterOutlined />,
@@ -207,6 +219,11 @@ function AppShell() {
               <Route path="/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows/:workflowId" element={<WorkflowDetailPage projectId={selectedProject.id} />} />
+
+              {/* Recipe views */}
+              <Route path="/recipes" element={<RecipeListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/recipes" element={<RecipeListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/recipes/*" element={<RecipeDetailPage projectId={selectedProject.id} />} />
 
               {/* Cell detail routes */}
               <Route path="/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />

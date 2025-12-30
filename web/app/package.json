@@ -21,6 +21,7 @@
     "@rjsf/core": "^5.17.1",
     "@rjsf/utils": "^5.17.1",
     "@rjsf/validator-ajv8": "^5.17.1",
+    "@testing-library/dom": "^10.4.1",
     "@xyflow/react": "^12.3.5",
     "antd": "^5.26.7",
     "js-yaml": "^4.1.0",

@@ -972,95 +972,362 @@ paths:
 
   /api/projects/{projectId}/recipes:
     get:
-      tags: [Recipes]
-      summary: List recipes for a project
-      description: Lists recipes discovered under the project's `.colony2/recipes` directory.
+      summary: List recipes
+      description: List all recipes in a project with optional status filtering
+      operationId: listRecipes
+      tags:
+        - Recipes
       parameters:
         - name: projectId
           in: path
           required: true
-          description: Project identifier
           schema:
             type: string
-        - name: ids
+          description: Project ID
+          example: "proj_123"
+        - name: status
           in: query
-          description: Filter by recipe IDs
-          required: false
-          schema:
-            type: array
-            items:
-              type: string
-          style: form
-          explode: true
-        - name: nameContains
-          in: query
-          description: Case-insensitive substring match on recipe ID
           required: false
           schema:
             type: string
-        - name: types
-          in: query
-          description: Filter by recipe type
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/RecipeType'
-          style: form
-          explode: true
+            enum: [all, published, unpublished]
+            default: all
+          description: Filter by publish status
       responses:
         '200':
-          description: Recipes list
+          description: List of recipes
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RecipeSummary'
-        '404':
-          description: Project not found
+                $ref: '#/components/schemas/RecipeListResponse'
+        '400':
+          description: Bad request
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      summary: Create recipe
+      description: Create a new recipe (optionally auto-publish)
+      operationId: createRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecipeRequest'
+      responses:
+        '201':
+          description: Recipe created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeVersion'
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Recipe already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/projects/{projectId}/recipes/{recipeId}:
+  /api/projects/{projectId}/recipes/{recipeName}:
     get:
-      tags: [Recipes]
-      summary: Get recipe detail
-      description: Returns a recipe definition discovered under the project's `.colony2/recipes` directory.
+      summary: Get recipe
+      description: Get a recipe with content (published version or specific ref)
+      operationId: getRecipe
+      tags:
+        - Recipes
       parameters:
         - name: projectId
           in: path
           required: true
-          description: Project identifier
           schema:
             type: string
-        - name: recipeId
+          description: Project ID
+        - name: recipeName
           in: path
           required: true
-          description: Recipe identifier
           schema:
             type: string
+          description: Recipe name (can include slashes, URL-encoded)
+          example: "workflows%2Fci%2Fbuild"
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Git reference (commit, tag, branch). Empty = published version
+          example: "v1.0.0"
       responses:
         '200':
-          description: Recipe detail
+          description: Recipe details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RecipeDetail'
+                $ref: '#/components/schemas/RecipeWithContent'
         '404':
-          description: Project or recipe not found
+          description: Recipe not found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Recipe exists but not published (when ref is empty)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      summary: Update recipe
+      description: Update an existing recipe (create new version)
+      operationId: updateRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: recipeName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Recipe name (URL-encoded if contains slashes)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRecipeRequest'
+      responses:
+        '200':
+          description: Recipe updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeVersion'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Recipe not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Delete recipe
+      description: Delete a recipe and all its history
+      operationId: deleteRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: recipeName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Recipe name (URL-encoded if contains slashes)
+      responses:
+        '204':
+          description: Recipe deleted
+        '404':
+          description: Recipe not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/recipes/{recipeName}/publish:
+    post:
+      summary: Publish recipe
+      description: Mark a specific version as published
+      operationId: publishRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: recipeName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Recipe name (URL-encoded if contains slashes)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRecipeRequest'
+      responses:
+        '200':
+          description: Recipe published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedRecipe'
+        '404':
+          description: Recipe or commit not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/recipes/{recipeName}/unpublish:
+    post:
+      summary: Unpublish recipe
+      description: Remove published status from a recipe
+      operationId: unpublishRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: recipeName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Recipe name (URL-encoded if contains slashes)
+      responses:
+        '204':
+          description: Recipe unpublished
+        '404':
+          description: Recipe not found or not published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/recipes/{recipeName}/history:
+    get:
+      summary: Get recipe history
+      description: Get version history for a recipe
+      operationId: getRecipeHistory
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: recipeName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Recipe name (URL-encoded if contains slashes)
+      responses:
+        '200':
+          description: Recipe version history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeHistoryResponse'
+        '404':
+          description: Recipe not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/user-inputs/pending:
     get:
@@ -2074,8 +2341,268 @@ components:
       type: string
       enum: [state, sequence, op]
 
+    RecipeInfo:
+      type: object
+      description: Summary information about a recipe
+      required:
+        - name
+        - latestCommit
+        - latestCommitAt
+      properties:
+        name:
+          type: string
+          description: Hierarchical recipe name (e.g., "workflows/ci/build")
+          example: "workflows/ci/build"
+          pattern: ^[a-zA-Z0-9_\-/]+$
+        latestCommit:
+          type: string
+          description: Git commit hash of latest version
+          example: "a1b2c3d4e5f6789012345678"
+        latestCommitAt:
+          type: string
+          format: date-time
+          description: Timestamp of latest commit
+          example: "2025-01-15T10:30:00Z"
+        publishedCommit:
+          type: string
+          nullable: true
+          description: Git commit hash of published version
+          example: "a1b2c3d4e5f6789012345678"
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when published
+          example: "2025-01-15T10:30:00Z"
+        publishedBy:
+          type: string
+          nullable: true
+          description: User who published the recipe
+          example: "user@example.com"
+
+    RecipeWithContent:
+      type: object
+      description: Recipe with full content and metadata
+      required:
+        - name
+        - commitHash
+        - isPublished
+        - content
+        - rawYaml
+      properties:
+        name:
+          type: string
+          description: Recipe name
+          example: "workflows/ci/build"
+        commitHash:
+          type: string
+          description: Git commit hash of this version
+          example: "a1b2c3d4e5f6789012345678"
+        isPublished:
+          type: boolean
+          description: Whether this version is published
+          example: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this was published
+          example: "2025-01-15T10:30:00Z"
+        publishedBy:
+          type: string
+          nullable: true
+          description: Who published this version
+          example: "user@example.com"
+        content:
+          type: object
+          description: Parsed recipe object
+          additionalProperties: true
+          example:
+            version: "1.0"
+            id: "workflows/ci/build"
+            op: "echo"
+            inputs:
+              message: "Building..."
+        rawYaml:
+          type: string
+          description: Raw YAML content
+          example: |
+            version: "1.0"
+            id: workflows/ci/build
+            op: echo
+            inputs:
+              message: "Building..."
+
+    RecipeVersion:
+      type: object
+      description: Version information from recipe history
+      required:
+        - commitHash
+        - shortHash
+        - createdAt
+        - author
+        - message
+        - isPublished
+      properties:
+        commitHash:
+          type: string
+          description: Full git commit hash
+          example: "a1b2c3d4e5f6789012345678"
+        shortHash:
+          type: string
+          description: Short git commit hash
+          example: "a1b2c3d"
+        createdAt:
+          type: string
+          format: date-time
+          description: When this version was created
+          example: "2025-01-15T10:30:00Z"
+        author:
+          type: string
+          description: Commit author
+          example: "system"
+        message:
+          type: string
+          description: Commit message
+          example: "Update build message"
+        isPublished:
+          type: boolean
+          description: Whether this version is currently published
+          example: false
+
+    CreateRecipeRequest:
+      type: object
+      description: Request to create a new recipe
+      required:
+        - name
+        - content
+      properties:
+        name:
+          type: string
+          description: Hierarchical recipe name
+          example: "workflows/ci/build"
+          pattern: ^[a-zA-Z0-9_\-/]+$
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          description: Recipe YAML content
+          example: |
+            version: "1.0"
+            id: workflows/ci/build
+            op: echo
+            inputs:
+              message: "Building..."
+        description:
+          type: string
+          description: Recipe description
+          example: "CI build workflow"
+          maxLength: 500
+        autoPublish:
+          type: boolean
+          default: false
+          description: Automatically publish after creation
+
+    UpdateRecipeRequest:
+      type: object
+      description: Request to update an existing recipe
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: Updated recipe YAML content
+          example: |
+            version: "1.1"
+            id: workflows/ci/build
+            op: echo
+            inputs:
+              message: "Building v2..."
+        message:
+          type: string
+          description: Commit message
+          example: "Update build message"
+          maxLength: 500
+        autoPublish:
+          type: boolean
+          default: false
+          description: Automatically publish after update
+        expectedCommit:
+          type: string
+          description: Expected current commit hash (optimistic locking)
+          example: "a1b2c3d4e5f6789012345678"
+
+    PublishRecipeRequest:
+      type: object
+      description: Request to publish a recipe version
+      properties:
+        commitHash:
+          type: string
+          description: Commit to publish (empty = latest)
+          example: "a1b2c3d4e5f6789012345678"
+        publishedBy:
+          type: string
+          description: User who is publishing
+          example: "user@example.com"
+          maxLength: 200
+        expectedCommit:
+          type: string
+          description: Expected current published commit (optimistic locking)
+          example: "old-commit-hash"
+
+    PublishedRecipe:
+      type: object
+      description: Response after publishing a recipe
+      required:
+        - name
+        - publishedCommit
+        - publishedAt
+      properties:
+        name:
+          type: string
+          description: Recipe name
+          example: "workflows/ci/build"
+        publishedCommit:
+          type: string
+          description: Commit that was published
+          example: "a1b2c3d4e5f6789012345678"
+        publishedAt:
+          type: string
+          format: date-time
+          description: When it was published
+          example: "2025-01-15T10:30:00Z"
+        publishedBy:
+          type: string
+          nullable: true
+          description: Who published it
+          example: "user@example.com"
+
+    RecipeListResponse:
+      type: object
+      description: Response containing list of recipes
+      required:
+        - recipes
+      properties:
+        recipes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeInfo'
+
+    RecipeHistoryResponse:
+      type: object
+      description: Response containing recipe version history
+      required:
+        - versions
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeVersion'
+
     RecipeSummary:
       type: object
+      deprecated: true
+      description: "DEPRECATED: Use RecipeInfo for new implementations"
       properties:
         id:
           type: string
@@ -2094,6 +2621,8 @@ components:
 
     RecipeDetail:
       type: object
+      deprecated: true
+      description: "DEPRECATED: Use RecipeWithContent for new implementations"
       properties:
         meta:
           $ref: '#/components/schemas/RecipeSummary'

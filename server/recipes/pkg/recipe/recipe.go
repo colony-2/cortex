@@ -57,7 +57,7 @@ var (
 	ErrCommitNotFound  = model.ErrCommitNotFound
 	ErrGitConflict     = model.ErrGitConflict
 	ErrRemoteSync      = model.ErrRemoteSync
-	ErrIteratorDone    = model.ErrIteratorDone
+	ErrIteratorDone    = store.ErrIteratorDone // Use store error to match actual Iterator implementation
 	ErrOptimisticLock  = model.ErrOptimisticLock
 )
 

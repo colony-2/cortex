@@ -18,12 +18,14 @@ import (
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
+	gitpkg "github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
+	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
@@ -131,6 +133,18 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projectSvc})
 	if err != nil {
 		return fmt.Errorf("failed to create cell service: %w", err)
+	}
+
+	// Initialize recipe service
+	recipeSvc, err := recipesvc.NewServiceFromDB(pgDB, recipesvc.ServiceConfig{
+		GitRepo:       gitpkg.NewRepository(gitpkg.Config{}),
+		Projects:      projectSvc,
+		IDGen:         recipesvc.NewKSUIDGenerator(),
+		Clock:         recipesvc.NewSystemClock(),
+		WorkspaceRoot: filepath.Join(absNodesPath, ".recipe-workspaces"),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create recipe service: %w", err)
 	}
 
 	ticketStore, err := ticket.NewStore(pgDB)
@@ -275,6 +289,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		Cells:           cellSvc,
 		Tickets:         ticketSvc,
 		Workflows:       workflowSvc,
+		RecipeSvc:       recipeSvc,
 		CellDeps:        cellStore,
 		ExtensionRoutes: extensionRoutes,
 	}

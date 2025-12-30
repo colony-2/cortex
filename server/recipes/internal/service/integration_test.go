@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 	"github.com/colony-2/colony2/server/recipes/internal/testutil"
@@ -59,14 +60,20 @@ func TestService_FullLifecycle(t *testing.T) {
 		if !recipe.IsPublished {
 			t.Error("IsPublished = false, want true")
 		}
-		if recipe.Content == nil {
-			t.Error("Content is nil")
+		if len(recipe.Content) == 0 {
+			t.Error("Content is empty")
 		}
 	})
 
 	// Test 3: Update recipe without AutoPublish
 	t.Run("UpdateWithoutAutoPublish", func(t *testing.T) {
-		updatedContent := testutil.CreateTestRecipeContent("test-recipe")
+		// Create different content by changing the message
+		updatedContent := []byte(`version: "1.0"
+id: "test-recipe"
+op: echo
+inputs:
+  message: "Updated test recipe"
+`)
 		version, err := svc.UpdateRecipe(ctx, model.UpdateInput{
 			ProjectID:   projectID,
 			Name:        "test-recipe",
@@ -133,7 +140,7 @@ func TestService_FullLifecycle(t *testing.T) {
 		count := 0
 		for {
 			_, err := iter.Next(ctx)
-			if errors.Is(err, model.ErrIteratorDone) {
+			if errors.Is(err, store.ErrIteratorDone) {
 				break
 			}
 			if err != nil {
@@ -159,7 +166,7 @@ func TestService_FullLifecycle(t *testing.T) {
 		var foundPublished bool
 		for {
 			version, err := iter.Next(ctx)
-			if errors.Is(err, model.ErrIteratorDone) {
+			if errors.Is(err, store.ErrIteratorDone) {
 				break
 			}
 			if err != nil {
@@ -296,7 +303,7 @@ func TestService_HierarchicalRecipes(t *testing.T) {
 	count := 0
 	for {
 		info, err := iter.Next(ctx)
-		if errors.Is(err, model.ErrIteratorDone) {
+		if errors.Is(err, store.ErrIteratorDone) {
 			break
 		}
 		if err != nil {
@@ -334,11 +341,17 @@ func TestService_ConcurrentPublish(t *testing.T) {
 		t.Fatalf("CreateRecipe failed: %v", err)
 	}
 
-	// Update to create version 2
+	// Update to create version 2 (with different content)
+	version2Content := []byte(`version: "1.0"
+id: "concurrent-test"
+op: echo
+inputs:
+  message: "Updated concurrent-test"
+`)
 	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:   projectID,
 		Name:        "concurrent-test",
-		Content:     testutil.CreateTestRecipeContent("concurrent-test"),
+		Content:     version2Content,
 		AutoPublish: false,
 	})
 	if err != nil {
@@ -447,11 +460,17 @@ func TestService_UpdateOptimisticLocking(t *testing.T) {
 		t.Fatalf("CreateRecipe failed: %v", err)
 	}
 
-	// Update recipe (version 2)
+	// Update recipe (version 2) - with different content
+	version2Content := []byte(`version: "1.0"
+id: "lock-test"
+op: echo
+inputs:
+  message: "Lock test v2"
+`)
 	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:      projectID,
 		Name:           "lock-test",
-		Content:        testutil.CreateTestRecipeContent("lock-test"),
+		Content:        version2Content,
 		ExpectedCommit: version1.CommitHash,
 		AutoPublish:    false,
 	})
@@ -459,11 +478,17 @@ func TestService_UpdateOptimisticLocking(t *testing.T) {
 		t.Fatalf("UpdateRecipe failed: %v", err)
 	}
 
-	// Try to update with version1 commit (should fail)
+	// Try to update with version1 commit (should fail) - with different content
+	version3Content := []byte(`version: "1.0"
+id: "lock-test"
+op: echo
+inputs:
+  message: "Lock test v3 - stale"
+`)
 	_, err = svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:      projectID,
 		Name:           "lock-test",
-		Content:        testutil.CreateTestRecipeContent("lock-test"),
+		Content:        version3Content,
 		ExpectedCommit: version1.CommitHash, // Stale!
 		AutoPublish:    false,
 	})
@@ -471,11 +496,17 @@ func TestService_UpdateOptimisticLocking(t *testing.T) {
 		t.Errorf("Expected ErrVersionConflict, got %v", err)
 	}
 
-	// Update with version2 commit (should succeed)
+	// Update with version2 commit (should succeed) - with different content
+	version4Content := []byte(`version: "1.0"
+id: "lock-test"
+op: echo
+inputs:
+  message: "Lock test v4"
+`)
 	_, err = svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:      projectID,
 		Name:           "lock-test",
-		Content:        testutil.CreateTestRecipeContent("lock-test"),
+		Content:        version4Content,
 		ExpectedCommit: version2.CommitHash,
 		AutoPublish:    false,
 	})
@@ -486,6 +517,9 @@ func TestService_UpdateOptimisticLocking(t *testing.T) {
 
 func setupTestService(t *testing.T, db *gorm.DB) Service {
 	t.Helper()
+
+	// Register test ops
+	registerTestOps()
 
 	store, err := store.New(db)
 	if err != nil {
@@ -524,4 +558,27 @@ func hasPrefix(s, prefix string) bool {
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+// Test op input/output types
+type EchoInput struct {
+	Message string `yaml:"message"`
+}
+
+type EchoOutput struct {
+	Output string `yaml:"output"`
+}
+
+// registerTestOps registers operations needed for integration tests
+func registerTestOps() {
+	// Register echo op used by test recipes
+	echoOp := recipeops.NewActivityMappedOpV2[EchoInput, EchoOutput](
+		recipeops.OpMetadata{Type: "echo"},
+		func(_ recipeops.OpDependencies, _ context.Context, input EchoInput) (EchoOutput, error) {
+			return EchoOutput{
+				Output: input.Message,
+			}, nil
+		},
+	)
+	recipeops.Register(echoOp)
 }

@@ -54,6 +54,7 @@ require (
 	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
+	github.com/colony-2/colony2/server/recipes v0.0.0-20251229235014-89db51765446 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
