@@ -3,8 +3,6 @@ import { Modal, Descriptions, Timeline, Tag, Spin, Alert, Tabs } from 'antd';
 import type {
     Ticket,
     TicketEvent,
-    TicketEventKind,
-    WorkflowEventType,
     Actor,
 } from '@colony2/openapi-client';
 import { TicketsService } from '@colony2/openapi-client';
@@ -46,7 +44,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
             setLoading(true);
             setError(null);
             try {
-                const fetchedEvents = await TicketsService.listTicketEvents(
+                const fetchedEvents = await TicketsService.getApiProjectsTicketsEvents(
                     projectId,
                     ticket.id,
                 );

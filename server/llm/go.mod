@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2
-	github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009
 	github.com/openai/openai-go v1.11.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.12.0

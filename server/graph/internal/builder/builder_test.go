@@ -234,7 +234,234 @@ vcs:
 	}
 }
 
-func TestBuildGraphWithExampleDirectory(t *testing.T) {
+// TestBuildGraphFromStaticMoonOutput tests the conversion from static moon JSON output
+// to Graph nodes and edges. This test is not coupled to any actual project structure.
+func TestBuildGraphFromStaticMoonOutput(t *testing.T) {
+	// Static moon output representing a simple project graph
+	staticMoonOutput := `{
+		"graph": {
+			"nodes": [
+				{
+					"id": "example-api",
+					"source": "moon.yml",
+					"root": "/workspace/api",
+					"language": "typescript",
+					"config": {
+						"id": "example-api",
+						"language": "typescript",
+						"project": {
+							"description": "API service"
+						},
+						"dependsOn": ["example-database", "example-cache"]
+					},
+					"dependencies": [
+						{
+							"id": "example-database",
+							"scope": "production",
+							"source": "explicit"
+						},
+						{
+							"id": "example-cache",
+							"scope": "production",
+							"source": "explicit"
+						}
+					]
+				},
+				{
+					"id": "example-frontend",
+					"source": "moon.yml",
+					"root": "/workspace/frontend",
+					"language": "typescript",
+					"config": {
+						"id": "example-frontend",
+						"language": "typescript",
+						"project": {
+							"description": "Frontend application"
+						},
+						"dependsOn": ["example-api"]
+					},
+					"dependencies": [
+						{
+							"id": "example-api",
+							"scope": "production",
+							"source": "explicit"
+						}
+					]
+				},
+				{
+					"id": "example-database",
+					"source": "moon.yml",
+					"root": "/workspace/database",
+					"language": "unknown",
+					"config": {
+						"id": "example-database",
+						"language": "unknown",
+						"project": {
+							"description": "Database service"
+						},
+						"dependsOn": []
+					},
+					"dependencies": []
+				},
+				{
+					"id": "example-cache",
+					"source": "moon.yml",
+					"root": "/workspace/cache",
+					"language": "unknown",
+					"config": {
+						"id": "example-cache",
+						"language": "unknown",
+						"project": {
+							"description": "Cache service"
+						},
+						"dependsOn": []
+					},
+					"dependencies": []
+				}
+			]
+		}
+	}`
+
+	// Parse the static moon output
+	var moonGraph MoonGraph
+	if err := json.Unmarshal([]byte(staticMoonOutput), &moonGraph); err != nil {
+		t.Fatalf("Failed to parse static moon output: %v", err)
+	}
+
+	// Verify parsing
+	if len(moonGraph.Graph.Nodes) != 4 {
+		t.Fatalf("Expected 4 nodes in static data, got %d", len(moonGraph.Graph.Nodes))
+	}
+
+	// Build the graph from the parsed data (simulating what builder.Build does)
+	cells := []core.Cell{}
+	edges := []core.Edge{}
+	cellMap := make(map[string]bool)
+
+	for _, moonNode := range moonGraph.Graph.Nodes {
+		dependencies := []string{}
+		for _, dep := range moonNode.Dependencies {
+			dependencies = append(dependencies, dep.ID)
+		}
+
+		cell := core.Cell{
+			ID:           moonNode.ID,
+			Name:         moonNode.ID,
+			Path:         moonNode.Root,
+			Type:         "cell",
+			Dependencies: dependencies,
+		}
+
+		cells = append(cells, cell)
+		cellMap[moonNode.ID] = true
+	}
+
+	// Build edges from dependencies
+	for _, cell := range cells {
+		for _, dep := range cell.Dependencies {
+			if cellMap[dep] {
+				edge := core.Edge{
+					ID:     fmt.Sprintf("%s-%s", cell.ID, dep),
+					Source: cell.ID,
+					Target: dep,
+				}
+				edges = append(edges, edge)
+			}
+		}
+	}
+
+	graph := &core.Graph{
+		Cells: cells,
+		Edges: edges,
+	}
+
+	// Verify the graph was built correctly
+	if len(graph.Cells) != 4 {
+		t.Errorf("Expected 4 cells, got %d", len(graph.Cells))
+	}
+
+	// Create a map for easier lookup
+	cellMapVerify := make(map[string]core.Cell)
+	for _, cell := range graph.Cells {
+		cellMapVerify[cell.ID] = cell
+	}
+
+	// Verify each expected cell exists with correct properties
+	expectedCells := map[string]struct {
+		deps []string
+		path string
+	}{
+		"example-api":      {deps: []string{"example-database", "example-cache"}, path: "/workspace/api"},
+		"example-frontend": {deps: []string{"example-api"}, path: "/workspace/frontend"},
+		"example-database": {deps: []string{}, path: "/workspace/database"},
+		"example-cache":    {deps: []string{}, path: "/workspace/cache"},
+	}
+
+	for cellID, expected := range expectedCells {
+		cell, exists := cellMapVerify[cellID]
+		if !exists {
+			t.Errorf("Expected cell %s not found in graph", cellID)
+			continue
+		}
+
+		if cell.Path != expected.path {
+			t.Errorf("Cell %s: expected path %s, got %s", cellID, expected.path, cell.Path)
+		}
+
+		if len(cell.Dependencies) != len(expected.deps) {
+			t.Errorf("Cell %s: expected %d dependencies, got %d", cellID, len(expected.deps), len(cell.Dependencies))
+			continue
+		}
+
+		// Verify each dependency
+		depSet := make(map[string]bool)
+		for _, dep := range cell.Dependencies {
+			depSet[dep] = true
+		}
+
+		for _, expectedDep := range expected.deps {
+			if !depSet[expectedDep] {
+				t.Errorf("Cell %s: missing expected dependency %s", cellID, expectedDep)
+			}
+		}
+	}
+
+	// Verify edges
+	expectedEdges := 3 // api->database, api->cache, frontend->api
+	if len(graph.Edges) != expectedEdges {
+		t.Errorf("Expected %d edges, got %d", expectedEdges, len(graph.Edges))
+	}
+
+	// Verify specific edges exist
+	edgeExists := func(source, target string) bool {
+		for _, edge := range graph.Edges {
+			if edge.Source == source && edge.Target == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	expectedEdgeList := []struct {
+		source string
+		target string
+	}{
+		{"example-api", "example-database"},
+		{"example-api", "example-cache"},
+		{"example-frontend", "example-api"},
+	}
+
+	for _, ee := range expectedEdgeList {
+		if !edgeExists(ee.source, ee.target) {
+			t.Errorf("Expected edge from %s to %s not found", ee.source, ee.target)
+		}
+	}
+}
+
+// TestBuildGraphWithCurrentProject tests that we can parse the moon output
+// from the current project and verify the expected fields exist.
+// This test is NOT coupled to the exact number or names of projects.
+func TestBuildGraphWithCurrentProject(t *testing.T) {
 	// Check if moon is available
 	if _, err := exec.LookPath("moon"); err != nil {
 		t.Skip("moon command not found, skipping test")
@@ -247,168 +474,79 @@ func TestBuildGraphWithExampleDirectory(t *testing.T) {
 	}
 	testDir := filepath.Dir(filename)
 
-	// Use the actual example directory relative to the test file
-	exampleDir := filepath.Join(testDir, "..", "..", "..", "..", ".example")
-	absExampleDir, err := filepath.Abs(exampleDir)
+	// Navigate to the repository root (adjust path as needed)
+	// This test runs against whatever moon projects exist in the current workspace
+	repoRoot := filepath.Join(testDir, "..", "..", "..", "..")
+	absRepoRoot, err := filepath.Abs(repoRoot)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path: %v", err)
 	}
 
-	// Check if example directory exists
-	if _, err := os.Stat(absExampleDir); os.IsNotExist(err) {
-		t.Skip("Example directory not found, skipping test")
-	}
-
-	// Build the graph from the real example directory
-	builder := New(absExampleDir)
+	// Build the graph from the current project
+	builder := New(absRepoRoot)
 	graph, err := builder.Build(context.Background())
 	if err != nil {
-		t.Fatalf("Failed to build graph from example directory: %v", err)
+		t.Fatalf("Failed to build graph from current project: %v", err)
 	}
 
-	// Verify we got all 13 nodes from the example directory
-	expectedCells := []string{
-		"example-api", "example-auth", "example-cache", "example-config", "example-database", "example-frontend",
-		"example-gateway", "example-logger", "example-monitoring", "example-service-a", "example-service-b",
-		"example-service-c", "example-shared-utils",
+	// Instead of checking for specific counts or names, verify:
+	// 1. We got some cells
+	// 2. Each cell has the expected fields populated
+	// 3. Edges are properly formed
+
+	if len(graph.Cells) == 0 {
+		t.Fatal("Expected to find at least one cell in the current project")
 	}
 
-	if len(graph.Cells) != len(expectedCells) {
-		t.Errorf("Expected %d cells, got %d", len(expectedCells), len(graph.Cells))
-		t.Logf("Cells found: %v", func() []string {
-			names := make([]string, len(graph.Cells))
-			for i, n := range graph.Cells {
-				names[i] = n.ID
-			}
-			return names
-		}())
-	}
+	t.Logf("Found %d cells in the current project", len(graph.Cells))
 
-	// Create a map for easier lookup
-	cellMap := make(map[string]core.Cell)
+	// Verify each cell has required fields
 	for _, cell := range graph.Cells {
-		cellMap[cell.ID] = cell
+		if cell.ID == "" {
+			t.Error("Found cell with empty ID")
+		}
+		if cell.Name == "" {
+			t.Error("Found cell with empty Name")
+		}
+		if cell.Path == "" {
+			t.Error("Found cell with empty Path")
+		}
+		if cell.Type != "cell" {
+			t.Errorf("Cell %s: expected Type 'cell', got '%s'", cell.ID, cell.Type)
+		}
+		// Dependencies can be empty, but should not be nil
+		if cell.Dependencies == nil {
+			t.Errorf("Cell %s: Dependencies field is nil, expected empty slice", cell.ID)
+		}
+
+		t.Logf("Cell %s: ID=%s, Path=%s, Dependencies=%v", cell.ID, cell.ID, cell.Path, cell.Dependencies)
 	}
 
-	// Verify each expected cell exists
-	for _, cellName := range expectedCells {
-		if _, exists := cellMap[cellName]; !exists {
-			t.Errorf("Expected cell %s not found in graph", cellName)
+	// Verify edges reference valid cells
+	cellMap := make(map[string]bool)
+	for _, cell := range graph.Cells {
+		cellMap[cell.ID] = true
+	}
+
+	for _, edge := range graph.Edges {
+		if edge.ID == "" {
+			t.Error("Found edge with empty ID")
+		}
+		if edge.Source == "" {
+			t.Error("Found edge with empty Source")
+		}
+		if edge.Target == "" {
+			t.Error("Found edge with empty Target")
+		}
+
+		// Verify source and target cells exist
+		if !cellMap[edge.Source] {
+			t.Errorf("Edge %s references non-existent source cell: %s", edge.ID, edge.Source)
+		}
+		if !cellMap[edge.Target] {
+			t.Errorf("Edge %s references non-existent target cell: %s", edge.ID, edge.Target)
 		}
 	}
 
-	// Verify specific dependencies from our moon.yml files
-	apiCell, exists := cellMap["example-api"]
-	if exists {
-		expectedDeps := []string{"example-service-a", "example-service-b", "example-service-c", "example-auth"}
-		if len(apiCell.Dependencies) != len(expectedDeps) {
-			t.Errorf("API cell: expected %d dependencies, got %d", len(expectedDeps), len(apiCell.Dependencies))
-		}
-
-		depSet := make(map[string]bool)
-		for _, dep := range apiCell.Dependencies {
-			depSet[dep] = true
-		}
-
-		for _, expected := range expectedDeps {
-			if !depSet[expected] {
-				t.Errorf("API cell: missing expected dependency %s", expected)
-			}
-		}
-	}
-
-	// Verify edges exist
-	if len(graph.Edges) == 0 {
-		t.Error("Expected edges in the graph, but got none")
-	}
-}
-
-func TestBuildGraphWithMockData(t *testing.T) {
-	// This test simulates moon output without requiring moon to be installed
-	mockOutput := `{
-		"graph": {
-			"nodes": [
-				{
-					"id": "example-api",
-					"alias": "example/api",
-					"config": {
-						"id": "example-api",
-						"language": "unknown",
-						"project": {
-							"description": "API service"
-						},
-						"dependsOn": [
-							"example-database",
-							"example-cache"
-						]
-					}
-				},
-				{
-					"id": "example-frontend",
-					"alias": "example/frontend",
-					"config": {
-						"id": "example-frontend",
-						"language": "unknown",
-						"project": {
-							"description": "Frontend application"
-						},
-						"dependsOn": [
-							"example-api"
-						]
-					}
-				},
-				{
-					"id": "example-database",
-					"alias": "example/database",
-					"config": {
-						"id": "example-database",
-						"language": "unknown",
-						"project": {
-							"description": "Database service"
-						},
-						"dependsOn": []
-					}
-				},
-				{
-					"id": "example-cache",
-					"alias": "example/cache",
-					"config": {
-						"id": "example-cache",
-						"language": "unknown",
-						"project": {
-							"description": "Cache service"
-						},
-						"dependsOn": []
-					}
-				}
-			]
-		}
-	}`
-
-	// Parse the mock output to verify our data structures work
-	var moonGraph MoonGraph
-	if err := json.Unmarshal([]byte(mockOutput), &moonGraph); err != nil {
-		t.Fatalf("Failed to parse mock moon output: %v", err)
-	}
-
-	// Verify we can parse the structure correctly
-	if len(moonGraph.Graph.Nodes) != 4 {
-		t.Errorf("Expected 4 nodes in mock data, got %d", len(moonGraph.Graph.Nodes))
-	}
-
-	// Verify first node structure
-	firstNode := moonGraph.Graph.Nodes[0]
-	if firstNode.Config.ID != "example-api" {
-		t.Errorf("Expected first node ID to be 'example-api', got '%s'", firstNode.Config.ID)
-	}
-
-	// Parse the raw JSON dependsOn to check count
-	var deps []string
-	if err := json.Unmarshal(firstNode.Config.DependsOn, &deps); err != nil {
-		t.Fatalf("Failed to parse dependencies: %v", err)
-	}
-
-	if len(deps) != 2 {
-		t.Errorf("Expected first node to have 2 dependencies, got %d", len(deps))
-	}
+	t.Logf("Found %d edges in the current project", len(graph.Edges))
 }

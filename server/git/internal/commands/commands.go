@@ -618,7 +618,8 @@ func (r *Repository) ListRemotes(ctx context.Context, nodePath string) ([]Remote
 		return nil, fmt.Errorf("not a git repository")
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "remote", "-v")
+	// Get list of remote names
+	cmd := exec.CommandContext(ctx, "git", "remote")
 	cmd.Dir = nodePath
 
 	output, err := cmd.Output()
@@ -626,40 +627,38 @@ func (r *Repository) ListRemotes(ctx context.Context, nodePath string) ([]Remote
 		return nil, fmt.Errorf("failed to list remotes: %w", err)
 	}
 
-	remotes := make(map[string]*Remote)
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if line == "" {
+	remotes := make([]Remote, 0)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, name := range lines {
+		if name == "" {
 			continue
 		}
 
-		// Format: "name\turl (fetch|push)"
-		parts := strings.Fields(line)
-		if len(parts) < 3 {
-			continue
+		remote := Remote{Name: name}
+
+		// Get the actual configured URL without git's insteadOf rewrites
+		// Using git config --get instead of git remote -v
+		urlCmd := exec.CommandContext(ctx, "git", "config", "--get", "remote."+name+".url")
+		urlCmd.Dir = nodePath
+		urlOutput, err := urlCmd.Output()
+		if err == nil {
+			url := strings.TrimSpace(string(urlOutput))
+			remote.FetchURL = url
+			remote.PushURL = url
 		}
 
-		name := parts[0]
-		url := parts[1]
-		opType := strings.Trim(parts[2], "()")
-
-		if remotes[name] == nil {
-			remotes[name] = &Remote{Name: name}
+		// Check if there's a separate pushurl configured
+		pushURLCmd := exec.CommandContext(ctx, "git", "config", "--get", "remote."+name+".pushurl")
+		pushURLCmd.Dir = nodePath
+		pushURLOutput, err := pushURLCmd.Output()
+		if err == nil {
+			remote.PushURL = strings.TrimSpace(string(pushURLOutput))
 		}
 
-		if opType == "fetch" {
-			remotes[name].FetchURL = url
-		} else if opType == "push" {
-			remotes[name].PushURL = url
-		}
+		remotes = append(remotes, remote)
 	}
 
-	result := make([]Remote, 0, len(remotes))
-	for _, remote := range remotes {
-		result = append(result, *remote)
-	}
-
-	return result, nil
+	return remotes, nil
 }
 
 // GetFileAtCommit retrieves file content from a specific commit

@@ -17,7 +17,9 @@ tags:
 
 tasks:
   pnpm-install:
-    script: pnpm install
+    script: |
+      set -e
+      pnpm install
     inputs:
       - package.json
       - pnpm-lock.yaml
@@ -33,6 +35,7 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   build:
     script: |
+      set -e
       mkdir -p build
       go build -o build/cortex ./cmd/cortex
     deps:
@@ -48,6 +51,7 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   build-frontend-copy:
     script: |
+      set -e
       # rsync preserves timestamps and only moves changed files
       mkdir -p internal/static/assets
       rsync -a --delete "$MOON_WORKSPACE_ROOT/web/app/dist/" internal/static/assets/
@@ -66,7 +70,9 @@ tasks:
   # Local dev server
   # ─────────────────────────────────────────────────────────────
   serve:
-    script: go run ./cmd/cortex/*.go -n ../../
+    script: |
+      set -e
+      go run ./cmd/cortex/*.go -n ../../
     deps:
       - '~:build-frontend-copy'
     env:
@@ -79,6 +85,7 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   install:
     script: |
+      set -e
       go install -tags=prod -ldflags="-X main.defaultPort=8081" ./cmd/cortex
     deps:
       - '~:build'
@@ -93,7 +100,9 @@ tasks:
   # ─────────────────────────────────────────────────────────────
   test:
     # Override the global Go test to include Playwright tests
-    script: ./test.sh
+    script: |
+      set -e
+      ./test.sh
     deps:
       - '~:build-frontend-copy'
       - '^:build'
@@ -110,7 +119,9 @@ tasks:
     options:
       runInCI: true
   playwright-install:
-    script: pnpm exec playwright install chromium
+    script: |
+      set -e
+      pnpm exec playwright install chromium
     deps:
       - '~:pnpm-install'
     platform: system

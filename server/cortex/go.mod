@@ -3,15 +3,15 @@ module github.com/colony-2/colony2/server/cortex
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/api v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/git v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/graph v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/ops v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/storage v0.0.0-20251225022150-97f04a11c9ec
-	github.com/colony-2/colony2/server/ticket v0.0.0-20251225022150-97f04a11c9ec
+	github.com/colony-2/colony2/server/api v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/graph v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/ops v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/storage v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -33,14 +33,15 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/cell v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/openapi v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/project v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/colony2/server/registry v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
+	github.com/colony-2/colony2/server/cell v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/openapi v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/recipes v0.0.0-20251229235014-89db51765446 // indirect
+	github.com/colony-2/colony2/server/registry v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/workflow v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect

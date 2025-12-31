@@ -31,7 +31,9 @@ tasks:
       outputStyle: buffer-only-failure
   
   compile:
-    script: 'tsc'
+    script: |
+      set -e
+      'tsc'
     inputs:
       - 'src/**/*' 
       - 'tsconfig.json'

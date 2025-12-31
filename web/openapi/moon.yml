@@ -7,23 +7,22 @@ project:
   description: 'Generated TypeScript client from OpenAPI specification'
 
 tasks:
-  remove-files:
-    script: |
-      set -e
-      rm -f ./colony2-api.yaml
-      rm -rf src/generated
-      mkdir -p src/generated
   build:
     platform: system
     script: |
-      pnpm exec openapi --input $workspaceRoot/api/openapi/colony2-api.yaml --output ./src/generated --client fetch 
-      pnpm exec tsup src/generated/index.ts --format cjs,esm --clean --silent
-      npx tsc --emitDeclarationOnly
+      set -e
+      rm -rf src/generated dist tsconfig.tsbuildinfo
+      mkdir -p src/generated
+      pnpm exec openapi --input $workspaceRoot/api/openapi/colony2-api.yaml --output ./src/generated --client fetch
+      pnpm exec tsup src/index.ts --format cjs,esm --clean
+      pnpm exec tsc --emitDeclarationOnly
     deps:
       - 'api-openapi:build'
-      - '~:remove-files'
+    inputs:
+      - '/api/openapi/colony2-api.yaml'
     outputs:
       - 'src/generated/**/*'
+      - 'dist/**'
 
   test:
     command: 'true'

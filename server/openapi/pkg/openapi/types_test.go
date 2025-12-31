@@ -12,7 +12,7 @@ func TestWorkflowSummaryTypesGenerated(t *testing.T) {
 	summary := openapi.WorkflowSummary{
 		WorkflowId: "prj_123_abc",
 		RunId:      "prj_123_abc",
-		Status:     openapi.WorkflowStatusRunning,
+		Status:     openapi.Running,
 		RecipeName: "test_recipe",
 		CreatedAt:  now,
 	}
@@ -20,7 +20,7 @@ func TestWorkflowSummaryTypesGenerated(t *testing.T) {
 	if summary.WorkflowId != "prj_123_abc" {
 		t.Fatalf("expected workflow id, got %q", summary.WorkflowId)
 	}
-	if summary.Status != openapi.WorkflowStatusRunning {
+	if summary.Status != openapi.Running {
 		t.Fatalf("expected status running, got %q", summary.Status)
 	}
 }
@@ -30,7 +30,7 @@ func TestWorkflowDetailTypesGenerated(t *testing.T) {
 	detail := openapi.WorkflowDetail{
 		WorkflowId: "prj_123_abc",
 		RunId:      "prj_123_abc",
-		Status:     openapi.WorkflowStatusCompleted,
+		Status:     openapi.Completed,
 		RecipeName: "test_recipe",
 		Chapters:   []openapi.ChapterDetail{},
 		CreatedAt:  now,
@@ -39,7 +39,7 @@ func TestWorkflowDetailTypesGenerated(t *testing.T) {
 	if detail.WorkflowId != "prj_123_abc" {
 		t.Fatalf("expected workflow id, got %q", detail.WorkflowId)
 	}
-	if detail.Status != openapi.WorkflowStatusCompleted {
+	if detail.Status != openapi.Completed {
 		t.Fatalf("expected status completed, got %q", detail.Status)
 	}
 	if detail.Chapters == nil {
@@ -71,13 +71,13 @@ func TestChapterDetailTypesGenerated(t *testing.T) {
 
 func TestWorkflowStatusConstants(t *testing.T) {
 	statuses := []openapi.WorkflowStatus{
-		openapi.WorkflowStatusRunning,
-		openapi.WorkflowStatusCompleted,
-		openapi.WorkflowStatusFailed,
-		openapi.WorkflowStatusCanceled,
-		openapi.WorkflowStatusTerminated,
-		openapi.WorkflowStatusTimedOut,
-		openapi.WorkflowStatusUnknown,
+		openapi.Running,
+		openapi.Completed,
+		openapi.Failed,
+		openapi.Canceled,
+		openapi.Terminated,
+		openapi.TimedOut,
+		openapi.Unknown,
 	}
 
 	if len(statuses) != 7 {

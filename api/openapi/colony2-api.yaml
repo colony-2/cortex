@@ -2754,3 +2754,4 @@ components:
             - $ref: '#/components/schemas/InputSSEHeartbeatData'
             - $ref: '#/components/schemas/InputSSEErrorData'
       required: [type, data]
+

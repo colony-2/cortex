@@ -279,13 +279,47 @@ func NewActivityMappedOpWithManagementV2[In any, Out any](metadata OpMetadata, h
 }
 
 func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], getInputStruct func() interface{}) RegisterableOp {
-	// provider support is dropped in the new model; fallback to handler-based decoding.
+	var step Step
+	if getInputStruct != nil {
+		// Use provider to determine input type for schema generation
+		providerInstance := getInputStruct()
+		inputType := reflect.TypeOf(providerInstance)
+		// If provider returns a pointer, use the element type
+		if inputType.Kind() == reflect.Ptr {
+			inputType = inputType.Elem()
+		}
+		outputType := reflect.TypeOf((*Out)(nil)).Elem()
+
+		invokeFn := func(deps OpDependencies, ctx context.Context, resolvedInput map[string]interface{}) (map[string]interface{}, error) {
+			var input In
+			if err := DecodeWithJsonTags(resolvedInput, &input); err != nil {
+				return nil, fmt.Errorf("error decoding input: %w", err)
+			}
+			objResult, err := handler(deps, ctx, input)
+			if err != nil {
+				return nil, fmt.Errorf("error executing step: %w", err)
+			}
+			s := structs.New(objResult)
+			s.TagName = "json"
+			return s.Map(), nil
+		}
+
+		step = &stepImpl{
+			inputType:  inputType,
+			outputType: outputType,
+			invokeFn:   invokeFn,
+		}
+	} else {
+		// Fallback to handler-based type when no provider
+		step = NewStepWithDeps(handler)
+	}
+
 	op, err := NewOp().
 		WithType(metadata.Type).
 		WithDescription(metadata.Description).
 		WithVersion(metadata.Version).
 		WithDefaultTimeout(metadata.DefaultTimeout).
-		AddStep(metadata.Type, NewStepWithDeps(handler)).
+		AddStep(metadata.Type, step).
 		Build()
 	if err != nil {
 		panic(err)
