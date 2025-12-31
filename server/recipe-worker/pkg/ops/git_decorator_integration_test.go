@@ -25,6 +25,9 @@ func TestGitDecoratorPersistsAcrossActivities(t *testing.T) {
 	blobStore := t.TempDir()
 	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
 	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
+	if err := os.MkdirAll(persistWorktree, 0o755); err != nil {
+		t.Fatalf("failed to create persistWorktree: %v", err)
+	}
 
 	yamlSpec := fmt.Sprintf(`id: git_persist
 version: "1.0"

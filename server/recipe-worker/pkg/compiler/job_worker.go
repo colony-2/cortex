@@ -57,13 +57,19 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 		return nil, err
 	}
 
-	working, err := os.MkdirTemp("", "recipe-worker-artifacts")
-	if err != nil {
-		return nil, err
-	}
 	runContext := input.JobContext
-	runContext.Environment.WorktreePath = filepath.Join(working, "git")
-	runContext.Environment.BlobStoreURI = filepath.Join(working, "blob")
+	if runContext.Environment.WorktreePath == "" || runContext.Environment.BlobStoreURI == "" {
+		working, err := os.MkdirTemp("", "recipe-worker-artifacts")
+		if err != nil {
+			return nil, err
+		}
+		if runContext.Environment.WorktreePath == "" {
+			runContext.Environment.WorktreePath = filepath.Join(working, "git")
+		}
+		if runContext.Environment.BlobStoreURI == "" {
+			runContext.Environment.BlobStoreURI = filepath.Join(working, "blob")
+		}
+	}
 
 	wCtx := workflow.Context{JobContext: ctx}
 	out, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})

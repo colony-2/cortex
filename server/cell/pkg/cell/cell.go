@@ -12,7 +12,7 @@ import (
 type (
 	ID               = model.ID
 	Cell             = model.Cell
-	Dependency       = model.Dependency
+	Dependency       = model.CellDependency
 	SearchFilter     = model.SearchFilter
 	Service          = service.Service
 	ServiceConfig    = service.ServiceConfig

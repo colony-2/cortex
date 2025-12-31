@@ -27,17 +27,13 @@ type Cell struct {
 	DeletedAt     *time.Time `gorm:"column:deleted_at;index"`
 }
 
-// Dependency represents a cell-to-cell dependency edge.
-type Dependency struct {
+// CellDependency represents a cell-to-cell dependency edge.
+type CellDependency struct {
 	ID         uint       `gorm:"primaryKey;autoIncrement"`
 	ProjectID  project.ID `gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
 	FromCellID ID         `gorm:"column:from_cell_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	ToCellID   ID         `gorm:"column:to_cell_id;type:char(27);index;not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	CreatedAt  time.Time
-}
-
-func (d *Dependency) TableName() string {
-	return "public.cell_dependencies"
 }
 
 type ShortIDGenerator interface {

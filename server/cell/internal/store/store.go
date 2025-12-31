@@ -36,7 +36,7 @@ func New(db *gorm.DB) (Store, error) {
 	if db == nil {
 		return nil, errors.New("cells store: nil db")
 	}
-	if err := db.AutoMigrate(&model.Cell{}, &model.Dependency{}); err != nil {
+	if err := db.AutoMigrate(&model.Cell{}, &model.CellDependency{}); err != nil {
 		return nil, err
 	}
 	if err := applyConstraints(db); err != nil {
@@ -131,16 +131,16 @@ func (s *store) SoftDelete(ctx context.Context, id model.ID, deletedAt time.Time
 func (s *store) ReplaceDependencies(ctx context.Context, projectID project.ID, from model.ID, to []model.ID) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("project_id = ? AND from_cell_id = ?", projectID, from).
-			Delete(&model.Dependency{}).Error; err != nil {
+			Delete(&model.CellDependency{}).Error; err != nil {
 			return err
 		}
 		if len(to) == 0 {
 			return nil
 		}
-		deps := make([]model.Dependency, 0, len(to))
+		deps := make([]model.CellDependency, 0, len(to))
 		now := time.Now().UTC()
 		for _, dest := range to {
-			deps = append(deps, model.Dependency{
+			deps = append(deps, model.CellDependency{
 				ProjectID:  projectID,
 				FromCellID: from,
 				ToCellID:   dest,
@@ -152,7 +152,7 @@ func (s *store) ReplaceDependencies(ctx context.Context, projectID project.ID, f
 }
 
 func (s *store) ListDependencies(ctx context.Context, projectID project.ID, from model.ID) ([]model.ID, error) {
-	var deps []model.Dependency
+	var deps []model.CellDependency
 	err := s.db.WithContext(ctx).
 		Where("project_id = ? AND from_cell_id = ?", projectID, from).
 		Order("id ASC").
