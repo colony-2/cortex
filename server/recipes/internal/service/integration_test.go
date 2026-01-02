@@ -3,9 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
@@ -529,10 +532,41 @@ func setupTestService(t *testing.T, db *gorm.DB) Service {
 	gitRepo := testutil.NewRealGitRepository()
 	mockProjects := testutil.NewMockProjectService()
 
-	// Add test project
+	// Create a bare git repository for the test project
+	projectRepoPath := t.TempDir()
+	ctx := context.Background()
+	cmd := testutil.GitCommand(ctx, filepath.Dir(projectRepoPath), "init", "--bare", filepath.Base(projectRepoPath))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create bare repo: %v", err)
+	}
+
+	// Create initial commit in the bare repo via a temp clone
+	tempClone := t.TempDir()
+	if err := gitRepo.Clone(ctx, projectRepoPath, tempClone, git.CloneOptions{}); err != nil {
+		t.Fatalf("failed to clone: %v", err)
+	}
+	initFile := filepath.Join(tempClone, ".gitkeep")
+	if err := os.WriteFile(initFile, []byte(""), 0644); err != nil {
+		t.Fatalf("failed to write .gitkeep: %v", err)
+	}
+	if err := gitRepo.StageFiles(ctx, tempClone, []string{".gitkeep"}); err != nil {
+		t.Fatalf("failed to stage: %v", err)
+	}
+	if err := gitRepo.CreateCommit(ctx, tempClone, "Initial commit"); err != nil {
+		t.Fatalf("failed to commit: %v", err)
+	}
+	if _, err := gitRepo.Push(ctx, tempClone, git.PushOptions{
+		Remote:      "origin",
+		SetUpstream: true,
+	}); err != nil {
+		t.Fatalf("failed to push: %v", err)
+	}
+
+	// Add test project with git repo path
 	mockProjects.AddProject(&project.Project{
-		ID:   "proj_test",
-		Name: "Test Project",
+		ID:          "proj_test",
+		Name:        "Test Project",
+		GitRepoPath: projectRepoPath,
 	})
 
 	workspaceRoot := t.TempDir()

@@ -136,19 +136,84 @@ func (r *RealGitRepository) InitRepository(ctx context.Context, path string, opt
 }
 
 func (r *RealGitRepository) Clone(ctx context.Context, url string, path string, opts git.CloneOptions) error {
-	return fmt.Errorf("not implemented")
+	args := []string{"clone"}
+	if opts.Branch != "" {
+		args = append(args, "--branch", opts.Branch)
+	}
+	args = append(args, url, path)
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	return cmd.Run()
 }
 
 func (r *RealGitRepository) Fetch(ctx context.Context, path string, opts git.FetchOptions) error {
-	return nil // No-op for local testing
+	args := []string{"fetch"}
+	if opts.Remote != "" {
+		args = append(args, opts.Remote)
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = path
+	return cmd.Run()
 }
 
 func (r *RealGitRepository) Pull(ctx context.Context, path string, opts git.PullOptions) (*git.PullResult, error) {
-	return &git.PullResult{Updated: false}, nil // No-op for local testing
+	// Get current commit before pull
+	oldCommit, _ := r.GetCurrentCommit(ctx, path)
+
+	args := []string{"pull"}
+	if opts.Remote != "" {
+		args = append(args, opts.Remote)
+	}
+	if opts.Branch != "" {
+		args = append(args, opts.Branch)
+	}
+	if opts.FastForward {
+		args = append(args, "--ff-only")
+	}
+	if opts.Rebase {
+		args = append(args, "--rebase")
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = path
+	err := cmd.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get new commit after pull
+	newCommit, _ := r.GetCurrentCommit(ctx, path)
+
+	return &git.PullResult{
+		Updated:   oldCommit != newCommit,
+		OldCommit: oldCommit,
+		NewCommit: newCommit,
+	}, nil
 }
 
 func (r *RealGitRepository) Push(ctx context.Context, path string, opts git.PushOptions) (*git.PushResult, error) {
-	return &git.PushResult{}, nil // No-op for local testing
+	args := []string{"push"}
+	if opts.SetUpstream {
+		args = append(args, "--set-upstream")
+	}
+	if opts.Force {
+		args = append(args, "--force")
+	}
+	if opts.Remote != "" {
+		args = append(args, opts.Remote)
+	}
+	if opts.Branch != "" {
+		args = append(args, opts.Branch)
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = path
+	err := cmd.Run()
+
+	return &git.PushResult{
+		Pushed:   err == nil,
+		Rejected: err != nil,
+	}, err
 }
 
 func (r *RealGitRepository) CreateCommit(ctx context.Context, path string, message string) error {
@@ -248,11 +313,53 @@ func (r *RealGitRepository) Checkout(ctx context.Context, path string, ref strin
 }
 
 func (r *RealGitRepository) AddRemote(ctx context.Context, path string, name string, url string) error {
-	return fmt.Errorf("not implemented")
+	cmd := exec.CommandContext(ctx, "git", "remote", "add", name, url)
+	cmd.Dir = path
+	return cmd.Run()
 }
 
 func (r *RealGitRepository) ListRemotes(ctx context.Context, path string) ([]git.Remote, error) {
-	return nil, fmt.Errorf("not implemented")
+	// Get remote names
+	cmd := exec.CommandContext(ctx, "git", "remote")
+	cmd.Dir = path
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	remotes := make([]git.Remote, 0, len(lines))
+
+	for _, name := range lines {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		// Get fetch URL
+		cmd := exec.CommandContext(ctx, "git", "remote", "get-url", name)
+		cmd.Dir = path
+		fetchURL, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		// Get push URL (try, may be same as fetch)
+		cmd = exec.CommandContext(ctx, "git", "remote", "get-url", "--push", name)
+		cmd.Dir = path
+		pushURL, err := cmd.Output()
+		if err != nil {
+			pushURL = fetchURL
+		}
+
+		remotes = append(remotes, git.Remote{
+			Name:     name,
+			FetchURL: strings.TrimSpace(string(fetchURL)),
+			PushURL:  strings.TrimSpace(string(pushURL)),
+		})
+	}
+
+	return remotes, nil
 }
 
 // CreateTestRecipeContent creates valid recipe YAML content for testing.
@@ -295,6 +402,13 @@ func writeFile(path string, content []byte) error {
 
 func mkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
+}
+
+// GitCommand creates a git command in the specified directory.
+func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	return cmd
 }
 
 var (
