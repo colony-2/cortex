@@ -29,7 +29,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20260105192340-17a7d15cae9b // indirect
+	github.com/colony-2/swf-go v0.0.0-20260105194358-b2ae1c6be911 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.23 // indirect
