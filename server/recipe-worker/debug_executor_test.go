@@ -110,7 +110,6 @@ inputs:
 
 	repo, hash := ensureDebugRepo()
 	worktree := filepath.Join(t.TempDir(), "debug-executor-worktree")
-	blobStore := "file://" + filepath.Join(t.TempDir(), "debug-executor-blobstore")
 	jobCtx := contextual.JobContext{
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
@@ -119,7 +118,6 @@ inputs:
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,
-			BlobStoreURI: blobStore,
 		},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",

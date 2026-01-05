@@ -18,8 +18,6 @@ git:
   resolved_base_hash: %s
   parent_hash: %s
   persist_hash: %s
-  blob_store_uri: %s
-  thin_pack_path: %s
 ticket:
   id: %s
   cell: %s
@@ -36,8 +34,6 @@ invocation:
 		ctx.ResolvedBaseHash,
 		ctx.ParentHash,
 		persistHash,
-		ctx.BlobStoreURI,
-		thinPackPath,
 		ctx.TicketID,
 		ctx.CellName,
 		ctx.NodePath,

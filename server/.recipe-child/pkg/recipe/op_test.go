@@ -553,8 +553,6 @@ func (c *testGitContext) GetPersistHash() string { return c.persistHash }
 
 func (c *testGitContext) GetWorktreePath() string { return c.worktree }
 
-func (c *testGitContext) GetBlobStoreURI() string { return c.blobstore }
-
 func (c *testGitContext) GetTicketID() string { return c.ticketID }
 
 func (c *testGitContext) GetCellName() string { return c.cellName }

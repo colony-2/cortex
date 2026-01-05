@@ -164,7 +164,6 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	t.Parallel()
 
 	repoDir, baseHash, nextHash := initTwoCommitRepo(t)
-	blobStore := t.TempDir()
 
 	controller := gitstate.NewController(nil)
 	deps := recipeops.NewServiceDepsBuilder().Build()
@@ -220,7 +219,6 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			PersistHash:      "",
 			ParentHash:       "",
 			WorktreePath:     worktreePath,
-			BlobStoreURI:     "file://" + filepath.ToSlash(blobStore),
 			TicketID:         "T-1",
 			CellName:         "cells/beta",
 		},
@@ -276,7 +274,6 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
 	worktreeDir := filepath.Join(t.TempDir(), "work")
-	blobDir := t.TempDir()
 	input := map[string]interface{}{"message": "hi"}
 	_, _, err = handler(context.Background(), ActivityInvocationRequest{
 		Input: input,
@@ -285,7 +282,6 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 			BaseRef:          baseHash,
 			ResolvedBaseHash: baseHash,
 			WorktreePath:     worktreeDir,
-			BlobStoreURI:     "file://" + filepath.ToSlash(blobDir),
 			TicketID:         "TEST-1",
 			CellName:         "cells/cell-a",
 		},

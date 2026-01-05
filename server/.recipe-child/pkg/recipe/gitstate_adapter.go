@@ -30,7 +30,6 @@ type GitStateContext interface {
 	ToMap() map[string]interface{}
 	GetPersistHash() string
 	GetWorktreePath() string
-	GetBlobStoreURI() string
 	GetTicketID() string
 	GetCellName() string
 }

@@ -24,7 +24,6 @@ func newTaskContext(baseRepo, baseRef, worktree, blobStore, cell string) *GitTas
 		PersistHash:      baseRef,
 		ParentHash:       baseRef,
 		WorktreePath:     worktree,
-		BlobStoreURI:     "file://" + blobStore,
 		CellName:         cell,
 		TicketID:         "ticket-123",
 		NodePath:         "node",
@@ -266,7 +265,6 @@ func TestBuildCommitMessage(t *testing.T) {
 		ResolvedBaseHash: strings.Repeat("a", 40),
 		ParentHash:       strings.Repeat("b", 40),
 		PersistHash:      strings.Repeat("c", 40),
-		BlobStoreURI:     "file:///blob",
 		ThinPackPath:     "git/thin-packs/cb-pack.pack",
 		TicketID:         "TICK-1",
 		CellName:         "cells/alpha",
@@ -277,8 +275,6 @@ func TestBuildCommitMessage(t *testing.T) {
 	require.Contains(t, message, ctx.ResolvedBaseHash)
 	require.Contains(t, message, ctx.ParentHash)
 	require.Contains(t, message, ctx.PersistHash)
-	require.Contains(t, message, ctx.BlobStoreURI)
-	require.Contains(t, message, ctx.ThinPackPath)
 	require.Contains(t, message, ctx.TicketID)
 	require.Contains(t, message, ctx.CellName)
 	require.Contains(t, message, ctx.NodePath)

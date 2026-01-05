@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -58,17 +57,12 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	runContext := input.JobContext
-	if runContext.Environment.WorktreePath == "" || runContext.Environment.BlobStoreURI == "" {
-		working, err := os.MkdirTemp("", "recipe-worker-artifacts")
+	if runContext.Environment.WorktreePath == "" {
+		working, err := os.MkdirTemp("", "recipe-git-artifacts")
 		if err != nil {
 			return nil, err
 		}
-		if runContext.Environment.WorktreePath == "" {
-			runContext.Environment.WorktreePath = filepath.Join(working, "git")
-		}
-		if runContext.Environment.BlobStoreURI == "" {
-			runContext.Environment.BlobStoreURI = filepath.Join(working, "blob")
-		}
+		runContext.Environment.WorktreePath = working
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}

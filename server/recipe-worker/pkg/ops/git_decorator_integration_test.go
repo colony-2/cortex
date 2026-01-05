@@ -22,8 +22,6 @@ func TestGitDecoratorPersistsAcrossActivities(t *testing.T) {
 	repoPath, baseHash, cleanup := createTempRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
-	blobStoreURI := "file://" + filepath.ToSlash(blobStore)
 	persistWorktree := filepath.Join(t.TempDir(), "persist-worktree")
 	if err := os.MkdirAll(persistWorktree, 0o755); err != nil {
 		t.Fatalf("failed to create persistWorktree: %v", err)
@@ -64,7 +62,6 @@ outputs:
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: persistWorktree,
-			BlobStoreURI: blobStoreURI,
 		},
 		Workflow: contextual.WorkflowContext{
 			CellName: "",

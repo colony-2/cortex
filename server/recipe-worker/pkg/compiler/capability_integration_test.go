@@ -153,7 +153,6 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 			},
 			Environment: contextual.EnvironmentContext{
 				WorktreePath: worktree,
-				BlobStoreURI: blobStore,
 			},
 			Workflow: contextual.WorkflowContext{
 				CellName: "cells/test",

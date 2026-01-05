@@ -10,7 +10,6 @@ type ActorContext struct {
 // EnvironmentContext captures filesystem and storage locations relevant to execution.
 type EnvironmentContext struct {
 	WorktreePath string `json:"worktree_path,omitempty"`
-	BlobStoreURI string `json:"blob_store_uri,omitempty"`
 	ThinPackPath string `json:"thin_pack_path,omitempty"`
 }
 

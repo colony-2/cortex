@@ -9,7 +9,6 @@ type GitTaskContext struct {
 	PersistHash      string
 	ParentHash       string
 	WorktreePath     string
-	BlobStoreURI     string
 	ThinPackPath     string
 	TicketID         string
 	CellName         string
@@ -28,7 +27,6 @@ func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
 		PersistHash:      tec.GitCommit.PersistHash,
 		ParentHash:       tec.GitCommit.ParentHash,
 		WorktreePath:     tec.Environment.WorktreePath,
-		BlobStoreURI:     tec.Environment.BlobStoreURI,
 		ThinPackPath:     tec.Environment.ThinPackPath,
 		TicketID:         tec.Actor.TicketID,
 		CellName:         tec.Workflow.CellName,
@@ -44,7 +42,6 @@ func (c *GitTaskContext) GetResolvedBaseHash() string { return c.ResolvedBaseHas
 func (c *GitTaskContext) GetPersistHash() string      { return c.PersistHash }
 func (c *GitTaskContext) GetParentHash() string       { return c.ParentHash }
 func (c *GitTaskContext) GetWorktreePath() string     { return c.WorktreePath }
-func (c *GitTaskContext) GetBlobStoreURI() string     { return c.BlobStoreURI }
 func (c *GitTaskContext) GetThinPackPath() string     { return c.ThinPackPath }
 func (c *GitTaskContext) GetTicketID() string         { return c.TicketID }
 func (c *GitTaskContext) GetCellName() string         { return c.CellName }

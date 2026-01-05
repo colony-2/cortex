@@ -69,11 +69,6 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 	if err != nil {
 		panic(err)
 	}
-	blobDir, err := os.MkdirTemp("", "colony2-blobstore-*")
-	if err != nil {
-		panic(err)
-	}
-	blobStoreURI := "file://" + blobDir
 
 	job := contextual.JobContext{
 		Actor: contextual.ActorContext{
@@ -83,7 +78,6 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,
-			BlobStoreURI: blobStoreURI,
 			ThinPackPath: "",
 		},
 		Workflow: contextual.WorkflowContext{
