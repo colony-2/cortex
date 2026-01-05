@@ -29,7 +29,7 @@ func (FileAdapter) EnsureLocation(_ context.Context, baseURI string) (string, er
 		return "", err
 	}
 	if err := os.MkdirAll(path, 0o755); err != nil {
-		return "", fmt.Errorf("create blobstore path: %w", err)
+		return "", fmt.Errorf("create base path: %w", err)
 	}
 	if err := os.MkdirAll(filepath.Join(path, thinPackSubdir), 0o755); err != nil {
 		return "", fmt.Errorf("create thin-pack path: %w", err)

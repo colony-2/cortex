@@ -2,9 +2,7 @@ package codex
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strings"
 
 	"github.com/colony-2/shai/pkg/shai"
 )
@@ -29,11 +27,11 @@ func defaultRunnerFactory(cfg *shai.SandboxConfig) (Runner, error) {
 
 type outputCollector struct {
 	stdout io.Writer
-	stderr *strings.Builder
+	stderr io.Writer
 }
 
-func newOutputCollector(stdout io.Writer) *outputCollector {
-	return &outputCollector{stdout: stdout, stderr: &strings.Builder{}}
+func newOutputCollector(stdout io.Writer, stderr io.Writer) *outputCollector {
+	return &outputCollector{stdout: stdout, stderr: stderr}
 }
 
 func (c *outputCollector) OnStdout(data []byte) {
@@ -41,8 +39,8 @@ func (c *outputCollector) OnStdout(data []byte) {
 		return
 	}
 	if _, err := c.stdout.Write(data); err != nil {
-		// best-effort: capture error in stderr buffer so callers can inspect
-		c.stderr.WriteString(fmt.Sprintf("write stdout: %v\n", err))
+		// best-effort: if we can't write stdout, we can't do much about it
+		// the error will be caught when we try to close the file
 	}
 }
 
@@ -50,14 +48,10 @@ func (c *outputCollector) OnStderr(data []byte) {
 	if len(data) == 0 {
 		return
 	}
-	if c.stderr.Len() > 0 {
-		c.stderr.WriteByte('\n')
+	if _, err := c.stderr.Write(data); err != nil {
+		// best-effort: if we can't write stderr, we can't do much about it
+		// the error will be caught when we try to close the file
 	}
-	c.stderr.WriteString(string(data))
-}
-
-func (c *outputCollector) stderrString() string {
-	return c.stderr.String()
 }
 
 // stdoutWriter adapts OnStdout to an io.Writer for shai's non-TTY mode.

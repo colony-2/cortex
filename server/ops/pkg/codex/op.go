@@ -4,13 +4,18 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/google/uuid"
 )
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.
@@ -33,8 +38,6 @@ type ExecOpOutput struct {
 	IncompleteCategory  string       `json:"incompleteCategory"`
 	PendingDependencies []Dependency `json:"pendingDependencies"`
 	ErrorMessage        string       `json:"errorMessage"`
-	Stderr              string       `json:"stderr"`
-	StdoutBlobURI       string       `json:"stdoutBlobUri"`
 }
 
 // executeLibrary is replaceable for tests.
@@ -77,16 +80,6 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.worktree is required")
 	}
 
-	blobstoreURI := stringFromMap(contextMap, "blobstore")
-	if blobstoreURI == "" {
-		if gitMap := mapFromInterface(contextMap["git"]); gitMap != nil {
-			blobstoreURI = stringFromMap(gitMap, "blob_store_uri")
-		}
-	}
-	if blobstoreURI == "" {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.blobstore is required")
-	}
-
 	cellName := stringFromMap(contextMap, "cellname")
 	if cellName == "" {
 		if gitMap := mapFromInterface(contextMap["git"]); gitMap != nil {
@@ -95,7 +88,6 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 	}
 
 	cellRelPath := resolveCellRelativePath(worktree, cellName)
-	//promptHash := digestPrompt(prompt)
 
 	opts := Options{
 		Prompt:           prompt,
@@ -104,12 +96,75 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		ExtraEnv:         input.Env,
 		WorktreeRoot:     worktree,
 		CellRelativePath: cellRelPath,
-		BlobstoreURI:     blobstoreURI,
 	}
 
-	result, err := executeLibrary(actx, opts)
+	result, stdoutPath, stderrPath, tempDir, err := executeLibrary(actx, opts)
 	if err != nil {
+		// Clean up immediately on error
+		if tempDir != "" {
+			os.RemoveAll(tempDir)
+		}
 		return ExecOpOutput{}, err
+	}
+
+	// Create timestamp and ID for artifact naming (same for both artifacts)
+	timestamp := time.Now().UTC().Format("20060102T150405Z")
+	executionID := uuid.NewString()
+
+	// Track cleanup state - only cleanup once when artifacts are consumed
+	cleanupCalled := &atomic.Bool{}
+
+	cleanupFunc := func() error {
+		if cleanupCalled.CompareAndSwap(false, true) {
+			return os.RemoveAll(tempDir)
+		}
+		return nil
+	}
+
+	// Create stdout artifact
+	stdoutArtifact := swf.NewArtifact(
+		fmt.Sprintf("codex_stdout_%s_%s.jsonl", timestamp, executionID),
+		func() (io.ReadCloser, int64, error) {
+			f, err := os.Open(stdoutPath)
+			if err != nil {
+				return nil, 0, fmt.Errorf("open stdout: %w", err)
+			}
+			info, err := f.Stat()
+			if err != nil {
+				f.Close()
+				return nil, 0, fmt.Errorf("stat stdout: %w", err)
+			}
+			return f, info.Size(), nil
+		},
+		cleanupFunc,
+	)
+
+	// Create stderr artifact
+	stderrArtifact := swf.NewArtifact(
+		fmt.Sprintf("codex_stderr_%s_%s.txt", timestamp, executionID),
+		func() (io.ReadCloser, int64, error) {
+			f, err := os.Open(stderrPath)
+			if err != nil {
+				return nil, 0, fmt.Errorf("open stderr: %w", err)
+			}
+			info, err := f.Stat()
+			if err != nil {
+				f.Close()
+				return nil, 0, fmt.Errorf("stat stderr: %w", err)
+			}
+			return f, info.Size(), nil
+		},
+		cleanupFunc,
+	)
+
+	// Add both artifacts to output
+	if err := inv.AddOutputArtifact(stdoutArtifact); err != nil {
+		os.RemoveAll(tempDir) // Clean up on artifact error
+		return ExecOpOutput{}, fmt.Errorf("add stdout artifact: %w", err)
+	}
+	if err := inv.AddOutputArtifact(stderrArtifact); err != nil {
+		os.RemoveAll(tempDir) // Clean up on artifact error
+		return ExecOpOutput{}, fmt.Errorf("add stderr artifact: %w", err)
 	}
 
 	output := ExecOpOutput{
@@ -120,10 +175,11 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		IncompleteCategory:  safeString(result.IncompleteCategory),
 		PendingDependencies: copyDependencies(result.PendingDependencies),
 		ErrorMessage:        safeString(result.ErrorMessage),
-		Stderr:              safeString(result.Stderr),
-		StdoutBlobURI:       safeString(result.StdoutBlobURI),
+		// StdoutBlobURI field removed - use output artifacts
+		// Stderr field removed - use output artifacts
 	}
 	return output, nil
+	// Temp dir cleaned up by artifact cleanup callback (after both artifacts consumed)
 }
 
 func copyDependencies(in []Dependency) []Dependency {

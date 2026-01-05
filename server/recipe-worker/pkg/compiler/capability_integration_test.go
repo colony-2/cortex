@@ -126,7 +126,6 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	repoPath, baseHash := makeTwoCommitRepo(t)
 	worktree, err := cloneRepo(repoPath)
 	require.NoError(t, err)
-	blobStore := "file://" + filepath.Join(t.TempDir(), "capability-blobstore")
 
 	// Recipe that invokes the two-step op.
 	rec := recipe.Recipe{

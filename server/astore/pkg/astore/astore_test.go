@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/colony-2/strata-go/pkg/client/artifact"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,9 +16,9 @@ func TestCreateExpandsInbound(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 
-	inArt := artifact.FromBytes("logs/out.txt", "text/plain", []byte("hello"))
+	inArt := swf.NewArtifactFromBytes("logs/out.txt", []byte("hello"))
 
-	workspace, inboundDir, outboundDir, cleanup, err := Create(ctx, "abc", []artifact.Artifact{inArt}, Config{Root: root, Limits: DefaultLimits()})
+	workspace, inboundDir, outboundDir, cleanup, err := Create(ctx, "abc", []swf.Artifact{inArt}, Config{Root: root, Limits: DefaultLimits()})
 	require.NoError(t, err)
 	defer cleanup()
 
@@ -34,9 +34,9 @@ func TestCreateExpandsInbound(t *testing.T) {
 func TestCreateRejectsInvalidInboundPath(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
-	inArt := artifact.FromBytes("../escape.txt", "text/plain", []byte("x"))
+	inArt := swf.NewArtifactFromBytes("../escape.txt", []byte("x"))
 
-	_, _, _, cleanup, err := Create(ctx, "abc", []artifact.Artifact{inArt}, Config{Root: root, Limits: DefaultLimits()})
+	_, _, _, cleanup, err := Create(ctx, "abc", []swf.Artifact{inArt}, Config{Root: root, Limits: DefaultLimits()})
 	if cleanup != nil {
 		defer cleanup()
 	}
@@ -59,7 +59,7 @@ func TestPersistCollectsArtifacts(t *testing.T) {
 	digest := fmt.Sprintf("%x", sha256.Sum256(content))
 	got := arts[0]
 	require.Equal(t, "nested/file.txt", got.Name())
-	require.Equal(t, int64(len(content)), got.SizeBytes())
+	require.Equal(t, int64(len(content)), got.Size())
 
 	gotDigest, err := got.Sha256(ctx)
 	require.NoError(t, err)

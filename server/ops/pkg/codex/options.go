@@ -9,9 +9,8 @@ import (
 )
 
 var (
-	errEmptyPrompt      = errors.New("codex: prompt is required")
-	errMissingWorktree  = errors.New("codex: worktree root is required")
-	errMissingBlobstore = errors.New("codex: blobstore URI is required")
+	errEmptyPrompt     = errors.New("codex: prompt is required")
+	errMissingWorktree = errors.New("codex: worktree root is required")
 )
 
 func (o *Options) validate() error {
@@ -21,9 +20,6 @@ func (o *Options) validate() error {
 	if strings.TrimSpace(o.WorktreeRoot) == "" {
 		return errMissingWorktree
 	}
-	if strings.TrimSpace(o.BlobstoreURI) == "" {
-		return errMissingBlobstore
-	}
 	if o.ExtraEnv == nil {
 		o.ExtraEnv = map[string]string{}
 	}
@@ -32,9 +28,6 @@ func (o *Options) validate() error {
 	}
 	if o.RunnerFactory == nil {
 		o.RunnerFactory = defaultRunnerFactory
-	}
-	if o.BlobStore == nil {
-		o.BlobStore = fileBlobStore{}
 	}
 	if len(o.StructuredSchema) == 0 {
 		o.StructuredSchema = structuredOutputSchema
@@ -63,6 +56,10 @@ func (o Options) schemaPath(dir string) string {
 
 func (o Options) stdoutPath(dir string) string {
 	return filepath.Join(dir, "stdout.jsonl")
+}
+
+func (o Options) stderrPath(dir string) string {
+	return filepath.Join(dir, "stderr.txt")
 }
 
 func (o Options) containerPath(hostPath string) (string, error) {

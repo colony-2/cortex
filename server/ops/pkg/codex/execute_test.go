@@ -17,21 +17,6 @@ type fakeClock struct{ ts time.Time }
 
 func (f fakeClock) Now() time.Time { return f.ts }
 
-type blobCall struct {
-	baseURI  string
-	relative string
-	source   string
-}
-
-type fakeBlobStore struct {
-	calls []blobCall
-}
-
-func (f *fakeBlobStore) Put(ctx context.Context, baseURI, relativePath, sourcePath string) (string, error) {
-	f.calls = append(f.calls, blobCall{baseURI: baseURI, relative: relativePath, source: sourcePath})
-	return relativePath, nil
-}
-
 type fakeRunner struct {
 	runFn  func(ctx context.Context) error
 	closed bool
@@ -84,25 +69,29 @@ func TestExecuteCompleted(t *testing.T) {
 		},
 	}
 
-	blob := &fakeBlobStore{}
 	opts := Options{
 		Prompt:           "do the task",
 		WorktreeRoot:     worktree,
 		CellRelativePath: cellRel,
-		BlobstoreURI:     "file://" + worktree,
 		Clock:            fakeClock{ts: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
-		BlobStore:        blob,
 	}
 
-	res, err := Execute(context.Background(), opts)
+	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(tempDir) // Clean up temp directory
 	require.NoError(t, err)
 	require.Equal(t, StatusCompleted, res.Status)
 	require.Equal(t, "All done", res.AssistantSummary)
 	require.Equal(t, "sess-123", res.SessionID)
 	require.Empty(t, res.ErrorMessage)
 	require.Equal(t, 0, len(res.PendingDependencies))
-	require.NotEmpty(t, res.StdoutBlobURI)
+
+	// Verify paths are returned
+	require.NotEmpty(t, stdoutPath)
+	require.NotEmpty(t, stderrPath)
+	require.NotEmpty(t, tempDir)
+	require.FileExists(t, stdoutPath)
+	require.FileExists(t, stderrPath)
 
 	require.NotNil(t, harness.config)
 	require.NotNil(t, harness.config.PostSetupExec)
@@ -119,12 +108,6 @@ func TestExecuteCompleted(t *testing.T) {
 	require.Equal(t, "never", harness.config.PostSetupExec.Env["CODEX_APPROVAL_POLICY"])
 	require.Equal(t, []string{cellRel}, harness.config.ReadWritePaths)
 	require.True(t, harness.runner.closed)
-
-	require.Len(t, blob.calls, 1)
-	call := blob.calls[0]
-	require.Equal(t, "file://"+worktree, call.baseURI)
-	require.True(t, strings.HasPrefix(call.relative, "codex/20240102T030405Z/"))
-	require.True(t, strings.HasSuffix(call.relative, ".jsonl"))
 }
 
 func TestExecuteIncompleteDependencies(t *testing.T) {
@@ -142,13 +125,12 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 		Prompt:           "analyze",
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
-		BlobstoreURI:     "file://" + worktree,
 		Clock:            fakeClock{ts: time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
-		BlobStore:        &fakeBlobStore{},
 	}
 
-	res, err := Execute(context.Background(), opts)
+	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(tempDir) // Clean up temp directory
 	require.NoError(t, err)
 	require.Equal(t, StatusIncomplete, res.Status)
 	require.Equal(t, "Needs follow-up", res.AssistantSummary)
@@ -157,6 +139,11 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 	require.Len(t, res.PendingDependencies, 1)
 	require.Equal(t, "server/git", res.PendingDependencies[0].Component)
 	require.Equal(t, "update refs", res.PendingDependencies[0].RequestedChanges)
+
+	// Verify paths are returned
+	require.NotEmpty(t, stdoutPath)
+	require.NotEmpty(t, stderrPath)
+	require.NotEmpty(t, tempDir)
 }
 
 func TestExecuteStructuredPayloadError(t *testing.T) {
@@ -171,24 +158,26 @@ func TestExecuteStructuredPayloadError(t *testing.T) {
 		stderr: []string{"warning: schema mismatch"},
 	}
 
-	blob := &fakeBlobStore{}
 	opts := Options{
 		Prompt:           "go",
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
-		BlobstoreURI:     "file://" + worktree,
 		Clock:            fakeClock{ts: time.Date(2024, 7, 8, 9, 10, 11, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
-		BlobStore:        blob,
 	}
 
-	res, err := Execute(context.Background(), opts)
+	res, _, stderrPath, tempDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(tempDir) // Clean up temp directory
 	require.NoError(t, err)
 	require.Equal(t, StatusError, res.Status)
 	require.Contains(t, res.ErrorMessage, "assistant payload missing assistantSummary")
-	require.Contains(t, res.Stderr, "warning: schema mismatch")
 	require.Equal(t, "sess-789", res.SessionID)
-	require.NotEmpty(t, res.StdoutBlobURI)
+
+	// Verify stderr was written to file
+	require.NotEmpty(t, stderrPath)
+	stderrContent, readErr := os.ReadFile(stderrPath)
+	require.NoError(t, readErr)
+	require.Contains(t, string(stderrContent), "warning: schema mismatch")
 }
 
 func TestExecuteRunError(t *testing.T) {
@@ -207,17 +196,21 @@ func TestExecuteRunError(t *testing.T) {
 		Prompt:           "task",
 		WorktreeRoot:     worktree,
 		CellRelativePath: "cell",
-		BlobstoreURI:     "file://" + worktree,
 		Clock:            fakeClock{ts: time.Date(2024, 9, 10, 11, 12, 13, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
-		BlobStore:        &fakeBlobStore{},
 	}
 
-	res, err := Execute(context.Background(), opts)
+	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(tempDir) // Clean up temp directory
 	require.NoError(t, err)
 	require.Equal(t, StatusError, res.Status)
 	require.Contains(t, res.ErrorMessage, "codex exit 1")
 	require.Equal(t, "sess", res.SessionID)
+
+	// Verify paths are returned even on error
+	require.NotEmpty(t, stdoutPath)
+	require.NotEmpty(t, stderrPath)
+	require.NotEmpty(t, tempDir)
 }
 
 func indexOf(haystack []string, needle string) int {

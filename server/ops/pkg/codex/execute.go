@@ -7,38 +7,47 @@ import (
 	"strings"
 
 	"github.com/colony-2/shai/pkg/shai"
-	"github.com/google/uuid"
 )
 
 // Execute runs Codex in non-interactive mode and returns the normalized result.
-func Execute(ctx context.Context, opts Options) (Result, error) {
+// The caller is responsible for managing the returned stdoutPath, stderrPath, and tempDir.
+// If creating artifacts, use the cleanup callback to remove tempDir.
+// If not creating artifacts, caller must clean up tempDir immediately.
+func Execute(ctx context.Context, opts Options) (Result, string, string, string, error) {
 	if err := opts.validate(); err != nil {
-		return Result{}, err
+		return Result{}, "", "", "", err
 	}
 
 	tempDir, err := opts.tempDir()
 	if err != nil {
-		return Result{}, err
+		return Result{}, "", "", "", err
 	}
-	defer os.RemoveAll(tempDir)
 
 	schemaPath := opts.schemaPath(tempDir)
 	if err := os.WriteFile(schemaPath, opts.StructuredSchema, 0o644); err != nil {
-		return Result{}, fmt.Errorf("write schema: %w", err)
+		return Result{}, "", "", "", fmt.Errorf("write schema: %w", err)
 	}
 
 	stdoutPath := opts.stdoutPath(tempDir)
 	stdoutFile, err := os.Create(stdoutPath)
 	if err != nil {
-		return Result{}, fmt.Errorf("create stdout capture: %w", err)
+		return Result{}, "", "", "", fmt.Errorf("create stdout capture: %w", err)
 	}
 
-	collector := newOutputCollector(stdoutFile)
+	stderrPath := opts.stderrPath(tempDir)
+	stderrFile, err := os.Create(stderrPath)
+	if err != nil {
+		stdoutFile.Close()
+		return Result{}, "", "", "", fmt.Errorf("create stderr capture: %w", err)
+	}
+
+	collector := newOutputCollector(stdoutFile, stderrFile)
 
 	containerSchemaPath, err := opts.containerPath(schemaPath)
 	if err != nil {
 		stdoutFile.Close()
-		return Result{}, err
+		stderrFile.Close()
+		return Result{}, "", "", "", err
 	}
 
 	command := buildCommand(opts, containerSchemaPath)
@@ -59,7 +68,8 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 	runner, err := opts.RunnerFactory(cfg)
 	if err != nil {
 		stdoutFile.Close()
-		return Result{}, fmt.Errorf("create runner: %w", err)
+		stderrFile.Close()
+		return Result{}, "", "", "", fmt.Errorf("create runner: %w", err)
 	}
 	defer runner.Close()
 
@@ -69,13 +79,18 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 			runErr = fmt.Errorf("close stdout capture: %w", closeErr)
 		}
 	}
+	if closeErr := stderrFile.Close(); closeErr != nil {
+		if runErr == nil {
+			runErr = fmt.Errorf("close stderr capture: %w", closeErr)
+		}
+	}
 
 	parseRes, parseErr := parseJSONL(stdoutPath)
 	if parseErr != nil {
-		return Result{}, parseErr
+		return Result{}, "", "", "", parseErr
 	}
 
-	result := buildResultFromParse(opts, parseRes, collector.stderrString())
+	result := buildResultFromParse(opts, parseRes)
 
 	if runErr != nil {
 		result.Status = StatusError
@@ -86,14 +101,6 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
-	stdoutID := uuid.NewString()
-	timestamp := opts.Clock.Now().Format("20060102T150405Z")
-	relPath := opts.stdoutRelativePath(timestamp, stdoutID)
-	if _, err := opts.BlobStore.Put(ctx, opts.BlobstoreURI, relPath, stdoutPath); err != nil {
-		return Result{}, fmt.Errorf("store stdout: %w", err)
-	}
-	result.StdoutBlobURI = joinBlobURI(opts.BlobstoreURI, relPath)
-
 	if result.SessionID == "" {
 		if parseRes.sessionID != "" {
 			result.SessionID = parseRes.sessionID
@@ -102,13 +109,11 @@ func Execute(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
-	return result, nil
+	return result, stdoutPath, stderrPath, tempDir, nil
 }
 
-func buildResultFromParse(opts Options, outcome parseOutcome, stderr string) Result {
-	res := Result{
-		Stderr: stderr,
-	}
+func buildResultFromParse(opts Options, outcome parseOutcome) Result {
+	res := Result{}
 
 	if outcome.payload == nil {
 		res.Status = StatusError

@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/colony-2/strata-go/pkg/client/artifact"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -166,10 +165,7 @@ func artifactFromFile(relPath, fullPath string, size int64, digest string) (swf.
 	if rel == "" || rel == "." {
 		return nil, fmt.Errorf("astore: invalid relative path %q", relPath)
 	}
-	opener := func(context.Context) (io.ReadCloser, error) {
-		return os.Open(fullPath)
-	}
-	return artifact.FromReader(rel, "", size, opener, artifact.WithSha256(digest)), nil
+	return swf.NewArtifactFromFile(relPath, fullPath)
 }
 
 func isExcluded(rel string, excludes []string) bool {

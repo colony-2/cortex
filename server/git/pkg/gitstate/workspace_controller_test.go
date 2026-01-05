@@ -16,7 +16,7 @@ type writeFile struct {
 	Content string
 }
 
-func newTaskContext(baseRepo, baseRef, worktree, blobStore, cell string) *GitTaskContext {
+func newTaskContext(baseRepo, baseRef, worktree, cell string) *GitTaskContext {
 	return &GitTaskContext{
 		BaseRepo:         baseRepo,
 		BaseRef:          baseRef,
@@ -37,10 +37,9 @@ func TestControllerLifecycle(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
@@ -93,10 +92,9 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
@@ -143,10 +141,9 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
@@ -195,10 +192,9 @@ func TestPersistReturnsNilWhenNoChanges(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
@@ -220,10 +216,9 @@ func TestRestore_WorkspaceAlreadyAtTarget(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 	ctx.PersistHash = baseHash // Set target to current state
 
 	controller := NewController(nil)
@@ -242,10 +237,9 @@ func TestRestore_NilThinPackArtifactError(t *testing.T) {
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
 
-	blobStore := t.TempDir()
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
-	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
 	// Set persist hash to a different commit (that doesn't exist yet)
 	ctx.PersistHash = "1234567890abcdef"
 

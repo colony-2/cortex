@@ -7,11 +7,39 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type capture struct {
 	options Options
+}
+
+type fakeOpDependencies struct {
+	artifacts []swf.Artifact
+}
+
+func (f *fakeOpDependencies) AddOutputArtifact(artifact swf.Artifact) error {
+	f.artifacts = append(f.artifacts, artifact)
+	return nil
+}
+
+func (f *fakeOpDependencies) GetInputArtifacts() []swf.Artifact {
+	return nil
+}
+
+func (f *fakeOpDependencies) GetOutputArtifacts() []swf.Artifact {
+	return f.artifacts
+}
+
+func (f *fakeOpDependencies) Database() *gorm.DB {
+	return nil
+}
+
+func (f *fakeOpDependencies) WorkflowControl() workflowctl.WorkflowControl {
+	return nil
 }
 
 func TestRunCodexActivitySuccess(t *testing.T) {
@@ -19,39 +47,50 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	cellDir := filepath.Join(worktree, "cells", "alpha")
 	require.NoError(t, os.MkdirAll(cellDir, 0o755))
 
+	// Create temp files for stdout and stderr
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("test output"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte("test errors"), 0o644))
+
 	var cap capture
-	executeLibrary = func(ctx context.Context, opts Options) (Result, error) {
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
 		cap.options = opts
 		return Result{
 			Status:              StatusCompleted,
 			SessionID:           "sess-123",
 			AssistantSummary:    "all good",
 			PendingDependencies: []Dependency{},
-			StdoutBlobURI:       "file://blob/codex/output",
-		}, nil
+		}, stdoutPath, stderrPath, tempDir, nil
 	}
 	defer func() { executeLibrary = Execute }()
 
+	inv := &fakeOpDependencies{}
 	input := ExecOpInput{
 		Prompt: "do something",
 		Env:    map[string]string{"FOO": "BAR"},
 		Context: map[string]interface{}{
-			"worktree":  worktree,
-			"blobstore": "file:///blob",
-			"cellname":  "alpha",
+			"worktree": worktree,
+			"cellname": "alpha",
 		},
 	}
 
-	out, err := runCodexActivity(nil, context.Background(), input)
+	out, err := runCodexActivity(inv, context.Background(), input)
 	require.NoError(t, err)
 
 	require.Equal(t, StatusCompleted, Status(out.Status))
 	require.Equal(t, "sess-123", out.SessionID)
 	require.Equal(t, "all good", out.AssistantSummary)
-	require.Equal(t, "file://blob/codex/output", out.StdoutBlobURI)
+
+	// Verify artifacts were created
+	require.Len(t, inv.artifacts, 2)
+	require.Contains(t, inv.artifacts[0].Name(), "codex_stdout_")
+	require.Contains(t, inv.artifacts[0].Name(), ".jsonl")
+	require.Contains(t, inv.artifacts[1].Name(), "codex_stderr_")
+	require.Contains(t, inv.artifacts[1].Name(), ".txt")
 
 	require.Equal(t, "do something", cap.options.Prompt)
-	require.Equal(t, "file:///blob", cap.options.BlobstoreURI)
 	require.Equal(t, worktree, cap.options.WorktreeRoot)
 	require.Equal(t, filepath.Join("cells", "alpha"), cap.options.CellRelativePath)
 	require.Equal(t, "BAR", cap.options.ExtraEnv["FOO"])
@@ -70,8 +109,8 @@ func TestRunCodexActivityMissingContext(t *testing.T) {
 }
 
 func TestRunCodexActivityLibraryError(t *testing.T) {
-	executeLibrary = func(ctx context.Context, opts Options) (Result, error) {
-		return Result{}, errors.New("boom")
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		return Result{}, "", "", "", errors.New("boom")
 	}
 	defer func() { executeLibrary = Execute }()
 
@@ -79,8 +118,7 @@ func TestRunCodexActivityLibraryError(t *testing.T) {
 	input := ExecOpInput{
 		Prompt: "ok",
 		Context: map[string]interface{}{
-			"worktree":  worktree,
-			"blobstore": "file:///blob",
+			"worktree": worktree,
 		},
 	}
 	_, err := runCodexActivity(nil, context.Background(), input)

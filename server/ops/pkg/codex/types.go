@@ -31,8 +31,6 @@ type Result struct {
 	IncompleteCategory  string       `json:"incompleteCategory,omitempty"`
 	PendingDependencies []Dependency `json:"pendingDependencies,omitempty"`
 	ErrorMessage        string       `json:"errorMessage,omitempty"`
-	Stderr              string       `json:"stderr,omitempty"`
-	StdoutBlobURI       string       `json:"stdoutBlobUri"`
 }
 
 // Clock abstracts time retrieval for deterministic testing.
@@ -53,11 +51,6 @@ type Runner interface {
 // RunnerFactory constructs runners from the generated EphemeralConfig.
 type RunnerFactory func(config *shai.SandboxConfig) (Runner, error)
 
-// BlobStore provides persistence for stdout artifacts.
-type BlobStore interface {
-	Put(ctx context.Context, baseURI, relativePath, sourcePath string) (string, error)
-}
-
 // Options control Execute behaviour.
 type Options struct {
 	Prompt    string
@@ -67,10 +60,8 @@ type Options struct {
 
 	WorktreeRoot     string
 	CellRelativePath string
-	BlobstoreURI     string
 
 	Clock            Clock
 	RunnerFactory    RunnerFactory
-	BlobStore        BlobStore
 	StructuredSchema []byte
 }
