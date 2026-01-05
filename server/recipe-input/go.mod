@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0
+	github.com/colony-2/swf-go v0.0.0-20251230004504-71e8259a061e
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/stretchr/testify v1.11.1
 )
@@ -18,7 +18,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -35,7 +35,6 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect

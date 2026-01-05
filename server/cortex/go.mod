@@ -42,10 +42,10 @@ require (
 	github.com/colony-2/colony2/server/recipes v0.0.0-20251229235014-89db51765446 // indirect
 	github.com/colony-2/colony2/server/registry v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251225022150-97f04a11c9ec // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0 // indirect
+	github.com/colony-2/swf-go v0.0.0-20251230004504-71e8259a061e // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

@@ -18,7 +18,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20251228013908-3d978e868ad0
+	github.com/colony-2/swf-go v0.0.0-20251230004504-71e8259a061e
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
@@ -36,7 +36,6 @@ require (
 	cloud.google.com/go v0.118.3 // indirect
 	cloud.google.com/go/auth v0.15.0 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
-	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/DataDog/zstd v1.4.5 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
@@ -56,7 +55,7 @@ require (
 	github.com/colony-2/colony2/server/llm v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/shai v0.0.4 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -78,7 +77,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
-	github.com/go-sql-driver/mysql v1.9.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
@@ -158,6 +156,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gorm.io/datatypes v1.2.7 // indirect
-	gorm.io/driver/mysql v1.5.6 // indirect
 )
