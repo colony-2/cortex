@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
@@ -17,22 +18,42 @@ func TestGetOrCreateGitWorkspace_ClonesFromProjectRepo(t *testing.T) {
 	ctx := context.Background()
 	gitRepo := testutil.NewRealGitRepository()
 
-	// Create a project repository
+	// Create a bare project repository (can receive pushes)
 	projectRepoPath := t.TempDir()
-	if err := testutil.CreateGitRepo(ctx, projectRepoPath); err != nil {
-		t.Fatalf("Failed to create project repo: %v", err)
+	cmd := testutil.GitCommand(ctx, filepath.Dir(projectRepoPath), "init", "--bare", filepath.Base(projectRepoPath))
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create bare project repo: %v", err)
 	}
 
-	// Add a test file to project repo
-	testFile := filepath.Join(projectRepoPath, "README.md")
+	// Clone to a temp location to add content
+	tempClone := t.TempDir()
+	if err := gitRepo.Clone(ctx, projectRepoPath, tempClone, git.CloneOptions{}); err != nil {
+		t.Fatalf("Failed to clone bare repo: %v", err)
+	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, tempClone); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
+	// Add a test file to temp clone
+	testFile := filepath.Join(tempClone, "README.md")
 	if err := os.WriteFile(testFile, []byte("# Test Project"), 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
-	if err := gitRepo.StageFiles(ctx, projectRepoPath, []string{"README.md"}); err != nil {
+	if err := gitRepo.StageFiles(ctx, tempClone, []string{"README.md"}); err != nil {
 		t.Fatalf("Failed to stage file: %v", err)
 	}
-	if err := gitRepo.CreateCommit(ctx, projectRepoPath, "Add README"); err != nil {
+	if err := gitRepo.CreateCommit(ctx, tempClone, "Add README"); err != nil {
 		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Push to bare repo (using default branch)
+	if _, err := gitRepo.Push(ctx, tempClone, git.PushOptions{
+		Remote:      "origin",
+		SetUpstream: true,
+	}); err != nil {
+		t.Fatalf("Failed to push to bare repo: %v", err)
 	}
 
 	// Setup mock project service with git repo path
@@ -88,27 +109,45 @@ func TestGetOrCreateGitWorkspace_WithBranch(t *testing.T) {
 	ctx := context.Background()
 	gitRepo := testutil.NewRealGitRepository()
 
-	// Create a project repository with multiple branches
+	// Create a bare project repository (can receive pushes)
 	projectRepoPath := t.TempDir()
-	if err := testutil.CreateGitRepo(ctx, projectRepoPath); err != nil {
-		t.Fatalf("Failed to create project repo: %v", err)
+	if err := testutil.CreateBareGitRepo(ctx, projectRepoPath); err != nil {
+		t.Fatalf("Failed to create bare project repo: %v", err)
+	}
+
+	// Clone to a temp location to create branches and add content
+	tempClone := t.TempDir()
+	if err := gitRepo.Clone(ctx, projectRepoPath, tempClone, git.CloneOptions{}); err != nil {
+		t.Fatalf("Failed to clone bare repo: %v", err)
+	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, tempClone); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
 	}
 
 	// Create a feature branch with different content
-	cmd := testutil.GitCommand(ctx, projectRepoPath, "checkout", "-b", "feature")
+	cmd := testutil.GitCommand(ctx, tempClone, "checkout", "-b", "feature")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to create branch: %v", err)
 	}
 
-	featureFile := filepath.Join(projectRepoPath, "feature.txt")
+	featureFile := filepath.Join(tempClone, "feature.txt")
 	if err := os.WriteFile(featureFile, []byte("Feature content"), 0644); err != nil {
 		t.Fatalf("Failed to write feature file: %v", err)
 	}
-	if err := gitRepo.StageFiles(ctx, projectRepoPath, []string{"feature.txt"}); err != nil {
+	if err := gitRepo.StageFiles(ctx, tempClone, []string{"feature.txt"}); err != nil {
 		t.Fatalf("Failed to stage file: %v", err)
 	}
-	if err := gitRepo.CreateCommit(ctx, projectRepoPath, "Add feature"); err != nil {
+	if err := gitRepo.CreateCommit(ctx, tempClone, "Add feature"); err != nil {
 		t.Fatalf("Failed to commit: %v", err)
+	}
+	if _, err := gitRepo.Push(ctx, tempClone, git.PushOptions{
+		Remote:      "origin",
+		Branch:      "feature",
+		SetUpstream: true,
+	}); err != nil {
+		t.Fatalf("Failed to push feature branch to bare repo: %v", err)
 	}
 
 	// Setup project with specific branch
@@ -336,6 +375,11 @@ func TestPushToOrigin(t *testing.T) {
 		t.Fatalf("Failed to clone: %v", err)
 	}
 
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
 	// Make a change in workspace
 	testFile := filepath.Join(workspacePath, "new.txt")
 	if err := os.WriteFile(testFile, []byte("New content"), 0644); err != nil {
@@ -390,6 +434,12 @@ func TestGitIntegration_FullWorkflow(t *testing.T) {
 	if err := gitRepo.Clone(ctx, originPath, tempClone, git.CloneOptions{}); err != nil {
 		t.Fatalf("Failed to clone: %v", err)
 	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, tempClone); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
 	initFile := filepath.Join(tempClone, ".gitkeep")
 	if err := os.WriteFile(initFile, []byte(""), 0644); err != nil {
 		t.Fatalf("Failed to write .gitkeep: %v", err)
@@ -439,6 +489,12 @@ func TestGitIntegration_FullWorkflow(t *testing.T) {
 	if err := gitRepo.Clone(ctx, originPath, otherClone, git.CloneOptions{}); err != nil {
 		t.Fatalf("Failed to clone for other user: %v", err)
 	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, otherClone); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
 	otherFile := filepath.Join(otherClone, "other.txt")
 	if err := os.WriteFile(otherFile, []byte("Other change"), 0644); err != nil {
 		t.Fatalf("Failed to write: %v", err)
@@ -490,5 +546,181 @@ func TestGitIntegration_FullWorkflow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(verifyClone, "other.txt")); err != nil {
 		t.Errorf("other.txt not found in fresh clone: %v", err)
+	}
+}
+
+// TestPushToOrigin_NonBareRepo_SameBranch verifies pushing to non-bare repo on same branch
+func TestPushToOrigin_NonBareRepo_SameBranch(t *testing.T) {
+	ctx := context.Background()
+	gitRepo := testutil.NewRealGitRepository()
+
+	// Create a non-bare origin repo (regular working directory)
+	originPath := t.TempDir()
+	if err := testutil.CreateGitRepo(ctx, originPath); err != nil {
+		t.Fatalf("Failed to create origin repo: %v", err)
+	}
+
+	// Add initial content to origin
+	testFile := filepath.Join(originPath, "initial.txt")
+	if err := os.WriteFile(testFile, []byte("Initial"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := gitRepo.StageFiles(ctx, originPath, []string{"initial.txt"}); err != nil {
+		t.Fatalf("Failed to stage: %v", err)
+	}
+	if err := gitRepo.CreateCommit(ctx, originPath, "Initial commit"); err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Clone to workspace
+	workspacePath := t.TempDir()
+	if err := gitRepo.Clone(ctx, originPath, workspacePath, git.CloneOptions{}); err != nil {
+		t.Fatalf("Failed to clone: %v", err)
+	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
+	// Make a change in workspace (on same branch as origin)
+	newFile := filepath.Join(workspacePath, "new.txt")
+	if err := os.WriteFile(newFile, []byte("New content"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := gitRepo.StageFiles(ctx, workspacePath, []string{"new.txt"}); err != nil {
+		t.Fatalf("Failed to stage: %v", err)
+	}
+	if err := gitRepo.CreateCommit(ctx, workspacePath, "Add new file"); err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	svc := &service{gitRepo: gitRepo}
+
+	// Push to non-bare origin on same branch
+	// This should configure receive.denyCurrentBranch = updateInstead
+	err := svc.pushToOrigin(ctx, workspacePath)
+	if err != nil {
+		t.Fatalf("pushToOrigin failed: %v", err)
+	}
+
+	// Verify origin's working directory was updated
+	originFile := filepath.Join(originPath, "new.txt")
+	content, err := os.ReadFile(originFile)
+	if err != nil {
+		t.Errorf("new.txt not found in origin working directory: %v", err)
+	}
+	if string(content) != "New content" {
+		t.Errorf("Content = %q, want %q", string(content), "New content")
+	}
+
+	// Verify receive.denyCurrentBranch is set to updateInstead
+	cmd := testutil.GitCommand(ctx, originPath, "config", "receive.denyCurrentBranch")
+	output, err := cmd.Output()
+	if err != nil {
+		t.Errorf("Failed to read receive.denyCurrentBranch config: %v", err)
+	}
+	if strings.TrimSpace(string(output)) != "updateInstead" {
+		t.Errorf("receive.denyCurrentBranch = %q, want %q", strings.TrimSpace(string(output)), "updateInstead")
+	}
+}
+
+// TestPushToOrigin_NonBareRepo_DifferentBranch verifies pushing to non-bare repo on different branch
+func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
+	ctx := context.Background()
+	gitRepo := testutil.NewRealGitRepository()
+
+	// Create a non-bare origin repo (will be on default branch)
+	originPath := t.TempDir()
+	if err := testutil.CreateGitRepo(ctx, originPath); err != nil {
+		t.Fatalf("Failed to create origin repo: %v", err)
+	}
+
+	// Add initial content to origin
+	testFile := filepath.Join(originPath, "initial.txt")
+	if err := os.WriteFile(testFile, []byte("Initial"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := gitRepo.StageFiles(ctx, originPath, []string{"initial.txt"}); err != nil {
+		t.Fatalf("Failed to stage: %v", err)
+	}
+	if err := gitRepo.CreateCommit(ctx, originPath, "Initial commit"); err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Clone to workspace
+	workspacePath := t.TempDir()
+	if err := gitRepo.Clone(ctx, originPath, workspacePath, git.CloneOptions{}); err != nil {
+		t.Fatalf("Failed to clone: %v", err)
+	}
+
+	// Configure git user for commits
+	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+		t.Fatalf("Failed to configure git user: %v", err)
+	}
+
+	// Create and checkout a feature branch in workspace
+	cmd := testutil.GitCommand(ctx, workspacePath, "checkout", "-b", "feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create feature branch: %v", err)
+	}
+
+	// Make a change in workspace on feature branch
+	featureFile := filepath.Join(workspacePath, "feature.txt")
+	if err := os.WriteFile(featureFile, []byte("Feature content"), 0644); err != nil {
+		t.Fatalf("Failed to write file: %v", err)
+	}
+	if err := gitRepo.StageFiles(ctx, workspacePath, []string{"feature.txt"}); err != nil {
+		t.Fatalf("Failed to stage: %v", err)
+	}
+	if err := gitRepo.CreateCommit(ctx, workspacePath, "Add feature"); err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	svc := &service{gitRepo: gitRepo}
+
+	// Push to non-bare origin on different branch (origin on default branch, workspace on feature)
+	// This should work without updateInstead since we're not pushing to checked-out branch
+	err := svc.pushToOrigin(ctx, workspacePath)
+	if err != nil {
+		t.Fatalf("pushToOrigin failed: %v", err)
+	}
+
+	// Verify feature branch exists in origin
+	cmd = testutil.GitCommand(ctx, originPath, "rev-parse", "feature")
+	if err := cmd.Run(); err != nil {
+		t.Errorf("feature branch not found in origin: %v", err)
+	}
+
+	// Verify origin is still on its original branch (not feature)
+	cmd = testutil.GitCommand(ctx, originPath, "rev-parse", "--abbrev-ref", "HEAD")
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("Failed to get origin branch: %v", err)
+	}
+	originBranch := strings.TrimSpace(string(output))
+	if originBranch == "feature" {
+		t.Errorf("Origin should not be on feature branch, got: %q", originBranch)
+	}
+
+	// Verify feature.txt does NOT exist in origin working directory (since it's on feature branch)
+	originFeatureFile := filepath.Join(originPath, "feature.txt")
+	if _, err := os.Stat(originFeatureFile); err == nil {
+		t.Errorf("feature.txt should not exist in origin working directory (origin is on %s, not feature)", originBranch)
+	}
+
+	// Checkout feature branch in origin to verify the content was pushed
+	cmd = testutil.GitCommand(ctx, originPath, "checkout", "feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to checkout feature branch in origin: %v", err)
+	}
+
+	// Now verify feature.txt exists
+	content, err := os.ReadFile(originFeatureFile)
+	if err != nil {
+		t.Errorf("feature.txt not found in origin after checkout: %v", err)
+	}
+	if string(content) != "Feature content" {
+		t.Errorf("Content = %q, want %q", string(content), "Feature content")
 	}
 }

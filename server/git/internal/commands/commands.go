@@ -418,16 +418,78 @@ func (r *Repository) Push(ctx context.Context, nodePath string, remote string, b
 		return false, false, 0, fmt.Errorf("not a git repository")
 	}
 
-	args := []string{"push"}
-
 	if remote == "" {
 		remote = "origin"
 	}
-	args = append(args, remote)
 
-	if branch != "" {
-		args = append(args, branch)
+	// Get the remote URL to determine if we need special handling
+	remotes, err := r.ListRemotes(ctx, nodePath)
+	if err != nil {
+		return false, false, 0, fmt.Errorf("failed to list remotes: %w", err)
 	}
+
+	var originURL string
+	for _, rem := range remotes {
+		if rem.Name == remote {
+			originURL = rem.FetchURL
+			break
+		}
+	}
+
+	if originURL != "" {
+		// Check if origin is a local path (not a remote URL like git@github.com)
+		// Only local paths can be checked for bare status
+		isLocalPath := !strings.Contains(originURL, "://") && !strings.HasPrefix(originURL, "git@")
+
+		if isLocalPath {
+			// Check if origin is a bare repository
+			isBare, err := r.IsRepoBare(ctx, originURL)
+			if err != nil {
+				// If we can't determine, assume it's safe to push normally
+				isBare = true
+			}
+
+			// Configure origin for non-bare repository if needed
+			if !isBare {
+				// Ensure we have the branch name
+				if branch == "" {
+					branch, err = r.GetCurrentBranch(ctx, nodePath)
+					if err != nil {
+						return false, false, 0, fmt.Errorf("failed to get workspace branch: %w", err)
+					}
+				}
+
+				// Get origin's current branch
+				originBranch, err := r.GetCurrentBranch(ctx, originURL)
+				if err != nil {
+					// Can't get branch - possibly detached HEAD or other issue
+					// Safer to not configure updateInstead
+				} else {
+					// If pushing to currently checked-out branch, configure updateInstead
+					if branch == originBranch {
+						cmd := exec.CommandContext(ctx, "git", "config", "receive.denyCurrentBranch", "updateInstead")
+						cmd.Dir = originURL
+						if err := cmd.Run(); err != nil {
+							return false, false, 0, fmt.Errorf("failed to configure receive.denyCurrentBranch: %w", err)
+						}
+					}
+					// If different branch, no special config needed (safe to push)
+				}
+			}
+		}
+		// If remote URL, no special config needed (handled by remote server)
+	}
+
+	// Ensure we have a branch when setUpstream is true or pushing to local repo
+	// This handles git configs with push.default=nothing
+	if branch == "" && (setUpstream || (originURL != "" && !strings.Contains(originURL, "://") && !strings.HasPrefix(originURL, "git@"))) {
+		branch, err = r.GetCurrentBranch(ctx, nodePath)
+		if err != nil {
+			return false, false, 0, fmt.Errorf("failed to get current branch: %w", err)
+		}
+	}
+
+	args := []string{"push"}
 
 	if force {
 		args = append(args, "--force")
@@ -435,6 +497,12 @@ func (r *Repository) Push(ctx context.Context, nodePath string, remote string, b
 
 	if setUpstream {
 		args = append(args, "--set-upstream")
+	}
+
+	args = append(args, remote)
+
+	if branch != "" {
+		args = append(args, branch)
 	}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -744,6 +812,64 @@ func (r *Repository) ListFilesAtCommit(ctx context.Context, nodePath string, com
 	}
 
 	return files, nil
+}
+
+// IsRepoBare checks if a repository is bare (no working directory).
+func (r *Repository) IsRepoBare(ctx context.Context, repoPath string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--is-bare-repository")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to check if repo is bare: %w", err)
+	}
+	return strings.TrimSpace(string(output)) == "true", nil
+}
+
+// GetCurrentBranch returns the name of the current branch.
+// Returns error if repository is in detached HEAD state.
+func (r *Repository) GetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current branch: %w", err)
+	}
+	branch := strings.TrimSpace(string(output))
+	if branch == "HEAD" {
+		// Detached HEAD state
+		return "", fmt.Errorf("repository is in detached HEAD state")
+	}
+	return branch, nil
+}
+
+// ConfigureUser sets the user.name and user.email for a repository.
+// This is required before creating commits.
+func (r *Repository) ConfigureUser(ctx context.Context, repoPath string, name string, email string) error {
+	// Set user.name
+	cmd := exec.CommandContext(ctx, "git", "config", "user.name", name)
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set user.name: %w", err)
+	}
+
+	// Set user.email
+	cmd = exec.CommandContext(ctx, "git", "config", "user.email", email)
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set user.email: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateRemoteURL updates the URL of an existing remote.
+func (r *Repository) UpdateRemoteURL(ctx context.Context, repoPath string, remoteName string, newURL string) error {
+	cmd := exec.CommandContext(ctx, "git", "remote", "set-url", remoteName, newURL)
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to update remote URL: %w", err)
+	}
+	return nil
 }
 
 // isGitRepo checks if a directory is a git repository

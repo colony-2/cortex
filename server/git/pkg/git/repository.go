@@ -216,6 +216,20 @@ type Repository interface {
 
 	// ListFilesAtCommit lists all files in a directory at a specific commit.
 	ListFilesAtCommit(ctx context.Context, nodePath string, commit string, dirPath string) ([]FileInfo, error)
+
+	// IsRepoBare checks if a repository is bare (no working directory).
+	IsRepoBare(ctx context.Context, repoPath string) (bool, error)
+
+	// GetCurrentBranch returns the name of the current branch.
+	// Returns error if repository is in detached HEAD state.
+	GetCurrentBranch(ctx context.Context, repoPath string) (string, error)
+
+	// ConfigureUser sets the user.name and user.email for a repository.
+	// This is required before creating commits.
+	ConfigureUser(ctx context.Context, repoPath string, name string, email string) error
+
+	// UpdateRemoteURL updates the URL of an existing remote.
+	UpdateRemoteURL(ctx context.Context, repoPath string, remoteName string, newURL string) error
 }
 
 // Config defines configuration for Git operations.
@@ -401,4 +415,20 @@ func (a *repoAdapter) ListFilesAtCommit(ctx context.Context, nodePath string, co
 	}
 
 	return result, nil
+}
+
+func (a *repoAdapter) IsRepoBare(ctx context.Context, repoPath string) (bool, error) {
+	return a.repo.IsRepoBare(ctx, repoPath)
+}
+
+func (a *repoAdapter) GetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	return a.repo.GetCurrentBranch(ctx, repoPath)
+}
+
+func (a *repoAdapter) ConfigureUser(ctx context.Context, repoPath string, name string, email string) error {
+	return a.repo.ConfigureUser(ctx, repoPath, name, email)
+}
+
+func (a *repoAdapter) UpdateRemoteURL(ctx context.Context, repoPath string, remoteName string, newURL string) error {
+	return a.repo.UpdateRemoteURL(ctx, repoPath, remoteName, newURL)
 }

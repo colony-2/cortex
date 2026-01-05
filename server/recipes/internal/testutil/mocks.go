@@ -107,10 +107,17 @@ func (s *MockProjectService) DeleteProject(ctx context.Context, id project.ID) e
 
 // RealGitRepository implements git.Repository using real git commands.
 // This is for integration testing with actual git operations.
-type RealGitRepository struct{}
+type RealGitRepository struct{
+	underlying git.Repository
+}
 
 func NewRealGitRepository() *RealGitRepository {
-	return &RealGitRepository{}
+	// Use the actual git.Repository implementation for correct behavior
+	underlying := git.NewRepository(git.Config{
+		DefaultAuthor: "Test User",
+		DefaultEmail:  "test@example.com",
+	})
+	return &RealGitRepository{underlying: underlying}
 }
 
 func (r *RealGitRepository) InitRepository(ctx context.Context, path string, opts git.InitOptions) error {
@@ -192,28 +199,8 @@ func (r *RealGitRepository) Pull(ctx context.Context, path string, opts git.Pull
 }
 
 func (r *RealGitRepository) Push(ctx context.Context, path string, opts git.PushOptions) (*git.PushResult, error) {
-	args := []string{"push"}
-	if opts.SetUpstream {
-		args = append(args, "--set-upstream")
-	}
-	if opts.Force {
-		args = append(args, "--force")
-	}
-	if opts.Remote != "" {
-		args = append(args, opts.Remote)
-	}
-	if opts.Branch != "" {
-		args = append(args, opts.Branch)
-	}
-
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = path
-	err := cmd.Run()
-
-	return &git.PushResult{
-		Pushed:   err == nil,
-		Rejected: err != nil,
-	}, err
+	// Delegate to underlying implementation which handles bare/non-bare logic
+	return r.underlying.Push(ctx, path, opts)
 }
 
 func (r *RealGitRepository) CreateCommit(ctx context.Context, path string, message string) error {
@@ -362,6 +349,26 @@ func (r *RealGitRepository) ListRemotes(ctx context.Context, path string) ([]git
 	return remotes, nil
 }
 
+func (r *RealGitRepository) IsRepoBare(ctx context.Context, path string) (bool, error) {
+	// Delegate to underlying implementation
+	return r.underlying.IsRepoBare(ctx, path)
+}
+
+func (r *RealGitRepository) GetCurrentBranch(ctx context.Context, path string) (string, error) {
+	// Delegate to underlying implementation
+	return r.underlying.GetCurrentBranch(ctx, path)
+}
+
+func (r *RealGitRepository) ConfigureUser(ctx context.Context, path string, name string, email string) error {
+	// Delegate to underlying implementation
+	return r.underlying.ConfigureUser(ctx, path, name, email)
+}
+
+func (r *RealGitRepository) UpdateRemoteURL(ctx context.Context, path string, remoteName string, newURL string) error {
+	// Delegate to underlying implementation
+	return r.underlying.UpdateRemoteURL(ctx, path, remoteName, newURL)
+}
+
 // CreateTestRecipeContent creates valid recipe YAML content for testing.
 func CreateTestRecipeContent(id string) []byte {
 	return []byte(fmt.Sprintf(`version: "1.0"
@@ -379,6 +386,11 @@ func CreateGitRepo(ctx context.Context, path string) error {
 		return err
 	}
 
+	// Configure git user for commits
+	if err := ConfigureGitUser(ctx, path); err != nil {
+		return err
+	}
+
 	// Create a minimal initial commit
 	initFile := filepath.Join(path, ".gitkeep")
 	if err := writeFile(initFile, []byte("")); err != nil {
@@ -390,6 +402,41 @@ func CreateGitRepo(ctx context.Context, path string) error {
 	}
 
 	return repo.CreateCommit(ctx, path, "Initial commit")
+}
+
+// CreateBareGitRepo creates a bare git repository in the given path for testing.
+// Bare repositories can receive pushes, unlike non-bare repositories.
+func CreateBareGitRepo(ctx context.Context, path string) error {
+	repo := NewRealGitRepository()
+	if err := repo.InitRepository(ctx, path, git.InitOptions{Bare: true}); err != nil {
+		return err
+	}
+
+	// Set default branch to avoid issues with initial push
+	cmd := GitCommand(ctx, path, "symbolic-ref", "HEAD", "refs/heads/main")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to set default branch: %w", err)
+	}
+
+	return nil
+}
+
+// ConfigureGitUser configures git user.name and user.email for a repository.
+// This is required before creating commits in tests.
+func ConfigureGitUser(ctx context.Context, path string) error {
+	cmds := [][]string{
+		{"git", "config", "user.name", "Test User"},
+		{"git", "config", "user.email", "test@example.com"},
+	}
+
+	for _, cmdArgs := range cmds {
+		cmd := GitCommand(ctx, path, cmdArgs[1:]...)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func writeFile(path string, content []byte) error {

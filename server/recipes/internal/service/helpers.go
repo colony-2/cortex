@@ -64,6 +64,11 @@ func (s *service) getOrCreateGitWorkspace(ctx context.Context, projectID project
 		return "", fmt.Errorf("failed to clone repository from %s: %w", proj.GitRepoPath, err)
 	}
 
+	// Configure git user for the workspace (required for commits)
+	if err := s.gitRepo.ConfigureUser(ctx, workspacePath, "Recipe Service", "recipes@colony2.internal"); err != nil {
+		return "", fmt.Errorf("failed to configure git user: %w", err)
+	}
+
 	// Ensure .c2/recipes directory structure exists
 	recipesDir := filepath.Join(workspacePath, ".c2", "recipes")
 	if _, err := os.Stat(recipesDir); os.IsNotExist(err) {
@@ -121,9 +126,7 @@ func (s *service) ensureOriginRemote(ctx context.Context, workspacePath, repoURL
 		}
 	} else if originURL != repoURL {
 		// Origin exists but with different URL - update it
-		cmd := exec.CommandContext(ctx, "git", "remote", "set-url", "origin", repoURL)
-		cmd.Dir = workspacePath
-		if err := cmd.Run(); err != nil {
+		if err := s.gitRepo.UpdateRemoteURL(ctx, workspacePath, "origin", repoURL); err != nil {
 			return fmt.Errorf("failed to update origin remote URL: %w", err)
 		}
 	}
@@ -154,8 +157,9 @@ func (s *service) syncWorkspace(ctx context.Context, workspacePath string) error
 }
 
 // pushToOrigin pushes changes to the primary repository.
+// The git module handles bare vs non-bare repository logic automatically.
 func (s *service) pushToOrigin(ctx context.Context, workspacePath string) error {
-	// Push to origin
+	// Push to origin (git module handles bare/non-bare logic)
 	pushResult, err := s.gitRepo.Push(ctx, workspacePath, git.PushOptions{
 		Remote:      "origin",
 		Branch:      "", // Use current branch
@@ -167,7 +171,7 @@ func (s *service) pushToOrigin(ctx context.Context, workspacePath string) error 
 	}
 
 	if pushResult.Rejected {
-		return fmt.Errorf("push was rejected by remote")
+		return fmt.Errorf("push was rejected by remote (possibly not a fast-forward)")
 	}
 
 	return nil
