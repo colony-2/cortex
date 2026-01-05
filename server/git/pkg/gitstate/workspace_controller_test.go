@@ -45,40 +45,47 @@ func TestControllerLifecycle(t *testing.T) {
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
-	require.NoError(t, controller.Restore(context.Background(), ctx))
+	// Initial restore with no thin pack artifact
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
 
 	file := writeFile{Path: filepath.Join(worktree, "cells", "alpha", "hello.txt"), Content: "hello"}
 	require.NoError(t, os.WriteFile(file.Path, []byte(file.Content), 0o644))
 
-	output, err := controller.Persist(context.Background(), ctx)
+	// Persist returns output metadata and artifact
+	output, artifact, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
 	require.NotNil(t, output)
+	require.NotNil(t, artifact)
+	require.Equal(t, "__git_state_thin_pack__", artifact.Name())
+
+	// Check output metadata
+	require.True(t, output.HasChanges)
 	require.NotEmpty(t, output.CommitHash)
 	require.NotEqual(t, baseHash, output.CommitHash)
+	require.NotEmpty(t, output.ParentHash)
+	require.NotEmpty(t, output.ThinPackPath)
 
-	ctx.PersistHash = output.CommitHash
-	ctx.ParentHash = output.ParentHash
-	ctx.ThinPackPath = output.ThinPackPath
+	// Check that context was updated
+	require.NotEmpty(t, ctx.PersistHash)
+	require.NotEqual(t, baseHash, ctx.PersistHash)
+	require.Equal(t, output.CommitHash, ctx.PersistHash)
+	require.Equal(t, output.ParentHash, ctx.ParentHash)
 
 	head := gitRevParse(t, worktree, "HEAD")
-	require.True(t, strings.HasPrefix(head, output.CommitHash[:7]))
+	require.True(t, strings.HasPrefix(head, ctx.PersistHash[:7]))
 
-	relativePack, err := filepath.Rel(blobStore, output.ThinPackPath)
-	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(filepath.ToSlash(relativePack), "git/thin-packs"))
-
-	info, err := os.Stat(output.ThinPackPath)
-	require.NoError(t, err)
-	require.Greater(t, info.Size(), int64(0))
-
+	// Create a new worktree and restore using the artifact
 	restoredWorktree := filepath.Join(t.TempDir(), "restore")
 	restoredCtx := *ctx
 	restoredCtx.WorktreePath = restoredWorktree
+	// Reset ResolvedBaseHash since the new worktree will be cloned fresh at base
+	restoredCtx.ResolvedBaseHash = baseHash
 
 	require.NoError(t, controller.prepareWorkspace(context.Background(), &restoredCtx))
-	require.NoError(t, controller.Restore(context.Background(), &restoredCtx))
+	// Restore with the thin pack artifact
+	require.NoError(t, controller.Restore(context.Background(), &restoredCtx, artifact))
 	restoredHead := gitRevParse(t, restoredWorktree, "HEAD")
-	require.True(t, strings.HasPrefix(restoredHead, output.CommitHash[:7]))
+	require.True(t, strings.HasPrefix(restoredHead, ctx.PersistHash[:7]))
 }
 
 func TestControllerPersistCleansOutsideCell(t *testing.T) {
@@ -94,7 +101,7 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
-	require.NoError(t, controller.Restore(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
 
 	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
@@ -103,10 +110,21 @@ func TestControllerPersistCleansOutsideCell(t *testing.T) {
 	outside := filepath.Join(worktree, "rogue.txt")
 	require.NoError(t, os.WriteFile(outside, []byte("rogue"), 0o644))
 
-	output, err := controller.Persist(context.Background(), ctx)
+	output, artifact, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
 	require.NotNil(t, output)
+	require.NotNil(t, artifact)
+
+	// Check output metadata
+	require.True(t, output.HasChanges)
 	require.NotEmpty(t, output.CommitHash)
+	require.NotEmpty(t, output.ParentHash)
+	require.NotEmpty(t, output.ThinPackPath)
+
+	// Check that context was updated
+	require.NotEmpty(t, ctx.PersistHash)
+	require.Equal(t, output.CommitHash, ctx.PersistHash)
+	require.Equal(t, output.ParentHash, ctx.ParentHash)
 
 	_, err = os.Stat(outside)
 	require.Error(t, err)
@@ -133,16 +151,27 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 
 	controller := NewController(nil)
 	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
-	require.NoError(t, controller.Restore(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
 
 	inside := filepath.Join(worktree, "cells", "alpha", "alpha.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(inside), 0o755))
 	require.NoError(t, os.WriteFile(inside, []byte("alpha"), 0o644))
 
-	output, err := controller.Persist(context.Background(), ctx)
+	output, artifact, err := controller.Persist(context.Background(), ctx)
 	require.NoError(t, err)
 	require.NotNil(t, output)
+	require.NotNil(t, artifact)
+
+	// Check output metadata
+	require.True(t, output.HasChanges)
 	require.NotEmpty(t, output.CommitHash)
+	require.NotEmpty(t, output.ParentHash)
+	require.NotEmpty(t, output.ThinPackPath)
+
+	// Check that context was updated
+	require.NotEmpty(t, ctx.PersistHash)
+	require.Equal(t, output.CommitHash, ctx.PersistHash)
+	require.Equal(t, output.ParentHash, ctx.ParentHash)
 
 	stray := filepath.Join(worktree, "stray.txt")
 	require.NoError(t, os.WriteFile(stray, []byte("stray"), 0o644))
@@ -150,11 +179,8 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, statBefore.IsDir())
 
-	ctx.PersistHash = output.CommitHash
-	ctx.ParentHash = output.ParentHash
-	ctx.ThinPackPath = output.ThinPackPath
-
-	require.NoError(t, controller.Restore(context.Background(), ctx))
+	// Restore with the thin pack artifact
+	require.NoError(t, controller.Restore(context.Background(), ctx, artifact))
 
 	_, err = os.Stat(stray)
 	require.Error(t, err)
@@ -162,6 +188,75 @@ func TestControllerRestoreCleansOutsideCell(t *testing.T) {
 
 	status := strings.TrimSpace(runGitOutput(t, worktree, "git", "status", "--porcelain"))
 	require.Equal(t, "", status)
+}
+
+func TestPersistReturnsNilWhenNoChanges(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// Don't make any changes
+
+	output, artifact, err := controller.Persist(context.Background(), ctx)
+	require.NoError(t, err)
+	require.NotNil(t, output, "output should not be nil even when there are no changes")
+	require.False(t, output.HasChanges, "output should indicate no changes")
+	require.Nil(t, artifact, "artifact should be nil when there are no changes")
+	require.Empty(t, ctx.PersistHash, "persist hash should be empty when there are no changes")
+}
+
+func TestRestore_WorkspaceAlreadyAtTarget(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	ctx.PersistHash = baseHash // Set target to current state
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+
+	// Even though we pass nil artifact, restore should succeed because we're already at target
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	head := gitRevParse(t, worktree, "HEAD")
+	require.True(t, strings.HasPrefix(head, baseHash[:7]))
+}
+
+func TestRestore_NilThinPackArtifactError(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	blobStore := t.TempDir()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, blobStore, "cells/alpha")
+	// Set persist hash to a different commit (that doesn't exist yet)
+	ctx.PersistHash = "1234567890abcdef"
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+
+	// Restore should fail because we need to restore but have no artifact
+	err := controller.Restore(context.Background(), ctx, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "thin pack artifact required")
 }
 
 func TestBuildCommitMessage(t *testing.T) {

@@ -140,23 +140,58 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 	return func(ctx context.Context, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
 		var zero ActivityInvocationOutput
 
-		if err := controller.Restore(context.Background(), &req.GitTaskContext); err != nil {
+		// Find and filter input thin pack artifact
+		var thinPackArtifact swf.Artifact
+		var nonThinPackArtifacts []swf.Artifact
+
+		for _, art := range inputArtifacts {
+			if art.Name() == "__git_state_thin_pack__" {
+				thinPackArtifact = art
+			} else {
+				nonThinPackArtifacts = append(nonThinPackArtifacts, art)
+			}
+		}
+
+		// Call Restore with artifact (or nil if not present)
+		if err := controller.Restore(context.Background(), &req.GitTaskContext, thinPackArtifact); err != nil {
 			return zero, nil, err
 		}
 
+		// Build OpDependencies with filtered artifacts (thin pack hidden from operation)
 		db := deps.Database()
 		if tx, ok := swf.TxFromCtx(ctx); ok && tx != nil {
 			db = tx
 		}
-		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(inputArtifacts).WithDatabase(db).WithWorkflowControl(deps.WorkflowControl()).Build()
+		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(nonThinPackArtifacts).WithDatabase(db).WithWorkflowControl(deps.WorkflowControl()).Build()
+
+		// Execute operation
 		outputData, err := reg.Step.Invoke(opDeps, ctx, req.Input)
 		if err != nil {
 			return zero, nil, err
 		}
 
-		_, err = controller.Persist(context.Background(), &req.GitTaskContext)
+		// Call Persist (returns output metadata and artifact)
+		_, outputThinPack, err := controller.Persist(context.Background(), &req.GitTaskContext)
 		if err != nil {
 			return zero, nil, err
+		}
+
+		// Determine final thin pack to output (with pass-through logic)
+		var finalThinPack swf.Artifact
+		if outputThinPack != nil {
+			// Persist created a new thin pack (changes were made)
+			finalThinPack = outputThinPack
+		} else if thinPackArtifact != nil {
+			// No changes, but we had an input thin pack - pass through the SAME artifact
+			// This avoids re-uploading; SWF can reuse the existing artifact
+			finalThinPack = thinPackArtifact
+		}
+		// else: no input, no output - finalThinPack stays nil
+
+		// Append output thin pack artifact to operation's output artifacts
+		outputArtifacts := opDeps.GetOutputArtifacts()
+		if finalThinPack != nil {
+			outputArtifacts = append(outputArtifacts, finalThinPack)
 		}
 
 		parentRef := ""
@@ -171,9 +206,8 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 				ParentHash:  req.GitTaskContext.ParentHash,
 				ParentRef:   parentRef,
 			},
-
 			NextTask: reg.NextTaskType,
-		}, opDeps.GetOutputArtifacts(), nil
+		}, outputArtifacts, nil
 	}
 }
 

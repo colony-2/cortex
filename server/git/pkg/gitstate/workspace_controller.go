@@ -3,6 +3,7 @@ package gitstate
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/git/pkg/common"
 	"github.com/colony-2/colony2/server/git/pkg/gitcommit"
 	"github.com/colony-2/colony2/server/git/pkg/gitshallow"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 // Controller orchestrates cloning, restoring, and persisting git state per activity invocation.
@@ -31,8 +33,7 @@ func NewController(adapters map[string]StorageAdapter) *Controller {
 	}
 }
 
-// PrepareWorkspace ensures the worktree exists and the blob-store location is ready.
-
+// PrepareWorkspace ensures the worktree exists.
 func (c *Controller) prepareWorkspace(ctx context.Context, task *GitTaskContext) error {
 	if task.GetWorktreePath() == "" {
 		return fmt.Errorf("git workspace requires worktree path")
@@ -54,18 +55,11 @@ func (c *Controller) prepareWorkspace(ctx context.Context, task *GitTaskContext)
 		}
 	}
 
-	adapter, err := c.adapterFor(task.GetBlobStoreURI())
-	if err != nil {
-		return err
-	}
-	if _, err := adapter.EnsureLocation(ctx, task.GetBlobStoreURI()); err != nil {
-		return fmt.Errorf("prepare blobstore: %w", err)
-	}
 	return nil
 }
 
 // Restore replays thin packs when the target persist hash differs from the workspace state. It also prepares the workspace if it doesn't yet have a local copy of the repo.
-func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
+func (c *Controller) Restore(ctx context.Context, task *GitTaskContext, thinPack swf.Artifact) error {
 	err := c.prepareWorkspace(ctx, task)
 	if err != nil {
 		return err
@@ -100,6 +94,7 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 
 	// if hashes are populated, operate in hash mode
 
+	// LAZY OPTIMIZATION: Check if already at target before touching artifact
 	current, err := common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD")
 	if err != nil {
 		return fmt.Errorf("determine current commit: %w", err)
@@ -109,6 +104,7 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 		return c.ensureCleanAfterRestore(ctx, task)
 	}
 
+	// We need to restore to a different commit
 	rootHash := strings.TrimSpace(task.GetResolvedBaseHash())
 	if rootHash == "" {
 		rootHash = strings.TrimSpace(task.GetParentHash())
@@ -120,32 +116,31 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 		return fmt.Errorf("git workspace requires resolved base hash for restore")
 	}
 
-	adapter, err := c.adapterFor(task.GetBlobStoreURI())
-	if err != nil {
-		return err
-	}
-	storageRoot, err := adapter.EnsureLocation(ctx, task.GetBlobStoreURI())
-	if err != nil {
-		return err
+	// If we need to restore but have no thin pack artifact, return error
+	if thinPack == nil {
+		return fmt.Errorf("thin pack artifact required for restore to commit %s but none provided", targetHash)
 	}
 
-	thinPackDir := filepath.Join(storageRoot, thinPackSubdir)
-	packEntries, err := adapter.ListBlobs(ctx, task.GetBlobStoreURI(), filepath.Join(thinPackSubdir, "*.pack"))
-	if err == nil {
-		expectedCommit := shortHash(task.GetPersistHash())
-		expectedRoot := shortHash(rootHash)
-		found := false
-		for _, entry := range packEntries {
-			name := filepath.Base(entry)
-			if strings.HasPrefix(name, expectedCommit) && strings.HasSuffix(name, expectedRoot+".pack") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil
-		}
+	// Create temp directory for this restore operation
+	thinPackDir, err := os.MkdirTemp("", "thin-pack-restore-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
 	}
+	defer os.RemoveAll(thinPackDir)
+
+	// Extract artifact to temp directory with appropriate filename
+	// Format: {commit_hash}-{parent_hash}-{root_hash}.pack
+	expectedCommit := shortHash(task.GetPersistHash())
+	expectedParent := shortHash(task.GetParentHash())
+	expectedRoot := shortHash(rootHash)
+	thinPackFilename := fmt.Sprintf("%s-%s-%s.pack", expectedCommit, expectedParent, expectedRoot)
+	thinPackPath := filepath.Join(thinPackDir, thinPackFilename)
+
+	if err := thinPack.SaveToFile(ctx, thinPackPath); err != nil {
+		return fmt.Errorf("extract thin pack artifact: %w", err)
+	}
+
+	// Restore using thin pack
 	restoreInput := gitcommit.RestoreCommitActivity{
 		RepoPath:        task.GetWorktreePath(),
 		TargetCommit:    task.GetPersistHash(),
@@ -164,25 +159,17 @@ func (c *Controller) Restore(ctx context.Context, task *GitTaskContext) error {
 	return nil
 }
 
-// Persist captures repository changes, writes thin packs, and returns the new commit hash alongside refreshed context.
-func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcommit.PersistCommitOutput, error) {
+// Persist captures repository changes, writes thin packs, and returns the commit output and a thin pack artifact (or nil if no changes).
+func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcommit.PersistCommitOutput, swf.Artifact, error) {
 	scopePath, err := c.prepareScopedWorkspace(ctx, task)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	adapter, err := c.adapterFor(task.GetBlobStoreURI())
+	// Create temp directory for thin pack persist operation
+	thinPackDir, err := os.MkdirTemp("", "thin-pack-persist-*")
 	if err != nil {
-		return nil, err
-	}
-	localRoot, err := adapter.EnsureLocation(ctx, task.GetBlobStoreURI())
-	if err != nil {
-		return nil, err
-	}
-
-	thinPackDir := filepath.Join(localRoot, thinPackSubdir)
-	if err := os.MkdirAll(thinPackDir, 0o755); err != nil {
-		return nil, fmt.Errorf("ensure thin-pack dir: %w", err)
+		return nil, nil, fmt.Errorf("create temp dir: %w", err)
 	}
 
 	rootHash := task.GetResolvedBaseHash()
@@ -190,7 +177,8 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 		var err error
 		rootHash, err = common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD")
 		if err != nil {
-			return nil, fmt.Errorf("resolve base hash: %w", err)
+			os.RemoveAll(thinPackDir)
+			return nil, nil, fmt.Errorf("resolve base hash: %w", err)
 		}
 		task.ResolvedBaseHash = rootHash
 	}
@@ -211,29 +199,19 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 
 	output, err := gitcommit.PersistCommit(ctx, persistInput)
 	if err != nil {
-		return nil, fmt.Errorf("persist commit failed %w", err)
+		os.RemoveAll(thinPackDir)
+		return nil, nil, fmt.Errorf("persist commit failed %w", err)
 	}
-
-	if output.HasChanges && output.ThinPackPath != "" {
-		relativePackPath, err := filepath.Rel(localRoot, output.ThinPackPath)
-		if err != nil {
-			return nil, fmt.Errorf("compute thin-pack path: %w", err)
-		}
-		if _, err := adapter.PutBlob(ctx, task.GetBlobStoreURI(), relativePackPath, output.ThinPackPath); err != nil {
-			return nil, fmt.Errorf("store thin-pack: %w", err)
-		}
-		task.ThinPackPath = filepath.ToSlash(relativePackPath)
-	}
-
-	//updated.ThinPackPath = filepath.ToSlash(relativePackPath)
 
 	if scopePath != "" {
 		// Ensure the worktree remains clean after persistence.
 		if err := common.EnsureCleanAfterRestore(ctx, task.GetWorktreePath(), scopePath, output.CommitHash); err != nil {
-			return nil, fmt.Errorf("failed to ensure clean repo after persist: %w", err)
+			os.RemoveAll(thinPackDir)
+			return nil, nil, fmt.Errorf("failed to ensure clean repo after persist: %w", err)
 		}
 	}
 
+	// Update task context with persist results
 	if output.HasChanges {
 		task.ParentHash = output.ParentHash
 		task.PersistHash = output.CommitHash
@@ -244,7 +222,35 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 		task.ResolvedBaseHash = rootHash
 	}
 
-	return output, nil
+	// If no changes or no thin pack written, clean up immediately and return output with nil artifact
+	if !output.HasChanges || output.ThinPackPath == "" {
+		os.RemoveAll(thinPackDir)
+		return output, nil, nil
+	}
+
+	// Create lazy artifact with cleanup callback
+	// The temp directory will be cleaned up by SWF after the artifact is consumed
+	thinPackPath := output.ThinPackPath
+	artifact := swf.NewArtifact(
+		"__git_state_thin_pack__",
+		func() (io.ReadCloser, int64, error) {
+			f, err := os.Open(thinPackPath)
+			if err != nil {
+				return nil, 0, fmt.Errorf("open thin pack: %w", err)
+			}
+			info, err := f.Stat()
+			if err != nil {
+				f.Close()
+				return nil, 0, fmt.Errorf("stat thin pack: %w", err)
+			}
+			return f, info.Size(), nil
+		},
+		func() error {
+			return os.RemoveAll(thinPackDir)
+		},
+	)
+
+	return output, artifact, nil
 }
 
 func (c *Controller) prepareScopedWorkspace(ctx context.Context, task *GitTaskContext) (string, error) {
