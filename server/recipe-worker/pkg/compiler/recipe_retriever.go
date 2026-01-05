@@ -8,14 +8,14 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
-	"github.com/colony-2/strata-go/pkg/client/artifact"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"gopkg.in/yaml.v3"
 )
 
 // Concrete implementation of the recipeRetriever
 type recipeRetriever struct {
 	// A map to quickly look up artifacts by name for initial loading
-	artifactMap map[string]artifact.Artifact
+	artifactMap map[string]swf.Artifact
 
 	// The cache for already-deserialized recipes
 	recipeCache map[string]recipe.Recipe
@@ -51,6 +51,7 @@ func (r *recipeRetriever) GetRecipe(name string) (recipe.Recipe, error) {
 	}
 
 	// Get bytes from the artifact
+
 	yamlBytes, err := art.Bytes(ctx)
 	if err != nil {
 		return recipe.Recipe{}, fmt.Errorf("failed to read artifact bytes for %s: %w", name, err)
@@ -67,8 +68,8 @@ func (r *recipeRetriever) GetRecipe(name string) (recipe.Recipe, error) {
 	return newRecipe, nil
 }
 
-func newRetriever(artifacts []artifact.Artifact) *recipeRetriever {
-	artifactMap := make(map[string]artifact.Artifact)
+func newRetriever(artifacts []swf.Artifact) *recipeRetriever {
+	artifactMap := make(map[string]swf.Artifact)
 
 	for _, art := range artifacts {
 		fullArtifactName := art.Name()
