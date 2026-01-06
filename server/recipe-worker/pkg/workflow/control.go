@@ -12,11 +12,11 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
-type RecipeProvider = recipe.RecipeProvider
+type RecipeProjectProvider func(projectId string, recipeRef string) (*recipe.Recipe, error)
 
 type SWFWorkflowControl struct {
 	Engine   swf.SWFEngine
-	Registry RecipeProvider
+	Registry RecipeProjectProvider
 }
 
 func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []workflowctl.JobItem, nextPage string, err error) {
@@ -65,7 +65,7 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey
 }
 
 func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobKey, error) {
-	r, err := s.Registry.GetRecipe(req.RecipeName)
+	r, err := s.Registry(req.TenantId, req.RecipeName)
 	if err != nil {
 		return swf.JobKey{}, err
 	}

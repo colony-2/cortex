@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -26,7 +27,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
-	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	workflowsvc "github.com/colony-2/colony2/server/workflow/pkg/workflow"
@@ -190,22 +190,9 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		}
 	}()
 
-	// Create recipe registry (required for ticket workflow autostart)
-	recipePath := filepath.Join(absNodesPath, "recipes")
-	reg, err := registry.NewRegistry(nil, recipePath)
-	if err != nil {
-		return fmt.Errorf("failed to create worker registry: %w", err)
-	}
-
-	// Create recipe provider with fallback to registry-only if embedded provider fails
-	var recipeProvider recipe.RecipeProvider = reg
 	embeddedProvider, err := recipes.NewEmbeddedProvider()
 	if err != nil {
-		fmt.Printf("Warning: failed to create embedded recipe provider: %v\n", err)
-		fmt.Printf("Continuing with registry-only provider. internal:// recipes will not be available.\n")
-	} else {
-		// Create chained provider: try registry first, then embedded provider
-		recipeProvider = recipes.NewChainedProvider(reg, embeddedProvider)
+		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
 
 	// Create ticket service with engine and recipe provider for workflow autostart
@@ -215,7 +202,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		Projects:   projectSvc,
 		Cells:      cellSvc,
 		Engine:     engineSetup.Engine(),
-		Recipes:    recipeProvider,
+		Recipes:    embeddedProvider,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ticket service: %w", err)
@@ -237,8 +224,15 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	}
 
 	wfc := workflow.SWFWorkflowControl{
-		Engine:   engineSetup.Engine(),
-		Registry: reg,
+		Engine: engineSetup.Engine(),
+		Registry: func(projectId string, recipeRef string) (*recipe.Recipe, error) {
+			r, err := recipeSvc.GetRecipe(context.Background(), project.ID(projectId), recipeRef, "")
+			if err != nil {
+				return nil, err
+			}
+
+			return recipe.LoadRecipeFromReader(bytes.NewReader(r.Content))
+		},
 	}
 
 	strataClient, err := strataclient.New(strataclient.Config{
