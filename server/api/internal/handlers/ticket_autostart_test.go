@@ -15,6 +15,7 @@ import (
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -108,13 +109,18 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	provider, err := recipes.NewEmbeddedProvider()
 	require.NoError(t, err)
 
+	// Create a RecipeProjectProvider that uses the embedded provider
+	recipeProvider := func(projectId string, recipeRef string) (*recipe.Recipe, error) {
+		return provider.GetRecipe(recipeRef)
+	}
+
 	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      ticketStore,
 		EventStore: eventStore,
 		Projects:   projectSvc,
 		Cells:      cellSvc,
 		Engine:     engine,
-		Recipes:    provider,
+		Recipes:    recipeProvider,
 	})
 	require.NoError(t, err)
 

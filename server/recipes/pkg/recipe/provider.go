@@ -59,3 +59,41 @@ func (p *Provider) parseRecipeRef(nameWithRef string) (string, string) {
 	}
 	return nameWithRef, ""
 }
+
+// RecipeProjectProvider is a function that retrieves a recipe by project ID and recipe reference.
+// The recipeRef can be a simple name or a name@ref combination.
+type RecipeProjectProvider func(projectId string, recipeRef string) (*recipecore.Recipe, error)
+
+// NewRecipeProjectProvider creates a RecipeProjectProvider from a Recipe Service.
+// This is the recommended way to create a recipe provider for use in workflow controls
+// and other systems that need project-scoped recipe access.
+func NewRecipeProjectProvider(service Service) RecipeProjectProvider {
+	return func(projectId string, recipeRef string) (*recipecore.Recipe, error) {
+		ctx := context.Background()
+
+		// Parse name@ref syntax
+		recipeName := recipeRef
+		gitRef := ""
+		if idx := strings.LastIndex(recipeRef, "@"); idx > 0 {
+			recipeName = recipeRef[:idx]
+			gitRef = recipeRef[idx+1:]
+		}
+
+		// Call unified GetRecipe API
+		recipeWithContent, err := service.GetRecipe(ctx, project.ID(projectId), recipeName, gitRef)
+		if err != nil {
+			if gitRef != "" {
+				return nil, fmt.Errorf("recipe %q at ref %s not found: %w", recipeName, gitRef, err)
+			}
+			return nil, fmt.Errorf("recipe %q not found: %w", recipeName, err)
+		}
+
+		// Parse the raw YAML content
+		parsedRecipe, err := recipecore.LoadRecipeFromString(recipeWithContent.Content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse recipe %q: %w", recipeName, err)
+		}
+
+		return parsedRecipe, nil
+	}
+}

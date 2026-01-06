@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -23,7 +22,6 @@ import (
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
@@ -172,10 +170,14 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		}
 	}()
 
+	// Create embedded provider for internal recipes
 	embeddedProvider, err := recipes.NewEmbeddedProvider()
 	if err != nil {
 		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
+
+	// Create RecipeProjectProvider with fallback to embedded recipes
+	recipeProviderWithFallback := recipes.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
 
 	// Create ticket service with engine and recipe provider for workflow autostart
 	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
@@ -184,7 +186,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Projects:   projectSvc,
 		Cells:      cellSvc,
 		Engine:     engineSetup.Engine(),
-		Recipes:    embeddedProvider,
+		Recipes:    recipeProviderWithFallback,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ticket service: %w", err)
@@ -206,15 +208,8 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	}
 
 	wfc := workflow.SWFWorkflowControl{
-		Engine: engineSetup.Engine(),
-		Registry: func(projectId string, recipeRef string) (*recipe.Recipe, error) {
-			r, err := recipeSvc.GetRecipe(context.Background(), project.ID(projectId), recipeRef, "")
-			if err != nil {
-				return nil, err
-			}
-
-			return recipe.LoadRecipeFromReader(bytes.NewReader(r.Content))
-		},
+		Engine:   engineSetup.Engine(),
+		Registry: recipeProviderWithFallback,
 	}
 
 	strataClient, err := strataclient.New(strataclient.Config{

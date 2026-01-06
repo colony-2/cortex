@@ -545,6 +545,9 @@ func setupTestService(t *testing.T, db *gorm.DB) Service {
 	if err := gitRepo.Clone(ctx, projectRepoPath, tempClone, git.CloneOptions{}); err != nil {
 		t.Fatalf("failed to clone: %v", err)
 	}
+	if err := testutil.ConfigureGitUser(ctx, tempClone); err != nil {
+		t.Fatalf("failed to configure git user: %v", err)
+	}
 	initFile := filepath.Join(tempClone, ".gitkeep")
 	if err := os.WriteFile(initFile, []byte(""), 0644); err != nil {
 		t.Fatalf("failed to write .gitkeep: %v", err)

@@ -4,7 +4,9 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 )
 
 //go:embed new_ticket.yaml
@@ -34,9 +36,22 @@ func (p *EmbeddedProvider) GetRecipe(name string) (*recipe.Recipe, error) {
 	if rec, ok := p.recipes[name]; ok {
 		return rec, nil
 	}
-	for _, rec := range p.recipes {
-		// Return the sole embedded recipe as a fallback.
-		return rec, nil
-	}
 	return nil, fmt.Errorf("recipe %q not found", name)
+}
+
+// NewRecipeProjectProviderWithFallback creates a function that retrieves recipes by project ID and recipe reference.
+// It tries the recipe service first, then falls back to the embedded provider for internal recipes like "internal://new_ticket".
+// The returned function can be used wherever a RecipeProjectProvider function type is needed.
+func NewRecipeProjectProviderWithFallback(svc recipesvc.Service, embeddedProvider *EmbeddedProvider) func(projectId string, recipeRef string) (*recipe.Recipe, error) {
+	return func(projectId string, recipeRef string) (*recipe.Recipe, error) {
+		// Try project-specific recipe service first
+		provider := NewServiceProvider(svc, project.ID(projectId))
+		rec, err := provider.GetRecipe(recipeRef)
+		if err == nil {
+			return rec, nil
+		}
+
+		// Fall back to embedded provider for internal recipes
+		return embeddedProvider.GetRecipe(recipeRef)
+	}
 }

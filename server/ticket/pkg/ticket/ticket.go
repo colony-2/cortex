@@ -57,6 +57,7 @@ type (
 	Iterator[T any]         = internalstore.Iterator[T]
 	Store                   = internalstore.Store
 	EventStore              = eventstore.Store
+	RecipeProjectProvider   = internalservice.RecipeProjectProvider
 )
 
 const (

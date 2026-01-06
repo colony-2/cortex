@@ -59,6 +59,9 @@ type Service interface {
 	ResetTicket(ctx context.Context, id model.ID, input TicketResetInput) (*model.TicketReset, error)
 }
 
+// RecipeProjectProvider is a function that retrieves a recipe by project ID and recipe reference.
+type RecipeProjectProvider func(projectId string, recipeRef string) (*recipe.Recipe, error)
+
 type ServiceConfig struct {
 	Store      store.Store
 	EventStore eventstore.Store
@@ -68,7 +71,7 @@ type ServiceConfig struct {
 	IDGen      model.ShortIDGenerator
 	EventIDGen model.ShortIDGenerator
 	Engine     swf.SWFEngine
-	Recipes    recipe.RecipeProvider
+	Recipes    RecipeProjectProvider
 }
 
 type service struct {
@@ -81,7 +84,7 @@ type service struct {
 	eventIDGen model.ShortIDGenerator
 	validate   *validator.Validate
 	engine     swf.SWFEngine
-	recipes    recipe.RecipeProvider
+	recipes    RecipeProjectProvider
 }
 
 func New(config ServiceConfig) (Service, error) {
@@ -505,7 +508,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	}
 
 	recipeName := defaultRecipeName(cellRecord, projectRecord)
-	rec, err := s.recipes.GetRecipe(recipeName)
+	rec, err := s.recipes(string(ticket.ProjectID), recipeName)
 	if err != nil {
 		return err
 	}
