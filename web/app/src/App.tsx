@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AppstoreOutlined, ClusterOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { Button, Empty, Form, Input, Layout, Menu, Modal, Select, Space, Typography, message } from 'antd';
-import { InputActivityProvider, createProject, listProjects, type Project } from '@colony2/shared';
+import { AppstoreOutlined, ClusterOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined } from '@ant-design/icons';
+import { Empty, Layout, Menu, Space, Typography } from 'antd';
+import { InputActivityProvider, listProjects, type Project } from '@colony2/shared';
 import MainView from './components/MainView';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
-import ProjectSettingsModal from './components/ProjectSettingsModal';
+import ProjectSettingsPage from './components/ProjectSettingsPage';
 import WorkflowListPage from './components/WorkflowListPage';
 import WorkflowDetailPage from './components/WorkflowDetailPage';
 import RecipeListPage from './components/RecipeListPage';
 import RecipeDetailPage from './components/RecipeDetailPage';
+import UserDropdown from './components/UserDropdown';
+import ProjectAdminPage from './components/ProjectAdminPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -29,10 +31,6 @@ function AppShell() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [form] = Form.useForm();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -64,31 +62,20 @@ function AppShell() {
     }
   }, [selectedProjectId]);
 
-  const handleCreateProject = async () => {
-    try {
-      setCreating(true);
-      const values = await form.validateFields();
-      const created = await createProject(values);
-      message.success('Project created');
-      setIsCreateModalOpen(false);
-      form.resetFields();
-      await loadProjects();
-      setSelectedProjectId(created.id);
-    } catch (error) {
-      if (error instanceof Error) {
-        message.error(error.message);
-      } else {
-        message.error('Failed to create project');
-      }
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
+
+  useEffect(() => {
+    if (selectedProject) {
+      document.title = `colony2: ${selectedProject.name}`;
+    } else {
+      document.title = 'colony2';
+    }
+  }, [selectedProject]);
 
   const navKey = (() => {
     const path = location.pathname;
+    if (path.includes('/admin/projects')) return 'project-admin';
+    if (path.includes('/settings')) return 'settings';
     if (path.includes('/recipes')) return 'recipes';
     if (path.includes('/workflows')) return 'workflows';
     if (path.includes('/kanban')) return 'tickets';
@@ -98,27 +85,36 @@ function AppShell() {
   })();
 
   const handleNav = (key: string) => {
-    if (!selectedProject) return;
     switch (key) {
       case 'tickets':
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/kanban`);
         break;
       case 'workflows':
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/workflows`);
         break;
       case 'recipes':
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/recipes`);
         break;
       case 'cells-graph':
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/cells/graph`);
         break;
       case 'cells-list':
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/cells/list`);
         break;
       case 'settings':
-        setIsSettingsModalOpen(true);
+        if (!selectedProject) return;
+        navigate(`/project/${selectedProject.id}/settings`);
+        break;
+      case 'project-admin':
+        navigate('/admin/projects');
         break;
       default:
+        if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/kanban`);
     }
   };
@@ -127,27 +123,17 @@ function AppShell() {
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
         <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Typography.Text strong>VibeThis</Typography.Text>
-          <Space>
-            <Select
-              style={{ minWidth: 240 }}
-              placeholder="Select project"
-              loading={loadingProjects}
-              value={selectedProjectId || undefined}
-              onChange={(value) => setSelectedProjectId(value)}
-              options={projects.map((project) => ({
-                value: project.id,
-                label: project.name,
-              }))}
-            />
-            <Button onClick={loadProjects}>Refresh</Button>
-            <Button type="primary" onClick={() => setIsCreateModalOpen(true)}>
-              New Project
-            </Button>
-          </Space>
+          <Typography.Text strong>colony2</Typography.Text>
+          <UserDropdown
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            loadingProjects={loadingProjects}
+            onProjectChange={setSelectedProjectId}
+            onRefreshProjects={loadProjects}
+          />
         </Space>
       </Header>
-      <Layout style={{ minHeight: 'calc(100vh - 64px)' }}>
+      <Layout style={{ height: 'calc(100vh - 64px)' }}>
         <Sider width={220} theme="light" collapsedWidth={72}>
           <Menu
             mode="inline"
@@ -192,19 +178,31 @@ function AppShell() {
                 icon: <SettingOutlined />,
                 disabled: !selectedProject,
               },
+              {
+                key: 'project-admin',
+                label: 'Project Admin',
+                icon: <ProjectOutlined />,
+              },
             ]}
             onClick={({ key }) => handleNav(key)}
             style={{ height: '100%', borderRight: 0 }}
           />
         </Sider>
-        <Content style={{ padding: 16 }}>
-          {selectedProject ? (
-            <Routes>
-              {/* Default route redirects to Kanban */}
-              <Route path="/" element={<Navigate to={`/project/${selectedProject.id}/kanban`} replace />} />
+        <Content style={{ padding: 16, overflow: 'auto' }}>
+          <Routes>
+            {/* Project Admin route - available without project selection */}
+            <Route path="/admin/projects" element={<ProjectAdminPage />} />
 
-              {/* Cells views */}
-              <Route path="/cells" element={<MainView projectId={selectedProject.id} />} />
+            {selectedProject ? (
+              <>
+                {/* Default route redirects to Kanban */}
+                <Route path="/" element={<Navigate to={`/project/${selectedProject.id}/kanban`} replace />} />
+
+                {/* Settings */}
+                <Route path="/project/:projectId/settings" element={<ProjectSettingsPage project={selectedProject} onUpdate={loadProjects} />} />
+
+                {/* Cells views */}
+                <Route path="/cells" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/cells/graph" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/cells/list" element={<CellsList projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/cells" element={<MainView projectId={selectedProject.id} />} />
@@ -233,49 +231,22 @@ function AppShell() {
               <Route path="/project/:projectId/cell/:cellId/:tab" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/cell/:cellId/:tab/:subtab" element={<MainView projectId={selectedProject.id} />} />
 
-              {/* Catch all - redirect to Kanban */}
-              <Route path="*" element={<Navigate to={`/project/${selectedProject.id}/kanban`} replace />} />
-            </Routes>
-          ) : (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Empty description="Select or create a project to continue" />
-            </div>
-          )}
+                {/* Catch all - redirect to Kanban */}
+                <Route path="*" element={<Navigate to={`/project/${selectedProject.id}/kanban`} replace />} />
+              </>
+            ) : (
+              <>
+                {/* No project selected - show empty state for non-admin routes */}
+                <Route path="*" element={
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Empty description="Select or create a project to continue" />
+                  </div>
+                } />
+              </>
+            )}
+          </Routes>
         </Content>
       </Layout>
-
-      <Modal
-        title="Create Project"
-        open={isCreateModalOpen}
-        onCancel={() => setIsCreateModalOpen(false)}
-        onOk={handleCreateProject}
-        confirmLoading={creating}
-        okText="Create"
-      >
-        <Form layout="vertical" form={form}>
-          <Form.Item
-            label="Name"
-            name="name"
-            rules={[{ required: true, message: 'Please enter a project name' }]}
-          >
-            <Input placeholder="Project name" />
-          </Form.Item>
-          <Form.Item
-            label="Git repository path"
-            name="gitRepoPath"
-            rules={[{ required: true, message: 'Please enter a git repo path' }]}
-          >
-            <Input placeholder="/path/to/repo" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <ProjectSettingsModal
-        project={selectedProject}
-        open={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        onUpdate={loadProjects}
-      />
     </Layout>
   );
 }

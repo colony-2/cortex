@@ -62,3 +62,10 @@ export async function updateProject(
   await handleResponse(response, 'Update project');
   return response.json();
 }
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+    method: 'DELETE',
+  });
+  await handleResponse(response, 'Delete project');
+}

@@ -59,7 +59,7 @@ func (s *service) createEphemeralWorkspace(
 
 	// If any error occurs after this point, cleanup temp dir
 	defer func() {
-		if err != nil {
+		if err != nil && cleanup != nil {
 			cleanup()
 		}
 	}()
