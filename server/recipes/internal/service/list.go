@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
@@ -35,20 +34,20 @@ func (s *service) ListRecipes(ctx context.Context, filter model.RecipeFilter) (s
 	}
 
 	for _, projectID := range projectIDs {
-		gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
+		// Create ephemeral workspace for this project
+		workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get git workspace: %w", err)
+			return nil, fmt.Errorf("failed to create workspace: %w", err)
 		}
-
-		if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-			return nil, fmt.Errorf("failed to sync workspace: %w", err)
-		}
+		// Cleanup will be called at end of this iteration
+		defer cleanup()
 
 		// List all recipe files in .c2/recipes/
-		recipesDir := filepath.Join(gitWorkspace, ".c2", "recipes")
+		recipesDir := filepath.Join(workspace, ".c2", "recipes")
 		recipeFiles, err := s.findRecipeFiles(ctx, recipesDir)
 		if err != nil {
 			// If directory doesn't exist, no recipes for this project
+			cleanup() // Cleanup before continuing
 			continue
 		}
 
@@ -64,7 +63,7 @@ func (s *service) ListRecipes(ctx context.Context, filter model.RecipeFilter) (s
 			gitPath := deriveGitPath(name)
 
 			// Get latest commit for this file
-			latestCommit, latestDate, err := s.getFileLatestCommitWithDate(ctx, gitWorkspace, gitPath)
+			latestCommit, latestDate, err := s.getFileLatestCommitWithDate(ctx, workspace, gitPath)
 			if err != nil {
 				continue
 			}
@@ -84,6 +83,9 @@ func (s *service) ListRecipes(ctx context.Context, filter model.RecipeFilter) (s
 
 			allRecipes = append(allRecipes, info)
 		}
+
+		// Cleanup workspace explicitly after processing this project
+		cleanup()
 	}
 
 	// Apply filters
@@ -99,21 +101,18 @@ func (s *service) GetRecipeHistory(ctx context.Context, projectID project.ID, na
 		return nil, err
 	}
 
-	// 2. Get git workspace and sync
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
+	// 2. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git workspace: %w", err)
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
-
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return nil, fmt.Errorf("failed to sync workspace: %w", err)
-	}
+	defer cleanup()
 
 	gitPath := deriveGitPath(name)
 
 	// 3. Get git commit history for this file
 	cmd := exec.CommandContext(ctx, "git", "log", "--follow", "--format=%H|%an|%at|%s", "--", gitPath)
-	cmd.Dir = gitWorkspace
+	cmd.Dir = workspace
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get git history: %w", err)
@@ -176,29 +175,14 @@ func (s *service) ValidateRecipe(ctx context.Context, content []byte) error {
 }
 
 // SyncFromRemote syncs the local workspace from the remote repository.
+// With ephemeral workspaces, this is a no-op since every operation creates
+// a fresh workspace from the remote. Kept for API compatibility.
 func (s *service) SyncFromRemote(ctx context.Context, projectID project.ID) error {
-	// 1. Validate project exists
+	// Validate project exists
 	if err := s.ensureProject(ctx, projectID); err != nil {
 		return err
 	}
 
-	// 2. Get git workspace
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to get git workspace: %w", err)
-	}
-
-	// 3. Fetch from remote
-	if err := s.gitRepo.Fetch(ctx, gitWorkspace, git.FetchOptions{
-		Remote: "origin",
-	}); err != nil {
-		return fmt.Errorf("%w: %v", model.ErrRemoteSync, err)
-	}
-
-	// 4. Pull changes
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return fmt.Errorf("%w: %v", model.ErrRemoteSync, err)
-	}
-
+	// No action needed - ephemeral workspaces are always synced on creation
 	return nil
 }

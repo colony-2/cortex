@@ -35,10 +35,24 @@ type Commit struct {
 
 // CloneOptions configures repository clone operations.
 type CloneOptions struct {
-	Branch       string // Specific branch to clone (empty = default branch)
-	Depth        *int   // Shallow clone depth (nil = full clone)
-	SingleBranch bool   // Clone only the specified branch
-	Bare         bool   // Create a bare repository
+	Branch         string                  // Specific branch to clone (empty = default branch)
+	Depth          *int                    // Shallow clone depth (nil = full clone)
+	SingleBranch   bool                    // Clone only the specified branch
+	Bare           bool                    // Create a bare repository
+	SparseCheckout *SparseCheckoutOptions  // Sparse checkout config (nil = full checkout)
+}
+
+// SparseCheckoutOptions configures sparse checkout during clone operations.
+type SparseCheckoutOptions struct {
+	// Cone enables cone mode sparse checkout (recommended).
+	// When true, Paths are treated as directory paths.
+	// When false, sparse checkout is disabled.
+	Cone bool
+
+	// Paths specifies the directories to checkout in cone mode.
+	// Example: []string{".c2/recipes", "docs"}
+	// Empty slice disables sparse checkout.
+	Paths []string
 }
 
 // FetchOptions configures fetch operations.
@@ -319,7 +333,15 @@ func (a *repoAdapter) UnstageFiles(ctx context.Context, nodePath string, files [
 }
 
 func (a *repoAdapter) Clone(ctx context.Context, url string, localPath string, options CloneOptions) error {
-	return a.repo.Clone(ctx, url, localPath, options.Branch, options.Depth, options.SingleBranch, options.Bare)
+	// Convert public SparseCheckoutOptions to internal type
+	var internalSparseCheckout *commands.SparseCheckoutOptions
+	if options.SparseCheckout != nil {
+		internalSparseCheckout = &commands.SparseCheckoutOptions{
+			Cone:  options.SparseCheckout.Cone,
+			Paths: options.SparseCheckout.Paths,
+		}
+	}
+	return a.repo.Clone(ctx, url, localPath, options.Branch, options.Depth, options.SingleBranch, options.Bare, internalSparseCheckout)
 }
 
 func (a *repoAdapter) Fetch(ctx context.Context, nodePath string, options FetchOptions) error {

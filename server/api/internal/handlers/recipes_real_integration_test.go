@@ -58,15 +58,13 @@ func TestRecipeHandlers_RealIntegration(t *testing.T) {
 		DefaultAuthor: "Test User",
 		DefaultEmail:  "test@example.com",
 	})
-	workspaceRoot := t.TempDir()
 
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
-		Store:         recipeStore,
-		GitRepo:       gitRepo,
-		Projects:      projectSvc,
-		IDGen:         recipesvc.NewKSUIDGenerator(),
-		Clock:         recipesvc.NewSystemClock(),
-		WorkspaceRoot: workspaceRoot,
+		Store:    recipeStore,
+		GitRepo:  gitRepo,
+		Projects: projectSvc,
+		IDGen:    recipesvc.NewKSUIDGenerator(),
+		Clock:    recipesvc.NewSystemClock(),
 	})
 	require.NoError(t, err)
 

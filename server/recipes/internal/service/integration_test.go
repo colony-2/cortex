@@ -569,15 +569,12 @@ func setupTestService(t *testing.T, db *gorm.DB) Service {
 		GitRepoPath: projectRepoPath,
 	})
 
-	workspaceRoot := t.TempDir()
-
 	svc, err := New(ServiceConfig{
-		Store:         store,
-		GitRepo:       gitRepo,
-		Projects:      mockProjects,
-		IDGen:         testutil.NewMockIDGenerator("recipe_"),
-		Clock:         testutil.NewMockClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
-		WorkspaceRoot: workspaceRoot,
+		Store:    store,
+		GitRepo:  gitRepo,
+		Projects: mockProjects,
+		IDGen:    testutil.NewMockIDGenerator("recipe_"),
+		Clock:    testutil.NewMockClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
 	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)

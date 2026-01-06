@@ -26,135 +26,98 @@ func (s *service) ensureProject(ctx context.Context, projectID project.ID) error
 	return nil
 }
 
-// getOrCreateGitWorkspace gets or creates the git workspace for a project.
-func (s *service) getOrCreateGitWorkspace(ctx context.Context, projectID project.ID) (string, error) {
-	workspacePath := filepath.Join(s.workspaceRoot, string(projectID))
-
-	// Get project to access repository information
+// createEphemeralWorkspace creates a temporary workspace with sparse checkout
+// for the given project. Returns the workspace path and a cleanup function.
+// The caller MUST defer the cleanup function to ensure workspace removal.
+func (s *service) createEphemeralWorkspace(
+	ctx context.Context,
+	projectID project.ID,
+) (workspacePath string, cleanup func(), err error) {
+	// Get project details
 	proj, err := s.projects.GetProject(ctx, projectID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get project: %w", err)
+		return "", nil, fmt.Errorf("failed to get project: %w", err)
 	}
 
 	if proj.GitRepoPath == "" {
-		return "", fmt.Errorf("project has no git repository configured")
+		return "", nil, fmt.Errorf("project has no git repository configured")
 	}
 
-	// Check if workspace already exists
-	if _, err := os.Stat(filepath.Join(workspacePath, ".git")); err == nil {
-		// Workspace exists, ensure origin remote is configured
-		if err := s.ensureOriginRemote(ctx, workspacePath, proj.GitRepoPath); err != nil {
-			return "", fmt.Errorf("failed to ensure origin remote: %w", err)
+	// Create temporary directory
+	tempDir, err := os.MkdirTemp("", fmt.Sprintf("recipe-workspace-%s-*", projectID))
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	// Cleanup function to remove temp directory
+	cleanup = func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			// Log error but don't fail - best effort cleanup
+			fmt.Fprintf(os.Stderr, "warning: failed to cleanup workspace %s: %v\n", tempDir, err)
 		}
-		return workspacePath, nil
 	}
 
-	// Create workspace directory
-	if err := os.MkdirAll(workspacePath, 0755); err != nil {
-		return "", fmt.Errorf("failed to create workspace directory: %w", err)
+	// If any error occurs after this point, cleanup temp dir
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
+
+	// Perform shallow clone with sparse checkout
+	depth := 1
+	cloneOpts := git.CloneOptions{
+		Depth:        &depth,
+		SingleBranch: true,
+		SparseCheckout: &git.SparseCheckoutOptions{
+			Cone:  true,
+			Paths: []string{".c2/recipes"},
+		},
 	}
 
-	// Clone the project's repository
-	cloneOpts := git.CloneOptions{}
 	if proj.GitRepoBranch != nil && *proj.GitRepoBranch != "" {
 		cloneOpts.Branch = *proj.GitRepoBranch
 	}
 
-	if err := s.gitRepo.Clone(ctx, proj.GitRepoPath, workspacePath, cloneOpts); err != nil {
-		return "", fmt.Errorf("failed to clone repository from %s: %w", proj.GitRepoPath, err)
+	if err := s.gitRepo.Clone(ctx, proj.GitRepoPath, tempDir, cloneOpts); err != nil {
+		return "", nil, fmt.Errorf("failed to clone repository: %w", err)
 	}
 
-	// Configure git user for the workspace (required for commits)
-	if err := s.gitRepo.ConfigureUser(ctx, workspacePath, "Recipe Service", "recipes@colony2.internal"); err != nil {
-		return "", fmt.Errorf("failed to configure git user: %w", err)
+	// Configure git user for commits
+	if err := s.gitRepo.ConfigureUser(ctx, tempDir, "Recipe Service", "recipes@colony2.internal"); err != nil {
+		return "", nil, fmt.Errorf("failed to configure git user: %w", err)
 	}
 
-	// Ensure .c2/recipes directory structure exists
-	recipesDir := filepath.Join(workspacePath, ".c2", "recipes")
+	// Ensure .c2/recipes directory exists
+	recipesDir := filepath.Join(tempDir, ".c2", "recipes")
 	if _, err := os.Stat(recipesDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(recipesDir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create recipes directory: %w", err)
+			return "", nil, fmt.Errorf("failed to create recipes directory: %w", err)
 		}
 
-		// Create a .gitkeep file to ensure directory is tracked
+		// Create .gitkeep to ensure directory is tracked
 		gitkeepPath := filepath.Join(recipesDir, ".gitkeep")
 		if err := os.WriteFile(gitkeepPath, []byte(""), 0644); err != nil {
-			return "", fmt.Errorf("failed to create .gitkeep: %w", err)
+			return "", nil, fmt.Errorf("failed to create .gitkeep: %w", err)
 		}
 
-		// Stage and commit initial structure
-		if err := s.gitRepo.StageFiles(ctx, workspacePath, []string{".c2/recipes/.gitkeep"}); err != nil {
-			return "", fmt.Errorf("failed to stage .gitkeep: %w", err)
+		// Stage, commit, and push initial structure
+		if err := s.gitRepo.StageFiles(ctx, tempDir, []string{".c2/recipes/.gitkeep"}); err != nil {
+			return "", nil, fmt.Errorf("failed to stage .gitkeep: %w", err)
 		}
 
-		if err := s.gitRepo.CreateCommit(ctx, workspacePath, "Initialize recipe repository"); err != nil {
-			return "", fmt.Errorf("failed to create initial commit: %w", err)
+		if err := s.gitRepo.CreateCommit(ctx, tempDir, "Initialize recipe repository"); err != nil {
+			return "", nil, fmt.Errorf("failed to create initial commit: %w", err)
 		}
 
-		// Push the initial structure to origin
-		if err := s.pushToOrigin(ctx, workspacePath); err != nil {
-			return "", fmt.Errorf("failed to push initial structure: %w", err)
+		if err := s.pushToOrigin(ctx, tempDir); err != nil {
+			return "", nil, fmt.Errorf("failed to push initial structure: %w", err)
 		}
 	}
 
-	return workspacePath, nil
+	return tempDir, cleanup, nil
 }
 
-// ensureOriginRemote ensures the origin remote is configured correctly.
-func (s *service) ensureOriginRemote(ctx context.Context, workspacePath, repoURL string) error {
-	// List existing remotes
-	remotes, err := s.gitRepo.ListRemotes(ctx, workspacePath)
-	if err != nil {
-		return fmt.Errorf("failed to list remotes: %w", err)
-	}
-
-	// Check if origin exists
-	var hasOrigin bool
-	var originURL string
-	for _, remote := range remotes {
-		if remote.Name == "origin" {
-			hasOrigin = true
-			originURL = remote.FetchURL
-			break
-		}
-	}
-
-	if !hasOrigin {
-		// Add origin remote
-		if err := s.gitRepo.AddRemote(ctx, workspacePath, "origin", repoURL); err != nil {
-			return fmt.Errorf("failed to add origin remote: %w", err)
-		}
-	} else if originURL != repoURL {
-		// Origin exists but with different URL - update it
-		if err := s.gitRepo.UpdateRemoteURL(ctx, workspacePath, "origin", repoURL); err != nil {
-			return fmt.Errorf("failed to update origin remote URL: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// syncWorkspace syncs the workspace with the primary repository.
-func (s *service) syncWorkspace(ctx context.Context, workspacePath string) error {
-	// Pull from origin to get latest changes
-	pullResult, err := s.gitRepo.Pull(ctx, workspacePath, git.PullOptions{
-		Remote:      "origin",
-		Branch:      "", // Use tracking branch
-		FastForward: true,
-		Rebase:      false,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to pull from origin: %w", err)
-	}
-
-	// Log if there were updates (for debugging)
-	if pullResult.Updated {
-		// Repository was updated
-		_ = pullResult // Suppress unused warning
-	}
-
-	return nil
-}
 
 // pushToOrigin pushes changes to the primary repository.
 // The git module handles bare vs non-bare repository logic automatically.

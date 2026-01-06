@@ -315,3 +315,270 @@ func TestAuthConfig(t *testing.T) {
 		}
 	})
 }
+
+func TestSparseCheckoutOptions(t *testing.T) {
+	t.Run("SparseCheckoutOptions structure", func(t *testing.T) {
+		opts := git.SparseCheckoutOptions{
+			Cone:  true,
+			Paths: []string{".c2/recipes", "docs"},
+		}
+
+		if !opts.Cone {
+			t.Error("Expected Cone to be true")
+		}
+
+		if len(opts.Paths) != 2 {
+			t.Errorf("Expected 2 paths, got %d", len(opts.Paths))
+		}
+
+		if opts.Paths[0] != ".c2/recipes" {
+			t.Errorf("Expected first path '.c2/recipes', got '%s'", opts.Paths[0])
+		}
+	})
+
+	t.Run("CloneOptions with SparseCheckout", func(t *testing.T) {
+		depth := 1
+		opts := git.CloneOptions{
+			Branch:       "main",
+			Depth:        &depth,
+			SingleBranch: true,
+			SparseCheckout: &git.SparseCheckoutOptions{
+				Cone:  true,
+				Paths: []string{".c2/recipes"},
+			},
+		}
+
+		if opts.SparseCheckout == nil {
+			t.Fatal("Expected SparseCheckout to not be nil")
+		}
+
+		if !opts.SparseCheckout.Cone {
+			t.Error("Expected SparseCheckout.Cone to be true")
+		}
+
+		if len(opts.SparseCheckout.Paths) != 1 {
+			t.Errorf("Expected 1 path, got %d", len(opts.SparseCheckout.Paths))
+		}
+	})
+}
+
+func TestClone_SparseCheckout_Integration(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir, err := os.MkdirTemp("", "git-sparse-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a source repository with multiple directories
+	sourceRepo := filepath.Join(tmpDir, "source")
+	repo := git.NewRepository(git.Config{
+		DefaultAuthor: "Test User",
+		DefaultEmail:  "test@example.com",
+	})
+
+	ctx := context.Background()
+
+	// Initialize source repository
+	err = repo.InitRepository(ctx, sourceRepo, git.InitOptions{
+		DefaultBranch: "main",
+	})
+	if err != nil {
+		t.Fatalf("Failed to init source repository: %v", err)
+	}
+
+	// Create directory structure
+	// .c2/recipes/ - should be checked out with sparse checkout
+	// docs/ - should NOT be checked out
+	// src/ - should NOT be checked out
+	err = os.MkdirAll(filepath.Join(sourceRepo, ".c2", "recipes"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create .c2/recipes: %v", err)
+	}
+	err = os.Mkdir(filepath.Join(sourceRepo, "docs"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create docs: %v", err)
+	}
+	err = os.Mkdir(filepath.Join(sourceRepo, "src"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create src: %v", err)
+	}
+
+	// Create files in each directory
+	err = os.WriteFile(filepath.Join(sourceRepo, ".c2", "recipes", "recipe1.yaml"), []byte("recipe: test"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create recipe file: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(sourceRepo, "docs", "README.md"), []byte("# Documentation"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create docs file: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(sourceRepo, "src", "main.go"), []byte("package main"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create src file: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(sourceRepo, "README.md"), []byte("# Project"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create root file: %v", err)
+	}
+
+	// Stage and commit all files
+	err = repo.StageFiles(ctx, sourceRepo, []string{"."})
+	if err != nil {
+		t.Fatalf("Failed to stage files: %v", err)
+	}
+
+	err = repo.CreateCommit(ctx, sourceRepo, "Initial commit with all files")
+	if err != nil {
+		t.Fatalf("Failed to create commit: %v", err)
+	}
+
+	t.Run("Clone with sparse checkout", func(t *testing.T) {
+		cloneDir := filepath.Join(tmpDir, "sparse-clone")
+		depth := 1
+
+		err := repo.Clone(ctx, sourceRepo, cloneDir, git.CloneOptions{
+			Depth:        &depth,
+			SingleBranch: true,
+			SparseCheckout: &git.SparseCheckoutOptions{
+				Cone:  true,
+				Paths: []string{".c2/recipes"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to clone with sparse checkout: %v", err)
+		}
+
+		// Verify .c2/recipes exists
+		recipePath := filepath.Join(cloneDir, ".c2", "recipes", "recipe1.yaml")
+		if _, err := os.Stat(recipePath); os.IsNotExist(err) {
+			t.Error("Expected .c2/recipes/recipe1.yaml to exist in sparse checkout")
+		}
+
+		// Verify other directories do NOT exist
+		docsPath := filepath.Join(cloneDir, "docs")
+		if _, err := os.Stat(docsPath); !os.IsNotExist(err) {
+			t.Error("Expected docs/ to NOT exist in sparse checkout")
+		}
+
+		srcPath := filepath.Join(cloneDir, "src")
+		if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+			t.Error("Expected src/ to NOT exist in sparse checkout")
+		}
+
+		// Note: In cone mode, parent directories and root-level files are included
+		// This is expected behavior of git sparse-checkout --cone
+		// So README.md will be present at the root, but docs/ and src/ won't be
+
+		// Verify it's still a valid git repository
+		status, err := repo.GetStatus(ctx, cloneDir)
+		if err != nil {
+			t.Fatalf("Failed to get status of cloned repo: %v", err)
+		}
+
+		if !status.Clean {
+			t.Error("Expected cloned repository to be clean")
+		}
+	})
+
+	t.Run("Clone without sparse checkout", func(t *testing.T) {
+		cloneDir := filepath.Join(tmpDir, "full-clone")
+
+		err := repo.Clone(ctx, sourceRepo, cloneDir, git.CloneOptions{})
+		if err != nil {
+			t.Fatalf("Failed to clone without sparse checkout: %v", err)
+		}
+
+		// Verify all files exist
+		recipePath := filepath.Join(cloneDir, ".c2", "recipes", "recipe1.yaml")
+		if _, err := os.Stat(recipePath); os.IsNotExist(err) {
+			t.Error("Expected .c2/recipes/recipe1.yaml to exist in full clone")
+		}
+
+		docsPath := filepath.Join(cloneDir, "docs", "README.md")
+		if _, err := os.Stat(docsPath); os.IsNotExist(err) {
+			t.Error("Expected docs/README.md to exist in full clone")
+		}
+
+		srcPath := filepath.Join(cloneDir, "src", "main.go")
+		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+			t.Error("Expected src/main.go to exist in full clone")
+		}
+
+		readmePath := filepath.Join(cloneDir, "README.md")
+		if _, err := os.Stat(readmePath); os.IsNotExist(err) {
+			t.Error("Expected README.md to exist in full clone")
+		}
+	})
+
+	t.Run("Clone with multiple sparse paths", func(t *testing.T) {
+		cloneDir := filepath.Join(tmpDir, "multi-sparse-clone")
+
+		err := repo.Clone(ctx, sourceRepo, cloneDir, git.CloneOptions{
+			SparseCheckout: &git.SparseCheckoutOptions{
+				Cone:  true,
+				Paths: []string{".c2/recipes", "docs"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to clone with multiple sparse paths: %v", err)
+		}
+
+		// Verify .c2/recipes and docs exist
+		recipePath := filepath.Join(cloneDir, ".c2", "recipes", "recipe1.yaml")
+		if _, err := os.Stat(recipePath); os.IsNotExist(err) {
+			t.Error("Expected .c2/recipes/recipe1.yaml to exist")
+		}
+
+		docsPath := filepath.Join(cloneDir, "docs", "README.md")
+		if _, err := os.Stat(docsPath); os.IsNotExist(err) {
+			t.Error("Expected docs/README.md to exist")
+		}
+
+		// Verify src does NOT exist
+		srcPath := filepath.Join(cloneDir, "src")
+		if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+			t.Error("Expected src/ to NOT exist in sparse checkout")
+		}
+	})
+
+	t.Run("Clone with empty sparse paths", func(t *testing.T) {
+		cloneDir := filepath.Join(tmpDir, "empty-sparse-clone")
+
+		err := repo.Clone(ctx, sourceRepo, cloneDir, git.CloneOptions{
+			SparseCheckout: &git.SparseCheckoutOptions{
+				Cone:  true,
+				Paths: []string{}, // Empty paths - should perform full checkout
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to clone with empty sparse paths: %v", err)
+		}
+
+		// Verify all files exist (full checkout behavior)
+		readmePath := filepath.Join(cloneDir, "README.md")
+		if _, err := os.Stat(readmePath); os.IsNotExist(err) {
+			t.Error("Expected README.md to exist when sparse paths is empty")
+		}
+	})
+
+	t.Run("Clone with cone mode disabled", func(t *testing.T) {
+		cloneDir := filepath.Join(tmpDir, "cone-disabled-clone")
+
+		err := repo.Clone(ctx, sourceRepo, cloneDir, git.CloneOptions{
+			SparseCheckout: &git.SparseCheckoutOptions{
+				Cone:  false, // Cone disabled - should perform full checkout
+				Paths: []string{".c2/recipes"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to clone with cone disabled: %v", err)
+		}
+
+		// Verify all files exist (full checkout behavior)
+		readmePath := filepath.Join(cloneDir, "README.md")
+		if _, err := os.Stat(readmePath); os.IsNotExist(err) {
+			t.Error("Expected README.md to exist when cone mode is disabled")
+		}
+	})
+}

@@ -42,21 +42,19 @@ type Service interface {
 
 // ServiceConfig contains dependencies for the service.
 type ServiceConfig struct {
-	Store         store.Store
-	GitRepo       git.Repository
-	Projects      project.Service
-	IDGen         model.ShortIDGenerator
-	Clock         model.Clock
-	WorkspaceRoot string // Root directory for git workspaces
+	Store    store.Store
+	GitRepo  git.Repository
+	Projects project.Service
+	IDGen    model.ShortIDGenerator
+	Clock    model.Clock
 }
 
 type service struct {
-	store         store.Store
-	gitRepo       git.Repository
-	projects      project.Service
-	idGen         model.ShortIDGenerator
-	clock         model.Clock
-	workspaceRoot string
+	store    store.Store
+	gitRepo  git.Repository
+	projects project.Service
+	idGen    model.ShortIDGenerator
+	clock    model.Clock
 }
 
 // New creates a new recipe service.
@@ -76,22 +74,13 @@ func New(cfg ServiceConfig) (Service, error) {
 	if cfg.Clock == nil {
 		cfg.Clock = model.SystemClock{}
 	}
-	if cfg.WorkspaceRoot == "" {
-		return nil, errors.New("recipe service: workspace root is required")
-	}
-
-	// Ensure workspace root exists
-	if err := os.MkdirAll(cfg.WorkspaceRoot, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create workspace root: %w", err)
-	}
 
 	return &service{
-		store:         cfg.Store,
-		gitRepo:       cfg.GitRepo,
-		projects:      cfg.Projects,
-		idGen:         cfg.IDGen,
-		clock:         cfg.Clock,
-		workspaceRoot: cfg.WorkspaceRoot,
+		store:    cfg.Store,
+		gitRepo:  cfg.GitRepo,
+		projects: cfg.Projects,
+		idGen:    cfg.IDGen,
+		clock:    cfg.Clock,
 	}, nil
 }
 
@@ -107,19 +96,16 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 		return nil, err
 	}
 
-	// 3. Get git workspace and sync with primary repository
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, input.ProjectID)
+	// 3. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git workspace: %w", err)
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
-
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return nil, fmt.Errorf("failed to sync workspace: %w", err)
-	}
+	defer cleanup()
 
 	// 4. Check recipe doesn't already exist
 	gitPath := deriveGitPath(input.Name)
-	exists, err := s.fileExistsInGit(ctx, gitWorkspace, gitPath)
+	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +121,7 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 	}
 
 	// 6. Write file to git workspace
-	filePath := filepath.Join(gitWorkspace, gitPath)
+	filePath := filepath.Join(workspace, gitPath)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return nil, err
 	}
@@ -144,7 +130,7 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 	}
 
 	// 7. Stage and commit
-	if err := s.gitRepo.StageFiles(ctx, gitWorkspace, []string{gitPath}); err != nil {
+	if err := s.gitRepo.StageFiles(ctx, workspace, []string{gitPath}); err != nil {
 		return nil, err
 	}
 
@@ -153,18 +139,18 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 		message += "\n\n" + input.Description
 	}
 
-	if err := s.gitRepo.CreateCommit(ctx, gitWorkspace, message); err != nil {
+	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
 		return nil, err
 	}
 
 	// 8. Get commit hash
-	commitHash, err := s.gitRepo.GetCurrentCommit(ctx, gitWorkspace)
+	commitHash, err := s.gitRepo.GetCurrentCommit(ctx, workspace)
 	if err != nil {
 		return nil, err
 	}
 
 	// 9. Push to primary repository
-	if err := s.pushToOrigin(ctx, gitWorkspace); err != nil {
+	if err := s.pushToOrigin(ctx, workspace); err != nil {
 		return nil, err
 	}
 
@@ -183,7 +169,7 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 	}
 
 	// 11. Build version info
-	commits, err := s.gitRepo.GetHistory(ctx, gitWorkspace, 1)
+	commits, err := s.gitRepo.GetHistory(ctx, workspace, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -206,20 +192,17 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 		return nil, err
 	}
 
-	// 2. Get git workspace and sync with primary repository
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, input.ProjectID)
+	// 2. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git workspace: %w", err)
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
-
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return nil, fmt.Errorf("failed to sync workspace: %w", err)
-	}
+	defer cleanup()
 
 	gitPath := deriveGitPath(input.Name)
 
 	// 3. Verify recipe exists
-	exists, err := s.fileExistsInGit(ctx, gitWorkspace, gitPath)
+	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +212,7 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 
 	// 4. Optimistic Concurrency Check - get last commit for THIS FILE
 	if input.ExpectedCommit != "" {
-		currentCommit, err := s.getFileLastCommit(ctx, gitWorkspace, gitPath)
+		currentCommit, err := s.getFileLastCommit(ctx, workspace, gitPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get recipe file commit: %w", err)
 		}
@@ -248,13 +231,13 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 	}
 
 	// 6. Write file
-	filePath := filepath.Join(gitWorkspace, gitPath)
+	filePath := filepath.Join(workspace, gitPath)
 	if err := os.WriteFile(filePath, input.Content, 0644); err != nil {
 		return nil, err
 	}
 
 	// 7. Stage and commit
-	if err := s.gitRepo.StageFiles(ctx, gitWorkspace, []string{gitPath}); err != nil {
+	if err := s.gitRepo.StageFiles(ctx, workspace, []string{gitPath}); err != nil {
 		return nil, err
 	}
 
@@ -263,18 +246,18 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 		message = fmt.Sprintf("Update recipe: %s", input.Name)
 	}
 
-	if err := s.gitRepo.CreateCommit(ctx, gitWorkspace, message); err != nil {
+	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
 		return nil, err
 	}
 
 	// 8. Get new commit hash for this file
-	newCommitHash, err := s.getFileLastCommit(ctx, gitWorkspace, gitPath)
+	newCommitHash, err := s.getFileLastCommit(ctx, workspace, gitPath)
 	if err != nil {
 		return nil, err
 	}
 
 	// 9. Push to primary repository
-	if err := s.pushToOrigin(ctx, gitWorkspace); err != nil {
+	if err := s.pushToOrigin(ctx, workspace); err != nil {
 		return nil, err
 	}
 
@@ -293,7 +276,7 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 	}
 
 	// 11. Build version info
-	commits, err := s.gitRepo.GetHistory(ctx, gitWorkspace, 1)
+	commits, err := s.gitRepo.GetHistory(ctx, workspace, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -316,19 +299,16 @@ func (s *service) DeleteRecipe(ctx context.Context, projectID project.ID, name s
 		return err
 	}
 
-	// 2. Get git workspace and sync
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
+	// 2. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
 	if err != nil {
-		return fmt.Errorf("failed to get git workspace: %w", err)
+		return fmt.Errorf("failed to create workspace: %w", err)
 	}
-
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return fmt.Errorf("failed to sync workspace: %w", err)
-	}
+	defer cleanup()
 
 	// 3. Verify recipe exists
 	gitPath := deriveGitPath(name)
-	exists, err := s.fileExistsInGit(ctx, gitWorkspace, gitPath)
+	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
 	if err != nil {
 		return err
 	}
@@ -349,19 +329,19 @@ func (s *service) DeleteRecipe(ctx context.Context, projectID project.ID, name s
 
 	// 5. Remove file from git
 	cmd := exec.CommandContext(ctx, "git", "rm", gitPath)
-	cmd.Dir = gitWorkspace
+	cmd.Dir = workspace
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove file from git: %w", err)
 	}
 
 	// 6. Commit deletion
 	message := fmt.Sprintf("Delete recipe: %s", name)
-	if err := s.gitRepo.CreateCommit(ctx, gitWorkspace, message); err != nil {
+	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
 		return err
 	}
 
 	// 7. Push to primary repository
-	if err := s.pushToOrigin(ctx, gitWorkspace); err != nil {
+	if err := s.pushToOrigin(ctx, workspace); err != nil {
 		return err
 	}
 
@@ -375,15 +355,12 @@ func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (
 		return nil, err
 	}
 
-	// 2. Get git workspace and sync
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, input.ProjectID)
+	// 2. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git workspace: %w", err)
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}
-
-	if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-		return nil, fmt.Errorf("failed to sync workspace: %w", err)
-	}
+	defer cleanup()
 
 	gitPath := deriveGitPath(input.Name)
 
@@ -391,14 +368,14 @@ func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (
 	commitHash := input.CommitHash
 	if commitHash == "" {
 		var err error
-		commitHash, err = s.getFileLastCommit(ctx, gitWorkspace, gitPath)
+		commitHash, err = s.getFileLastCommit(ctx, workspace, gitPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get latest commit for recipe: %w", err)
 		}
 	}
 
 	// 4. Read file at specified commit from git
-	content, err := s.gitRepo.GetFileAtCommit(ctx, gitWorkspace, commitHash, gitPath)
+	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", model.ErrCommitNotFound, err)
 	}
@@ -500,9 +477,16 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 		return nil, err
 	}
 
+	// 2. Create ephemeral workspace
+	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	}
+	defer cleanup()
+
 	gitPath := deriveGitPath(name)
 
-	// 2. Determine which version to fetch
+	// 3. Determine which version to fetch
 	var commitHash string
 	var publishedRecipe *model.PublishedRecipe
 
@@ -518,20 +502,9 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 		}
 		commitHash = publishedRecipe.CommitHash
 	} else {
-		// Get specific version at ref
-		gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get git workspace: %w", err)
-		}
-
-		// Sync workspace to ensure we have latest refs
-		if err := s.syncWorkspace(ctx, gitWorkspace); err != nil {
-			return nil, fmt.Errorf("failed to sync workspace: %w", err)
-		}
-
 		// Resolve ref to commit hash
 		cmd := exec.CommandContext(ctx, "git", "rev-parse", ref)
-		cmd.Dir = gitWorkspace
+		cmd.Dir = workspace
 		output, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve ref %s: %w", ref, err)
@@ -542,18 +515,13 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 		publishedRecipe, _ = s.store.GetByName(ctx, projectID, name)
 	}
 
-	// 3. Fetch content from git
-	gitWorkspace, err := s.getOrCreateGitWorkspace(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get git workspace: %w", err)
-	}
-
-	content, err := s.gitRepo.GetFileAtCommit(ctx, gitWorkspace, commitHash, gitPath)
+	// 4. Fetch content from git
+	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to get recipe at commit %s", model.ErrNotFound, commitHash)
 	}
 
-	// 4. Build result with raw content (no parsing - invalid recipes can be saved, just not published)
+	// 5. Build result with raw content (no parsing - invalid recipes can be saved, just not published)
 	result := &model.RecipeWithContent{
 		Name:       name,
 		CommitHash: commitHash,

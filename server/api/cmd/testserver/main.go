@@ -137,11 +137,10 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	// Initialize recipe service
 	recipeSvc, err := recipesvc.NewServiceFromDB(pgDB, recipesvc.ServiceConfig{
-		GitRepo:       gitpkg.NewRepository(gitpkg.Config{}),
-		Projects:      projectSvc,
-		IDGen:         recipesvc.NewKSUIDGenerator(),
-		Clock:         recipesvc.NewSystemClock(),
-		WorkspaceRoot: filepath.Join(absNodesPath, ".recipe-workspaces"),
+		GitRepo:  gitpkg.NewRepository(gitpkg.Config{}),
+		Projects: projectSvc,
+		IDGen:    recipesvc.NewKSUIDGenerator(),
+		Clock:    recipesvc.NewSystemClock(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create recipe service: %w", err)

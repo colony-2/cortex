@@ -35,6 +35,12 @@ type Commit struct {
 	ShortHash string    `json:"shortHash"`
 }
 
+// SparseCheckoutOptions configures sparse checkout during clone operations.
+type SparseCheckoutOptions struct {
+	Cone  bool
+	Paths []string
+}
+
 // Repository implements git repository operations using command line git
 type Repository struct {
 	defaultAuthor string
@@ -285,7 +291,8 @@ func (r *Repository) UnstageFiles(ctx context.Context, nodePath string, files []
 }
 
 // Clone creates a local copy of a remote repository
-func (r *Repository) Clone(ctx context.Context, url string, localPath string, branch string, depth *int, singleBranch bool, bare bool) error {
+func (r *Repository) Clone(ctx context.Context, url string, localPath string, branch string, depth *int, singleBranch bool, bare bool, sparseCheckout *SparseCheckoutOptions) error {
+	// Build clone arguments
 	args := []string{"clone"}
 
 	if branch != "" {
@@ -304,11 +311,52 @@ func (r *Repository) Clone(ctx context.Context, url string, localPath string, br
 		args = append(args, "--bare")
 	}
 
+	// Sparse checkout requires --no-checkout to avoid initial full checkout
+	if sparseCheckout != nil && sparseCheckout.Cone && len(sparseCheckout.Paths) > 0 {
+		args = append(args, "--no-checkout")
+	}
+
 	args = append(args, url, localPath)
 
+	// Execute clone
 	cmd := exec.CommandContext(ctx, "git", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to clone repository: %w\nOutput: %s", err, output)
+	}
+
+	// Configure sparse checkout if requested
+	if sparseCheckout != nil && sparseCheckout.Cone && len(sparseCheckout.Paths) > 0 {
+		if err := r.configureSparseCheckout(ctx, localPath, sparseCheckout.Paths); err != nil {
+			return fmt.Errorf("failed to configure sparse checkout: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// configureSparseCheckout initializes and configures sparse checkout in cone mode.
+// This must be called after clone with --no-checkout flag.
+func (r *Repository) configureSparseCheckout(ctx context.Context, repoPath string, paths []string) error {
+	// Initialize sparse checkout in cone mode
+	cmd := exec.CommandContext(ctx, "git", "sparse-checkout", "init", "--cone")
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to init sparse checkout: %w\nOutput: %s", err, output)
+	}
+
+	// Set sparse checkout paths
+	args := append([]string{"sparse-checkout", "set"}, paths...)
+	cmd = exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set sparse checkout paths: %w\nOutput: %s", err, output)
+	}
+
+	// Checkout the files (this populates working directory with sparse paths)
+	cmd = exec.CommandContext(ctx, "git", "checkout")
+	cmd.Dir = repoPath
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to checkout sparse paths: %w\nOutput: %s", err, output)
 	}
 
 	return nil
