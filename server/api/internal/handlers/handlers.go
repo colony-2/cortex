@@ -35,7 +35,6 @@ type RecipeRegistryFactory func(ctx context.Context, projectID project.ID, repoP
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	graph        core.GraphBuilder
 	graphFactory GraphFactory
 	recipes      RecipeRegistryFactory
 
@@ -49,12 +48,11 @@ type Handlers struct {
 }
 
 // New creates a new handlers instance
-func New(graph core.GraphBuilder, factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister) *Handlers {
+func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister) *Handlers {
 	if recipes == nil {
 		recipes = defaultRecipeRegistryFactory
 	}
 	return &Handlers{
-		graph:        graph,
 		graphFactory: factory,
 		recipes:      recipes,
 		projects:     projects,

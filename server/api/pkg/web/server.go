@@ -10,7 +10,6 @@ import (
 	"github.com/colony-2/colony2/server/api/internal/handlers"
 	"github.com/colony-2/colony2/server/api/internal/middleware"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
-	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
@@ -39,7 +38,6 @@ type Config struct {
 
 // Dependencies contains all the dependencies required by the web server.
 type Dependencies struct {
-	Graph    core.GraphBuilder
 	StaticFS http.FileSystem // Optional: filesystem for static files
 
 	// ExtensionRoutes allows external modules to add routes
@@ -81,7 +79,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.Graph, deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps)
+	h := handlers.New(deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

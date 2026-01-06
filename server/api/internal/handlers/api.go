@@ -412,11 +412,6 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	projectID := project.ID(vars["projectId"])
-	prj, err := h.projects.GetProject(r.Context(), projectID)
-	if err != nil {
-		writeDomainError(w, err, projectErrorStatus(err))
-		return
-	}
 
 	popName := "graph/moon"
 	if body.Populator != nil {
@@ -428,24 +423,20 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 	var pop cell.Populator
 	switch popName {
 	case "graph/moon":
-		if h.graphFactory != nil {
-			gb, err := h.graphFactory(r.Context(), string(projectID))
-			if err != nil {
-				status := http.StatusInternalServerError
-				if errors.Is(err, project.ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
-					status = http.StatusNotFound
-				}
-				writeError(w, fmt.Errorf("graph factory: %w", err), status)
-				return
-			}
-			pop = &graphBuilderPopulator{name: popName, builder: gb}
-		} else {
-			root := strings.TrimSpace(prj.GitRepoPath)
-			if root == "" {
-				root = "."
-			}
-			pop = cell.NewGraphPopulator(root)
+		if h.graphFactory == nil {
+			writeError(w, fmt.Errorf("graph factory not configured"), http.StatusInternalServerError)
+			return
 		}
+		gb, err := h.graphFactory(r.Context(), string(projectID))
+		if err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, project.ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
+				status = http.StatusNotFound
+			}
+			writeError(w, fmt.Errorf("graph factory: %w", err), status)
+			return
+		}
+		pop = &graphBuilderPopulator{name: popName, builder: gb}
 	default:
 		writeError(w, fmt.Errorf("unsupported populator: %s", popName), http.StatusBadRequest)
 		return

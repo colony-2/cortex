@@ -88,8 +88,11 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 			Edges: nil,
 		},
 	}
+	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
+		return graphBuilder, nil
+	}
 
-	h := New(graphBuilder, nil, nil, projectSvc, cellSvc, ticketSvc, nil, nil, cellStore)
+	h := New(graphFactory, nil, projectSvc, cellSvc, ticketSvc, nil, nil, cellStore)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()

@@ -55,30 +55,21 @@ func Execute() error {
 		port        int
 		corsOrigins []string
 		staticPath  string
-		nodesPath   string
 		createNew   bool
 		storagePath string
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "testserver [path]",
-		Short: "Test server for colony2 e2e testing",
-		Long: `A standalone test server for colony2 that can be used for e2e testing.
-Supports memory storage and configurable node directories.`,
+		Use:     "testserver",
+		Short:   "Test server for colony2 e2e testing",
+		Long:    `A standalone test server for colony2 that can be used for e2e testing.`,
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
-		Args:    cobra.MaximumNArgs(1),
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Set path from positional argument
-			if len(args) > 0 {
-				nodesPath = args[0]
-			} else {
-				nodesPath = "."
-			}
-
 			// For testserver, -n always means use memory storage
 			useMemory := createNew || true
 
-			return runServer(port, corsOrigins, staticPath, nodesPath, useMemory, storagePath)
+			return runServer(port, corsOrigins, staticPath, useMemory, storagePath)
 		},
 	}
 
@@ -91,14 +82,8 @@ Supports memory storage and configurable node directories.`,
 	return rootCmd.Execute()
 }
 
-func runServer(port int, corsOrigins []string, staticPath, nodesPath string, useMemory bool, storagePath string) error {
+func runServer(port int, corsOrigins []string, staticPath string, useMemory bool, storagePath string) error {
 	setupLogger()
-
-	// Resolve absolute paths
-	absNodesPath, err := filepath.Abs(nodesPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve nodes path: %w", err)
-	}
 
 	dsn := os.Getenv("NEON_C2_DEV_DSN")
 	pgDB, closeDB, err := database.Open(database.Config{DSN: dsn})
@@ -112,9 +97,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 			}
 		}
 	}()
-
-	// Create dependencies
-	graphBuilder := graph.NewBuilder(absNodesPath)
 
 	// Persistence-backed services (projects, cells, tickets)
 	projectStore, err := project.NewStore(pgDB)
@@ -210,7 +192,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
 		if projectSvc == nil {
-			return graphBuilder, nil
+			return nil, fmt.Errorf("project service not configured")
 		}
 		prj, err := projectSvc.GetProject(ctx, project.ID(projectID))
 		if err != nil {
@@ -218,7 +200,7 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 		}
 		root := prj.GitRepoPath
 		if strings.TrimSpace(root) == "" {
-			root = absNodesPath
+			return nil, fmt.Errorf("project %s has no git repository path configured", projectID)
 		}
 		return graph.NewBuilder(root), nil
 	}
@@ -276,7 +258,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 
 	// Create dependencies
 	deps := web.Dependencies{
-		Graph:           graphBuilder,
 		GraphFactory:    graphFactory,
 		Projects:        projectSvc,
 		Cells:           cellSvc,
@@ -301,7 +282,6 @@ func runServer(port int, corsOrigins []string, staticPath, nodesPath string, use
 	server := web.NewServer(config, deps)
 
 	fmt.Printf("Starting test server on port %d\n", port)
-	fmt.Printf("Nodes directory: %s\n", absNodesPath)
 	fmt.Printf("CORS origins: %v\n", corsOrigins)
 
 	// Setup graceful shutdown
