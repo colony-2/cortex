@@ -83,18 +83,18 @@ inputs:
 
 	time.Sleep(300 * time.Millisecond)
 
-	inputs, err := opR.collectPendingInputs(context.Background())
+	inputs, err := opR.collectPendingInputs(context.Background(), "test-tenant")
 	require.NoError(t, err)
 	require.Equal(t, 1, len(inputs))
 	pending := inputs[0]
 
-	result := opR.getDetails(context.Background(), pending.JobID)
+	result := opR.getDetails(context.Background(), "test-tenant", pending.JobID)
 	if result.hasError() {
 		t.Fatalf("failed to get result: %v", result.err)
 	}
 	details := result.value
 	require.Equal(t, "how old are you", details.Form.Question)
-	res2 := opR.submitResponse(context.Background(), pending.JobID, FormResponse{
+	res2 := opR.submitResponse(context.Background(), "test-tenant", pending.JobID, FormResponse{
 		Response: "foolish",
 		Hash:     "abc123",
 	})

@@ -1329,11 +1329,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/user-inputs/pending:
+  /api/projects/{projectId}/user-inputs/pending:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
     get:
       tags: [UserInputs]
       summary: List pending input jobs
-      description: Returns all pending user input requests from the workflow engine.
+      description: Returns all pending user input requests from the workflow engine for the specified project.
       responses:
         '200':
           description: Pending input list
@@ -1344,8 +1351,14 @@ paths:
                 items:
                   $ref: '#/components/schemas/PendingInput'
 
-  /api/user-inputs/{jobId}:
+  /api/projects/{projectId}/user-inputs/{jobId}:
     parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
       - name: jobId
         in: path
         required: true
@@ -1355,7 +1368,7 @@ paths:
     get:
       tags: [UserInputs]
       summary: Get input request details
-      description: Returns details for a pending user input request.
+      description: Returns details for a pending user input request in the specified project.
       responses:
         '200':
           description: Input request details
@@ -1370,8 +1383,14 @@ paths:
               schema:
                 type: string
 
-  /api/user-inputs/{jobId}/respond:
+  /api/projects/{projectId}/user-inputs/{jobId}/respond:
     parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
       - name: jobId
         in: path
         required: true
@@ -1381,7 +1400,7 @@ paths:
     post:
       tags: [UserInputs]
       summary: Submit input response
-      description: Completes a pending input request with user-provided fields.
+      description: Completes a pending input request with user-provided fields in the specified project.
       requestBody:
         required: true
         content:
@@ -1411,8 +1430,14 @@ paths:
               schema:
                 type: string
 
-  /api/user-inputs/{jobId}/cancel:
+  /api/projects/{projectId}/user-inputs/{jobId}/cancel:
     parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
       - name: jobId
         in: path
         required: true
@@ -1422,7 +1447,7 @@ paths:
     post:
       tags: [UserInputs]
       summary: Cancel input request
-      description: Cancels a pending input request and broadcasts an SSE event.
+      description: Cancels a pending input request in the specified project and broadcasts an SSE event.
       requestBody:
         required: true
         content:
@@ -1450,11 +1475,18 @@ paths:
               schema:
                 type: string
 
-  /api/user-inputs/stream:
+  /api/projects/{projectId}/user-inputs/stream:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        description: Project identifier
+        schema:
+          type: string
     get:
       tags: [UserInputs]
       summary: User input SSE stream
-      description: "Server-Sent Events stream emitting input lifecycle events. Clients receive an initial `connected` event, a snapshot of `input_pending` items, heartbeat events, lifecycle updates such as `input_cancelled`, and error notifications. Event payloads match the InputSSEEvent schema."
+      description: "Server-Sent Events stream emitting input lifecycle events for the specified project. Clients receive an initial `connected` event, a snapshot of `input_pending` items, heartbeat events, lifecycle updates such as `input_cancelled`, and error notifications. Event payloads match the InputSSEEvent schema."
       responses:
         '200':
           description: SSE stream established
@@ -2699,7 +2731,7 @@ components:
         - input_cancelled
         - heartbeat
         - error
-      description: "Input SSE event type emitted by /api/user-inputs/stream."
+      description: "Input SSE event type emitted by /api/projects/{projectId}/user-inputs/stream."
 
     InputSSEConnectedData:
       type: object
@@ -2742,7 +2774,7 @@ components:
 
     InputSSEEvent:
       type: object
-      description: "Event envelope emitted by /api/user-inputs/stream."
+      description: "Event envelope emitted by /api/projects/{projectId}/user-inputs/stream."
       properties:
         type:
           $ref: '#/components/schemas/InputSSEEventType'

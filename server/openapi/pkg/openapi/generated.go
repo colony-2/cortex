@@ -403,11 +403,11 @@ type InputSSEErrorData struct {
 	Error string `json:"error"`
 }
 
-// InputSSEEvent Event envelope emitted by /api/user-inputs/stream.
+// InputSSEEvent Event envelope emitted by /api/projects/{projectId}/user-inputs/stream.
 type InputSSEEvent struct {
 	Data InputSSEEvent_Data `json:"data"`
 
-	// Type Input SSE event type emitted by /api/user-inputs/stream.
+	// Type Input SSE event type emitted by /api/projects/{projectId}/user-inputs/stream.
 	Type InputSSEEventType `json:"type"`
 }
 
@@ -416,7 +416,7 @@ type InputSSEEvent_Data struct {
 	union json.RawMessage
 }
 
-// InputSSEEventType Input SSE event type emitted by /api/user-inputs/stream.
+// InputSSEEventType Input SSE event type emitted by /api/projects/{projectId}/user-inputs/stream.
 type InputSSEEventType string
 
 // InputSSEHeartbeatData defines model for InputSSEHeartbeatData.
@@ -1009,6 +1009,12 @@ type GetApiProjectsProjectIdTicketsTicketIdEventsParams struct {
 	IncludeReset *bool `form:"includeReset,omitempty" json:"includeReset,omitempty"`
 }
 
+// PostApiProjectsProjectIdUserInputsJobIdCancelJSONBody defines parameters for PostApiProjectsProjectIdUserInputsJobIdCancel.
+type PostApiProjectsProjectIdUserInputsJobIdCancelJSONBody struct {
+	// Reason Human-readable cancellation reason
+	Reason *string `json:"reason,omitempty"`
+}
+
 // GetApiProjectsWorkflowsParams defines parameters for GetApiProjectsWorkflows.
 type GetApiProjectsWorkflowsParams struct {
 	Status   *[]WorkflowStatus `form:"status,omitempty" json:"status,omitempty"`
@@ -1023,12 +1029,6 @@ type GetApiProjectsWorkflowsParams struct {
 // GetApiProjectsWorkflows1Params defines parameters for GetApiProjectsWorkflows1.
 type GetApiProjectsWorkflows1Params struct {
 	IncludeRawJobData *bool `form:"includeRawJobData,omitempty" json:"includeRawJobData,omitempty"`
-}
-
-// PostApiUserInputsJobIdCancelJSONBody defines parameters for PostApiUserInputsJobIdCancel.
-type PostApiUserInputsJobIdCancelJSONBody struct {
-	// Reason Human-readable cancellation reason
-	Reason *string `json:"reason,omitempty"`
 }
 
 // PostApiProjectsJSONRequestBody defines body for PostApiProjects for application/json ContentType.
@@ -1064,11 +1064,11 @@ type PostApiProjectsProjectIdTicketsJSONRequestBody = TicketCreateRequest
 // PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody defines body for PatchApiProjectsProjectIdTicketsTicketId for application/json ContentType.
 type PatchApiProjectsProjectIdTicketsTicketIdJSONRequestBody = TicketUpdateRequest
 
-// PostApiUserInputsJobIdCancelJSONRequestBody defines body for PostApiUserInputsJobIdCancel for application/json ContentType.
-type PostApiUserInputsJobIdCancelJSONRequestBody PostApiUserInputsJobIdCancelJSONBody
+// PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody defines body for PostApiProjectsProjectIdUserInputsJobIdCancel for application/json ContentType.
+type PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody PostApiProjectsProjectIdUserInputsJobIdCancelJSONBody
 
-// PostApiUserInputsJobIdRespondJSONRequestBody defines body for PostApiUserInputsJobIdRespond for application/json ContentType.
-type PostApiUserInputsJobIdRespondJSONRequestBody = FormResponse
+// PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody defines body for PostApiProjectsProjectIdUserInputsJobIdRespond for application/json ContentType.
+type PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody = FormResponse
 
 // AsInputSSEConnectedData returns the union data inside the InputSSEEvent_Data as a InputSSEConnectedData
 func (t InputSSEEvent_Data) AsInputSSEConnectedData() (InputSSEConnectedData, error) {
@@ -1392,30 +1392,30 @@ type ClientInterface interface {
 	// GetApiProjectsProjectIdTicketsTicketIdEvents request
 	GetApiProjectsProjectIdTicketsTicketIdEvents(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdEventsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetApiProjectsProjectIdUserInputsPending request
+	GetApiProjectsProjectIdUserInputsPending(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiProjectsProjectIdUserInputsStream request
+	GetApiProjectsProjectIdUserInputsStream(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiProjectsProjectIdUserInputsJobId request
+	GetApiProjectsProjectIdUserInputsJobId(ctx context.Context, projectId string, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiProjectsProjectIdUserInputsJobIdCancelWithBody request with any body
+	PostApiProjectsProjectIdUserInputsJobIdCancelWithBody(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostApiProjectsProjectIdUserInputsJobIdCancel(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiProjectsProjectIdUserInputsJobIdRespondWithBody request with any body
+	PostApiProjectsProjectIdUserInputsJobIdRespondWithBody(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostApiProjectsProjectIdUserInputsJobIdRespond(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetApiProjectsWorkflows request
 	GetApiProjectsWorkflows(ctx context.Context, projectId string, params *GetApiProjectsWorkflowsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiProjectsWorkflows1 request
 	GetApiProjectsWorkflows1(ctx context.Context, projectId string, workflowId string, params *GetApiProjectsWorkflows1Params, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetApiUserInputsPending request
-	GetApiUserInputsPending(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetApiUserInputsStream request
-	GetApiUserInputsStream(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetApiUserInputsJobId request
-	GetApiUserInputsJobId(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostApiUserInputsJobIdCancelWithBody request with any body
-	PostApiUserInputsJobIdCancelWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PostApiUserInputsJobIdCancel(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostApiUserInputsJobIdRespondWithBody request with any body
-	PostApiUserInputsJobIdRespondWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PostApiUserInputsJobIdRespond(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetApiProjects(ctx context.Context, params *GetApiProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -1898,6 +1898,90 @@ func (c *Client) GetApiProjectsProjectIdTicketsTicketIdEvents(ctx context.Contex
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetApiProjectsProjectIdUserInputsPending(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdUserInputsPendingRequest(c.Server, projectId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiProjectsProjectIdUserInputsStream(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdUserInputsStreamRequest(c.Server, projectId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiProjectsProjectIdUserInputsJobId(ctx context.Context, projectId string, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiProjectsProjectIdUserInputsJobIdRequest(c.Server, projectId, jobId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiProjectsProjectIdUserInputsJobIdCancelWithBody(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdUserInputsJobIdCancelRequestWithBody(c.Server, projectId, jobId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiProjectsProjectIdUserInputsJobIdCancel(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdUserInputsJobIdCancelRequest(c.Server, projectId, jobId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiProjectsProjectIdUserInputsJobIdRespondWithBody(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdUserInputsJobIdRespondRequestWithBody(c.Server, projectId, jobId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiProjectsProjectIdUserInputsJobIdRespond(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiProjectsProjectIdUserInputsJobIdRespondRequest(c.Server, projectId, jobId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetApiProjectsWorkflows(ctx context.Context, projectId string, params *GetApiProjectsWorkflowsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetApiProjectsWorkflowsRequest(c.Server, projectId, params)
 	if err != nil {
@@ -1912,90 +1996,6 @@ func (c *Client) GetApiProjectsWorkflows(ctx context.Context, projectId string, 
 
 func (c *Client) GetApiProjectsWorkflows1(ctx context.Context, projectId string, workflowId string, params *GetApiProjectsWorkflows1Params, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetApiProjectsWorkflows1Request(c.Server, projectId, workflowId, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetApiUserInputsPending(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiUserInputsPendingRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetApiUserInputsStream(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiUserInputsStreamRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetApiUserInputsJobId(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiUserInputsJobIdRequest(c.Server, jobId)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiUserInputsJobIdCancelWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiUserInputsJobIdCancelRequestWithBody(c.Server, jobId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiUserInputsJobIdCancel(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiUserInputsJobIdCancelRequest(c.Server, jobId, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiUserInputsJobIdRespondWithBody(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiUserInputsJobIdRespondRequestWithBody(c.Server, jobId, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiUserInputsJobIdRespond(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiUserInputsJobIdRespondRequest(c.Server, jobId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -3839,6 +3839,223 @@ func NewGetApiProjectsProjectIdTicketsTicketIdEventsRequest(server string, proje
 	return req, nil
 }
 
+// NewGetApiProjectsProjectIdUserInputsPendingRequest generates requests for GetApiProjectsProjectIdUserInputsPending
+func NewGetApiProjectsProjectIdUserInputsPendingRequest(server string, projectId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/user-inputs/pending", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdUserInputsStreamRequest generates requests for GetApiProjectsProjectIdUserInputsStream
+func NewGetApiProjectsProjectIdUserInputsStreamRequest(server string, projectId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/user-inputs/stream", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetApiProjectsProjectIdUserInputsJobIdRequest generates requests for GetApiProjectsProjectIdUserInputsJobId
+func NewGetApiProjectsProjectIdUserInputsJobIdRequest(server string, projectId string, jobId string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/user-inputs/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiProjectsProjectIdUserInputsJobIdCancelRequest calls the generic PostApiProjectsProjectIdUserInputsJobIdCancel builder with application/json body
+func NewPostApiProjectsProjectIdUserInputsJobIdCancelRequest(server string, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiProjectsProjectIdUserInputsJobIdCancelRequestWithBody(server, projectId, jobId, "application/json", bodyReader)
+}
+
+// NewPostApiProjectsProjectIdUserInputsJobIdCancelRequestWithBody generates requests for PostApiProjectsProjectIdUserInputsJobIdCancel with any type of body
+func NewPostApiProjectsProjectIdUserInputsJobIdCancelRequestWithBody(server string, projectId string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/user-inputs/%s/cancel", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPostApiProjectsProjectIdUserInputsJobIdRespondRequest calls the generic PostApiProjectsProjectIdUserInputsJobIdRespond builder with application/json body
+func NewPostApiProjectsProjectIdUserInputsJobIdRespondRequest(server string, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiProjectsProjectIdUserInputsJobIdRespondRequestWithBody(server, projectId, jobId, "application/json", bodyReader)
+}
+
+// NewPostApiProjectsProjectIdUserInputsJobIdRespondRequestWithBody generates requests for PostApiProjectsProjectIdUserInputsJobIdRespond with any type of body
+func NewPostApiProjectsProjectIdUserInputsJobIdRespondRequestWithBody(server string, projectId string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "projectId", runtime.ParamLocationPath, projectId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/projects/%s/user-inputs/%s/respond", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetApiProjectsWorkflowsRequest generates requests for GetApiProjectsWorkflows
 func NewGetApiProjectsWorkflowsRequest(server string, projectId string, params *GetApiProjectsWorkflowsParams) (*http.Request, error) {
 	var err error
@@ -4054,188 +4271,6 @@ func NewGetApiProjectsWorkflows1Request(server string, projectId string, workflo
 	return req, nil
 }
 
-// NewGetApiUserInputsPendingRequest generates requests for GetApiUserInputsPending
-func NewGetApiUserInputsPendingRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/user-inputs/pending")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetApiUserInputsStreamRequest generates requests for GetApiUserInputsStream
-func NewGetApiUserInputsStreamRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/user-inputs/stream")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetApiUserInputsJobIdRequest generates requests for GetApiUserInputsJobId
-func NewGetApiUserInputsJobIdRequest(server string, jobId string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/user-inputs/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewPostApiUserInputsJobIdCancelRequest calls the generic PostApiUserInputsJobIdCancel builder with application/json body
-func NewPostApiUserInputsJobIdCancelRequest(server string, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostApiUserInputsJobIdCancelRequestWithBody(server, jobId, "application/json", bodyReader)
-}
-
-// NewPostApiUserInputsJobIdCancelRequestWithBody generates requests for PostApiUserInputsJobIdCancel with any type of body
-func NewPostApiUserInputsJobIdCancelRequestWithBody(server string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/user-inputs/%s/cancel", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewPostApiUserInputsJobIdRespondRequest calls the generic PostApiUserInputsJobIdRespond builder with application/json body
-func NewPostApiUserInputsJobIdRespondRequest(server string, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostApiUserInputsJobIdRespondRequestWithBody(server, jobId, "application/json", bodyReader)
-}
-
-// NewPostApiUserInputsJobIdRespondRequestWithBody generates requests for PostApiUserInputsJobIdRespond with any type of body
-func NewPostApiUserInputsJobIdRespondRequestWithBody(server string, jobId string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "jobId", runtime.ParamLocationPath, jobId)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/user-inputs/%s/respond", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -4388,30 +4423,30 @@ type ClientWithResponsesInterface interface {
 	// GetApiProjectsProjectIdTicketsTicketIdEventsWithResponse request
 	GetApiProjectsProjectIdTicketsTicketIdEventsWithResponse(ctx context.Context, projectId string, ticketId string, params *GetApiProjectsProjectIdTicketsTicketIdEventsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdTicketsTicketIdEventsResponse, error)
 
+	// GetApiProjectsProjectIdUserInputsPendingWithResponse request
+	GetApiProjectsProjectIdUserInputsPendingWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsPendingResponse, error)
+
+	// GetApiProjectsProjectIdUserInputsStreamWithResponse request
+	GetApiProjectsProjectIdUserInputsStreamWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsStreamResponse, error)
+
+	// GetApiProjectsProjectIdUserInputsJobIdWithResponse request
+	GetApiProjectsProjectIdUserInputsJobIdWithResponse(ctx context.Context, projectId string, jobId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsJobIdResponse, error)
+
+	// PostApiProjectsProjectIdUserInputsJobIdCancelWithBodyWithResponse request with any body
+	PostApiProjectsProjectIdUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdCancelResponse, error)
+
+	PostApiProjectsProjectIdUserInputsJobIdCancelWithResponse(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdCancelResponse, error)
+
+	// PostApiProjectsProjectIdUserInputsJobIdRespondWithBodyWithResponse request with any body
+	PostApiProjectsProjectIdUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdRespondResponse, error)
+
+	PostApiProjectsProjectIdUserInputsJobIdRespondWithResponse(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdRespondResponse, error)
+
 	// GetApiProjectsWorkflowsWithResponse request
 	GetApiProjectsWorkflowsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsWorkflowsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsWorkflowsResponse, error)
 
 	// GetApiProjectsWorkflows1WithResponse request
 	GetApiProjectsWorkflows1WithResponse(ctx context.Context, projectId string, workflowId string, params *GetApiProjectsWorkflows1Params, reqEditors ...RequestEditorFn) (*GetApiProjectsWorkflows1Response, error)
-
-	// GetApiUserInputsPendingWithResponse request
-	GetApiUserInputsPendingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsPendingResponse, error)
-
-	// GetApiUserInputsStreamWithResponse request
-	GetApiUserInputsStreamWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsStreamResponse, error)
-
-	// GetApiUserInputsJobIdWithResponse request
-	GetApiUserInputsJobIdWithResponse(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*GetApiUserInputsJobIdResponse, error)
-
-	// PostApiUserInputsJobIdCancelWithBodyWithResponse request with any body
-	PostApiUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error)
-
-	PostApiUserInputsJobIdCancelWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error)
-
-	// PostApiUserInputsJobIdRespondWithBodyWithResponse request with any body
-	PostApiUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error)
-
-	PostApiUserInputsJobIdRespondWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error)
 }
 
 type GetApiProjectsResponse struct {
@@ -5068,6 +5103,119 @@ func (r GetApiProjectsProjectIdTicketsTicketIdEventsResponse) StatusCode() int {
 	return 0
 }
 
+type GetApiProjectsProjectIdUserInputsPendingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]PendingInput
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdUserInputsPendingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdUserInputsPendingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdUserInputsStreamResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdUserInputsStreamResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdUserInputsStreamResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiProjectsProjectIdUserInputsJobIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *UserInputDetails
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiProjectsProjectIdUserInputsJobIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiProjectsProjectIdUserInputsJobIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostApiProjectsProjectIdUserInputsJobIdCancelResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok *bool `json:"ok,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiProjectsProjectIdUserInputsJobIdCancelResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiProjectsProjectIdUserInputsJobIdCancelResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostApiProjectsProjectIdUserInputsJobIdRespondResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *struct {
+		Ok *bool `json:"ok,omitempty"`
+	}
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiProjectsProjectIdUserInputsJobIdRespondResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiProjectsProjectIdUserInputsJobIdRespondResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetApiProjectsWorkflowsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5109,119 +5257,6 @@ func (r GetApiProjectsWorkflows1Response) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetApiProjectsWorkflows1Response) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetApiUserInputsPendingResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *[]PendingInput
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiUserInputsPendingResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiUserInputsPendingResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetApiUserInputsStreamResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiUserInputsStreamResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiUserInputsStreamResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetApiUserInputsJobIdResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *UserInputDetails
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiUserInputsJobIdResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiUserInputsJobIdResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostApiUserInputsJobIdCancelResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *struct {
-		Ok *bool `json:"ok,omitempty"`
-	}
-}
-
-// Status returns HTTPResponse.Status
-func (r PostApiUserInputsJobIdCancelResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostApiUserInputsJobIdCancelResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostApiUserInputsJobIdRespondResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *struct {
-		Ok *bool `json:"ok,omitempty"`
-	}
-}
-
-// Status returns HTTPResponse.Status
-func (r PostApiUserInputsJobIdRespondResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostApiUserInputsJobIdRespondResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -5577,6 +5612,67 @@ func (c *ClientWithResponses) GetApiProjectsProjectIdTicketsTicketIdEventsWithRe
 	return ParseGetApiProjectsProjectIdTicketsTicketIdEventsResponse(rsp)
 }
 
+// GetApiProjectsProjectIdUserInputsPendingWithResponse request returning *GetApiProjectsProjectIdUserInputsPendingResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdUserInputsPendingWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsPendingResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdUserInputsPending(ctx, projectId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdUserInputsPendingResponse(rsp)
+}
+
+// GetApiProjectsProjectIdUserInputsStreamWithResponse request returning *GetApiProjectsProjectIdUserInputsStreamResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdUserInputsStreamWithResponse(ctx context.Context, projectId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsStreamResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdUserInputsStream(ctx, projectId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdUserInputsStreamResponse(rsp)
+}
+
+// GetApiProjectsProjectIdUserInputsJobIdWithResponse request returning *GetApiProjectsProjectIdUserInputsJobIdResponse
+func (c *ClientWithResponses) GetApiProjectsProjectIdUserInputsJobIdWithResponse(ctx context.Context, projectId string, jobId string, reqEditors ...RequestEditorFn) (*GetApiProjectsProjectIdUserInputsJobIdResponse, error) {
+	rsp, err := c.GetApiProjectsProjectIdUserInputsJobId(ctx, projectId, jobId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiProjectsProjectIdUserInputsJobIdResponse(rsp)
+}
+
+// PostApiProjectsProjectIdUserInputsJobIdCancelWithBodyWithResponse request with arbitrary body returning *PostApiProjectsProjectIdUserInputsJobIdCancelResponse
+func (c *ClientWithResponses) PostApiProjectsProjectIdUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdCancelResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdUserInputsJobIdCancelWithBody(ctx, projectId, jobId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiProjectsProjectIdUserInputsJobIdCancelResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostApiProjectsProjectIdUserInputsJobIdCancelWithResponse(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdCancelResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdUserInputsJobIdCancel(ctx, projectId, jobId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiProjectsProjectIdUserInputsJobIdCancelResponse(rsp)
+}
+
+// PostApiProjectsProjectIdUserInputsJobIdRespondWithBodyWithResponse request with arbitrary body returning *PostApiProjectsProjectIdUserInputsJobIdRespondResponse
+func (c *ClientWithResponses) PostApiProjectsProjectIdUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, projectId string, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdRespondResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdUserInputsJobIdRespondWithBody(ctx, projectId, jobId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiProjectsProjectIdUserInputsJobIdRespondResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostApiProjectsProjectIdUserInputsJobIdRespondWithResponse(ctx context.Context, projectId string, jobId string, body PostApiProjectsProjectIdUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiProjectsProjectIdUserInputsJobIdRespondResponse, error) {
+	rsp, err := c.PostApiProjectsProjectIdUserInputsJobIdRespond(ctx, projectId, jobId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiProjectsProjectIdUserInputsJobIdRespondResponse(rsp)
+}
+
 // GetApiProjectsWorkflowsWithResponse request returning *GetApiProjectsWorkflowsResponse
 func (c *ClientWithResponses) GetApiProjectsWorkflowsWithResponse(ctx context.Context, projectId string, params *GetApiProjectsWorkflowsParams, reqEditors ...RequestEditorFn) (*GetApiProjectsWorkflowsResponse, error) {
 	rsp, err := c.GetApiProjectsWorkflows(ctx, projectId, params, reqEditors...)
@@ -5593,67 +5689,6 @@ func (c *ClientWithResponses) GetApiProjectsWorkflows1WithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseGetApiProjectsWorkflows1Response(rsp)
-}
-
-// GetApiUserInputsPendingWithResponse request returning *GetApiUserInputsPendingResponse
-func (c *ClientWithResponses) GetApiUserInputsPendingWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsPendingResponse, error) {
-	rsp, err := c.GetApiUserInputsPending(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiUserInputsPendingResponse(rsp)
-}
-
-// GetApiUserInputsStreamWithResponse request returning *GetApiUserInputsStreamResponse
-func (c *ClientWithResponses) GetApiUserInputsStreamWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiUserInputsStreamResponse, error) {
-	rsp, err := c.GetApiUserInputsStream(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiUserInputsStreamResponse(rsp)
-}
-
-// GetApiUserInputsJobIdWithResponse request returning *GetApiUserInputsJobIdResponse
-func (c *ClientWithResponses) GetApiUserInputsJobIdWithResponse(ctx context.Context, jobId string, reqEditors ...RequestEditorFn) (*GetApiUserInputsJobIdResponse, error) {
-	rsp, err := c.GetApiUserInputsJobId(ctx, jobId, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiUserInputsJobIdResponse(rsp)
-}
-
-// PostApiUserInputsJobIdCancelWithBodyWithResponse request with arbitrary body returning *PostApiUserInputsJobIdCancelResponse
-func (c *ClientWithResponses) PostApiUserInputsJobIdCancelWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error) {
-	rsp, err := c.PostApiUserInputsJobIdCancelWithBody(ctx, jobId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiUserInputsJobIdCancelResponse(rsp)
-}
-
-func (c *ClientWithResponses) PostApiUserInputsJobIdCancelWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdCancelJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdCancelResponse, error) {
-	rsp, err := c.PostApiUserInputsJobIdCancel(ctx, jobId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiUserInputsJobIdCancelResponse(rsp)
-}
-
-// PostApiUserInputsJobIdRespondWithBodyWithResponse request with arbitrary body returning *PostApiUserInputsJobIdRespondResponse
-func (c *ClientWithResponses) PostApiUserInputsJobIdRespondWithBodyWithResponse(ctx context.Context, jobId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error) {
-	rsp, err := c.PostApiUserInputsJobIdRespondWithBody(ctx, jobId, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiUserInputsJobIdRespondResponse(rsp)
-}
-
-func (c *ClientWithResponses) PostApiUserInputsJobIdRespondWithResponse(ctx context.Context, jobId string, body PostApiUserInputsJobIdRespondJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiUserInputsJobIdRespondResponse, error) {
-	rsp, err := c.PostApiUserInputsJobIdRespond(ctx, jobId, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiUserInputsJobIdRespondResponse(rsp)
 }
 
 // ParseGetApiProjectsResponse parses an HTTP response from a GetApiProjectsWithResponse call
@@ -6513,6 +6548,130 @@ func ParseGetApiProjectsProjectIdTicketsTicketIdEventsResponse(rsp *http.Respons
 	return response, nil
 }
 
+// ParseGetApiProjectsProjectIdUserInputsPendingResponse parses an HTTP response from a GetApiProjectsProjectIdUserInputsPendingWithResponse call
+func ParseGetApiProjectsProjectIdUserInputsPendingResponse(rsp *http.Response) (*GetApiProjectsProjectIdUserInputsPendingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdUserInputsPendingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []PendingInput
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdUserInputsStreamResponse parses an HTTP response from a GetApiProjectsProjectIdUserInputsStreamWithResponse call
+func ParseGetApiProjectsProjectIdUserInputsStreamResponse(rsp *http.Response) (*GetApiProjectsProjectIdUserInputsStreamResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdUserInputsStreamResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiProjectsProjectIdUserInputsJobIdResponse parses an HTTP response from a GetApiProjectsProjectIdUserInputsJobIdWithResponse call
+func ParseGetApiProjectsProjectIdUserInputsJobIdResponse(rsp *http.Response) (*GetApiProjectsProjectIdUserInputsJobIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiProjectsProjectIdUserInputsJobIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest UserInputDetails
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiProjectsProjectIdUserInputsJobIdCancelResponse parses an HTTP response from a PostApiProjectsProjectIdUserInputsJobIdCancelWithResponse call
+func ParsePostApiProjectsProjectIdUserInputsJobIdCancelResponse(rsp *http.Response) (*PostApiProjectsProjectIdUserInputsJobIdCancelResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiProjectsProjectIdUserInputsJobIdCancelResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok *bool `json:"ok,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiProjectsProjectIdUserInputsJobIdRespondResponse parses an HTTP response from a PostApiProjectsProjectIdUserInputsJobIdRespondWithResponse call
+func ParsePostApiProjectsProjectIdUserInputsJobIdRespondResponse(rsp *http.Response) (*PostApiProjectsProjectIdUserInputsJobIdRespondResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiProjectsProjectIdUserInputsJobIdRespondResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Ok *bool `json:"ok,omitempty"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetApiProjectsWorkflowsResponse parses an HTTP response from a GetApiProjectsWorkflowsWithResponse call
 func ParseGetApiProjectsWorkflowsResponse(rsp *http.Response) (*GetApiProjectsWorkflowsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -6586,277 +6745,153 @@ func ParseGetApiProjectsWorkflows1Response(rsp *http.Response) (*GetApiProjectsW
 	return response, nil
 }
 
-// ParseGetApiUserInputsPendingResponse parses an HTTP response from a GetApiUserInputsPendingWithResponse call
-func ParseGetApiUserInputsPendingResponse(rsp *http.Response) (*GetApiUserInputsPendingResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiUserInputsPendingResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []PendingInput
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetApiUserInputsStreamResponse parses an HTTP response from a GetApiUserInputsStreamWithResponse call
-func ParseGetApiUserInputsStreamResponse(rsp *http.Response) (*GetApiUserInputsStreamResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiUserInputsStreamResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	return response, nil
-}
-
-// ParseGetApiUserInputsJobIdResponse parses an HTTP response from a GetApiUserInputsJobIdWithResponse call
-func ParseGetApiUserInputsJobIdResponse(rsp *http.Response) (*GetApiUserInputsJobIdResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiUserInputsJobIdResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest UserInputDetails
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePostApiUserInputsJobIdCancelResponse parses an HTTP response from a PostApiUserInputsJobIdCancelWithResponse call
-func ParsePostApiUserInputsJobIdCancelResponse(rsp *http.Response) (*PostApiUserInputsJobIdCancelResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostApiUserInputsJobIdCancelResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Ok *bool `json:"ok,omitempty"`
-		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParsePostApiUserInputsJobIdRespondResponse parses an HTTP response from a PostApiUserInputsJobIdRespondWithResponse call
-func ParsePostApiUserInputsJobIdRespondResponse(rsp *http.Response) (*PostApiUserInputsJobIdRespondResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostApiUserInputsJobIdRespondResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest struct {
-			Ok *bool `json:"ok,omitempty"`
-		}
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"aTll6cLfv7//3wAAAP//GU8fKnPfAAA=",
+	"H4sIAAAAAAAC/+x963LcNtbgq6C431RJNS11S7Iziaqmam1JTjTjJCrJjncSedtoEt0Nmw0wAKhLVPq7",
+	"D7CPuE+yhRsJkgDJbnVLyhf/siWBwMHBueHgXO6imC4yShARPDq8i3g8Rwuo/vsqFpTJ/ySIxwxnAlMS",
+	"HepfgwyxKWULTGZAzBGAsfzrLjhj9AonCHzKOWKfwPUcESBuM/RP+fMAUAY+wRkiwv2T+sVuNIgyRjPE",
+	"BEZqefVr+Z//YmgaHUb/Y1hCOjRgDhUwr9TI+0Ekp+v1xTs58H4QSah6ffBeDry/H0QM/Z5jhpLo8De9",
+	"3Ee7bEQnn1Gs4HCgOryrbStGadpE6k9wgQCdalzKD4EaV8zNBcNkJudGNyjO5VdjnMh5GgMwuaIxVCPm",
+	"kM+9Y64p+zJN6fWYwAXyjKht1MBS/aoGSnPhIGbOoIjnTcw8zwP3b+GdWRiRfCExpOYdmC189BxbOWlj",
+	"32gBsSIJyVBQRIfmN4OOU9GjvFhmAk9h7KG+DIp593mrUW0Tn6MpYojEyHOKZkiIPIu/27NrjIgZggIl",
+	"YygqSEmgQDsCK8prfBOg40HE8R9oPLkVGrhiMkzENy+iQUTyNIWTFEWHguWomBgTgWaSAAZRztTZBAYG",
+	"EOgiob5lA2xlnz5cHxlBUUVvgjJEEkTi4mdXjLzFXEgxIhkWnB5zIOaY65/0hxxQIllVoAX34sv8AjIG",
+	"b5U0SZqrvCf49xwBnCAi8BQjBqaUKdEVElr2eKrzHGOepfAWEEf4hWawhFud4Q1OEeC3XKAFkCOAoMUs",
+	"IMEMSa679c1nqa86n2TrAn9baHe2OwALmuQpGoAUTxhkt9udfKnO3JyxAtt8MKgeXujMjxRZnKPfc8SF",
+	"jwAcgO/6ovotneEYpnpjBrYmjmmWp9Ao/fBfT5OgTsFkdhY8KPecJjD+Ym0H/5HXkGpgdhcJIfDYwXIL",
+	"Gtv46GeWIIYSkBp+Kkbflqy1leRZimMoEJd2DUfpFDArFznAM0IZSraX4LbalntRy8UtiYObrBxogqYw",
+	"T6XwmzGYzYcLqkRBdeNn9gvJSTlHirP5LYnnjBL8h9LuYMtMxeWgcrLtXS9RsZygHzHn8mcXjClMOaqv",
+	"f0GnYidBKRKaLjggVACGRM4ISsDkVlFMsS9nxQmlKYLEr7NLTHG1dkNpTacoFig5TdSP/cWjkeF13XKw",
+	"H/l0id5Y/9Hl+b/PkiXWaWdkhrigrPdk/AvOst6j8yUArVsdBdQlXssJHbhLRJbQ+dEV4hr99wfL2C4Z",
+	"2BRpTWjmkMzQBRInV4iIM3ibUpg0IZpAjgpzvsoyryFHIKaLBRZAjfAwof7zeIE4hzOPevgeCzuFHePV",
+	"wQwREQDjTP2xCxC/Gj9HGeVYqmrgKswK4+EssPA7nHWt2ueaUD0IfV/w3fcGYevYM0UD2mIMkMer5amZ",
+	"194loBAwniuapleIMZwkiCj6X9CrClGXOzyaw0wgdoyEuUv4jfKqdGu9BDUsfZ/006uOSb6YIFfYOALB",
+	"jgma+4gkY2XWh4z9DtN7ECHGtKjrHIlJlit+h0mCJe5heuYgqvJVea40K+7JnSvQXPRYIjBNuSQXkIkH",
+	"ooULKHLeg+7l+VzowY2bf/WEa8dZrBHgBmdiHyPIP4Otgg+2QeFQAGbekimkbJf7GkQsJ0T/T+7G6oEp",
+	"xGlFIXi5xJjWMc5c4V8XRuoP0rbRWghAQNA1YOqzppsqF/Qsn6TYyqY28+ZVLugCCmmKp7cg058BOJWI",
+	"UIthZZPVTRq5VSKMd6QOrYQK/OfVj2+BHTSI0A2UqIkOoyvEOKbkEFxGe7ujy+iS4OQQWE8OH8Z4OMlx",
+	"mlwSmh0CFM/pJVFcwg8vCbDaQH7+Wg7DZLa7uyun8cnZmt70Qur+0gX06BQoQArYokG0gDdvEZlJlfFy",
+	"NOp9r/wBIwZZPFc3Hn1soHBZ2fWaKKguuC8XXGBif95Tgl8gJlf437/BnT9e7fw62vlufHm5M/z49//q",
+	"e4Oxh+RjmZNk5vGoLHcFR4lfeXOas9inkPR9xt6/9TCwNWV0se3VpZDNkOicRw8DW4L2vDAb+IoFvPiR",
+	"gv4c8YwS7kGUY960L2gH+tZ4g1Ga1N17fE6ZGEPCr5UQzCCD6t4zFuhG8tsiTwXOUjSO5xSrXcRzFH+Z",
+	"0BskhVjCaJbQa0nwKSYIsjGPYYqaH45nTCHDfm1/lnJfokZL/ilO0TjPlKXoE3NqC7/AFCfQsmINUfDG",
+	"r6wX8GacGoK/k9SPFxIBez5Lf4FJYBJMfJOMvDcVy1K9jOU3lC2OJP/ciHXaOD7TpphtLDlhXKr1oEOT",
+	"j2cpnfRe/PuUTs7M7n2eAO/m1cmGJETTFlG82R8fP2te9mAjS2GM5jRNkP9KqTRm6LZUct6dR7NpTuiA",
+	"7K3imgs1tKc9X/Lx/SC6qjBD52cO73hllTF+il1/DBxXWFTBWOArLG5DXvKpBIOHzci7urbVTA+YWZEr",
+	"faCky46aS/684JEH0OAjEXOgr3lpMJmlaMfuv1gVXME0Vwjn+WSBxbJefPn7saBja9j55UvOEfPjrXZW",
+	"Bom+03G5z/dIEhZKtXcSNdC7gtQP/ue/Fsc9TFPj98JE6VGlZlwfYqstj9LUx77SJuhYVA0BW64TZXsl",
+	"GJQN0+Xa1FiwgPnQdyptUCPvp3jmsTfU73NzhZbUDgHXdAkK0i8oVJm0igeaD81xqVFaJYOjfBT3KUN/",
+	"TIm6ptHcYxMd6zGaLeSFQjsyAZ4agOSXHMhvKzzfC9GlPvCc+PpEf6toX0l4u9gyl6UDaWzX3TpqmKRB",
+	"jmJKEu71NwosUtTiqu2tJO5DRHhxcXIEiaRYlBxDAZs8/ZlOAm8iDEFOewgSPcPHNhAoIcpF7QchTjEi",
+	"opdULIe2radMbf9ahbul43laDWtd48p7pVW/BohcoZRmCCCtSMDkFgxhhocZo3IiPrwz/ztN7odSJ+zo",
+	"e+uQC4agh88TsxtK0M/T6PC3dtLwI/5+0O+rM+2uWOqbKpX1/eoHBJmYICiW+qo83vuPPXmlcmpt/lGF",
+	"585z97tH1RBwcXECkKICOcdDKMBe4GJ7ipFxAo5Lh5L+ObbYjwbR3OI0GjTIuGRu/wk02EXJeAEXWV87",
+	"qI7V4vs2nLoE18uD8MH4P8BnOgGnx30u6b71XeG+5D0TTlDqlZrtN8vAZ/UrPiban+OF+kdI4Awl/hAL",
+	"8/b0agnD1bxHtXzS6a3teJDOxYTmJPG9RC8Vz9H1tOUjFeXacVxNW/++eH96vL1UHE7tKbr65qtcTiY8",
+	"QMyhMI7XRBpy5v2vPTikGppQUyc30kaHlR3IO331Jdn/dG2ki3dHBrBlyMQ4Yz3Hmwm8wFzgGKQ0/gLs",
+	"wEEzYqnJFZ2Pjo37azl9ucWBL8Ri4DCDu2M/T7EvCb0m7Q+ZgUggGucLKe+DoSnh8B8b95OYOVZ9AKzA",
+	"36bf3NCeTkT41ZwdUgC93tfAnzO/3y8scvXFvZN69DDfpo3+ObUPbI+mgM40Ba9JjKv7yDscf0FCv1eE",
+	"L3XOw4INllExzfodh8zUo5FQU3GwpS9kMPVKzRkW5yijrxkk8dz/Oj9Rf3OjcgqKcWYfADc0h5XP6ubX",
+	"Zpo2IPrFb5k4uxkWziq+WX0nb45sSZXinyNxYwi3cvUs4p3mmYjrdnFsRIt7FMuIYIOUjgjCzRx0+zH5",
+	"5br/hcyFr2WXnTE8K/Ky5C2HdTfAr4/Hff15x3s4TdTrF+v+L+jFE7dFccX0qDjhFgssfvBG+Bzp6B5n",
+	"ui20yMQt+CdIoUBcbFdeduHeZD8+SF6gl9Nv/vHtd6O9/YMXL7/5x7f+bIpMXQv1Ej7jUf8dxDlT8U0G",
+	"AvkbDZWSvY4wwGRWBYemyY4euxOMirKTvr71PPVyxMD1nALM7er63louIe++/9P8uBvTheclu//hoiTE",
+	"LfY5wwQslMAUx9s4Vj8Bni/zJh/G1ivPgX2QKhgLcA15eVaVRfZH+y93Rns7ey/f7Y0OD0aHo9GvruRu",
+	"VQmtJ/VhTh36wKLrjDrvhMVkIfK0nCHvTOEd92cIv0Cug1E9Ap+I1gdcRqMlKGMo1oGheq81OXxydn5y",
+	"9OrdyfEheM8R0N9/wGJ+pMMlCqmM5Z6kxVyI0noMgHaAtFn6evaLfLGATF2KGbz+D1ykAReuZYa+L3Fn",
+	"kHGUWIHHBctjkTPUfHtrRCUIGJXAFEuHEfwD5lLynwcf6gqOjSkREBPJq1VBDOZ6jgYizd/7PyFokH4x",
+	"8r3rBaiYPry7UzKlHm+BPjaAieZYuQc4obkICyGtJEI85MS+SvkM6NRoFUdXraZc3HV9suqd9ew5a8aW",
+	"xdYksJaLkLI5L5ceUXwZbXcL6yVDpDqEeYkgdbN6uDzvL3FbNXEp5KUZVlDdhoW9h1BLQJak1eXS2Ywe",
+	"qPBRg7zDjPwWc7GcjLJ5Nxq1TSlvf7+cbFICpUsw2anD27GKY2W9JuHordC6HLbB8I1AZEkKufiRJvLa",
+	"nSwRmdHDgaY3V4TclJfnpTyS1fhQ4wwzhnMF9vABNaL3hA6f4/JeQlR4Hs28jrOqDmuQqvlDRfcoV7IR",
+	"oSFdCnMx93m+jflm/uyyrr7thVM5/BelN3maqlthNR9iNe1V8Z95jGyVWmqtCGl8ljk7a9JdmBdXEi8M",
+	"Yo5YFQzM7UWtDK+uQmTCsptxaMHcmKN6Xky5O+2CMHHLLYkzKnzUf2QX8k99zqzTWHcIw12x6j8qSK2E",
+	"1sVymKccWzx4n7vGYg6mkgZNkDOAROJFQPUkvMyV36Pr3INenajLLbTlZ7QZ9AYzDgTav+03iPSLdCU6",
+	"2Y2k17E60WGE4jl15OBhtLc7iny39JWYwssKFc3vcMLT3NkVyOu5tT/MyvtQM/ACVLeKiefcM2vIhdfP",
+	"IoUjlLLgSBaX/kp+KvfmFyG8K8ERknhOmRrjfcRV0SCnx2ABWZE4rl7E5V1wSwWLcOOXUkcGGQKYmLhf",
+	"nYbdfTxFtFad9OXvlcXG5E4i77cceSE3mRrq786LRyfu7YQFWD7EukFU/mCnvk4LjeDMHI9nKX/BhJMi",
+	"SqefA1m74/1hsYF3dvmnn0JhBUUK2ENCL1Z4KVSf0H6lZPqHXXiNdcU8D9leMYlGcLd0bA174MJrJdkC",
+	"E+rPQD00W2eCYBjO0AAwdIXR9QCMi/juZDz2vtVpg70Dt5qULtTQ1kDQVV7+pNx4w+hiyU/eE1Er5dP3",
+	"gfGBD4duHIfhJYdzLHbs6Q2KK5Gl49Aro4uKyh4/Bpm74/URxsvwjb9a1pGtYqJMThOlblDQIy8xTNMb",
+	"pUR/Ua3QyWg8hdHcGjwLOacxVnFTyiiH5jVzFxzNUfwFfPqCSfIJ6MwQaaTnyv/CdCKHNBGsKjBjDCvL",
+	"z/5pLQ/w//7P/9VhD+YXRrlvN++/y525SpHnyDUW+mfu24/aaxfp6NI2dTyI5Gb7Hb1a+N9yuIpt1LE9",
+	"PaH3hk3VpbD//dYXNNNiibwqiUJbI6fHAE8NKuaQgwlCxDWa+tlM/Q+qaQYqbpEY7IBXDwpsWP+xJwzO",
+	"gVWAcGJ0vZcTSzI0Vg6GpLcTo8YcXfDZqKgqhN4kNIu4qvRXVOvuqKco+behdn9BLNQqVpxwteIXlTRu",
+	"TeLjhMaRw9+RIR+vK85zUE2rcR3WX2vSuikkAzxeycorCxXeqF0TlgXU380zlQpkVSgImD4+88rCYbXE",
+	"GhRV2Dy/sHPVCs3kOBU7UttqblRLujUariEWmMzGphii/bEMWXZ+GcMMxljclgGnLVTQEerTX73oypM9",
+	"7w1LmxE2mOSXHnFj1jljv7GlrXR2Tr/A33WaLT5qsGjvG+yjzUYA5a7kLovH5s0VzdBLLlcyw/ISW6Z0",
+	"xt46/C7gar+lesbSsUiug7QzDGkZL+kafeEdJTwaPuxwcYz3HDEVXqzDSnhTDkiW6ZXF5OSVtr2ghfP6",
+	"VHmed23VeVqq8fRJBSzGu2tpoeBFjjUbggWglr51mVzCbueJHNu7PJIpH9T/5bZa2MpXgyqlHD2wUtIq",
+	"FWdnWIzjglM7l5DD1TbvermJx5/pZNzuw+tZSUpLuXEwMYflwUrSj1eEypKvrUJlrdt+Kqwc35doi0rW",
+	"fRJm3cEFvhwGdTHsUHhngV+vqd/gXJaT07bsCZaTjntsn7f7Ciz2Cd9uvG394Wc6WcatbVzFztQDs8VO",
+	"FPlTaQpEtBQPay0Z5jM7a/TYLNcueSHFf6CyXNXK6w8inXqq/isQW2BiLt+Sx5IxzZVLjnwh9Jq0Q1sG",
+	"pjxT6f9EsvpPLQP7HoUZXXgflxWCLfx9euwk6Dhvsu+/+2X0Ye9/7f/n4NcXr16+/uboH8ffnnz3ZvR9",
+	"pxhYUqa2CdJ7VdfRFyr6w7t3Z+DV2al6uVNFTMAV5rlkXB27k6U5t37joSTlobnaHp2/P1Z+UXNH0NU6",
+	"0I1AhOuMKzX338HFxYkue6yxHv2CJ+jdHHO5bO053zzo0wwRmOHoMDrYHe0emERCRR2V5HaVqeMrtPYW",
+	"c1FAzbUjxuZ/gSlOpfLZVSFOJt9Eiu/oeyReZfjMTq5rmC2QtsV+8yScyNvV5NauY/KM0U2W0qQgKSzH",
+	"/p4jFfKkuSvCqlCHJurlailzcatwqIzc+0EYJnQDY1FAJtftCZsdugHojiBHO5hwSSACXyHA84meDCyg",
+	"iOdAkls1GSoE4ZGOg6wCWmenj2V9JgX//mhU1LIx8S2ZLk+OKRl+Nu/ano23iSSbW9mMmWwGvVt6TDHX",
+	"oe3caiNdZygrSU/AmSS64pvoo8rh9nkX9GMSNyU4LQKN87Ga/6RSo5qEf0Z5jfKZ9li8psntUijrganq",
+	"29d9VepJurxvHNveumFoOZ0iRO9+EL1oEIxAN2KYpRDX1qyTXmP2U/1koKVk7ew1RtzHuebh3w+iYF0P",
+	"TRK2GFg9e0/+XhKHJYzJLTg9btKAHuhQwZnjMK+dx4uWfDlTdVxh78W6sFekSFIBpjQnSQ2DGvh2DA78",
+	"quIcCYbRlUKRro3VhamqmmhB0+gxydag5VHR/j0SXThvVaHNJGcr8k2JcyPxswqOXVnRIf4z20XJ593k",
+	"FWUDpP3TS1jKOYMEsDGxWfXv9xKbj0p/tgfBRsXmo1K38dauLJaHRR3DFht1oavsmIKGtkAxz1CsIvir",
+	"6nxZE7YgzSNTS/AJubHFVnWK9DwP47noAPTnsJndhkUPMphbUGIeIHVufcbQFN8EVpMjzuyAJdY6JXGa",
+	"Jwjwsr2NYYvAQlh/cFz2OSkWqz+WNfvfeMyAnBHDhipXWD/JSvxCou54VzgxEPUnVtNR7GeyaZItijS1",
+	"EYJbyWklKihXQbZiVG9UOAWo1sMrj3K9c6ug9bjiKUEbvN9VhL2jULR47nPDc2dwA/saCqPzkvecdMPH",
+	"zVhOzU5xj3zbrBCPn1ie7rppYytrNNht0Qz5LYl1Degnte29rHKeE66DREztY8sspeiyrdnAp7Iv2yeQ",
+	"c5sy8SN1/FBqyLaO3OCICaMhoFtmEKPScluN/S4kRjfHBG4DvEe+OdS6ynlI9aLWOY+ZkRvhB3uslDll",
+	"DTd+rRhEL9e3lTq+zBNZlcfLQbZHoMrBhdaOYatx/p2Om2/1OP0I2RepqhTXQW49QmBLGnbmp+1l/E8K",
+	"viMbsN/tilJidQHZFxWTuAl3lI6tD1wbL8pthmRsD1dURdEv54hqxdfoUZXbJpxSrcj/Hokw0p/T7bdW",
+	"L9a/Vlwe4vqcXotcwEmKdNICV/ebCrUt4fGqU9pmtNeTer76UPmfz/XVykPG77W6fWi1xLBer/mvwoC5",
+	"V7irBkGqk0WtTLVrP87wFSIhPsy75L3b1nmDHOnrHt2LL1/4HqgcLGyWk5y64PqG/ng8ZU7fbTNfnNJS",
+	"HDazLXM6LAh9BdKBVCauo6iyVm2iI68yYo4w8xNkD89CwA753rTEeWrHwtKawSlaYVz4v9WboevUxH2T",
+	"QHoQfdSZdOqnvRLqEz0TONKyVFfojoby36GgQzvagK276Bs3X2U1d/r9cvpXhKpSFi3TOz2lTXN+5Tgz",
+	"3Y5+M2U55I97ZYPBch+2k6FZWYJWfLDf+cGB7pzRT7BocvFdePI4RpxP8zS9BcxQeGI6LvW4W5XBWG/U",
+	"VUle5nUIvpriEKj2FYAhqPIPEsxQbEoULcH+3rl91qllSkca2eZRVhJoVHRIAqe+V/B9SbG5GQgwcaIA",
+	"qu9JOqbMPCvpKMwqi+vyZEWhsT4crRIRS9zLhcd7+weP9KZkU2CKaDmfS7rMH2i+HERQ8VRRYl5zmFPW",
+	"IyeZpybQ2oKPuquIVUrGeSjyba1AnFeprg5EtdGoZ/3XMAHMWgc+Nt3g2qfEPE9wxK4Q0yzuc8mX1fMs",
+	"81ky73LHV1oel+Xl01sAc0F3DHFsN1jJbbC8FC89e3e7p3P0Izvca/VVm3RhKjS1Ot03SpbaEjXoB1tl",
+	"003jx9vWMH33eDAZlMBUKsBbnZbInyXDGr4r8iWbHNtHYQ7v9H9+ggvUI3SuLMsuDWWpT7HgThVDnxfz",
+	"KZl70FKUDGy9P3+7g0hME5QAPLXlRDngKeRzxLf9kJQIe6D1/aKl5XmLo3bz1N/hrH9iwjeU2EL4AY+y",
+	"NDgL+lUmn606uNUoiwsos5e9GDA03fbd854vZceQAGxDSDQ1D4BD7oHCzH/bfxPjv+2/KWsRrov6B756",
+	"jQxNEUMklgCrxMgBEHA2sD1ndsGJadrQXrX4am93tDsKWLWSGjcZFt+tgN1CmGGeS0yO8nNg+afQuFrT",
+	"gkmu3wrLE99SlbwZmgLMgerisf0sxZKULq0yyesIfR+qgAC2tFmmzGpD9U0h5BZc+KphN2PJ+4paPPK7",
+	"S19LvtVj/HiW/F9PiNk63zEl0xTHz/OKb2TNOm8MQ2v6h/xuUirWGoeY1usFGAGz6oeyNPpXqbZRuVJv",
+	"ChNmsHoLmK/3k1ZDwLkYr4PXsrL+kd8V9yNkXwAs7y32uGo1suvvqE6Htq/ctqG0JV8bvHtjRWwqTanW",
+	"nS3MTyVxPBFDU2ZLU31V4a2yxZzpenV48XYTliznqnewcyuzb2Q6jjKgy9/bib8Kl6VdgO6D2lOrWcmf",
+	"lUv58zRvLcZW5g7bwDVkzF4gyOI54kWT5racEzC51cU3B7ru5QCoojoDHfVichYHOuAEL0xvgv5JjO+K",
+	"ZrPPMI3R4kcl5al2n+S2qETaIztKDd1QDuHJjXaLumcoT5AjUCzbF8SfqDjdeDJbo3hqL+BECH/L1CVf",
+	"FWRF6arJQ0+A1QcrAKxKUNnqY4+W4Woz1jZw7Cbz0hKncei4fUqKOs1g6/zN0cHBwXfbAde3Lcovv61A",
+	"26cGVm/QJmhKGVoRttfq4/UDZ560V8ObbWywGbxZ0FbDm/l6Vbw9SpaoU2OxI0HUKDFfiqjWtW5PdaPL",
+	"reLrWwLIiE+BdTyaX1dLLRwIMw5kqj0L/buh26qvLccjx65YGgrRzNNlihb16psE2ce4HBojoyVoOWeE",
+	"g0S9BsXCGCU6AtmwS9DkLOwtk3ypk/SXrY9hNnRhraHnZGDaugiUpLerWm2bNiyfsS351Yj872lEbsT8",
+	"24zdthGL6zmbSh2n6Qnx1x3RAmUzCsGyuv4RPfTPxNu7YwUdIhD/M6a9rFPoeY9YhI+4wH0hglc86zvb",
+	"8ue+R5KU7c2zZIK1Aeld2VxoYy8anUbhJjKszdRtOdYtJuHzsp7MXrpWE+5Zri/XuuoNdcYMAGVG3asE",
+	"bEOH1awc2miFs0Ruto9IN3VvetIM7U4W2WxSqWnok5WN0h6PE014y0PvZ6XMHOqK8T1yS10dCaBw3+AL",
+	"186qAvWVeFKRygnM+JyKp5KqJQB/bfHqWazhMwSCgikS8dxHlAGHIhStYPQzlZdlLN19u9MGhWkKbKPu",
+	"QCPBgQlzx2TmaazBBxYLWjDxAUhonC9Ua0IhYDyX/zWvcEWXQb4qq57obfUula97JJr+i77DMX9ahpWd",
+	"zqJNmvmZ6KThnBHQ7IDudoD0OgQwidfhq/dA4XWGh54OVDvhh4NhXUkGBFXmcg6vkO5qqvpMDqu9TVvq",
+	"bp6b9pRLVN18xHuJbv3b415is2QN1xg+fVTRr0Corv8XN6xbpWvOEdvRTQSHGVKdmHvJVTMWyO9NtxJj",
+	"EpuoHqlCSolKZpigNZTBKHry8TMD7KO0pdBrndriQZ29KQxyNF6CDSoqoz7TiUup5UafvPJ7b/rhgiG4",
+	"aAl/YVeI7VxIpaVVHdBfALTAQrgIm6L4Nk4L2RqmG3Ck2pdywFCM8JXKhMEECwxT8CmmhKgGlp/0RANp",
+	"WBtzUEqpT2q5sTmHT0DRwgDMEWRigqCVHwMHoNzeRfN4DiC3U+iGWilKPmlbQBfBIFSehiY9vqv3bO82",
+	"JrhFbUud88XFiR6gT2IFjrjQ6O9kCCV51dZ2yhMr0+HUXw5BgbxLkkABD8HdZaR7xY5xchkd2p929vYP",
+	"LqP7S3JJzJcVrDpfm88+08kOnMTVbwqcO+MLRa4+2x/tv9gZ7e3svXy3Nzo8GB2ORr+qOXobOBU0e71q",
+	"FycFRXIBi2C16jWxFHjl+D85496pHqD33Y+KOsnQZGCEVQDoX0i5k6r/ZdqTbuwK22jz6vVPuLtrzbV8",
+	"gA/EXaPtZou90DxHEvQYzUbXdS74uTj3jdH7UIvt51ZMb6M4Cga9KFRwh637cbRSdxNGYRJDaftBosSi",
+	"Euv9o2Fq7K6BeYCXtdbRFEHu647+Q76AZIchmKgankaJ28LJ6htfW0FPO8D1Omir0NMvzkE6TRd8cPjO",
+	"1GwIxl8IvU5RMlt7Bd9+kktDUyWrkNBampM1vpOvrKx7pmdFnzIvMysXmEKjE+SjCtg+vANCjZXPzcFs",
+	"5sXkDWWLatz/8+RECyOAcYyyzb2ftCZQb5i/L/LJApfGiTmUVRi8qCfSaZAWIwGPaVZGaFrltKVj11Ci",
+	"AuERgURoSpeEzq+nOzO63WGSfiiAaVhS65QbPQOq8hXikzx9fleJByqbA3dsJRSttOKnq7uN1+v99c2W",
+	"4gUOuG1fjgbRAt7gRb6IDvdHo2JOTASaIRaelE6nQWewb5pHcQTXW34v4QwuvIBaVmD0+FVqurrTKVBL",
+	"YWLut41edaUs6CvBhndl4/n73uLM3Ol2wS/m9cD50wSllMy4lHRWyl1hWBFuu31F2t5mZZpnrmob/qUn",
+	"CzyewOt/0ckxFPBxX1D68It2Kvho8kP1sDVPHDweT5TrU8QVZ2jS0joUFw09H51ZC8DafCA1VgkxqfxO",
+	"uZ19l4G3NIYpSNAVSmmmHnX12GgQ5SyNDqO5ENnhcJjKcXPKxeG3o29HquSzWazxNGm5jgOGUvXcbCwS",
+	"T4FiQ8SmVHOzpv75+2MliYrO6/KqXeuquoBZhsmMl9MV/TQDM1aaLd2aZhVq83KtelM1M6mupt4yI9fp",
+	"NmWWQXlAWr0UU9knOF8AvOl2D+aQJCliWhBXOuI74MplSw+sfgoyazimZnMZXcqZJOAKFxVnVb5ETK+U",
+	"qVgp7Vziupz+vKgBfBci3SKEQL3+6BTWxNCqLbsN03LKkmjvP97//wAAAP//6ZuvzCPjAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

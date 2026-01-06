@@ -52,19 +52,25 @@ func (s *inputManagementService) Close() {
 // GetRoutes returns the HTTP routes provided by this service
 func (s *inputManagementService) GetRoutes() []ops.Route {
 	return []ops.Route{
-		{Method: "GET", Path: "/api/user-inputs/pending", Handler: s.ListPending},
-		{Method: "GET", Path: "/api/user-inputs/stream", Handler: s.SSEStream},
-		{Method: "GET", Path: "/api/user-inputs/{jobId}", Handler: s.GetDetails},
-		{Method: "POST", Path: "/api/user-inputs/{jobId}/respond", Handler: s.SubmitResponse},
-		{Method: "POST", Path: "/api/user-inputs/{jobId}/cancel", Handler: s.Cancel},
+		{Method: "GET", Path: "/api/projects/{projectId}/user-inputs/pending", Handler: s.ListPending},
+		{Method: "GET", Path: "/api/projects/{projectId}/user-inputs/stream", Handler: s.SSEStream},
+		{Method: "GET", Path: "/api/projects/{projectId}/user-inputs/{jobId}", Handler: s.GetDetails},
+		{Method: "POST", Path: "/api/projects/{projectId}/user-inputs/{jobId}/respond", Handler: s.SubmitResponse},
+		{Method: "POST", Path: "/api/projects/{projectId}/user-inputs/{jobId}/cancel", Handler: s.Cancel},
 	}
 }
 
 // ListPending returns all pending input requests
 func (s *inputManagementService) ListPending(w http.ResponseWriter, r *http.Request) {
-	pending, err := s.collectPendingInputs(r.Context())
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		http.Error(w, "projectId is required", http.StatusBadRequest)
+		return
+	}
+
+	pending, err := s.collectPendingInputs(r.Context(), projectID)
 	if err != nil {
-		log.Printf("input_mgmt.list_pending: query_failed error=%v", err)
+		log.Printf("input_mgmt.list_pending: query_failed project_id=%s error=%v", projectID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -76,11 +82,19 @@ func (s *inputManagementService) ListPending(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		http.Error(w, "projectId is required", http.StatusBadRequest)
+		return
+	}
+
 	jobId := chi.URLParam(r, "jobId")
 	if jobId == "" {
 		http.Error(w, "jobId is required", http.StatusBadRequest)
+		return
 	}
-	res := s.getDetails(r.Context(), jobId)
+
+	res := s.getDetails(r.Context(), projectID, jobId)
 	if res.sendError(w) {
 		return
 	}
@@ -107,13 +121,12 @@ type detailsInput struct {
 }
 
 // GetDetails returns details about a specific input request
-func (s *inputManagementService) getDetails(ctx context.Context, jobId string) result[*detailsInput] {
+func (s *inputManagementService) getDetails(ctx context.Context, projectID string, jobId string) result[*detailsInput] {
 	if s.ctl == nil {
 		return result[*detailsInput]{err: "workflow control unavailable"}
 	}
-	// Extract from chi if available, otherwise parse from URL path segments.
 
-	res := s.findJob(ctx, jobId)
+	res := s.findJob(ctx, projectID, jobId)
 	if res.hasError() {
 		return result[*detailsInput]{err: res.err, status: res.status}
 	}
@@ -154,34 +167,40 @@ type details struct {
 	hash      string
 }
 
-func (s *inputManagementService) findJob(ctx context.Context, jobId string) result[*workflowctl.JobItem] {
+func (s *inputManagementService) findJob(ctx context.Context, projectID string, jobId string) result[*workflowctl.JobItem] {
+	// Query with TenantId filter and specific JobKey
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
-		Stores: []swf.JobStore{swf.JobStoreActive},
+		Stores:    []swf.JobStore{swf.JobStoreActive},
+		TenantIds: []string{projectID},
+		JobKeys:   []swf.JobKey{{TenantId: projectID, JobId: jobId}},
 	})
 	if err != nil {
-		log.Printf("input_mgmt.get_details: query_failed job_id=%s error=%v", jobId, err)
+		log.Printf("input_mgmt.find_job: query_failed project_id=%s job_id=%s error=%v", projectID, jobId, err)
 		return result[*workflowctl.JobItem]{
 			err: fmt.Errorf("failed to query workflow: %w", err).Error(),
 		}
 	}
 
-	// Filter jobs by JobId in memory since we don't know the TenantId
-	var matchingJobs []workflowctl.JobItem
-	for _, job := range jobs {
-		if job.JobKey.JobId == jobId {
-			matchingJobs = append(matchingJobs, job)
-		}
-	}
-
-	if len(matchingJobs) == 0 {
-		log.Printf("input_mgmt.get_details: not_found job_id=%s", jobId)
+	if len(jobs) == 0 {
+		log.Printf("input_mgmt.find_job: not_found project_id=%s job_id=%s", projectID, jobId)
 		return result[*workflowctl.JobItem]{
 			err:    "not found",
 			status: http.StatusNotFound,
 		}
 	}
+
+	// Validate project ownership
+	job := jobs[0]
+	if job.JobKey.TenantId != projectID {
+		log.Printf("input_mgmt.find_job: project_mismatch project_id=%s job_tenant=%s job_id=%s", projectID, job.JobKey.TenantId, jobId)
+		return result[*workflowctl.JobItem]{
+			err:    "workflow not found in project",
+			status: http.StatusNotFound,
+		}
+	}
+
 	return result[*workflowctl.JobItem]{
-		value: &matchingJobs[0],
+		value: &job,
 	}
 }
 
@@ -207,11 +226,18 @@ func (res result[T]) sendError(w http.ResponseWriter) bool {
 }
 
 func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		http.Error(w, "projectId is required", http.StatusBadRequest)
+		return
+	}
+
 	jobId := chi.URLParam(r, "jobId")
 	if jobId == "" {
 		http.Error(w, "jobId is required", http.StatusBadRequest)
 		return
 	}
+
 	output := FormResponse{}
 	if err := json.NewDecoder(r.Body).Decode(&output); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -227,7 +253,7 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		output.UserID = r.Header.Get("X-User-ID")
 	}
 
-	res := s.submitResponse(r.Context(), jobId, output)
+	res := s.submitResponse(r.Context(), projectID, jobId, output)
 	if res.sendError(w) {
 		return
 	}
@@ -237,7 +263,7 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 }
 
 // SubmitResponse handles user form submission
-func (s *inputManagementService) submitResponse(ctx context.Context, jobId string, output FormResponse) result[bool] {
+func (s *inputManagementService) submitResponse(ctx context.Context, projectID string, jobId string, output FormResponse) result[bool] {
 	if s.ctl == nil {
 		return result[bool]{err: "workflow control unavailable"}
 	}
@@ -248,7 +274,7 @@ func (s *inputManagementService) submitResponse(ctx context.Context, jobId strin
 		userID = "anonymous"
 	}
 
-	res := s.findJob(ctx, jobId)
+	res := s.findJob(ctx, projectID, jobId)
 	if res.hasError() {
 		return result[bool]{err: res.err, status: res.status}
 	}
@@ -277,6 +303,13 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
 		return
 	}
+
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		http.Error(w, "projectId is required", http.StatusBadRequest)
+		return
+	}
+
 	jobId := chi.URLParam(r, "jobId")
 	if jobId == "" {
 		http.Error(w, "jobId is required", http.StatusBadRequest)
@@ -293,9 +326,9 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err := s.ctl.Cancel(r.Context(), swf.JobKey{JobId: jobId})
+	err := s.ctl.Cancel(r.Context(), swf.JobKey{TenantId: projectID, JobId: jobId})
 	if err != nil {
-		log.Printf("input_mgmt.cancel: cancel_failed job_id=%s error=%v", jobId, err)
+		log.Printf("input_mgmt.cancel: cancel_failed project_id=%s job_id=%s error=%v", projectID, jobId, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -318,6 +351,12 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 
 // SSEStream handles Server-Sent Events streaming for real-time updates
 func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectId")
+	if projectID == "" {
+		http.Error(w, "projectId is required", http.StatusBadRequest)
+		return
+	}
+
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -345,15 +384,15 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 	flush(w)
 
 	// Emit snapshot of current pending inputs so subscribers have immediate context.
-	if pending, err := s.collectPendingInputs(r.Context()); err != nil {
-		log.Printf("input_mgmt.sse_stream: pending_snapshot_failed client_id=%s error=%v", clientID, err)
+	if pending, err := s.collectPendingInputs(r.Context(), projectID); err != nil {
+		log.Printf("input_mgmt.sse_stream: pending_snapshot_failed project_id=%s client_id=%s error=%v", projectID, clientID, err)
 		fmt.Fprintf(w, "event: error\ndata: {\"error\": \"failed to load pending inputs\"}\n\n")
 		flush(w)
 	} else {
 		for _, item := range pending {
 			payload, err := json.Marshal(item)
 			if err != nil {
-				log.Printf("input_mgmt.sse_stream: marshal_pending_failed client_id=%s job_id=%s error=%v", clientID, item.JobID, err)
+				log.Printf("input_mgmt.sse_stream: marshal_pending_failed project_id=%s client_id=%s job_id=%s error=%v", projectID, clientID, item.JobID, err)
 				continue
 			}
 			fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
@@ -388,11 +427,11 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 
 const pendingStatusQuery = "InputStatus = \"pending\""
 
-func (s *inputManagementService) collectPendingInputs(ctx context.Context) ([]PendingInput, error) {
+func (s *inputManagementService) collectPendingInputs(ctx context.Context, projectID string) ([]PendingInput, error) {
 	// TODO: explore supporting pagination.
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
-		//		Statuses: []swf.JobStatus{swf.JobStatusReady},
-		Stores: []swf.JobStore{swf.JobStoreActive},
+		Stores:    []swf.JobStore{swf.JobStoreActive},
+		TenantIds: []string{projectID},
 		JobTasks: []swf.JobTaskFilter{{
 			JobType:  "recipe",
 			TaskType: "input:input",
