@@ -7,8 +7,8 @@ require (
 	github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e
-	github.com/colony-2/swf-go v0.0.0-20260105194358-b2ae1c6be911
+	github.com/colony-2/strata-go v0.0.0-20260107203500-53a2214e74d1
+	github.com/colony-2/swf-go v0.0.0-20260107184115-443be1212c77
 )
 
 require (

@@ -338,11 +338,7 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 }
 
 func (s *service) SearchTickets(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error) {
-	iter, err := s.store.Search(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	return &ticketResetIterator{inner: iter, svc: s}, nil
+	return s.store.Search(ctx, filter)
 }
 
 func (s *service) SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error) {
@@ -445,34 +441,6 @@ func actorSummary(actor model.Actor) string {
 		}
 	}
 	return string(actor.Type)
-}
-
-type ticketResetIterator struct {
-	inner store.Iterator[*model.Ticket]
-	svc   *service
-}
-
-func (it *ticketResetIterator) Next(ctx context.Context) (*model.Ticket, error) {
-	if it == nil || it.inner == nil {
-		return nil, store.ErrIteratorDone
-	}
-	ticket, err := it.inner.Next(ctx)
-	if err != nil {
-		return ticket, err
-	}
-	if ticket != nil {
-		if err := it.svc.attachLastReset(ctx, ticket); err != nil {
-			return nil, err
-		}
-	}
-	return ticket, nil
-}
-
-func (it *ticketResetIterator) Close(ctx context.Context) error {
-	if it == nil || it.inner == nil {
-		return nil
-	}
-	return it.inner.Close(ctx)
 }
 
 func (s *service) attachLastReset(ctx context.Context, ticket *model.Ticket) error {

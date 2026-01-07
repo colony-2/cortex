@@ -64,7 +64,9 @@ type Ticket struct {
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
 	ValidFrom   time.Time              `json:"valid_from" gorm:"primaryKey;type:timestamp"`
 	ValidUntil  time.Time              `json:"valid_until" gorm:"type:timestamp"`
+	// Deprecated: search/list responses no longer include last reset metadata.
 	LastResetID *TicketResetID         `json:"last_reset_id,omitempty" gorm:"-"`
+	// Deprecated: search/list responses no longer include last reset metadata.
 	LastResetAt *time.Time             `json:"last_reset_at,omitempty" gorm:"-"`
 }
 

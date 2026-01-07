@@ -68,12 +68,10 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 
 	inv := &fakeOpDependencies{}
 	input := ExecOpInput{
-		Prompt: "do something",
-		Env:    map[string]string{"FOO": "BAR"},
-		Context: map[string]interface{}{
-			"worktree": worktree,
-			"cellname": "alpha",
-		},
+		Prompt:           "do something",
+		Env:              map[string]string{"FOO": "BAR"},
+		WorktreePath:     worktree,
+		CellRelativePath: filepath.Join("cells", "alpha"),
 	}
 
 	out, err := runCodexActivity(inv, context.Background(), input)
@@ -85,15 +83,83 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 
 	// Verify artifacts were created
 	require.Len(t, inv.artifacts, 2)
-	require.Contains(t, inv.artifacts[0].Name(), "codex_stdout_")
-	require.Contains(t, inv.artifacts[0].Name(), ".jsonl")
-	require.Contains(t, inv.artifacts[1].Name(), "codex_stderr_")
-	require.Contains(t, inv.artifacts[1].Name(), ".txt")
+	require.Equal(t, "stdout.jsonl", inv.artifacts[0].Name())
+	require.Equal(t, "stderr.txt", inv.artifacts[1].Name())
 
 	require.Equal(t, "do something", cap.options.Prompt)
 	require.Equal(t, worktree, cap.options.WorktreeRoot)
 	require.Equal(t, filepath.Join("cells", "alpha"), cap.options.CellRelativePath)
 	require.Equal(t, "BAR", cap.options.ExtraEnv["FOO"])
+
+	stdoutBytes, err := inv.artifacts[0].Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "test output", string(stdoutBytes))
+
+	stderrBytes, err := inv.artifacts[1].Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "test errors", string(stderrBytes))
+}
+
+func TestRunCodexActivityArtifactsRemainUntilBothConsumed(t *testing.T) {
+	worktree := t.TempDir()
+
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("test output"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte("test errors"), 0o644))
+
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		return Result{
+			Status:              StatusCompleted,
+			SessionID:           "sess-123",
+			AssistantSummary:    "all good",
+			PendingDependencies: []Dependency{},
+		}, stdoutPath, stderrPath, tempDir, nil
+	}
+	defer func() { executeLibrary = Execute }()
+
+	inv := &fakeOpDependencies{}
+	input := ExecOpInput{
+		Prompt:           "do something",
+		WorktreePath:     worktree,
+		CellRelativePath: "cells/alpha",
+	}
+
+	_, err := runCodexActivity(inv, context.Background(), input)
+	require.NoError(t, err)
+	require.Len(t, inv.artifacts, 2)
+
+	var stdoutArt, stderrArt swf.Artifact
+	for _, art := range inv.artifacts {
+		if art.Name() == "stdout.jsonl" {
+			stdoutArt = art
+		} else if art.Name() == "stderr.txt" {
+			stderrArt = art
+		}
+	}
+	require.NotNil(t, stdoutArt)
+	require.NotNil(t, stderrArt)
+
+	stdoutBytes, err := stdoutArt.Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "test output", string(stdoutBytes))
+	require.NoError(t, stdoutArt.Cleanup())
+
+	_, err = os.Stat(stdoutPath)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
+	_, err = os.Stat(stderrPath)
+	require.NoError(t, err)
+
+	stderrBytes, err := stderrArt.Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "test errors", string(stderrBytes))
+	require.NoError(t, stderrArt.Cleanup())
+
+	_, err = os.Stat(stderrPath)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestRunCodexActivityMissingPrompt(t *testing.T) {
@@ -102,8 +168,20 @@ func TestRunCodexActivityMissingPrompt(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRunCodexActivityMissingContext(t *testing.T) {
-	input := ExecOpInput{Prompt: "ok"}
+func TestRunCodexActivityMissingWorktreePath(t *testing.T) {
+	input := ExecOpInput{
+		Prompt:           "ok",
+		CellRelativePath: "cells/alpha",
+	}
+	_, err := runCodexActivity(nil, context.Background(), input)
+	require.Error(t, err)
+}
+
+func TestRunCodexActivityMissingCellRelativePath(t *testing.T) {
+	input := ExecOpInput{
+		Prompt:       "ok",
+		WorktreePath: "/tmp",
+	}
 	_, err := runCodexActivity(nil, context.Background(), input)
 	require.Error(t, err)
 }
@@ -116,28 +194,67 @@ func TestRunCodexActivityLibraryError(t *testing.T) {
 
 	worktree := t.TempDir()
 	input := ExecOpInput{
-		Prompt: "ok",
-		Context: map[string]interface{}{
-			"worktree": worktree,
-		},
+		Prompt:           "ok",
+		WorktreePath:     worktree,
+		CellRelativePath: "cells/alpha",
 	}
 	_, err := runCodexActivity(nil, context.Background(), input)
 	require.Error(t, err)
 }
 
-func TestResolveCellRelativePath(t *testing.T) {
+func TestRunCodexActivityReturnsErrorOnStatusError(t *testing.T) {
 	worktree := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cells", "alpha"), 0o755))
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("{\"status\":\"error\"}\n"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte(""), 0o644))
 
-	path := resolveCellRelativePath(worktree, "alpha")
-	require.Equal(t, filepath.Join("cells", "alpha"), path)
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		return Result{
+			Status:       StatusError,
+			ErrorMessage: "codex failed",
+		}, stdoutPath, stderrPath, tempDir, nil
+	}
+	defer func() { executeLibrary = Execute }()
 
-	path = resolveCellRelativePath(worktree, "")
-	require.Equal(t, ".", path)
+	input := ExecOpInput{
+		Prompt:           "do something",
+		WorktreePath:     worktree,
+		CellRelativePath: "cells/alpha",
+	}
+	_, err := runCodexActivity(&fakeOpDependencies{}, context.Background(), input)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "codex failed")
+}
 
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "beta"), 0o755))
-	path = resolveCellRelativePath(worktree, "beta")
-	require.Equal(t, "beta", path)
+func TestRunCodexActivityAllowsIncomplete(t *testing.T) {
+	worktree := t.TempDir()
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("{\"status\":\"incomplete\"}\n"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte(""), 0o644))
+
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		return Result{
+			Status:             StatusIncomplete,
+			AssistantSummary:   "needs follow-up",
+			IncompleteReason:   "blocked",
+			IncompleteCategory: "dependency_blockers",
+		}, stdoutPath, stderrPath, tempDir, nil
+	}
+	defer func() { executeLibrary = Execute }()
+
+	input := ExecOpInput{
+		Prompt:           "do something",
+		WorktreePath:     worktree,
+		CellRelativePath: "cells/alpha",
+	}
+	out, err := runCodexActivity(&fakeOpDependencies{}, context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, string(StatusIncomplete), out.Status)
+	require.Equal(t, "needs follow-up", out.AssistantSummary)
 }
 
 func TestDigestPromptDeterministic(t *testing.T) {

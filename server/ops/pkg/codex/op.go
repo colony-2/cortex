@@ -6,10 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
-	"path/filepath"
+	"runtime/debug"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -20,13 +21,12 @@ import (
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.
 type ExecOpInput struct {
-	Prompt    string            `json:"prompt"`
-	SessionID string            `json:"sessionId,omitempty"`
-	Model     string            `json:"model,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-
-	Context map[string]interface{} `json:"context,omitempty"`
-	Raw     map[string]interface{} `json:"-" mapstructure:",remain"`
+	Prompt           string            `json:"prompt"`
+	SessionID        string            `json:"sessionId,omitempty"`
+	Model            string            `json:"model,omitempty"`
+	Env              map[string]string `json:"env,omitempty"`
+	WorktreePath     string            `json:"worktree_path"`
+	CellRelativePath string            `json:"cell_relative_path"`
 }
 
 // ExecOpOutput mirrors the structured response surfaced by the codex library.
@@ -37,7 +37,6 @@ type ExecOpOutput struct {
 	IncompleteReason    string       `json:"incompleteReason"`
 	IncompleteCategory  string       `json:"incompleteCategory"`
 	PendingDependencies []Dependency `json:"pendingDependencies"`
-	ErrorMessage        string       `json:"errorMessage"`
 }
 
 // executeLibrary is replaceable for tests.
@@ -60,34 +59,14 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("prompt is required")
 	}
 
-	contextMap := cloneMap(input.Context)
-	if contextMap == nil {
-		if raw, ok := input.Raw["context"]; ok {
-			contextMap, _ = raw.(map[string]interface{})
-		}
-	}
-	if contextMap == nil {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context is required")
-	}
-
-	worktree := stringFromMap(contextMap, "worktree")
+	worktree := strings.TrimSpace(input.WorktreePath)
 	if worktree == "" {
-		if gitMap := mapFromInterface(contextMap["git"]); gitMap != nil {
-			worktree = stringFromMap(gitMap, "worktree_path")
-		}
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("worktree_path is required")
 	}
-	if worktree == "" {
-		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("context.worktree is required")
+	cellRelPath := strings.TrimSpace(input.CellRelativePath)
+	if cellRelPath == "" {
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("cell_relative_path is required")
 	}
-
-	cellName := stringFromMap(contextMap, "cellname")
-	if cellName == "" {
-		if gitMap := mapFromInterface(contextMap["git"]); gitMap != nil {
-			cellName = stringFromMap(gitMap, "cell_name")
-		}
-	}
-
-	cellRelPath := resolveCellRelativePath(worktree, cellName)
 
 	opts := Options{
 		Prompt:           prompt,
@@ -107,24 +86,31 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return ExecOpOutput{}, err
 	}
 
-	// Create timestamp and ID for artifact naming (same for both artifacts)
-	timestamp := time.Now().UTC().Format("20060102T150405Z")
 	executionID := uuid.NewString()
+	debugArtifactf("execution_id=%s stdout=%q stderr=%q temp_dir=%q", executionID, stdoutPath, stderrPath, tempDir)
 
-	// Track cleanup state - only cleanup once when artifacts are consumed
-	cleanupCalled := &atomic.Bool{}
-
-	cleanupFunc := func() error {
-		if cleanupCalled.CompareAndSwap(false, true) {
-			return os.RemoveAll(tempDir)
+	stdoutCleanup := func() error {
+		if stdoutPath != "" {
+			err := os.Remove(stdoutPath)
+			debugArtifactf("cleanup stdout path=%q err=%v\nstack=%s", stdoutPath, err, debug.Stack())
+			return err
+		}
+		return nil
+	}
+	stderrCleanup := func() error {
+		if stderrPath != "" {
+			err := os.Remove(stderrPath)
+			debugArtifactf("cleanup stderr path=%q err=%v\nstack=%s", stderrPath, err, debug.Stack())
+			return err
 		}
 		return nil
 	}
 
 	// Create stdout artifact
 	stdoutArtifact := swf.NewArtifact(
-		fmt.Sprintf("codex_stdout_%s_%s.jsonl", timestamp, executionID),
+		"stdout.jsonl",
 		func() (io.ReadCloser, int64, error) {
+			debugArtifactStat("stdout", stdoutPath)
 			f, err := os.Open(stdoutPath)
 			if err != nil {
 				return nil, 0, fmt.Errorf("open stdout: %w", err)
@@ -136,13 +122,14 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 			}
 			return f, info.Size(), nil
 		},
-		cleanupFunc,
+		stdoutCleanup,
 	)
 
 	// Create stderr artifact
 	stderrArtifact := swf.NewArtifact(
-		fmt.Sprintf("codex_stderr_%s_%s.txt", timestamp, executionID),
+		"stderr.txt",
 		func() (io.ReadCloser, int64, error) {
+			debugArtifactStat("stderr", stderrPath)
 			f, err := os.Open(stderrPath)
 			if err != nil {
 				return nil, 0, fmt.Errorf("open stderr: %w", err)
@@ -154,7 +141,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 			}
 			return f, info.Size(), nil
 		},
-		cleanupFunc,
+		stderrCleanup,
 	)
 
 	// Add both artifacts to output
@@ -167,6 +154,9 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return ExecOpOutput{}, fmt.Errorf("add stderr artifact: %w", err)
 	}
 
+	debugArtifactStat("stdout-before-return", stdoutPath)
+	debugArtifactStat("stderr-before-return", stderrPath)
+
 	output := ExecOpOutput{
 		Status:              string(result.Status),
 		SessionID:           safeString(result.SessionID),
@@ -174,12 +164,53 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		IncompleteReason:    safeString(result.IncompleteReason),
 		IncompleteCategory:  safeString(result.IncompleteCategory),
 		PendingDependencies: copyDependencies(result.PendingDependencies),
-		ErrorMessage:        safeString(result.ErrorMessage),
 		// StdoutBlobURI field removed - use output artifacts
 		// Stderr field removed - use output artifacts
 	}
+	if result.Status == StatusError {
+		msg := strings.TrimSpace(result.ErrorMessage)
+		if msg == "" {
+			msg = "codex reported an error"
+		}
+		return ExecOpOutput{}, fmt.Errorf("codex error: %s", msg)
+	}
 	return output, nil
 	// Temp dir cleaned up by artifact cleanup callback (after both artifacts consumed)
+}
+
+var artifactDebugOnce sync.Once
+var artifactDebugEnabled bool
+
+func artifactDebug() bool {
+	artifactDebugOnce.Do(func() {
+		val := strings.TrimSpace(os.Getenv("VIBETHIS_CODEX_ARTIFACT_DEBUG"))
+		if val == "1" || strings.EqualFold(val, "true") || strings.EqualFold(val, "yes") {
+			artifactDebugEnabled = true
+		}
+	})
+	return artifactDebugEnabled
+}
+
+func debugArtifactf(format string, args ...interface{}) {
+	if artifactDebug() {
+		log.Printf("codex.exec artifacts: "+format, args...)
+	}
+}
+
+func debugArtifactStat(label, path string) {
+	if !artifactDebug() {
+		return
+	}
+	if path == "" {
+		log.Printf("codex.exec artifacts: %s path empty", label)
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		log.Printf("codex.exec artifacts: %s stat path=%q err=%v", label, path, err)
+		return
+	}
+	log.Printf("codex.exec artifacts: %s stat path=%q size=%d", label, path, info.Size())
 }
 
 func copyDependencies(in []Dependency) []Dependency {
@@ -196,68 +227,6 @@ func safeString(s string) string {
 		return ""
 	}
 	return s
-}
-
-func cloneMap(in map[string]interface{}) map[string]interface{} {
-	if in == nil {
-		return nil
-	}
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func stringFromMap(m map[string]interface{}, key string) string {
-	if m == nil {
-		return ""
-	}
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			return strings.TrimSpace(str)
-		}
-	}
-	return ""
-}
-
-func mapFromInterface(v interface{}) map[string]interface{} {
-	if v == nil {
-		return nil
-	}
-	if m, ok := v.(map[string]interface{}); ok {
-		return m
-	}
-	return nil
-}
-
-func resolveCellRelativePath(worktree, cellName string) string {
-	name := strings.TrimSpace(cellName)
-	if name == "" {
-		return "."
-	}
-	cleaned := filepath.Clean(name)
-	if cleaned == "." || strings.HasPrefix(cleaned, "..") {
-		return "."
-	}
-
-	candidates := []string{
-		filepath.Join("cells", cleaned),
-		cleaned,
-	}
-	for _, candidate := range candidates {
-		full := filepath.Join(worktree, candidate)
-		if info, err := os.Stat(full); err == nil && info.IsDir() {
-			return candidate
-		}
-	}
-
-	// Fall back to default cells/<cell> path and allow downstream MkdirAll to create it.
-	preferred := filepath.Join("cells", cleaned)
-	if strings.HasPrefix(preferred, "..") {
-		return "."
-	}
-	return preferred
 }
 
 func digestPrompt(prompt string) string {

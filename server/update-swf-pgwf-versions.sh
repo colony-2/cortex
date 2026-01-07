@@ -5,6 +5,8 @@ PACKAGES=(
     "github.com/colony-2/pgwf"
     "github.com/colony-2/pgwf-go"
     "github.com/colony-2/swf-go"
+    "github.com/colony-2/shai"
+    "github.com/colony-2/strata-go"
 )
 
 echo "Starting dependency updates..."

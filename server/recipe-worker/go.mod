@@ -6,7 +6,7 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20260105194358-b2ae1c6be911
+	github.com/colony-2/swf-go v0.0.0-20260107184115-443be1212c77
 	github.com/invopop/jsonschema v0.13.0
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
@@ -22,7 +22,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
-	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
+	github.com/colony-2/strata-go v0.0.0-20260107203500-53a2214e74d1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect

@@ -24,6 +24,7 @@ type eventError struct {
 type eventItem struct {
 	ID       string             `json:"id"`
 	ItemType string             `json:"item_type"`
+	Type     string             `json:"type"`
 	Text     string             `json:"text"`
 	Content  []eventItemContent `json:"content"`
 }
@@ -85,7 +86,11 @@ func parseJSONL(path string) (parseOutcome, error) {
 			if evt.Item == nil {
 				continue
 			}
-			if evt.Item.ItemType == "assistant_message" {
+			itemType := evt.Item.ItemType
+			if itemType == "" {
+				itemType = evt.Item.Type
+			}
+			if itemType == "assistant_message" || itemType == "agent_message" {
 				payload, err := decodeAssistantPayload(evt.Item)
 				if err != nil {
 					outcome.failureMessage = err.Error()

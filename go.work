@@ -4,7 +4,6 @@ use (
 	./server/api
 	./server/astore
 	./server/cell
-        ./server/recipes
 	./server/core
 	./server/cortex
 	./server/git
@@ -17,9 +16,10 @@ use (
 	./server/recipe-input
 	./server/recipe-template
 	./server/recipe-worker
+	./server/recipes
 	./server/registry
 	./server/rstore
-	./server/workflow
 	./server/storage
 	./server/ticket
+	./server/workflow
 )

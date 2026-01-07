@@ -6,12 +6,15 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/llm v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/shai v0.0.4
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260106192111-1c577c9932c0
+	github.com/colony-2/shai v0.0.6
+	github.com/colony-2/swf-go v0.0.0-20260107184115-443be1212c77
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
+	gorm.io/gorm v1.30.0
 )
 
 require (
@@ -27,9 +30,10 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
-	github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e // indirect
-	github.com/colony-2/swf-go v0.0.0-20260105194358-b2ae1c6be911 // indirect
+	github.com/colony-2/strata-go v0.0.0-20260107203500-53a2214e74d1 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.23 // indirect
@@ -72,9 +76,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.62.0 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
@@ -103,5 +105,4 @@ require (
 	google.golang.org/grpc v1.75.1 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
-	gorm.io/gorm v1.30.0 // indirect
 )
