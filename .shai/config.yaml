@@ -122,3 +122,7 @@ apply:
   - path: ./
     resources:
       - default
+  - path: server/ops
+    resources:
+      - default
+    image: ghcr.io/colony-2/shai-mega:dind-latest

@@ -42,7 +42,6 @@ graph_positions.db
 
 
 # moon
-.moon/cache
 .moon/lcache
 .moon/docker
 .example/.moon/cache
