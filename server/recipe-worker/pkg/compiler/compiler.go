@@ -8,6 +8,7 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -73,6 +74,18 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 	if err != nil {
 		return fmt.Errorf("failed to create resolution context: %w", err)
 	}
+
+	// Inject defaults before template resolution
+	if registeredOp, exists := ops.Get(op); exists {
+		// Get the first step's input type (most ops have a single step)
+		chain := registeredOp.TaskChain()
+		if len(chain) > 0 {
+			if err := workerops.InjectDefaults(chain[0].InputType, metadata.Inputs); err != nil {
+				return fmt.Errorf("failed to inject defaults: %w", err)
+			}
+		}
+	}
+
 	resolvedNodeInputs, err := resCtx.ResolveMap(metadata.Inputs)
 	if err != nil {
 		return fmt.Errorf("failed to resolve templates op inputs: %w", err)

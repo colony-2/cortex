@@ -4,13 +4,9 @@
 
 ## Problem Statement
 
-When a task fails during execution, all output artifacts that have been added to `OpDependencies` are discarded. Operations may produce valuable diagnostic artifacts (logs, stderr, partial results) before failing, but these are lost because:
+When a task fails during execution, all output artifacts that have been added to `OpDependencies` are discarded. Operations may produce valuable diagnostic artifacts (logs, stderr, partial results) before failing, but these are lost because `activity_registry.go` returns `nil` artifacts on error instead of calling `GetOutputArtifacts()`.
 
-1. **activity_registry.go**: Returns `nil` artifacts on error instead of calling `GetOutputArtifacts()`
-2. **compiler.go**: Discards the `out` result when `ctx.DoTask()` fails
-3. **job_worker.go**: Returns `nil` JobData when `ExecuteRecipe()` fails
-
-The SWF framework saves artifacts when they are returned by ops, so we need to ensure artifacts are returned alongside errors at each level.
+The SWF framework saves artifacts when TaskWorker.Run() returns TaskData with artifacts, even on errors. We just need to ensure artifacts are returned at the activity level.
 
 ## Requirements
 
@@ -71,49 +67,11 @@ func (reg *ActivityRegistry) withGitWorkspace(
 }
 ```
 
-### compiler.go - Don't Discard Artifacts from Failed Tasks
-
-**Location:** `recipe-worker/pkg/compiler/compiler.go:executeOp()`
-
-Currently when `ctx.DoTask()` fails, the `out` result is discarded. Need to extract and propagate artifacts:
-
-```go
-out, err := ctx.DoTask(runPolicy, taskType, taskData)
-if err != nil {
-    // Don't discard artifacts from failed task
-    // TODO: How to propagate artifacts through compiler?
-    // Options:
-    // 1. Store in resolution context
-    // 2. Attach to error
-    // 3. Store in workflow state
-    return fmt.Errorf("task %s failed: %w", taskType, err)
-}
-```
-
-**Open Question:** How should artifacts from failed tasks be propagated through the compiler layer?
-
-### job_worker.go - Preserve Job-Level Artifacts
-
-**Location:** `recipe-worker/pkg/compiler/job_worker.go:Run()`
-
-Currently returns `nil` JobData on failure:
-
-```go
-out, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
-if err != nil {
-    return nil, err  // No JobData means artifacts are lost
-}
-```
-
-**Open Question:** Should failed jobs return JobData with artifacts? How does SWF handle JobData returned alongside errors?
-
 ## Implementation Steps
 
 1. Update `activity_registry.go` with deferred artifact collection
-2. Resolve open questions about artifact propagation through compiler and job_worker layers
-3. Update `compiler.go` and `job_worker.go` based on decisions
-4. Add unit tests for artifact preservation on failure
-5. Verify artifact cleanup is invoked by SWF for failed tasks
+2. Add unit tests for artifact preservation on failure
+3. Verify artifact cleanup is invoked by SWF for failed tasks
 
 ## Testing
 
@@ -179,8 +137,6 @@ func TestCodexOperation_FailureWithStdout(t *testing.T) {
 ### Code Locations
 
 - `recipe-worker/pkg/ops/activity_registry.go:136-212` - Task execution (requires change)
-- `recipe-worker/pkg/compiler/compiler.go:108-116` - Task invocation (requires change after open questions resolved)
-- `recipe-worker/pkg/compiler/job_worker.go:69-72` - Job execution (requires change after open questions resolved)
 - `recipe-core/pkg/ops/op_dependencies.go` - OpDependencies interface (no changes)
 
 ### Related Specifications
