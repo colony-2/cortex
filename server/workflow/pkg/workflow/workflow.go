@@ -14,19 +14,21 @@ import (
 )
 
 type (
-	WorkflowStatus       = model.WorkflowStatus
-	ChapterStatus        = model.ChapterStatus
-	Actor                = model.Actor
-	ActorType            = model.ActorType
-	ActorUser            = model.ActorUser
-	ActorAgent           = model.ActorAgent
-	ArtifactReference    = model.ArtifactReference
-	ChapterDetail        = model.ChapterDetail
-	WorkflowSummary      = model.WorkflowSummary
-	WorkflowDetail       = model.WorkflowDetail
-	Ticket               = ticket.Ticket
-	ListWorkflowsRequest = model.ListWorkflowsRequest
-	GetWorkflowRequest   = model.GetWorkflowRequest
+	WorkflowStatus              = model.WorkflowStatus
+	ChapterStatus               = model.ChapterStatus
+	Actor                       = model.Actor
+	ActorType                   = model.ActorType
+	ActorUser                   = model.ActorUser
+	ActorAgent                  = model.ActorAgent
+	ArtifactReference           = model.ArtifactReference
+	ChapterDetail               = model.ChapterDetail
+	WorkflowSummary             = model.WorkflowSummary
+	WorkflowDetail              = model.WorkflowDetail
+	Ticket                      = ticket.Ticket
+	ListWorkflowsRequest        = model.ListWorkflowsRequest
+	GetWorkflowRequest          = model.GetWorkflowRequest
+	GetWorkflowArtifactRequest  = model.GetWorkflowArtifactRequest
+	ArtifactData                = model.ArtifactData
 )
 
 const (
@@ -56,6 +58,7 @@ var (
 type Service interface {
 	ListWorkflows(ctx context.Context, req ListWorkflowsRequest) ([]WorkflowSummary, error)
 	GetWorkflow(ctx context.Context, req GetWorkflowRequest) (*WorkflowDetail, error)
+	GetWorkflowArtifact(ctx context.Context, req GetWorkflowArtifactRequest) (*ArtifactData, error)
 }
 
 type ServiceConfig struct {

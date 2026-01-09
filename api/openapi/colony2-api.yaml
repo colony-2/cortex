@@ -970,6 +970,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}:
+    get:
+      tags: [Workflows]
+      summary: Retrieve a specific artifact from a workflow chapter
+      description: |
+        Downloads a specific artifact file produced by a chapter in a workflow.
+        Returns the artifact content as application/octet-stream (artifacts do not have associated mime types).
+      operationId: getWorkflowArtifact
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+        - name: workflowId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Workflow ID
+        - name: chapterNumber
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+          description: Chapter number (0-indexed)
+        - name: artifactName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Artifact name
+      responses:
+        '200':
+          description: Artifact content (binary download)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Suggested filename for download
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/projects/{projectId}/recipes:
     get:
       summary: List recipes

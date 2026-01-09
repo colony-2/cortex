@@ -23,6 +23,15 @@ import ReactJson from 'react-json-view';
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
 
+// Helper to construct full artifact URL
+// In dev mode, prepend API server base URL since UI runs on different port
+const getArtifactUrl = (relativeUrl: string): string => {
+  if (import.meta.env.DEV) {
+    return `http://localhost:8080${relativeUrl}`;
+  }
+  return relativeUrl;
+};
+
 interface WorkflowDetailPageProps {
   projectId: string;
 }
@@ -71,7 +80,7 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
     setViewMode('text');
 
     try {
-      const response = await fetch(artifact.url);
+      const response = await fetch(getArtifactUrl(artifact.url));
       if (!response.ok) {
         throw new Error('Failed to fetch artifact');
       }
@@ -95,7 +104,7 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
     }
 
     const link = document.createElement('a');
-    link.href = artifact.url;
+    link.href = getArtifactUrl(artifact.url);
     link.download = artifact.name;
     document.body.appendChild(link);
     link.click();

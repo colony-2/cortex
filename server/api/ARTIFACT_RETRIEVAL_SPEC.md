@@ -20,9 +20,9 @@ From `/src/server/workflow/internal/model/types.go`:
 
 ```go
 type ArtifactReference struct {
-    ArtifactID   string    // unique artifact ID
+    ArtifactID   string    // unique artifact ID (may be empty - use Name for URL paths)
     ArtifactType string    // type/category of artifact
-    Name         string    // display name
+    Name         string    // artifact name (used in URL paths)
     SizeBytes    *int64    // file size (optional)
     URL          *string   // URL to access artifact (optional) - CURRENTLY UNPOPULATED
     CreatedAt    time.Time // when artifact was created
@@ -56,7 +56,7 @@ GET /api/projects/{projectId}/workflows/{workflowId}      - Get workflow details
 
 ```yaml
 paths:
-  /api/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactId}:
+  /api/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}:
     get:
       operationId: getWorkflowArtifact
       summary: Retrieve a specific artifact from a workflow chapter
@@ -85,7 +85,7 @@ paths:
             type: integer
             minimum: 0
           description: Chapter number (0-indexed)
-        - name: artifactId
+        - name: artifactName
           in: path
           required: true
           schema:
@@ -128,12 +128,12 @@ components:
     ArtifactReference:
       type: object
       required:
-        - artifactId
+        - artifactName
         - artifactType
         - name
         - createdAt
       properties:
-        artifactId:
+        artifactName:
           type: string
           description: Unique identifier for the artifact
         artifactType:
@@ -177,7 +177,7 @@ type GetWorkflowArtifactRequest struct {
     ProjectID     string
     WorkflowID    string
     ChapterNumber int
-    ArtifactID    string
+    ArtifactName  string
 }
 
 // NEW: Response structure
@@ -199,7 +199,7 @@ func (s *service) GetWorkflowArtifact(
     req workflow.GetWorkflowArtifactRequest,
 ) (*workflow.ArtifactData, error) {
     // 1. Validate request
-    if req.ProjectID == "" || req.WorkflowID == "" || req.ArtifactID == "" {
+    if req.ProjectID == "" || req.WorkflowID == "" || req.ArtifactName == "" {
         return nil, fmt.Errorf("missing required parameters")
     }
     if req.ChapterNumber < 0 {
@@ -221,18 +221,18 @@ func (s *service) GetWorkflowArtifact(
             req.ChapterNumber, len(workflowDetail.Chapters))
     }
 
-    // 4. Verify artifact exists in chapter
+    // 4. Verify artifact exists in chapter by name
     chapter := workflowDetail.Chapters[req.ChapterNumber]
     var artifactRef *model.ArtifactReference
     for i := range chapter.Artifacts {
-        if chapter.Artifacts[i].ArtifactID == req.ArtifactID {
+        if chapter.Artifacts[i].Name == req.ArtifactName {
             artifactRef = &chapter.Artifacts[i]
             break
         }
     }
     if artifactRef == nil {
         return nil, fmt.Errorf("artifact %s not found in chapter %d",
-            req.ArtifactID, req.ChapterNumber)
+            req.ArtifactName, req.ChapterNumber)
     }
 
     // 5. Get the chapter from strata to access its artifacts
@@ -247,23 +247,23 @@ func (s *service) GetWorkflowArtifact(
         return nil, fmt.Errorf("failed to retrieve chapter: %w", err)
     }
 
-    // 6. Find the artifact in the chapter's artifact list
-    var targetArtifact swf.Artifact
+    // 6. Find the artifact in the chapter's artifact list by name and retrieve its content
+    var content []byte
+    found := false
     for _, art := range chap.Artifacts() {
-        if art.ID() == req.ArtifactID {
-            targetArtifact = art
+        if art.Name() == req.ArtifactName {
+            // 7. Retrieve artifact bytes using SWF's built-in method
+            content, err = art.Bytes(ctx)
+            if err != nil {
+                return nil, fmt.Errorf("failed to read artifact content: %w", err)
+            }
+            found = true
             break
         }
     }
-    if targetArtifact == nil {
+    if !found {
         return nil, fmt.Errorf("artifact %s not found in chapter %d",
-            req.ArtifactID, req.ChapterNumber)
-    }
-
-    // 7. Retrieve artifact bytes using SWF's built-in method
-    content, err := targetArtifact.Bytes(ctx)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read artifact content: %w", err)
+            req.ArtifactName, req.ChapterNumber)
     }
 
     // 8. Return artifact data
@@ -301,12 +301,12 @@ func (s *service) GetWorkflow(ctx context.Context, req workflow.GetWorkflowReque
         for artifactIdx := range detail.Chapters[chapterIdx].Artifacts {
             artifact := &detail.Chapters[chapterIdx].Artifacts[artifactIdx]
 
-            // Build URL for this artifact
+            // Build URL for this artifact using the artifact name
             url := fmt.Sprintf("/api/projects/%s/workflows/%s/chapters/%d/artifacts/%s",
                 req.ProjectID,
                 req.WorkflowID,
                 chapterIdx,
-                artifact.ArtifactID,
+                artifact.Name,
             )
             artifact.URL = &url
         }
@@ -323,7 +323,7 @@ func (s *service) GetWorkflow(ctx context.Context, req workflow.GetWorkflowReque
 #### Add New Handler Method
 
 ```go
-// GetWorkflowArtifact handles GET /api/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactId}
+// GetWorkflowArtifact handles GET /api/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}
 func (h *Handler) GetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
 
@@ -331,7 +331,7 @@ func (h *Handler) GetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
     projectID := chi.URLParam(r, "projectId")
     workflowID := chi.URLParam(r, "workflowId")
     chapterNumberStr := chi.URLParam(r, "chapterNumber")
-    artifactID := chi.URLParam(r, "artifactId")
+    artifactID := chi.URLParam(r, "artifactName")
 
     // Parse chapter number
     chapterNumber, err := strconv.Atoi(chapterNumberStr)
@@ -345,7 +345,7 @@ func (h *Handler) GetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
         ProjectID:     projectID,
         WorkflowID:    workflowID,
         ChapterNumber: chapterNumber,
-        ArtifactID:    artifactID,
+        ArtifactName:    artifactID,
     })
     if err != nil {
         // Check for specific error types
@@ -358,7 +358,7 @@ func (h *Handler) GetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
             "projectId", projectID,
             "workflowId", workflowID,
             "chapterNumber", chapterNumber,
-            "artifactId", artifactID,
+            "artifactName", artifactID,
             "error", err)
         return
     }
@@ -392,7 +392,7 @@ func (h *Handler) Routes() chi.Router {
         r.Get("/{workflowId}", h.GetWorkflow)
 
         // NEW: Artifact retrieval
-        r.Get("/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactId}", h.GetWorkflowArtifact)
+        r.Get("/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}", h.GetWorkflowArtifact)
     })
 
     return r
@@ -422,7 +422,7 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                 ProjectID:     "proj-123",
                 WorkflowID:    "wf-456",
                 ChapterNumber: 0,
-                ArtifactID:    "artifact-789",
+                ArtifactName:    "artifact-789",
             },
             mockWorkflow: &workflow.WorkflowDetail{
                 WorkflowID: "wf-456",
@@ -432,7 +432,7 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                         ChapterNumber: 0,
                         Artifacts: []model.ArtifactReference{
                             {
-                                ArtifactID:   "artifact-789",
+                                ArtifactName:   "artifact-789",
                                 ArtifactType: "log",
                                 Name:         "output.log",
                             },
@@ -449,7 +449,7 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                 ProjectID:     "proj-123",
                 WorkflowID:    "wf-456",
                 ChapterNumber: 0,
-                ArtifactID:    "nonexistent",
+                ArtifactName:    "nonexistent",
             },
             mockWorkflow: &workflow.WorkflowDetail{
                 WorkflowID: "wf-456",
@@ -469,7 +469,7 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                 ProjectID:     "proj-123",
                 WorkflowID:    "wf-456",
                 ChapterNumber: -1,
-                ArtifactID:    "artifact-789",
+                ArtifactName:    "artifact-789",
             },
             wantErr:     true,
             errContains: "invalid chapter number",
@@ -480,7 +480,7 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                 ProjectID:     "proj-123",
                 WorkflowID:    "wf-456",
                 ChapterNumber: 10,
-                ArtifactID:    "artifact-789",
+                ArtifactName:    "artifact-789",
             },
             mockWorkflow: &workflow.WorkflowDetail{
                 WorkflowID: "wf-456",
@@ -590,7 +590,7 @@ func TestHandler_GetWorkflowArtifact(t *testing.T) {
             rctx.URLParams.Add("projectId", tt.projectID)
             rctx.URLParams.Add("workflowId", tt.workflowID)
             rctx.URLParams.Add("chapterNumber", tt.chapterNumber)
-            rctx.URLParams.Add("artifactId", tt.artifactID)
+            rctx.URLParams.Add("artifactName", tt.artifactID)
             req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 
             // Execute

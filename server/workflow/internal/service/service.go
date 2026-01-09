@@ -227,6 +227,22 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 	}
 	detail.Chapters = chapters
 
+	// Populate artifact URLs
+	for chapterIdx := range detail.Chapters {
+		for artifactIdx := range detail.Chapters[chapterIdx].Artifacts {
+			artifact := &detail.Chapters[chapterIdx].Artifacts[artifactIdx]
+
+			// Build URL for this artifact using the artifact name
+			url := fmt.Sprintf("/api/projects/%s/workflows/%s/chapters/%d/artifacts/%s",
+				req.ProjectID,
+				req.WorkflowID,
+				chapterIdx,
+				artifact.Name,
+			)
+			artifact.URL = &url
+		}
+	}
+
 	return &detail, nil
 }
 
@@ -513,4 +529,87 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (*ticket.Tick
 		return nil, ErrNotFound
 	}
 	return item, nil
+}
+
+func (s *Service) GetWorkflowArtifact(
+	ctx context.Context,
+	req model.GetWorkflowArtifactRequest,
+) (*model.ArtifactData, error) {
+	// 1. Validate request
+	if req.ProjectID == "" || req.WorkflowID == "" || req.ArtifactName == "" {
+		return nil, fmt.Errorf("missing required parameters")
+	}
+	if req.ChapterNumber < 0 {
+		return nil, fmt.Errorf("invalid chapter number: %d", req.ChapterNumber)
+	}
+
+	// 2. Get workflow to verify existence and get run ID
+	workflowDetail, err := s.GetWorkflow(ctx, model.GetWorkflowRequest{
+		ProjectID:  req.ProjectID,
+		WorkflowID: req.WorkflowID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("workflow not found: %w", err)
+	}
+
+	// 3. Verify chapter exists
+	if req.ChapterNumber >= len(workflowDetail.Chapters) {
+		return nil, fmt.Errorf("chapter %d not found (workflow has %d chapters)",
+			req.ChapterNumber, len(workflowDetail.Chapters))
+	}
+
+	// 4. Verify artifact exists in chapter
+	chapter := workflowDetail.Chapters[req.ChapterNumber]
+	var artifactRef *model.ArtifactReference
+	for i := range chapter.Artifacts {
+		if chapter.Artifacts[i].Name == req.ArtifactName {
+			artifactRef = &chapter.Artifacts[i]
+			break
+		}
+	}
+	if artifactRef == nil {
+		return nil, fmt.Errorf("artifact %s not found in chapter %d",
+			req.ArtifactName, req.ChapterNumber)
+	}
+
+	// 5. Get the chapter from strata to access its artifacts
+	jobKey := swf.JobKey{
+		TenantId: req.ProjectID,
+		JobId:    req.WorkflowID,
+	}
+
+	chap, err := s.strata.Chapter(ctx, jobKey.ToStoryKey(), int64(req.ChapterNumber))
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve chapter: %w", err)
+	}
+
+	// 6. Find the artifact in the chapter's artifact list by name and retrieve its content
+	var content []byte
+	found := false
+	for _, art := range chap.Artifacts() {
+		if art.Name() == req.ArtifactName {
+			// 7. Retrieve artifact bytes
+			content, err = art.Bytes(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read artifact content: %w", err)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("artifact %s not found in chapter %d",
+			req.ArtifactName, req.ChapterNumber)
+	}
+
+	// 8. Return artifact data
+	return &model.ArtifactData{
+		Content:   content,
+		Filename:  artifactRef.Name,
+		SizeBytes: int64(len(content)),
+		Metadata: map[string]string{
+			"artifactType":  artifactRef.ArtifactType,
+			"chapterNumber": fmt.Sprintf("%d", req.ChapterNumber),
+		},
+	}, nil
 }

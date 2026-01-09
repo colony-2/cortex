@@ -124,3 +124,17 @@ type GetWorkflowRequest struct {
 	WorkflowID        string
 	IncludeRawJobData bool
 }
+
+type GetWorkflowArtifactRequest struct {
+	ProjectID     string
+	WorkflowID    string
+	ChapterNumber int
+	ArtifactName  string
+}
+
+type ArtifactData struct {
+	Content   []byte
+	Filename  string
+	SizeBytes int64
+	Metadata  map[string]string
+}

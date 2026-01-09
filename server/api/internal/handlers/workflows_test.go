@@ -13,12 +13,15 @@ import (
 )
 
 type fakeWorkflowService struct {
-	listReq  *workflow.ListWorkflowsRequest
-	getReq   *workflow.GetWorkflowRequest
-	listResp []workflow.WorkflowSummary
-	getResp  *workflow.WorkflowDetail
-	listErr  error
-	getErr   error
+	listReq     *workflow.ListWorkflowsRequest
+	getReq      *workflow.GetWorkflowRequest
+	artifactReq *workflow.GetWorkflowArtifactRequest
+	listResp    []workflow.WorkflowSummary
+	getResp     *workflow.WorkflowDetail
+	artifactResp *workflow.ArtifactData
+	listErr     error
+	getErr      error
+	artifactErr error
 }
 
 func (f *fakeWorkflowService) ListWorkflows(ctx context.Context, req workflow.ListWorkflowsRequest) ([]workflow.WorkflowSummary, error) {
@@ -29,6 +32,11 @@ func (f *fakeWorkflowService) ListWorkflows(ctx context.Context, req workflow.Li
 func (f *fakeWorkflowService) GetWorkflow(ctx context.Context, req workflow.GetWorkflowRequest) (*workflow.WorkflowDetail, error) {
 	f.getReq = &req
 	return f.getResp, f.getErr
+}
+
+func (f *fakeWorkflowService) GetWorkflowArtifact(ctx context.Context, req workflow.GetWorkflowArtifactRequest) (*workflow.ArtifactData, error) {
+	f.artifactReq = &req
+	return f.artifactResp, f.artifactErr
 }
 
 func TestHandleListWorkflows_OK(t *testing.T) {

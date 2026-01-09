@@ -127,6 +127,56 @@ func (h *Handlers) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toOpenAPIWorkflowDetail(*detail))
 }
 
+func (h *Handlers) handleGetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+
+	// Extract path parameters
+	vars := mux.Vars(r)
+	projectID := vars["projectId"]
+	workflowID := vars["workflowId"]
+	chapterNumberStr := vars["chapterNumber"]
+	artifactName := vars["artifactName"]
+
+	// Parse chapter number
+	chapterNumber, err := strconv.Atoi(chapterNumberStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "invalid chapter number"})
+		return
+	}
+
+	// Call workflow service
+	artifactData, err := h.workflows.GetWorkflowArtifact(r.Context(), workflow.GetWorkflowArtifactRequest{
+		ProjectID:     projectID,
+		WorkflowID:    workflowID,
+		ChapterNumber: chapterNumber,
+		ArtifactName:  artifactName,
+	})
+	if err != nil {
+		// Check for specific error types
+		if errors.Is(err, workflow.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: "failed to retrieve artifact"})
+		return
+	}
+
+	// Set response headers
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", artifactData.Filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", artifactData.SizeBytes))
+
+	// Write artifact content
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(artifactData.Content); err != nil {
+		// Can't write error response after starting to write the body
+		fmt.Fprintf(w, "error writing artifact content: %v", err)
+	}
+}
+
 func parseRFC3339(raw string) (*time.Time, error) {
 	if raw == "" {
 		return nil, nil
