@@ -31,6 +31,14 @@ type ArtifactReference struct {
 
 **Current behavior**: `URL` field exists but is not populated. Artifacts are returned in `ChapterDetail.Artifacts[]` but cannot be downloaded.
 
+**Note on mime types**: Artifacts do not have associated mime types stored. All artifacts will be served as `application/octet-stream` with a filename in the Content-Disposition header, allowing browsers to handle downloads appropriately.
+
+**Note on SWF artifact API**: The SWF (Simple Workflow) system already provides built-in artifact storage and retrieval:
+- Artifacts are retrieved via `strata.Chapter(ctx, storyKey, chapterNumber)` which returns chapter details
+- Each chapter has `Artifacts()` method returning `[]swf.Artifact`
+- Each `swf.Artifact` has a `Bytes(ctx)` method to retrieve content
+- No new storage APIs need to be implemented
+
 ### Existing Workflow Endpoints
 
 ```
@@ -54,7 +62,7 @@ paths:
       summary: Retrieve a specific artifact from a workflow chapter
       description: |
         Downloads a specific artifact file produced by a chapter in a workflow.
-        Returns the artifact content with appropriate content-type header.
+        Returns the artifact content as application/octet-stream (artifacts do not have associated mime types).
       tags:
         - Workflows
       parameters:
@@ -85,28 +93,17 @@ paths:
           description: Artifact ID
       responses:
         '200':
-          description: Artifact content
+          description: Artifact content (binary download)
           content:
             application/octet-stream:
               schema:
                 type: string
                 format: binary
-            text/plain:
-              schema:
-                type: string
-            application/json:
-              schema:
-                type: object
-            # Add other content types as needed
           headers:
             Content-Disposition:
               schema:
                 type: string
               description: Suggested filename for download
-            Content-Type:
-              schema:
-                type: string
-              description: MIME type of the artifact
         '404':
           description: Artifact not found
           content:
@@ -185,11 +182,10 @@ type GetWorkflowArtifactRequest struct {
 
 // NEW: Response structure
 type ArtifactData struct {
-    Content     []byte            // The artifact file content
-    ContentType string            // MIME type (e.g., "text/plain", "application/json")
-    Filename    string            // Suggested filename for Content-Disposition header
-    SizeBytes   int64             // Size of the content
-    Metadata    map[string]string // Optional additional metadata
+    Content   []byte            // The artifact file content
+    Filename  string            // Suggested filename for Content-Disposition header
+    SizeBytes int64             // Size of the content
+    Metadata  map[string]string // Optional additional metadata
 }
 ```
 
@@ -239,31 +235,56 @@ func (s *service) GetWorkflowArtifact(
             req.ArtifactID, req.ChapterNumber)
     }
 
-    // 5. Retrieve artifact content from strata client
-    content, contentType, err := s.strataClient.GetArtifact(ctx, strata.GetArtifactRequest{
+    // 5. Get the chapter from strata to access its artifacts
+    jobKey := swf.JobKey{
+        TenantID:   req.ProjectID,
         WorkflowID: req.WorkflowID,
         RunID:      workflowDetail.RunID,
-        ArtifactID: req.ArtifactID,
-    })
-    if err != nil {
-        return nil, fmt.Errorf("failed to retrieve artifact from storage: %w", err)
     }
 
-    // 6. Return artifact data
+    chap, err := s.strata.Chapter(ctx, jobKey.ToStoryKey(), int64(req.ChapterNumber))
+    if err != nil {
+        return nil, fmt.Errorf("failed to retrieve chapter: %w", err)
+    }
+
+    // 6. Find the artifact in the chapter's artifact list
+    var targetArtifact swf.Artifact
+    for _, art := range chap.Artifacts() {
+        if art.ID() == req.ArtifactID {
+            targetArtifact = art
+            break
+        }
+    }
+    if targetArtifact == nil {
+        return nil, fmt.Errorf("artifact %s not found in chapter %d",
+            req.ArtifactID, req.ChapterNumber)
+    }
+
+    // 7. Retrieve artifact bytes using SWF's built-in method
+    content, err := targetArtifact.Bytes(ctx)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read artifact content: %w", err)
+    }
+
+    // 8. Return artifact data
     return &workflow.ArtifactData{
-        Content:     content,
-        ContentType: contentType,
-        Filename:    artifactRef.Name,
-        SizeBytes:   int64(len(content)),
-        Metadata:    map[string]string{
-            "artifactType": artifactRef.ArtifactType,
+        Content:   content,
+        Filename:  artifactRef.Name,
+        SizeBytes: int64(len(content)),
+        Metadata: map[string]string{
+            "artifactType":  artifactRef.ArtifactType,
             "chapterNumber": fmt.Sprintf("%d", req.ChapterNumber),
         },
     }, nil
 }
 ```
 
-**Note**: This assumes the strata client (workflow storage backend) has or will have a method to retrieve artifact content. If not, that implementation will need to be added to the strata client package.
+**Note**: This implementation uses the existing SWF/Strata APIs:
+- `s.strata.Chapter(ctx, storyKey, chapterNumber)` to retrieve chapter details
+- `chap.Artifacts()` to get the list of artifacts for that chapter
+- `artifact.Bytes(ctx)` to retrieve the artifact content (built-in SWF artifact method)
+
+No new strata client methods are needed - we leverage existing SWF artifact retrieval capabilities.
 
 #### Update GetWorkflow to Populate Artifact URLs
 
@@ -343,7 +364,7 @@ func (h *Handler) GetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
     }
 
     // Set response headers
-    w.Header().Set("Content-Type", artifactData.ContentType)
+    w.Header().Set("Content-Type", "application/octet-stream")
     w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", artifactData.Filename))
     w.Header().Set("Content-Length", fmt.Sprintf("%d", artifactData.SizeBytes))
 
@@ -387,14 +408,13 @@ func (h *Handler) Routes() chi.Router {
 ```go
 func TestService_GetWorkflowArtifact(t *testing.T) {
     tests := []struct {
-        name           string
-        req            workflow.GetWorkflowArtifactRequest
-        mockWorkflow   *workflow.WorkflowDetail
-        mockContent    []byte
-        mockContentType string
-        mockError      error
-        wantErr        bool
-        errContains    string
+        name         string
+        req          workflow.GetWorkflowArtifactRequest
+        mockWorkflow *workflow.WorkflowDetail
+        mockContent  []byte
+        mockError    error
+        wantErr      bool
+        errContains  string
     }{
         {
             name: "successful artifact retrieval",
@@ -420,9 +440,8 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                     },
                 },
             },
-            mockContent:     []byte("artifact content"),
-            mockContentType: "text/plain",
-            wantErr:         false,
+            mockContent: []byte("artifact content"),
+            wantErr:     false,
         },
         {
             name: "artifact not found in chapter",
@@ -491,7 +510,6 @@ func TestService_GetWorkflowArtifact(t *testing.T) {
                 require.NoError(t, err)
                 require.NotNil(t, result)
                 assert.Equal(t, tt.mockContent, result.Content)
-                assert.Equal(t, tt.mockContentType, result.ContentType)
             }
         })
     }
@@ -507,16 +525,15 @@ func TestHandler_GetWorkflowArtifact(t *testing.T) {
     // Use OpenAPI-generated types for testing
 
     tests := []struct {
-        name               string
-        projectID          string
-        workflowID         string
-        chapterNumber      string
-        artifactID         string
-        mockArtifactData   *workflow.ArtifactData
-        mockError          error
-        expectedStatus     int
-        expectedContent    []byte
-        expectedContentType string
+        name             string
+        projectID        string
+        workflowID       string
+        chapterNumber    string
+        artifactID       string
+        mockArtifactData *workflow.ArtifactData
+        mockError        error
+        expectedStatus   int
+        expectedContent  []byte
     }{
         {
             name:          "successful artifact download",
@@ -525,14 +542,12 @@ func TestHandler_GetWorkflowArtifact(t *testing.T) {
             chapterNumber: "0",
             artifactID:    "artifact-789",
             mockArtifactData: &workflow.ArtifactData{
-                Content:     []byte("test artifact content"),
-                ContentType: "text/plain",
-                Filename:    "output.log",
-                SizeBytes:   21,
+                Content:   []byte("test artifact content"),
+                Filename:  "output.log",
+                SizeBytes: 21,
             },
-            expectedStatus:      http.StatusOK,
-            expectedContent:     []byte("test artifact content"),
-            expectedContentType: "text/plain",
+            expectedStatus:  http.StatusOK,
+            expectedContent: []byte("test artifact content"),
         },
         {
             name:           "artifact not found",
@@ -587,7 +602,7 @@ func TestHandler_GetWorkflowArtifact(t *testing.T) {
 
             if tt.expectedStatus == http.StatusOK {
                 assert.Equal(t, tt.expectedContent, w.Body.Bytes())
-                assert.Equal(t, tt.expectedContentType, w.Header().Get("Content-Type"))
+                assert.Equal(t, "application/octet-stream", w.Header().Get("Content-Type"))
                 assert.Contains(t, w.Header().Get("Content-Disposition"), "attachment")
             }
         })
@@ -648,7 +663,7 @@ func TestArtifactRetrievalE2E(t *testing.T) {
     defer resp.Body.Close()
 
     assert.Equal(t, http.StatusOK, resp.StatusCode)
-    assert.NotEmpty(t, resp.Header.Get("Content-Type"))
+    assert.Equal(t, "application/octet-stream", resp.Header.Get("Content-Type"))
     assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment")
 
     // 5. Verify content can be read
@@ -707,25 +722,21 @@ moon run openapi:generate
    - Add request/response types
 
 4. **Implement workflow service** (`/src/server/workflow/internal/service/service.go`)
-   - Implement `GetWorkflowArtifact`
+   - Implement `GetWorkflowArtifact` using existing SWF/Strata APIs
    - Update `GetWorkflow` to populate artifact URLs
    - Add unit tests
 
-5. **Update strata client** (if needed)
-   - Add method to retrieve artifact content from storage
-   - This may already exist; verify first
-
-6. **Add testserver handler** (`/src/server/api/internal/handlers/workflows.go`)
+5. **Add testserver handler** (`/src/server/api/internal/handlers/workflows.go`)
    - Implement `GetWorkflowArtifact` handler
    - Register route in `api.go`
    - Add handler tests
 
-7. **End-to-end testing** (`/src/server/api/cmd/testserver`)
+6. **End-to-end testing** (`/src/server/api/cmd/testserver`)
    - Add e2e tests using OpenAPI-generated types
    - Test successful retrieval
    - Test error cases (404, invalid params)
 
-8. **Manual testing**
+7. **Manual testing**
    - Start testserver
    - Create/run a workflow that produces artifacts
    - Verify artifact URLs are populated in workflow details
@@ -748,7 +759,7 @@ moon run openapi:generate
 
 1. **OpenAPI spec includes new endpoint** with proper request/response definitions
 2. **Workflow service supports artifact retrieval** with proper validation
-3. **Testserver handler works** and returns artifacts with correct content-type headers
+3. **Testserver handler works** and returns artifacts as application/octet-stream
 4. **Artifact URLs are populated** in workflow detail responses
 5. **All tests pass** including unit, integration, and e2e
 6. **UI can download artifacts** without any code changes (using populated URLs)

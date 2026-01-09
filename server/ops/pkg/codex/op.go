@@ -77,18 +77,12 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		CellRelativePath: cellRelPath,
 	}
 
-	result, stdoutPath, stderrPath, tempDir, err := executeLibrary(actx, opts)
-	if err != nil {
-		// Clean up immediately on error
-		if tempDir != "" {
-			os.RemoveAll(tempDir)
-		}
-		return ExecOpOutput{}, err
-	}
+	result, stdoutPath, stderrPath, artifactDir, executeErr := executeLibrary(actx, opts)
 
 	executionID := uuid.NewString()
-	debugArtifactf("execution_id=%s stdout=%q stderr=%q temp_dir=%q", executionID, stdoutPath, stderrPath, tempDir)
+	debugArtifactf("execution_id=%s stdout=%q stderr=%q artifact_dir=%q err=%v", executionID, stdoutPath, stderrPath, artifactDir, executeErr)
 
+	// Always create cleanup functions for artifacts
 	stdoutCleanup := func() error {
 		if stdoutPath != "" {
 			err := os.Remove(stdoutPath)
@@ -106,56 +100,57 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return nil
 	}
 
-	// Create stdout artifact
-	stdoutArtifact := swf.NewArtifact(
-		"stdout.jsonl",
-		func() (io.ReadCloser, int64, error) {
-			debugArtifactStat("stdout", stdoutPath)
-			f, err := os.Open(stdoutPath)
-			if err != nil {
-				return nil, 0, fmt.Errorf("open stdout: %w", err)
-			}
-			info, err := f.Stat()
-			if err != nil {
-				f.Close()
-				return nil, 0, fmt.Errorf("stat stdout: %w", err)
-			}
-			return f, info.Size(), nil
-		},
-		stdoutCleanup,
-	)
-
-	// Create stderr artifact
-	stderrArtifact := swf.NewArtifact(
-		"stderr.txt",
-		func() (io.ReadCloser, int64, error) {
-			debugArtifactStat("stderr", stderrPath)
-			f, err := os.Open(stderrPath)
-			if err != nil {
-				return nil, 0, fmt.Errorf("open stderr: %w", err)
-			}
-			info, err := f.Stat()
-			if err != nil {
-				f.Close()
-				return nil, 0, fmt.Errorf("stat stderr: %w", err)
-			}
-			return f, info.Size(), nil
-		},
-		stderrCleanup,
-	)
-
-	// Add both artifacts to output
-	if err := inv.AddOutputArtifact(stdoutArtifact); err != nil {
-		os.RemoveAll(tempDir) // Clean up on artifact error
-		return ExecOpOutput{}, fmt.Errorf("add stdout artifact: %w", err)
-	}
-	if err := inv.AddOutputArtifact(stderrArtifact); err != nil {
-		os.RemoveAll(tempDir) // Clean up on artifact error
-		return ExecOpOutput{}, fmt.Errorf("add stderr artifact: %w", err)
+	// Always register stdout/stderr artifacts if files were created, even on timeout/error
+	// This ensures we capture any output that was written before the timeout occurred
+	if stdoutPath != "" {
+		stdoutArtifact := swf.NewArtifact(
+			"stdout.jsonl",
+			func() (io.ReadCloser, int64, error) {
+				debugArtifactStat("stdout", stdoutPath)
+				f, err := os.Open(stdoutPath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("open stdout: %w", err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					return nil, 0, fmt.Errorf("stat stdout: %w", err)
+				}
+				return f, info.Size(), nil
+			},
+			stdoutCleanup,
+		)
+		if err := inv.AddOutputArtifact(stdoutArtifact); err != nil {
+			os.RemoveAll(artifactDir) // Clean up on artifact error
+			return ExecOpOutput{}, fmt.Errorf("add stdout artifact: %w", err)
+		}
+		debugArtifactStat("stdout-before-return", stdoutPath)
 	}
 
-	debugArtifactStat("stdout-before-return", stdoutPath)
-	debugArtifactStat("stderr-before-return", stderrPath)
+	if stderrPath != "" {
+		stderrArtifact := swf.NewArtifact(
+			"stderr.txt",
+			func() (io.ReadCloser, int64, error) {
+				debugArtifactStat("stderr", stderrPath)
+				f, err := os.Open(stderrPath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("open stderr: %w", err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					return nil, 0, fmt.Errorf("stat stderr: %w", err)
+				}
+				return f, info.Size(), nil
+			},
+			stderrCleanup,
+		)
+		if err := inv.AddOutputArtifact(stderrArtifact); err != nil {
+			os.RemoveAll(artifactDir) // Clean up on artifact error
+			return ExecOpOutput{}, fmt.Errorf("add stderr artifact: %w", err)
+		}
+		debugArtifactStat("stderr-before-return", stderrPath)
+	}
 
 	output := ExecOpOutput{
 		Status:              string(result.Status),
@@ -167,6 +162,12 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		// StdoutBlobURI field removed - use output artifacts
 		// Stderr field removed - use output artifacts
 	}
+
+	// Check for errors after artifacts are registered
+	// This ensures stdout/stderr are available even on timeout/error
+	if executeErr != nil {
+		return ExecOpOutput{}, fmt.Errorf("codex execution error: %w", executeErr)
+	}
 	if result.Status == StatusError {
 		msg := strings.TrimSpace(result.ErrorMessage)
 		if msg == "" {
@@ -175,7 +176,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		return ExecOpOutput{}, fmt.Errorf("codex error: %s", msg)
 	}
 	return output, nil
-	// Temp dir cleaned up by artifact cleanup callback (after both artifacts consumed)
+	// Artifact dir cleaned up by artifact cleanup callbacks (after both artifacts consumed)
 }
 
 var artifactDebugOnce sync.Once

@@ -703,3 +703,196 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 	// But this doesn't affect the real system because in production, the SWF engine
 	// properly provides artifacts to tasks
 }
+
+func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
+	t.Parallel()
+
+	// Create artifacts that the operation will add before failing
+	artifact1 := &mockArtifact{name: "stdout.txt", data: []byte("operation output")}
+	artifact2 := &mockArtifact{name: "stderr.txt", data: []byte("operation error")}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Add artifacts then fail
+				deps.AddOutputArtifact(artifact1)
+				deps.AddOutputArtifact(artifact2)
+				return nil, fmt.Errorf("operation failed")
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+		},
+	}
+
+	_, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify operation failed
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "operation failed")
+
+	// Critical test: Artifacts should be preserved even though operation failed
+	require.Len(t, outputArts, 2, "artifacts should be preserved on failure")
+
+	// Verify both artifacts are present
+	foundArtifacts := make(map[string]bool)
+	for _, art := range outputArts {
+		foundArtifacts[art.Name()] = true
+	}
+	assert.True(t, foundArtifacts["stdout.txt"], "stdout artifact should be preserved")
+	assert.True(t, foundArtifacts["stderr.txt"], "stderr artifact should be preserved")
+}
+
+func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that operation artifacts are always preserved,
+	// even if git persist has issues. The defer ensures artifacts are collected
+	// on all code paths.
+
+	artifact1 := &mockArtifact{name: "output.txt", data: []byte("operation output")}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Operation succeeds and adds artifacts
+				deps.AddOutputArtifact(artifact1)
+				return map[string]interface{}{"result": "ok"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+		},
+	}
+
+	_, outputArts, err := wrapped(context.Background(), req, nil)
+	require.NoError(t, err)
+
+	// Critical test: Operation artifacts should be preserved
+	require.GreaterOrEqual(t, len(outputArts), 1, "operation artifacts should be preserved")
+
+	foundOutput := false
+	for _, art := range outputArts {
+		if art.Name() == "output.txt" {
+			foundOutput = true
+			break
+		}
+	}
+	assert.True(t, foundOutput, "operation artifact should be in output")
+}
+
+func TestWithGitWorkspace_RestoreFailure_ReturnsNoArtifacts(t *testing.T) {
+	t.Parallel()
+
+	operationCalled := false
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				operationCalled = true
+				return map[string]interface{}{"result": "ok"}, nil
+			},
+		},
+	}
+
+	// Use invalid repo path to force Restore to fail
+	invalidRepo := "/nonexistent/repo"
+	invalidHash := "0000000000000000000000000000000000000000"
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     invalidRepo,
+			BaseRef:      invalidHash,
+			WorktreePath: worktree,
+		},
+	}
+
+	_, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify restore failed
+	require.Error(t, err)
+
+	// Critical test: No artifacts should be returned because operation never ran
+	assert.Empty(t, outputArts, "no artifacts should be returned when restore fails")
+
+	// Verify operation was never called
+	assert.False(t, operationCalled, "operation should not be called when restore fails")
+}
+
+func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
+	t.Parallel()
+
+	artifact1 := &mockArtifact{name: "output.txt", data: []byte("success")}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				deps.AddOutputArtifact(artifact1)
+				return map[string]interface{}{"result": "success"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+		},
+	}
+
+	output, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "success", output.OpOutput["result"])
+
+	// Verify artifacts are present (operation artifact + potentially git artifact)
+	require.NotEmpty(t, outputArts, "artifacts should be present on success")
+
+	foundOutputTxt := false
+	for _, art := range outputArts {
+		if art.Name() == "output.txt" {
+			foundOutputTxt = true
+		}
+	}
+	assert.True(t, foundOutputTxt, "operation artifact should be in output")
+}

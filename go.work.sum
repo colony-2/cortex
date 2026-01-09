@@ -3077,6 +3077,7 @@ github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 h1:sDMmm+q/3+Bu
 github.com/colony-2/colony2/server/astore v0.0.0-20251225022150-97f04a11c9ec/go.mod h1:Zx1LpQQ3SjvrYbpcLgBHA+qnRF6La/zsPjmQnLbyfFo=
 github.com/colony-2/colony2/server/cortex v0.0.0-20251225022150-97f04a11c9ec/go.mod h1:nLLWTGOIxmfVcpeLTERDysX9+JJIFhfJod1RM46czE4=
 github.com/colony-2/pgwf-go v0.0.0-20251228002930-8c744fb3535e/go.mod h1:owsJ9Iom1sujMFD6RtdH3kKnM2CtYIBQIwmqtc7w5Mo=
+github.com/colony-2/strata-go v0.0.0-20251215181525-c51f2cd6b43e/go.mod h1:JV8xTWRS2RFm4I1A9Qtn246hnyNnSL0S2iO+jmeUfWs=
 github.com/containerd/errdefs v0.3.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/typeurl/v2 v2.2.0 h1:6NBDbQzr7I5LHgp34xAXYF5DOTQDn05X58lsPEmzLso=
 github.com/containerd/typeurl/v2 v2.2.0/go.mod h1:8XOOxnyatxSWuG8OfsZXVnAF4iZfedjS/8UHSPJnX4g=

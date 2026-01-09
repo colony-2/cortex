@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/astore
 go 1.25.5
 
 require (
-	github.com/colony-2/swf-go v0.0.0-20260107184115-443be1212c77
+	github.com/colony-2/swf-go v0.0.0-20260109050150-5bcc0b1a3e2a
 	github.com/stretchr/testify v1.11.1
 )
 

@@ -137,7 +137,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
+	return func(ctx context.Context, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 		var zero ActivityInvocationOutput
 
 		// Find and filter input thin pack artifact
@@ -164,16 +164,22 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 		}
 		opDeps := ops.NewOpDependenciesBuilder().WithArtifacts(nonThinPackArtifacts).WithDatabase(db).WithWorkflowControl(deps.WorkflowControl()).Build()
 
+		// Ensure artifacts are collected on both success and failure paths
+		defer func() {
+			artifacts := opDeps.GetOutputArtifacts()
+			outputArtifacts = append(outputArtifacts, artifacts...)
+		}()
+
 		// Execute operation
 		outputData, err := reg.Step.Invoke(opDeps, ctx, req.Input)
 		if err != nil {
-			return zero, nil, err
+			return zero, outputArtifacts, err
 		}
 
 		// Call Persist (returns output metadata and artifact)
 		_, outputThinPack, err := controller.Persist(context.Background(), &req.GitTaskContext)
 		if err != nil {
-			return zero, nil, err
+			return zero, outputArtifacts, err
 		}
 
 		// Determine final thin pack to output (with pass-through logic)
@@ -189,7 +195,6 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 		// else: no input, no output - finalThinPack stays nil
 
 		// Append output thin pack artifact to operation's output artifacts
-		outputArtifacts := opDeps.GetOutputArtifacts()
 		if finalThinPack != nil {
 			outputArtifacts = append(outputArtifacts, finalThinPack)
 		}

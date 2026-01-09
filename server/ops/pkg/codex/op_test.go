@@ -202,6 +202,47 @@ func TestRunCodexActivityLibraryError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRunCodexActivityRegistersArtifactsOnTimeout(t *testing.T) {
+	worktree := t.TempDir()
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("partial output before timeout"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte("error logs before timeout"), 0o644))
+
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		// Simulate timeout: return error but with valid stdout/stderr paths
+		return Result{Status: StatusError}, stdoutPath, stderrPath, tempDir, errors.New("context deadline exceeded")
+	}
+	defer func() { executeLibrary = Execute }()
+
+	inv := &fakeOpDependencies{}
+	input := ExecOpInput{
+		Prompt:           "do something",
+		WorktreePath:     worktree,
+		CellRelativePath: "cells/alpha",
+	}
+
+	// Activity should return error but still register artifacts
+	_, err := runCodexActivity(inv, context.Background(), input)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+
+	// Verify artifacts were still registered despite the error
+	require.Len(t, inv.artifacts, 2)
+	require.Equal(t, "stdout.jsonl", inv.artifacts[0].Name())
+	require.Equal(t, "stderr.txt", inv.artifacts[1].Name())
+
+	// Verify artifact contents are accessible
+	stdoutBytes, err := inv.artifacts[0].Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "partial output before timeout", string(stdoutBytes))
+
+	stderrBytes, err := inv.artifacts[1].Bytes(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "error logs before timeout", string(stderrBytes))
+}
+
 func TestRunCodexActivityReturnsErrorOnStatusError(t *testing.T) {
 	worktree := t.TempDir()
 	tempDir := t.TempDir()
