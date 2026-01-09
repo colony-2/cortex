@@ -26,6 +26,7 @@ tasks:
     outputs:
       - dist/
     deps:
+      - repair-modules
       - "^:build"
     options:
       outputStyle: buffer-only-failure
@@ -51,3 +52,15 @@ tasks:
       - '@group(lockfile)'
     options:
       outputStyle: buffer-only-failure
+  repair-modules:
+    command: 'pnpm rebuild'
+    env:
+      MOON_SYSTEM_OS: '$os'
+      MOON_SYSTEM_ARCH: '$arch'
+    inputs:
+      - 'package.json'
+      - '/pnpm-lock.yaml'
+    options:
+      cache: true
+      outputStyle: buffer-only-failure
+    description: 'Rebuilds native modules if the OS or architecture changes'

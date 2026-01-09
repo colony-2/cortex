@@ -13,11 +13,11 @@
     },
     "./package.json": "./package.json"
   },
-  "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --clean && tsc --emitDeclarationOnly",
-    "generate": "openapi --input ../../api/openapi/colony2-api.yaml --output ./src/generated --client fetch",
-    "clean": "rm -rf src/generated dist"
-  },
+  "pnpm": {"onlyBuiltDependencies"
+  : [
+  "esbuild"
+]
+},
   "devDependencies": {
     "@types/node": "^20.0.0",
     "openapi-typescript-codegen": "^0.25.0",

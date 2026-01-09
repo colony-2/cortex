@@ -7,7 +7,7 @@ import type { Ticket } from '@colony2/openapi-client';
 
 vi.mock('@colony2/openapi-client', () => ({
     TicketsService: {
-        listTicketEvents: vi.fn(),
+        getApiProjectsTicketsEvents: vi.fn(),
     },
 }));
 
@@ -30,7 +30,7 @@ describe('TicketDetailModal', () => {
     };
 
     beforeEach(() => {
-        vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
+        vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -70,7 +70,7 @@ describe('TicketDetailModal', () => {
                 },
             },
         ];
-        vi.mocked(TicketsService.listTicketEvents).mockResolvedValue(mockEvents);
+        vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue(mockEvents);
 
         render(
             <TicketDetailModal
@@ -121,7 +121,7 @@ describe('TicketDetailModal', () => {
     });
 
     it('shows error message on fetch failure', async () => {
-        vi.mocked(TicketsService.listTicketEvents).mockRejectedValue(new Error('Network error'));
+        vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockRejectedValue(new Error('Network error'));
 
         render(
             <TicketDetailModal
@@ -175,7 +175,7 @@ describe('TicketDetailModal', () => {
     });
 
     it('shows empty state when no events exist', async () => {
-        vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
+        vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue([]);
 
         render(
             <TicketDetailModal

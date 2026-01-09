@@ -1,0 +1,1082 @@
+[DEBUG 2026-01-08 16:53:09.927] moon  Running moon v1.41.7 (with /opt/homebrew/Cellar/moon/1.41.7/libexec/bin/moon)  args=["/opt/homebrew/Cellar/moon/1.41.7/libexec/bin/moon", "run", ":build", "--concurrency=1", "--log", "debug"]
+[DEBUG 16:53:09.928] moon_app::session  Creating new application session 
+[DEBUG 16:53:09.928] moon_app::systems::startup  Attempting to find workspace root from current working directory  working_dir="/Users/jnadeau/src/colony2/api/openapi"
+[DEBUG 16:53:09.928] moon_app::systems::startup  Found workspace root  workspace_root="/Users/jnadeau/src/colony2" working_dir="/Users/jnadeau/src/colony2/api/openapi"
+[DEBUG 16:53:09.928] moon_env  Creating moon environment, detecting store  store="/Users/jnadeau/.moon"
+[DEBUG 16:53:09.928] proto_core::env  Creating proto environment, detecting store  store="/Users/jnadeau/.proto" home="/Users/jnadeau"
+[DEBUG 16:53:09.928] moon_app::systems::startup  Loading .moon/workspace.{pkl,yml} (required) 
+[DEBUG 16:53:09.928] moon_app::systems::startup  Attempting to load .moon/tasks.{pkl,yml} and .moon/tasks/**/*.{pkl,yml} (optional) 
+[DEBUG 16:53:09.928] moon_app::systems::startup  Attempting to load .moon/toolchain.{pkl,yml} (optional) 
+[DEBUG 16:53:09.928] proto_core::config  Loading .prototools  file="/Users/jnadeau/.proto/.prototools"
+[DEBUG 16:53:09.929] proto_core::file_manager  Loading local config only 
+[DEBUG 16:53:09.929] proto_core::file_manager  Merged 0 configs 
+[DEBUG 16:53:09.929] moon_app::systems::startup  Loaded 2 task configs to inherit  scopes=["go", "node"]
+[DEBUG 16:53:09.929] moon_vcs::gitx::git  Using git as a version control system (using v2 implementation) 
+[DEBUG 16:53:09.929] moon_vcs::gitx::git  Attempting to find a .git directory or file  starting_dir="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.929] moon_vcs::gitx::git  Found a .git directory (repository root)  git="/Users/jnadeau/src/colony2/.git"
+[DEBUG 16:53:09.929] moon_vcs::gitx::tree  Loading ignore rules from .gitignore  ignore_file="/Users/jnadeau/src/colony2/.gitignore"
+[DEBUG 16:53:09.929] moon_process::signal::unix  Listening for SIGINT, SIGQUIT, and SIGTERM signals 
+[DEBUG 16:53:09.929] starbase_shell::shell  Attempting to detect the current shell 
+[DEBUG 16:53:09.929] starbase_shell::shell  Detecting from SHELL environment variable  env="/bin/zsh"
+[DEBUG 16:53:09.929] starbase_shell::shell  Detected zsh shell 
+[DEBUG 16:53:09.930] moon_process::exec_command  Running command git remote get-url origin  pid=27882 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.942] moon_app::systems::analyze  Registering platforms based on toolchain configuration  platforms=[Node]
+[DEBUG 16:53:09.942] moon_cache::cache_engine  Creating cache engine  cache_dir="/Users/jnadeau/src/colony2/.moon/cache"
+[DEBUG 16:53:09.942] moon_cache::hash_engine  Creating hash engine  hashes_dir="/Users/jnadeau/src/colony2/.moon/cache/hashes" outputs_dir="/Users/jnadeau/src/colony2/.moon/cache/outputs"
+[DEBUG 16:53:09.942] moon_cache::state_engine  Creating states engine  states_dir="/Users/jnadeau/src/colony2/.moon/cache/states"
+[DEBUG 16:53:09.942] moon_app::queries::touched_files  Querying for touched files 
+[DEBUG 16:53:09.942] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/moonVersionCheck.json"
+[DEBUG 16:53:09.943] moon_process::exec_command  Running command git --version  pid=27895 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.953] moon_process::exec_command  Running command git branch --show-current  pid=27908 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.961] moon_process::exec_command  Running command git rev-parse --is-shallow-repository  pid=27921 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.969] moon_process::exec_command  Running command git status --porcelain --untracked-files --ignore-submodules -z  pid=27934 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:09.985] moon_app::queries::touched_files  Filtering based on touched status all 
+[DEBUG 16:53:09.985] moon_app::queries::touched_files  Found touched files  files=["web/openapi/pnpm-lock.yaml", "web/shared/src/auth.ts", "web/app/.npmrc", "server/project/moon.yml", "web/app/package.json", "web/kanban/vitest.config.ts", "web/debug-artifacts-data.js", "server/recipe-template/moon.yml", "web/shared/vite.config.ts", "server/recipe-input/moon.yml", "web/app/src/test/setup.ts", "web/kanban/.npmrc", "web/kanban/package.json", "web/flowchart/pnpm-lock.yaml", "server/recipe-worker/ARTIFACT_PRESERVATION_ON_FAILURE_SPEC.md", "server/ops/CODEX_ARTIFACT_MIGRATION_SPEC.md", "api/openapi/pnpm", "server/astore/moon.yml", "server/recipe-worker/GITSTATE_ARTIFACT_MIGRATION_SPEC.md", "web/shared/moon.yml", "web/shared/.npmrc", "web/shared/package.json", "server/workflow/moon.yml", "web/app/src/components/WorkflowDetailPage.test.tsx", "web/app/src/components/WorkflowDetailPage.tsx", "web/openapi/.npmrc", "web/shared/src/index.ts", "web/shared/src/auth.test.ts", "web/kanban/src/kanban/KanbanBoard.test.tsx", "web/openapi/package.json", "web/shared/src/components/TicketDetailModal.test.tsx", "web/app/src/components/UserDropdown.tsx", "server/api/.recipe-workspaces/37SAwuO7FyudV2XQ2yVDqmxEa3E", "web/app/pnpm-lock.yaml", ".moon/tasks/node.yml", "server/rstore/moon.yml", "api/openapi/pnpm-lock.yaml", "server/recipes/GIT_SPARSE_CHECKOUT_SPEC.md", "web/app/src/components/LoginPage.test.tsx", "web/flowchart/.npmrc", "web/flowchart/package.json", "web/kanban/src/test/setup.ts", "server/recipe-worker/OP_INPUT_DEFAULT_RESOLUTION_SPEC.md", "web/kanban/pnpm-lock.yaml", "web/app/src/App.tsx", "server/recipes/RECIPE_EPHEMERAL_WORKSPACE_SPEC.md", "web/shared/web/shared/.npmrc", "server/cortex/.npmrc", "web/app/src/components/LoginPage.tsx", ".npmrc", "web/kanban/src/kanban/KanbanBoard.tsx", "server/recipe-worker/.npmrc", "server/registry/moon.yml", "web/debug-artifacts.js"]
+[DEBUG 16:53:09.985] moon_plugin::plugin_registry  Creating plugin registry  plugin="toolchain"
+[DEBUG 16:53:09.985] moon_workspace::workspace_builder  Building workspace graph (project and task graphs) 
+[DEBUG 16:53:09.985] moon_workspace::workspace_builder  Locating projects with globs  globs=["server/*/moon.yml", "web/*/moon.yml", "api/*/moon.yml"]
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Loading projects 
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of api-openapi, renaming from openapi  old_id="openapi" new_id="api-openapi"
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-api, renaming from api  old_id="api" new_id="be-api"
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/astore, renaming from astore  old_id="astore" new_id="server/astore"
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server-cell, renaming from cell  old_id="cell" new_id="server-cell"
+[DEBUG 16:53:09.997] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-core, renaming from core  old_id="core" new_id="be-core"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-git, renaming from git  old_id="git" new_id="be-git"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-graph, renaming from graph  old_id="graph" new_id="be-graph"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-openapi, renaming from openapi  old_id="openapi" new_id="be-openapi"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/ops, renaming from ops  old_id="ops" new_id="server/ops"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/project, renaming from project  old_id="project" new_id="server/project"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/recipe-input, renaming from recipe-input  old_id="recipe-input" new_id="server/recipe-input"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/recipe-template, renaming from recipe-template  old_id="recipe-template" new_id="server/recipe-template"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server-recipes, renaming from recipes  old_id="recipes" new_id="server-recipes"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/registry, renaming from registry  old_id="registry" new_id="server/registry"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/rstore, renaming from rstore  old_id="rstore" new_id="server/rstore"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of be-storage, renaming from storage  old_id="storage" new_id="be-storage"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server-ticket, renaming from ticket  old_id="ticket" new_id="server-ticket"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of server/workflow, renaming from workflow  old_id="workflow" new_id="server/workflow"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of ui-app, renaming from app  old_id="app" new_id="ui-app"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of ui-flowchart, renaming from flowchart  old_id="flowchart" new_id="ui-flowchart"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of ui-kanban, renaming from kanban  old_id="kanban" new_id="ui-kanban"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of fe-openapi, renaming from openapi  old_id="openapi" new_id="fe-openapi"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Project has been configured with an explicit identifier of ui-shared, renaming from shared  old_id="shared" new_id="ui-shared"
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Loaded 27 projects 
+[DEBUG 16:53:09.998] moon_workspace::workspace_builder  Extending project graph 
+[DEBUG 16:53:09.998] log  Loading names (aliases) from project package.json's  log.target="moon:node-platform" log.module_path="moon_node_platform::node_platform" log.file="legacy/node/platform/src/node_platform.rs" log.line=167
+[DEBUG 16:53:09.999] moon_plugin::plugin_registry  Attempting to load and register plugin  plugin="toolchain" id="typescript"
+[DEBUG 16:53:09.999] warpgate::clients::http  Creating HTTP client 
+[DEBUG 16:53:10.083] warpgate::clients::http  Created HTTP client 
+[DEBUG 16:53:10.083] moon_plugin::plugin_registry  Creating plugin manifest from WASM file  plugin="toolchain" id="typescript" path="/Users/jnadeau/.moon/plugins/toolchains/typescript-d6d44beed4017f734336af29cb6c759cb1f014001f7283e314a03b363adedcfb.wasm"
+[DEBUG 16:53:10.084] proto_core::file_manager  Merging loaded configs without global 
+[DEBUG 16:53:10.084] proto_core::file_manager  Merged 0 configs 
+[DEBUG 16:53:10.084] moon_plugin::plugin_registry  Updated plugin manifest, attempting to register plugin  plugin="toolchain" id="typescript"
+[DEBUG 16:53:10.102] moon_plugin::plugin_registry  Registered plugin  plugin="toolchain" id="typescript"
+[DEBUG 16:53:10.102] moon_plugin::plugin_registry  Attempting to load and register plugin  plugin="toolchain" id="unstable_go"
+[DEBUG 16:53:10.102] moon_plugin::plugin_registry  Creating plugin manifest from WASM file  plugin="toolchain" id="unstable_go" path="/Users/jnadeau/.moon/plugins/toolchains/unstable_go-2d80bbe53aabdf45a4018554d9398ebc59ad54b9f9e145b82bd4f7dc6781eb05.wasm"
+[DEBUG 16:53:10.102] moon_plugin::plugin_registry  Updated plugin manifest, attempting to register plugin  plugin="toolchain" id="unstable_go"
+[DEBUG 16:53:10.122] proto_core::tool  Created tool go and its WASM runtime 
+[DEBUG 16:53:10.122] proto_core::tool_manifest  Loading manifest.json  file="/Users/jnadeau/.proto/tools/go/manifest.json"
+[DEBUG 16:53:10.123] moon_plugin::plugin_registry  Registered plugin  plugin="toolchain" id="unstable_go"
+[DEBUG 16:53:10.124] moon_workspace::workspace_builder  Loaded 27 project aliases 
+[DEBUG 16:53:10.129] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=27947 env={} cwd="/Users/jnadeau/src/colony2" input_size=1162
+[DEBUG 16:53:10.139] moon_hash::hasher  Generated content hash  label="workspace-graph" hash="c2b48c1c234b2619647a06cb38bf09f38a2d8520d887275e2a0573985c3a3ede"
+[DEBUG 16:53:10.139] moon_cache::hash_engine  Saving hash manifest  label="workspace-graph" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/c2b48c1c234b2619647a06cb38bf09f38a2d8520d887275e2a0573985c3a3ede.json"
+[DEBUG 16:53:10.139] moon_workspace::workspace_builder  Generated hash for workspace graph  hash="c2b48c1c234b2619647a06cb38bf09f38a2d8520d887275e2a0573985c3a3ede"
+[DEBUG 16:53:10.139] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/projectsBuildDataV1.json"
+[DEBUG 16:53:10.139] moon_workspace::workspace_builder  Loading workspace graph with 27 projects from cache  cache="/Users/jnadeau/src/colony2/.moon/cache/states/workspaceGraph.json"
+[DEBUG 16:53:10.144] moon_workspace::workspace_builder  Enforcing project constraints 
+[DEBUG 16:53:10.145] moon_process::exec_command  Running command git rev-parse HEAD  pid=27960 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.153] moon_project_graph::project_graph  Creating project graph 
+[DEBUG 16:53:10.153] moon_task_graph::task_graph  Creating task graph 
+[DEBUG 16:53:10.153] moon_plugin::plugin_registry  Creating plugin registry  plugin="extension"
+[DEBUG 16:53:10.153] moon_action_graph::action_graph_builder  Building action graph 
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/recipe-input  project_id="server/recipe-input"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server-ticket  project_id="server-ticket"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/registry  project_id="server/registry"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/workflow  project_id="server/workflow"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/project  project_id="server/project"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/recipe-template  project_id="server/recipe-template"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server-cell  project_id="server-cell"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project api-openapi  project_id="api-openapi"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project ui-app  project_id="ui-app"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project fe-openapi  project_id="fe-openapi"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project ui-kanban  project_id="ui-kanban"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project ui-shared  project_id="ui-shared"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-openapi  project_id="be-openapi"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/ops  project_id="server/ops"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/astore  project_id="server/astore"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project recipe-worker  project_id="recipe-worker"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-storage  project_id="be-storage"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project ui-flowchart  project_id="ui-flowchart"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-api  project_id="be-api"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-core  project_id="be-core"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project recipe-core  project_id="recipe-core"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server-recipes  project_id="server-recipes"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project llm  project_id="llm"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project cortex  project_id="cortex"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-graph  project_id="be-graph"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project server/rstore  project_id="server/rstore"
+[DEBUG 16:53:10.153] moon_project_expander::project_expander  Expanding project be-git  project_id="be-git"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/recipe-input:build  task_target="server/recipe-input:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server-ticket:build  task_target="server-ticket:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/registry:build  task_target="server/registry:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/workflow:build  task_target="server/workflow:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/project:build  task_target="server/project:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/recipe-template:build  task_target="server/recipe-template:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server-cell:build  task_target="server-cell:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task api-openapi:build  task_target="api-openapi:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task ui-app:build  task_target="ui-app:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task fe-openapi:build  task_target="fe-openapi:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task ui-kanban:build  task_target="ui-kanban:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task ui-shared:build  task_target="ui-shared:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-openapi:build  task_target="be-openapi:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/ops:build  task_target="server/ops:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/astore:build  task_target="server/astore:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task recipe-worker:build  task_target="recipe-worker:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-storage:build  task_target="be-storage:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task ui-flowchart:build  task_target="ui-flowchart:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-api:build  task_target="be-api:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-core:build  task_target="be-core:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task recipe-core:build  task_target="recipe-core:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server-recipes:build  task_target="server-recipes:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task llm:build  task_target="llm:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task cortex:build  task_target="cortex:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-graph:build  task_target="be-graph:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task server/rstore:build  task_target="server/rstore:build"
+[DEBUG 16:53:10.154] moon_task_expander::task_expander  Expanding task be-git:build  task_target="be-git:build"
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncWorkspace to graph  index=0
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(server/recipe-input) to graph  index=1
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(be-git) to graph  index=2
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(recipe-core) to graph  index=3
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(be-core) to graph  index=4
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(server/recipe-template) to graph  index=5
+[DEBUG 16:53:10.154] moon_action_graph::action_graph_builder  Adding SyncProject(recipe-worker) to graph  index=6
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupProto(0.53.2) to graph  index=7
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupToolchain(unstable_go:~1.25) to graph  index=8
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/recipe-input) to graph  index=9
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/recipe-input) to graph  index=10
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(server/recipe-input:build) to graph  index=11
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/recipe-template) to graph  index=12
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/recipe-template) to graph  index=13
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(server/recipe-template:build) to graph  index=14
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/recipe-core) to graph  index=15
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/recipe-core) to graph  index=16
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(recipe-core:build) to graph  index=17
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/recipe-worker) to graph  index=18
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/recipe-worker) to graph  index=19
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(recipe-worker:build) to graph  index=20
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/core) to graph  index=21
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/core) to graph  index=22
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(be-core:build) to graph  index=23
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/git) to graph  index=24
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/git) to graph  index=25
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(be-git:build) to graph  index=26
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SyncProject(server-ticket) to graph  index=27
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SyncProject(server-cell) to graph  index=28
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SyncProject(server/project) to graph  index=29
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SyncProject(be-graph) to graph  index=30
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/ticket) to graph  index=31
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/ticket) to graph  index=32
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding RunTask(server-ticket:build) to graph  index=33
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/project) to graph  index=34
+[DEBUG 16:53:10.155] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/project) to graph  index=35
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(server/project:build) to graph  index=36
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/cell) to graph  index=37
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/cell) to graph  index=38
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(server-cell:build) to graph  index=39
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/graph) to graph  index=40
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/graph) to graph  index=41
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(be-graph:build) to graph  index=42
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(server/registry) to graph  index=43
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/registry) to graph  index=44
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/registry) to graph  index=45
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(server/registry:build) to graph  index=46
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(server/workflow) to graph  index=47
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/workflow) to graph  index=48
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/workflow) to graph  index=49
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(server/workflow:build) to graph  index=50
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(api-openapi) to graph  index=51
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(api-openapi:build) to graph  index=52
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(ui-app) to graph  index=53
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(be-api) to graph  index=54
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(llm) to graph  index=55
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(server-recipes) to graph  index=56
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(server/ops) to graph  index=57
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(be-openapi) to graph  index=58
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(ui-shared) to graph  index=59
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(fe-openapi) to graph  index=60
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(ui-kanban) to graph  index=61
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SyncProject(ui-flowchart) to graph  index=62
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding SetupToolchain(node:global) to graph  index=63
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-app is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallProjectDeps(node:global, ui-app) to graph  index=64
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-app:build) to graph  index=65
+[DEBUG 16:53:10.156] moon_task_expander::task_expander  Expanding task ui-app:repair-modules  task_target="ui-app:repair-modules"
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-app is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-app:repair-modules) to graph  index=66
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-kanban is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallProjectDeps(node:global, ui-kanban) to graph  index=67
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-kanban:build) to graph  index=68
+[DEBUG 16:53:10.156] moon_task_expander::task_expander  Expanding task ui-kanban:repair-modules  task_target="ui-kanban:repair-modules"
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-kanban is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-kanban:repair-modules) to graph  index=69
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-shared is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallProjectDeps(node:global, ui-shared) to graph  index=70
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-shared:build) to graph  index=71
+[DEBUG 16:53:10.156] moon_task_expander::task_expander  Expanding task ui-shared:compile  task_target="ui-shared:compile"
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-shared is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-shared:compile) to graph  index=72
+[DEBUG 16:53:10.156] moon_task_expander::task_expander  Expanding task ui-shared:bundle  task_target="ui-shared:bundle"
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project ui-shared is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(ui-shared:bundle) to graph  index=73
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project fe-openapi is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding InstallProjectDeps(node:global, fe-openapi) to graph  index=74
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(fe-openapi:build) to graph  index=75
+[DEBUG 16:53:10.156] moon_task_expander::task_expander  Expanding task fe-openapi:repair-modules  task_target="fe-openapi:repair-modules"
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Project fe-openapi is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.156] moon_action_graph::action_graph_builder  Adding RunTask(fe-openapi:repair-modules) to graph  index=76
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/api) to graph  index=77
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/api) to graph  index=78
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(be-api:build) to graph  index=79
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/openapi) to graph  index=80
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/openapi) to graph  index=81
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(be-openapi:build) to graph  index=82
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/ops) to graph  index=83
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/ops) to graph  index=84
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(server/ops:build) to graph  index=85
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/llm) to graph  index=86
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/llm) to graph  index=87
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(llm:build) to graph  index=88
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/recipes) to graph  index=89
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/recipes) to graph  index=90
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(server-recipes:build) to graph  index=91
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Project ui-flowchart is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallProjectDeps(node:global, ui-flowchart) to graph  index=92
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(ui-flowchart:build) to graph  index=93
+[DEBUG 16:53:10.157] moon_task_expander::task_expander  Expanding task ui-flowchart:repair-modules  task_target="ui-flowchart:repair-modules"
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Project ui-flowchart is not within the dependency manager workspace, dependencies will be installed within the project instead of the root 
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(ui-flowchart:repair-modules) to graph  index=94
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SyncProject(server/astore) to graph  index=95
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/astore) to graph  index=96
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/astore) to graph  index=97
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(server/astore:build) to graph  index=98
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SyncProject(be-storage) to graph  index=99
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/storage) to graph  index=100
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/storage) to graph  index=101
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(be-storage:build) to graph  index=102
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SyncProject(cortex) to graph  index=103
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/cortex) to graph  index=104
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/cortex) to graph  index=105
+[DEBUG 16:53:10.157] moon_action_graph::action_graph_builder  Adding RunTask(cortex:build) to graph  index=106
+[DEBUG 16:53:10.158] moon_task_expander::task_expander  Expanding task cortex:build-frontend-copy  task_target="cortex:build-frontend-copy"
+[DEBUG 16:53:10.158] moon_action_graph::action_graph_builder  Adding RunTask(cortex:build-frontend-copy) to graph  index=107
+[DEBUG 16:53:10.158] moon_action_graph::action_graph_builder  Adding SyncProject(server/rstore) to graph  index=108
+[DEBUG 16:53:10.158] moon_action_graph::action_graph_builder  Adding SetupEnvironment(unstable_go, server/rstore) to graph  index=109
+[DEBUG 16:53:10.158] moon_action_graph::action_graph_builder  Adding InstallDependencies(unstable_go, server/rstore) to graph  index=110
+[DEBUG 16:53:10.158] moon_action_graph::action_graph_builder  Adding RunTask(server/rstore:build) to graph  index=111
+[DEBUG 16:53:10.158] moon_action_graph::action_graph  Creating action graph 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Creating pipeline to run actions 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Registering event subscribers 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Subscribing remote services 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Subscribing run reports and estimates 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Subscribing cache cleanup (runner.autoCleanCache enabled)  lifetime="7 days"
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Subscribing telemetry 
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Starting pipeline  total_actions=112 concurrency=1
+[DEBUG 16:53:10.158] moon_action_graph::action_graph  Sorting action graph topologically  order=[0, 3, 4, 2, 5, 6, 1, 7, 8, 9, 10, 12, 13, 15, 16, 17, 14, 18, 19, 21, 22, 23, 24, 25, 26, 20, 11, 29, 30, 28, 27, 31, 32, 34, 35, 36, 37, 38, 40, 41, 42, 39, 33, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 55, 56, 57, 58, 54, 60, 59, 61, 62, 53, 63, 64, 66, 67, 69, 70, 72, 73, 71, 74, 76, 75, 68, 77, 78, 80, 81, 82, 83, 84, 86, 87, 88, 85, 89, 90, 91, 79, 92, 94, 93, 65, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 107, 106, 108, 109, 110, 111]
+[DEBUG 16:53:10.158] moon_action_graph::action_graph  Grouping action graph based on priority  critical=[0, 3, 4, 2, 5, 6, 1, 7, 8, 9, 10, 12, 13, 15, 16, 18, 19, 21, 22, 24, 25, 29, 30, 28, 27, 31, 32, 34, 35, 37, 38, 40, 41, 43, 44, 45, 47, 48, 49, 51, 55, 56, 57, 58, 54, 60, 59, 61, 62, 53, 63, 64, 67, 70, 74, 77, 78, 80, 81, 83, 84, 86, 87, 89, 90, 92, 95, 96, 97, 99, 100, 101, 103, 104, 105, 108, 109, 110] high=[] normal=[17, 14, 23, 26, 20, 11, 36, 42, 39, 33, 46, 50, 52, 66, 69, 72, 73, 71, 76, 75, 68, 82, 88, 85, 91, 79, 94, 93, 65, 98, 102, 107, 106, 111] low=[]
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Dispatching jobs in the pipeline  total_jobs=112
+[DEBUG 16:53:10.158] moon_action_pipeline::action_pipeline  Waiting for jobs to return results 
+[DEBUG 16:53:10.158] moon_actions::actions::sync_workspace  Syncing workspace 
+[DEBUG 16:53:10.158] moon_actions::actions::sync_workspace  Syncing config schemas 
+[DEBUG 16:53:10.158] moon_actions::actions::sync_workspace  Syncing operations from toolchains 
+[DEBUG 16:53:10.158] moon_hash::hasher  Generated content hash  label="config-schemas" hash="0a1664f49d155b9ba05f2a09114ed8f20dafe09ddfeafcf9d746f95c7c04b0b4"
+[DEBUG 16:53:10.158] moon_actions::actions::setup_proto  Checking if proto is installed  proto="/Users/jnadeau/.proto/tools/proto/0.53.2/proto"
+[DEBUG 16:53:10.158] moon_actions::actions::setup_proto  Skipping proto install as the toolchain has been disabled or is not necessary 
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task be-core:lint  task_target="be-core:lint"
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task be-core:test  task_target="be-core:test"
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task be-core:tidy  task_target="be-core:tidy"
+[DEBUG 16:53:10.159] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-core/snapshot.json"
+[DEBUG 16:53:10.159] moon_actions::actions::sync_project  Syncing project be-core 
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task recipe-core:lint  task_target="recipe-core:lint"
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task recipe-core:test  task_target="recipe-core:test"
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task recipe-core:tidy  task_target="recipe-core:tidy"
+[DEBUG 16:53:10.159] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-core/snapshot.json"
+[DEBUG 16:53:10.159] moon_actions::actions::sync_project  Syncing project recipe-core 
+[DEBUG 16:53:10.159] moon_task_expander::task_expander  Expanding task recipe-worker:lint  task_target="recipe-worker:lint"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task recipe-worker:test  task_target="recipe-worker:test"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task recipe-worker:tidy  task_target="recipe-worker:tidy"
+[DEBUG 16:53:10.160] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-worker/snapshot.json"
+[DEBUG 16:53:10.160] moon_actions::actions::sync_project  Syncing project recipe-worker 
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/recipe-template:lint  task_target="server/recipe-template:lint"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/recipe-template:test  task_target="server/recipe-template:test"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/recipe-template:tidy  task_target="server/recipe-template:tidy"
+[DEBUG 16:53:10.160] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-template/snapshot.json"
+[DEBUG 16:53:10.160] moon_actions::actions::sync_project  Syncing project server/recipe-template 
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/project:lint  task_target="server/project:lint"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/project:test  task_target="server/project:test"
+[DEBUG 16:53:10.160] moon_task_expander::task_expander  Expanding task server/project:tidy  task_target="server/project:tidy"
+[DEBUG 16:53:10.160] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-project/snapshot.json"
+[DEBUG 16:53:10.161] moon_actions::actions::sync_project  Syncing project server/project 
+[DEBUG 16:53:10.161] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/api-openapi/snapshot.json"
+[DEBUG 16:53:10.161] moon_actions::actions::sync_project  Syncing project api-openapi 
+[DEBUG 16:53:10.161] moon_task_expander::task_expander  Expanding task ui-kanban:lint  task_target="ui-kanban:lint"
+[DEBUG 16:53:10.161] moon_task_expander::task_expander  Expanding task ui-kanban:test  task_target="ui-kanban:test"
+[DEBUG 16:53:10.161] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/snapshot.json"
+[DEBUG 16:53:10.161] moon_actions::actions::sync_project  Syncing project ui-kanban 
+[DEBUG 16:53:10.161] moon_javascript_platform::sync_project  Syncing fe-openapi as a dependency to ui-kanban's package.json  scope=Production
+[DEBUG 16:53:10.161] moon_javascript_platform::sync_project  Syncing ui-shared as a dependency to ui-kanban's package.json  scope=Production
+[DEBUG 16:53:10.162] moon_task_expander::task_expander  Expanding task ui-flowchart:lint  task_target="ui-flowchart:lint"
+[DEBUG 16:53:10.162] moon_task_expander::task_expander  Expanding task ui-flowchart:test  task_target="ui-flowchart:test"
+[DEBUG 16:53:10.162] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/snapshot.json"
+[DEBUG 16:53:10.163] moon_actions::actions::sync_project  Syncing project ui-flowchart 
+[DEBUG 16:53:10.163] moon_javascript_platform::sync_project  Syncing ui-shared as a dependency to ui-flowchart's package.json  scope=Production
+[DEBUG 16:53:10.163] moon_task_expander::task_expander  Expanding task server/rstore:lint  task_target="server/rstore:lint"
+[DEBUG 16:53:10.163] moon_task_expander::task_expander  Expanding task server/rstore:test  task_target="server/rstore:test"
+[DEBUG 16:53:10.163] moon_task_expander::task_expander  Expanding task server/rstore:tidy  task_target="server/rstore:tidy"
+[DEBUG 16:53:10.163] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-rstore/snapshot.json"
+[DEBUG 16:53:10.163] moon_actions::actions::sync_project  Syncing project server/rstore 
+[DEBUG 16:53:10.164] moon_task_expander::task_expander  Expanding task server/astore:lint  task_target="server/astore:lint"
+[DEBUG 16:53:10.164] moon_task_expander::task_expander  Expanding task server/astore:test  task_target="server/astore:test"
+[DEBUG 16:53:10.164] moon_task_expander::task_expander  Expanding task server/astore:tidy  task_target="server/astore:tidy"
+[DEBUG 16:53:10.164] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-astore/snapshot.json"
+[DEBUG 16:53:10.164] moon_actions::actions::sync_project  Syncing project server/astore 
+[DEBUG 16:53:10.164] moon_actions::actions::setup_toolchain_plugin  Skipping toolchain setup because we'll be using global commands on PATH instead  toolchain_id="unstable_go"
+[DEBUG 16:53:10.164] moon_actions::actions::setup_toolchain  Setting up node global toolchain 
+[DEBUG 16:53:10.164] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/setupToolchain-node-global.json"
+[DEBUG 16:53:10.164] proto_core::tool  Creating tool node and instantiating plugin 
+[DEBUG 16:53:10.164] warpgate::clients::http  Creating HTTP client 
+[DEBUG 16:53:10.238] warpgate::clients::http  Created HTTP client 
+[DEBUG 16:53:10.250] proto_core::tool  Created tool node and its WASM runtime 
+[DEBUG 16:53:10.251] proto_core::tool_manifest  Loading manifest.json  file="/Users/jnadeau/.proto/tools/node/manifest.json"
+[DEBUG 16:53:10.251] proto_core::tool  Creating tool pnpm and instantiating plugin 
+[DEBUG 16:53:10.262] proto_core::tool  Created tool pnpm and its WASM runtime 
+[DEBUG 16:53:10.263] proto_core::tool_manifest  Loading manifest.json  file="/Users/jnadeau/.proto/tools/pnpm/manifest.json"
+[DEBUG 16:53:10.263] proto_core::flow::locate  Locating globals directories for tool  tool="node"
+[DEBUG 16:53:10.263] proto_core::flow::locate  Located possible globals directories  tool="node" dirs=["/Users/jnadeau/.proto/tools/node/globals/bin"]
+[DEBUG 16:53:10.263] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/setupToolchain-node-global.json"
+[DEBUG 16:53:10.263] moon_task_expander::task_expander  Expanding task be-graph:lint  task_target="be-graph:lint"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task be-graph:test  task_target="be-graph:test"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task be-graph:tidy  task_target="be-graph:tidy"
+[DEBUG 16:53:10.264] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-graph/snapshot.json"
+[DEBUG 16:53:10.264] moon_actions::actions::sync_project  Syncing project be-graph 
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task llm:integration  task_target="llm:integration"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task llm:lint  task_target="llm:lint"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task llm:test  task_target="llm:test"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task llm:tidy  task_target="llm:tidy"
+[DEBUG 16:53:10.264] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/llm/snapshot.json"
+[DEBUG 16:53:10.264] moon_actions::actions::sync_project  Syncing project llm 
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task be-storage:lint  task_target="be-storage:lint"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task be-storage:test  task_target="be-storage:test"
+[DEBUG 16:53:10.264] moon_task_expander::task_expander  Expanding task be-storage:tidy  task_target="be-storage:tidy"
+[DEBUG 16:53:10.264] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-storage/snapshot.json"
+[DEBUG 16:53:10.264] moon_actions::actions::sync_project  Syncing project be-storage 
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-git:lint  task_target="be-git:lint"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-git:test  task_target="be-git:test"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-git:tidy  task_target="be-git:tidy"
+[DEBUG 16:53:10.265] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-git/snapshot.json"
+[DEBUG 16:53:10.265] moon_actions::actions::sync_project  Syncing project be-git 
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task server/registry:lint  task_target="server/registry:lint"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task server/registry:test  task_target="server/registry:test"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task server/registry:tidy  task_target="server/registry:tidy"
+[DEBUG 16:53:10.265] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-registry/snapshot.json"
+[DEBUG 16:53:10.265] moon_actions::actions::sync_project  Syncing project server/registry 
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-openapi:lint  task_target="be-openapi:lint"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-openapi:test  task_target="be-openapi:test"
+[DEBUG 16:53:10.265] moon_task_expander::task_expander  Expanding task be-openapi:tidy  task_target="be-openapi:tidy"
+[DEBUG 16:53:10.265] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-openapi/snapshot.json"
+[DEBUG 16:53:10.266] moon_actions::actions::sync_project  Syncing project be-openapi 
+[DEBUG 16:53:10.266] moon_task_expander::task_expander  Expanding task fe-openapi:lint  task_target="fe-openapi:lint"
+[DEBUG 16:53:10.266] moon_task_expander::task_expander  Expanding task fe-openapi:test  task_target="fe-openapi:test"
+[DEBUG 16:53:10.266] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/snapshot.json"
+[DEBUG 16:53:10.266] moon_actions::actions::sync_project  Syncing project fe-openapi 
+[DEBUG 16:53:10.266] moon_task_runner::task_runner  Creating a task runner for target  task_target="api-openapi:build"
+[DEBUG 16:53:10.266] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/api-openapi/build/lastRun.json"
+[DEBUG 16:53:10.266] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="api-openapi:build"
+[DEBUG 16:53:10.266] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="api-openapi:build"
+[DEBUG 16:53:10.268] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard api/openapi  pid=27973 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.283] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/toolchain.yml .moon/workspace.yml  pid=27986 env={} cwd="/Users/jnadeau/src/colony2" input_size=40
+[DEBUG 16:53:10.291] moon_hash::hasher  Generated content hash  label="RunTask(api-openapi:build)" hash="7b6621562877dae35cf4a46288d12d57e9c12fdf104731f684774fc7ebba41ac"
+[DEBUG 16:53:10.291] moon_cache::hash_engine  Saving hash manifest  label="RunTask(api-openapi:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/7b6621562877dae35cf4a46288d12d57e9c12fdf104731f684774fc7ebba41ac.json"
+[DEBUG 16:53:10.291] moon_task_runner::task_runner  Generated a unique hash  task_target="api-openapi:build" hash="7b6621562877dae35cf4a46288d12d57e9c12fdf104731f684774fc7ebba41ac"
+[DEBUG 16:53:10.291] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="api-openapi:build" hash="7b6621562877dae35cf4a46288d12d57e9c12fdf104731f684774fc7ebba41ac"
+[DEBUG 16:53:10.291] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="api-openapi:build" hash="7b6621562877dae35cf4a46288d12d57e9c12fdf104731f684774fc7ebba41ac"
+[DEBUG 16:53:10.291] moon_task_runner::task_runner  Running cache hydration operation  task_target="api-openapi:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.291] moon_task_runner::task_runner  Ran cache hydration operation  task_target="api-openapi:build"
+[DEBUG 16:53:10.291] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/api-openapi/build/lastRun.json"
+[DEBUG 16:53:10.292] proto_core::flow::locate  Locating globals directories for tool  tool="go"
+[DEBUG 16:53:10.292] proto_core::flow::locate  Located possible globals directories  tool="go" dirs=["/Users/jnadeau/go/bin"]
+[DEBUG 16:53:10.292] proto_core::flow::locate  Found a usable globals directory  tool="go" dir="/Users/jnadeau/go/bin"
+[DEBUG 16:53:10.292] moon_hash::hasher  Generated content hash  label="setup-environment" hash="fad3ba539a9c2285a5269dd50e4623b68d09a349e7d0efd810b572da1fb99a2a"
+[DEBUG 16:53:10.292] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.292] moon_hash::hasher  Generated content hash  label="setup-environment" hash="6959e35d5d0172d47d0c4bb034e0a22f101f471e1f4e184e2110a613bf7a7aef"
+[DEBUG 16:53:10.292] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="d2f53b87d5cac21554f144d827f59c62c6c434d7cc7e272cdfb26a262b62297f"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="3f057405e10373e24e1752f5fc6792c04f22bd515e88fdf90b55d47b8f00fa87"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="5384c5cf6f0a7fce9c3a4e5a0638c82d850b7275f6f25290f7ba1f5fa328de36"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="ba8c62069db72678c1d3345a216f80d851bb3d79199baed2057a1031d428db0b"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="ef2150464d4744fd10823d8d5ed359ab9369ed64958fe745e79b9b51a51c9775"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="6562ead66362c7f39376a3cea604e2a3114dad8d3d9dad362b9a4b3822cae4da"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="aa224e719afefb535fcdf10be10f9c86dcc9b78a4b85601581f4f85e2efb6a45"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="8a81c0e61da01b07a77c530487048a2a3cbe7420a84680f75ec5962b688c2872"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.293] moon_hash::hasher  Generated content hash  label="setup-environment" hash="9c0f8893c6efcfdf6a830aa8b82a15c83c545a89e0a4d92a569c4c8fbc5ea4eb"
+[DEBUG 16:53:10.293] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="3b387ad154adf3b02a178d3574cc018ad5957ea6adfde929a5ea79ff043a48d9"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="4785a82e9ac31df79745c3bfde9bbfd285130f6092c4bbd3290ae9db12596713"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="6608114f268764d8116efed02d5297d49585d5ba8f21f2082cdd455cd7a01362"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="46b506693a5feb83c74b06fd24eb3bbec55876c003c364faafe61e4503a2892a"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="29c18c7e61f8cba71561a35567c19d1c20ad204f96e3aa7305d59b0f471bda7f"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="04cf0eb8dc8ea0df0fb0afd6800ff8f3c427af74a0195a59b8c857eb951ec72e"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="89bb575dbf2a4d49e70beceacb8816e9a376e504147c81478d1faecf27b0d7b2"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="6e4f11d726e2b0ca58a0bc21c0e5863d0b4106f6aa97493ddbe1dd71f1cf5b0b"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="e4bc77f270e76ae7dbf40951e35d1e3acd8555c3073f93c5c97bc6682faca5ff"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.294] moon_hash::hasher  Generated content hash  label="setup-environment" hash="077e01f72a06e517b481e6900e02188ed63d86e98f987c5debb467c4d8425e02"
+[DEBUG 16:53:10.294] moon_actions::actions::setup_environment  No Go toolchain changes since last run, skipping environment setup  toolchain_id="unstable_go"
+[DEBUG 16:53:10.304] moon_hash::hasher  Generated content hash  label="InstallProjectDeps(node:global, ui-app)" hash="c38b06a97dbf44af1e21188a719302e0ecdedd22d88422dc3f2097ff15a7e0aa"
+[DEBUG 16:53:10.304] moon_cache::hash_engine  Saving hash manifest  label="InstallProjectDeps(node:global, ui-app)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/c38b06a97dbf44af1e21188a719302e0ecdedd22d88422dc3f2097ff15a7e0aa.json"
+[DEBUG 16:53:10.304] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/installDeps-node.json"
+[DEBUG 16:53:10.304] moon_actions::actions::install_deps  Lockfile or manifests have not changed since last run, skipping dependency install 
+[DEBUG 16:53:10.304] moon_hash::hasher  Generated content hash  label="InstallProjectDeps(node:global, ui-kanban)" hash="8ac52f7ce5fa64945befdc171a21b2a47a5737bd18747197c1fec1660d81595f"
+[DEBUG 16:53:10.304] moon_cache::hash_engine  Saving hash manifest  label="InstallProjectDeps(node:global, ui-kanban)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/8ac52f7ce5fa64945befdc171a21b2a47a5737bd18747197c1fec1660d81595f.json"
+[DEBUG 16:53:10.304] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/installDeps-node.json"
+[DEBUG 16:53:10.304] moon_actions::actions::install_deps  Lockfile or manifests have not changed since last run, skipping dependency install 
+[DEBUG 16:53:10.304] moon_hash::hasher  Generated content hash  label="InstallProjectDeps(node:global, ui-shared)" hash="7bf318750d72b98dd08d7e7ff8c3f014da0eade2aa004ce14827ac77dabfe52e"
+[DEBUG 16:53:10.304] moon_cache::hash_engine  Saving hash manifest  label="InstallProjectDeps(node:global, ui-shared)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/7bf318750d72b98dd08d7e7ff8c3f014da0eade2aa004ce14827ac77dabfe52e.json"
+[DEBUG 16:53:10.304] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/installDeps-node.json"
+[DEBUG 16:53:10.304] moon_actions::actions::install_deps  Lockfile or manifests have not changed since last run, skipping dependency install 
+[DEBUG 16:53:10.305] moon_hash::hasher  Generated content hash  label="InstallProjectDeps(node:global, fe-openapi)" hash="146f78c22e9334bd713826cfc61920577516ab77a45dc31d311bbcc78ce6e5bd"
+[DEBUG 16:53:10.305] moon_cache::hash_engine  Saving hash manifest  label="InstallProjectDeps(node:global, fe-openapi)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/146f78c22e9334bd713826cfc61920577516ab77a45dc31d311bbcc78ce6e5bd.json"
+[DEBUG 16:53:10.305] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/installDeps-node.json"
+[DEBUG 16:53:10.305] moon_actions::actions::install_deps  Lockfile or manifests have not changed since last run, skipping dependency install 
+[DEBUG 16:53:10.305] moon_hash::hasher  Generated content hash  label="InstallProjectDeps(node:global, ui-flowchart)" hash="fbd1fdd965942fbbdabc89d8da4911c21580348401f84679dac59957b5f7ed53"
+[DEBUG 16:53:10.305] moon_cache::hash_engine  Saving hash manifest  label="InstallProjectDeps(node:global, ui-flowchart)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/fbd1fdd965942fbbdabc89d8da4911c21580348401f84679dac59957b5f7ed53.json"
+[DEBUG 16:53:10.305] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/installDeps-node.json"
+[DEBUG 16:53:10.305] moon_actions::actions::install_deps  Lockfile or manifests have not changed since last run, skipping dependency install 
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server-cell:lint  task_target="server-cell:lint"
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server-cell:test  task_target="server-cell:test"
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server-cell:tidy  task_target="server-cell:tidy"
+[DEBUG 16:53:10.305] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-cell/snapshot.json"
+[DEBUG 16:53:10.305] moon_actions::actions::sync_project  Syncing project server-cell 
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server/recipe-input:lint  task_target="server/recipe-input:lint"
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server/recipe-input:test  task_target="server/recipe-input:test"
+[DEBUG 16:53:10.305] moon_task_expander::task_expander  Expanding task server/recipe-input:tidy  task_target="server/recipe-input:tidy"
+[DEBUG 16:53:10.305] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-input/snapshot.json"
+[DEBUG 16:53:10.306] moon_actions::actions::sync_project  Syncing project server/recipe-input 
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server-recipes:lint  task_target="server-recipes:lint"
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server-recipes:test  task_target="server-recipes:test"
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server-recipes:tidy  task_target="server-recipes:tidy"
+[DEBUG 16:53:10.306] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipes/snapshot.json"
+[DEBUG 16:53:10.306] moon_actions::actions::sync_project  Syncing project server-recipes 
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server/ops:lint  task_target="server/ops:lint"
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server/ops:test  task_target="server/ops:test"
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task server/ops:tidy  task_target="server/ops:tidy"
+[DEBUG 16:53:10.306] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ops/snapshot.json"
+[DEBUG 16:53:10.306] moon_actions::actions::sync_project  Syncing project server/ops 
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task ui-shared:lint  task_target="ui-shared:lint"
+[DEBUG 16:53:10.306] moon_task_expander::task_expander  Expanding task ui-shared:repair-modules  task_target="ui-shared:repair-modules"
+[DEBUG 16:53:10.307] moon_task_expander::task_expander  Expanding task ui-shared:test  task_target="ui-shared:test"
+[DEBUG 16:53:10.307] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/snapshot.json"
+[DEBUG 16:53:10.307] moon_actions::actions::sync_project  Syncing project ui-shared 
+[DEBUG 16:53:10.307] moon_javascript_platform::sync_project  Syncing fe-openapi as a dependency to ui-shared's package.json  scope=Production
+[DEBUG 16:53:10.308] moon_process::exec_command  Running command git hash-object --stdin-paths - server/recipe-core/go.sum  pid=27999 env={} cwd="/Users/jnadeau/src/colony2" input_size=26
+[DEBUG 16:53:10.317] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="08fcdd6cea47a433a19b4f6c11dec44f17922f1b9e1e494332f18608e04fa3d0"
+[DEBUG 16:53:10.317] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.318] moon_process::exec_command  Running command git hash-object --stdin-paths - server/recipe-input/go.sum  pid=28012 env={} cwd="/Users/jnadeau/src/colony2" input_size=27
+[DEBUG 16:53:10.326] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="16591c4fe64f25b85852fb6e5286c273b60442c0a3cd987f50db97df9fad51ab"
+[DEBUG 16:53:10.326] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.327] moon_process::exec_command  Running command git hash-object --stdin-paths - server/recipe-template/go.sum  pid=28025 env={} cwd="/Users/jnadeau/src/colony2" input_size=30
+[DEBUG 16:53:10.336] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="6ed3d117293df17d40d50092d72332d2e7cd81f545d7527fdac78e3418aed69d"
+[DEBUG 16:53:10.336] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.337] moon_process::exec_command  Running command git hash-object --stdin-paths - server/core/go.sum  pid=28038 env={} cwd="/Users/jnadeau/src/colony2" input_size=19
+[DEBUG 16:53:10.345] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="c731e1f65a4c3c6d883ce483b9b24e9aadf6f5471aedff90ccf73979f924a944"
+[DEBUG 16:53:10.345] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.346] moon_process::exec_command  Running command git hash-object --stdin-paths - server/recipe-worker/go.sum  pid=28051 env={} cwd="/Users/jnadeau/src/colony2" input_size=28
+[DEBUG 16:53:10.355] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="3c2a57de84adc34dd9d9ad0f4b2b62bb7fb74b89a6913cc594dd95f8f21ff2c2"
+[DEBUG 16:53:10.355] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.357] moon_process::exec_command  Running command git hash-object --stdin-paths - server/git/go.sum  pid=28064 env={} cwd="/Users/jnadeau/src/colony2" input_size=18
+[DEBUG 16:53:10.366] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="8903ac62e496f48cdf2243a58b8e0bc639acb645a72878a962449fce0a36af9e"
+[DEBUG 16:53:10.366] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.368] moon_process::exec_command  Running command git hash-object --stdin-paths - server/ticket/go.sum  pid=28077 env={} cwd="/Users/jnadeau/src/colony2" input_size=21
+[DEBUG 16:53:10.376] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="fde4d1ed8fbb60884851aa290ebbf0862ac095f460e7704a9633f227b0b91f17"
+[DEBUG 16:53:10.376] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.377] moon_process::exec_command  Running command git hash-object --stdin-paths - server/project/go.sum  pid=28090 env={} cwd="/Users/jnadeau/src/colony2" input_size=22
+[DEBUG 16:53:10.385] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="b9ebc4917d96ecd962f8cba97cae7a41b224faa3b4963bee7212a459d3233063"
+[DEBUG 16:53:10.385] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.386] moon_process::exec_command  Running command git hash-object --stdin-paths - server/graph/go.sum  pid=28103 env={} cwd="/Users/jnadeau/src/colony2" input_size=20
+[DEBUG 16:53:10.394] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="be1d5b74b3570010e7d71fb90d51293962faf29791e62bed600fbe0af5906805"
+[DEBUG 16:53:10.394] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.395] moon_process::exec_command  Running command git hash-object --stdin-paths - server/cell/go.sum  pid=28116 env={} cwd="/Users/jnadeau/src/colony2" input_size=19
+[DEBUG 16:53:10.403] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="7a9a5317fcb2f590d22dd74c69db2807fe84a11edb4a41f702e2005fbe180902"
+[DEBUG 16:53:10.403] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.404] moon_process::exec_command  Running command git hash-object --stdin-paths - server/registry/go.sum  pid=28129 env={} cwd="/Users/jnadeau/src/colony2" input_size=23
+[DEBUG 16:53:10.412] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="b01a55ceaa374052866feb9a0dd1befc4175735f2671865d1de955badef5e445"
+[DEBUG 16:53:10.412] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.414] moon_process::exec_command  Running command git hash-object --stdin-paths - server/workflow/go.sum  pid=28142 env={} cwd="/Users/jnadeau/src/colony2" input_size=23
+[DEBUG 16:53:10.423] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="146c65013008c8727bb7a7f49d48f4bc30974b4d1fa13725a8eafd6a6527f624"
+[DEBUG 16:53:10.423] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.424] moon_process::exec_command  Running command git hash-object --stdin-paths - server/api/go.sum  pid=28155 env={} cwd="/Users/jnadeau/src/colony2" input_size=18
+[DEBUG 16:53:10.432] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="6ea301ee76234ccff48bb0454b69e09a2a34d0a7833d7e847f9b3ac6896daac5"
+[DEBUG 16:53:10.432] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.433] moon_process::exec_command  Running command git hash-object --stdin-paths - server/openapi/go.sum  pid=28168 env={} cwd="/Users/jnadeau/src/colony2" input_size=22
+[DEBUG 16:53:10.441] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="8c22e3ed7e647d011a88077fdce98f549e92fff7b6af985eb5787e6b142942e2"
+[DEBUG 16:53:10.441] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.442] moon_process::exec_command  Running command git hash-object --stdin-paths - server/ops/go.sum  pid=28181 env={} cwd="/Users/jnadeau/src/colony2" input_size=18
+[DEBUG 16:53:10.450] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="2a6ad486004a2bfb11a7bbbc150c34b831ec371428c49573362553aa9dfe3a4e"
+[DEBUG 16:53:10.450] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.451] moon_process::exec_command  Running command git hash-object --stdin-paths - server/llm/go.sum  pid=28194 env={} cwd="/Users/jnadeau/src/colony2" input_size=18
+[DEBUG 16:53:10.458] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="c563a9f7b9815c274c67cab8cd6f16d4dac77263693fd52f643e10aa8f8757ab"
+[DEBUG 16:53:10.458] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.459] moon_process::exec_command  Running command git hash-object --stdin-paths - server/recipes/go.sum  pid=28207 env={} cwd="/Users/jnadeau/src/colony2" input_size=22
+[DEBUG 16:53:10.467] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="1fbe7b73ae02161da851665de426254841dbcf0361af65cf3de0379e891806c5"
+[DEBUG 16:53:10.467] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.468] moon_process::exec_command  Running command git hash-object --stdin-paths - server/astore/go.sum  pid=28220 env={} cwd="/Users/jnadeau/src/colony2" input_size=21
+[DEBUG 16:53:10.475] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="db00cbd811060d925ce88b691be8edd3c5fc6bcccc7fd44419da1391008a2625"
+[DEBUG 16:53:10.475] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.476] moon_process::exec_command  Running command git hash-object --stdin-paths - server/storage/go.sum  pid=28233 env={} cwd="/Users/jnadeau/src/colony2" input_size=22
+[DEBUG 16:53:10.484] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="5afdc55bb9540c16902f12afcd188b9ccd576b13728fac2e456c259e7f319677"
+[DEBUG 16:53:10.484] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.485] moon_process::exec_command  Running command git hash-object --stdin-paths - server/cortex/go.sum  pid=28246 env={} cwd="/Users/jnadeau/src/colony2" input_size=21
+[DEBUG 16:53:10.492] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="2212787cf5d078dd7ffe3afeed0350023682ca22892ded8a37e499f035b7e685"
+[DEBUG 16:53:10.492] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.493] moon_process::exec_command  Running command git hash-object --stdin-paths - server/rstore/go.sum  pid=28259 env={} cwd="/Users/jnadeau/src/colony2" input_size=21
+[DEBUG 16:53:10.500] moon_hash::hasher  Generated content hash  label="install-dependencies" hash="b15abfd4e06459df46aa1a296a2466e417494d997bd3463d7edb1b1fc5a52745"
+[DEBUG 16:53:10.500] moon_actions::actions::install_dependencies  No Go toolchain changes since last run, skipping install  toolchain_id="unstable_go"
+[DEBUG 16:53:10.500] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-kanban:repair-modules"
+[DEBUG 16:53:10.501] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/repair-modules/lastRun.json"
+[DEBUG 16:53:10.501] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-kanban:repair-modules"
+[DEBUG 16:53:10.501] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-kanban:repair-modules"
+[DEBUG 16:53:10.501] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard web/kanban  pid=28272 env={} cwd="/Users/jnadeau/src/colony2"
+[ WARN 16:53:10.513] moon_task_hasher::task_hasher  Attempted to hash input pnpm-lock.yaml but it does not exist, skipping 
+[DEBUG 16:53:10.514] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/node.yml .moon/toolchain.yml .moon/workspace.yml web/kanban/package.json  pid=28285 env={} cwd="/Users/jnadeau/src/colony2" input_size=85
+[DEBUG 16:53:10.526] moon_hash::hasher  Generated content hash  label="RunTask(ui-kanban:repair-modules)" hash="26ca2bacb3f646a4206a7be33122ec70f1af6f4a505cf9892f85b11638e1fe83"
+[DEBUG 16:53:10.526] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-kanban:repair-modules)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/26ca2bacb3f646a4206a7be33122ec70f1af6f4a505cf9892f85b11638e1fe83.json"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-kanban:repair-modules" hash="26ca2bacb3f646a4206a7be33122ec70f1af6f4a505cf9892f85b11638e1fe83"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-kanban:repair-modules" hash="26ca2bacb3f646a4206a7be33122ec70f1af6f4a505cf9892f85b11638e1fe83"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-kanban:repair-modules" hash="26ca2bacb3f646a4206a7be33122ec70f1af6f4a505cf9892f85b11638e1fe83"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-kanban:repair-modules" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-kanban:repair-modules"
+[DEBUG 16:53:10.526] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/repair-modules/lastRun.json"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Creating a task runner for target  task_target="fe-openapi:repair-modules"
+[DEBUG 16:53:10.526] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/repair-modules/lastRun.json"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="fe-openapi:repair-modules"
+[DEBUG 16:53:10.526] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="fe-openapi:repair-modules"
+[DEBUG 16:53:10.527] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard web/openapi  pid=28298 env={} cwd="/Users/jnadeau/src/colony2"
+[ WARN 16:53:10.540] moon_task_hasher::task_hasher  Attempted to hash input pnpm-lock.yaml but it does not exist, skipping 
+[DEBUG 16:53:10.540] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/node.yml .moon/toolchain.yml .moon/workspace.yml web/openapi/package.json  pid=28311 env={} cwd="/Users/jnadeau/src/colony2" input_size=86
+[DEBUG 16:53:10.550] moon_hash::hasher  Generated content hash  label="RunTask(fe-openapi:repair-modules)" hash="5dc6b9263745cc5647a292b62990c99ca31a830e8d016e21a315d4f09beaa963"
+[DEBUG 16:53:10.550] moon_cache::hash_engine  Saving hash manifest  label="RunTask(fe-openapi:repair-modules)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/5dc6b9263745cc5647a292b62990c99ca31a830e8d016e21a315d4f09beaa963.json"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Generated a unique hash  task_target="fe-openapi:repair-modules" hash="5dc6b9263745cc5647a292b62990c99ca31a830e8d016e21a315d4f09beaa963"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="fe-openapi:repair-modules" hash="5dc6b9263745cc5647a292b62990c99ca31a830e8d016e21a315d4f09beaa963"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="fe-openapi:repair-modules" hash="5dc6b9263745cc5647a292b62990c99ca31a830e8d016e21a315d4f09beaa963"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Running cache hydration operation  task_target="fe-openapi:repair-modules" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Ran cache hydration operation  task_target="fe-openapi:repair-modules"
+[DEBUG 16:53:10.550] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/repair-modules/lastRun.json"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-flowchart:repair-modules"
+[DEBUG 16:53:10.550] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/repair-modules/lastRun.json"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-flowchart:repair-modules"
+[DEBUG 16:53:10.550] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-flowchart:repair-modules"
+[DEBUG 16:53:10.551] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard web/flowchart  pid=28324 env={} cwd="/Users/jnadeau/src/colony2"
+[ WARN 16:53:10.563] moon_task_hasher::task_hasher  Attempted to hash input pnpm-lock.yaml but it does not exist, skipping 
+[DEBUG 16:53:10.564] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/node.yml .moon/toolchain.yml .moon/workspace.yml web/flowchart/package.json  pid=28337 env={} cwd="/Users/jnadeau/src/colony2" input_size=88
+[DEBUG 16:53:10.575] moon_hash::hasher  Generated content hash  label="RunTask(ui-flowchart:repair-modules)" hash="7779a1fc0832dc6732c120bfacb85fa212009713c1c3551c184b8f3390ef65c2"
+[DEBUG 16:53:10.575] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-flowchart:repair-modules)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/7779a1fc0832dc6732c120bfacb85fa212009713c1c3551c184b8f3390ef65c2.json"
+[DEBUG 16:53:10.575] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-flowchart:repair-modules" hash="7779a1fc0832dc6732c120bfacb85fa212009713c1c3551c184b8f3390ef65c2"
+[DEBUG 16:53:10.575] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-flowchart:repair-modules" hash="7779a1fc0832dc6732c120bfacb85fa212009713c1c3551c184b8f3390ef65c2"
+[DEBUG 16:53:10.575] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-flowchart:repair-modules" hash="7779a1fc0832dc6732c120bfacb85fa212009713c1c3551c184b8f3390ef65c2"
+[DEBUG 16:53:10.575] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-flowchart:repair-modules" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.576] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-flowchart:repair-modules"
+[DEBUG 16:53:10.576] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/repair-modules/lastRun.json"
+[DEBUG 16:53:10.576] moon_task_expander::task_expander  Expanding task server-ticket:lint  task_target="server-ticket:lint"
+[DEBUG 16:53:10.576] moon_task_expander::task_expander  Expanding task server-ticket:test  task_target="server-ticket:test"
+[DEBUG 16:53:10.576] moon_task_expander::task_expander  Expanding task server-ticket:tidy  task_target="server-ticket:tidy"
+[DEBUG 16:53:10.576] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ticket/snapshot.json"
+[DEBUG 16:53:10.576] moon_actions::actions::sync_project  Syncing project server-ticket 
+[DEBUG 16:53:10.576] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-shared:compile"
+[DEBUG 16:53:10.576] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/compile/lastRun.json"
+[DEBUG 16:53:10.576] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-shared:compile"
+[DEBUG 16:53:10.576] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-shared:compile"
+[DEBUG 16:53:10.577] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard web/shared  pid=28350 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.593] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28363 env={} cwd="/Users/jnadeau/src/colony2" input_size=522
+[DEBUG 16:53:10.605] moon_hash::hasher  Generated content hash  label="RunTask(ui-shared:compile)" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da"
+[DEBUG 16:53:10.605] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-shared:compile)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da.json"
+[DEBUG 16:53:10.605] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-shared:compile" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da"
+[DEBUG 16:53:10.605] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-shared:compile" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da"
+[DEBUG 16:53:10.605] moon_task_runner::task_runner  Cache hit in local cache, will reuse existing archive  task_target="ui-shared:compile" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da.tar.gz"
+[DEBUG 16:53:10.605] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-shared:compile" hydrate_from=LocalCache
+[DEBUG 16:53:10.605] moon_task_runner::output_hydrater  Hydrating cached outputs into project  task_target="ui-shared:compile" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da"
+[DEBUG 16:53:10.605] moon_task_runner::output_hydrater  Unpacking archive into project  task_target="ui-shared:compile" hash="5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/5bb2d2be4878c965fb338507872f56cd2b81dcc6b30024238401b3a3ccd322da.tar.gz"
+[DEBUG 16:53:10.607] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-shared:compile"
+[DEBUG 16:53:10.607] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/compile/lastRun.json"
+[DEBUG 16:53:10.607] moon_task_runner::task_runner  Creating a task runner for target  task_target="recipe-core:build"
+[DEBUG 16:53:10.607] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-core/build/lastRun.json"
+[DEBUG 16:53:10.607] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="recipe-core:build"
+[DEBUG 16:53:10.607] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="recipe-core:build"
+[DEBUG 16:53:10.608] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/recipe-core  pid=28376 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.625] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28389 env={} cwd="/Users/jnadeau/src/colony2" input_size=2095
+[DEBUG 16:53:10.637] moon_hash::hasher  Generated content hash  label="RunTask(recipe-core:build)" hash="b4e941df29c20d3b1d326e00538c52f53ce0e01d0b67b9012320b74babbb3aa7"
+[DEBUG 16:53:10.637] moon_cache::hash_engine  Saving hash manifest  label="RunTask(recipe-core:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/b4e941df29c20d3b1d326e00538c52f53ce0e01d0b67b9012320b74babbb3aa7.json"
+[DEBUG 16:53:10.637] moon_task_runner::task_runner  Generated a unique hash  task_target="recipe-core:build" hash="b4e941df29c20d3b1d326e00538c52f53ce0e01d0b67b9012320b74babbb3aa7"
+[DEBUG 16:53:10.637] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="recipe-core:build" hash="b4e941df29c20d3b1d326e00538c52f53ce0e01d0b67b9012320b74babbb3aa7"
+[DEBUG 16:53:10.637] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="recipe-core:build" hash="b4e941df29c20d3b1d326e00538c52f53ce0e01d0b67b9012320b74babbb3aa7"
+[DEBUG 16:53:10.637] moon_task_runner::task_runner  Running cache hydration operation  task_target="recipe-core:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.637] moon_task_runner::task_runner  Ran cache hydration operation  task_target="recipe-core:build"
+[DEBUG 16:53:10.638] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-core/build/lastRun.json"
+[DEBUG 16:53:10.638] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-core:build"
+[DEBUG 16:53:10.638] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-core/build/lastRun.json"
+[DEBUG 16:53:10.638] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-core:build"
+[DEBUG 16:53:10.638] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-core:build"
+[DEBUG 16:53:10.639] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/core  pid=28402 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.655] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/go.yml .moon/toolchain.yml .moon/workspace.yml server/core/go.mod server/core/go.sum server/core/pkg/core/interfaces.go server/core/pkg/core/types.go server/core/pkg/file/file.go  pid=28415 env={} cwd="/Users/jnadeau/src/colony2" input_size=191
+[DEBUG 16:53:10.664] moon_hash::hasher  Generated content hash  label="RunTask(be-core:build)" hash="2aa8bdc8255eaeb2f9eb3721610bd661f67b68e9335c135913bd41ffcbcd3b23"
+[DEBUG 16:53:10.664] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-core:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/2aa8bdc8255eaeb2f9eb3721610bd661f67b68e9335c135913bd41ffcbcd3b23.json"
+[DEBUG 16:53:10.664] moon_task_runner::task_runner  Generated a unique hash  task_target="be-core:build" hash="2aa8bdc8255eaeb2f9eb3721610bd661f67b68e9335c135913bd41ffcbcd3b23"
+[DEBUG 16:53:10.664] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-core:build" hash="2aa8bdc8255eaeb2f9eb3721610bd661f67b68e9335c135913bd41ffcbcd3b23"
+[DEBUG 16:53:10.664] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-core:build" hash="2aa8bdc8255eaeb2f9eb3721610bd661f67b68e9335c135913bd41ffcbcd3b23"
+[DEBUG 16:53:10.664] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-core:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.664] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-core:build"
+[DEBUG 16:53:10.665] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-core/build/lastRun.json"
+[DEBUG 16:53:10.665] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/project:build"
+[DEBUG 16:53:10.665] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-project/build/lastRun.json"
+[DEBUG 16:53:10.665] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/project:build"
+[DEBUG 16:53:10.665] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/project:build"
+[DEBUG 16:53:10.666] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/project  pid=28428 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.682] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28441 env={} cwd="/Users/jnadeau/src/colony2" input_size=533
+[DEBUG 16:53:10.692] moon_hash::hasher  Generated content hash  label="RunTask(server/project:build)" hash="681a6cb9fb1fb45b250e4b5f6e612f8ffd246c3e87723fee7060cf093971b929"
+[DEBUG 16:53:10.692] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/project:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/681a6cb9fb1fb45b250e4b5f6e612f8ffd246c3e87723fee7060cf093971b929.json"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Generated a unique hash  task_target="server/project:build" hash="681a6cb9fb1fb45b250e4b5f6e612f8ffd246c3e87723fee7060cf093971b929"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/project:build" hash="681a6cb9fb1fb45b250e4b5f6e612f8ffd246c3e87723fee7060cf093971b929"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/project:build" hash="681a6cb9fb1fb45b250e4b5f6e612f8ffd246c3e87723fee7060cf093971b929"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/project:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/project:build"
+[DEBUG 16:53:10.692] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-project/build/lastRun.json"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-openapi:build"
+[DEBUG 16:53:10.692] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-openapi/build/lastRun.json"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-openapi:build"
+[DEBUG 16:53:10.692] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-openapi:build"
+[DEBUG 16:53:10.693] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/openapi  pid=28454 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.709] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28467 env={} cwd="/Users/jnadeau/src/colony2" input_size=234
+[DEBUG 16:53:10.717] moon_hash::hasher  Generated content hash  label="RunTask(be-openapi:build)" hash="f94bd0de2868289216719db96d99ea4ec1fc89d307132ce00e9d3b459f9315cf"
+[DEBUG 16:53:10.717] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-openapi:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/f94bd0de2868289216719db96d99ea4ec1fc89d307132ce00e9d3b459f9315cf.json"
+[DEBUG 16:53:10.717] moon_task_runner::task_runner  Generated a unique hash  task_target="be-openapi:build" hash="f94bd0de2868289216719db96d99ea4ec1fc89d307132ce00e9d3b459f9315cf"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-openapi:build" hash="f94bd0de2868289216719db96d99ea4ec1fc89d307132ce00e9d3b459f9315cf"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-openapi:build" hash="f94bd0de2868289216719db96d99ea4ec1fc89d307132ce00e9d3b459f9315cf"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-openapi:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-openapi:build"
+[DEBUG 16:53:10.718] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-openapi/build/lastRun.json"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/astore:build"
+[DEBUG 16:53:10.718] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-astore/build/lastRun.json"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/astore:build"
+[DEBUG 16:53:10.718] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/astore:build"
+[DEBUG 16:53:10.719] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/astore  pid=28480 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.733] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28493 env={} cwd="/Users/jnadeau/src/colony2" input_size=211
+[DEBUG 16:53:10.741] moon_hash::hasher  Generated content hash  label="RunTask(server/astore:build)" hash="803f503908a8a7f81e599090da4e7362de696ec1422be2568d0490e948dd26c7"
+[DEBUG 16:53:10.741] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/astore:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/803f503908a8a7f81e599090da4e7362de696ec1422be2568d0490e948dd26c7.json"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Generated a unique hash  task_target="server/astore:build" hash="803f503908a8a7f81e599090da4e7362de696ec1422be2568d0490e948dd26c7"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/astore:build" hash="803f503908a8a7f81e599090da4e7362de696ec1422be2568d0490e948dd26c7"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/astore:build" hash="803f503908a8a7f81e599090da4e7362de696ec1422be2568d0490e948dd26c7"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/astore:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/astore:build"
+[DEBUG 16:53:10.741] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-astore/build/lastRun.json"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/rstore:build"
+[DEBUG 16:53:10.741] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-rstore/build/lastRun.json"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/rstore:build"
+[DEBUG 16:53:10.741] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/rstore:build"
+[DEBUG 16:53:10.742] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/rstore  pid=28506 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.756] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/go.yml .moon/toolchain.yml .moon/workspace.yml server/rstore/go.mod server/rstore/go.sum server/rstore/pkg/rstore/foo.go  pid=28519 env={} cwd="/Users/jnadeau/src/colony2" input_size=133
+[DEBUG 16:53:10.764] moon_hash::hasher  Generated content hash  label="RunTask(server/rstore:build)" hash="09fdda999e2b1773b89f2ad62ca2191a6e2c5a821a7a3f806e58bee90f27fc0c"
+[DEBUG 16:53:10.764] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/rstore:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/09fdda999e2b1773b89f2ad62ca2191a6e2c5a821a7a3f806e58bee90f27fc0c.json"
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Generated a unique hash  task_target="server/rstore:build" hash="09fdda999e2b1773b89f2ad62ca2191a6e2c5a821a7a3f806e58bee90f27fc0c"
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/rstore:build" hash="09fdda999e2b1773b89f2ad62ca2191a6e2c5a821a7a3f806e58bee90f27fc0c"
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/rstore:build" hash="09fdda999e2b1773b89f2ad62ca2191a6e2c5a821a7a3f806e58bee90f27fc0c"
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/rstore:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/rstore:build"
+[DEBUG 16:53:10.764] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-rstore/build/lastRun.json"
+[DEBUG 16:53:10.764] moon_task_runner::task_runner  Creating a task runner for target  task_target="fe-openapi:build"
+[DEBUG 16:53:10.764] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/build/lastRun.json"
+[DEBUG 16:53:10.765] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="fe-openapi:build"
+[DEBUG 16:53:10.765] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="fe-openapi:build"
+[DEBUG 16:53:10.769] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28532 env={} cwd="/Users/jnadeau/src/colony2" input_size=245
+[DEBUG 16:53:10.777] moon_hash::hasher  Generated content hash  label="RunTask(fe-openapi:build)" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285"
+[DEBUG 16:53:10.777] moon_cache::hash_engine  Saving hash manifest  label="RunTask(fe-openapi:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285.json"
+[DEBUG 16:53:10.777] moon_task_runner::task_runner  Generated a unique hash  task_target="fe-openapi:build" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285"
+[DEBUG 16:53:10.777] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="fe-openapi:build" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285"
+[DEBUG 16:53:10.777] moon_task_runner::task_runner  Cache hit in local cache, will reuse existing archive  task_target="fe-openapi:build" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285.tar.gz"
+[DEBUG 16:53:10.777] moon_task_runner::task_runner  Running cache hydration operation  task_target="fe-openapi:build" hydrate_from=LocalCache
+[DEBUG 16:53:10.777] moon_task_runner::output_hydrater  Hydrating cached outputs into project  task_target="fe-openapi:build" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285"
+[DEBUG 16:53:10.777] moon_task_runner::output_hydrater  Unpacking archive into project  task_target="fe-openapi:build" hash="82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/82ada825719ed9cde3930fa311cf59e70d335b3f1af0b751530ae4e3b8294285.tar.gz"
+[DEBUG 16:53:10.801] moon_task_runner::task_runner  Ran cache hydration operation  task_target="fe-openapi:build"
+[DEBUG 16:53:10.801] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/fe-openapi/build/lastRun.json"
+[DEBUG 16:53:10.801] moon_task_expander::task_expander  Expanding task server/workflow:lint  task_target="server/workflow:lint"
+[DEBUG 16:53:10.801] moon_task_expander::task_expander  Expanding task server/workflow:test  task_target="server/workflow:test"
+[DEBUG 16:53:10.801] moon_task_expander::task_expander  Expanding task server/workflow:tidy  task_target="server/workflow:tidy"
+[DEBUG 16:53:10.802] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-workflow/snapshot.json"
+[DEBUG 16:53:10.802] moon_actions::actions::sync_project  Syncing project server/workflow 
+[DEBUG 16:53:10.802] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-shared:bundle"
+[DEBUG 16:53:10.802] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/bundle/lastRun.json"
+[DEBUG 16:53:10.802] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-shared:bundle"
+[DEBUG 16:53:10.802] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-shared:bundle"
+[DEBUG 16:53:10.808] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28545 env={} cwd="/Users/jnadeau/src/colony2" input_size=523
+[DEBUG 16:53:10.819] moon_hash::hasher  Generated content hash  label="RunTask(ui-shared:bundle)" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1"
+[DEBUG 16:53:10.819] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-shared:bundle)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1.json"
+[DEBUG 16:53:10.819] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-shared:bundle" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1"
+[DEBUG 16:53:10.819] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-shared:bundle" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1"
+[DEBUG 16:53:10.819] moon_task_runner::task_runner  Cache hit in local cache, will reuse existing archive  task_target="ui-shared:bundle" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1.tar.gz"
+[DEBUG 16:53:10.819] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-shared:bundle" hydrate_from=LocalCache
+[DEBUG 16:53:10.819] moon_task_runner::output_hydrater  Hydrating cached outputs into project  task_target="ui-shared:bundle" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1"
+[DEBUG 16:53:10.819] moon_task_runner::output_hydrater  Unpacking archive into project  task_target="ui-shared:bundle" hash="88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1" archive_file="/Users/jnadeau/src/colony2/.moon/cache/outputs/88c7139fa2539ec6c8ec88257bb442e9765d99affb67bf742de54636f1ae94c1.tar.gz"
+[DEBUG 16:53:10.821] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-shared:bundle"
+[DEBUG 16:53:10.821] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/bundle/lastRun.json"
+[DEBUG 16:53:10.821] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/registry:build"
+[DEBUG 16:53:10.821] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-registry/build/lastRun.json"
+[DEBUG 16:53:10.821] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/registry:build"
+[DEBUG 16:53:10.821] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/registry:build"
+[DEBUG 16:53:10.822] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/registry  pid=28558 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.840] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/go.yml .moon/toolchain.yml .moon/workspace.yml server/registry/go.mod server/registry/go.sum server/registry/pkg/registry/registry.go server/registry/pkg/registry/registry_test.go  pid=28571 env={} cwd="/Users/jnadeau/src/colony2" input_size=192
+[DEBUG 16:53:10.852] moon_hash::hasher  Generated content hash  label="RunTask(server/registry:build)" hash="43729c2611e94394d1ddf46ed6e2fb18dec18a811b3aadf821880dc6ca8f2e31"
+[DEBUG 16:53:10.852] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/registry:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/43729c2611e94394d1ddf46ed6e2fb18dec18a811b3aadf821880dc6ca8f2e31.json"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Generated a unique hash  task_target="server/registry:build" hash="43729c2611e94394d1ddf46ed6e2fb18dec18a811b3aadf821880dc6ca8f2e31"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/registry:build" hash="43729c2611e94394d1ddf46ed6e2fb18dec18a811b3aadf821880dc6ca8f2e31"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/registry:build" hash="43729c2611e94394d1ddf46ed6e2fb18dec18a811b3aadf821880dc6ca8f2e31"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/registry:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/registry:build"
+[DEBUG 16:53:10.852] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-registry/build/lastRun.json"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/recipe-template:build"
+[DEBUG 16:53:10.852] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-template/build/lastRun.json"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/recipe-template:build"
+[DEBUG 16:53:10.852] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/recipe-template:build"
+[DEBUG 16:53:10.853] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/recipe-template  pid=28584 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.870] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28597 env={} cwd="/Users/jnadeau/src/colony2" input_size=737
+[DEBUG 16:53:10.880] moon_hash::hasher  Generated content hash  label="RunTask(server/recipe-template:build)" hash="c9e9037a5da69154ac57941269c681f477cff395a994dfb1bbff17c667c21fb5"
+[DEBUG 16:53:10.880] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/recipe-template:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/c9e9037a5da69154ac57941269c681f477cff395a994dfb1bbff17c667c21fb5.json"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Generated a unique hash  task_target="server/recipe-template:build" hash="c9e9037a5da69154ac57941269c681f477cff395a994dfb1bbff17c667c21fb5"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/recipe-template:build" hash="c9e9037a5da69154ac57941269c681f477cff395a994dfb1bbff17c667c21fb5"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/recipe-template:build" hash="c9e9037a5da69154ac57941269c681f477cff395a994dfb1bbff17c667c21fb5"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/recipe-template:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/recipe-template:build"
+[DEBUG 16:53:10.880] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-template/build/lastRun.json"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-git:build"
+[DEBUG 16:53:10.880] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-git/build/lastRun.json"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-git:build"
+[DEBUG 16:53:10.880] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-git:build"
+[DEBUG 16:53:10.881] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/git  pid=28610 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.898] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28623 env={} cwd="/Users/jnadeau/src/colony2" input_size=1492
+[DEBUG 16:53:10.910] moon_hash::hasher  Generated content hash  label="RunTask(be-git:build)" hash="c42073110fc34c9fabd4a54953e1f36f23b249027c1243302c77d4deaf6a933d"
+[DEBUG 16:53:10.910] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-git:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/c42073110fc34c9fabd4a54953e1f36f23b249027c1243302c77d4deaf6a933d.json"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Generated a unique hash  task_target="be-git:build" hash="c42073110fc34c9fabd4a54953e1f36f23b249027c1243302c77d4deaf6a933d"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-git:build" hash="c42073110fc34c9fabd4a54953e1f36f23b249027c1243302c77d4deaf6a933d"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-git:build" hash="c42073110fc34c9fabd4a54953e1f36f23b249027c1243302c77d4deaf6a933d"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-git:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-git:build"
+[DEBUG 16:53:10.910] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-git/build/lastRun.json"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-graph:build"
+[DEBUG 16:53:10.910] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-graph/build/lastRun.json"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-graph:build"
+[DEBUG 16:53:10.910] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-graph:build"
+[DEBUG 16:53:10.911] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/graph  pid=28636 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.930] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28649 env={} cwd="/Users/jnadeau/src/colony2" input_size=220
+[DEBUG 16:53:10.940] moon_hash::hasher  Generated content hash  label="RunTask(be-graph:build)" hash="3408a7eb73c3810679a8cbcfae2990f7b3d39ad34e13f829d895b2dde7c92e44"
+[DEBUG 16:53:10.940] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-graph:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/3408a7eb73c3810679a8cbcfae2990f7b3d39ad34e13f829d895b2dde7c92e44.json"
+[DEBUG 16:53:10.940] moon_task_runner::task_runner  Generated a unique hash  task_target="be-graph:build" hash="3408a7eb73c3810679a8cbcfae2990f7b3d39ad34e13f829d895b2dde7c92e44"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-graph:build" hash="3408a7eb73c3810679a8cbcfae2990f7b3d39ad34e13f829d895b2dde7c92e44"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-graph:build" hash="3408a7eb73c3810679a8cbcfae2990f7b3d39ad34e13f829d895b2dde7c92e44"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-graph:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-graph:build"
+[DEBUG 16:53:10.941] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-graph/build/lastRun.json"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Creating a task runner for target  task_target="llm:build"
+[DEBUG 16:53:10.941] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/llm/build/lastRun.json"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="llm:build"
+[DEBUG 16:53:10.941] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="llm:build"
+[DEBUG 16:53:10.942] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/llm  pid=28662 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.959] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28675 env={} cwd="/Users/jnadeau/src/colony2" input_size=1432
+[DEBUG 16:53:10.969] moon_hash::hasher  Generated content hash  label="RunTask(llm:build)" hash="0cc9bed504f156e3f352b8903323a74fbab2f60f6f3822cee96399acc6b41291"
+[DEBUG 16:53:10.969] moon_cache::hash_engine  Saving hash manifest  label="RunTask(llm:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/0cc9bed504f156e3f352b8903323a74fbab2f60f6f3822cee96399acc6b41291.json"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Generated a unique hash  task_target="llm:build" hash="0cc9bed504f156e3f352b8903323a74fbab2f60f6f3822cee96399acc6b41291"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="llm:build" hash="0cc9bed504f156e3f352b8903323a74fbab2f60f6f3822cee96399acc6b41291"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="llm:build" hash="0cc9bed504f156e3f352b8903323a74fbab2f60f6f3822cee96399acc6b41291"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Running cache hydration operation  task_target="llm:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Ran cache hydration operation  task_target="llm:build"
+[DEBUG 16:53:10.970] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/llm/build/lastRun.json"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-storage:build"
+[DEBUG 16:53:10.970] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-storage/build/lastRun.json"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-storage:build"
+[DEBUG 16:53:10.970] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-storage:build"
+[DEBUG 16:53:10.971] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/storage  pid=28688 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:10.988] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28701 env={} cwd="/Users/jnadeau/src/colony2" input_size=268
+[DEBUG 16:53:10.998] moon_hash::hasher  Generated content hash  label="RunTask(be-storage:build)" hash="47d1ed92f2ccf31f7bfcd65fa4832e52c24733056e78592b21e9e6bfa466c38c"
+[DEBUG 16:53:10.998] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-storage:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/47d1ed92f2ccf31f7bfcd65fa4832e52c24733056e78592b21e9e6bfa466c38c.json"
+[DEBUG 16:53:10.998] moon_task_runner::task_runner  Generated a unique hash  task_target="be-storage:build" hash="47d1ed92f2ccf31f7bfcd65fa4832e52c24733056e78592b21e9e6bfa466c38c"
+[DEBUG 16:53:10.998] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-storage:build" hash="47d1ed92f2ccf31f7bfcd65fa4832e52c24733056e78592b21e9e6bfa466c38c"
+[DEBUG 16:53:10.998] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-storage:build" hash="47d1ed92f2ccf31f7bfcd65fa4832e52c24733056e78592b21e9e6bfa466c38c"
+[DEBUG 16:53:10.998] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-storage:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:10.998] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-storage:build"
+[DEBUG 16:53:10.998] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-storage/build/lastRun.json"
+[DEBUG 16:53:10.998] moon_task_expander::task_expander  Expanding task be-api:build-test-server  task_target="be-api:build-test-server"
+[DEBUG 16:53:10.998] moon_task_expander::task_expander  Expanding task be-api:lint  task_target="be-api:lint"
+[DEBUG 16:53:10.998] moon_task_expander::task_expander  Expanding task be-api:serve  task_target="be-api:serve"
+[DEBUG 16:53:10.998] moon_task_expander::task_expander  Expanding task be-api:test  task_target="be-api:test"
+[DEBUG 16:53:10.998] moon_task_expander::task_expander  Expanding task be-api:tidy  task_target="be-api:tidy"
+[DEBUG 16:53:10.998] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-api/snapshot.json"
+[DEBUG 16:53:10.998] moon_actions::actions::sync_project  Syncing project be-api 
+[DEBUG 16:53:10.999] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-shared:build"
+[DEBUG 16:53:10.999] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/build/lastRun.json"
+[DEBUG 16:53:10.999] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-shared:build"
+[DEBUG 16:53:10.999] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-shared:build"
+[DEBUG 16:53:11.004] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28714 env={} cwd="/Users/jnadeau/src/colony2" input_size=740
+[DEBUG 16:53:11.014] moon_hash::hasher  Generated content hash  label="RunTask(ui-shared:build)" hash="a9c3d2d1024dfaa4d00db772735d7c6609932a6b81eb4f58717756c4f7b65cd0"
+[DEBUG 16:53:11.014] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-shared:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/a9c3d2d1024dfaa4d00db772735d7c6609932a6b81eb4f58717756c4f7b65cd0.json"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-shared:build" hash="a9c3d2d1024dfaa4d00db772735d7c6609932a6b81eb4f58717756c4f7b65cd0"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-shared:build" hash="a9c3d2d1024dfaa4d00db772735d7c6609932a6b81eb4f58717756c4f7b65cd0"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-shared:build" hash="a9c3d2d1024dfaa4d00db772735d7c6609932a6b81eb4f58717756c4f7b65cd0"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-shared:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-shared:build"
+[DEBUG 16:53:11.014] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-shared/build/lastRun.json"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Creating a task runner for target  task_target="server-recipes:build"
+[DEBUG 16:53:11.014] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipes/build/lastRun.json"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server-recipes:build"
+[DEBUG 16:53:11.014] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server-recipes:build"
+[DEBUG 16:53:11.015] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/recipes  pid=28727 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.031] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28740 env={} cwd="/Users/jnadeau/src/colony2" input_size=934
+[DEBUG 16:53:11.042] moon_hash::hasher  Generated content hash  label="RunTask(server-recipes:build)" hash="3efe351060afc3f5cb7c4c7ba0e61417baa21247fd528543b362d385ffde7bfc"
+[DEBUG 16:53:11.042] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server-recipes:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/3efe351060afc3f5cb7c4c7ba0e61417baa21247fd528543b362d385ffde7bfc.json"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Generated a unique hash  task_target="server-recipes:build" hash="3efe351060afc3f5cb7c4c7ba0e61417baa21247fd528543b362d385ffde7bfc"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server-recipes:build" hash="3efe351060afc3f5cb7c4c7ba0e61417baa21247fd528543b362d385ffde7bfc"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server-recipes:build" hash="3efe351060afc3f5cb7c4c7ba0e61417baa21247fd528543b362d385ffde7bfc"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Running cache hydration operation  task_target="server-recipes:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server-recipes:build"
+[DEBUG 16:53:11.042] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipes/build/lastRun.json"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Creating a task runner for target  task_target="recipe-worker:build"
+[DEBUG 16:53:11.042] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-worker/build/lastRun.json"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="recipe-worker:build"
+[DEBUG 16:53:11.042] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="recipe-worker:build"
+[DEBUG 16:53:11.043] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/recipe-worker  pid=28753 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.060] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28766 env={} cwd="/Users/jnadeau/src/colony2" input_size=2498
+[DEBUG 16:53:11.072] moon_hash::hasher  Generated content hash  label="RunTask(recipe-worker:build)" hash="69138e6005c79f1d4b54ed739115c2997bd6499578241e8da5852aaaa66b15da"
+[DEBUG 16:53:11.072] moon_cache::hash_engine  Saving hash manifest  label="RunTask(recipe-worker:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/69138e6005c79f1d4b54ed739115c2997bd6499578241e8da5852aaaa66b15da.json"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Generated a unique hash  task_target="recipe-worker:build" hash="69138e6005c79f1d4b54ed739115c2997bd6499578241e8da5852aaaa66b15da"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="recipe-worker:build" hash="69138e6005c79f1d4b54ed739115c2997bd6499578241e8da5852aaaa66b15da"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="recipe-worker:build" hash="69138e6005c79f1d4b54ed739115c2997bd6499578241e8da5852aaaa66b15da"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Running cache hydration operation  task_target="recipe-worker:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Ran cache hydration operation  task_target="recipe-worker:build"
+[DEBUG 16:53:11.072] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/recipe-worker/build/lastRun.json"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Creating a task runner for target  task_target="server-cell:build"
+[DEBUG 16:53:11.072] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-cell/build/lastRun.json"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server-cell:build"
+[DEBUG 16:53:11.072] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server-cell:build"
+[DEBUG 16:53:11.073] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/cell  pid=28779 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.089] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28792 env={} cwd="/Users/jnadeau/src/colony2" input_size=487
+[DEBUG 16:53:11.099] moon_hash::hasher  Generated content hash  label="RunTask(server-cell:build)" hash="85526409443db569278bda187fc3ef2e2963cbd85dd82b39ac5cb3853112979b"
+[DEBUG 16:53:11.099] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server-cell:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/85526409443db569278bda187fc3ef2e2963cbd85dd82b39ac5cb3853112979b.json"
+[DEBUG 16:53:11.099] moon_task_runner::task_runner  Generated a unique hash  task_target="server-cell:build" hash="85526409443db569278bda187fc3ef2e2963cbd85dd82b39ac5cb3853112979b"
+[DEBUG 16:53:11.099] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server-cell:build" hash="85526409443db569278bda187fc3ef2e2963cbd85dd82b39ac5cb3853112979b"
+[DEBUG 16:53:11.099] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server-cell:build" hash="85526409443db569278bda187fc3ef2e2963cbd85dd82b39ac5cb3853112979b"
+[DEBUG 16:53:11.099] moon_task_runner::task_runner  Running cache hydration operation  task_target="server-cell:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.099] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server-cell:build"
+[DEBUG 16:53:11.099] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-cell/build/lastRun.json"
+[DEBUG 16:53:11.099] moon_task_expander::task_expander  Expanding task ui-app:integration2  task_target="ui-app:integration2"
+[DEBUG 16:53:11.099] moon_task_expander::task_expander  Expanding task ui-app:lint  task_target="ui-app:lint"
+[DEBUG 16:53:11.099] moon_task_expander::task_expander  Expanding task ui-app:serve  task_target="ui-app:serve"
+[DEBUG 16:53:11.099] moon_task_expander::task_expander  Expanding task ui-app:test  task_target="ui-app:test"
+[DEBUG 16:53:11.099] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/snapshot.json"
+[DEBUG 16:53:11.099] moon_actions::actions::sync_project  Syncing project ui-app 
+[DEBUG 16:53:11.099] moon_javascript_platform::sync_project  Syncing ui-flowchart as a dependency to ui-app's package.json  scope=Production
+[DEBUG 16:53:11.100] moon_javascript_platform::sync_project  Syncing fe-openapi as a dependency to ui-app's package.json  scope=Production
+[DEBUG 16:53:11.100] moon_javascript_platform::sync_project  Syncing ui-kanban as a dependency to ui-app's package.json  scope=Production
+[DEBUG 16:53:11.100] moon_javascript_platform::sync_project  Syncing ui-shared as a dependency to ui-app's package.json  scope=Production
+[DEBUG 16:53:11.101] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-kanban:build"
+[DEBUG 16:53:11.101] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/build/lastRun.json"
+[DEBUG 16:53:11.101] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-kanban:build"
+[DEBUG 16:53:11.101] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-kanban:build"
+[DEBUG 16:53:11.106] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28805 env={} cwd="/Users/jnadeau/src/colony2" input_size=296
+[DEBUG 16:53:11.116] moon_hash::hasher  Generated content hash  label="RunTask(ui-kanban:build)" hash="d97dd8c16a1f9ce2aa4ae8d7db135fc2511fa52b382f6c45a4fbf1c59f435047"
+[DEBUG 16:53:11.116] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-kanban:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/d97dd8c16a1f9ce2aa4ae8d7db135fc2511fa52b382f6c45a4fbf1c59f435047.json"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-kanban:build" hash="d97dd8c16a1f9ce2aa4ae8d7db135fc2511fa52b382f6c45a4fbf1c59f435047"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-kanban:build" hash="d97dd8c16a1f9ce2aa4ae8d7db135fc2511fa52b382f6c45a4fbf1c59f435047"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-kanban:build" hash="d97dd8c16a1f9ce2aa4ae8d7db135fc2511fa52b382f6c45a4fbf1c59f435047"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-kanban:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-kanban:build"
+[DEBUG 16:53:11.116] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-kanban/build/lastRun.json"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-flowchart:build"
+[DEBUG 16:53:11.116] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/build/lastRun.json"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-flowchart:build"
+[DEBUG 16:53:11.116] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-flowchart:build"
+[DEBUG 16:53:11.121] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28818 env={} cwd="/Users/jnadeau/src/colony2" input_size=424
+[DEBUG 16:53:11.131] moon_hash::hasher  Generated content hash  label="RunTask(ui-flowchart:build)" hash="d362050f197e122c1faac915bcf7f0f0f8d7e76d9ab98279ea937215adb403c3"
+[DEBUG 16:53:11.131] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-flowchart:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/d362050f197e122c1faac915bcf7f0f0f8d7e76d9ab98279ea937215adb403c3.json"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-flowchart:build" hash="d362050f197e122c1faac915bcf7f0f0f8d7e76d9ab98279ea937215adb403c3"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-flowchart:build" hash="d362050f197e122c1faac915bcf7f0f0f8d7e76d9ab98279ea937215adb403c3"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-flowchart:build" hash="d362050f197e122c1faac915bcf7f0f0f8d7e76d9ab98279ea937215adb403c3"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-flowchart:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-flowchart:build"
+[DEBUG 16:53:11.131] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-flowchart/build/lastRun.json"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/ops:build"
+[DEBUG 16:53:11.131] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ops/build/lastRun.json"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/ops:build"
+[DEBUG 16:53:11.131] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/ops:build"
+[DEBUG 16:53:11.132] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/ops  pid=28831 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.148] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28844 env={} cwd="/Users/jnadeau/src/colony2" input_size=1277
+[DEBUG 16:53:11.159] moon_hash::hasher  Generated content hash  label="RunTask(server/ops:build)" hash="cfc4e026beaa66651ffa45b9d914f9c5a6ca81e4682860bbd256b4cb9ced0a36"
+[DEBUG 16:53:11.159] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/ops:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/cfc4e026beaa66651ffa45b9d914f9c5a6ca81e4682860bbd256b4cb9ced0a36.json"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Generated a unique hash  task_target="server/ops:build" hash="cfc4e026beaa66651ffa45b9d914f9c5a6ca81e4682860bbd256b4cb9ced0a36"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/ops:build" hash="cfc4e026beaa66651ffa45b9d914f9c5a6ca81e4682860bbd256b4cb9ced0a36"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/ops:build" hash="cfc4e026beaa66651ffa45b9d914f9c5a6ca81e4682860bbd256b4cb9ced0a36"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/ops:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/ops:build"
+[DEBUG 16:53:11.159] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ops/build/lastRun.json"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/recipe-input:build"
+[DEBUG 16:53:11.159] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-input/build/lastRun.json"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/recipe-input:build"
+[DEBUG 16:53:11.159] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/recipe-input:build"
+[DEBUG 16:53:11.160] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/recipe-input  pid=28857 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.176] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28870 env={} cwd="/Users/jnadeau/src/colony2" input_size=372
+[DEBUG 16:53:11.187] moon_hash::hasher  Generated content hash  label="RunTask(server/recipe-input:build)" hash="ea9beedaa86365c2173a8a4596b73c3436e1ced5652c04bd8cd7004b711083e1"
+[DEBUG 16:53:11.187] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/recipe-input:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/ea9beedaa86365c2173a8a4596b73c3436e1ced5652c04bd8cd7004b711083e1.json"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Generated a unique hash  task_target="server/recipe-input:build" hash="ea9beedaa86365c2173a8a4596b73c3436e1ced5652c04bd8cd7004b711083e1"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/recipe-input:build" hash="ea9beedaa86365c2173a8a4596b73c3436e1ced5652c04bd8cd7004b711083e1"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/recipe-input:build" hash="ea9beedaa86365c2173a8a4596b73c3436e1ced5652c04bd8cd7004b711083e1"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/recipe-input:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/recipe-input:build"
+[DEBUG 16:53:11.187] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-recipe-input/build/lastRun.json"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Creating a task runner for target  task_target="server-ticket:build"
+[DEBUG 16:53:11.187] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ticket/build/lastRun.json"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server-ticket:build"
+[DEBUG 16:53:11.187] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server-ticket:build"
+[DEBUG 16:53:11.188] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/ticket  pid=28883 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.205] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28896 env={} cwd="/Users/jnadeau/src/colony2" input_size=1160
+[DEBUG 16:53:11.216] moon_hash::hasher  Generated content hash  label="RunTask(server-ticket:build)" hash="2d07be4d9bcf03eb9e6e2c12e3e9f93198e9719d761bdb77b5abec7bd28b630e"
+[DEBUG 16:53:11.216] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server-ticket:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/2d07be4d9bcf03eb9e6e2c12e3e9f93198e9719d761bdb77b5abec7bd28b630e.json"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Generated a unique hash  task_target="server-ticket:build" hash="2d07be4d9bcf03eb9e6e2c12e3e9f93198e9719d761bdb77b5abec7bd28b630e"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server-ticket:build" hash="2d07be4d9bcf03eb9e6e2c12e3e9f93198e9719d761bdb77b5abec7bd28b630e"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server-ticket:build" hash="2d07be4d9bcf03eb9e6e2c12e3e9f93198e9719d761bdb77b5abec7bd28b630e"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Running cache hydration operation  task_target="server-ticket:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server-ticket:build"
+[DEBUG 16:53:11.216] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-ticket/build/lastRun.json"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-app:repair-modules"
+[DEBUG 16:53:11.216] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/repair-modules/lastRun.json"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-app:repair-modules"
+[DEBUG 16:53:11.216] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-app:repair-modules"
+[DEBUG 16:53:11.217] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard web/app  pid=28909 env={} cwd="/Users/jnadeau/src/colony2"
+[ WARN 16:53:11.229] moon_task_hasher::task_hasher  Attempted to hash input pnpm-lock.yaml but it does not exist, skipping 
+[DEBUG 16:53:11.230] moon_process::exec_command  Running command git hash-object --stdin-paths - .moon/tasks/node.yml .moon/toolchain.yml .moon/workspace.yml web/app/package.json  pid=28922 env={} cwd="/Users/jnadeau/src/colony2" input_size=82
+[DEBUG 16:53:11.242] moon_hash::hasher  Generated content hash  label="RunTask(ui-app:repair-modules)" hash="b7cd9e8f8cbd93e2fd68986e1cc1e2cbf3e24ea7039036bc06e8b351a02f2df4"
+[DEBUG 16:53:11.242] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-app:repair-modules)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/b7cd9e8f8cbd93e2fd68986e1cc1e2cbf3e24ea7039036bc06e8b351a02f2df4.json"
+[DEBUG 16:53:11.242] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-app:repair-modules" hash="b7cd9e8f8cbd93e2fd68986e1cc1e2cbf3e24ea7039036bc06e8b351a02f2df4"
+[DEBUG 16:53:11.242] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-app:repair-modules" hash="b7cd9e8f8cbd93e2fd68986e1cc1e2cbf3e24ea7039036bc06e8b351a02f2df4"
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-app:repair-modules" hash="b7cd9e8f8cbd93e2fd68986e1cc1e2cbf3e24ea7039036bc06e8b351a02f2df4"
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-app:repair-modules" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-app:repair-modules"
+[DEBUG 16:53:11.243] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/repair-modules/lastRun.json"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:install  task_target="cortex:install"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:lint  task_target="cortex:lint"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:playwright-install  task_target="cortex:playwright-install"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:pnpm-install  task_target="cortex:pnpm-install"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:serve  task_target="cortex:serve"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:test  task_target="cortex:test"
+[DEBUG 16:53:11.243] moon_task_expander::task_expander  Expanding task cortex:tidy  task_target="cortex:tidy"
+[DEBUG 16:53:11.243] moon_cache::state_engine  Writing project snapshot  cache="/Users/jnadeau/src/colony2/.moon/cache/states/cortex/snapshot.json"
+[DEBUG 16:53:11.243] moon_actions::actions::sync_project  Syncing project cortex 
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Creating a task runner for target  task_target="server/workflow:build"
+[DEBUG 16:53:11.243] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-workflow/build/lastRun.json"
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="server/workflow:build"
+[DEBUG 16:53:11.243] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="server/workflow:build"
+[DEBUG 16:53:11.244] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/workflow  pid=28935 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.260] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28948 env={} cwd="/Users/jnadeau/src/colony2" input_size=279
+[DEBUG 16:53:11.270] moon_hash::hasher  Generated content hash  label="RunTask(server/workflow:build)" hash="80935e2b21415e74740211fc7f922ea89c2718fa4322dabc35ac9d43d05428f9"
+[DEBUG 16:53:11.270] moon_cache::hash_engine  Saving hash manifest  label="RunTask(server/workflow:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/80935e2b21415e74740211fc7f922ea89c2718fa4322dabc35ac9d43d05428f9.json"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Generated a unique hash  task_target="server/workflow:build" hash="80935e2b21415e74740211fc7f922ea89c2718fa4322dabc35ac9d43d05428f9"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="server/workflow:build" hash="80935e2b21415e74740211fc7f922ea89c2718fa4322dabc35ac9d43d05428f9"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="server/workflow:build" hash="80935e2b21415e74740211fc7f922ea89c2718fa4322dabc35ac9d43d05428f9"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Running cache hydration operation  task_target="server/workflow:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Ran cache hydration operation  task_target="server/workflow:build"
+[DEBUG 16:53:11.270] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/server-workflow/build/lastRun.json"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Creating a task runner for target  task_target="be-api:build"
+[DEBUG 16:53:11.270] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-api/build/lastRun.json"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="be-api:build"
+[DEBUG 16:53:11.270] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="be-api:build"
+[DEBUG 16:53:11.271] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/api  pid=28961 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.287] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28974 env={} cwd="/Users/jnadeau/src/colony2" input_size=1380
+[DEBUG 16:53:11.298] moon_hash::hasher  Generated content hash  label="RunTask(be-api:build)" hash="f1b8f66359870536f98110ac9efc6f7848d725582291e5ee6527455fce1d3cde"
+[DEBUG 16:53:11.298] moon_cache::hash_engine  Saving hash manifest  label="RunTask(be-api:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/f1b8f66359870536f98110ac9efc6f7848d725582291e5ee6527455fce1d3cde.json"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Generated a unique hash  task_target="be-api:build" hash="f1b8f66359870536f98110ac9efc6f7848d725582291e5ee6527455fce1d3cde"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="be-api:build" hash="f1b8f66359870536f98110ac9efc6f7848d725582291e5ee6527455fce1d3cde"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="be-api:build" hash="f1b8f66359870536f98110ac9efc6f7848d725582291e5ee6527455fce1d3cde"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Running cache hydration operation  task_target="be-api:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Ran cache hydration operation  task_target="be-api:build"
+[DEBUG 16:53:11.299] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/be-api/build/lastRun.json"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Creating a task runner for target  task_target="ui-app:build"
+[DEBUG 16:53:11.299] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/build/lastRun.json"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="ui-app:build"
+[DEBUG 16:53:11.299] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="ui-app:build"
+[DEBUG 16:53:11.304] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=28987 env={} cwd="/Users/jnadeau/src/colony2" input_size=1500
+[DEBUG 16:53:11.316] moon_hash::hasher  Generated content hash  label="RunTask(ui-app:build)" hash="f8deb8dc7b27414f2e483857dba67f972c9dd980c4c6b1939e096525dc64242c"
+[DEBUG 16:53:11.316] moon_cache::hash_engine  Saving hash manifest  label="RunTask(ui-app:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/f8deb8dc7b27414f2e483857dba67f972c9dd980c4c6b1939e096525dc64242c.json"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Generated a unique hash  task_target="ui-app:build" hash="f8deb8dc7b27414f2e483857dba67f972c9dd980c4c6b1939e096525dc64242c"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="ui-app:build" hash="f8deb8dc7b27414f2e483857dba67f972c9dd980c4c6b1939e096525dc64242c"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="ui-app:build" hash="f8deb8dc7b27414f2e483857dba67f972c9dd980c4c6b1939e096525dc64242c"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Running cache hydration operation  task_target="ui-app:build" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Ran cache hydration operation  task_target="ui-app:build"
+[DEBUG 16:53:11.316] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/ui-app/build/lastRun.json"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Creating a task runner for target  task_target="cortex:build-frontend-copy"
+[DEBUG 16:53:11.316] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/cortex/build-frontend-copy/lastRun.json"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="cortex:build-frontend-copy"
+[DEBUG 16:53:11.316] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="cortex:build-frontend-copy"
+[DEBUG 16:53:11.317] moon_process::exec_command  Running command git ls-files --full-name --cached --modified --others --exclude-standard server/cortex  pid=29000 env={} cwd="/Users/jnadeau/src/colony2"
+[DEBUG 16:53:11.333] moon_hash::hasher  Generated content hash  label="RunTask(cortex:build-frontend-copy)" hash="8eb70b27859c0ea29e75256161a1a9b618c430ab792088e57a09f46f5f8c19b1"
+[DEBUG 16:53:11.333] moon_cache::hash_engine  Saving hash manifest  label="RunTask(cortex:build-frontend-copy)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/8eb70b27859c0ea29e75256161a1a9b618c430ab792088e57a09f46f5f8c19b1.json"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Generated a unique hash  task_target="cortex:build-frontend-copy" hash="8eb70b27859c0ea29e75256161a1a9b618c430ab792088e57a09f46f5f8c19b1"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="cortex:build-frontend-copy" hash="8eb70b27859c0ea29e75256161a1a9b618c430ab792088e57a09f46f5f8c19b1"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Hash matches previous run, reusing existing outputs  task_target="cortex:build-frontend-copy" hash="8eb70b27859c0ea29e75256161a1a9b618c430ab792088e57a09f46f5f8c19b1"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Running cache hydration operation  task_target="cortex:build-frontend-copy" hydrate_from=PreviousOutput
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Ran cache hydration operation  task_target="cortex:build-frontend-copy"
+[DEBUG 16:53:11.333] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/cortex/build-frontend-copy/lastRun.json"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Creating a task runner for target  task_target="cortex:build"
+[DEBUG 16:53:11.333] moon_cache_item::cache_item  Cache hit, reading item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/cortex/build/lastRun.json"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Caching is enabled for task, will generate a hash and manage outputs  task_target="cortex:build"
+[DEBUG 16:53:11.333] moon_task_runner::task_runner  Generating a unique hash for this task  task_target="cortex:build"
+[DEBUG 16:53:11.338] moon_process::exec_command  Running command git hash-object --stdin-paths - (truncated input)  pid=29013 env={} cwd="/Users/jnadeau/src/colony2" input_size=917
+[DEBUG 16:53:11.348] moon_hash::hasher  Generated content hash  label="RunTask(cortex:build)" hash="263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d"
+[DEBUG 16:53:11.348] moon_cache::hash_engine  Saving hash manifest  label="RunTask(cortex:build)" manifest="/Users/jnadeau/src/colony2/.moon/cache/hashes/263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d.json"
+[DEBUG 16:53:11.349] moon_task_runner::task_runner  Generated a unique hash  task_target="cortex:build" hash="263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d"
+[DEBUG 16:53:11.349] moon_task_runner::task_runner  Checking if task has been cached using hash  task_target="cortex:build" hash="263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d"
+[DEBUG 16:53:11.349] moon_task_runner::task_runner  Previous run failed, avoiding hydration  task_target="cortex:build" hash="263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d"
+[DEBUG 16:53:11.349] moon_task_runner::task_runner  Nothing to hydrate  task_target="cortex:build"
+[DEBUG 16:53:11.349] moon_task_runner::task_runner  Building and executing the task command  task_target="cortex:build"
+[DEBUG 16:53:11.349] moon_task_runner::command_builder  Creating task child process to execute  task_target="cortex:build" working_dir="/Users/jnadeau/src/colony2/server/cortex"
+[DEBUG 16:53:11.349] moon_task_runner::command_executor  Running task (attempt 1 of 1)  task_target="cortex:build" command="set -e\nmkdir -p build\ngo build -o build/cortex ./cmd/cortex\n"
+[DEBUG 16:53:11.349] moon_process::exec_command  Running command /bin/zsh -c 'set -e mkdir -p build go build -o build/cortex ./cmd/cortex '  pid=29014 shell="zsh" env={"MOON_TASK_HASH": "263f80cc68979104d04c08f9ec26294afd2c8d57d0ead6c4eb02c25e3d8fec2d", "MOON_TASK_ID": "build", "MOON_TASK_RETRY_TOTAL": "1", "MOON_PROJECT_ROOT": "/Users/jnadeau/src/colony2/server/cortex", "MOON_PROJECT_ID": "cortex", "MOON_PROJECT_SNAPSHOT": "/Users/jnadeau/src/colony2/.moon/cache/states/cortex/snapshot.json", "MOON_WORKSPACE_ROOT": "/Users/jnadeau/src/colony2", "MOON_PROJECT_SOURCE": "server/cortex", "MOON_TARGET": "cortex:build", "MOON_WORKING_DIR": "/Users/jnadeau/src/colony2/api/openapi", "MOON_CACHE_DIR": "/Users/jnadeau/src/colony2/.moon/cache", "MOON_TASK_RETRY_ATTEMPT": "1"} cwd="/Users/jnadeau/src/colony2/server/cortex"
+[DEBUG 16:53:11.697] moon_task_runner::command_executor  Ran task, checking conditions  task_target="cortex:build" command="set -e\nmkdir -p build\ngo build -o build/cortex ./cmd/cortex\n" exit_code=1
+                cortex:build | # github.com/colony-2/colony2/server/cortex/internal/setup
+                cortex:build | internal/setup/setup.go:64:17: undefined: files
+                cortex:build | internal/setup/setup.go:73:9: undefined: testsuite
+                cortex:build | internal/setup/setup.go:77:24: undefined: suiteWorkflowCtl
+                cortex:build | internal/setup/setup.go:94:3: unknown field Storage in struct literal of type web.Dependencies
+                cortex:build | internal/setup/setup.go:95:3: unknown field Graph in struct literal of type web.Dependencies
+                cortex:build | internal/setup/setup.go:96:3: unknown field Files in struct literal of type web.Dependencies
+                cortex:build | internal/setup/setup.go:97:3: unknown field Git in struct literal of type web.Dependencies
+                cortex:build | internal/setup/setup.go:98:3: unknown field Container in struct literal of type web.Dependencies
+                cortex:build | internal/setup/setup.go:98:20: undefined: containerMgr
+[DEBUG 16:53:11.697] moon_task_runner::command_executor  Task was unsuccessful, failing as we hit our max attempts  task_target="cortex:build"
+[DEBUG 16:53:11.697] moon_cache_item::cache_item  Writing cache item  cache="/Users/jnadeau/src/colony2/.moon/cache/states/cortex/build/lastRun.json"
+[DEBUG 16:53:11.697] moon_action_pipeline::action_pipeline  Aborting pipeline (because something failed) 
+[DEBUG 16:53:11.697] moon_action_pipeline::subscribers::reports_subscriber  Creating run report 
+[DEBUG 16:53:11.697] moon_action_pipeline::reports::estimate  Calculating a comparison estimate against other build systems 
+[DEBUG 16:53:11.697] moon_cache::cache_engine  Writing cache  cache="/Users/jnadeau/src/colony2/.moon/cache/runReport.json"
+Error: task_runner::run_failed
+
+  × Task cortex:build failed to run.
+  ╰─▶ Process set failed: exit code 1
+

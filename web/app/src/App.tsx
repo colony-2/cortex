@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AppstoreOutlined, ClusterOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined } from '@ant-design/icons';
-import { Empty, Layout, Menu, Space, Typography } from 'antd';
-import { InputActivityProvider, listProjects, type Project } from '@colony2/shared';
-import MainView from './components/MainView';
+import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined } from '@ant-design/icons';
+import { Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
+import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail } from '@colony2/shared';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
@@ -14,6 +13,7 @@ import RecipeListPage from './components/RecipeListPage';
 import RecipeDetailPage from './components/RecipeDetailPage';
 import UserDropdown from './components/UserDropdown';
 import ProjectAdminPage from './components/ProjectAdminPage';
+import LoginPage from './components/LoginPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -28,11 +28,16 @@ function App() {
 }
 
 function AppShell() {
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  if (!authenticated) {
+    return <LoginPage onLogin={() => setAuthenticated(true)} />;
+  }
 
   const loadProjects = async () => {
     setLoadingProjects(true);
@@ -79,8 +84,7 @@ function AppShell() {
     if (path.includes('/recipes')) return 'recipes';
     if (path.includes('/workflows')) return 'workflows';
     if (path.includes('/kanban')) return 'tickets';
-    if (path.includes('/cells/list')) return 'cells-list';
-    if (path.includes('/cells') || path.includes('/cell/')) return 'cells-list';
+    if (path.includes('/cells') || path.includes('/cell/')) return 'cells';
     return 'tickets';
   })();
 
@@ -98,13 +102,9 @@ function AppShell() {
         if (!selectedProject) return;
         navigate(`/project/${selectedProject.id}/recipes`);
         break;
-      case 'cells-graph':
+      case 'cells':
         if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/cells/graph`);
-        break;
-      case 'cells-list':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/cells/list`);
+        navigate(`/project/${selectedProject.id}/cells`);
         break;
       case 'settings':
         if (!selectedProject) return;
@@ -119,18 +119,36 @@ function AppShell() {
     }
   };
 
+  const handleLogout = () => {
+    clearUserEmail();
+    setAuthenticated(false);
+  };
+
+  const handleNewTicket = () => {
+    if (!selectedProject) return;
+    navigate(`/project/${selectedProject.id}/kanban`, { state: { openCreateModal: true } });
+  };
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ background: '#fff', borderBottom: '1px solid #f0f0f0' }}>
         <Space align="center" style={{ width: '100%', justifyContent: 'space-between' }}>
           <Typography.Text strong>colony2</Typography.Text>
-          <UserDropdown
-            projects={projects}
-            selectedProjectId={selectedProjectId}
-            loadingProjects={loadingProjects}
-            onProjectChange={setSelectedProjectId}
-            onRefreshProjects={loadProjects}
-          />
+          <Space>
+            {selectedProject && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleNewTicket}>
+                New Ticket
+              </Button>
+            )}
+            <UserDropdown
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+              loadingProjects={loadingProjects}
+              onProjectChange={setSelectedProjectId}
+              onRefreshProjects={loadProjects}
+              onLogout={handleLogout}
+            />
+          </Space>
         </Space>
       </Header>
       <Layout style={{ height: 'calc(100vh - 64px)' }}>
@@ -158,14 +176,8 @@ function AppShell() {
                 disabled: !selectedProject,
               },
               {
-                key: 'cells-graph',
-                label: 'Cells — Graph',
-                icon: <ClusterOutlined />,
-                disabled: !selectedProject,
-              },
-              {
-                key: 'cells-list',
-                label: 'Cells — List',
+                key: 'cells',
+                label: 'Cells',
                 icon: <OrderedListOutlined />,
                 disabled: !selectedProject,
               },
@@ -202,12 +214,8 @@ function AppShell() {
                 <Route path="/project/:projectId/settings" element={<ProjectSettingsPage project={selectedProject} onUpdate={loadProjects} />} />
 
                 {/* Cells views */}
-                <Route path="/cells" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/cells/graph" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/cells/list" element={<CellsList projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cells" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cells/graph" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cells/list" element={<CellsList projectId={selectedProject.id} />} />
+                <Route path="/cells" element={<CellsList projectId={selectedProject.id} />} />
+                <Route path="/project/:projectId/cells" element={<CellsList projectId={selectedProject.id} />} />
 
               {/* Kanban view */}
               <Route path="/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
@@ -225,11 +233,7 @@ function AppShell() {
 
               {/* Cell detail routes */}
               <Route path="/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />
-              <Route path="/cell/:cellId/:tab" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/cell/:cellId/:tab/:subtab" element={<MainView projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/cell/:cellId" element={<CellDetailPage projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cell/:cellId/:tab" element={<MainView projectId={selectedProject.id} />} />
-              <Route path="/project/:projectId/cell/:cellId/:tab/:subtab" element={<MainView projectId={selectedProject.id} />} />
 
                 {/* Catch all - redirect to Kanban */}
                 <Route path="*" element={<Navigate to={`/project/${selectedProject.id}/kanban`} replace />} />

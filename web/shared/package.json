@@ -16,6 +16,11 @@
     "vite": "^5.4.0",
     "vitest": "^3.2.4"
   },
+  "pnpm": {"onlyBuiltDependencies"
+  : [
+    "esbuild"
+  ]
+  },
   "dependencies": {
     "@colony2/openapi-client": "file:../openapi",
     "antd": "^6.1.2",

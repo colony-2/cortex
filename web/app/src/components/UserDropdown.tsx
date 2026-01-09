@@ -1,6 +1,7 @@
-import { UserOutlined, SwapOutlined } from '@ant-design/icons';
-import { Dropdown, Space, Typography, Menu, Select, Divider } from 'antd';
+import { UserOutlined, SwapOutlined, LogoutOutlined } from '@ant-design/icons';
+import { Dropdown, Space, Typography, Select } from 'antd';
 import type { Project } from '@colony2/shared';
+import { getUserEmail } from '@colony2/shared';
 
 interface UserDropdownProps {
   projects: Project[];
@@ -8,6 +9,7 @@ interface UserDropdownProps {
   loadingProjects: boolean;
   onProjectChange: (projectId: string) => void;
   onRefreshProjects: () => void;
+  onLogout: () => void;
 }
 
 export default function UserDropdown({
@@ -16,7 +18,10 @@ export default function UserDropdown({
   loadingProjects,
   onProjectChange,
   onRefreshProjects,
+  onLogout,
 }: UserDropdownProps) {
+  const userEmail = getUserEmail();
+
   const menuItems = [
     {
       key: 'project-switcher',
@@ -48,9 +53,17 @@ export default function UserDropdown({
       label: 'Refresh Projects',
       onClick: onRefreshProjects,
     },
+    {
+      type: 'divider' as const,
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Logout',
+      onClick: onLogout,
+      danger: true,
+    },
   ];
-
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
   return (
     <Dropdown
@@ -61,7 +74,7 @@ export default function UserDropdown({
       <Space style={{ cursor: 'pointer' }}>
         <UserOutlined style={{ fontSize: 16 }} />
         <Typography.Text>
-          {selectedProject ? selectedProject.name : 'User'}
+          {userEmail || 'User'}
         </Typography.Text>
       </Space>
     </Dropdown>

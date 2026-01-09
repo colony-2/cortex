@@ -6,14 +6,16 @@ import {
   Card,
   Collapse,
   Descriptions,
+  Modal,
+  Radio,
   Space,
   Spin,
   Tag,
   Typography,
   message,
 } from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons';
-import type { WorkflowDetail, ChapterDetail } from '@colony2/openapi-client';
+import { ArrowLeftOutlined, ReloadOutlined, DownloadOutlined } from '@ant-design/icons';
+import type { WorkflowDetail, ChapterDetail, ArtifactReference } from '@colony2/openapi-client';
 import { WorkflowsService } from '@colony2/openapi-client';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
@@ -30,6 +32,10 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
   const navigate = useNavigate();
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedArtifact, setSelectedArtifact] = useState<ArtifactReference | null>(null);
+  const [artifactContent, setArtifactContent] = useState<string | null>(null);
+  const [artifactLoading, setArtifactLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
 
   const loadWorkflow = async () => {
     if (!workflowId) return;
@@ -52,6 +58,77 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
   useEffect(() => {
     loadWorkflow();
   }, [projectId, workflowId]);
+
+  const loadArtifact = async (artifact: ArtifactReference) => {
+    if (!artifact.url) {
+      message.error('Artifact URL not available');
+      return;
+    }
+
+    setSelectedArtifact(artifact);
+    setArtifactLoading(true);
+    setArtifactContent(null);
+    setViewMode('text');
+
+    try {
+      const response = await fetch(artifact.url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch artifact');
+      }
+
+      const blob = await response.blob();
+      const text = await blob.text();
+      setArtifactContent(text);
+    } catch (err) {
+      console.error('Failed to load artifact', err);
+      message.error('Failed to load artifact content');
+      setSelectedArtifact(null);
+    } finally {
+      setArtifactLoading(false);
+    }
+  };
+
+  const downloadArtifact = (artifact: ArtifactReference) => {
+    if (!artifact.url) {
+      message.error('Artifact URL not available');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = artifact.url;
+    link.download = artifact.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const formatHex = (text: string): string => {
+    const bytes = new TextEncoder().encode(text);
+    let hex = '';
+    let offset = 0;
+
+    for (let i = 0; i < bytes.length; i += 16) {
+      // Offset
+      hex += offset.toString(16).padStart(8, '0') + '  ';
+
+      // Hex bytes
+      const chunk = bytes.slice(i, i + 16);
+      const hexBytes = Array.from(chunk)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(' ');
+      hex += hexBytes.padEnd(48, ' ') + '  ';
+
+      // ASCII representation
+      const ascii = Array.from(chunk)
+        .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'))
+        .join('');
+      hex += ascii + '\n';
+
+      offset += 16;
+    }
+
+    return hex;
+  };
 
   if (loading || !workflow) {
     return (
@@ -157,26 +234,53 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
 
         {chapter.artifacts && chapter.artifacts.length > 0 && (
           <Card title="Artifacts" size="small" style={{ marginTop: 16 }}>
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
+            <Space direction="vertical" style={{ width: '100%' }}>
               {chapter.artifacts.map((artifact) => (
-                <li key={artifact.artifact_id}>
-                  {artifact.url ? (
-                    <a href={artifact.url} target="_blank" rel="noopener noreferrer">
-                      {artifact.name}
-                    </a>
-                  ) : (
-                    <span>{artifact.name}</span>
-                  )}
-                  {artifact.size_bytes && (
-                    <Text type="secondary">
-                      {' '}
-                      ({(artifact.size_bytes / 1024).toFixed(2)} KB)
-                    </Text>
-                  )}
-                  <Text type="secondary"> - {artifact.artifact_type}</Text>
-                </li>
+                <div key={artifact.artifact_id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1 }}>
+                    {artifact.url ? (
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          loadArtifact(artifact);
+                        }}
+                        style={{ fontWeight: 500 }}
+                      >
+                        {artifact.name}
+                      </a>
+                    ) : (
+                      <span>
+                        <span style={{ fontWeight: 500 }}>{artifact.name}</span>
+                        <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                          (URL not available)
+                        </Text>
+                      </span>
+                    )}
+                    {artifact.size_bytes && (
+                      <Text type="secondary">
+                        {' '}
+                        ({(artifact.size_bytes / 1024).toFixed(2)} KB)
+                      </Text>
+                    )}
+                    {artifact.artifact_type && (
+                      <Text type="secondary"> - {artifact.artifact_type}</Text>
+                    )}
+                  </span>
+                  <Space>
+                    {artifact.url && (
+                      <Button
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        onClick={() => downloadArtifact(artifact)}
+                      >
+                        Download
+                      </Button>
+                    )}
+                  </Space>
+                </div>
               ))}
-            </ul>
+            </Space>
           </Card>
         )}
       </Panel>
@@ -212,7 +316,11 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
             </Descriptions.Item>
             <Descriptions.Item label="Recipe">{workflow.recipe_name}</Descriptions.Item>
             <Descriptions.Item label="Actor">
-              {workflow.actor?.actor_email || 'system'}
+              {workflow.actor?.type === 'user' && workflow.actor.user
+                ? workflow.actor.user.email
+                : workflow.actor?.type === 'agent' && workflow.actor.agent
+                ? workflow.actor.agent.cell
+                : 'system'}
             </Descriptions.Item>
             <Descriptions.Item label="Started">
               {workflow.start_time
@@ -266,6 +374,67 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
           <Collapse accordion>{workflow.chapters.map(renderChapter)}</Collapse>
         </Card>
       </Space>
+
+      <Modal
+        title={selectedArtifact?.name || 'Artifact Viewer'}
+        open={selectedArtifact !== null}
+        onCancel={() => {
+          setSelectedArtifact(null);
+          setArtifactContent(null);
+        }}
+        width={1000}
+        footer={[
+          <Button
+            key="download"
+            icon={<DownloadOutlined />}
+            onClick={() => selectedArtifact && downloadArtifact(selectedArtifact)}
+          >
+            Download
+          </Button>,
+          <Button key="close" onClick={() => setSelectedArtifact(null)}>
+            Close
+          </Button>,
+        ]}
+      >
+        {artifactLoading ? (
+          <div style={{ textAlign: 'center', padding: 32 }}>
+            <Spin />
+          </div>
+        ) : (
+          <>
+            <Space style={{ marginBottom: 16 }}>
+              <Text>View mode:</Text>
+              <Radio.Group value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
+                <Radio.Button value="text">Text</Radio.Button>
+                <Radio.Button value="hex">Hex</Radio.Button>
+              </Radio.Group>
+            </Space>
+            <div
+              style={{
+                backgroundColor: '#f5f5f5',
+                padding: 16,
+                borderRadius: 4,
+                maxHeight: 500,
+                overflow: 'auto',
+                fontFamily: 'monospace',
+                fontSize: 12,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+              }}
+            >
+              {artifactContent ? (
+                viewMode === 'text' ? (
+                  artifactContent
+                ) : (
+                  formatHex(artifactContent)
+                )
+              ) : (
+                <Text type="secondary">No content available</Text>
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

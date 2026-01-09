@@ -38,6 +38,7 @@ vi.mock('@colony2/shared', () => ({
       </div>
     ) : null;
   },
+  getUserEmail: vi.fn(() => 'test@example.com'),
 }));
 
 describe('KanbanBoard', () => {
@@ -89,7 +90,7 @@ describe('KanbanBoard', () => {
     vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
   });
 
-  it('renders tickets in columns', async () => {
+  it('renders tickets in table', async () => {
     render(
       <BrowserRouter>
         <KanbanBoard projectId="proj-123" />
@@ -100,9 +101,13 @@ describe('KanbanBoard', () => {
       expect(screen.getByText('Implement feature A')).toBeInTheDocument();
       expect(screen.getByText('Fix bug B')).toBeInTheDocument();
     });
+
+    // Check that it's a table view, not kanban columns
+    const table = screen.getByRole('table');
+    expect(table).toBeInTheDocument();
   });
 
-  it('opens ticket detail modal when card is clicked', async () => {
+  it('opens ticket detail modal when row is clicked', async () => {
     const user = userEvent.setup();
 
     render(
@@ -116,12 +121,12 @@ describe('KanbanBoard', () => {
       expect(screen.getByText('Implement feature A')).toBeInTheDocument();
     });
 
-    // Click on the first ticket card
-    const ticketCard = screen.getByText('Implement feature A').closest('.ant-card');
-    expect(ticketCard).toBeInTheDocument();
+    // Click on the first ticket row
+    const ticketRow = screen.getByText('Implement feature A').closest('tr');
+    expect(ticketRow).toBeInTheDocument();
 
-    if (ticketCard) {
-      await user.click(ticketCard);
+    if (ticketRow) {
+      await user.click(ticketRow);
     }
 
     // Modal should be visible
@@ -145,10 +150,10 @@ describe('KanbanBoard', () => {
       expect(screen.getByText('Implement feature A')).toBeInTheDocument();
     });
 
-    // Click on a ticket card
-    const ticketCard = screen.getByText('Implement feature A').closest('.ant-card');
-    if (ticketCard) {
-      await user.click(ticketCard);
+    // Click on a ticket row
+    const ticketRow = screen.getByText('Implement feature A').closest('tr');
+    if (ticketRow) {
+      await user.click(ticketRow);
     }
 
     // Modal should be visible
@@ -182,5 +187,67 @@ describe('KanbanBoard', () => {
       expect(screen.getByText('web-app')).toBeInTheDocument();
       expect(screen.getByText('api')).toBeInTheDocument();
     });
+  });
+
+  it('opens create ticket modal when New Ticket button is clicked', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BrowserRouter>
+        <KanbanBoard projectId="proj-123" />
+      </BrowserRouter>,
+    );
+
+    // Wait for component to load
+    await waitFor(() => {
+      expect(screen.getByText('Tickets')).toBeInTheDocument();
+    });
+
+    // Click "New Ticket" button
+    const newTicketButton = screen.getByRole('button', { name: /new ticket/i });
+    await user.click(newTicketButton);
+
+    // Modal should open - check for form fields instead of title
+    await waitFor(() => {
+      expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /create/i })).toBeInTheDocument();
+    });
+  });
+
+  it('closes create ticket modal and keeps it closed', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BrowserRouter>
+        <KanbanBoard projectId="proj-123" />
+      </BrowserRouter>,
+    );
+
+    // Wait for component to load
+    await waitFor(() => {
+      expect(screen.getByText('Tickets')).toBeInTheDocument();
+    });
+
+    // Open modal
+    const newTicketButton = screen.getByRole('button', { name: /new ticket/i });
+    await user.click(newTicketButton);
+
+    // Wait for modal to open
+    await waitFor(() => {
+      expect(screen.getByLabelText(/title/i)).toBeInTheDocument();
+    });
+
+    // Close modal using cancel button
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    await user.click(cancelButton);
+
+    // Modal should close and stay closed
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/title/i)).not.toBeInTheDocument();
+    });
+
+    // Wait a bit to ensure it doesn't reopen (this would fail before the fix)
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(screen.queryByLabelText(/title/i)).not.toBeInTheDocument();
   });
 });

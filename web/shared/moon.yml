@@ -31,11 +31,11 @@ tasks:
       outputStyle: buffer-only-failure
   
   compile:
-    script: |
-      set -e
-      'tsc'
+    command: pnpm
+    args: [exec, tsc]
+    platform: node
     inputs:
-      - 'src/**/*' 
+      - 'src/**/*'
       - 'tsconfig.json'
     outputs:
       - 'dist/src/**'
@@ -46,9 +46,8 @@ tasks:
       outputStyle: buffer-only-failure
       
   bundle:
-    platform: system
-    command: vite
-    args: [build, --logLevel, warn, --emptyOutDir]
+    command: pnpm
+    args: [exec, vite, build, --logLevel, warn, --emptyOutDir]
     deps:
       - '~:compile'
     inputs:

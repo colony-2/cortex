@@ -1,0 +1,3 @@
+id: 'server/rstore'
+language: 'go'
+type: 'library'

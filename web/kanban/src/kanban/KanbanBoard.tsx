@@ -1,28 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { FormInstance } from 'antd';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import type { FormInstance, TableColumnsType } from 'antd';
 import {
   Alert,
   Button,
-  Card,
-  Col,
   Empty,
   Form,
   Input,
   Modal,
-  Row,
   Select,
   Space,
   Spin,
+  Table,
   Tag,
   Typography,
   message,
 } from 'antd';
 import type { ManagedCell, Ticket } from '@colony2/openapi-client';
 import { ActorType, CellsService, TicketState, TicketsService } from '@colony2/openapi-client';
-import { TicketDetailModal } from '@colony2/shared';
+import { TicketDetailModal, getUserEmail } from '@colony2/shared';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { TextArea } = Input;
+const { Search } = Input;
 
 interface KanbanBoardProps {
   projectId: string;
@@ -36,8 +36,19 @@ const stageColor: Record<string, string> = {
   done: 'green',
 };
 
+const stateColor: Record<string, string> = {
+  [TicketState.WAITING_USER]: 'orange',
+  [TicketState.WAITING_DEV]: 'blue',
+  [TicketState.IN_PROGRESS]: 'processing',
+  [TicketState.BLOCKED]: 'red',
+  [TicketState.COMPLETED]: 'success',
+  [TicketState.ABANDONED]: 'default',
+};
+
 export default function KanbanBoard({ projectId }: KanbanBoardProps) {
+  const location = useLocation();
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableStages, setAvailableStages] = useState<string[]>([]);
@@ -46,7 +57,18 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [searchText, setSearchText] = useState('');
   const [form] = Form.useForm();
+
+  // Open create modal if navigated from header button
+  useEffect(() => {
+    const state = location.state as { openCreateModal?: boolean } | null;
+    if (state?.openCreateModal) {
+      setIsCreateOpen(true);
+      // Clear the state immediately so it doesn't reopen on close
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]); // Only depend on location.state, not isCreateOpen
 
   useEffect(() => {
     const load = async () => {
@@ -59,7 +81,13 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
           TicketsService.getApiProjectsTicketsStates(projectId),
           CellsService.getApiProjectsCells(projectId),
         ]);
-        setTickets(ticketData || []);
+        const sortedTickets = (ticketData || []).sort((a, b) => {
+          const dateA = new Date(a.created || 0).getTime();
+          const dateB = new Date(b.created || 0).getTime();
+          return dateB - dateA;
+        });
+        setTickets(sortedTickets);
+        setFilteredTickets(sortedTickets);
         setAvailableStages(
           (stageData && stageData.length > 0 && stageData) || ['backlog', 'todo', 'doing', 'review', 'done'],
         );
@@ -78,32 +106,85 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
     }
   }, [projectId]);
 
-  const ticketsByStage = useMemo(() => {
-    const grouped = new Map<string, Ticket[]>();
-    tickets.forEach((ticket) => {
-      const stage = ticket.stage || 'backlog';
-      const list = grouped.get(stage) || [];
-      list.push(ticket);
-      grouped.set(stage, list);
+  useEffect(() => {
+    if (!searchText) {
+      setFilteredTickets(tickets);
+      return;
+    }
+    const lowerSearch = searchText.toLowerCase();
+    const filtered = tickets.filter((ticket) => {
+      return (
+        ticket.title?.toLowerCase().includes(lowerSearch) ||
+        ticket.description?.toLowerCase().includes(lowerSearch) ||
+        ticket.cellName?.toLowerCase().includes(lowerSearch) ||
+        ticket.id?.toLowerCase().includes(lowerSearch) ||
+        ticket.stage?.toLowerCase().includes(lowerSearch) ||
+        ticket.state?.toLowerCase().includes(lowerSearch)
+      );
     });
-    return grouped;
-  }, [tickets]);
+    setFilteredTickets(filtered);
+  }, [searchText, tickets]);
 
-  const stages = useMemo(() => {
-    const stageSet = new Set<string>(
-      availableStages.length > 0 ? availableStages : ['backlog', 'todo', 'doing', 'review', 'done'],
-    );
-    tickets.forEach((ticket) => {
-      stageSet.add(ticket.stage || 'backlog');
-    });
-    return Array.from(stageSet);
-  }, [availableStages, tickets]);
-
-  const defaultStage = stages[0] || 'backlog';
+  const defaultStage = availableStages[0] || 'backlog';
   const defaultState = availableStates[0] || TicketState.WAITING_USER;
 
-  const openCreateModal = (stage: string = defaultStage, state: TicketState = defaultState) => {
-    form.setFieldsValue({ stage, state });
+  const columns: TableColumnsType<Ticket> = [
+    {
+      title: 'Title',
+      dataIndex: 'title',
+      key: 'title',
+      width: '30%',
+      render: (title: string) => <span style={{ fontWeight: 500 }}>{title}</span>,
+    },
+    {
+      title: 'Cell',
+      dataIndex: 'cellName',
+      key: 'cellName',
+      width: '20%',
+      filters: Array.from(new Set(tickets.map((t) => t.cellName).filter(Boolean))).map((name) => ({
+        text: name!,
+        value: name!,
+      })),
+      onFilter: (value, record) => record.cellName === value,
+      render: (cellName: string) => cellName && <Tag color="blue">{cellName}</Tag>,
+    },
+    {
+      title: 'Stage',
+      dataIndex: 'stage',
+      key: 'stage',
+      width: '15%',
+      filters: availableStages.map((stage) => ({ text: stage, value: stage })),
+      onFilter: (value, record) => record.stage === value,
+      render: (stage: string) => <Tag color={stageColor[stage] || 'default'}>{stage}</Tag>,
+    },
+    {
+      title: 'State',
+      dataIndex: 'state',
+      key: 'state',
+      width: '15%',
+      filters: availableStates.map((state) => ({ text: state.replace(/_/g, ' '), value: state })),
+      onFilter: (value, record) => record.state === value,
+      render: (state: TicketState) => (
+        <Tag color={stateColor[state] || 'default'}>{state.replace(/_/g, ' ')}</Tag>
+      ),
+    },
+    {
+      title: 'Updated',
+      dataIndex: 'updated',
+      key: 'updated',
+      width: '20%',
+      sorter: (a, b) => {
+        const dateA = new Date(a.updated || 0).getTime();
+        const dateB = new Date(b.updated || 0).getTime();
+        return dateA - dateB;
+      },
+      defaultSortOrder: 'descend',
+      render: (updated: string) => updated && new Date(updated).toLocaleString(),
+    },
+  ];
+
+  const openCreateModal = () => {
+    form.setFieldsValue({ stage: defaultStage, state: defaultState });
     setIsCreateOpen(true);
   };
 
@@ -133,58 +214,46 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         <Title level={4} style={{ margin: 0 }}>
           Tickets
         </Title>
-        <Button type="primary" onClick={() => openCreateModal(defaultStage, defaultState)}>
-          New Ticket
-        </Button>
+        <Space>
+          <Search
+            placeholder="Search tickets..."
+            allowClear
+            style={{ width: 300 }}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+          />
+          <Button type="primary" onClick={openCreateModal}>
+            New Ticket
+          </Button>
+        </Space>
       </Space>
 
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}>
-          <Spin size="large" />
-        </div>
-      ) : (
-        <Row gutter={16}>
-          {stages.map((stage) => (
-            <Col key={stage} span={6} style={{ minWidth: 260, marginBottom: 16 }}>
-              <Card title={<StageHeader stage={stage} count={ticketsByStage.get(stage)?.length || 0} />}>
-                {ticketsByStage.get(stage)?.length ? (
-                  ticketsByStage.get(stage)?.map((ticket) => (
-                    <Card
-                      key={ticket.id}
-                      size="small"
-                      style={{ marginBottom: 8, cursor: 'pointer' }}
-                      hoverable
-                      onClick={() => setSelectedTicket(ticket)}
-                    >
-                      <Title level={5} style={{ marginBottom: 4 }}>
-                        {ticket.title}
-                      </Title>
-                      <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-                        {ticket.state || 'unknown'}
-                      </Text>
-                      {ticket.cellName && (
-                        <div style={{ marginTop: 4 }}>
-                          <Tag color="blue" style={{ marginBottom: 4 }}>
-                            {ticket.cellName}
-                          </Tag>
-                        </div>
-                      )}
-                    </Card>
-                  ))
-                ) : (
-                  <Empty description="No tickets" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                )}
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
+      <Table
+        columns={columns}
+        dataSource={filteredTickets}
+        rowKey="id"
+        loading={loading}
+        pagination={{
+          pageSize: 20,
+          showSizeChanger: true,
+          showTotal: (total) => `Total ${total} tickets`,
+        }}
+        onRow={(record) => ({
+          onClick: () => setSelectedTicket(record),
+          style: { cursor: 'pointer' },
+        })}
+      />
 
       <CreateTicketModal
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onCreated={(ticket) => {
-          setTickets((prev) => [...prev, ticket]);
+          const newTickets = [ticket, ...tickets].sort((a, b) => {
+            const dateA = new Date(a.created || 0).getTime();
+            const dateB = new Date(b.created || 0).getTime();
+            return dateB - dateA;
+          });
+          setTickets(newTickets);
           setAvailableStages((prev) => (prev.includes(ticket.stage) ? prev : [...prev, ticket.stage]));
         }}
         creating={creating}
@@ -193,7 +262,7 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         defaultState={defaultState}
         projectId={projectId}
         cells={cells}
-        stages={stages}
+        stages={availableStages}
         states={availableStates}
         setCreating={setCreating}
       />
@@ -205,15 +274,6 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         projectId={projectId}
       />
     </div>
-  );
-}
-
-function StageHeader({ stage, count }: { stage: string; count: number }) {
-  return (
-    <Space align="center" size="small">
-      <Tag color={stageColor[stage] || 'default'}>{stage}</Tag>
-      <Text strong>{count}</Text>
-    </Space>
   );
 }
 
@@ -282,10 +342,19 @@ function CreateTicketModal({
   };
 
   const handleOpen = () => {
+    const userEmail = getUserEmail();
     form.setFieldsValue({
       stage: defaultStage,
       state: defaultState,
+      email: userEmail || undefined,
     });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
+    }
   };
 
   return (
@@ -303,7 +372,7 @@ function CreateTicketModal({
         }
       }}
     >
-      <Form layout="vertical" form={form}>
+      <Form layout="vertical" form={form} onKeyDown={handleKeyDown}>
         <Form.Item
           label="Title"
           name="title"
