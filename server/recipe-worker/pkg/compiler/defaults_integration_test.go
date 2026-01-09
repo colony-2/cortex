@@ -33,7 +33,6 @@ func TestInjectDefaultsCalledInExecutionPath(t *testing.T) {
 	})
 
 	ops.Register(testOp)
-	defer ops.Clear()
 
 	// Get the registered op
 	registeredOp, exists := ops.Get("test_defaults")
@@ -90,7 +89,6 @@ func TestInjectDefaultsWithNestedStructs(t *testing.T) {
 	})
 
 	ops.Register(testOp)
-	defer ops.Clear()
 
 	registeredOp, _ := ops.Get("test_nested")
 	chain := registeredOp.TaskChain()
@@ -144,7 +142,6 @@ func TestInjectDefaultsInputTypeRetrieval(t *testing.T) {
 	})
 
 	ops.Register(testOp)
-	defer ops.Clear()
 
 	// Verify we can retrieve the op and its input type
 	registeredOp, exists := ops.Get("test_retrieval")
