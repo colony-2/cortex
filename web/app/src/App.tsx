@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router-dom';
 import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
-import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail } from '@colony2/shared';
+import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail, CreateTicketModal } from '@colony2/shared';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
@@ -32,6 +32,7 @@ function AppShell() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
+  const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -88,37 +89,6 @@ function AppShell() {
     return 'tickets';
   })();
 
-  const handleNav = (key: string) => {
-    switch (key) {
-      case 'tickets':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/kanban`);
-        break;
-      case 'workflows':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/workflows`);
-        break;
-      case 'recipes':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/recipes`);
-        break;
-      case 'cells':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/cells`);
-        break;
-      case 'settings':
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/settings`);
-        break;
-      case 'project-admin':
-        navigate('/admin/projects');
-        break;
-      default:
-        if (!selectedProject) return;
-        navigate(`/project/${selectedProject.id}/kanban`);
-    }
-  };
-
   const handleLogout = () => {
     clearUserEmail();
     setAuthenticated(false);
@@ -126,7 +96,7 @@ function AppShell() {
 
   const handleNewTicket = () => {
     if (!selectedProject) return;
-    navigate(`/project/${selectedProject.id}/kanban`, { state: { openCreateModal: true } });
+    setIsCreateTicketOpen(true);
   };
 
   return (
@@ -159,25 +129,33 @@ function AppShell() {
             items={[
               {
                 key: 'tickets',
-                label: 'Tickets',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/kanban`}>Tickets</Link>
+                ) : 'Tickets',
                 icon: <AppstoreOutlined />,
                 disabled: !selectedProject,
               },
               {
                 key: 'workflows',
-                label: 'Workflows',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/workflows`}>Workflows</Link>
+                ) : 'Workflows',
                 icon: <ThunderboltOutlined />,
                 disabled: !selectedProject,
               },
               {
                 key: 'recipes',
-                label: 'Recipes',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/recipes`}>Recipes</Link>
+                ) : 'Recipes',
                 icon: <FileTextOutlined />,
                 disabled: !selectedProject,
               },
               {
                 key: 'cells',
-                label: 'Cells',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/cells`}>Cells</Link>
+                ) : 'Cells',
                 icon: <OrderedListOutlined />,
                 disabled: !selectedProject,
               },
@@ -186,17 +164,18 @@ function AppShell() {
               },
               {
                 key: 'settings',
-                label: 'Settings',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/settings`}>Settings</Link>
+                ) : 'Settings',
                 icon: <SettingOutlined />,
                 disabled: !selectedProject,
               },
               {
                 key: 'project-admin',
-                label: 'Project Admin',
+                label: <Link to="/admin/projects">Project Admin</Link>,
                 icon: <ProjectOutlined />,
               },
             ]}
-            onClick={({ key }) => handleNav(key)}
             style={{ height: '100%', borderRight: 0 }}
           />
         </Sider>
@@ -251,6 +230,14 @@ function AppShell() {
           </Routes>
         </Content>
       </Layout>
+
+      {selectedProject && (
+        <CreateTicketModal
+          open={isCreateTicketOpen}
+          onClose={() => setIsCreateTicketOpen(false)}
+          projectId={selectedProject.id}
+        />
+      )}
     </Layout>
   );
 }

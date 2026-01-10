@@ -293,6 +293,8 @@ func (c *Controller) ensureCleanAfterRestore(ctx context.Context, task *GitTaskC
 }
 
 func (c *Controller) resolveScopePath(ctx context.Context, task *GitTaskContext) (string, error) {
+	// Use CellName as the scope
+	// CellName should contain the file system path to the cell directory
 	cell := strings.TrimSpace(task.GetCellName())
 	if cell == "" {
 		return ".", nil

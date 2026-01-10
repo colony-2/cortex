@@ -26,6 +26,7 @@
     "antd": "^6.1.2",
     "dayjs": "^1.11.19",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^6.26.0"
   }
 }

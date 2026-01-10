@@ -273,7 +273,11 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
               dataSource={tickets}
               pagination={{ pageSize: 10 }}
               onRow={(record) => ({
-                onClick: () => setSelectedTicket(record),
+                onClick: (e) => {
+                  // Allow Ctrl/Cmd-click to open in new tab
+                  if (e.ctrlKey || e.metaKey) return;
+                  setSelectedTicket(record);
+                },
                 style: { cursor: 'pointer' },
               })}
               columns={[

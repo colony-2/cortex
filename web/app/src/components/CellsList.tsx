@@ -133,7 +133,11 @@ export default function CellsList({ projectId }: CellsListProps) {
           dataSource={filteredCells}
           pagination={{ pageSize: 10 }}
           onRow={(record) => ({
-            onClick: () => navigate(`/project/${projectId}/cell/${record.id}`),
+            onClick: (e) => {
+              // Allow Ctrl/Cmd-click to open in new tab
+              if (e.ctrlKey || e.metaKey) return;
+              navigate(`/project/${projectId}/cell/${record.id}`);
+            },
             style: { cursor: 'pointer' },
           })}
           columns={[

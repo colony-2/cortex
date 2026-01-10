@@ -239,7 +239,11 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
           showTotal: (total) => `Total ${total} tickets`,
         }}
         onRow={(record) => ({
-          onClick: () => setSelectedTicket(record),
+          onClick: (e) => {
+            // Allow Ctrl/Cmd-click to open in new tab
+            if (e.ctrlKey || e.metaKey) return;
+            setSelectedTicket(record);
+          },
           style: { cursor: 'pointer' },
         })}
       />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Button,
   DatePicker,
@@ -105,9 +105,9 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       dataIndex: 'workflow_id',
       key: 'workflow_id',
       render: (id: string) => (
-        <a onClick={() => navigate(`/project/${projectId}/workflows/${id}`)}>
+        <Link to={`/project/${projectId}/workflows/${id}`}>
           {id.slice(-12)}
-        </a>
+        </Link>
       ),
       width: 120,
     },
@@ -131,9 +131,9 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       key: 'ticket',
       render: (_, record: WorkflowSummary) =>
         record.ticket_id ? (
-          <a onClick={() => navigate(`/project/${projectId}/tickets/${record.ticket_id}`)}>
+          <Link to={`/project/${projectId}/tickets/${record.ticket_id}`}>
             {record.ticket_title || record.ticket_id.slice(-8)}
-          </a>
+          </Link>
         ) : (
           <span style={{ color: '#999' }}>-</span>
         ),
@@ -240,7 +240,11 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
             pageSizeOptions: ['20', '50', '100', '200'],
           }}
           onRow={(record) => ({
-            onClick: () => navigate(`/project/${projectId}/workflows/${record.workflow_id}`),
+            onClick: (e) => {
+              // Allow Ctrl/Cmd-click to open in new tab
+              if (e.ctrlKey || e.metaKey) return;
+              navigate(`/project/${projectId}/workflows/${record.workflow_id}`);
+            },
             style: { cursor: 'pointer' },
           })}
         />

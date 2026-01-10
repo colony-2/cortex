@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Modal, Descriptions, Timeline, Tag, Spin, Alert, Tabs } from 'antd';
 import type {
     Ticket,
@@ -95,7 +96,7 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
                         ) : error ? (
                             <Alert type="error" message={error} showIcon />
                         ) : (
-                            <TicketEventsTimeline events={events} />
+                            <TicketEventsTimeline events={events} projectId={projectId} />
                         ),
                     },
                 ]}
@@ -146,7 +147,7 @@ const TicketDetails: React.FC<{ ticket: Ticket }> = ({ ticket }) => {
 };
 
 // Sub-component: Events Timeline Tab
-const TicketEventsTimeline: React.FC<{ events: TicketEvent[] }> = ({ events }) => {
+const TicketEventsTimeline: React.FC<{ events: TicketEvent[]; projectId: string }> = ({ events, projectId }) => {
     if (events.length === 0) {
         return (
             <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
@@ -160,14 +161,14 @@ const TicketEventsTimeline: React.FC<{ events: TicketEvent[] }> = ({ events }) =
             style={{ marginTop: 16 }}
             items={events.map(event => ({
                 color: getEventColor(event),
-                children: <EventItem event={event} />,
+                children: <EventItem event={event} projectId={projectId} />,
             }))}
         />
     );
 };
 
 // Sub-component: Individual Event Item
-const EventItem: React.FC<{ event: TicketEvent }> = ({ event }) => {
+const EventItem: React.FC<{ event: TicketEvent; projectId: string }> = ({ event, projectId }) => {
     const renderEventDetails = () => {
         switch (event.kind) {
             case 'workflow':
@@ -176,7 +177,10 @@ const EventItem: React.FC<{ event: TicketEvent }> = ({ event }) => {
                     <div>
                         <strong>Workflow {event.workflowPayload.type}</strong>
                         <div style={{ fontSize: '12px', color: '#666' }}>
-                            Workflow ID: <code>{event.workflowPayload.workflowId}</code>
+                            Workflow ID:{' '}
+                            <Link to={`/project/${projectId}/workflows/${event.workflowPayload.workflowId}`}>
+                                <code>{event.workflowPayload.workflowId}</code>
+                            </Link>
                         </div>
                         <div style={{ fontSize: '12px', color: '#666' }}>
                             Run ID: <code>{event.workflowPayload.runId}</code>

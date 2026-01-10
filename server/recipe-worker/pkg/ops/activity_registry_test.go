@@ -910,9 +910,9 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 		BaseRef:          baseHash,
 		ResolvedBaseHash: baseHash,
 		WorktreePath:     worktree,
-		CellName:         "cells/test",
+		CellName:         "cells/alpha/test", // Full file system path to the cell directory
+		NodePath:         "recipe/node", // Recipe node path (not file system path)
 		TicketID:         "TEST-1",
-		NodePath:         "node",
 		InvokeSeq:        1,
 	}
 
@@ -921,10 +921,10 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 	// Prepare and restore
 	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
 
-	// Make a change inside the cell directory
-	cellDir := filepath.Join(worktree, "cells", "test")
-	require.NoError(t, os.MkdirAll(cellDir, 0o755))
-	newFilePath := filepath.Join(cellDir, "new_file.txt")
+	// Make a change inside the node path directory
+	nodeDir := filepath.Join(worktree, "cells", "alpha", "test")
+	require.NoError(t, os.MkdirAll(nodeDir, 0o755))
+	newFilePath := filepath.Join(nodeDir, "new_file.txt")
 	require.NoError(t, os.WriteFile(newFilePath, []byte("new content\n"), 0o644))
 
 	// Debug: Check git status before persist

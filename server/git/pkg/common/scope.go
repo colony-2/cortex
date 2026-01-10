@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -44,54 +43,32 @@ func PrepareScopedCommit(ctx context.Context, repoPath, scope string) (bool, err
 		return strings.TrimSpace(string(output)) != "", nil
 	}
 
+	// Reset staging area
 	if _, err := ExecuteGitCommand(ctx, repoPath, "reset", "--mixed"); err != nil {
 		return false, fmt.Errorf("reset staging area: %w", err)
 	}
 
-	statusOutput, err := ExecuteGitCommand(ctx, repoPath, "status", "--porcelain")
-	if err != nil {
-		return false, fmt.Errorf("inspect git status: %w", err)
-	}
-	scopePrefix := normalized + "/"
-	lines := strings.Split(strings.TrimSpace(string(statusOutput)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if len(line) < 3 {
-			continue
-		}
-		path := strings.TrimSpace(line[3:])
-		if path == "" {
-			continue
-		}
-		// Check if path is within scope (exact match or subdirectory)
-		if path == normalized || strings.HasPrefix(path, scopePrefix) {
-			continue
-		}
-		// Check if path is a parent directory of the scope
-		// e.g., path="cells/" and scope="cells/test"
-		// Git status shows "?? cells/" when there are untracked files under cells/
-		if strings.HasSuffix(path, "/") && strings.HasPrefix(scopePrefix, path) {
-			continue
-		}
-		statusCode := line[:2]
-		fullPath := filepath.Join(repoPath, path)
-		if strings.HasPrefix(statusCode, "??") {
-			if err := os.RemoveAll(fullPath); err != nil && !os.IsNotExist(err) {
-				return false, fmt.Errorf("remove untracked %s: %w", path, err)
-			}
-			continue
-		}
-		if _, err := ExecuteGitCommand(ctx, repoPath, "restore", "--staged", "--worktree", "--", path); err != nil {
-			return false, fmt.Errorf("restore tracked %s: %w", path, err)
+	// Use git's pathspec exclusion to handle files outside scope
+	// ":^<path>" means "exclude this path"
+	exclude := fmt.Sprintf(":^%s", normalized)
+
+	// IMPORTANT: Add scope files FIRST, before cleaning
+	// Once files are staged, git clean won't remove them
+	if _, err := ExecuteGitCommand(ctx, repoPath, "add", "-A", "--", normalized); err != nil {
+		// It's ok if the path doesn't exist or has no files - just continue
+		if !strings.Contains(err.Error(), "did not match any files") {
+			return false, fmt.Errorf("stage changes in scope: %w", err)
 		}
 	}
 
-	if _, err := ExecuteGitCommand(ctx, repoPath, "add", "-A"); err != nil {
-		return false, fmt.Errorf("stage changes: %w", err)
-	}
+	// Restore (revert and unstage) tracked files outside the scope
+	// This will fail if there are no tracked files outside scope, which is fine
+	_, _ = ExecuteGitCommand(ctx, repoPath, "restore", "--staged", "--worktree", "--", exclude)
+
+	// Clean untracked files outside the scope
+	// Now that scope files are staged, this won't remove them
+	// This will fail if there are no untracked files outside scope, which is fine
+	_, _ = ExecuteGitCommand(ctx, repoPath, "clean", "-fd", "--", exclude)
 
 	diffOutput, err := ExecuteGitCommand(ctx, repoPath, "diff", "--cached", "--name-only")
 	if err != nil {
