@@ -896,3 +896,227 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 	}
 	assert.True(t, foundOutputTxt, "operation artifact should be in output")
 }
+
+func TestControllerPersist_DirectCall(t *testing.T) {
+	t.Parallel()
+
+	// Simple reproducer: directly call Controller methods to verify thinpack creation
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := &gitstate.GitTaskContext{
+		BaseRepo:         baseRepo,
+		BaseRef:          baseHash,
+		ResolvedBaseHash: baseHash,
+		WorktreePath:     worktree,
+		CellName:         "cells/test",
+		TicketID:         "TEST-1",
+		NodePath:         "node",
+		InvokeSeq:        1,
+	}
+
+	controller := gitstate.NewController(nil)
+
+	// Prepare and restore
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// Make a change inside the cell directory
+	cellDir := filepath.Join(worktree, "cells", "test")
+	require.NoError(t, os.MkdirAll(cellDir, 0o755))
+	newFilePath := filepath.Join(cellDir, "new_file.txt")
+	require.NoError(t, os.WriteFile(newFilePath, []byte("new content\n"), 0o644))
+
+	// Debug: Check git status before persist
+	cmd := exec.Command("git", "-C", worktree, "status", "--porcelain")
+	statusOutput, _ := cmd.CombinedOutput()
+	t.Logf("Git status before Persist: %s", string(statusOutput))
+
+	// Debug: Check if file exists before persist
+	_, err := os.Stat(newFilePath)
+	t.Logf("File exists before Persist: %v (err: %v)", err == nil, err)
+
+	// Call Persist
+	output, artifact, err := controller.Persist(context.Background(), ctx)
+
+	// Debug: Check if file exists after persist
+	_, statErr := os.Stat(newFilePath)
+	t.Logf("File exists after Persist: %v (err: %v)", statErr == nil, statErr)
+
+	// Debug: Check git status after persist
+	cmd = exec.Command("git", "-C", worktree, "status", "--porcelain")
+	statusOutput, _ = cmd.CombinedOutput()
+	t.Logf("Git status after Persist: %s", string(statusOutput))
+
+	// Verify success
+	require.NoError(t, err)
+	require.NotNil(t, output, "output should not be nil")
+
+	t.Logf("HasChanges: %v", output.HasChanges)
+	t.Logf("CommitHash: %s", output.CommitHash)
+	t.Logf("Artifact: %v", artifact)
+
+	// CRITICAL: Verify thinpack artifact was created
+	require.True(t, output.HasChanges, "changes should be detected")
+	require.NotNil(t, artifact, "thinpack artifact should be created when changes are made")
+	require.Equal(t, "__git_state_thin_pack__", artifact.Name())
+	require.NotEmpty(t, ctx.PersistHash, "persist hash should be set")
+}
+
+func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
+	t.Parallel()
+
+	// Test that when an operation makes git changes, a new thinpack artifact is created and returned
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Make a change to the worktree inside the cell directory
+				worktreePath := input["worktree_path"].(string)
+				cellDir := filepath.Join(worktreePath, "cells", "test")
+				require.NoError(t, os.MkdirAll(cellDir, 0o755))
+				newFilePath := filepath.Join(cellDir, "new_file.txt")
+				err := os.WriteFile(newFilePath, []byte("new content\n"), 0o644)
+				require.NoError(t, err)
+
+				return map[string]interface{}{"result": "modified"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+		},
+	}
+
+	output, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "modified", output.OpOutput["result"])
+
+	// Debug: Check git status after operation
+	cmd := exec.Command("git", "-C", worktree, "status", "--porcelain")
+	statusOutput, _ := cmd.CombinedOutput()
+	t.Logf("Git status after operation: %s", string(statusOutput))
+
+	// Debug: List files in the worktree
+	cmd = exec.Command("find", worktree, "-type", "f")
+	findOutput, _ := cmd.CombinedOutput()
+	t.Logf("Files in worktree:\n%s", string(findOutput))
+
+	// Debug: print all artifacts
+	t.Logf("Output artifacts count: %d", len(outputArts))
+	for i, art := range outputArts {
+		t.Logf("Artifact %d: %s", i, art.Name())
+	}
+	t.Logf("PersistHash from output: %s", output.GitResult.PersistHash)
+	t.Logf("ParentHash from output: %s", output.GitResult.ParentHash)
+
+	// CRITICAL: Verify thinpack artifact was created
+	var foundThinPack swf.Artifact
+	for _, art := range outputArts {
+		if art.Name() == "__git_state_thin_pack__" {
+			foundThinPack = art
+			break
+		}
+	}
+
+	require.NotNil(t, foundThinPack, "thinpack artifact should be created when operation makes changes")
+
+	// Verify the artifact is readable (has actual content)
+	reader, err := foundThinPack.Open()
+	require.NoError(t, err)
+	require.NotNil(t, reader, "thinpack should have readable content")
+	reader.Close()
+
+	// Verify persist hash was set (indicates changes were persisted)
+	require.NotEmpty(t, output.GitResult.PersistHash, "persist hash should be set when changes are made")
+}
+
+func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
+	t.Parallel()
+
+	// Test that when there's an input thinpack but the operation makes changes,
+	// the NEW thinpack is returned (not the input one)
+	inputThinPack := &mockArtifact{name: "__git_state_thin_pack__", data: []byte("old thin pack data")}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Make a change to the worktree inside the cell directory
+				worktreePath := input["worktree_path"].(string)
+				cellDir := filepath.Join(worktreePath, "cells", "test")
+				require.NoError(t, os.MkdirAll(cellDir, 0o755))
+				modifiedFile := filepath.Join(cellDir, "modified.txt")
+				err := os.WriteFile(modifiedFile, []byte("modified content\n"), 0o644)
+				require.NoError(t, err)
+
+				return map[string]interface{}{"result": "updated"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+		},
+	}
+
+	inputArtifacts := []swf.Artifact{inputThinPack}
+	output, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "updated", output.OpOutput["result"])
+
+	// CRITICAL: Verify a thinpack artifact is in output
+	var foundThinPack swf.Artifact
+	for _, art := range outputArts {
+		if art.Name() == "__git_state_thin_pack__" {
+			foundThinPack = art
+			break
+		}
+	}
+
+	require.NotNil(t, foundThinPack, "thinpack artifact should be in output")
+
+	// CRITICAL: Verify it's NOT the same artifact as input (pointer inequality)
+	// When changes are made, Persist creates a NEW thinpack, not the input one
+	require.False(t, foundThinPack == inputThinPack, "should be a NEW thinpack artifact (not the input), because changes were made")
+
+	// Verify the new artifact is readable
+	reader, err := foundThinPack.Open()
+	require.NoError(t, err)
+	require.NotNil(t, reader, "new thinpack should have readable content")
+	reader.Close()
+
+	// Verify persist hash was set
+	require.NotEmpty(t, output.GitResult.PersistHash, "persist hash should be set when changes are made")
+}

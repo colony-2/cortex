@@ -66,7 +66,14 @@ func PrepareScopedCommit(ctx context.Context, repoPath, scope string) (bool, err
 		if path == "" {
 			continue
 		}
+		// Check if path is within scope (exact match or subdirectory)
 		if path == normalized || strings.HasPrefix(path, scopePrefix) {
+			continue
+		}
+		// Check if path is a parent directory of the scope
+		// e.g., path="cells/" and scope="cells/test"
+		// Git status shows "?? cells/" when there are untracked files under cells/
+		if strings.HasSuffix(path, "/") && strings.HasPrefix(scopePrefix, path) {
 			continue
 		}
 		statusCode := line[:2]
