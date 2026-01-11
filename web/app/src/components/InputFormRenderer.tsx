@@ -49,7 +49,7 @@ export default function InputFormRenderer({
     // Transform values based on field types
     const transformedValues: Record<string, any> = {};
     
-    form.fields.forEach(field => {
+    form.fields.forEach((field: InputField) => {
       const value = values[field.id];
       
       if (value === undefined || value === null) {
@@ -146,7 +146,7 @@ export default function InputFormRenderer({
             rules={rules}
           >
             <Radio.Group>
-              {field.options?.map(option => (
+              {field.options?.map((option: string) => (
                 <Radio key={option} value={option}>
                   {option}
                 </Radio>
@@ -164,7 +164,7 @@ export default function InputFormRenderer({
             rules={rules}
           >
             <Checkbox.Group>
-              {field.options?.map(option => (
+              {field.options?.map((option: string) => (
                 <Checkbox key={option} value={option}>
                   {option}
                 </Checkbox>
@@ -182,7 +182,7 @@ export default function InputFormRenderer({
             rules={rules}
           >
             <Select placeholder={field.placeholder || 'Select an option'}>
-              {field.options?.map(option => (
+              {field.options?.map((option: string) => (
                 <Select.Option key={option} value={option}>
                   {option}
                 </Select.Option>
@@ -297,7 +297,7 @@ export default function InputFormRenderer({
         </div>
       )}
       
-      {form.fields.map(field => renderField(field))}
+      {form.fields.map((field: InputField) => renderField(field))}
       
       <Form.Item style={{ marginTop: '32px' }}>
         <Space>

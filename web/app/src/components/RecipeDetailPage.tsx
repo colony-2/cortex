@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeftOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import { Button, Card, Modal, Space, Tabs, Tag, Typography, message } from 'antd';
 import { RecipesService, type RecipeWithContent } from '@colony2/openapi-client';
@@ -16,7 +16,6 @@ interface RecipeDetailPageProps {
 export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const params = useParams();
 
   // Extract recipe name from URL path (everything after /recipes/)
   const recipeName = location.pathname.split('/recipes/')[1] || '';

@@ -108,10 +108,12 @@ func NewSetup(cfg Config) (*Setup, error) {
 		return nil, fmt.Errorf("failed to get sql.DB from gorm.DB: %w", err)
 	}
 
+	cfg.Logger.Info("installing PGWF schema")
 	if err := impl.InstallPGWF(ctx, sqlDB); err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to install PGWF schema: %w (ensure database has CREATE EXTENSION privileges)", err)
 	}
+	cfg.Logger.Info("PGWF schema installed")
 
 	// Setup persistent Strata storage paths
 	absStoragePath, err := filepath.Abs(cfg.StoragePath)
@@ -123,11 +125,13 @@ func NewSetup(cfg Config) (*Setup, error) {
 	strataBlobsPath := filepath.Join(absStoragePath, "strata", "blobs")
 
 	// Start embedded Strata daemon with persistent storage
+	cfg.Logger.Info("starting Strata daemon", "rows_path", strataRowsPath, "blobs_path", strataBlobsPath)
 	strataCfg := daemon.Config{
 		ListenAddr:             "127.0.0.1:0",
 		RowStoreURI:            fmt.Sprintf("pebble://%s", filepath.ToSlash(strataRowsPath)),
 		BlobStoreURI:           fmt.Sprintf("blobfs://%s", filepath.ToSlash(strataBlobsPath)),
 		MaxInlineArtifactBytes: daemon.DefaultMaxInlineArtifactBytes,
+		Logger:                 cfg.Logger,
 	}
 	strata, err := daemon.New(strataCfg)
 	if err != nil {
@@ -146,8 +150,10 @@ func NewSetup(cfg Config) (*Setup, error) {
 		return nil, fmt.Errorf("failed to get Strata address: %w", err)
 	}
 	strataBaseURL := fmt.Sprintf("http://%s", strataAddr)
+	cfg.Logger.Info("Strata daemon started", "url", strataBaseURL)
 
 	// Build real workflow engine
+	cfg.Logger.Info("building workflow engine")
 	engine, err := swf.NewEngineBuilder().
 		WithAwaitRecycleThreshold(cfg.AwaitRecycleThreshold).
 		WithPostgresDSN(cfg.PostgresDSN).
@@ -161,8 +167,10 @@ func NewSetup(cfg Config) (*Setup, error) {
 		strata.Shutdown(context.Background())
 		return nil, fmt.Errorf("failed to build workflow engine: %w", err)
 	}
+	cfg.Logger.Info("workflow engine built")
 
 	// Create activity registry and workset
+	cfg.Logger.Info("creating activity registry")
 	activityRegistry, err := ops.NewActivityRegistry()
 	if err != nil {
 		cancel()
@@ -171,6 +179,7 @@ func NewSetup(cfg Config) (*Setup, error) {
 	}
 	activityRegistry.SetDependencies(cfg.Dependencies)
 
+	cfg.Logger.Info("creating recipe worker")
 	workset, err := compiler.NewRecipeWorker(cfg.Dependencies, activityRegistry)
 	if err != nil {
 		cancel()
@@ -179,9 +188,11 @@ func NewSetup(cfg Config) (*Setup, error) {
 	}
 
 	// Register workers with the engine
+	cfg.Logger.Info("registering workers with engine")
 	engine.RegisterWorkers(workset)
 
 	// Start engine worker loops
+	cfg.Logger.Info("starting engine worker loops")
 	go engine.Run(ctx)
 
 	return &Setup{

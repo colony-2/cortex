@@ -75,9 +75,7 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
       setTicketsLoading(true);
       try {
         const [ticketData, stageData, stateData] = await Promise.all([
-          TicketsService.getApiProjectsTickets(projectId, {
-            cells: [cellId],
-          }),
+          TicketsService.getApiProjectsTickets(projectId, undefined, undefined, undefined, undefined, [cellId]),
           TicketsService.getApiProjectsTicketsStages(projectId),
           TicketsService.getApiProjectsTicketsStates(projectId),
         ]);

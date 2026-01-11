@@ -221,6 +221,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			WorktreePath:     worktreePath,
 			TicketID:         "T-1",
 			CellName:         "cells/beta",
+		CellPath:         "cells/beta",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -284,6 +285,7 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 			WorktreePath:     worktreeDir,
 			TicketID:         "TEST-1",
 			CellName:         "cells/cell-a",
+		CellPath:         "cells/cell-a",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -624,6 +626,7 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 			BaseRepo:     baseRepo,
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -683,6 +686,7 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 			BaseRepo:     baseRepo,
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -735,6 +739,7 @@ func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
 			BaseRepo:     baseRepo,
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -788,6 +793,7 @@ func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *test
 			BaseRepo:     baseRepo,
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -876,6 +882,7 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 			BaseRepo:     baseRepo,
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -911,6 +918,7 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 		ResolvedBaseHash: baseHash,
 		WorktreePath:     worktree,
 		CellName:         "cells/alpha/test", // Full file system path to the cell directory
+	CellPath:         "cells/alpha/test",
 		NodePath:         "recipe/node", // Recipe node path (not file system path)
 		TicketID:         "TEST-1",
 		InvokeSeq:        1,
@@ -999,6 +1007,7 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
 			CellName:     "cells/test",
+		CellPath:     "cells/test",
 		},
 	}
 
@@ -1086,6 +1095,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
 			CellName:     "cells/test",
+		CellPath:     "cells/test",
 		},
 	}
 

@@ -491,16 +491,23 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 	var publishedRecipe *model.PublishedRecipe
 
 	if ref == "" {
-		// Get published version
+		// Try to get published version first
 		var err error
 		publishedRecipe, err = s.store.GetByName(ctx, projectID, name)
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return nil, model.ErrNotPublished
-			}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		commitHash = publishedRecipe.CommitHash
+
+		if publishedRecipe != nil {
+			// Use published version
+			commitHash = publishedRecipe.CommitHash
+		} else {
+			// No published version - fall back to latest commit for this file
+			commitHash, err = s.getFileLastCommit(ctx, workspace, gitPath)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %v", model.ErrNotFound, err)
+			}
+		}
 	} else {
 		// Resolve ref to commit hash
 		cmd := exec.CommandContext(ctx, "git", "rev-parse", ref)

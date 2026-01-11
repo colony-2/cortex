@@ -108,6 +108,7 @@ func TestWorkflowIntegration_ListAndGet(t *testing.T) {
 			},
 			Workflow: contextual.WorkflowContext{
 				CellName: "cell-a",
+				CellPath: "cell-a",
 			},
 		},
 		GitRef: "main",

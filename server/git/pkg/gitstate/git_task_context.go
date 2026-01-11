@@ -12,6 +12,7 @@ type GitTaskContext struct {
 	ThinPackPath     string
 	TicketID         string
 	CellName         string
+	CellPath         string // Cell relative path from repo root
 	GitAuthor        string
 	NodePath         string
 	InvokeSeq        int64
@@ -30,6 +31,7 @@ func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
 		ThinPackPath:     tec.Environment.ThinPackPath,
 		TicketID:         tec.Actor.TicketID,
 		CellName:         tec.Workflow.CellName,
+		CellPath:         tec.Workflow.CellPath,
 		NodePath:         tec.Invocation.NodePath,
 		InvokeSeq:        tec.Invocation.InvokeSeq,
 		InvokeHash:       tec.Invocation.Hash(),
@@ -45,6 +47,7 @@ func (c *GitTaskContext) GetWorktreePath() string     { return c.WorktreePath }
 func (c *GitTaskContext) GetThinPackPath() string     { return c.ThinPackPath }
 func (c *GitTaskContext) GetTicketID() string         { return c.TicketID }
 func (c *GitTaskContext) GetCellName() string         { return c.CellName }
+func (c *GitTaskContext) GetCellPath() string         { return c.CellPath }
 func (c *GitTaskContext) GetGitAuthor() string        { return c.GitAuthor }
 func (c *GitTaskContext) GetNodePath() string         { return c.NodePath }
 func (c *GitTaskContext) GetInvokeSeq() int64         { return c.InvokeSeq }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
 import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail, CreateTicketModal } from '@colony2/shared';
@@ -34,7 +34,6 @@ function AppShell() {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate();
 
   if (!authenticated) {
     return <LoginPage onLogin={() => setAuthenticated(true)} />;
@@ -47,7 +46,7 @@ function AppShell() {
       setProjects(data);
       if (!selectedProjectId && data.length > 0) {
         const savedId = localStorage.getItem('colony2:selectedProjectId');
-        const validSaved = savedId && data.find((p) => p.id === savedId);
+        const validSaved = savedId && data.find((p: Project) => p.id === savedId);
         setSelectedProjectId((validSaved && savedId) || data[0].id);
       }
     } catch (error) {

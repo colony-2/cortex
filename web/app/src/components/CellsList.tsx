@@ -136,7 +136,7 @@ export default function CellsList({ projectId }: CellsListProps) {
             onClick: (e) => {
               // Allow Ctrl/Cmd-click to open in new tab
               if (e.ctrlKey || e.metaKey) return;
-              navigate(`/project/${projectId}/cell/${record.id}`);
+              if (record) navigate(`/project/${projectId}/cell/${record.id}`);
             },
             style: { cursor: 'pointer' },
           })}

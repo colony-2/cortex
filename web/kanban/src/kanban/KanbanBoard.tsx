@@ -38,11 +38,15 @@ const stageColor: Record<string, string> = {
 
 const stateColor: Record<string, string> = {
   [TicketState.WAITING_USER]: 'orange',
-  [TicketState.WAITING_DEV]: 'blue',
-  [TicketState.IN_PROGRESS]: 'processing',
-  [TicketState.BLOCKED]: 'red',
-  [TicketState.COMPLETED]: 'success',
-  [TicketState.ABANDONED]: 'default',
+  [TicketState.WAITING_DEPENDENCY]: 'blue',
+  [TicketState.WAITING_CAPACITY]: 'purple',
+  [TicketState.WORKING]: 'green',
+  // Legacy/custom states
+  'waiting_dev': 'blue',
+  'in_progress': 'processing',
+  'blocked': 'red',
+  'completed': 'success',
+  'abandoned': 'default',
 };
 
 export default function KanbanBoard({ projectId }: KanbanBoardProps) {
@@ -82,8 +86,8 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
           CellsService.getApiProjectsCells(projectId),
         ]);
         const sortedTickets = (ticketData || []).sort((a, b) => {
-          const dateA = new Date(a.created || 0).getTime();
-          const dateB = new Date(b.created || 0).getTime();
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
           return dateB - dateA;
         });
         setTickets(sortedTickets);
@@ -174,8 +178,8 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
       key: 'updated',
       width: '20%',
       sorter: (a, b) => {
-        const dateA = new Date(a.updated || 0).getTime();
-        const dateB = new Date(b.updated || 0).getTime();
+        const dateA = new Date(a.updatedAt || 0).getTime();
+        const dateB = new Date(b.updatedAt || 0).getTime();
         return dateA - dateB;
       },
       defaultSortOrder: 'descend',
@@ -253,8 +257,8 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         onClose={() => setIsCreateOpen(false)}
         onCreated={(ticket) => {
           const newTickets = [ticket, ...tickets].sort((a, b) => {
-            const dateA = new Date(a.created || 0).getTime();
-            const dateB = new Date(b.created || 0).getTime();
+            const dateA = new Date(a.createdAt || 0).getTime();
+            const dateB = new Date(b.createdAt || 0).getTime();
             return dateB - dateA;
           });
           setTickets(newTickets);

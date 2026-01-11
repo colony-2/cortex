@@ -33,7 +33,7 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
-	github.com/colony-2/strata-go v0.0.0-20260107203500-53a2214e74d1 // indirect
+	github.com/colony-2/strata-go v0.0.0-20260111001323-608931bce986 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.23 // indirect

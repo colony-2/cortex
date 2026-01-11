@@ -12,10 +12,15 @@ vi.mock('@colony2/openapi-client', () => ({
   },
 }));
 
+declare global {
+  // eslint-disable-next-line no-var
+  var fetch: any;
+}
+
 // Mock fetch for artifact loading
 global.fetch = vi.fn();
 
-const mockWorkflowWithArtifacts: WorkflowDetail = {
+const mockWorkflowWithArtifacts = {
   workflow_id: 'wf-123',
   run_id: 'run-123',
   status: 'completed',
@@ -40,6 +45,7 @@ const mockWorkflowWithArtifacts: WorkflowDetail = {
           artifact_type: 'text',
           url: 'http://example.com/artifact-1',
           size_bytes: 1024,
+          created_at: '2026-01-08T12:10:00Z',
         },
         {
           artifact_id: 'art-2',
@@ -47,13 +53,14 @@ const mockWorkflowWithArtifacts: WorkflowDetail = {
           artifact_type: 'binary',
           url: 'http://example.com/artifact-2',
           size_bytes: 2048,
+          created_at: '2026-01-08T12:12:00Z',
         },
       ],
     },
   ],
 };
 
-const mockWorkflowNoArtifacts: WorkflowDetail = {
+const mockWorkflowNoArtifacts = {
   workflow_id: 'wf-456',
   run_id: 'run-456',
   status: 'completed',
@@ -178,7 +185,7 @@ describe('WorkflowDetailPage - Artifact Viewing', () => {
       expect(screen.getByRole('radio', { name: /text/i })).toBeInTheDocument();
     });
 
-    // Verify fetch was called with correct URL
+    // Verify fetch was called with correct URL (absolute URLs are not modified)
     expect(global.fetch).toHaveBeenCalledWith('http://example.com/artifact-1');
 
     // Verify artifact content is displayed

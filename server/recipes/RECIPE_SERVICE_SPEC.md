@@ -149,7 +149,7 @@ type Service interface {
 
     // Retrieval Operations
     // Get a recipe by name with optional ref
-    // If ref is empty: returns published version (error if not published)
+    // If ref is empty: returns published version if available, otherwise falls back to latest git commit
     // If ref provided: returns recipe at that git ref (commit, branch, tag, etc.)
     GetRecipe(ctx context.Context, projectID project.ID, name string, ref string) (*RecipeWithContent, error)
 

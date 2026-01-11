@@ -24,12 +24,18 @@ const { Title, Text } = Typography;
 const { Panel } = Collapse;
 
 // Helper to construct full artifact URL
-// In dev mode, prepend API server base URL since UI runs on different port
-const getArtifactUrl = (relativeUrl: string): string => {
-  if (import.meta.env.DEV) {
-    return `http://localhost:8080${relativeUrl}`;
+// In dev mode, prepend API server base URL for relative URLs since UI runs on different port
+const getArtifactUrl = (url: string): string => {
+  // Check if URL is already absolute
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
   }
-  return relativeUrl;
+
+  // For relative URLs in dev mode, prepend API server base URL
+  if (import.meta.env.DEV) {
+    return `http://localhost:8080${url}`;
+  }
+  return url;
 };
 
 interface WorkflowDetailPageProps {

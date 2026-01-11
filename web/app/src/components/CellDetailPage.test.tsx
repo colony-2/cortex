@@ -20,7 +20,6 @@ vi.mock('@colony2/openapi-client', async () => {
       getApiProjectsTicketsStages: vi.fn(),
       getApiProjectsTicketsStates: vi.fn(),
       postApiProjectsTickets: vi.fn(),
-      listTicketEvents: vi.fn(),
     },
   };
 });
@@ -95,7 +94,6 @@ describe('CellDetailPage', () => {
     vi.mocked(TicketsService.getApiProjectsTickets).mockResolvedValue(mockTickets);
     vi.mocked(TicketsService.getApiProjectsTicketsStages).mockResolvedValue(['backlog', 'todo', 'done']);
     vi.mocked(TicketsService.getApiProjectsTicketsStates).mockResolvedValue(Object.values(TicketState));
-    vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
   });
 
   afterEach(() => {

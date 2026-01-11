@@ -64,7 +64,8 @@ outputs:
 			WorktreePath: persistWorktree,
 		},
 		Workflow: contextual.WorkflowContext{
-			CellName: "",
+			CellName: "cells/test-cell",
+			CellPath: "cells/test-cell",
 			JobID:    "git-decorator-test",
 		},
 		GitBase: contextual.GitBaseContext{

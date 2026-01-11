@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Badge, Empty, Tabs } from 'antd';
 import { FormOutlined } from '@ant-design/icons';
-import type { DependencyCell } from '@colony2/shared';
+import type { DependencyCell, PendingInput } from '@colony2/shared';
 import { inputActivityService } from '@colony2/shared';
 import InputFormsTab from './InputFormsTab';
 
@@ -24,22 +24,22 @@ export default function SidePanel({ selectedCell }: SidePanelProps) {
 
     inputActivityService
       .getPendingInputs(effectiveCellId)
-      .then((inputs) => {
-        const pending = inputs.filter((i) => i.status === 'pending');
+      .then((inputs: PendingInput[]) => {
+        const pending = inputs.filter((i: PendingInput) => i.status === 'pending');
         setPendingInputCount(pending.length);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('Failed to load pending inputs count:', err);
       });
 
     const unsubscribe = inputActivityService.subscribe(effectiveCellId, () => {
       inputActivityService
         .getPendingInputs(effectiveCellId)
-        .then((inputs) => {
-          const pending = inputs.filter((i) => i.status === 'pending');
+        .then((inputs: PendingInput[]) => {
+          const pending = inputs.filter((i: PendingInput) => i.status === 'pending');
           setPendingInputCount(pending.length);
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error('Failed to update pending inputs count:', err);
         });
     });

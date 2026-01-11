@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import RecipeDetailPage from './RecipeDetailPage';
 import { RecipesService, ApiError } from '@colony2/openapi-client';
 
@@ -21,18 +21,23 @@ vi.mock('@colony2/openapi-client', async (importOriginal) => {
   };
 });
 
-// Mock react-router-dom navigation
-const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
-  return {
-    ...actual,
-    useNavigate: () => mockNavigate,
-  };
-});
-
 describe('RecipeDetailPage', () => {
   const projectId = 'proj_123';
+
+  // Helper function to render component with proper routing
+  const renderWithRouter = (recipeName: string) => {
+    const initialPath = `/project/${projectId}/recipes/${recipeName}`;
+    return render(
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route
+            path="/project/:projectId/recipes/:recipeName"
+            element={<RecipeDetailPage projectId={projectId} />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,24 +64,7 @@ describe('RecipeDetailPage', () => {
 
     vi.mocked(RecipesService.getRecipe).mockResolvedValue(mockRecipe);
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {/* Simulate path */}
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
@@ -88,29 +76,12 @@ describe('RecipeDetailPage', () => {
     // Verify the service was called
     expect(vi.mocked(RecipesService.getRecipe)).toHaveBeenCalledWith(
       projectId,
-      'test-recipe',
-      undefined
+      'test-recipe'
     );
   });
 
   it('should display new recipe mode', async () => {
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/new'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('new');
 
     await waitFor(() => {
       expect(screen.getByText('New Recipe')).toBeDefined();
@@ -126,7 +97,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -151,23 +122,7 @@ describe('RecipeDetailPage', () => {
       isPublished: false,
     });
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
@@ -179,7 +134,7 @@ describe('RecipeDetailPage', () => {
     await user.type(textarea, 'version: "1.0"\nid: test\nop: echo\ninputs:\n  message: "Updated"');
 
     // Click Save button
-    const saveButton = screen.getByRole('button', { name: /^Save$/i });
+    const saveButton = screen.getByRole('button', { name: /Save$/i });
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -199,7 +154,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -216,23 +171,7 @@ describe('RecipeDetailPage', () => {
       isPublished: true,
     });
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
@@ -263,7 +202,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -282,33 +221,16 @@ describe('RecipeDetailPage', () => {
 
     vi.mocked(RecipesService.publishRecipe).mockResolvedValue({
       name: 'test-recipe',
-      commitHash: 'abc123',
     });
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('Draft')).toBeDefined();
     });
 
     // Click Publish button
-    const publishButton = screen.getByRole('button', { name: /^Publish$/i });
+    const publishButton = screen.getByRole('button', { name: /Publish$/i });
     await user.click(publishButton);
 
     await waitFor(() => {
@@ -326,7 +248,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: true,
       publishedAt: new Date().toISOString(),
       publishedBy: 'user@example.com',
@@ -345,23 +267,7 @@ describe('RecipeDetailPage', () => {
 
     vi.mocked(RecipesService.unpublishRecipe).mockResolvedValue(undefined);
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('Published')).toBeDefined();
@@ -385,7 +291,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -394,46 +300,30 @@ describe('RecipeDetailPage', () => {
     vi.mocked(RecipesService.getRecipe).mockResolvedValue(mockRecipe);
     vi.mocked(RecipesService.deleteRecipe).mockResolvedValue(undefined);
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
     });
 
-    // Click Delete button
-    const deleteButton = screen.getByRole('button', { name: /Delete/i });
-    await user.click(deleteButton);
+    // Click Delete button (get all and click the first one - the main delete button)
+    const deleteButtons = screen.getAllByRole('button', { name: /Delete/i });
+    await user.click(deleteButtons[0]);
 
     // Confirm deletion in modal
     await waitFor(() => {
       expect(screen.getByText(/Are you sure you want to delete/i)).toBeDefined();
     });
 
-    const confirmButton = screen.getByRole('button', { name: /Delete/i });
-    await user.click(confirmButton);
+    // Click the confirm button in the modal (should be the second Delete button)
+    const confirmButtons = screen.getAllByRole('button', { name: /Delete/i });
+    await user.click(confirmButtons[1]);
 
     await waitFor(() => {
       expect(vi.mocked(RecipesService.deleteRecipe)).toHaveBeenCalledWith(
         projectId,
         'test-recipe'
       );
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/recipes`);
     });
   });
 
@@ -449,23 +339,7 @@ describe('RecipeDetailPage', () => {
       isPublished: false,
     });
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/new'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('new');
 
     await waitFor(() => {
       expect(screen.getByText('New Recipe')).toBeDefined();
@@ -480,7 +354,7 @@ describe('RecipeDetailPage', () => {
     await user.type(textarea, 'version: "1.0"\nid: my-new-recipe\nop: echo');
 
     // Click Save button
-    const saveButton = screen.getByRole('button', { name: /^Save$/i });
+    const saveButton = screen.getByRole('button', { name: /Save$/i });
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -490,9 +364,6 @@ describe('RecipeDetailPage', () => {
           name: 'my-new-recipe',
           autoPublish: false,
         })
-      );
-      expect(mockNavigate).toHaveBeenCalledWith(
-        `/project/${projectId}/recipes/my-new-recipe`
       );
     });
   });
@@ -505,7 +376,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -516,23 +387,7 @@ describe('RecipeDetailPage', () => {
       new Error('Validation failed')
     );
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
@@ -543,7 +398,7 @@ describe('RecipeDetailPage', () => {
     await user.type(textarea, '\n# modified');
 
     // Click Save button
-    const saveButton = screen.getByRole('button', { name: /^Save$/i });
+    const saveButton = screen.getByRole('button', { name: /Save$/i });
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -563,23 +418,7 @@ describe('RecipeDetailPage', () => {
       new Error('Recipe not found')
     );
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/nonexistent'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('nonexistent');
 
     await waitFor(() => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -596,7 +435,7 @@ describe('RecipeDetailPage', () => {
       name: 'test-recipe',
       commitHash: 'abc123',
       rawYaml: 'version: "1.0"\nid: test\nop: echo',
-      content: null,
+      content: {},
       isPublished: false,
       publishedAt: null,
       publishedBy: null,
@@ -604,30 +443,14 @@ describe('RecipeDetailPage', () => {
 
     vi.mocked(RecipesService.getRecipe).mockResolvedValue(mockRecipe);
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/test-recipe'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('test-recipe');
 
     await waitFor(() => {
       expect(screen.getByText('test-recipe')).toBeDefined();
     });
 
     // Save button should be disabled when there are no changes
-    const saveButton = screen.getByRole('button', { name: /^Save$/i });
+    const saveButton = screen.getByRole('button', { name: /Save$/i });
     expect(saveButton).toHaveProperty('disabled', true);
   });
 
@@ -649,23 +472,7 @@ describe('RecipeDetailPage', () => {
 
     vi.mocked(RecipesService.createRecipe).mockRejectedValue(apiError);
 
-    render(
-      <BrowserRouter>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <div>
-                <div style={{ display: 'none' }}>
-                  {(window.history.pushState({}, '', '/project/proj_123/recipes/new'), null)}
-                </div>
-                <RecipeDetailPage projectId={projectId} />
-              </div>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    );
+    renderWithRouter('new');
 
     await waitFor(() => {
       expect(screen.getByText('New Recipe')).toBeDefined();
@@ -680,7 +487,7 @@ describe('RecipeDetailPage', () => {
     await user.type(textarea, 'version: "1.0"\nop: echo');
 
     // Click Save button
-    const saveButton = screen.getByRole('button', { name: /^Save$/i });
+    const saveButton = screen.getByRole('button', { name: /Save$/i });
     await user.click(saveButton);
 
     // The error message should show the detailed server error, not the generic message

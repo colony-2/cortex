@@ -121,8 +121,16 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		}
 		absNodePath, _ := filepath.Abs(nodeRoot)
 
+		// Calculate relative path from repository root
+		relPath, err := filepath.Rel(rootPathWithSymlinks[:len(rootPathWithSymlinks)-1], absNodePath)
+
 		// Debug: Log each cell being processed
-		fmt.Printf("[DEBUG] Processing cell %s with path %s\n", moonNode.ID, absNodePath)
+		fmt.Printf("[DEBUG] Processing cell %s with absolute path %s, relative path %s\n", moonNode.ID, absNodePath, relPath)
+		if err != nil {
+			// If we can't get a relative path, log a warning but continue
+			fmt.Printf("[WARN] Failed to get relative path for cell %s: %v\n", moonNode.ID, err)
+			relPath = absNodePath // Fallback to absolute path
+		}
 
 		// Build dependencies list
 		dependencies := []string{}
@@ -133,7 +141,7 @@ func (b *Builder) Build(ctx context.Context) (*core.Graph, error) {
 		cell := core.Cell{
 			ID:           moonNode.ID,
 			Name:         moonNode.ID,
-			Path:         absNodePath,
+			Path:         relPath,
 			Type:         "cell",
 			Dependencies: dependencies,
 		}

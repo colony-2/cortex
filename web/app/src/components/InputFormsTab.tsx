@@ -37,13 +37,13 @@ export default function InputFormsTab({ cell, cellId, initialInputId }: InputFor
       const inputs = await inputActivityService.getPendingInputs(effectiveCellId);
       
       // Sort by creation time (oldest first)
-      const sorted = inputs.sort((a, b) => 
+      const sorted = inputs.sort((a: PendingInput, b: PendingInput) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
-      
+
       // Separate pending and completed
-      const pending = sorted.filter(i => i.status === 'pending');
-      const completed = sorted.filter(i => i.status === 'completed');
+      const pending = sorted.filter((i: PendingInput) => i.status === 'pending');
+      const completed = sorted.filter((i: PendingInput) => i.status === 'completed');
       
       setPendingInputs(pending);
       setCompletedInputs(completed);

@@ -25,6 +25,7 @@ func newTaskContext(baseRepo, baseRef, worktree, cell string) *GitTaskContext {
 		ParentHash:       baseRef,
 		WorktreePath:     worktree,
 		CellName:         cell,
+		CellPath:         cell,
 		TicketID:         "ticket-123",
 		NodePath:         "node",
 		InvokeSeq:        1,
@@ -262,6 +263,7 @@ func TestBuildCommitMessage(t *testing.T) {
 		ThinPackPath:     "git/thin-packs/cb-pack.pack",
 		TicketID:         "TICK-1",
 		CellName:         "cells/alpha",
+		CellPath:         "cells/alpha",
 		NodePath:         "cells/alpha/op",
 		InvokeSeq:        3,
 	}
@@ -311,4 +313,51 @@ func runGitOutput(t *testing.T, dir string, name string, args ...string) string 
 		t.Fatalf("git %v failed: %v (%s)", args, err, output)
 	}
 	return string(output)
+}
+
+func TestResolveScopePath_RequiresCellPath(t *testing.T) {
+	ctrl := &Controller{}
+	ctx := context.Background()
+
+	t.Run("empty CellPath returns error", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: ""}
+		_, err := ctrl.resolveScopePath(ctx, task)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "cell_path is required")
+	})
+
+	t.Run("valid CellPath returns sanitized path", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: "cells/my-cell"}
+		scope, err := ctrl.resolveScopePath(ctx, task)
+		require.NoError(t, err)
+		require.Equal(t, "cells/my-cell", scope)
+	})
+
+	t.Run("path with trailing slash is sanitized", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: "cells/my-cell/"}
+		scope, err := ctrl.resolveScopePath(ctx, task)
+		require.NoError(t, err)
+		require.Equal(t, "cells/my-cell", scope)
+	})
+
+	t.Run("path traversal is rejected", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: "cells/../other"}
+		_, err := ctrl.resolveScopePath(ctx, task)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid cell path")
+	})
+
+	t.Run("absolute path with slash is rejected", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: "/cells/my-cell"}
+		_, err := ctrl.resolveScopePath(ctx, task)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid cell path")
+	})
+
+	t.Run("only slashes is rejected as absolute", func(t *testing.T) {
+		task := &GitTaskContext{CellPath: "///"}
+		_, err := ctrl.resolveScopePath(ctx, task)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid cell path")
+	})
 }

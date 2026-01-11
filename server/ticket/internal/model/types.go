@@ -49,7 +49,7 @@ type Actor struct {
 }
 
 type Ticket struct {
-	ID          ID                     `json:"id" gorm:"column:id;type:char(27);index"`
+	ID          ID                     `json:"id" gorm:"column:id;type:char(27);index;not null"`
 	Version     optimisticlock.Version `json:"-" gorm:"column:version"`
 	ProjectID   project.ID             `json:"project_id" gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
 	CellID      cell.ID                `json:"cell_id" gorm:"column:cell_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
@@ -63,11 +63,11 @@ type Ticket struct {
 	UpdatedAt   time.Time              `json:"updated_at"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
 	ValidFrom   time.Time              `json:"valid_from" gorm:"primaryKey;type:timestamp"`
-	ValidUntil  time.Time              `json:"valid_until" gorm:"type:timestamp"`
+	ValidUntil  time.Time              `json:"valid_until" gorm:"type:timestamp;not null"`
 	// Deprecated: search/list responses no longer include last reset metadata.
-	LastResetID *TicketResetID         `json:"last_reset_id,omitempty" gorm:"-"`
+	LastResetID *TicketResetID `json:"last_reset_id,omitempty" gorm:"-"`
 	// Deprecated: search/list responses no longer include last reset metadata.
-	LastResetAt *time.Time             `json:"last_reset_at,omitempty" gorm:"-"`
+	LastResetAt *time.Time `json:"last_reset_at,omitempty" gorm:"-"`
 }
 
 type ActorPatch struct {

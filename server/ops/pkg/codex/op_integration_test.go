@@ -90,6 +90,7 @@ inputs:
 	jobCtx, gitCtx := compiler.GenerateTestContext()
 	jobCtx.Environment.WorktreePath = worktree
 	jobCtx.Workflow.CellName = cellRel
+	jobCtx.Workflow.CellPath = cellRel
 	start := workflowctl.StartJob{
 		TenantId:   "test-tenant",
 		RecipeName: testRecipe.GetMetadata().ID,
@@ -158,6 +159,7 @@ inputs:
 	jobCtx, gitCtx := compiler.GenerateTestContext()
 	jobCtx.Environment.WorktreePath = worktree
 	jobCtx.Workflow.CellName = cellRel
+	jobCtx.Workflow.CellPath = cellRel
 	start := workflowctl.StartJob{
 		TenantId:   "test-tenant",
 		RecipeName: testRecipe.GetMetadata().ID,

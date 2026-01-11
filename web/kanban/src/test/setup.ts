@@ -1,6 +1,11 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
+declare global {
+  // eslint-disable-next-line no-var
+  var ResizeObserver: any;
+}
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

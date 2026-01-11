@@ -2,6 +2,13 @@ import { vi, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 
+declare global {
+  // eslint-disable-next-line no-var
+  var ResizeObserver: any;
+  // eslint-disable-next-line no-var
+  var fetch: any;
+}
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();

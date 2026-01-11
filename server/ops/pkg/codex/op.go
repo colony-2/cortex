@@ -25,8 +25,8 @@ type ExecOpInput struct {
 	SessionID        string            `json:"sessionId,omitempty"`
 	Model            string            `json:"model,omitempty"`
 	Env              map[string]string `json:"env,omitempty"`
-	WorktreePath     string            `json:"worktree_path"`
-	CellRelativePath string            `json:"cell_relative_path"`
+	WorktreePath     string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}"`
+	CellRelativePath string            `json:"cell_relative_path" default:"{{ context.workflow.cell_path }}"`
 }
 
 // ExecOpOutput mirrors the structured response surfaced by the codex library.

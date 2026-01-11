@@ -4,7 +4,7 @@ import { Button, Input, List, Modal, Space, Tag, Typography, message } from 'ant
 import { RecipesService, type RecipeVersion, type RecipeWithContent } from '@colony2/openapi-client';
 import { getErrorMessage } from '../utils/errorHandling';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 interface RecipeHistoryTabProps {

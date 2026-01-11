@@ -121,6 +121,7 @@ inputs:
 		},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
+			CellPath: "cells/test-cell",
 			JobID:    "debug-job",
 		},
 		GitBase: contextual.GitBaseContext{

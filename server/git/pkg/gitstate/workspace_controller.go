@@ -293,19 +293,23 @@ func (c *Controller) ensureCleanAfterRestore(ctx context.Context, task *GitTaskC
 }
 
 func (c *Controller) resolveScopePath(ctx context.Context, task *GitTaskContext) (string, error) {
-	// Use CellName as the scope
-	// CellName should contain the file system path to the cell directory
-	cell := strings.TrimSpace(task.GetCellName())
-	if cell == "" {
-		return ".", nil
+	// Use CellPath for scope - it's required for proper scoping
+	cellPath := strings.TrimSpace(task.GetCellPath())
+	if cellPath == "" {
+		return "", fmt.Errorf("cell_path is required for git persist operations")
 	}
 
-	sanitized := filepath.ToSlash(strings.Trim(cell, "/"))
-	if sanitized == "" {
-		return "", fmt.Errorf("cell name cannot resolve to repository root")
+	// Check for absolute paths before trimming
+	if filepath.IsAbs(cellPath) {
+		return "", fmt.Errorf("invalid cell path %s", cellPath)
 	}
-	if strings.Contains(sanitized, "..") || filepath.IsAbs(sanitized) {
-		return "", fmt.Errorf("invalid cell path %s", cell)
+
+	sanitized := filepath.ToSlash(strings.Trim(cellPath, "/"))
+	if sanitized == "" {
+		return "", fmt.Errorf("cell path cannot resolve to repository root")
+	}
+	if strings.Contains(sanitized, "..") {
+		return "", fmt.Errorf("invalid cell path %s", cellPath)
 	}
 	return sanitized, nil
 }

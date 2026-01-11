@@ -138,7 +138,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	cellRecord, err := cellSvc.CreateCell(ctx, cell.CreateInput{
 		Name:        "api",
 		ProjectID:   proj.ID,
-		WorkingPath: worktree,
+		WorkingPath: "api",
 	})
 	require.NoError(t, err)
 

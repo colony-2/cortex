@@ -207,10 +207,13 @@ inputs:
 			t.Fatalf("UnpublishRecipe failed: %v", err)
 		}
 
-		// Try to get published recipe - should fail
-		_, err = svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if !errors.Is(err, model.ErrNotPublished) {
-			t.Errorf("Expected ErrNotPublished, got %v", err)
+		// Get recipe should still work (falls back to latest commit) but not be published
+		recipe, err = svc.GetRecipe(ctx, projectID, "test-recipe", "")
+		if err != nil {
+			t.Fatalf("GetRecipe should work for unpublished recipe: %v", err)
+		}
+		if recipe.IsPublished {
+			t.Error("Recipe should not be marked as published after unpublishing")
 		}
 	})
 
@@ -255,12 +258,79 @@ inputs:
 			t.Fatalf("DeleteRecipe failed: %v", err)
 		}
 
-		// Should not be published
+		// Recipe should not exist in git anymore
 		_, err = svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if !errors.Is(err, model.ErrNotPublished) {
-			t.Errorf("Expected ErrNotPublished after delete, got %v", err)
+		if !errors.Is(err, model.ErrNotFound) {
+			t.Errorf("Expected ErrNotFound after delete, got %v", err)
 		}
 	})
+}
+
+func TestService_UnpublishedRecipeEditing(t *testing.T) {
+	// This test specifically addresses the bug where unpublished recipes couldn't be edited
+	pg := testutil.StartEmbeddedPostgres(t)
+	defer pg.Close(t)
+
+	svc := setupTestService(t, pg.DB)
+	ctx := context.Background()
+	projectID := project.ID("proj_test")
+
+	// Create recipe WITHOUT autopublish
+	version1, err := svc.CreateRecipe(ctx, model.CreateInput{
+		ProjectID:   projectID,
+		Name:        "unpublished-recipe",
+		Content:     testutil.CreateTestRecipeContent("unpublished-recipe"),
+		Description: "Test unpublished recipe",
+		AutoPublish: false,
+	})
+	if err != nil {
+		t.Fatalf("CreateRecipe failed: %v", err)
+	}
+	if version1.IsPublished {
+		t.Error("Recipe should not be published")
+	}
+
+	// Should be able to get the unpublished recipe
+	recipe, err := svc.GetRecipe(ctx, projectID, "unpublished-recipe", "")
+	if err != nil {
+		t.Fatalf("GetRecipe failed for unpublished recipe: %v", err)
+	}
+	if recipe.IsPublished {
+		t.Error("Recipe should not be marked as published")
+	}
+	if recipe.CommitHash != version1.CommitHash {
+		t.Errorf("CommitHash = %q, want %q", recipe.CommitHash, version1.CommitHash)
+	}
+
+	// Should be able to update the unpublished recipe
+	updatedContent := []byte(`version: "1.0"
+id: "unpublished-recipe"
+op: echo
+inputs:
+  message: "Updated unpublished recipe"
+`)
+	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+		ProjectID:   projectID,
+		Name:        "unpublished-recipe",
+		Content:     updatedContent,
+		Message:     "Update unpublished recipe",
+		AutoPublish: false,
+	})
+	if err != nil {
+		t.Fatalf("UpdateRecipe failed for unpublished recipe: %v", err)
+	}
+	if version2.IsPublished {
+		t.Error("Updated recipe should not be published")
+	}
+
+	// Should get the updated version
+	recipe, err = svc.GetRecipe(ctx, projectID, "unpublished-recipe", "")
+	if err != nil {
+		t.Fatalf("GetRecipe failed after update: %v", err)
+	}
+	if recipe.CommitHash != version2.CommitHash {
+		t.Errorf("CommitHash = %q, want %q (should be updated version)", recipe.CommitHash, version2.CommitHash)
+	}
 }
 
 func TestService_HierarchicalRecipes(t *testing.T) {

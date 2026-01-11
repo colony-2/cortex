@@ -513,6 +513,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 			},
 			Workflow: contextual.WorkflowContext{
 				CellName: string(ticket.CellName),
+				CellPath: cellRecord.WorkingPath,
 			},
 			Environment: contextual.EnvironmentContext{
 				//WorktreePath: cellRecord.WorkingPath,

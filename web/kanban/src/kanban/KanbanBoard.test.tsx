@@ -10,7 +10,6 @@ vi.mock('@colony2/openapi-client', () => ({
     getApiProjectsTickets: vi.fn(),
     getApiProjectsTicketsStages: vi.fn(),
     getApiProjectsTicketsStates: vi.fn(),
-    listTicketEvents: vi.fn(),
   },
   CellsService: {
     getApiProjectsCells: vi.fn(),
@@ -87,7 +86,6 @@ describe('KanbanBoard', () => {
       'waiting_capacity',
     ]);
     vi.mocked(CellsService.getApiProjectsCells).mockResolvedValue([]);
-    vi.mocked(TicketsService.listTicketEvents).mockResolvedValue([]);
   });
 
   it('renders tickets in table', async () => {

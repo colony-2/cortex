@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -81,13 +82,17 @@ func Execute() error {
 }
 
 func runServer(port int, corsOrigins []string, staticPath string, useMemory bool, storagePath string) error {
+	startTime := time.Now()
 	setupLogger()
+	slog.Info("testserver startup initiated", "port", port)
 
+	slog.Info("opening database connection")
 	dsn := os.Getenv("NEON_C2_DEV_DSN")
 	pgDB, closeDB, err := database.Open(database.Config{DSN: dsn})
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
+	slog.Info("database connection established", "elapsed", time.Since(startTime))
 	defer func() {
 		if closeDB != nil {
 			if closeErr := closeDB(); closeErr != nil {
@@ -97,6 +102,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	}()
 
 	// Persistence-backed services (projects, cells, tickets)
+	slog.Info("creating project store")
 	projectStore, err := project.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create project store: %w", err)
@@ -105,7 +111,9 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create project service: %w", err)
 	}
+	slog.Info("project service created", "elapsed", time.Since(startTime))
 
+	slog.Info("creating cell service")
 	cellStore, err := cell.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create cell store: %w", err)
@@ -114,8 +122,10 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create cell service: %w", err)
 	}
+	slog.Info("cell service created", "elapsed", time.Since(startTime))
 
 	// Initialize recipe service
+	slog.Info("creating recipe service")
 	recipeSvc, err := recipesvc.NewServiceFromDB(pgDB, recipesvc.ServiceConfig{
 		GitRepo:  gitpkg.NewRepository(gitpkg.Config{}),
 		Projects: projectSvc,
@@ -125,7 +135,9 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create recipe service: %w", err)
 	}
+	slog.Info("recipe service created", "elapsed", time.Since(startTime))
 
+	slog.Info("creating ticket stores")
 	ticketStore, err := ticket.NewStore(pgDB)
 	if err != nil {
 		return fmt.Errorf("failed to create ticket store: %w", err)
@@ -134,9 +146,12 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create ticket event store: %w", err)
 	}
+	slog.Info("ticket stores created", "elapsed", time.Since(startTime))
 
 	// Setup ops management services (input manager etc.)
+	slog.Info("creating SSE manager")
 	sseManager := input.NewSimpleSSEManager()
+	slog.Info("SSE manager created", "elapsed", time.Since(startTime))
 
 	// Validate PostgreSQL DSN is set
 	if dsn == "" {
@@ -144,15 +159,19 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	}
 
 	// Register all ops globally (required before engine setup)
+	slog.Info("registering ops")
 	opssetup.RegisterOps()
+	slog.Info("ops registered", "elapsed", time.Since(startTime))
 
 	// Create initial dependencies for engine setup
+	slog.Info("creating initial dependencies for engine")
 	tempDeps := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithDatabase(pgDB).
 		Build()
 
 	// Create real workflow engine with PGWF and Strata
+	slog.Info("setting up workflow engine (PGWF + Strata)")
 	engineSetup, err := engine.NewSetup(engine.Config{
 		PostgresDB:   pgDB,
 		PostgresDSN:  dsn,
@@ -162,6 +181,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to setup workflow engine: %w", err)
 	}
+	slog.Info("workflow engine setup complete", "elapsed", time.Since(startTime))
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -171,15 +191,18 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	}()
 
 	// Create embedded provider for internal recipes
+	slog.Info("creating embedded recipe provider")
 	embeddedProvider, err := recipes.NewEmbeddedProvider()
 	if err != nil {
 		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
+	slog.Info("embedded recipe provider created", "elapsed", time.Since(startTime))
 
 	// Create RecipeProjectProvider with fallback to embedded recipes
 	recipeProviderWithFallback := recipes.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
 
 	// Create ticket service with engine and recipe provider for workflow autostart
+	slog.Info("creating ticket service")
 	ticketSvc, err := ticket.NewService(ticket.ServiceConfig{
 		Store:      ticketStore,
 		EventStore: eventStore,
@@ -191,7 +214,9 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create ticket service: %w", err)
 	}
+	slog.Info("ticket service created", "elapsed", time.Since(startTime))
 
+	slog.Info("creating graph factory")
 	graphFactory := func(ctx context.Context, projectID string) (core.GraphBuilder, error) {
 		if projectSvc == nil {
 			return nil, fmt.Errorf("project service not configured")
@@ -207,19 +232,24 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		return graph.NewBuilder(root), nil
 	}
 
+	slog.Info("creating workflow control")
 	wfc := workflow.SWFWorkflowControl{
 		Engine:   engineSetup.Engine(),
 		Registry: recipeProviderWithFallback,
 	}
 
+	slog.Info("creating strata client")
 	strataClient, err := strataclient.New(strataclient.Config{
 		BaseURL: engineSetup.StrataBaseURL(),
 		APIKey:  "local",
+		Logger:  slog.Default(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create strata client: %w", err)
 	}
+	slog.Info("strata client created", "elapsed", time.Since(startTime))
 
+	slog.Info("creating workflow service")
 	workflowSvc, err := workflowsvc.New(workflowsvc.ServiceConfig{
 		Engine:   engineSetup.Engine(),
 		Strata:   strataClient,
@@ -230,19 +260,24 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create workflow service: %w", err)
 	}
+	slog.Info("workflow service created", "elapsed", time.Since(startTime))
 
+	slog.Info("building ops dependency container")
 	depContainer := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithWorkflowControl(&wfc).
 		WithDatabase(pgDB).
 		Build()
 
+	slog.Info("setting up ops (extension routes)")
 	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
 	if err != nil {
 		return fmt.Errorf("ops setup failed: %w", err)
 	}
+	slog.Info("ops setup complete", "elapsed", time.Since(startTime))
 
 	// Create server configuration
+	slog.Info("creating web server configuration")
 	config := web.Config{
 		Port:            port,
 		CORSOrigins:     corsOrigins,
@@ -270,22 +305,35 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 			return fmt.Errorf("failed to resolve static path: %w", err)
 		}
 		config.StaticPath = absStaticPath
-		fmt.Printf("Serving static files from: %s\n", absStaticPath)
+		slog.Info("serving static files", "path", absStaticPath)
 	}
 
 	// Create and start server
+	slog.Info("creating web server")
 	server := web.NewServer(config, deps)
+	slog.Info("web server created", "elapsed", time.Since(startTime))
 
-	fmt.Printf("Starting test server on port %d\n", port)
-	fmt.Printf("CORS origins: %v\n", corsOrigins)
+	slog.Info("starting test server", "port", port, "cors_origins", corsOrigins)
 
 	// Setup graceful shutdown
 	errChan := make(chan error, 1)
+	readyChan := make(chan struct{})
 	go func() {
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
+		} else {
+			close(readyChan)
 		}
 	}()
+
+	// Wait for server to be ready or error
+	select {
+	case err := <-errChan:
+		return fmt.Errorf("server error: %w", err)
+	case <-time.After(100 * time.Millisecond):
+		// Server likely started successfully
+		slog.Info("testserver ready", "total_startup_time", time.Since(startTime))
+	}
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
