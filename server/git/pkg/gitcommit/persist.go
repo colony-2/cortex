@@ -148,3 +148,61 @@ func PersistCommit(ctx context.Context, input PersistCommitActivity) (*PersistCo
 		HasChanges:   hasChanges,
 	}, nil
 }
+
+// PersistCommitWithDiffs performs commit, thin pack generation, and creates diffs from parent and base
+func PersistCommitWithDiffs(ctx context.Context, input PersistCommitActivity, baseHash string) (*PersistWithDiffsOutput, error) {
+	// First, perform the regular persist operation
+	persistOutput, err := PersistCommit(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("persist commit failed: %w", err)
+	}
+
+	// Initialize result with persist output
+	result := &PersistWithDiffsOutput{
+		PersistCommitOutput: *persistOutput,
+	}
+
+	// Only generate diffs if there were changes
+	if !persistOutput.HasChanges {
+		return result, nil
+	}
+
+	// Use context lines of 10 for wide context window
+	contextLines := 10
+
+	// Generate diff from parent hash
+	if persistOutput.ParentHash != "" {
+		diffFromParentInput := GenerateDiffInput{
+			RepoPath:        input.RepoPath,
+			FromHash:        persistOutput.ParentHash,
+			ToHash:          persistOutput.CommitHash,
+			StorageLocation: input.StorageLocation,
+			ContextLines:    contextLines,
+		}
+		diffFromParentOutput, err := GenerateDiff(ctx, diffFromParentInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate diff from parent: %w", err)
+		}
+		result.DiffFromParentPath = diffFromParentOutput.DiffPath
+		result.DiffFromParentSize = diffFromParentOutput.DiffSize
+	}
+
+	// Generate diff from base hash (if provided and different from parent)
+	if baseHash != "" && baseHash != persistOutput.ParentHash {
+		diffFromBaseInput := GenerateDiffInput{
+			RepoPath:        input.RepoPath,
+			FromHash:        baseHash,
+			ToHash:          persistOutput.CommitHash,
+			StorageLocation: input.StorageLocation,
+			ContextLines:    contextLines,
+		}
+		diffFromBaseOutput, err := GenerateDiff(ctx, diffFromBaseInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate diff from base: %w", err)
+		}
+		result.DiffFromBasePath = diffFromBaseOutput.DiffPath
+		result.DiffFromBaseSize = diffFromBaseOutput.DiffSize
+	}
+
+	return result, nil
+}

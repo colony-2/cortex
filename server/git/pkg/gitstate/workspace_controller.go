@@ -253,6 +253,167 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 	return output, artifact, nil
 }
 
+// PersistWithDiffs captures repository changes, writes thin packs and diffs, and returns the commit output with three artifacts:
+// 1. Thin pack artifact (like Persist)
+// 2. Diff from parent hash artifact
+// 3. Diff from base hash artifact
+func (c *Controller) PersistWithDiffs(ctx context.Context, task *GitTaskContext) (*gitcommit.PersistWithDiffsOutput, []swf.Artifact, error) {
+	scopePath, err := c.prepareScopedWorkspace(ctx, task)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create temp directory for thin pack and diff persist operation
+	persistDir, err := os.MkdirTemp("", "persist-with-diffs-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("create temp dir: %w", err)
+	}
+
+	rootHash := task.GetResolvedBaseHash()
+	if strings.TrimSpace(rootHash) == "" {
+		var err error
+		rootHash, err = common.GetCommitHash(ctx, task.GetWorktreePath(), "HEAD")
+		if err != nil {
+			os.RemoveAll(persistDir)
+			return nil, nil, fmt.Errorf("resolve base hash: %w", err)
+		}
+		task.ResolvedBaseHash = rootHash
+	}
+
+	commitMessage := buildCommitMessage(task, "pending", "")
+	author := task.GetGitAuthor()
+	if author == "" && task.GetCellName() != "" {
+		author = fmt.Sprintf("%s <%s@colony2>", task.GetCellName(), task.GetCellName())
+	}
+
+	persistInput := gitcommit.PersistCommitActivity{
+		RepoPath:        task.GetWorktreePath(),
+		StorageLocation: persistDir,
+		RootHash:        rootHash,
+		CommitMessage:   commitMessage,
+		Author:          author,
+	}
+
+	// Call PersistCommitWithDiffs with baseHash from task context
+	baseHash := task.GetResolvedBaseHash()
+	output, err := gitcommit.PersistCommitWithDiffs(ctx, persistInput, baseHash)
+	if err != nil {
+		os.RemoveAll(persistDir)
+		return nil, nil, fmt.Errorf("persist with diffs failed: %w", err)
+	}
+
+	if scopePath != "" {
+		// Ensure the worktree remains clean after persistence.
+		if err := common.EnsureCleanAfterRestore(ctx, task.GetWorktreePath(), scopePath, output.CommitHash); err != nil {
+			os.RemoveAll(persistDir)
+			return nil, nil, fmt.Errorf("failed to ensure clean repo after persist: %w", err)
+		}
+	}
+
+	// Update task context with persist results
+	if output.HasChanges {
+		task.ParentHash = output.ParentHash
+		task.PersistHash = output.CommitHash
+		task.ResolvedBaseHash = output.CommitHash
+	} else {
+		task.ParentHash = output.ParentHash
+		task.PersistHash = ""
+		task.ResolvedBaseHash = rootHash
+	}
+
+	// If no changes, clean up and return empty artifacts
+	if !output.HasChanges {
+		os.RemoveAll(persistDir)
+		return output, nil, nil
+	}
+
+	// Create artifacts for thin pack and diffs
+	var artifacts []swf.Artifact
+
+	// Determine which artifacts we'll create
+	hasThinPack := output.ThinPackPath != ""
+	hasDiffParent := output.DiffFromParentPath != ""
+	hasDiffBase := output.DiffFromBasePath != ""
+
+	// 1. Thin pack artifact (same as regular Persist)
+	if hasThinPack {
+		thinPackPath := output.ThinPackPath
+		thinPackArtifact := swf.NewArtifact(
+			"__git_state_thin_pack__",
+			func() (io.ReadCloser, int64, error) {
+				f, err := os.Open(thinPackPath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("open thin pack: %w", err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					return nil, 0, fmt.Errorf("stat thin pack: %w", err)
+				}
+				return f, info.Size(), nil
+			},
+			nil, // No cleanup yet
+		)
+		artifacts = append(artifacts, thinPackArtifact)
+	}
+
+	// 2. Diff from parent artifact
+	if hasDiffParent {
+		diffFromParentPath := output.DiffFromParentPath
+		// Add cleanup callback if this is the last artifact
+		var cleanup func() error
+		if !hasDiffBase {
+			cleanup = func() error { return os.RemoveAll(persistDir) }
+		}
+		diffFromParentArtifact := swf.NewArtifact(
+			"diff_from_parent.diff",
+			func() (io.ReadCloser, int64, error) {
+				f, err := os.Open(diffFromParentPath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("open diff from parent: %w", err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					return nil, 0, fmt.Errorf("stat diff from parent: %w", err)
+				}
+				return f, info.Size(), nil
+			},
+			cleanup,
+		)
+		artifacts = append(artifacts, diffFromParentArtifact)
+	}
+
+	// 3. Diff from base artifact (always last if present)
+	if hasDiffBase {
+		diffFromBasePath := output.DiffFromBasePath
+		diffFromBaseArtifact := swf.NewArtifact(
+			"diff_from_base.diff",
+			func() (io.ReadCloser, int64, error) {
+				f, err := os.Open(diffFromBasePath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("open diff from base: %w", err)
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					return nil, 0, fmt.Errorf("stat diff from base: %w", err)
+				}
+				return f, info.Size(), nil
+			},
+			func() error { return os.RemoveAll(persistDir) }, // Cleanup on last artifact
+		)
+		artifacts = append(artifacts, diffFromBaseArtifact)
+	}
+
+	// If no artifacts were created but we still need to clean up
+	if len(artifacts) == 0 {
+		os.RemoveAll(persistDir)
+	}
+
+	return output, artifacts, nil
+}
+
 func (c *Controller) prepareScopedWorkspace(ctx context.Context, task *GitTaskContext) (string, error) {
 	worktree := strings.TrimSpace(task.GetWorktreePath())
 	if worktree == "" {

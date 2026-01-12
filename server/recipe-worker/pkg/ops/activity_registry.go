@@ -176,28 +176,23 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 			return zero, outputArtifacts, err
 		}
 
-		// Call Persist (returns output metadata and artifact)
-		_, outputThinPack, err := controller.Persist(context.Background(), &req.GitTaskContext)
+		// Call PersistWithDiffs (returns output metadata and artifacts including thin pack + diffs)
+		_, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), &req.GitTaskContext)
 		if err != nil {
 			return zero, outputArtifacts, err
 		}
 
-		// Determine final thin pack to output (with pass-through logic)
-		var finalThinPack swf.Artifact
-		if outputThinPack != nil {
-			// Persist created a new thin pack (changes were made)
-			finalThinPack = outputThinPack
+		// Handle artifact pass-through logic
+		if len(persistArtifacts) > 0 {
+			// PersistWithDiffs created artifacts (changes were made)
+			// Append all artifacts (thin pack + diffs) to output
+			outputArtifacts = append(outputArtifacts, persistArtifacts...)
 		} else if thinPackArtifact != nil {
 			// No changes, but we had an input thin pack - pass through the SAME artifact
 			// This avoids re-uploading; SWF can reuse the existing artifact
-			finalThinPack = thinPackArtifact
+			outputArtifacts = append(outputArtifacts, thinPackArtifact)
 		}
-		// else: no input, no output - finalThinPack stays nil
-
-		// Append output thin pack artifact to operation's output artifacts
-		if finalThinPack != nil {
-			outputArtifacts = append(outputArtifacts, finalThinPack)
-		}
+		// else: no input, no output - no artifacts to append
 
 		parentRef := ""
 		if req.GitTaskContext.PersistHash == "" {

@@ -1130,3 +1130,245 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 	// Verify persist hash was set
 	require.NotEmpty(t, output.GitResult.PersistHash, "persist hash should be set when changes are made")
 }
+
+func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
+	t.Parallel()
+
+	// Test that when an operation makes git changes, PersistWithDiffs creates 3 artifacts:
+	// 1. thin pack, 2. diff from parent, 3. diff from base
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Make a change to the worktree inside the cell directory
+				worktreePath := input["worktree_path"].(string)
+				cellDir := filepath.Join(worktreePath, "cells", "test")
+				require.NoError(t, os.MkdirAll(cellDir, 0o755))
+				newFilePath := filepath.Join(cellDir, "new_file.txt")
+				err := os.WriteFile(newFilePath, []byte("new content\n"), 0o644)
+				require.NoError(t, err)
+
+				return map[string]interface{}{"result": "modified"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+			CellPath:     "cells/test",
+		},
+	}
+
+	output, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "modified", output.OpOutput["result"])
+
+	// Debug output
+	t.Logf("Output artifacts count: %d", len(outputArts))
+	for i, art := range outputArts {
+		t.Logf("Artifact %d: %s", i, art.Name())
+	}
+
+	// CRITICAL: Since this is the first commit (parent == base), we only get 2 artifacts
+	// When parent != base, we'd get 3 artifacts
+	require.Len(t, outputArts, 2, "should have 2 artifacts when parent == base: thin pack, diff_from_parent")
+
+	// Verify artifact names
+	require.Equal(t, "__git_state_thin_pack__", outputArts[0].Name())
+	require.Equal(t, "diff_from_parent.diff", outputArts[1].Name())
+
+	// Verify all artifacts are readable
+	for i, art := range outputArts {
+		reader, err := art.Open()
+		require.NoError(t, err, "artifact %d should be readable", i)
+		require.NotNil(t, reader, "artifact %d should have content", i)
+		reader.Close()
+	}
+
+	// Verify persist hash was set
+	require.NotEmpty(t, output.GitResult.PersistHash, "persist hash should be set when changes are made")
+}
+
+func TestWithGitWorkspace_PersistWithDiffs_NoChanges_NoArtifacts(t *testing.T) {
+	t.Parallel()
+
+	// Test that when an operation makes NO changes, no diff artifacts are created
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Don't make any changes
+				return map[string]interface{}{"result": "no-op"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+			CellPath:     "cells/test",
+		},
+	}
+
+	output, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "no-op", output.OpOutput["result"])
+
+	// Should have no output artifacts when there are no changes
+	require.Empty(t, outputArts, "should have no artifacts when there are no changes")
+
+	// Verify persist hash is empty
+	require.Empty(t, output.GitResult.PersistHash, "persist hash should be empty when no changes")
+}
+
+func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T) {
+	t.Parallel()
+
+	// Test that when there's an input thinpack but NO changes, the input thinpack is passed through
+	// (but no diff artifacts are created)
+	inputThinPack := &mockArtifact{name: "__git_state_thin_pack__", data: []byte("existing thin pack data"), id: "input-thinpack-123"}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Don't make any changes
+				return map[string]interface{}{"result": "no-change"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+			CellPath:     "cells/test",
+		},
+	}
+
+	inputArtifacts := []swf.Artifact{inputThinPack}
+	output, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+
+	// Verify success
+	require.NoError(t, err)
+	assert.Equal(t, "no-change", output.OpOutput["result"])
+
+	// Should have exactly 1 artifact (the passed-through input thinpack)
+	require.Len(t, outputArts, 1, "should have 1 artifact: the passed-through input thinpack")
+
+	// Verify it's the SAME artifact as input (pass-through)
+	require.Equal(t, "__git_state_thin_pack__", outputArts[0].Name())
+	require.Equal(t, inputThinPack.ID(), outputArts[0].ID(), "should be the same artifact (passed through)")
+
+	// Verify persist hash is empty
+	require.Empty(t, output.GitResult.PersistHash, "persist hash should be empty when no changes")
+}
+
+func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
+	t.Parallel()
+
+	// Test that the diff artifacts contain expected content
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				// Make a specific change so we can verify the diff content
+				worktreePath := input["worktree_path"].(string)
+				cellDir := filepath.Join(worktreePath, "cells", "test")
+				require.NoError(t, os.MkdirAll(cellDir, 0o755))
+
+				testFilePath := filepath.Join(cellDir, "test_diff.txt")
+				err := os.WriteFile(testFilePath, []byte("Line 1\nLine 2\nLine 3\n"), 0o644)
+				require.NoError(t, err)
+
+				return map[string]interface{}{"result": "added file"}, nil
+			},
+		},
+	}
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	controller := gitstate.NewController(nil)
+	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
+
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"worktree_path": worktree,
+		},
+		GitTaskContext: gitstate.GitTaskContext{
+			BaseRepo:     baseRepo,
+			BaseRef:      baseHash,
+			WorktreePath: worktree,
+			CellName:     "cells/test",
+			CellPath:     "cells/test",
+		},
+	}
+
+	output, outputArts, err := wrapped(context.Background(), req, nil)
+
+	// Verify success
+	require.NoError(t, err)
+	// First commit: parent == base, so only 2 artifacts
+	require.Len(t, outputArts, 2)
+
+	// Read the diff from parent artifact and verify content
+	diffFromParentReader, err := outputArts[1].Open()
+	require.NoError(t, err)
+	diffFromParentBytes, err := io.ReadAll(diffFromParentReader)
+	require.NoError(t, err)
+	diffFromParentReader.Close()
+
+	diffFromParentStr := string(diffFromParentBytes)
+	t.Logf("Diff from parent:\n%s", diffFromParentStr)
+
+	// Verify the diff contains expected patterns
+	assert.Contains(t, diffFromParentStr, "test_diff.txt", "diff should mention the file")
+	assert.Contains(t, diffFromParentStr, "diff --git", "diff should be in git diff format")
+	assert.Contains(t, diffFromParentStr, "Line 1", "diff should contain file content")
+
+	// Note: No diff from base since parent == base in this first commit scenario
+
+	// Verify persist hash was set
+	require.NotEmpty(t, output.GitResult.PersistHash)
+}

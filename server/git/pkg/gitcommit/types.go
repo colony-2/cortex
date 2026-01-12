@@ -48,3 +48,12 @@ type RestoreCommitOutput struct {
 	ThinPacksApplied []string  `json:"thin_packs_applied,omitempty"` // List of applied thin packs
 	RestoredAt       time.Time `json:"restored_at"`                  // Timestamp of operation
 }
+
+// PersistWithDiffsOutput extends PersistCommitOutput with diff artifacts
+type PersistWithDiffsOutput struct {
+	PersistCommitOutput                 // Embedded commit and thin pack info
+	DiffFromParentPath  string `json:"diff_from_parent_path"` // Path to diff from parent commit
+	DiffFromParentSize  int64  `json:"diff_from_parent_size"` // Size of parent diff in bytes
+	DiffFromBasePath    string `json:"diff_from_base_path"`   // Path to diff from base commit
+	DiffFromBaseSize    int64  `json:"diff_from_base_size"`   // Size of base diff in bytes
+}

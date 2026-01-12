@@ -361,3 +361,188 @@ func TestResolveScopePath_RequiresCellPath(t *testing.T) {
 		require.Contains(t, err.Error(), "invalid cell path")
 	})
 }
+
+func TestControllerPersistWithDiffs_WithChanges(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// Make a change
+	file := writeFile{Path: filepath.Join(worktree, "cells", "alpha", "test.txt"), Content: "test content"}
+	require.NoError(t, os.MkdirAll(filepath.Dir(file.Path), 0o755))
+	require.NoError(t, os.WriteFile(file.Path, []byte(file.Content), 0o644))
+
+	// Persist with diffs
+	output, artifacts, err := controller.PersistWithDiffs(context.Background(), ctx)
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	require.True(t, output.HasChanges)
+
+	// Since parent == base in this case (first commit from base), we only get 2 artifacts:
+	// thin pack + diff_from_parent (diff_from_base is skipped when parent == base)
+	require.Len(t, artifacts, 2, "should have 2 artifacts when parent == base")
+
+	// Verify artifact names
+	require.Equal(t, "__git_state_thin_pack__", artifacts[0].Name())
+	require.Equal(t, "diff_from_parent.diff", artifacts[1].Name())
+
+	// Verify output has diff from parent
+	require.NotEmpty(t, output.DiffFromParentPath)
+	require.Greater(t, output.DiffFromParentSize, int64(0))
+
+	// Diff from base should be empty since parent == base
+	require.Empty(t, output.DiffFromBasePath)
+
+	// Verify commit was created
+	require.NotEmpty(t, output.CommitHash)
+	require.NotEqual(t, baseHash, output.CommitHash)
+	require.Equal(t, baseHash, output.ParentHash)
+}
+
+func TestControllerPersistWithDiffs_NoChanges(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// Don't make any changes
+
+	output, artifacts, err := controller.PersistWithDiffs(context.Background(), ctx)
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	require.False(t, output.HasChanges)
+
+	// Should return no artifacts when there are no changes
+	require.Nil(t, artifacts)
+	require.Empty(t, output.DiffFromParentPath)
+	require.Empty(t, output.DiffFromBasePath)
+}
+
+func TestControllerPersistWithDiffs_MultipleCommits(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// First commit
+	file1 := filepath.Join(worktree, "cells", "alpha", "file1.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(file1), 0o755))
+	require.NoError(t, os.WriteFile(file1, []byte("content 1"), 0o644))
+
+	output1, artifacts1, err := controller.PersistWithDiffs(context.Background(), ctx)
+	require.NoError(t, err)
+	require.True(t, output1.HasChanges)
+	// First commit: parent == base, so only 2 artifacts (thin pack + diff_from_parent)
+	require.Len(t, artifacts1, 2)
+
+	// Verify first commit diffs
+	require.NotEmpty(t, output1.DiffFromParentPath)
+	// No diff from base since parent == base
+	require.Empty(t, output1.DiffFromBasePath)
+
+	firstCommit := output1.CommitHash
+
+	// Make second commit in the same workspace
+	file2 := filepath.Join(worktree, "cells", "alpha", "file2.txt")
+	require.NoError(t, os.WriteFile(file2, []byte("content 2"), 0o644))
+
+	// Update ctx to continue from firstCommit but restore the original base
+	// After the first PersistWithDiffs, ctx.ResolvedBaseHash was updated to firstCommit
+	// We need to restore it to the original baseHash to test the diff from base != parent case
+	ctx.ParentHash = firstCommit
+	ctx.PersistHash = ""  // Clear this so we can make a new commit
+	ctx.ResolvedBaseHash = baseHash  // Restore to original base
+
+	output2, artifacts2, err := controller.PersistWithDiffs(context.Background(), ctx)
+	require.NoError(t, err)
+	require.True(t, output2.HasChanges)
+	// Second commit: now parent != base (parent is firstCommit, base is still baseHash)
+	// So we should get 3 artifacts
+	require.Len(t, artifacts2, 3)
+
+	// Verify second commit diffs
+	require.NotEmpty(t, output2.DiffFromParentPath)
+	require.NotEmpty(t, output2.DiffFromBasePath, "Should have diff from base when parent != base")
+
+	// Parent should be first commit
+	require.Equal(t, firstCommit, output2.ParentHash)
+
+	// The diff from parent should only show file2.txt
+	// The diff from base should show both file1.txt and file2.txt (since base is still baseHash)
+	require.Greater(t, output2.DiffFromBaseSize, output2.DiffFromParentSize,
+		"Diff from base should be larger than diff from parent")
+}
+
+func TestControllerPersistWithDiffs_ArtifactCleanup(t *testing.T) {
+	t.Parallel()
+
+	baseRepo, baseHash, cleanup := setupGitRepo(t)
+	defer cleanup()
+
+	worktree := filepath.Join(t.TempDir(), "worktree")
+
+	ctx := newTaskContext(baseRepo, baseHash, worktree, "cells/alpha")
+
+	controller := NewController(nil)
+	require.NoError(t, controller.prepareWorkspace(context.Background(), ctx))
+	require.NoError(t, controller.Restore(context.Background(), ctx, nil))
+
+	// Make a change
+	file := filepath.Join(worktree, "cells", "alpha", "cleanup-test.txt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+	require.NoError(t, os.WriteFile(file, []byte("cleanup test"), 0o644))
+
+	output, artifacts, err := controller.PersistWithDiffs(context.Background(), ctx)
+	require.NoError(t, err)
+	// First commit: parent == base, so only 2 artifacts
+	require.Len(t, artifacts, 2)
+
+	// Verify files exist before cleanup
+	require.FileExists(t, output.ThinPackPath)
+	require.FileExists(t, output.DiffFromParentPath)
+	// No diff from base since parent == base
+	require.Empty(t, output.DiffFromBasePath)
+
+	// Get the temp directory path from one of the file paths
+	tempDir := filepath.Dir(output.ThinPackPath)
+
+	// The temp directory should exist
+	_, err = os.Stat(tempDir)
+	require.NoError(t, err)
+
+	// Trigger cleanup by calling Cleanup on the last artifact
+	// In real usage, the SWF framework would call the cleanup callback when done
+	// The last artifact (diff_from_parent) has the cleanup callback attached
+	err = artifacts[1].Cleanup()
+	require.NoError(t, err)
+
+	// The temp directory should be removed after cleanup
+	_, err = os.Stat(tempDir)
+	require.Error(t, err)
+	require.True(t, os.IsNotExist(err))
+}

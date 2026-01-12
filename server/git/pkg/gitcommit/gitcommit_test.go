@@ -421,3 +421,399 @@ func TestRestoreCommit_ChainOfThinPacks(t *testing.T) {
 		assert.FileExists(t, filePath)
 	}
 }
+
+func TestGenerateDiff_BasicDiff(t *testing.T) {
+	// Setup repository with commits
+	repoPath, rootCommit, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Get the current commit (after initial setup which creates 3 files)
+	currentCommit := getCommitHash(t, repoPath)
+
+	// Generate diff from root to current
+	input := GenerateDiffInput{
+		RepoPath:        repoPath,
+		FromHash:        rootCommit,
+		ToHash:          currentCommit,
+		StorageLocation: storageDir,
+		ContextLines:    5,
+	}
+
+	output, err := GenerateDiff(context.Background(), input)
+	require.NoError(t, err)
+
+	// Verify output
+	assert.NotEmpty(t, output.DiffPath)
+	assert.Greater(t, output.DiffSize, int64(0))
+
+	// Verify diff file exists
+	assert.FileExists(t, output.DiffPath)
+
+	// Verify diff filename format
+	expectedName := fmt.Sprintf("%s-%s.diff", rootCommit[:7], currentCommit[:7])
+	expectedPath := filepath.Join(storageDir, expectedName)
+	assert.Equal(t, expectedPath, output.DiffPath)
+
+	// Read diff content and verify it contains expected changes
+	diffContent, err := os.ReadFile(output.DiffPath)
+	require.NoError(t, err)
+	diffStr := string(diffContent)
+
+	// Should contain file additions
+	assert.Contains(t, diffStr, "file1.txt")
+	assert.Contains(t, diffStr, "file2.txt")
+	assert.Contains(t, diffStr, "file3.txt")
+	assert.Contains(t, diffStr, "diff --git")
+}
+
+func TestGenerateDiff_CustomContextLines(t *testing.T) {
+	repoPath, _, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Create a file with many lines
+	manyLinesFile := filepath.Join(repoPath, "many-lines.txt")
+	var lines []string
+	for i := 1; i <= 50; i++ {
+		lines = append(lines, fmt.Sprintf("Line %d\n", i))
+	}
+	err = os.WriteFile(manyLinesFile, []byte(strings.Join(lines, "")), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "many-lines.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	cmd = exec.Command("git", "commit", "-m", "Add many lines")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	parentCommit := getCommitHash(t, repoPath)
+
+	// Modify middle of the file
+	lines[25] = "MODIFIED Line 26\n"
+	err = os.WriteFile(manyLinesFile, []byte(strings.Join(lines, "")), 0644)
+	require.NoError(t, err)
+
+	cmd = exec.Command("git", "add", "many-lines.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	cmd = exec.Command("git", "commit", "-m", "Modify line")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	currentCommit := getCommitHash(t, repoPath)
+
+	// Generate diff with wide context
+	input := GenerateDiffInput{
+		RepoPath:        repoPath,
+		FromHash:        parentCommit,
+		ToHash:          currentCommit,
+		StorageLocation: storageDir,
+		ContextLines:    10,
+	}
+
+	output, err := GenerateDiff(context.Background(), input)
+	require.NoError(t, err)
+
+	// Read diff and verify context is included
+	diffContent, err := os.ReadFile(output.DiffPath)
+	require.NoError(t, err)
+	diffStr := string(diffContent)
+
+	// Should contain the modified line
+	assert.Contains(t, diffStr, "MODIFIED Line 26")
+	// Should contain context lines around the change
+	assert.Contains(t, diffStr, "Line 17") // Context before
+	assert.Contains(t, diffStr, "Line 35") // Context after
+}
+
+func TestGenerateDiff_EmptyDiff(t *testing.T) {
+	repoPath, _, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Get current commit
+	currentCommit := getCommitHash(t, repoPath)
+
+	// Generate diff from commit to itself (no changes)
+	input := GenerateDiffInput{
+		RepoPath:        repoPath,
+		FromHash:        currentCommit,
+		ToHash:          currentCommit,
+		StorageLocation: storageDir,
+		ContextLines:    5,
+	}
+
+	output, err := GenerateDiff(context.Background(), input)
+	require.NoError(t, err)
+
+	// Diff file should exist but be empty
+	assert.FileExists(t, output.DiffPath)
+	assert.Equal(t, int64(0), output.DiffSize)
+}
+
+func TestGenerateDiff_ErrorCases(t *testing.T) {
+	repoPath, rootCommit, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	tests := []struct {
+		name        string
+		input       GenerateDiffInput
+		expectedErr string
+	}{
+		{
+			name: "invalid repository",
+			input: GenerateDiffInput{
+				RepoPath:        "/nonexistent/repo",
+				FromHash:        rootCommit,
+				ToHash:          rootCommit,
+				StorageLocation: storageDir,
+			},
+			expectedErr: "invalid repository",
+		},
+		{
+			name: "missing from hash",
+			input: GenerateDiffInput{
+				RepoPath:        repoPath,
+				FromHash:        "",
+				ToHash:          rootCommit,
+				StorageLocation: storageDir,
+			},
+			expectedErr: "both from_hash and to_hash are required",
+		},
+		{
+			name: "missing to hash",
+			input: GenerateDiffInput{
+				RepoPath:        repoPath,
+				FromHash:        rootCommit,
+				ToHash:          "",
+				StorageLocation: storageDir,
+			},
+			expectedErr: "both from_hash and to_hash are required",
+		},
+		{
+			name: "nonexistent from hash",
+			input: GenerateDiffInput{
+				RepoPath:        repoPath,
+				FromHash:        "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+				ToHash:          rootCommit,
+				StorageLocation: storageDir,
+			},
+			expectedErr: "does not exist in repository",
+		},
+		{
+			name: "nonexistent to hash",
+			input: GenerateDiffInput{
+				RepoPath:        repoPath,
+				FromHash:        rootCommit,
+				ToHash:          "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+				StorageLocation: storageDir,
+			},
+			expectedErr: "does not exist in repository",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := GenerateDiff(context.Background(), tt.input)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
+}
+
+func TestPersistCommitWithDiffs_WithChanges(t *testing.T) {
+	repoPath, rootCommit, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "persist-diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Get parent commit before making changes
+	parentCommit := getCommitHash(t, repoPath)
+
+	// Make a new change
+	newFile := filepath.Join(repoPath, "new-for-diff.txt")
+	err = os.WriteFile(newFile, []byte("Content for diff test\n"), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "new-for-diff.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	// Test PersistCommitWithDiffs
+	input := PersistCommitActivity{
+		RepoPath:        repoPath,
+		StorageLocation: storageDir,
+		RootHash:        rootCommit,
+		CommitMessage:   "Test commit with diffs",
+		Author:          "Test User <test@example.com>",
+	}
+
+	output, err := PersistCommitWithDiffs(context.Background(), input, rootCommit)
+	require.NoError(t, err)
+
+	// Verify basic persist output
+	assert.NotEmpty(t, output.CommitHash)
+	assert.Equal(t, parentCommit, output.ParentHash)
+	assert.NotEmpty(t, output.ThinPackPath)
+	assert.Greater(t, output.ThinPackSize, int64(0))
+	assert.True(t, output.HasChanges)
+
+	// Verify diff from parent
+	assert.NotEmpty(t, output.DiffFromParentPath)
+	assert.Greater(t, output.DiffFromParentSize, int64(0))
+	assert.FileExists(t, output.DiffFromParentPath)
+
+	// Verify diff from parent content
+	parentDiffContent, err := os.ReadFile(output.DiffFromParentPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(parentDiffContent), "new-for-diff.txt")
+
+	// Verify diff from base
+	assert.NotEmpty(t, output.DiffFromBasePath)
+	assert.Greater(t, output.DiffFromBaseSize, int64(0))
+	assert.FileExists(t, output.DiffFromBasePath)
+
+	// Verify diff from base content (should show all changes from root)
+	baseDiffContent, err := os.ReadFile(output.DiffFromBasePath)
+	require.NoError(t, err)
+	baseDiffStr := string(baseDiffContent)
+	assert.Contains(t, baseDiffStr, "new-for-diff.txt")
+	// Should also contain all files added since root
+	assert.Contains(t, baseDiffStr, "file1.txt")
+	assert.Contains(t, baseDiffStr, "file2.txt")
+}
+
+func TestPersistCommitWithDiffs_NoChanges(t *testing.T) {
+	repoPath, rootCommit, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "persist-diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Don't make any changes - persist with clean working directory
+	input := PersistCommitActivity{
+		RepoPath:        repoPath,
+		StorageLocation: storageDir,
+		RootHash:        rootCommit,
+		CommitMessage:   "No changes commit",
+	}
+
+	output, err := PersistCommitWithDiffs(context.Background(), input, rootCommit)
+	require.NoError(t, err)
+
+	// Should have no changes
+	assert.False(t, output.HasChanges)
+	assert.Empty(t, output.ThinPackPath)
+	assert.Empty(t, output.DiffFromParentPath)
+	assert.Empty(t, output.DiffFromBasePath)
+}
+
+func TestPersistCommitWithDiffs_ParentEqualToBase(t *testing.T) {
+	repoPath, _, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "persist-diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Get current commit - this will be both parent and base
+	currentCommit := getCommitHash(t, repoPath)
+
+	// Make a change
+	newFile := filepath.Join(repoPath, "test-same-base-parent.txt")
+	err = os.WriteFile(newFile, []byte("Test content\n"), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "test-same-base-parent.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	input := PersistCommitActivity{
+		RepoPath:        repoPath,
+		StorageLocation: storageDir,
+		RootHash:        currentCommit,
+		CommitMessage:   "Test with same parent and base",
+	}
+
+	// Use current commit as base (same as parent will be)
+	output, err := PersistCommitWithDiffs(context.Background(), input, currentCommit)
+	require.NoError(t, err)
+
+	// Should have changes and diff from parent
+	assert.True(t, output.HasChanges)
+	assert.NotEmpty(t, output.DiffFromParentPath)
+	assert.FileExists(t, output.DiffFromParentPath)
+
+	// Should NOT have diff from base (since base == parent)
+	assert.Empty(t, output.DiffFromBasePath)
+}
+
+func TestPersistCommitWithDiffs_ContextWindow(t *testing.T) {
+	repoPath, rootCommit, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	storageDir, err := os.MkdirTemp("", "persist-diffs-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(storageDir)
+
+	// Create a file with many lines
+	manyLinesFile := filepath.Join(repoPath, "context-test.txt")
+	var lines []string
+	for i := 1; i <= 30; i++ {
+		lines = append(lines, fmt.Sprintf("Line %d\n", i))
+	}
+	err = os.WriteFile(manyLinesFile, []byte(strings.Join(lines, "")), 0644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "context-test.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	input := PersistCommitActivity{
+		RepoPath:        repoPath,
+		StorageLocation: storageDir,
+		RootHash:        rootCommit,
+		CommitMessage:   "Add file with many lines",
+	}
+
+	output, err := PersistCommitWithDiffs(context.Background(), input, rootCommit)
+	require.NoError(t, err)
+
+	// Read diff and verify wide context (10 lines default)
+	diffContent, err := os.ReadFile(output.DiffFromParentPath)
+	require.NoError(t, err)
+	diffStr := string(diffContent)
+
+	// The diff should show context - verify it's using unified format
+	assert.Contains(t, diffStr, "@@")
+	// Should contain multiple lines of the file
+	assert.Contains(t, diffStr, "Line 1")
+	assert.Contains(t, diffStr, "Line 10")
+}
