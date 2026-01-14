@@ -18,17 +18,21 @@ type writeFile struct {
 
 func newTaskContext(baseRepo, baseRef, worktree, cell string) *GitTaskContext {
 	return &GitTaskContext{
-		BaseRepo:         baseRepo,
-		BaseRef:          baseRef,
-		ResolvedBaseHash: baseRef,
-		PersistHash:      baseRef,
-		ParentHash:       baseRef,
-		WorktreePath:     worktree,
-		CellName:         cell,
-		CellPath:         cell,
-		TicketID:         "ticket-123",
-		NodePath:         "node",
-		InvokeSeq:        1,
+		GlobalGitTaskContext: &GlobalGitTaskContext{
+			BaseRepo:         baseRepo,
+			BaseRef:          baseRef,
+			ResolvedBaseHash: baseRef,
+			PersistHash:      baseRef,
+			ParentHash:       baseRef,
+			CellName:         cell,
+			CellPath:         cell,
+			TicketID:         "ticket-123",
+			NodePath:         "node",
+			InvokeSeq:        1,
+			InvokeHash:       "",
+			GitAuthor:        "",
+		},
+		WorktreePath: worktree,
 	}
 }
 
@@ -255,19 +259,23 @@ func TestRestore_NilThinPackArtifactError(t *testing.T) {
 
 func TestBuildCommitMessage(t *testing.T) {
 	ctx := &GitTaskContext{
-		BaseRepo:         "/repo",
-		BaseRef:          "main",
-		ResolvedBaseHash: strings.Repeat("a", 40),
-		ParentHash:       strings.Repeat("b", 40),
-		PersistHash:      strings.Repeat("c", 40),
-		ThinPackPath:     "git/thin-packs/cb-pack.pack",
-		TicketID:         "TICK-1",
-		CellName:         "cells/alpha",
-		CellPath:         "cells/alpha",
-		NodePath:         "cells/alpha/op",
-		InvokeSeq:        3,
+		GlobalGitTaskContext: &GlobalGitTaskContext{
+			BaseRepo:         "/repo",
+			BaseRef:          "main",
+			ResolvedBaseHash: strings.Repeat("a", 40),
+			ParentHash:       strings.Repeat("b", 40),
+			PersistHash:      strings.Repeat("c", 40),
+			TicketID:         "TICK-1",
+			CellName:         "cells/alpha",
+			CellPath:         "cells/alpha",
+			NodePath:         "cells/alpha/op",
+			InvokeSeq:        3,
+			InvokeHash:       "",
+			GitAuthor:        "",
+		},
+		WorktreePath: "",
 	}
-	message := buildCommitMessage(ctx, ctx.PersistHash, ctx.ThinPackPath)
+	message := buildCommitMessage(ctx, ctx.PersistHash, "")
 	require.Contains(t, message, ctx.ResolvedBaseHash)
 	require.Contains(t, message, ctx.ParentHash)
 	require.Contains(t, message, ctx.PersistHash)
@@ -320,42 +328,42 @@ func TestResolveScopePath_RequiresCellPath(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("empty CellPath returns error", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: ""}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: ""}}
 		_, err := ctrl.resolveScopePath(ctx, task)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cell_path is required")
 	})
 
 	t.Run("valid CellPath returns sanitized path", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: "cells/my-cell"}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: "cells/my-cell"}}
 		scope, err := ctrl.resolveScopePath(ctx, task)
 		require.NoError(t, err)
 		require.Equal(t, "cells/my-cell", scope)
 	})
 
 	t.Run("path with trailing slash is sanitized", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: "cells/my-cell/"}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: "cells/my-cell/"}}
 		scope, err := ctrl.resolveScopePath(ctx, task)
 		require.NoError(t, err)
 		require.Equal(t, "cells/my-cell", scope)
 	})
 
 	t.Run("path traversal is rejected", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: "cells/../other"}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: "cells/../other"}}
 		_, err := ctrl.resolveScopePath(ctx, task)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid cell path")
 	})
 
 	t.Run("absolute path with slash is rejected", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: "/cells/my-cell"}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: "/cells/my-cell"}}
 		_, err := ctrl.resolveScopePath(ctx, task)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid cell path")
 	})
 
 	t.Run("only slashes is rejected as absolute", func(t *testing.T) {
-		task := &GitTaskContext{CellPath: "///"}
+		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: "///"}}
 		_, err := ctrl.resolveScopePath(ctx, task)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid cell path")

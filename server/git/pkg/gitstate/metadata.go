@@ -7,9 +7,7 @@ func buildCommitMessage(ctx *GitTaskContext, persistHash, thinPackPath string) s
 	if persistHash == "" {
 		persistHash = ctx.PersistHash
 	}
-	if thinPackPath == "" {
-		thinPackPath = ctx.ThinPackPath
-	}
+	// ThinPackPath removed - no longer used
 	return fmt.Sprintf(`Recipe node %s seq %d
 
 ---

@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/activity"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -202,7 +204,6 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	}
 	wrapped := withGitWorkspace(deps, registration, controller)
 
-	worktreePath := filepath.Join(t.TempDir(), "worktree")
 	output, artifacts, err := wrapped(context.Background(), ActivityInvocationRequest{
 		Input: map[string]interface{}{
 			"context": map[string]interface{}{
@@ -212,16 +213,19 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 				},
 			},
 		},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:         repoDir,
 			BaseRef:          baseHash,
 			ResolvedBaseHash: baseHash,
 			PersistHash:      "",
 			ParentHash:       "",
-			WorktreePath:     worktreePath,
 			TicketID:         "T-1",
 			CellName:         "cells/beta",
 			CellPath:         "cells/beta",
+			GitAuthor:        "",
+			NodePath:         "",
+			InvokeSeq:        0,
+			InvokeHash:       "",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -274,18 +278,22 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	require.True(t, ok)
 
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
-	worktreeDir := filepath.Join(t.TempDir(), "work")
 	input := map[string]interface{}{"message": "hi"}
 	_, _, err = handler(context.Background(), ActivityInvocationRequest{
 		Input: input,
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:         repoPath,
 			BaseRef:          baseHash,
 			ResolvedBaseHash: baseHash,
-			WorktreePath:     worktreeDir,
 			TicketID:         "TEST-1",
 			CellName:         "cells/cell-a",
 			CellPath:         "cells/cell-a",
+			PersistHash:      "",
+			ParentHash:       "",
+			GitAuthor:        "",
+			NodePath:         "",
+			InvokeSeq:        0,
+			InvokeHash:       "",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -619,18 +627,15 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	// Create a real git repo for testing
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellPath:     "cells/test",
+			BaseRef:      baseHash,			CellPath:     "cells/test",
 		},
 	}
 
@@ -679,18 +684,15 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 	// Create a real git repo for testing
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellPath:     "cells/test",
+			BaseRef:      baseHash,			CellPath:     "cells/test",
 		},
 	}
 
@@ -732,18 +734,15 @@ func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellPath:     "cells/test",
+			BaseRef:      baseHash,			CellPath:     "cells/test",
 		},
 	}
 
@@ -786,18 +785,15 @@ func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *test
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellPath:     "cells/test",
+			BaseRef:      baseHash,			CellPath:     "cells/test",
 		},
 	}
 
@@ -833,18 +829,15 @@ func TestWithGitWorkspace_RestoreFailure_ReturnsNoArtifacts(t *testing.T) {
 	// Use invalid repo path to force Restore to fail
 	invalidRepo := "/nonexistent/repo"
 	invalidHash := "0000000000000000000000000000000000000000"
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     invalidRepo,
-			BaseRef:      invalidHash,
-			WorktreePath: worktree,
-		},
+			BaseRef:      invalidHash,		},
 	}
 
 	_, outputArts, err := wrapped(context.Background(), req, nil)
@@ -875,18 +868,15 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
-		GitTaskContext: gitstate.GitTaskContext{
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellPath:     "cells/test",
+			BaseRef:      baseHash,			CellPath:     "cells/test",
 		},
 	}
 
@@ -917,15 +907,21 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	ctx := &gitstate.GitTaskContext{
-		BaseRepo:         baseRepo,
-		BaseRef:          baseHash,
-		ResolvedBaseHash: baseHash,
-		WorktreePath:     worktree,
-		CellName:         "cells/alpha/test", // Full file system path to the cell directory
-		CellPath:         "cells/alpha/test",
-		NodePath:         "recipe/node", // Recipe node path (not file system path)
-		TicketID:         "TEST-1",
-		InvokeSeq:        1,
+		GlobalGitTaskContext: &gitstate.GlobalGitTaskContext{
+			BaseRepo:         baseRepo,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			PersistHash:      "",
+			ParentHash:       "",
+			CellName:         "cells/alpha/test", // Full file system path to the cell directory
+			CellPath:         "cells/alpha/test",
+			NodePath:         "recipe/node", // Recipe node path (not file system path)
+			TicketID:         "TEST-1",
+			InvokeSeq:        1,
+			InvokeHash:       "",
+			GitAuthor:        "",
+		},
+		WorktreePath: worktree,
 	}
 
 	controller := gitstate.NewController(nil)
@@ -983,7 +979,7 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 		Step: recipeops.TaskStep{
 			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 				// Make a change to the worktree inside the cell directory
-				worktreePath := input["worktree_path"].(string)
+				worktreePath := deps.WorktreePath()
 				cellDir := filepath.Join(worktreePath, "cells", "test")
 				require.NoError(t, os.MkdirAll(cellDir, 0o755))
 				newFilePath := filepath.Join(cellDir, "new_file.txt")
@@ -997,20 +993,15 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1020,16 +1011,6 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 	// Verify success
 	require.NoError(t, err)
 	assert.Equal(t, "modified", output.OpOutput["result"])
-
-	// Debug: Check git status after operation
-	cmd := exec.Command("git", "-C", worktree, "status", "--porcelain")
-	statusOutput, _ := cmd.CombinedOutput()
-	t.Logf("Git status after operation: %s", string(statusOutput))
-
-	// Debug: List files in the worktree
-	cmd = exec.Command("find", worktree, "-type", "f")
-	findOutput, _ := cmd.CombinedOutput()
-	t.Logf("Files in worktree:\n%s", string(findOutput))
 
 	// Debug: print all artifacts
 	t.Logf("Output artifacts count: %d", len(outputArts))
@@ -1071,7 +1052,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 		Step: recipeops.TaskStep{
 			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 				// Make a change to the worktree inside the cell directory
-				worktreePath := input["worktree_path"].(string)
+				worktreePath := deps.WorktreePath()
 				cellDir := filepath.Join(worktreePath, "cells", "test")
 				require.NoError(t, os.MkdirAll(cellDir, 0o755))
 				modifiedFile := filepath.Join(cellDir, "modified.txt")
@@ -1085,20 +1066,15 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1144,7 +1120,7 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 		Step: recipeops.TaskStep{
 			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 				// Make a change to the worktree inside the cell directory
-				worktreePath := input["worktree_path"].(string)
+				worktreePath := deps.WorktreePath()
 				cellDir := filepath.Join(worktreePath, "cells", "test")
 				require.NoError(t, os.MkdirAll(cellDir, 0o755))
 				newFilePath := filepath.Join(cellDir, "new_file.txt")
@@ -1158,20 +1134,15 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1223,20 +1194,15 @@ func TestWithGitWorkspace_PersistWithDiffs_NoChanges_NoArtifacts(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1272,20 +1238,15 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1316,7 +1277,7 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 		Step: recipeops.TaskStep{
 			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
 				// Make a specific change so we can verify the diff content
-				worktreePath := input["worktree_path"].(string)
+				worktreePath := deps.WorktreePath()
 				cellDir := filepath.Join(worktreePath, "cells", "test")
 				require.NoError(t, os.MkdirAll(cellDir, 0o755))
 
@@ -1331,20 +1292,15 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 
 	baseRepo, baseHash, cleanup := setupGitRepo(t)
 	defer cleanup()
-	worktree := filepath.Join(t.TempDir(), "worktree")
 
 	controller := gitstate.NewController(nil)
 	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
 
 	req := ActivityInvocationRequest{
-		Input: map[string]interface{}{
-			"worktree_path": worktree,
-		},
-		GitTaskContext: gitstate.GitTaskContext{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,
-			WorktreePath: worktree,
-			CellName:     "cells/test",
+			BaseRef:      baseHash,			CellName:     "cells/test",
 			CellPath:     "cells/test",
 		},
 	}
@@ -1375,4 +1331,64 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 
 	// Verify persist hash was set
 	require.NotEmpty(t, output.GitResult.PersistHash)
+}
+
+func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
+	testPath := "/test/worktree/path"
+
+	t.Run("map[string]interface{} with sentinel", func(t *testing.T) {
+		input := map[string]interface{}{
+			"path":   contextual.WorktreePathSentinel,
+			"other":  "value",
+			"nested": map[string]interface{}{"inner": contextual.WorktreePathSentinel},
+		}
+		result := replaceSentinels(input, testPath)
+		assert.Equal(t, testPath, result["path"])
+		assert.Equal(t, "value", result["other"])
+		nested := result["nested"].(map[string]interface{})
+		assert.Equal(t, testPath, nested["inner"])
+	})
+
+	t.Run("recipe.InputMap with sentinel", func(t *testing.T) {
+		input := recipe.InputMap{
+			"path":   contextual.WorktreePathSentinel,
+			"other":  "value",
+			"nested": recipe.InputMap{"inner": contextual.WorktreePathSentinel},
+		}
+		result := replaceSentinelValue(input, testPath)
+		resultMap := result.(recipe.InputMap)
+		assert.Equal(t, testPath, resultMap["path"])
+		assert.Equal(t, "value", resultMap["other"])
+		nested := resultMap["nested"].(recipe.InputMap)
+		assert.Equal(t, testPath, nested["inner"])
+	})
+
+	t.Run("array with sentinels", func(t *testing.T) {
+		input := []interface{}{
+			contextual.WorktreePathSentinel,
+			"normal",
+			map[string]interface{}{"key": contextual.WorktreePathSentinel},
+			recipe.InputMap{"key": contextual.WorktreePathSentinel},
+		}
+		result := replaceSentinelValue(input, testPath)
+		resultArr := result.([]interface{})
+		assert.Equal(t, testPath, resultArr[0])
+		assert.Equal(t, "normal", resultArr[1])
+		assert.Equal(t, testPath, resultArr[2].(map[string]interface{})["key"])
+		assert.Equal(t, testPath, resultArr[3].(recipe.InputMap)["key"])
+	})
+
+	t.Run("non-sentinel values unchanged", func(t *testing.T) {
+		input := map[string]interface{}{
+			"string": "hello",
+			"number": 42,
+			"bool":   true,
+			"nil":    nil,
+		}
+		result := replaceSentinels(input, testPath)
+		assert.Equal(t, "hello", result["string"])
+		assert.Equal(t, 42, result["number"])
+		assert.Equal(t, true, result["bool"])
+		assert.Nil(t, result["nil"])
+	})
 }

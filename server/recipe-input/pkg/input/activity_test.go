@@ -2,8 +2,10 @@ package input
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -15,7 +17,9 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"github.com/colony-2/swf-go/pkg/swf/toy"
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -128,4 +132,135 @@ inputs:
 
 	require.Equal(t, "foolish", air.Response)
 
+}
+
+func TestSimpleInputRealEngineWaitRestart(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	op := GetOp()
+	opR := op.GetManagementService().(*inputManagementService)
+	coreops.Register(op)
+	recipeYaml := `
+---
+id: test-recipe
+
+input_schema:
+  prompt:
+    type: string
+    default_value: Hello
+op: input
+inputs:
+  form:
+    question: "{{ inputs.prompt }}"
+`
+
+	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
+	require.NoError(t, err)
+
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(t, err)
+	workerDeps := coreops.NewServiceDepsBuilder().Build()
+	workSet, err := compiler.NewRecipeWorker(workerDeps, registry)
+	require.NoError(t, err)
+
+	dsn, stopPG, err := impl.StartEmbeddedPostgres()
+	require.NoError(t, err)
+	defer stopPG()
+
+	sqlDB, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+	defer sqlDB.Close()
+	require.NoError(t, impl.InstallPGWF(ctx, sqlDB))
+
+	strata, err := impl.StartEmbeddedStrata()
+	require.NoError(t, err)
+	defer strata.Shutdown()
+
+	taskWorkers := make([]swf.TaskWorker, 0, len(workSet.TaskWorkers))
+	for _, tw := range workSet.TaskWorkers {
+		taskWorkers = append(taskWorkers, tw)
+	}
+	engine, err := swf.NewEngineBuilder().
+		WithAwaitRecycleThreshold(5 * time.Second).
+		WithPostgresDSN(dsn).
+		WithStrata(strata.BaseURL).
+		WithStrataAPIKey(strata.APIKey).
+		WithLogger(slog.Default()).
+		WithMaxActive(100).
+		PlusWorkers(workSet.JobWorker, taskWorkers...).
+		Build(impl.Builder)
+	require.NoError(t, err)
+	go engine.Run(ctx)
+
+	wf := workflow.SWFWorkflowControl{
+		Engine: engine,
+	}
+	deps := coreops.NewServiceDepsBuilder().
+		WithWorkflowControl(&wf).
+		WithSSEManager(NewSimpleSSEManager()).
+		Build()
+	require.NoError(t, opR.Initialize(deps))
+
+	jobCtx, gitCtx := compiler.GenerateTestContext()
+	in := map[string]interface{}{
+		"prompt": "how old are you",
+	}
+
+	job := workflowctl.StartJob{
+		TenantId:   "test-tenant",
+		RecipeName: testRecipe.GetMetadata().ID,
+		Inputs:     in,
+		JobContext: jobCtx,
+		GitRef:     gitCtx.ParentRef,
+	}
+
+	jobKey, err := starter.StartRecipeJob(ctx, job, engine, *testRecipe)
+	require.NoError(t, err)
+
+	// Wait for job to reach Ready status
+	var inputs []PendingInput
+	for i := 0; i < 200; i++ {
+		time.Sleep(100 * time.Millisecond)
+		inputs, err = opR.collectPendingInputs(ctx, "test-tenant")
+		require.NoError(t, err)
+		if len(inputs) > 0 {
+			break
+		}
+	}
+	require.Equal(t, 1, len(inputs), "Expected 1 pending input after waiting")
+	pending := inputs[0]
+
+	time.Sleep(6 * time.Second)
+
+	afterWait, err := opR.collectPendingInputs(ctx, "test-tenant")
+	require.NoError(t, err)
+	require.Equal(t, 1, len(afterWait), "Expected pending input after restart wait")
+
+	result := opR.getDetails(ctx, "test-tenant", pending.JobID)
+	if result.hasError() {
+		t.Fatalf("failed to get result: %v", result.err)
+	}
+	details := result.value
+	require.Equal(t, "how old are you", details.Form.Question)
+	res2 := opR.submitResponse(ctx, "test-tenant", pending.JobID, FormResponse{
+		Response: "foolish",
+		Hash:     "abc123",
+	})
+	if res2.hasError() {
+		t.Fatalf("failed to submit response: %v", res2.err)
+	}
+
+	require.NoError(t, swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, engine))
+
+	res3, err := engine.GetJobResult(ctx, jobKey)
+	require.NoError(t, err)
+
+	res4, err := res3.GetData()
+	require.NoError(t, err)
+
+	air := Output{}
+	require.NoError(t, json.Unmarshal(res4, &air))
+
+	require.Equal(t, "foolish", air.Response)
 }

@@ -14,6 +14,7 @@ type OpDependencies interface {
 	GetInputArtifacts() []swf.Artifact
 	AddOutputArtifact(swf.Artifact) error
 	GetOutputArtifacts() []swf.Artifact
+	WorktreePath() string
 }
 
 // opDepImpl holds the actual dependencies.
@@ -22,6 +23,7 @@ type opDepImpl struct {
 	inputArtifacts  []swf.Artifact
 	outputArtifacts []swf.Artifact
 	workflowControl workflowctl.WorkflowControl
+	worktreePath    string
 }
 
 func (c *opDepImpl) GetOutputArtifacts() []swf.Artifact {
@@ -55,10 +57,16 @@ func (c *opDepImpl) WorkflowControl() workflowctl.WorkflowControl {
 	return c.workflowControl
 }
 
+// WorktreePath implements the OpDependencies interface.
+func (c *opDepImpl) WorktreePath() string {
+	return c.worktreePath
+}
+
 type OpDependenciesBuilder struct {
 	db              *gorm.DB
 	artifacts       []swf.Artifact
 	workflowControl workflowctl.WorkflowControl
+	worktreePath    string
 }
 
 // NewOpDependenciesBuilder creates a new, empty builder instance.
@@ -82,11 +90,17 @@ func (b *OpDependenciesBuilder) WithWorkflowControl(wc workflowctl.WorkflowContr
 	return b
 }
 
+func (b *OpDependenciesBuilder) WithWorktreePath(path string) *OpDependenciesBuilder {
+	b.worktreePath = path
+	return b
+}
+
 func (b *OpDependenciesBuilder) Build() OpDependencies {
 	deps := &opDepImpl{
 		db:              b.db,
 		inputArtifacts:  b.artifacts,
 		workflowControl: b.workflowControl,
+		worktreePath:    b.worktreePath,
 		outputArtifacts: make([]swf.Artifact, 0),
 	}
 

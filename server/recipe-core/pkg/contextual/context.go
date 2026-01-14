@@ -1,5 +1,10 @@
 package contextual
 
+// WorktreePathSentinel is a placeholder value used during template resolution
+// Templates that reference {{ environment.worktree_path }} will resolve to this sentinel
+// The actual worktree path is determined at execution time on the target machine
+const WorktreePathSentinel = "__COLONY_WORKTREE_PATH__"
+
 // ActorContext represents the user/cell identity associated with an invocation.
 type ActorContext struct {
 	TicketID   string `json:"ticket_id,omitempty"`
@@ -10,7 +15,7 @@ type ActorContext struct {
 // EnvironmentContext captures filesystem and storage locations relevant to execution.
 type EnvironmentContext struct {
 	WorktreePath string `json:"worktree_path,omitempty"`
-	ThinPackPath string `json:"thin_pack_path,omitempty"`
+	// ThinPackPath removed - no longer used (moved to artifact storage)
 }
 
 // GitBaseContext captures immutable git state information at a point in time.

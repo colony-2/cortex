@@ -57,12 +57,18 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	runContext := input.JobContext
+	var cleanupWorktree func()
 	if runContext.Environment.WorktreePath == "" {
 		working, err := os.MkdirTemp("", "recipe-git-artifacts")
 		if err != nil {
 			return nil, err
 		}
 		runContext.Environment.WorktreePath = working
+		cleanupWorktree = func() { os.RemoveAll(working) }
+	}
+	// Cleanup worktree on job completion
+	if cleanupWorktree != nil {
+		defer cleanupWorktree()
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}

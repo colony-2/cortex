@@ -113,7 +113,7 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 		taskType := fmt.Sprintf("%s:%s", op, chain[i].Name)
 		invocation := workerops.ActivityInvocationRequest{
 			Input:          stepInput,
-			GitTaskContext: *gitstate.NewGitTaskContext(resCtx.TaskExecutionContext()),
+			GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
 		}
 
 		taskData, err := swf.NewTaskData(invocation)

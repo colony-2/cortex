@@ -78,7 +78,6 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,
-			ThinPackPath: "",
 		},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",

@@ -30,4 +30,6 @@ func (d *testDeps) GetInputArtifacts() []swf.Artifact { return d.artifacts }
 
 func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }
 
+func (d *testDeps) WorktreePath() string { return "" }
+
 var _ OpDependencies = &testDeps{}

@@ -2,33 +2,34 @@ package gitstate
 
 import "github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 
-type GitTaskContext struct {
+// GlobalGitTaskContext contains machine-independent git context (serializable)
+// This can be safely serialized and sent between machines
+type GlobalGitTaskContext struct {
 	BaseRepo         string
 	BaseRef          string
 	ResolvedBaseHash string
 	PersistHash      string
 	ParentHash       string
-	WorktreePath     string
-	ThinPackPath     string
-	TicketID         string
-	CellName         string
-	CellPath         string // Cell relative path from repo root
-	GitAuthor        string
-	NodePath         string
-	InvokeSeq        int64
-	InvokeHash       string
+	// WorktreePath removed - stored in OpDependencies
+	// ThinPackPath removed - no longer used
+	TicketID   string
+	CellName   string
+	CellPath   string // Cell relative path from repo root
+	GitAuthor  string
+	NodePath   string
+	InvokeSeq  int64
+	InvokeHash string
 }
 
-func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
-	return &GitTaskContext{
+// NewGlobalGitTaskContext creates a GlobalGitTaskContext from TaskExecutionContext
+func NewGlobalGitTaskContext(tec contextual.TaskExecutionContext) *GlobalGitTaskContext {
+	return &GlobalGitTaskContext{
 		BaseRepo:         tec.GitBase.BaseRepo,
 		BaseRef:          tec.GitBase.BaseRef,
 		ResolvedBaseHash: tec.GitBase.ResolvedBaseHash,
 		GitAuthor:        tec.GitBase.GitAuthor,
 		PersistHash:      tec.GitCommit.PersistHash,
 		ParentHash:       tec.GitCommit.ParentHash,
-		WorktreePath:     tec.Environment.WorktreePath,
-		ThinPackPath:     tec.Environment.ThinPackPath,
 		TicketID:         tec.Actor.TicketID,
 		CellName:         tec.Workflow.CellName,
 		CellPath:         tec.Workflow.CellPath,
@@ -38,17 +39,32 @@ func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
 	}
 }
 
-func (c *GitTaskContext) GetBaseRepo() string         { return c.BaseRepo }
-func (c *GitTaskContext) GetBaseRef() string          { return c.BaseRef }
-func (c *GitTaskContext) GetResolvedBaseHash() string { return c.ResolvedBaseHash }
-func (c *GitTaskContext) GetPersistHash() string      { return c.PersistHash }
-func (c *GitTaskContext) GetParentHash() string       { return c.ParentHash }
+// GitTaskContext is used internally by workspace_controller
+// Uses POINTER embedding to share the global context
+type GitTaskContext struct {
+	*GlobalGitTaskContext // Pointer embedding - shares data with global context
+	WorktreePath          string
+}
+
+// NewGitTaskContext creates a GitTaskContext from TaskExecutionContext
+func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
+	return &GitTaskContext{
+		GlobalGitTaskContext: NewGlobalGitTaskContext(tec),
+		WorktreePath:         tec.Environment.WorktreePath,
+	}
+}
+
+// Keep ALL existing getter methods - controller and other code depends on them
+func (c *GitTaskContext) GetBaseRepo() string         { return c.GlobalGitTaskContext.BaseRepo }
+func (c *GitTaskContext) GetBaseRef() string          { return c.GlobalGitTaskContext.BaseRef }
+func (c *GitTaskContext) GetResolvedBaseHash() string { return c.GlobalGitTaskContext.ResolvedBaseHash }
+func (c *GitTaskContext) GetPersistHash() string      { return c.GlobalGitTaskContext.PersistHash }
+func (c *GitTaskContext) GetParentHash() string       { return c.GlobalGitTaskContext.ParentHash }
 func (c *GitTaskContext) GetWorktreePath() string     { return c.WorktreePath }
-func (c *GitTaskContext) GetThinPackPath() string     { return c.ThinPackPath }
-func (c *GitTaskContext) GetTicketID() string         { return c.TicketID }
-func (c *GitTaskContext) GetCellName() string         { return c.CellName }
-func (c *GitTaskContext) GetCellPath() string         { return c.CellPath }
-func (c *GitTaskContext) GetGitAuthor() string        { return c.GitAuthor }
-func (c *GitTaskContext) GetNodePath() string         { return c.NodePath }
-func (c *GitTaskContext) GetInvokeSeq() int64         { return c.InvokeSeq }
-func (c *GitTaskContext) GetInvokeHash() string       { return c.InvokeHash }
+func (c *GitTaskContext) GetTicketID() string         { return c.GlobalGitTaskContext.TicketID }
+func (c *GitTaskContext) GetCellName() string         { return c.GlobalGitTaskContext.CellName }
+func (c *GitTaskContext) GetCellPath() string         { return c.GlobalGitTaskContext.CellPath }
+func (c *GitTaskContext) GetGitAuthor() string        { return c.GlobalGitTaskContext.GitAuthor }
+func (c *GitTaskContext) GetNodePath() string         { return c.GlobalGitTaskContext.NodePath }
+func (c *GitTaskContext) GetInvokeSeq() int64         { return c.GlobalGitTaskContext.InvokeSeq }
+func (c *GitTaskContext) GetInvokeHash() string       { return c.GlobalGitTaskContext.InvokeHash }
