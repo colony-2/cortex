@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined } from '@ant-design/icons';
-import { Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
-import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail, CreateTicketModal } from '@colony2/shared';
+import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined, FormOutlined } from '@ant-design/icons';
+import { Badge, Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
+import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail, CreateTicketModal, useInputActivity } from '@colony2/shared';
 import { KanbanBoard } from '@colony2/kanban';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
@@ -11,6 +11,8 @@ import WorkflowListPage from './components/WorkflowListPage';
 import WorkflowDetailPage from './components/WorkflowDetailPage';
 import RecipeListPage from './components/RecipeListPage';
 import RecipeDetailPage from './components/RecipeDetailPage';
+import PendingInputsListPage from './components/PendingInputsListPage';
+import InputDetailPage from './components/InputDetailPage';
 import UserDropdown from './components/UserDropdown';
 import ProjectAdminPage from './components/ProjectAdminPage';
 import LoginPage from './components/LoginPage';
@@ -34,6 +36,7 @@ function AppShell() {
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [isCreateTicketOpen, setIsCreateTicketOpen] = useState(false);
   const location = useLocation();
+  const { pendingCount, setCurrentProjectId } = useInputActivity();
 
   if (!authenticated) {
     return <LoginPage onLogin={() => setAuthenticated(true)} />;
@@ -64,8 +67,12 @@ function AppShell() {
   useEffect(() => {
     if (selectedProjectId) {
       localStorage.setItem('colony2:selectedProjectId', selectedProjectId);
+      // Update InputActivity context with current project
+      setCurrentProjectId(selectedProjectId);
+    } else {
+      setCurrentProjectId(null);
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, setCurrentProjectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
 
@@ -83,6 +90,7 @@ function AppShell() {
     if (path.includes('/settings')) return 'settings';
     if (path.includes('/recipes')) return 'recipes';
     if (path.includes('/workflows')) return 'workflows';
+    if (path.includes('/inputs')) return 'inputs';
     if (path.includes('/kanban')) return 'tickets';
     if (path.includes('/cells') || path.includes('/cell/')) return 'cells';
     return 'tickets';
@@ -132,6 +140,16 @@ function AppShell() {
                   <Link to={`/project/${selectedProject.id}/kanban`}>Tickets</Link>
                 ) : 'Tickets',
                 icon: <AppstoreOutlined />,
+                disabled: !selectedProject,
+              },
+              {
+                key: 'inputs',
+                label: selectedProject ? (
+                  <Badge count={pendingCount} offset={[10, 0]} size="small">
+                    <Link to={`/project/${selectedProject.id}/inputs`}>Pending Inputs</Link>
+                  </Badge>
+                ) : 'Pending Inputs',
+                icon: <FormOutlined />,
                 disabled: !selectedProject,
               },
               {
@@ -198,6 +216,11 @@ function AppShell() {
               {/* Kanban view */}
               <Route path="/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/kanban" element={<KanbanBoard projectId={selectedProject.id} />} />
+
+              {/* Pending Inputs views */}
+              <Route path="/inputs" element={<PendingInputsListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/inputs" element={<PendingInputsListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/inputs/:jobId" element={<InputDetailPage projectId={selectedProject.id} />} />
 
               {/* Workflow views */}
               <Route path="/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />

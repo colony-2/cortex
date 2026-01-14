@@ -31,10 +31,10 @@
     "react-json-view": "^1.21.3",
     "react-router-dom": "^6.26.0"
   },
-  "pnpm": {"onlyBuiltDependencies"
-  : [
-    "esbuild"
-  ]
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@playwright/test": "^1.53.1",
@@ -46,6 +46,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.0",
     "jsdom": "^26.1.0",
+    "msw": "^2.12.7",
     "playwright": "^1.53.2",
     "typescript": "~5.8.3",
     "vite": "^5.4.0",

@@ -22,6 +22,81 @@ class EventEmitter {
   }
 }
 
+// Types matching OpenAPI spec
+export type FieldType =
+  | 'short_answer'
+  | 'paragraph_text'
+  | 'multiple_choice'
+  | 'checkboxes'
+  | 'dropdown'
+  | 'linear_scale'
+  | 'multiple_choice_grid'
+  | 'checkbox_grid'
+  | 'date'
+  | 'time'
+  | 'file_upload';
+
+export interface Option {
+  value: string;
+  label?: string;
+}
+
+export interface LinearScale {
+  min: number;
+  max: number;
+  min_label?: string;
+  max_label?: string;
+}
+
+export interface FieldValidation {
+  min_length?: number;
+  max_length?: number;
+  pattern?: string;
+  min?: number;
+  max?: number;
+}
+
+export interface FormField {
+  id: string;
+  type: FieldType;
+  question: string;
+  required?: boolean;
+  placeholder?: string;
+  options?: Option[];
+  scale?: LinearScale;
+  validation?: FieldValidation;
+}
+
+export interface Artifact {
+  path: string;
+}
+
+export interface GlobPattern {
+  pattern: string;
+}
+
+export interface FormContext {
+  artifacts?: Artifact[];
+  artifacts_from_output?: string;
+  artifacts_glob?: GlobPattern[];
+}
+
+export interface InputFormConfig {
+  // Single question format
+  question?: string;
+  type?: FieldType;
+  options?: Option[];
+  scale?: LinearScale;
+
+  // Multi-field format
+  title?: string;
+  fields?: FormField[];
+  context?: FormContext;
+  timeout?: number;
+  default_on_timeout?: any;
+}
+
+// Component-friendly form structure (for InputFormRenderer)
 export interface InputForm {
   id: string;
   title: string;
@@ -32,7 +107,7 @@ export interface InputForm {
 export interface InputField {
   id: string;
   label: string;
-  type: 'short_answer' | 'paragraph_text' | 'multiple_choice' | 'checkboxes' | 'dropdown' | 'linear_scale' | 'date' | 'time' | 'file_upload';
+  type: FieldType;
   required: boolean;
   options?: string[];
   min?: number;
@@ -44,40 +119,40 @@ export interface InputField {
   };
 }
 
-export interface FormContext {
-  workflowName?: string;
-  activityName?: string;
-  metadata?: Record<string, any>;
-}
-
 export interface FormResponse {
   fields: Record<string, any>;
-  metadata?: {
-    submittedAt: string;
-    [key: string]: any;
-  };
+  activity_id?: string;
+  user_id?: string;
+  response?: any;
+  submitted_at?: string;
+  time_to_complete?: number;
+  hash?: string;
 }
 
-export interface InputEvent {
-  type: 'input_requested' | 'input_completed' | 'input_expired';
-  workflowId: string;
-  cellId: string;
-  timestamp: string;
-  data?: any;
-}
-
+// API response types
 export interface PendingInput {
-  workflowId: string;
-  cellId: string;
-  formTitle: string;
-  createdAt: string;
-  expiresAt: string;
-  status: 'pending' | 'completed' | 'expired';
+  id: string;  // jobId
 }
 
-export interface InputFormDetails extends PendingInput {
-  form: InputForm;
-  context: FormContext;
+export interface UserInputDetails {
+  jobId: string;
+  status: string;
+  startTime: string;
+  form: InputFormConfig;
+  hash?: string;
+}
+
+// SSE event types based on OpenAPI InputSSEEvent
+export type InputSSEEventType =
+  | 'connected'
+  | 'input_pending'
+  | 'input_cancelled'
+  | 'heartbeat'
+  | 'error';
+
+export interface InputSSEEvent {
+  type: InputSSEEventType;
+  data: any;
 }
 
 class InputActivityService extends EventEmitter {
@@ -86,16 +161,20 @@ class InputActivityService extends EventEmitter {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000;
+  private currentProjectId: string | null = null;
   private pendingInputsCache = new Map<string, PendingInput[]>();
-  private formDetailsCache = new Map<string, InputFormDetails>();
+  private formDetailsCache = new Map<string, UserInputDetails>();
 
-  connect(): void {
-    // Check if already connected (readyState 1 = OPEN)
-    if (this.eventSource?.readyState === 1) {
+  connect(projectId: string): void {
+    // If already connected to this project, do nothing
+    if (this.eventSource?.readyState === 1 && this.currentProjectId === projectId) {
       return;
     }
 
+    // Disconnect from previous project if any
     this.disconnect();
+
+    this.currentProjectId = projectId;
 
     // Check if EventSource is available (browser environment)
     if (typeof EventSource === 'undefined') {
@@ -103,28 +182,66 @@ class InputActivityService extends EventEmitter {
       return;
     }
 
-    // Directly attempt SSE connection
+    // Attempt SSE connection
     this.createEventSource();
   }
 
   private createEventSource(): void {
+    if (!this.currentProjectId) {
+      console.warn('No project ID set, cannot create SSE connection');
+      return;
+    }
+
     try {
-      this.eventSource = new EventSource(`${API_BASE}/user-inputs/stream`);
+      this.eventSource = new EventSource(
+        `${API_BASE}/projects/${this.currentProjectId}/user-inputs/stream`
+      );
 
       this.eventSource.onopen = () => {
-        console.log('SSE connection established');
+        console.log('SSE connection established for project:', this.currentProjectId);
         this.reconnectAttempts = 0;
         this.emit('connected');
       };
 
-      this.eventSource.onmessage = (event) => {
+      this.eventSource.addEventListener('connected', (event) => {
         try {
-          const data = JSON.parse(event.data) as InputEvent;
-          this.handleInputEvent(data);
+          const data = JSON.parse((event as MessageEvent).data);
+          console.log('SSE connected, client_id:', data.client_id);
         } catch (error) {
-          console.error('Failed to parse SSE message:', error);
+          console.error('Failed to parse connected event:', error);
         }
-      };
+      });
+
+      this.eventSource.addEventListener('input_pending', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          this.handleInputPendingEvent(data);
+        } catch (error) {
+          console.error('Failed to parse input_pending event:', error);
+        }
+      });
+
+      this.eventSource.addEventListener('input_cancelled', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          this.handleInputCancelledEvent(data);
+        } catch (error) {
+          console.error('Failed to parse input_cancelled event:', error);
+        }
+      });
+
+      this.eventSource.addEventListener('heartbeat', (event) => {
+        // Heartbeat - can be used for connection monitoring
+      });
+
+      this.eventSource.addEventListener('error', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          console.error('SSE error event:', data.error);
+        } catch (error) {
+          // Ignore parsing errors for error events
+        }
+      });
 
       this.eventSource.onerror = () => {
         // Check if the connection was immediately closed (likely 404)
@@ -134,7 +251,7 @@ class InputActivityService extends EventEmitter {
           this.disconnect();
           return;
         }
-        
+
         // For subsequent errors, handle reconnection
         if (this.eventSource?.readyState === 2) {
           this.handleConnectionError();
@@ -155,20 +272,25 @@ class InputActivityService extends EventEmitter {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    this.currentProjectId = null;
     this.emit('disconnected');
   }
 
-  private handleInputEvent(event: InputEvent): void {
-    this.emit('input_event', event);
-    this.emit(`input_event:${event.cellId}`, event);
-
-    // Update cache based on event type
-    if (event.type === 'input_requested') {
-      this.invalidatePendingInputsCache(event.cellId);
-    } else if (event.type === 'input_completed' || event.type === 'input_expired') {
-      this.invalidatePendingInputsCache(event.cellId);
-      this.formDetailsCache.delete(event.workflowId);
+  private handleInputPendingEvent(data: { id: string }): void {
+    // Invalidate cache BEFORE emitting event so listeners get fresh data
+    if (this.currentProjectId) {
+      this.invalidatePendingInputsCache();
     }
+    this.emit('input_pending', data);
+  }
+
+  private handleInputCancelledEvent(data: { jobId: string; reason?: string }): void {
+    // Invalidate cache BEFORE emitting event so listeners get fresh data
+    if (this.currentProjectId) {
+      this.invalidatePendingInputsCache();
+      this.formDetailsCache.delete(data.jobId);
+    }
+    this.emit('input_cancelled', data);
   }
 
   private handleConnectionError(): void {
@@ -180,50 +302,36 @@ class InputActivityService extends EventEmitter {
 
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
+
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
+
     this.reconnectTimeout = setTimeout(() => {
       this.createEventSource();
     }, delay);
   }
 
-  private invalidatePendingInputsCache(cellId: string): void {
-    this.pendingInputsCache.delete(cellId);
-    // Also clear the "all" cache
-    this.pendingInputsCache.delete('all');
+  private invalidatePendingInputsCache(): void {
+    if (this.currentProjectId) {
+      this.pendingInputsCache.delete(this.currentProjectId);
+    }
   }
 
-  subscribe(cellId: string, callback: (event: InputEvent) => void): () => void {
-    const eventName = `input_event:${cellId}`;
-    this.on(eventName, callback);
-    
-    // Return unsubscribe function
-    return () => {
-      this.off(eventName, callback);
-    };
-  }
-
-  async getPendingInputs(cellId?: string): Promise<PendingInput[]> {
-    const cacheKey = cellId || 'all';
-    
+  async getPendingInputs(projectId: string): Promise<PendingInput[]> {
     // Check cache first
-    if (this.pendingInputsCache.has(cacheKey)) {
-      return this.pendingInputsCache.get(cacheKey)!;
+    if (this.pendingInputsCache.has(projectId)) {
+      return this.pendingInputsCache.get(projectId)!;
     }
 
     try {
-      const url = cellId 
-        ? `${API_BASE}/user-inputs/pending?cell_id=${cellId}`
-        : `${API_BASE}/user-inputs/pending`;
-      
+      const url = `${API_BASE}/projects/${projectId}/user-inputs/pending`;
+
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch pending inputs: ${response.statusText}`);
       }
-      
+
       const inputs = await response.json();
-      this.pendingInputsCache.set(cacheKey, inputs);
+      this.pendingInputsCache.set(projectId, inputs);
       return inputs;
     } catch (error) {
       console.error('Failed to fetch pending inputs:', error);
@@ -231,20 +339,22 @@ class InputActivityService extends EventEmitter {
     }
   }
 
-  async getInputDetails(workflowId: string): Promise<InputFormDetails> {
+  async getInputDetails(projectId: string, jobId: string): Promise<UserInputDetails> {
+    const cacheKey = `${projectId}:${jobId}`;
+
     // Check cache first
-    if (this.formDetailsCache.has(workflowId)) {
-      return this.formDetailsCache.get(workflowId)!;
+    if (this.formDetailsCache.has(cacheKey)) {
+      return this.formDetailsCache.get(cacheKey)!;
     }
 
     try {
-      const response = await fetch(`${API_BASE}/user-inputs/${workflowId}`);
+      const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch input details: ${response.statusText}`);
       }
-      
+
       const details = await response.json();
-      this.formDetailsCache.set(workflowId, details);
+      this.formDetailsCache.set(cacheKey, details);
       return details;
     } catch (error) {
       console.error('Failed to fetch input details:', error);
@@ -252,50 +362,48 @@ class InputActivityService extends EventEmitter {
     }
   }
 
-  async submitResponse(workflowId: string, response: FormResponse): Promise<void> {
+  async submitResponse(projectId: string, jobId: string, response: FormResponse): Promise<void> {
     try {
-      const apiResponse = await fetch(`${API_BASE}/user-inputs/${workflowId}/respond`, {
+      const apiResponse = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...response,
-          metadata: {
-            ...response.metadata,
-            submittedAt: new Date().toISOString(),
-          },
-        }),
+        body: JSON.stringify(response),
       });
 
       if (!apiResponse.ok) {
         throw new Error(`Failed to submit response: ${apiResponse.statusText}`);
       }
 
-      // Clear caches for this workflow
-      this.formDetailsCache.delete(workflowId);
-      // Clear all pending inputs caches as the list has changed
-      this.pendingInputsCache.clear();
+      // Clear caches
+      const cacheKey = `${projectId}:${jobId}`;
+      this.formDetailsCache.delete(cacheKey);
+      this.pendingInputsCache.delete(projectId);
     } catch (error) {
       console.error('Failed to submit response:', error);
       throw error;
     }
   }
 
-  async cancelInput(workflowId: string): Promise<void> {
+  async cancelInput(projectId: string, jobId: string, reason?: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE}/user-inputs/${workflowId}/cancel`, {
+      const response = await fetch(`${API_BASE}/projects/${projectId}/user-inputs/${jobId}/cancel`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reason: reason || 'Cancelled by user' }),
       });
 
       if (!response.ok) {
         throw new Error(`Failed to cancel input: ${response.statusText}`);
       }
 
-      // Clear caches for this workflow
-      this.formDetailsCache.delete(workflowId);
-      // Clear all pending inputs caches as the list has changed
-      this.pendingInputsCache.clear();
+      // Clear caches
+      const cacheKey = `${projectId}:${jobId}`;
+      this.formDetailsCache.delete(cacheKey);
+      this.pendingInputsCache.delete(projectId);
     } catch (error) {
       console.error('Failed to cancel input:', error);
       throw error;
@@ -312,6 +420,16 @@ class InputActivityService extends EventEmitter {
       default:
         return 'closed';
     }
+  }
+
+  getCurrentProjectId(): string | null {
+    return this.currentProjectId;
+  }
+
+  // Test utility: clear all caches
+  clearCaches(): void {
+    this.pendingInputsCache.clear();
+    this.formDetailsCache.clear();
   }
 }
 

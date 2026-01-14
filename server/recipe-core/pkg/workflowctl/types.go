@@ -12,6 +12,7 @@ type WorkflowControl interface {
 	Cancel(ctx context.Context, jobKey swf.JobKey) error
 	ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []JobItem, nextPage string, err error)
 	CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, data any) error
+	GetWaitingTask(ctx context.Context, jobKey swf.JobKey) (TaskHandle, error)
 }
 
 type StartJob struct {
@@ -26,3 +27,5 @@ type JobItem struct {
 	TaskData swf.TaskData
 	swf.JobSummary
 }
+
+type TaskHandle = swf.TaskHandle

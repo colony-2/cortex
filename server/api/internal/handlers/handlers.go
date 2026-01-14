@@ -134,6 +134,15 @@ func (l *logResponseWriter) WriteHeader(code int) {
 	l.ResponseWriter.WriteHeader(code)
 }
 
+// Flush implements http.Flusher to support SSE streaming
+func (l *logResponseWriter) Flush() {
+	if f, ok := l.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	} else {
+		log.Printf("DEBUG: Response writer does not support Flusher! Type: %T", l.ResponseWriter)
+	}
+}
+
 // NewSPAHandler creates a handler for serving the single-page application
 func NewSPAHandler(staticPath string) http.Handler {
 	return &spaHandler{

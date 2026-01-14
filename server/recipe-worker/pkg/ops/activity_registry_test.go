@@ -221,7 +221,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 			WorktreePath:     worktreePath,
 			TicketID:         "T-1",
 			CellName:         "cells/beta",
-		CellPath:         "cells/beta",
+			CellPath:         "cells/beta",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -285,7 +285,7 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 			WorktreePath:     worktreeDir,
 			TicketID:         "TEST-1",
 			CellName:         "cells/cell-a",
-		CellPath:         "cells/cell-a",
+			CellPath:         "cells/cell-a",
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -310,6 +310,10 @@ func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options act
 }
 
 type stubWorkflowControl struct{}
+
+func (s *stubWorkflowControl) GetWaitingTask(ctx context.Context, jobKey swf.JobKey) (workflowctl.TaskHandle, error) {
+	return nil, nil
+}
 
 func (s *stubWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, data any) error {
 	return nil
@@ -918,7 +922,7 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 		ResolvedBaseHash: baseHash,
 		WorktreePath:     worktree,
 		CellName:         "cells/alpha/test", // Full file system path to the cell directory
-	CellPath:         "cells/alpha/test",
+		CellPath:         "cells/alpha/test",
 		NodePath:         "recipe/node", // Recipe node path (not file system path)
 		TicketID:         "TEST-1",
 		InvokeSeq:        1,
@@ -1007,7 +1011,7 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
 			CellName:     "cells/test",
-		CellPath:     "cells/test",
+			CellPath:     "cells/test",
 		},
 	}
 
@@ -1095,7 +1099,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 			BaseRef:      baseHash,
 			WorktreePath: worktree,
 			CellName:     "cells/test",
-		CellPath:     "cells/test",
+			CellPath:     "cells/test",
 		},
 	}
 

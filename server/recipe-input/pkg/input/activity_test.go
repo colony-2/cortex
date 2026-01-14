@@ -39,10 +39,15 @@ func TestSimpleInput(t *testing.T) {
 	recipeYaml := `
 ---
 id: test-recipe
+
+input_schema:
+  prompt:
+    type: string
+    default_value: Hello
 op: input
 inputs:
   form:
-    question: "how old are you"
+    question: "{{ inputs.prompt }}"
 `
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
@@ -65,7 +70,9 @@ inputs:
 	workSet, err := compiler.NewRecipeWorker(deps, registry)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 	jobCtx, gitCtx := compiler.GenerateTestContext()
-	in := map[string]interface{}{}
+	in := map[string]interface{}{
+		"prompt": "how old are you",
+	}
 
 	job := workflowctl.StartJob{
 		TenantId:   "test-tenant",
@@ -81,11 +88,17 @@ inputs:
 		errCh <- err
 	}()
 
-	time.Sleep(300 * time.Millisecond)
-
-	inputs, err := opR.collectPendingInputs(context.Background(), "test-tenant")
-	require.NoError(t, err)
-	require.Equal(t, 1, len(inputs))
+	// Wait for job to reach Ready status
+	var inputs []PendingInput
+	for i := 0; i < 2000; i++ {
+		time.Sleep(100 * time.Millisecond)
+		inputs, err = opR.collectPendingInputs(context.Background(), "test-tenant")
+		require.NoError(t, err)
+		if len(inputs) > 0 {
+			break
+		}
+	}
+	require.Equal(t, 1, len(inputs), "Expected 1 pending input after waiting")
 	pending := inputs[0]
 
 	result := opR.getDetails(context.Background(), "test-tenant", pending.JobID)

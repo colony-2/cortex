@@ -3,6 +3,7 @@ package template
 import (
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -329,6 +330,303 @@ func TestResolveValueWithMode(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
+	// Test case for nested map resolution (map of maps)
+	// Simulates the scenario where input object has nested structure:
+	// type Foo struct { Bar Bar }
+	// type Bar struct { MyString string }
+	// And MyString contains a template like "{{ context.environment.worktree_path }}"
+
+	recipeCtx := newRecipeCtx(t, nil)
+
+	// Create parent context with some data to reference
+	parentCtx := newSequenceCtx(t, recipeCtx, "parent", map[string]interface{}{
+		"testValue": "hello",
+	})
+	addOpOutput(t, parentCtx, "op1", map[string]interface{}{
+		"result": "test-result",
+	})
+
+	// Test 1: Simulate what happens during input resolution (ResolveMap)
+	// This is what compiler.go does at line 160 for sequences and line 14 for state machines
+	t.Run("resolveMap with nested structure using inputs reference", func(t *testing.T) {
+		// Create raw inputs that would be passed to a sequence/state machine
+		// These contain templates that reference parent context
+		rawInputs := map[string]interface{}{
+			"foo": map[string]interface{}{
+				"bar": map[string]interface{}{
+					"myString": "{{ inputs.testValue }}",
+				},
+			},
+			"simpleField": "{{ sequence.op1.outputs.result }}",
+		}
+
+		// This simulates what happens in compiler.go when resolving inputs before creating child context
+		resolved, err := parentCtx.ResolveMap(rawInputs)
+		require.NoError(t, err)
+
+		t.Logf("Resolved inputs: %+v", resolved)
+
+		// Check that simple field was resolved
+		simpleField := resolved["simpleField"]
+		assert.IsType(t, "", simpleField)
+		assert.Equal(t, "test-result", simpleField)
+
+		// Check that nested map was resolved
+		foo, ok := resolved["foo"]
+		require.True(t, ok, "foo should exist in resolved map")
+
+		fooMap, ok := foo.(map[string]interface{})
+		require.True(t, ok, "foo should be a map")
+
+		bar, ok := fooMap["bar"]
+		require.True(t, ok, "bar should exist in foo map")
+
+		barMap, ok := bar.(map[string]interface{})
+		require.True(t, ok, "bar should be a map")
+
+		myString, ok := barMap["myString"]
+		require.True(t, ok, "myString should exist in bar map")
+
+		// This is the critical assertion - the nested template should be resolved
+		myStringValue, ok := myString.(string)
+		require.True(t, ok, "myString should be a string")
+		assert.NotContains(t, myStringValue, "{{", "nested template should be resolved")
+		assert.Equal(t, "hello", myStringValue)
+	})
+
+	// Test 2: Now create a child context with those resolved inputs and verify they work
+	t.Run("child context with resolved nested inputs", func(t *testing.T) {
+		rawInputs := map[string]interface{}{
+			"nested": map[string]interface{}{
+				"config": map[string]interface{}{
+					"value": "{{ inputs.testValue }}",
+				},
+			},
+		}
+
+		// Resolve inputs first (as compiler does)
+		resolved, err := parentCtx.ResolveMap(rawInputs)
+		require.NoError(t, err)
+
+		// Create child context with resolved inputs
+		childCtx := newSequenceCtx(t, parentCtx, "child", resolved)
+
+		// Now when we reference the input in the child, it should already be resolved
+		result, err := childCtx.resolveTemplate("{{ inputs.nested.config.value }}")
+		require.NoError(t, err)
+		assert.Equal(t, "hello", result)
+	})
+
+	// Test 3: Deeply nested structure with context fields
+	t.Run("deeply nested structure with context reference", func(t *testing.T) {
+		deeplyNested := map[string]interface{}{
+			"level1": map[string]interface{}{
+				"level2": map[string]interface{}{
+					"level3": map[string]interface{}{
+						"inputRef": "{{ inputs.testValue }}",
+						"seqRef":   "{{ sequence.op1.outputs.result }}",
+					},
+				},
+			},
+		}
+
+		resolved, err := parentCtx.ResolveMap(deeplyNested)
+		require.NoError(t, err)
+
+		// Navigate through the nested structure
+		l1 := resolved["level1"].(map[string]interface{})
+		l2 := l1["level2"].(map[string]interface{})
+		l3 := l2["level3"].(map[string]interface{})
+
+		inputRef := l3["inputRef"].(string)
+		assert.Equal(t, "hello", inputRef)
+
+		seqRef := l3["seqRef"].(string)
+		assert.Equal(t, "test-result", seqRef)
+	})
+
+	// Test 4: Mixed nested and non-nested templates
+	t.Run("mixed nested structure", func(t *testing.T) {
+		mixed := map[string]interface{}{
+			"topLevel": "{{ inputs.testValue }}",
+			"nested": map[string]interface{}{
+				"middle": "{{ sequence.op1.outputs.result }}",
+				"deeper": map[string]interface{}{
+					"value": "{{ inputs.testValue }}",
+				},
+			},
+		}
+
+		resolved, err := parentCtx.ResolveMap(mixed)
+		require.NoError(t, err)
+
+		assert.Equal(t, "hello", resolved["topLevel"])
+		nested := resolved["nested"].(map[string]interface{})
+		assert.Equal(t, "test-result", nested["middle"])
+		deeper := nested["deeper"].(map[string]interface{})
+		assert.Equal(t, "hello", deeper["value"])
+	})
+}
+
+func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
+	// This test specifically tests the user's reported scenario:
+	// type Foo struct { Bar Bar }
+	// type Bar struct { MyString string }
+	// where MyString contains "{{ context.environment.worktree_path }}"
+
+	// Note: The test helpers create a context with default/empty environment values
+	// In a real scenario, the worktree_path would be populated
+	recipeCtx := newRecipeCtx(t, nil)
+
+	// Create a parent sequence with some inputs
+	parentCtx := newSequenceCtx(t, recipeCtx, "parent", map[string]interface{}{
+		"someValue": "test",
+	})
+
+	t.Run("nested map with context.environment.worktree_path", func(t *testing.T) {
+		// Raw inputs that would be passed to a child sequence/state machine
+		// This matches the user's reported structure: Foo.Bar.MyString
+		rawInputs := map[string]interface{}{
+			"foo": map[string]interface{}{
+				"bar": map[string]interface{}{
+					"myString": "{{ context.environment.worktree_path }}",
+				},
+			},
+		}
+
+		// Resolve the inputs (this is what compiler.go does before creating child context)
+		resolved, err := parentCtx.ResolveMap(rawInputs)
+		require.NoError(t, err)
+
+		t.Logf("Resolved inputs: %+v", resolved)
+
+		// Navigate to the nested value
+		foo := resolved["foo"].(map[string]interface{})
+		bar := foo["bar"].(map[string]interface{})
+		myString := bar["myString"]
+
+		// The template should be resolved (the value will be empty string in test, but should not contain {{}})
+		myStringStr, ok := myString.(string)
+		require.True(t, ok, "myString should be a string")
+		assert.NotContains(t, myStringStr, "{{", "template markers should be gone - nested map template should be resolved")
+
+		// Log the actual value for debugging
+		t.Logf("Resolved myString value: '%s'", myStringStr)
+	})
+
+	t.Run("create child context and access resolved nested input", func(t *testing.T) {
+		// Raw inputs with nested template
+		rawInputs := map[string]interface{}{
+			"config": map[string]interface{}{
+				"paths": map[string]interface{}{
+					"worktree": "{{ context.environment.worktree_path }}",
+				},
+			},
+		}
+
+		// Resolve inputs first
+		resolved, err := parentCtx.ResolveMap(rawInputs)
+		require.NoError(t, err)
+
+		// Create child context with resolved inputs
+		childCtx := newSequenceCtx(t, parentCtx, "child", resolved)
+
+		// Access the resolved value through the child context
+		result, err := childCtx.resolveTemplate("{{ inputs.config.paths.worktree }}")
+		require.NoError(t, err)
+
+		// The result should be a string (even if empty) and not contain template markers
+		resultStr, ok := result.(string)
+		require.True(t, ok, "result should be a string")
+		assert.NotContains(t, resultStr, "{{", "nested input should be resolved")
+
+		t.Logf("Resolved worktree value: '%s'", resultStr)
+	})
+}
+
+func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
+	// Test case for custom map types like recipe.InputMap
+	// Bug: When a value is recipe.InputMap (a type alias for map[string]interface{}),
+	// the type switch doesn't match and templates inside aren't resolved
+
+	recipeCtx := newRecipeCtx(t, nil)
+	parentCtx := newSequenceCtx(t, recipeCtx, "parent", map[string]interface{}{
+		"prompt": "hello world",
+	})
+
+	t.Run("recipe.InputMap with templates inside", func(t *testing.T) {
+		// Import recipe package to use InputMap type
+		// This simulates the exact scenario: map[string]interface{} with "form" => recipe.InputMap
+
+		// Create an InputMap (custom type) with a template inside
+		inputMap := recipe.InputMap{
+			"question": "{{ inputs.prompt }}",
+		}
+
+		// Try to resolve it
+		resolved, err := parentCtx.resolveValue(inputMap)
+		require.NoError(t, err)
+
+		t.Logf("Resolved InputMap: %+v", resolved)
+
+		// Check if it was resolved
+		resolvedMap, ok := resolved.(map[string]interface{})
+		if !ok {
+			// Might still be recipe.InputMap type
+			if inputMapType, ok := resolved.(recipe.InputMap); ok {
+				resolvedMap = map[string]interface{}(inputMapType)
+			}
+		}
+		require.NotNil(t, resolvedMap, "should resolve to a map type")
+
+		question := resolvedMap["question"]
+		questionStr, ok := question.(string)
+		require.True(t, ok, "question should be a string")
+
+		// This is the bug - the template is NOT resolved
+		assert.Equal(t, "hello world", questionStr, "template in InputMap should be resolved")
+		assert.NotContains(t, questionStr, "{{", "template markers should be gone")
+	})
+
+	t.Run("nested structure with recipe.InputMap", func(t *testing.T) {
+		// This is the exact scenario from the user's report
+		rawInputs := map[string]interface{}{
+			"form": recipe.InputMap{
+				"question": "{{ inputs.prompt }}",
+			},
+		}
+
+		// This is what compiler does
+		resolved, err := parentCtx.ResolveMap(rawInputs)
+		require.NoError(t, err)
+
+		t.Logf("Resolved inputs: %+v", resolved)
+
+		// Navigate to the nested value
+		form, ok := resolved["form"]
+		require.True(t, ok, "form should exist")
+
+		// The form might be recipe.InputMap or map[string]interface{}
+		var formMap map[string]interface{}
+		if m, ok := form.(map[string]interface{}); ok {
+			formMap = m
+		} else if im, ok := form.(recipe.InputMap); ok {
+			formMap = map[string]interface{}(im)
+		} else {
+			t.Fatalf("form is unexpected type: %T", form)
+		}
+
+		question := formMap["question"]
+		questionStr, ok := question.(string)
+		require.True(t, ok, "question should be a string")
+
+		// This assertion will FAIL due to the bug
+		assert.Equal(t, "hello world", questionStr, "template in nested InputMap should be resolved")
+		assert.NotContains(t, questionStr, "{{", "template markers should be gone from nested InputMap")
+	})
 }
 
 func TestPureCELMode(t *testing.T) {

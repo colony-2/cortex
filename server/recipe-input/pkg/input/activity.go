@@ -42,8 +42,8 @@ func GetOp() ops.RegisterableOp {
 	op, err := ops.NewOp().
 		WithType("input").
 		WithManagementService(newInputManagementService()).
-		//AddStep("generate_form", ops.NewStep[Input, InputForm](buildForm)).
-		AddStep("collect_user_input", ops.NewNoTaskStep[Input, Output]()).
+		AddStep("generate_form", ops.NewStep[Input, InputForm](buildForm)).
+		AddStep("collect_user_input", ops.NewNoTaskStep[InputForm, Output]()).
 		Build()
 	if err != nil {
 		panic(err)

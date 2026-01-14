@@ -19,6 +19,14 @@ type SWFWorkflowControl struct {
 	Registry RecipeProjectProvider
 }
 
+func (s *SWFWorkflowControl) GetWaitingTask(ctx context.Context, jobKey swf.JobKey) (workflowctl.TaskHandle, error) {
+	e, err := s.Engine.GetWaitingTask(ctx, jobKey)
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
 func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsRequest) (jobs []workflowctl.JobItem, nextPage string, err error) {
 	resp, err := s.Engine.ListJobs(ctx, request)
 	if err != nil {

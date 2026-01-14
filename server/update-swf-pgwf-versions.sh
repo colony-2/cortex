@@ -2,7 +2,7 @@
 
 # Define the packages to update
 PACKAGES=(
-    "github.com/colony-2/strata-go"
+    "github.com/colony-2/swf-go"
 )
 
 echo "Starting dependency updates..."

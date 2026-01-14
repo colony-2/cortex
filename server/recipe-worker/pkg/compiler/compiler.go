@@ -76,13 +76,15 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 	}
 
 	// Inject defaults before template resolution
-	if registeredOp, exists := ops.Get(op); exists {
-		// Get the first step's input type (most ops have a single step)
-		chain := registeredOp.TaskChain()
-		if len(chain) > 0 {
-			if err := workerops.InjectDefaults(chain[0].InputType, metadata.Inputs); err != nil {
-				return fmt.Errorf("failed to inject defaults: %w", err)
-			}
+	registeredOp, exists := ops.Get(op)
+	if !exists {
+		return fmt.Errorf("operation %s not found", op)
+	}
+
+	chain := registeredOp.TaskChain()
+	if len(chain) > 0 {
+		if err := workerops.InjectDefaults(chain[0].InputType, metadata.Inputs); err != nil {
+			return fmt.Errorf("failed to inject defaults: %w", err)
 		}
 	}
 
@@ -106,8 +108,9 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 	}
 
 	stepInput := resolvedNodeInputs
-	taskType := fmt.Sprintf("%s:%s", op, op)
+
 	for i := 0; i < 64; i++ { // guard against accidental loops
+		taskType := fmt.Sprintf("%s:%s", op, chain[i].Name)
 		invocation := workerops.ActivityInvocationRequest{
 			Input:          stepInput,
 			GitTaskContext: *gitstate.NewGitTaskContext(resCtx.TaskExecutionContext()),

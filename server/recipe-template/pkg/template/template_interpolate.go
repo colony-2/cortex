@@ -3,6 +3,8 @@ package template
 import (
 	"fmt"
 	"strings"
+
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 )
 
 // interpolateString performs string interpolation with embedded CEL expressions
@@ -78,6 +80,18 @@ func (rc *ResolutionContext) ResolveValueWithMode(value interface{}, mode Resolu
 		return rc.ResolveTemplateWithMode(v, mode)
 	case map[string]interface{}:
 		// Recursively resolve map values
+		result := make(map[string]interface{})
+		for key, val := range v {
+			resolved, err := rc.ResolveValueWithMode(val, mode)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve key %s: %w", key, err)
+			}
+			result[key] = resolved
+		}
+		return result, nil
+	case recipe.InputMap:
+		// Handle recipe.InputMap specifically (type alias for map[string]interface{})
+		// This ensures templates inside InputMap are resolved
 		result := make(map[string]interface{})
 		for key, val := range v {
 			resolved, err := rc.ResolveValueWithMode(val, mode)
