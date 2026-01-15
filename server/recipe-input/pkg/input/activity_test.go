@@ -36,22 +36,49 @@ func (g *gen) Generate(tenantId string) (swf.JobKey, error) {
 	return swf.JobKey{TenantId: tenantId, JobId: fmt.Sprintf("job-%d", g.count)}, nil
 }
 
+type EchoIn struct {
+	Message string `json:"message"`
+}
+
+type EchoOut struct {
+	Output string `json:"output"`
+}
+
 func TestSimpleInput(t *testing.T) {
+	coreops.Register(coreops.NewActivityMappedOpV2[EchoIn, EchoOut](
+		coreops.OpMetadata{Type: "echo"},
+		func(_ coreops.OpDependencies, _ context.Context, input EchoIn) (EchoOut, error) {
+			message := input.Message
+			return EchoOut{
+				Output: message,
+			}, nil
+		},
+	))
+
 	op := GetOp()
 	opR := op.GetManagementService().(*inputManagementService)
 	coreops.Register(op)
 	recipeYaml := `
 ---
-id: test-recipe
+id: testrecipe
 
 input_schema:
   prompt:
     type: string
     default_value: Hello
-op: input
-inputs:
-  form:
-    question: "{{ inputs.prompt }}"
+inputs: 
+  p1: "{{ inputs.prompt }}"
+sequence:
+  - op: input
+    id: q1
+    inputs: 
+      form:
+        question: "{{ inputs.p1 }}"
+  - op: echo
+    inputs: 
+      message: q1.outputs.response
+outputs:
+  r2: "{{ sequence.q1.outputs.response }}"
 `
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
@@ -127,10 +154,10 @@ inputs:
 	res4, err := res3.GetData()
 	require.NoError(t, err)
 
-	air := Output{}
+	air := make(map[string]interface{})
 	require.NoError(t, json.Unmarshal(res4, &air))
 
-	require.Equal(t, "foolish", air.Response)
+	require.Equal(t, "foolish", air["r2"])
 
 }
 
@@ -182,7 +209,7 @@ inputs:
 		taskWorkers = append(taskWorkers, tw)
 	}
 	engine, err := swf.NewEngineBuilder().
-		WithAwaitRecycleThreshold(5 * time.Second).
+		WithAwaitRecycleThreshold(5*time.Second).
 		WithPostgresDSN(dsn).
 		WithStrata(strata.BaseURL).
 		WithStrataAPIKey(strata.APIKey).

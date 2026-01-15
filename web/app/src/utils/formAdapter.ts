@@ -9,7 +9,10 @@ export function adaptInputFormConfig(
   jobId: string
 ): InputForm {
   // Single question format
-  if (config.question && config.type) {
+  if (config.question) {
+    // Default to paragraph_text if type is not specified
+    const fieldType = config.type || 'paragraph_text';
+
     return {
       id: jobId,
       title: config.question,
@@ -18,7 +21,7 @@ export function adaptInputFormConfig(
         {
           id: 'response',
           label: config.question,
-          type: config.type,
+          type: fieldType,
           required: true,
           options: config.options?.map((o) => (typeof o === 'string' ? o : o.value)),
           min: config.scale?.min,

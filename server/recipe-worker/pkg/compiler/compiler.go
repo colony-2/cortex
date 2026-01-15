@@ -121,6 +121,9 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 			return err
 		}
 
+		fmt.Println("invoking activity")
+		fmt.Println(taskType)
+		fmt.Println(invocation)
 		out, err := ctx.DoTask(
 			runPolicy,
 			taskType,
