@@ -20,10 +20,34 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 	if err != nil {
 		return fmt.Errorf("failed to create resolution context: %w", err)
 	}
+	if err := seedStateMachinePlaceholders(resCtx, stateMap); err != nil {
+		return err
+	}
 
 	// Initialize state tracking
 	currentState := stateMap.Initial
 	stateInvocationCount := make(map[string]int)
+
+	if resCtx.Options.Mode == string(ExecutionModeValidate) && resCtx.Options.ValidationMode == string(ValidateAll) {
+		stateNames := sortedStateNames(stateMap.States)
+		for _, stateName := range stateNames {
+			stateDef := stateMap.States[stateName]
+			if err := runState(ctx, resCtx, stateName, stateDef); err != nil {
+				return fmt.Errorf("state '%s' execution failed: %w", stateName, err)
+			}
+			if _, err := evaluateTransitionsWithContext(stateDef.Transitions, resCtx); err != nil {
+				return fmt.Errorf("failed to evaluate state transitions: %w", err)
+			}
+		}
+
+		resolvedOutputs, err := resCtx.ResolveMap(outputTemplate)
+		if err != nil {
+			return fmt.Errorf("failed to resolve state machine outputs: %w", err)
+		}
+
+		parentContext.AddExecution(resolvedOutputs)
+		return nil
+	}
 
 	// Execute state machine
 	for !isTerminalState(currentState, stateMap.States) {

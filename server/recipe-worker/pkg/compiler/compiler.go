@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,13 +18,18 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
-func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext) (map[string]interface{}, error) {
-	recipeInputs, err := r.GetMetdata().ValidateInputShapeAndFillDefaults(rawRecipeInputs)
+func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, error) {
+	execOpts := normalizeExecutionOptions(opts)
+	recipeInputs, err := prepareRecipeInputs(r.GetMetdata(), rawRecipeInputs, execOpts)
 	if err != nil {
 		return nil, fmt.Errorf("recipe inputs do not match schema. %w", err)
 	}
 
-	rCtx, err := template.NewRecipeResolutionContext(&commitContext, recipeInputs, execCtx)
+	if execOpts.Mode == ExecutionModeValidate {
+		ctx = wrapValidationContext(ctx, commitContext)
+	}
+
+	rCtx, err := template.NewRecipeResolutionContext(&commitContext, recipeInputs, execCtx, resolutionOptionsFromExecution(execOpts))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
@@ -67,8 +73,21 @@ type StepResult struct {
 	Outputs map[string]interface{}
 }
 
-// executeOperation executes a single operation node
 func executeOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
+	l := slog.Default()
+	l.Info("executing op", "op", op)
+	err := executeOp2(ctx, parentResolutionContext, metadata, op)
+	if err != nil {
+		l.Error("failed to execute op", "op", op, "err", err)
+		return err
+	}
+
+	l.Info("op executed successfully", "op", op)
+	return nil
+}
+
+// executeOperation executes a single operation node
+func executeOp2(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
 
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)
 	if err != nil {
@@ -148,7 +167,7 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 
 		gitResult := envelope.GitResult
 		resCtx.UpdateGitState(gitResult)
-		stepInput = envelope.OpOutput
+		stepInput = normalizeOpOutput(chain[i].OutputType, envelope.OpOutput)
 		if envelope.NextTask == "" {
 			break
 		}
@@ -168,6 +187,9 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 	resCtx, err := parentCtx.NewChildContext(template.ScopeSequence, metadata, "", resolvedInputs)
 	if err != nil {
 		return fmt.Errorf("failed to create resolution context: %w", err)
+	}
+	if err := seedSequencePlaceholders(resCtx, sequence); err != nil {
+		return err
 	}
 
 	for i, node := range sequence {

@@ -22,6 +22,10 @@ func newSliceIterator[T any](items []T) Iterator[T] {
 	return &sliceIterator[T]{items: items}
 }
 
+func NewSliceIterator[T any](items []T) Iterator[T] {
+	return newSliceIterator(items)
+}
+
 func (it *sliceIterator[T]) Next(ctx context.Context) (T, error) {
 	var zero T
 	if it.closed {

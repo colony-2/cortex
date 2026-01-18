@@ -101,6 +101,7 @@ type stubDeps struct {
 	inputArtifacts []swf.Artifact
 	outputs        []swf.Artifact
 	workflow       workflowctl.WorkflowControl
+	worktreePath   string
 }
 
 func (d *stubDeps) Database() *gorm.DB { return d.db }
@@ -116,6 +117,7 @@ func (d *stubDeps) GetOutputArtifacts() []swf.Artifact { return d.outputs }
 func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }
+func (d *stubDeps) WorktreePath() string { return d.worktreePath }
 
 func newOpDeps() ops.OpDependencies { return newOpDepsWithDB(&gorm.DB{}) }
 func newOpDepsWithDB(db *gorm.DB) ops.OpDependencies {
@@ -130,13 +132,13 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	created := &ticket.Ticket{
 		ID:        ticket.ID("TCK-001"),
 		ProjectID: ticket.ProjectID("proj-1"),
-		Stage:     ticket.Stage("triage"),
+		Stage:     ticket.Stage("open"),
 		State:     ticket.StateWorking,
 		UpdatedAt: time.Date(2024, 9, 20, 10, 0, 0, 0, time.UTC),
 		Version:   optimisticlock.Version{Int64: 1, Valid: true},
 	}
 	svc.createFunc = func(ctx context.Context, input ticket.CreateInput) (*ticket.Ticket, error) {
-		require.Equal(t, ticket.Stage("triage"), input.Stage)
+		require.Equal(t, ticket.Stage("open"), input.Stage)
 		require.Equal(t, ticket.StateWorking, input.State)
 		require.Equal(t, ticket.ActorTypeAgent, input.Actor.Type)
 		require.Equal(t, "cell-x", input.Actor.Agent.CellName)
@@ -148,7 +150,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	updated := &ticket.Ticket{
 		ID:        ticket.ID("TCK-001"),
 		ProjectID: ticket.ProjectID("proj-1"),
-		Stage:     ticket.Stage("execution"),
+		Stage:     ticket.Stage("cancelled"),
 		State:     ticket.StateWorking,
 		UpdatedAt: time.Date(2024, 9, 20, 11, 0, 0, 0, time.UTC),
 		Version:   optimisticlock.Version{Int64: 2, Valid: true},
@@ -156,7 +158,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	svc.updateFunc = func(ctx context.Context, id ticket.ID, in ticket.UpdateInput) (*ticket.Ticket, error) {
 		require.Equal(t, ticket.ID("TCK-001"), id)
 		require.NotNil(t, in.Stage)
-		require.Equal(t, ticket.Stage("execution"), *in.Stage)
+		require.Equal(t, ticket.Stage("cancelled"), *in.Stage)
 		require.Nil(t, in.Actor)
 		return updated, nil
 	}
@@ -170,7 +172,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 					Cell:      "cell-x",
 					ProjectID: "proj-1",
 					Title:     "Bootstrap",
-					Stage:     "Triage",
+					Stage:     "Open",
 					State:     string(ticket.StateWorking),
 					Actor: &actorPayload{
 						Type: "agent",
@@ -187,7 +189,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 				Type: ActionUpdateTicket,
 				Raw: mustMarshal(t, updateTicketAction{
 					ExpectedVersion: 1,
-					Stage:           strPtr("Execution"),
+					Stage:           strPtr("Cancelled"),
 				}),
 			},
 		},
@@ -196,9 +198,9 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("execution"), output.Ticket.Stage)
+	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
 	require.Equal(t, "TCK-001", output.ContextPatch["ticket.id"])
-	require.Equal(t, "execution", output.ContextPatch["ticket.stage"])
+	require.Equal(t, "cancelled", output.ContextPatch["ticket.stage"])
 	require.Equal(t, "proj-1", output.ContextPatch["ticket.project_id"])
 	require.Len(t, output.Results, 2)
 	require.Equal(t, ActionCreateTicket, output.Results[0].Type)
@@ -283,7 +285,7 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 		require.Equal(t, ticket.ID("T-55"), id)
 		return &ticket.Ticket{
 			ID:        id,
-			Stage:     ticket.Stage("triage"),
+			Stage:     ticket.Stage("open"),
 			State:     ticket.StateWorking,
 			UpdatedAt: at,
 			Version:   optimisticlock.Version{Int64: 5, Valid: true},
@@ -302,7 +304,7 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("triage"), output.Ticket.Stage)
+	require.Equal(t, ticket.Stage("open"), output.Ticket.Stage)
 	require.Equal(t, "RST-1", output.ContextPatch["ticket.last_reset_id"])
 	require.Len(t, output.Results, 1)
 	require.NotNil(t, output.Results[0].Reset)
@@ -324,7 +326,7 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 			Type: ActionUpdateTicket,
 			Raw: mustMarshal(t, updateTicketAction{
 				ExpectedVersion: 2,
-				Stage:           strPtr("review"),
+				Stage:           strPtr("Cancelled"),
 			}),
 		}},
 	}

@@ -353,7 +353,7 @@ func TestCreateTicketInvalidState(t *testing.T) {
 		Cell:      "cell-a",
 		ProjectID: testProjectID,
 		Title:     "Demo",
-		Stage:     "triage",
+		Stage:     "open",
 		State:     model.State("bad"),
 		Actor:     NewUserActor("user@example.com"),
 	})
@@ -368,7 +368,7 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 				return &model.Ticket{
 					ID:      id,
 					Version: version(1),
-					Stage:   "triage",
+					Stage:   "open",
 					State:   model.StateWorking,
 					Creator: NewUserActor("user@example.com"),
 				}, nil
@@ -384,7 +384,7 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 
 	_, err = svc.UpdateTicket(context.Background(), model.ID("abc"), UpdateInput{
 		ExpectedVersion: version(2),
-		Stage:           StagePtr("review"),
+		Stage:           StagePtr("cancelled"),
 	})
 	require.ErrorIs(t, err, ErrVersionConflict)
 }
@@ -394,7 +394,7 @@ func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	stored := &model.Ticket{
 		ID:        "abc",
 		Version:   version(2),
-		Stage:     "triage",
+		Stage:     "open",
 		State:     model.StateWorking,
 		ProjectID: testProjectID,
 		Creator:   NewUserActor("user@example.com"),
@@ -437,7 +437,7 @@ func TestUpdateTicketDescriptionChange(t *testing.T) {
 	original := &model.Ticket{
 		ID:          "ticket-desc",
 		Version:     version(3),
-		Stage:       "triage",
+		Stage:       "open",
 		State:       model.StateWorking,
 		ProjectID:   testProjectID,
 		Description: "initial",
@@ -665,7 +665,7 @@ func TestResetTicketMissingAnchor(t *testing.T) {
 		Cell:      "cell-reset",
 		ProjectID: proj.ID,
 		Title:     "Rollback",
-		Stage:     model.Stage("triage"),
+		Stage:     model.Stage("open"),
 		State:     model.StateWorking,
 		Actor:     NewUserActor("owner@example.com"),
 	})

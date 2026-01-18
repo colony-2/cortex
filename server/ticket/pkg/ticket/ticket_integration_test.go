@@ -115,14 +115,14 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 		Cell:      "cell-a",
 		ProjectID: projectID,
 		Title:     "Proposal review",
-		Stage:     ticket.Stage("triage"),
+		Stage:     ticket.Stage("open"),
 		State:     ticket.StateWorking,
 		Actor:     ticket.NewUserActor("designer@example.com"),
 	})
 	require.NoError(t, err)
 	require.NotZero(t, created.ID)
 
-	iter, err := svc.SearchTickets(ctx, ticket.SearchFilter{StageAny: []ticket.Stage{ticket.Stage("triage")}})
+	iter, err := svc.SearchTickets(ctx, ticket.SearchFilter{StageAny: []ticket.Stage{ticket.Stage("open")}})
 	require.NoError(t, err)
 	defer testutil.MustCloseIterator(t, iter)
 
@@ -161,7 +161,7 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 		require.NoError(t, err)
 		stages = append(stages, stage)
 	}
-	require.ElementsMatch(t, []ticket.Stage{ticket.CompletedStage}, stages)
+	require.ElementsMatch(t, []ticket.Stage{ticket.StageOpen, ticket.StageCompleted, ticket.StageCancelled}, stages)
 }
 
 func TestServiceIntegration_EventLifecycle(t *testing.T) {
@@ -208,7 +208,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 		Cell:      "cell-a",
 		ProjectID: projectID,
 		Title:     "Lifecycle",
-		Stage:     ticket.Stage("triage"),
+		Stage:     ticket.Stage("open"),
 		State:     ticket.StateWorking,
 		Actor:     creator,
 	})
@@ -415,7 +415,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 		Cell:      "cell-reset",
 		ProjectID: projectID,
 		Title:     "Concurrent",
-		Stage:     ticket.Stage("triage"),
+		Stage:     ticket.Stage("open"),
 		State:     ticket.StateWorking,
 		Actor:     actor,
 	})
@@ -561,7 +561,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 		Cell:      "cell-stage",
 		ProjectID: projectID,
 		Title:     "Stage reset",
-		Stage:     ticket.Stage("triage"),
+		Stage:     ticket.Stage("open"),
 		State:     ticket.StateWorking,
 		Actor:     creator,
 	})
@@ -590,7 +590,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 	require.Len(t, initialEvents, 1)
 	anchorEvent := initialEvents[0]
 
-	reviewStage := ticket.Stage("review")
+	reviewStage := ticket.Stage("cancelled")
 	secondUpdate, err := svc.UpdateTicket(ctx, created.ID, ticket.UpdateInput{
 		ExpectedVersion: firstUpdate.Version,
 		Stage:           &reviewStage,
@@ -707,7 +707,7 @@ func TestStoreWithTransaction(t *testing.T) {
 		ID:         ticket.ID(id),
 		CellName:   "cell-a",
 		Title:      "Draft",
-		Stage:      ticket.Stage("triage"),
+		Stage:      ticket.Stage("open"),
 		State:      ticket.StateWorking,
 		Creator:    ticket.NewUserActor("author@example.com"),
 		CreatedAt:  now,

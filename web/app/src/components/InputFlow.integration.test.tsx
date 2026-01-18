@@ -131,10 +131,10 @@ describe('Input Flow - Complete E2E Integration', () => {
     const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    // Step 9: Should navigate back
+    // Step 9: Should navigate to workflow details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
     });
 
     // Workflow is now complete (tested list → detail → submit → navigation)

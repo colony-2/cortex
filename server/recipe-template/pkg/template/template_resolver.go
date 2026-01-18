@@ -61,6 +61,7 @@ type ResolutionContext struct {
 
 	// Scope type: "root", "sequence", "state_machine", "state"
 	ScopeType ScopeType
+	Options   ResolutionOptions
 
 	scopeId string
 
@@ -91,16 +92,22 @@ func (rc *ResolutionContext) GetGitCommitContext() contextual.GitCommitContext {
 }
 
 // NewRecipeResolutionContext creates a new resolution context for a recipe
-func NewRecipeResolutionContext(commitContext *contextual.GitCommitContext, recipeInputs map[string]interface{}, execCtx contextual.JobContext) (*ResolutionContext, error) {
+func NewRecipeResolutionContext(commitContext *contextual.GitCommitContext, recipeInputs map[string]interface{}, execCtx contextual.JobContext, opts ...ResolutionOptions) (*ResolutionContext, error) {
 	tracker := newInvocationTracker()
 
-	return newResolutionContext(commitContext, tracker, ScopeRecipe, "", recipeInputs, execCtx)
+	options := DefaultResolutionOptions()
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+
+	return newResolutionContext(commitContext, tracker, ScopeRecipe, "", recipeInputs, execCtx, options)
 }
 
-func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *invocationTracker, scopeType ScopeType, scopeId string, containerInputs map[string]interface{}, execCtx contextual.JobContext) (*ResolutionContext, error) {
+func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *invocationTracker, scopeType ScopeType, scopeId string, containerInputs map[string]interface{}, execCtx contextual.JobContext, options ResolutionOptions) (*ResolutionContext, error) {
 	rc := &ResolutionContext{
 		commitContext: commitContext,
 		ScopeType:     scopeType,
+		Options:       options,
 		tracker:       tracker,
 		scopeId:       scopeId,
 		TemplateData: templateData{
@@ -147,6 +154,10 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
+	env, err = cel.CustomTypeAdapter(newResolutionTypeAdapter(env.CELTypeAdapter(), options))(env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure CEL adapter: %w", err)
+	}
 	rc.CELEnv = env
 	rc.ensureContextBackfill()
 
@@ -180,6 +191,11 @@ func scopeId(meta recipe.NodeMetadata, fallback string, scopeType ScopeType) str
 	}
 }
 
+// ScopeID exposes the internal scope id logic for validation pre-seeding.
+func ScopeID(meta recipe.NodeMetadata, fallback string, scopeType ScopeType) string {
+	return scopeId(meta, fallback, scopeType)
+}
+
 // NewChildContext creates a child resolution context
 func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recipe.NodeMetadata, fallback string, inputs map[string]interface{}) (*ResolutionContext, error) {
 	switch scopeType {
@@ -194,7 +210,7 @@ func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recip
 	}
 
 	scopeId := scopeId(metadata, fallback, scopeType)
-	child, err := newResolutionContext(rc.commitContext, rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TaskExecutionContext().JobContext())
+	child, err := newResolutionContext(rc.commitContext, rc.tracker.child(scopeId), scopeType, scopeId, inputs, rc.TaskExecutionContext().JobContext(), rc.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +292,9 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 	if expr == "" {
 		return "", nil
 	}
+	if rc.Options.ClampSliceIndex {
+		expr = clampNumericIndexes(expr)
+	}
 
 	ast, issues := rc.CELEnv.Compile(expr)
 	if issues != nil && issues.Err() != nil {
@@ -290,8 +309,8 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 	// Pass templateData fields as CEL variables with native types
 	result, _, err := program.Eval(map[string]interface{}{
 		"inputs":   rc.TemplateData.ContainerInputs,
-		"sequence": rc.TemplateData.Sequence,
-		"states":   rc.TemplateData.States,
+		"sequence": rc.celSequenceValue(),
+		"states":   rc.celStatesValue(),
 		"scope":    rc.TemplateData.Scope,
 		"context":  rc.TemplateData.Context,
 	})

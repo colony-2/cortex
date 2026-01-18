@@ -61,6 +61,9 @@ type (
 )
 
 const (
+	StageOpen                        = model.StageOpen
+	StageCompleted                   = model.StageCompleted
+	StageCancelled                   = model.StageCancelled
 	StateWaitingUser                  = model.StateWaitingUser
 	StateWaitingDependency            = model.StateWaitingDependency
 	StateWaitingCapacity              = model.StateWaitingCapacity
@@ -163,6 +166,10 @@ func StatePtr(state State) *State {
 
 func BuiltinStates() []State {
 	return model.BuiltinStates()
+}
+
+func BuiltinStages() []Stage {
+	return model.BuiltinStages()
 }
 
 type ShortIDGenerator = model.ShortIDGenerator

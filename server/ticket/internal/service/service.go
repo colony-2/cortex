@@ -342,7 +342,8 @@ func (s *service) SearchTickets(ctx context.Context, filter model.SearchFilter) 
 }
 
 func (s *service) SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error) {
-	return s.store.SearchStages(ctx, filter)
+	stages := filterStages(model.BuiltinStages(), filter)
+	return store.NewSliceIterator(stages), nil
 }
 
 func (s *service) GetStates(ctx context.Context) ([]model.State, error) {
@@ -598,7 +599,8 @@ func stageValidator(fl validator.FieldLevel) bool {
 	if field.Kind() != reflect.String {
 		return false
 	}
-	return strings.TrimSpace(field.String()) != ""
+	normalized := model.Stage(strings.ToLower(strings.TrimSpace(field.String())))
+	return model.IsValidStage(normalized)
 }
 
 func stateValidator(fl validator.FieldLevel) bool {
@@ -681,7 +683,7 @@ func mapValidationError(err error) error {
 }
 
 func normalizeStage(stage model.Stage) model.Stage {
-	return model.Stage(strings.TrimSpace(string(stage)))
+	return model.Stage(strings.ToLower(strings.TrimSpace(string(stage))))
 }
 
 func normalizeStagePtr(stage *model.Stage) *model.Stage {
@@ -690,6 +692,44 @@ func normalizeStagePtr(stage *model.Stage) *model.Stage {
 	}
 	normalized := normalizeStage(*stage)
 	return &normalized
+}
+
+func filterStages(stages []model.Stage, filter model.SearchFilter) []model.Stage {
+	if len(stages) == 0 {
+		return nil
+	}
+	include := map[model.Stage]struct{}{}
+	if len(filter.StageAny) > 0 {
+		for _, stage := range filter.StageAny {
+			normalized := normalizeStage(stage)
+			if model.IsValidStage(normalized) {
+				include[normalized] = struct{}{}
+			}
+		}
+	}
+	exclude := map[model.Stage]struct{}{}
+	if len(filter.StageNotIn) > 0 {
+		for _, stage := range filter.StageNotIn {
+			normalized := normalizeStage(stage)
+			if model.IsValidStage(normalized) {
+				exclude[normalized] = struct{}{}
+			}
+		}
+	}
+
+	filtered := make([]model.Stage, 0, len(stages))
+	for _, stage := range stages {
+		if len(include) > 0 {
+			if _, ok := include[stage]; !ok {
+				continue
+			}
+		}
+		if _, ok := exclude[stage]; ok {
+			continue
+		}
+		filtered = append(filtered, stage)
+	}
+	return filtered
 }
 
 func sanitizeActorFields(actor model.Actor) model.Actor {

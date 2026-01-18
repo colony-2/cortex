@@ -3,6 +3,7 @@ package compiler
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -31,6 +32,7 @@ func (j recipeWorkerImpl) Name() string {
 }
 
 func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobData, error) {
+	logger := slog.Default()
 	artifacts, err := jobData.GetArtifacts()
 	if err != nil {
 		return nil, err
@@ -73,13 +75,16 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 
 	wCtx := workflow.Context{JobContext: ctx}
 	out, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
+
 	if err != nil {
+		logger.Error("recipe execution failed", "error", err)
 		return nil, err
 	}
 	taskData, err := swf.NewTaskData(out)
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("recipe execution completed successfully")
 	return swf.JobData(taskData), nil
 
 }

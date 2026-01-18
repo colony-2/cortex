@@ -55,7 +55,7 @@ export default function InputDetailPage({ projectId }: InputDetailPageProps) {
     try {
       await inputActivityService.submitResponse(projectId, jobId, response);
       message.success('Response submitted successfully');
-      navigate(`/project/${projectId}/inputs`);
+      navigate(`/project/${projectId}/workflows/${jobId}`);
     } catch (err) {
       console.error('Failed to submit response:', err);
       message.error('Failed to submit response. Please try again.');

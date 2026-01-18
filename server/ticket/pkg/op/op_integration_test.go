@@ -47,7 +47,7 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 					Cell:      "cell-integration",
 					ProjectID: string(proj.ID),
 					Title:     "Integration Test",
-					Stage:     "Triage",
+					Stage:     "Open",
 					State:     string(ticket.StateWorking),
 				}),
 			},
@@ -55,8 +55,8 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 				Type: ActionUpdateTicket,
 				Raw: mustMarshal(t, updateTicketAction{
 					ExpectedVersion: 1,
-					Stage:           strPtr("Execution"),
-					Description:     strPtr("Shift to execution"),
+					Stage:           strPtr("Cancelled"),
+					Description:     strPtr("Shift to cancelled"),
 				}),
 			},
 			{
@@ -88,7 +88,7 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, output.Results, 5)
 	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("execution"), output.Ticket.Stage)
+	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
 	require.Equal(t, "wf-123", output.ContextPatch["ticket.workflow_id"])
 	require.Contains(t, output.ContextPatch, "ticket.last_event_id")
 	require.Contains(t, output.ContextPatch, "ticket.last_reset_id")

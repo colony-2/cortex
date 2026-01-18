@@ -180,10 +180,10 @@ describe('InputDetailPage - Multi-field Forms', () => {
     const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    // Should navigate back
+    // Should navigate to workflow details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
     });
   });
 
@@ -254,7 +254,7 @@ describe('InputDetailPage - Multi-field Forms', () => {
 
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
     });
   });
 

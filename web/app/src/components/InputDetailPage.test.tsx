@@ -121,10 +121,10 @@ describe('InputDetailPage - Single Question Flow', () => {
     const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    // Should navigate back to list
+    // Should navigate to workflow details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
     });
 
     // Verify input was removed from store

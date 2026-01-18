@@ -20,6 +20,10 @@ type EmailAddress string
 type ActorType string
 
 const (
+	StageOpen      Stage = "open"
+	StageCompleted Stage = "completed"
+	StageCancelled Stage = "cancelled"
+
 	StateWaitingUser       State = "waiting_user"
 	StateWaitingDependency State = "waiting_dependency"
 	StateWaitingCapacity   State = "waiting_capacity"
@@ -28,7 +32,7 @@ const (
 	ActorTypeUser  ActorType = "user"
 	ActorTypeAgent ActorType = "agent"
 
-	CompletedStage Stage = "__completed__"
+	CompletedStage Stage = StageCompleted
 )
 
 type ActorUser struct {
@@ -87,15 +91,36 @@ var builtinStates = []State{
 	StateWorking,
 }
 
+var builtinStages = []Stage{
+	StageOpen,
+	StageCompleted,
+	StageCancelled,
+}
+
 func BuiltinStates() []State {
 	result := make([]State, len(builtinStates))
 	copy(result, builtinStates)
 	return result
 }
 
+func BuiltinStages() []Stage {
+	result := make([]Stage, len(builtinStages))
+	copy(result, builtinStages)
+	return result
+}
+
 func IsValidState(state State) bool {
 	for _, s := range builtinStates {
 		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
+func IsValidStage(stage Stage) bool {
+	for _, s := range builtinStages {
+		if s == stage {
 			return true
 		}
 	}
