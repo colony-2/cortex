@@ -11,7 +11,7 @@ The Recipe Service provides git-backed storage and versioning for recipe definit
 - **Repository Structure**: Recipes stored in project's base repo under `.c2/recipes/` directory
 - **Main Branch Only**: All commits happen on the `main` branch
 - **Local Workspace**: Service maintains its own private local clone for all operations, syncing with primary repository
-- **Early Validation**: When `AutoPublish=true`, pre-validation occurs before git write to fail fast (full validation including version checks still happens during publish)
+- **Early Validation**: When `AutoPublish=true`, pre-validation occurs before git write to fail fast (full validation, including CEL expression checks, still happens during publish)
 
 ## Key Concepts
 
@@ -160,8 +160,8 @@ type Service interface {
     GetRecipeHistory(ctx context.Context, projectID project.ID, name string) (Iterator[*RecipeVersion], error)
 
     // Validation
-    // Validate recipe content without creating/publishing
-    ValidateRecipe(ctx context.Context, content []byte) error
+    // Validate recipe content without creating/publishing and return structured errors on failure
+    ValidateRecipe(ctx context.Context, input ValidateInput) (*ValidationResult, error)
 
     // Remote Sync
     // Sync from remote repository
@@ -197,6 +197,32 @@ type UnpublishInput struct {
     ProjectID      project.ID
     Name           string              // Recipe name to unpublish
     ExpectedCommit string              // Expected current published commit (optimistic concurrency control)
+}
+
+type ValidateInput struct {
+    ProjectID project.ID
+    Name      string              // Recipe name for ID matching
+    Content   []byte              // Recipe YAML content
+}
+
+type ValidationResult struct {
+    Valid  bool
+    Errors []ValidationError
+}
+
+type ValidationError struct {
+    Code       string             // e.g., "yaml_parse", "schema", "recipe_id_mismatch", "cel_invalid"
+    Message    string
+    Path       string             // YAML/JSON path to failing field (if known)
+    Expression string             // CEL expression (if applicable)
+}
+
+type ValidationFailedError struct {
+    Result *ValidationResult
+}
+
+func (e *ValidationFailedError) Error() string {
+    return "recipe: validation failed"
 }
 
 type RecipeVersion struct {
@@ -264,11 +290,15 @@ var (
     ErrNotPublished     = errors.New("recipe: recipe is not published")
     ErrVersionConflict  = errors.New("recipe: version conflict")
     ErrInvalidContent   = errors.New("recipe: invalid recipe content")
+    ErrValidationUnavailable = errors.New("recipe: validation service unavailable")
     ErrCommitNotFound   = errors.New("recipe: commit not found in git")
     ErrGitConflict      = errors.New("recipe: git merge conflict detected")
     ErrRemoteSync       = errors.New("recipe: failed to sync with remote")
 )
 ```
+
+**Validation Errors**:
+- `ValidationFailedError` is returned by `ValidateRecipe` when validation fails and carries `ValidationResult` with structured details.
 
 ## Git Integration
 
@@ -386,6 +416,7 @@ When using `name@ref` syntax, the service resolves refs using standard git mecha
 5. **If `AutoPublish=true`**: Pre-validate recipe content to fail fast
    - Parse recipe and validate structure
    - Check recipe ID matches name
+   - Validate CEL expressions via recipe-worker API
    - Check for database conflicts
    - **Note**: This is an optimization - full validation still occurs during publish step
 6. Write recipe file to git workspace: `.c2/recipes/{name}.recipe.yaml`
@@ -410,6 +441,7 @@ When using `name@ref` syntax, the service resolves refs using standard git mecha
 5. **If `AutoPublish=true`**: Pre-validate recipe content to fail fast
    - Parse recipe and validate structure
    - Check recipe ID matches name
+   - Validate CEL expressions via recipe-worker API
    - Verify existing published recipe exists if applicable
    - **Note**: This is an optimization - full validation still occurs during publish step
 6. Write updated content to git workspace: `.c2/recipes/{name}.recipe.yaml`
@@ -449,8 +481,10 @@ When using `name@ref` syntax, the service resolves refs using standard git mecha
 6. Parse and validate using `recipe.LoadRecipeFromString()`
 7. **Validate Recipe ID**: Verify the `id` field inside the recipe YAML matches the recipe name (excluding any `@ref`)
    - Example: For `.c2/recipes/foo/bar/test.recipe.yaml`, the recipe's `id` field must be `foo/bar/test`
-   - If mismatch: return `ErrInvalidContent` with details
-8. If validation fails: return `ErrInvalidContent` with details
+   - If mismatch: return `ErrInvalidContent` with aggregated error details (`ValidationResult.Errors`)
+8. **Validate CEL Expressions**: Call recipe-worker validation API to ensure CEL expressions reference potentially real fields/values
+   - If validation errors: return `ErrInvalidContent` with aggregated error details (`ValidationResult.Errors`)
+   - If validation service unavailable: return `ErrValidationUnavailable`
 9. If validation succeeds:
    - **Database Transaction**:
      - Get existing published recipe (if any)
@@ -535,6 +569,16 @@ This allows safe publish operations even when multiple users are working concurr
 
 **Note**: The `--follow` flag tracks renames, providing complete history even if file was moved.
 
+#### Validate Recipe
+1. Validate project exists
+2. Parse and validate structure using `recipe.LoadRecipeFromString()`
+3. Validate recipe ID matches `Name`
+4. Call recipe-worker validation API to validate CEL expressions
+5. On validation failure: return `ValidationFailedError` with `ValidationResult`
+6. On success: return `ValidationResult` with `Valid=true`
+
+**Note**: This API is intended for other services to validate a recipe and get structured error details without publishing.
+
 #### Sync from Remote
 1. Fetch from remote using `git.Fetch()` (see GIT_COMMANDS_SPEC.md)
 2. Optionally pull changes using `git.Pull()` with fast-forward only
@@ -547,19 +591,77 @@ This allows safe publish operations even when multiple users are working concurr
 
 ### Validation Integration
 
-Uses `server/recipe-core/pkg/recipe` for validation:
+Validation is a two-phase check:
+
+1. **Structural + Schema Validation** via `server/recipe-core/pkg/recipe`
+2. **CEL Expression Validation** via the new recipe-worker validation API (ensures references in CEL expressions are potentially real)
+
+Recipe Service aggregates all validation errors and returns them to callers.
 
 ```go
-func (s *service) ValidateRecipe(ctx context.Context, content []byte) error {
-    _, err := recipe.LoadRecipeFromString(content)
+func (s *service) ValidateRecipe(ctx context.Context, input ValidateInput) (*ValidationResult, error) {
+    result := &ValidationResult{Valid: true}
+
+    rec, err := recipe.LoadRecipeFromString(input.Content)
     if err != nil {
-        return fmt.Errorf("validation failed: %w", err)
+        result.Valid = false
+        result.Errors = append(result.Errors, ValidationError{
+            Code:    "schema",
+            Message: err.Error(),
+        })
+        return result, &ValidationFailedError{Result: result}
     }
-    return nil
+
+    if rec.ID != input.Name {
+        result.Valid = false
+        result.Errors = append(result.Errors, ValidationError{
+            Code:    "recipe_id_mismatch",
+            Message: fmt.Sprintf("recipe id %q does not match name %q", rec.ID, input.Name),
+            Path:    "id",
+        })
+    }
+
+    // Call recipe-worker validation API for CEL expressions.
+    celErrors, err := s.recipeWorkerValidator.ValidateCEL(ctx, input.ProjectID, rec)
+    if err != nil {
+        return nil, fmt.Errorf("cel validation unavailable: %w", err)
+    }
+    if len(celErrors) > 0 {
+        result.Valid = false
+        result.Errors = append(result.Errors, celErrors...)
+    }
+
+    if !result.Valid {
+        return result, &ValidationFailedError{Result: result}
+    }
+    return result, nil
 }
 ```
 
-This validation is automatically performed during `PublishRecipe`. Only valid recipes can be published.
+This validation is automatically performed during `PublishRecipe`. Validation failures hard-fail publish and return `ErrInvalidContent` with structured error details.
+
+#### CEL Expression Validation (Recipe-Worker)
+
+Recipe Service calls the recipe-worker validation API to validate CEL expressions embedded in recipe fields (conditions, filters, inputs, etc.). The validator ensures:
+
+- Expressions parse successfully
+- Referenced identifiers exist in the recipe's evaluation context (inputs, step outputs, workflow metadata)
+- Obvious type mismatches are rejected when detectable
+
+**Expected response** is a list of structured errors:
+
+```go
+[]ValidationError{
+    {
+        Code:       "cel_invalid",
+        Message:    "unknown identifier: step.build.outputs.image",
+        Path:       "steps[2].when",
+        Expression: "step.build.outputs.image != \"\"",
+    },
+}
+```
+
+If the validation service is unavailable, the Recipe Service returns `ErrValidationUnavailable` and blocks publish.
 
 ### Conflict Resolution
 
@@ -1649,9 +1751,18 @@ inputs:
 `)
 
 // Validate without publishing
-err := svc.ValidateRecipe(ctx, content)
+result, err := svc.ValidateRecipe(ctx, recipe.ValidateInput{
+    ProjectID: projectID,
+    Name:      "workflows/ci/build",
+    Content:   content,
+})
 if err != nil {
-    fmt.Printf("Validation failed: %v\n", err)
+    if vErr, ok := err.(*recipe.ValidationFailedError); ok {
+        fmt.Printf("Validation failed: %+v\n", vErr.Result.Errors)
+        return
+    }
+    fmt.Printf("Validation error: %v\n", err)
+    return
 }
 ```
 
@@ -1681,6 +1792,9 @@ For existing recipe systems (e.g., `server/registry`):
 ### Unit Tests
 - CreateRecipe, UpdateRecipe, DeleteRecipe with mock git repository
 - PublishRecipe with validation and recipe ID matching
+- ValidateRecipe returns structured errors (schema, ID mismatch, CEL)
+- PublishRecipe fails on CEL validation errors
+- PublishRecipe fails when CEL validation service unavailable
 - UnpublishRecipe with optimistic concurrency control (ExpectedCommit)
 - Optimistic locking conflicts on concurrent publishes and unpublishes
 - Transaction rollback scenarios
@@ -1700,6 +1814,7 @@ For existing recipe systems (e.g., `server/registry`):
   - Branch names (if using git tags/branches)
   - Tag names (if using git tags)
   - Relative refs (HEAD~1, main~2, etc.)
+- ValidateRecipe API with CEL expression validation
 - GetRecipeHistory returns iterator with correct version list
 - ListRecipes with PublishStatus filters:
   - PublishStatusAll returns all recipes

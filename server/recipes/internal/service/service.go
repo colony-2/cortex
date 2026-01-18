@@ -11,7 +11,6 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 	"gorm.io/gorm"
@@ -34,7 +33,7 @@ type Service interface {
 	GetRecipeHistory(ctx context.Context, projectID project.ID, name string) (store.Iterator[*model.RecipeVersion], error)
 
 	// Validation
-	ValidateRecipe(ctx context.Context, content []byte) error
+	ValidateRecipe(ctx context.Context, input model.ValidateInput) (*model.ValidationResult, error)
 
 	// Remote Sync
 	SyncFromRemote(ctx context.Context, projectID project.ID) error
@@ -42,19 +41,21 @@ type Service interface {
 
 // ServiceConfig contains dependencies for the service.
 type ServiceConfig struct {
-	Store    store.Store
-	GitRepo  git.Repository
-	Projects project.Service
-	IDGen    model.ShortIDGenerator
-	Clock    model.Clock
+	Store        store.Store
+	GitRepo      git.Repository
+	Projects     project.Service
+	IDGen        model.ShortIDGenerator
+	Clock        model.Clock
+	CELValidator CELValidator
 }
 
 type service struct {
-	store    store.Store
-	gitRepo  git.Repository
-	projects project.Service
-	idGen    model.ShortIDGenerator
-	clock    model.Clock
+	store        store.Store
+	gitRepo      git.Repository
+	projects     project.Service
+	idGen        model.ShortIDGenerator
+	clock        model.Clock
+	celValidator CELValidator
 }
 
 // New creates a new recipe service.
@@ -71,16 +72,20 @@ func New(cfg ServiceConfig) (Service, error) {
 	if cfg.IDGen == nil {
 		return nil, errors.New("recipe service: ID generator is required")
 	}
+	if cfg.CELValidator == nil {
+		return nil, errors.New("recipe service: CEL validator is required")
+	}
 	if cfg.Clock == nil {
 		cfg.Clock = model.SystemClock{}
 	}
 
 	return &service{
-		store:    cfg.Store,
-		gitRepo:  cfg.GitRepo,
-		projects: cfg.Projects,
-		idGen:    cfg.IDGen,
-		clock:    cfg.Clock,
+		store:        cfg.Store,
+		gitRepo:      cfg.GitRepo,
+		projects:     cfg.Projects,
+		idGen:        cfg.IDGen,
+		clock:        cfg.Clock,
+		celValidator: cfg.CELValidator,
 	}, nil
 }
 
@@ -115,7 +120,11 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 
 	// 5. If AutoPublish enabled: pre-validate content early
 	if input.AutoPublish {
-		if err := s.preValidateRecipe(ctx, input.Name, input.Content, false); err != nil {
+		if err := s.preValidateRecipe(ctx, model.ValidateInput{
+			ProjectID: input.ProjectID,
+			Name:      input.Name,
+			Content:   input.Content,
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -225,7 +234,11 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 
 	// 5. If AutoPublish enabled: pre-validate content early
 	if input.AutoPublish {
-		if err := s.preValidateRecipe(ctx, input.Name, input.Content, true); err != nil {
+		if err := s.preValidateRecipe(ctx, model.ValidateInput{
+			ProjectID: input.ProjectID,
+			Name:      input.Name,
+			Content:   input.Content,
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -380,19 +393,16 @@ func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (
 		return nil, fmt.Errorf("%w: %v", model.ErrCommitNotFound, err)
 	}
 
-	// 5. Parse and validate recipe structure
-	rec, err := recipe.LoadRecipeFromString(content)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", model.ErrInvalidContent, err)
+	// 5. Validate content (schema + ID + CEL)
+	if _, err := s.validateRecipe(ctx, model.ValidateInput{
+		ProjectID: input.ProjectID,
+		Name:      input.Name,
+		Content:   content,
+	}); err != nil {
+		return nil, err
 	}
 
-	// 6. Validate recipe ID matches name
-	if rec.GetMetadata().ID != input.Name {
-		return nil, fmt.Errorf("%w: recipe ID '%s' does not match name '%s'",
-			model.ErrInvalidContent, rec.GetMetadata().ID, input.Name)
-	}
-
-	// 7. Insert or update published recipe in database
+	// 6. Insert or update published recipe in database
 	var result *model.PublishedRecipe
 	err = s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
 		existing, err := txStore.GetByName(ctx, input.ProjectID, input.Name)

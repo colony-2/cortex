@@ -60,11 +60,12 @@ func TestRecipeHandlers_RealIntegration(t *testing.T) {
 	})
 
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
-		Store:    recipeStore,
-		GitRepo:  gitRepo,
-		Projects: projectSvc,
-		IDGen:    recipesvc.NewKSUIDGenerator(),
-		Clock:    recipesvc.NewSystemClock(),
+		Store:        recipeStore,
+		GitRepo:      gitRepo,
+		Projects:     projectSvc,
+		IDGen:        recipesvc.NewKSUIDGenerator(),
+		Clock:        recipesvc.NewSystemClock(),
+		CELValidator: recipesvc.NewRecipeWorkerCELValidator(recipeops.NewServiceDepsBuilder().Build()),
 	})
 	require.NoError(t, err)
 

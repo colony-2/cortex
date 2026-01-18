@@ -30,7 +30,7 @@ type UpdateInput struct {
 type PublishInput struct {
 	ProjectID      project.ID
 	Name           string
-	CommitHash     string  // Empty = latest commit
+	CommitHash     string // Empty = latest commit
 	PublishedBy    *string
 	ExpectedCommit *string // Expected current published commit
 }
@@ -40,6 +40,40 @@ type UnpublishInput struct {
 	ProjectID      project.ID
 	Name           string
 	ExpectedCommit string // Expected current published commit
+}
+
+// ValidateInput contains parameters for validating a recipe.
+type ValidateInput struct {
+	ProjectID project.ID
+	Name      string
+	Content   []byte
+}
+
+// ValidationResult captures validation status and errors.
+type ValidationResult struct {
+	Valid  bool
+	Errors []ValidationError
+}
+
+// ValidationError provides structured validation details.
+type ValidationError struct {
+	Code       string
+	Message    string
+	Path       string
+	Expression string
+}
+
+// ValidationFailedError is returned when validation fails.
+type ValidationFailedError struct {
+	Result *ValidationResult
+}
+
+func (e *ValidationFailedError) Error() string {
+	return "recipe: validation failed"
+}
+
+func (e *ValidationFailedError) Unwrap() error {
+	return ErrInvalidContent
 }
 
 // RecipeVersion represents a recipe at a specific git commit.
@@ -103,17 +137,18 @@ type Iterator[T any] interface {
 
 // Error types
 var (
-	ErrEmptyName       = errors.New("recipe: name is required")
-	ErrInvalidName     = errors.New("recipe: invalid name format")
-	ErrInvalidProject  = errors.New("recipe: project not found")
-	ErrNotFound        = errors.New("recipe: not found")
-	ErrAlreadyExists   = errors.New("recipe: already exists")
-	ErrNotPublished    = errors.New("recipe: recipe is not published")
-	ErrVersionConflict = errors.New("recipe: version conflict")
-	ErrInvalidContent  = errors.New("recipe: invalid recipe content")
-	ErrCommitNotFound  = errors.New("recipe: commit not found in git")
-	ErrGitConflict     = errors.New("recipe: git merge conflict detected")
-	ErrRemoteSync      = errors.New("recipe: failed to sync with remote")
-	ErrIteratorDone    = errors.New("recipe: iterator done")
-	ErrOptimisticLock  = errors.New("recipe: optimistic lock failed")
+	ErrEmptyName             = errors.New("recipe: name is required")
+	ErrInvalidName           = errors.New("recipe: invalid name format")
+	ErrInvalidProject        = errors.New("recipe: project not found")
+	ErrNotFound              = errors.New("recipe: not found")
+	ErrAlreadyExists         = errors.New("recipe: already exists")
+	ErrNotPublished          = errors.New("recipe: recipe is not published")
+	ErrVersionConflict       = errors.New("recipe: version conflict")
+	ErrInvalidContent        = errors.New("recipe: invalid recipe content")
+	ErrCommitNotFound        = errors.New("recipe: commit not found in git")
+	ErrGitConflict           = errors.New("recipe: git merge conflict detected")
+	ErrRemoteSync            = errors.New("recipe: failed to sync with remote")
+	ErrValidationUnavailable = errors.New("recipe: validation service unavailable")
+	ErrIteratorDone          = errors.New("recipe: iterator done")
+	ErrOptimisticLock        = errors.New("recipe: optimistic lock failed")
 )

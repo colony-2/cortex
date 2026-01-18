@@ -13,15 +13,18 @@ require (
 	gorm.io/plugin/optimisticlock v1.1.3
 )
 
+require github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
+
 require (
 	cel.dev/expr v0.24.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/strata-go v0.0.0-20260111001323-608931bce986 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260114065339-1156514c38d1 // indirect
+	github.com/colony-2/swf-go v0.0.0-20260114065339-1156514c38d1
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
@@ -38,7 +41,6 @@ require (
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect

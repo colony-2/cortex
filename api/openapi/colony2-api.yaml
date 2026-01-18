@@ -1099,17 +1099,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecipeVersion'
         '400':
-          description: Invalid request (validation failed)
+          description: Invalid request or recipe validation failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/RecipeValidationResponse'
         '409':
           description: Recipe already exists
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/recipes/validate:
+    post:
+      summary: Validate recipe
+      description: Validate recipe content and return structured validation errors
+      operationId: validateRecipe
+      tags:
+        - Recipes
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Project ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateRecipeRequest'
+      responses:
+        '200':
+          description: Recipe validation succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeValidationResponse'
+        '400':
+          description: Recipe validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeValidationResponse'
         '500':
           description: Internal server error
           content:
@@ -1203,11 +1245,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/RecipeVersion'
         '400':
-          description: Invalid request
+          description: Invalid request or recipe validation failed
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorResponse'
+                  - $ref: '#/components/schemas/RecipeValidationResponse'
         '404':
           description: Recipe not found
           content:
@@ -1294,6 +1338,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublishedRecipe'
+        '400':
+          description: Recipe validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecipeValidationResponse'
         '404':
           description: Recipe or commit not found
           content:
@@ -2624,6 +2674,64 @@ components:
           description: Expected current commit hash (optimistic locking)
           example: "a1b2c3d4e5f6789012345678"
 
+    ValidateRecipeRequest:
+      type: object
+      description: Request to validate recipe content
+      required:
+        - name
+        - content
+      properties:
+        name:
+          type: string
+          description: Recipe name (path)
+          example: "workflows/ci/build"
+        content:
+          type: string
+          description: Recipe YAML content
+          example: |
+            version: "1.0"
+            id: workflows/ci/build
+            op: echo
+            inputs:
+              message: "Build"
+
+    ValidationError:
+      type: object
+      description: Validation error detail
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error classification
+          example: "cel_invalid"
+        message:
+          type: string
+          description: Human-readable error message
+        path:
+          type: string
+          description: YAML path to the invalid field
+          example: "steps[2].when"
+        expression:
+          type: string
+          description: CEL expression (if applicable)
+          example: "sequence.build.outputs.image != \"\""
+
+    RecipeValidationResponse:
+      type: object
+      description: Recipe validation result
+      required:
+        - valid
+        - errors
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+
     PublishRecipeRequest:
       type: object
       description: Request to publish a recipe version
@@ -2846,4 +2954,3 @@ components:
             - $ref: '#/components/schemas/InputSSEHeartbeatData'
             - $ref: '#/components/schemas/InputSSEErrorData'
       required: [type, data]
-

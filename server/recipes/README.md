@@ -57,28 +57,29 @@ import "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 
 ```go
 import (
+    "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
     "github.com/colony-2/colony2/server/recipes/pkg/recipe"
     "gorm.io/gorm"
 )
 
 // Option 1: From existing DB connection
 svc, err := recipe.NewServiceFromDB(db, recipe.ServiceConfig{
-    GitRepo:       gitRepo,        // git.Repository implementation
-    Projects:      projectService, // project.Service for validation
-    IDGen:         recipe.NewKSUIDGenerator(),
-    Clock:         recipe.NewSystemClock(),
-    WorkspaceRoot: "/var/lib/colony2/recipe-workspaces",
+    GitRepo:      gitRepo,        // git.Repository implementation
+    Projects:     projectService, // project.Service for validation
+    IDGen:        recipe.NewKSUIDGenerator(),
+    Clock:        recipe.NewSystemClock(),
+    CELValidator: recipe.NewRecipeWorkerCELValidator(ops.NewServiceDepsBuilder().Build()),
 })
 
 // Option 2: With custom store
 store, _ := recipe.NewStore(db)
 svc, err := recipe.NewService(recipe.ServiceConfig{
-    Store:         store,
-    GitRepo:       gitRepo,
-    Projects:      projectService,
-    IDGen:         recipe.NewKSUIDGenerator(),
-    Clock:         recipe.NewSystemClock(),
-    WorkspaceRoot: "/var/lib/colony2/recipe-workspaces",
+    Store:        store,
+    GitRepo:      gitRepo,
+    Projects:     projectService,
+    IDGen:        recipe.NewKSUIDGenerator(),
+    Clock:        recipe.NewSystemClock(),
+    CELValidator: recipe.NewRecipeWorkerCELValidator(ops.NewServiceDepsBuilder().Build()),
 })
 ```
 
@@ -356,7 +357,7 @@ type Service interface {
     GetRecipe(ctx, projectID, name, ref) (*RecipeWithContent, error)
     ListRecipes(ctx, RecipeFilter) (Iterator[*RecipeInfo], error)
     GetRecipeHistory(ctx, projectID, name) (Iterator[*RecipeVersion], error)
-    ValidateRecipe(ctx, content) error
+    ValidateRecipe(ctx, ValidateInput) (*ValidationResult, error)
     SyncFromRemote(ctx, projectID) error
 }
 ```

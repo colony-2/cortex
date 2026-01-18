@@ -15,22 +15,26 @@ type (
 	ServiceConfig = service.ServiceConfig
 
 	// Model types
-	ID            = model.ID
-	CreateInput   = model.CreateInput
-	UpdateInput   = model.UpdateInput
-	PublishInput  = model.PublishInput
+	ID             = model.ID
+	CreateInput    = model.CreateInput
+	UpdateInput    = model.UpdateInput
+	PublishInput   = model.PublishInput
 	UnpublishInput = model.UnpublishInput
+	ValidateInput  = model.ValidateInput
 
-	RecipeVersion     = model.RecipeVersion
-	RecipeInfo        = model.RecipeInfo
-	RecipeWithContent = model.RecipeWithContent
-	PublishedRecipe   = model.PublishedRecipe
+	RecipeVersion         = model.RecipeVersion
+	RecipeInfo            = model.RecipeInfo
+	RecipeWithContent     = model.RecipeWithContent
+	PublishedRecipe       = model.PublishedRecipe
+	ValidationResult      = model.ValidationResult
+	ValidationError       = model.ValidationError
+	ValidationFailedError = model.ValidationFailedError
 
 	RecipeFilter  = model.RecipeFilter
 	PublishStatus = model.PublishStatus
 
-	Clock             = model.Clock
-	ShortIDGenerator  = model.ShortIDGenerator
+	Clock            = model.Clock
+	ShortIDGenerator = model.ShortIDGenerator
 
 	// Store types
 	Store           = store.Store
@@ -46,19 +50,20 @@ const (
 
 // Error variables
 var (
-	ErrEmptyName       = model.ErrEmptyName
-	ErrInvalidName     = model.ErrInvalidName
-	ErrInvalidProject  = model.ErrInvalidProject
-	ErrNotFound        = model.ErrNotFound
-	ErrAlreadyExists   = model.ErrAlreadyExists
-	ErrNotPublished    = model.ErrNotPublished
-	ErrVersionConflict = model.ErrVersionConflict
-	ErrInvalidContent  = model.ErrInvalidContent
-	ErrCommitNotFound  = model.ErrCommitNotFound
-	ErrGitConflict     = model.ErrGitConflict
-	ErrRemoteSync      = model.ErrRemoteSync
-	ErrIteratorDone    = store.ErrIteratorDone // Use store error to match actual Iterator implementation
-	ErrOptimisticLock  = model.ErrOptimisticLock
+	ErrEmptyName             = model.ErrEmptyName
+	ErrInvalidName           = model.ErrInvalidName
+	ErrInvalidProject        = model.ErrInvalidProject
+	ErrNotFound              = model.ErrNotFound
+	ErrAlreadyExists         = model.ErrAlreadyExists
+	ErrNotPublished          = model.ErrNotPublished
+	ErrVersionConflict       = model.ErrVersionConflict
+	ErrInvalidContent        = model.ErrInvalidContent
+	ErrCommitNotFound        = model.ErrCommitNotFound
+	ErrGitConflict           = model.ErrGitConflict
+	ErrRemoteSync            = model.ErrRemoteSync
+	ErrValidationUnavailable = model.ErrValidationUnavailable
+	ErrIteratorDone          = store.ErrIteratorDone // Use store error to match actual Iterator implementation
+	ErrOptimisticLock        = model.ErrOptimisticLock
 )
 
 // NewService creates a new recipe service.

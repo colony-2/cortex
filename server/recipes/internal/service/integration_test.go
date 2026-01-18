@@ -502,12 +502,23 @@ inputs:
 	t.Run("ValidateOnly", func(t *testing.T) {
 		validContent := testutil.CreateTestRecipeContent("test-validate")
 
-		err := svc.ValidateRecipe(ctx, validContent)
+		result, err := svc.ValidateRecipe(ctx, model.ValidateInput{
+			ProjectID: projectID,
+			Name:      "test-validate",
+			Content:   validContent,
+		})
 		if err != nil {
 			t.Errorf("ValidateRecipe failed on valid content: %v", err)
 		}
+		if result == nil || !result.Valid {
+			t.Errorf("ValidateRecipe returned invalid result for valid content: %+v", result)
+		}
 
-		err = svc.ValidateRecipe(ctx, []byte("invalid"))
+		_, err = svc.ValidateRecipe(ctx, model.ValidateInput{
+			ProjectID: projectID,
+			Name:      "test-validate",
+			Content:   []byte("invalid"),
+		})
 		if err == nil {
 			t.Error("ValidateRecipe should fail on invalid content")
 		}
@@ -643,11 +654,12 @@ func setupTestService(t *testing.T, db *gorm.DB) Service {
 	})
 
 	svc, err := New(ServiceConfig{
-		Store:    store,
-		GitRepo:  gitRepo,
-		Projects: mockProjects,
-		IDGen:    testutil.NewMockIDGenerator("recipe_"),
-		Clock:    testutil.NewMockClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+		Store:        store,
+		GitRepo:      gitRepo,
+		Projects:     mockProjects,
+		IDGen:        testutil.NewMockIDGenerator("recipe_"),
+		Clock:        testutil.NewMockClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+		CELValidator: &testutil.MockCELValidator{},
 	})
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)

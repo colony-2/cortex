@@ -12,6 +12,7 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 )
 
@@ -105,9 +106,27 @@ func (s *MockProjectService) DeleteProject(ctx context.Context, id project.ID) e
 	return fmt.Errorf("not implemented")
 }
 
+// MockCELValidator allows tests to control CEL validation outcomes.
+type MockCELValidator struct {
+	mu     sync.Mutex
+	Errors []model.ValidationError
+	Err    error
+}
+
+func (v *MockCELValidator) ValidateCEL(ctx context.Context, projectID project.ID, rec recipe.Recipe) ([]model.ValidationError, error) {
+	_ = ctx
+	_ = projectID
+	_ = rec
+
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	return append([]model.ValidationError{}, v.Errors...), v.Err
+}
+
 // RealGitRepository implements git.Repository using real git commands.
 // This is for integration testing with actual git operations.
-type RealGitRepository struct{
+type RealGitRepository struct {
 	underlying git.Repository
 }
 

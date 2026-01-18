@@ -86,6 +86,7 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	// Recipe management endpoints - using {recipeName:.*} to allow slashes in recipe names
 	api.HandleFunc("/projects/{projectId}/recipes", withHandlerLog("recipes:list", h.handleListRecipes)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/recipes", withHandlerLog("recipes:create", h.handleCreateRecipe)).Methods(http.MethodPost)
+	api.HandleFunc("/projects/{projectId}/recipes/validate", withHandlerLog("recipes:validate", h.handleValidateRecipe)).Methods(http.MethodPost)
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeName:.*}/publish", withHandlerLog("recipes:publish", h.handlePublishRecipe)).Methods(http.MethodPost)
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeName:.*}/unpublish", withHandlerLog("recipes:unpublish", h.handleUnpublishRecipe)).Methods(http.MethodPost)
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeName:.*}/history", withHandlerLog("recipes:history", h.handleGetRecipeHistory)).Methods(http.MethodGet)

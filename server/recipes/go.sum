@@ -38,6 +38,10 @@ github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009 h1
 github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009/go.mod h1:PQ73oXdbBJbEAyfBfPyNCVBcTtLf7yTLoFNJH8gRr+E=
 github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009 h1:0WOVa0IHEnhoaQBbKSSlVTqHnBA/7PYPyBBYw8XZ7Uc=
 github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009/go.mod h1:dxjd7qJPzvmC21rDhhfqoZL86yH07OjEs/LwGhutrYA=
+github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec h1:jCDqmH3wniTC2Aj8ZVHV9EUlxtbLS2aW6+F7kOAIXoY=
+github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec/go.mod h1:k/bKF3FYCU4wV3eELUuoGzxWnwfgELIg8Ew4YwIOby8=
+github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009 h1:sEpCfUV6U+MH7BWQ/f+VllkdDbO74Qfd/sY3LEjew9o=
+github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009/go.mod h1:ottAcTmwTU/BpHl2KVqLBVWy4p26pNDK3/RxNtXf310=
 github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 h1:XNwMo2lML7tyGHlp3IfVsOkwHQY1FmwNvUmOOnyoiKk=
 github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7/go.mod h1:QJKHOf9Ybwm9V+74tls15xhPVbcDLBwkZ2dcVNAkLuw=
 github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d h1:C6BF7Npa0ZIeRAVLHmfwJXGC0ETtYia/mSwOtoBSy+M=
@@ -157,6 +161,10 @@ github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82 h1:BHyfKlQyqbsFN5p3Ifn
 github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82/go.mod h1:lgjkn3NuSvDfVJdfcVVdX+jpBxNmX4rDAzaS45IcYoM=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
+go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
+go.uber.org/multierr v1.11.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
+go.uber.org/zap v1.27.0 h1:aJMhYGrd5QSmlpLMr2MftRKl7t8J8PTZPA732ud/XR8=
+go.uber.org/zap v1.27.0/go.mod h1:GB2qFLM7cTU87MWRP2mPIjqfIDnGu+VIO4V/SdhGo2E=
 golang.org/x/crypto v0.41.0 h1:WKYxWedPGCTVVl5+WHSSrOBT0O8lx32+zxmHxijgXp4=
 golang.org/x/crypto v0.41.0/go.mod h1:pO5AFd7FA68rFak7rOAGVuygIISepHftHnr8dr6+sUc=
 golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa h1:t2QcU6V556bFjYgu4L6C+6VrCPyJZ+eyRsABUPs1mz4=

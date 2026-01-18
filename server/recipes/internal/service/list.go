@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 )
@@ -163,15 +162,6 @@ func (s *service) GetRecipeHistory(ctx context.Context, projectID project.ID, na
 	}
 
 	return store.NewSliceIterator(versions), nil
-}
-
-// ValidateRecipe validates recipe content without creating or publishing.
-func (s *service) ValidateRecipe(ctx context.Context, content []byte) error {
-	_, err := recipecore.LoadRecipeFromString(content)
-	if err != nil {
-		return fmt.Errorf("validation failed: %w", err)
-	}
-	return nil
 }
 
 // SyncFromRemote syncs the local workspace from the remote repository.

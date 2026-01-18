@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gorilla/mux"
-	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
+	"github.com/gorilla/mux"
 	"gopkg.in/yaml.v3"
 )
 
@@ -117,6 +117,44 @@ func (h *Handlers) handleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		Author:      version.Author,
 		Message:     version.Message,
 		IsPublished: version.IsPublished,
+	})
+}
+
+// handleValidateRecipe implements POST /projects/{projectId}/recipes/validate
+func (h *Handlers) handleValidateRecipe(w http.ResponseWriter, r *http.Request) {
+	projectID := project.ID(mux.Vars(r)["projectId"])
+
+	var req openapi.ValidateRecipeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" || req.Content == "" {
+		writeError(w, fmt.Errorf("name and content are required"), http.StatusBadRequest)
+		return
+	}
+
+	result, err := h.recipeSvc.ValidateRecipe(r.Context(), recipesvc.ValidateInput{
+		ProjectID: projectID,
+		Name:      req.Name,
+		Content:   []byte(req.Content),
+	})
+	if err != nil {
+		if vErr, ok := err.(*recipesvc.ValidationFailedError); ok {
+			writeJSON(w, http.StatusBadRequest, openapi.RecipeValidationResponse{
+				Valid:  false,
+				Errors: toOpenapiValidationErrors(vErr.Result.Errors),
+			})
+			return
+		}
+		writeRecipeError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, openapi.RecipeValidationResponse{
+		Valid:  result.Valid,
+		Errors: toOpenapiValidationErrors(result.Errors),
 	})
 }
 
@@ -336,6 +374,19 @@ func (h *Handlers) handleGetRecipeHistory(w http.ResponseWriter, r *http.Request
 
 // writeRecipeError handles recipe service errors with appropriate HTTP status codes
 func writeRecipeError(w http.ResponseWriter, err error) {
+	var vErr *recipesvc.ValidationFailedError
+	if errors.As(err, &vErr) {
+		if vErr != nil && vErr.Result != nil {
+			writeJSON(w, http.StatusBadRequest, openapi.RecipeValidationResponse{
+				Valid:  false,
+				Errors: toOpenapiValidationErrors(vErr.Result.Errors),
+			})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, openapi.RecipeValidationResponse{Valid: false})
+		return
+	}
+
 	switch {
 	case errors.Is(err, recipesvc.ErrNotFound):
 		writeError(w, err, http.StatusNotFound)
@@ -347,7 +398,31 @@ func writeRecipeError(w http.ResponseWriter, err error) {
 		writeError(w, err, http.StatusBadRequest)
 	case errors.Is(err, recipesvc.ErrAlreadyExists):
 		writeError(w, err, http.StatusConflict)
+	case errors.Is(err, recipesvc.ErrValidationUnavailable):
+		writeError(w, err, http.StatusServiceUnavailable)
 	default:
 		writeError(w, err, http.StatusInternalServerError)
 	}
+}
+
+func toOpenapiValidationErrors(errs []recipesvc.ValidationError) []openapi.ValidationError {
+	out := make([]openapi.ValidationError, 0, len(errs))
+	for _, err := range errs {
+		path := stringPtrIfNotEmpty(err.Path)
+		expr := stringPtrIfNotEmpty(err.Expression)
+		out = append(out, openapi.ValidationError{
+			Code:       err.Code,
+			Message:    err.Message,
+			Path:       path,
+			Expression: expr,
+		})
+	}
+	return out
+}
+
+func stringPtrIfNotEmpty(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

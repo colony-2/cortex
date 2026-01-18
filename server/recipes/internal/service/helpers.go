@@ -12,7 +12,6 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 )
@@ -117,7 +116,6 @@ func (s *service) createEphemeralWorkspace(
 
 	return tempDir, cleanup, nil
 }
-
 
 // pushToOrigin pushes changes to the primary repository.
 // The git module handles bare vs non-bare repository logic automatically.
@@ -290,20 +288,9 @@ func (s *service) applyRecipeFilters(recipes []*model.RecipeInfo, filter model.R
 }
 
 // preValidateRecipe performs early validation before git write (optimization for AutoPublish).
-func (s *service) preValidateRecipe(ctx context.Context, name string, content []byte, isUpdate bool) error {
-	// Parse recipe to validate structure
-	rec, err := recipecore.LoadRecipeFromString(content)
-	if err != nil {
-		return fmt.Errorf("%w: %v", model.ErrInvalidContent, err)
-	}
-
-	// Validate recipe ID matches name
-	if rec.GetMetadata().ID != name {
-		return fmt.Errorf("%w: recipe ID '%s' does not match name '%s'",
-			model.ErrInvalidContent, rec.GetMetadata().ID, name)
-	}
-
-	return nil
+func (s *service) preValidateRecipe(ctx context.Context, input model.ValidateInput) error {
+	_, err := s.validateRecipe(ctx, input)
+	return err
 }
 
 // deriveGitPath converts a recipe name to its git file path.

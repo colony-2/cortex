@@ -16,30 +16,42 @@ import (
 )
 
 type fakeRecipeService struct {
-	listReq       *recipesvc.RecipeFilter
-	createReq     *recipesvc.CreateInput
-	getReq        *struct{ projectID project.ID; name, ref string }
-	updateReq     *recipesvc.UpdateInput
-	deleteReq     *struct{ projectID project.ID; name string }
-	publishReq    *recipesvc.PublishInput
-	unpublishReq  *recipesvc.UnpublishInput
-	historyReq    *struct{ projectID project.ID; name string }
+	listReq   *recipesvc.RecipeFilter
+	createReq *recipesvc.CreateInput
+	getReq    *struct {
+		projectID project.ID
+		name, ref string
+	}
+	updateReq *recipesvc.UpdateInput
+	deleteReq *struct {
+		projectID project.ID
+		name      string
+	}
+	publishReq   *recipesvc.PublishInput
+	unpublishReq *recipesvc.UnpublishInput
+	historyReq   *struct {
+		projectID project.ID
+		name      string
+	}
+	validateReq *recipesvc.ValidateInput
 
-	listResp      []*recipesvc.RecipeInfo
-	createResp    *recipesvc.RecipeVersion
-	getResp       *recipesvc.RecipeWithContent
-	updateResp    *recipesvc.RecipeVersion
-	publishResp   *recipesvc.PublishedRecipe
-	historyResp   []*recipesvc.RecipeVersion
+	listResp     []*recipesvc.RecipeInfo
+	createResp   *recipesvc.RecipeVersion
+	getResp      *recipesvc.RecipeWithContent
+	updateResp   *recipesvc.RecipeVersion
+	publishResp  *recipesvc.PublishedRecipe
+	historyResp  []*recipesvc.RecipeVersion
+	validateResp *recipesvc.ValidationResult
 
-	listErr       error
-	createErr     error
-	getErr        error
-	updateErr     error
-	deleteErr     error
-	publishErr    error
-	unpublishErr  error
-	historyErr    error
+	listErr      error
+	createErr    error
+	getErr       error
+	updateErr    error
+	deleteErr    error
+	publishErr   error
+	unpublishErr error
+	historyErr   error
+	validateErr  error
 }
 
 func (f *fakeRecipeService) ListRecipes(ctx context.Context, filter recipesvc.RecipeFilter) (recipesvc.Iterator[*recipesvc.RecipeInfo], error) {
@@ -56,7 +68,10 @@ func (f *fakeRecipeService) CreateRecipe(ctx context.Context, input recipesvc.Cr
 }
 
 func (f *fakeRecipeService) GetRecipe(ctx context.Context, projectID project.ID, name, ref string) (*recipesvc.RecipeWithContent, error) {
-	f.getReq = &struct{ projectID project.ID; name, ref string }{projectID, name, ref}
+	f.getReq = &struct {
+		projectID project.ID
+		name, ref string
+	}{projectID, name, ref}
 	return f.getResp, f.getErr
 }
 
@@ -66,7 +81,10 @@ func (f *fakeRecipeService) UpdateRecipe(ctx context.Context, input recipesvc.Up
 }
 
 func (f *fakeRecipeService) DeleteRecipe(ctx context.Context, projectID project.ID, name string) error {
-	f.deleteReq = &struct{ projectID project.ID; name string }{projectID, name}
+	f.deleteReq = &struct {
+		projectID project.ID
+		name      string
+	}{projectID, name}
 	return f.deleteErr
 }
 
@@ -81,7 +99,10 @@ func (f *fakeRecipeService) UnpublishRecipe(ctx context.Context, input recipesvc
 }
 
 func (f *fakeRecipeService) GetRecipeHistory(ctx context.Context, projectID project.ID, name string) (recipesvc.Iterator[*recipesvc.RecipeVersion], error) {
-	f.historyReq = &struct{ projectID project.ID; name string }{projectID, name}
+	f.historyReq = &struct {
+		projectID project.ID
+		name      string
+	}{projectID, name}
 	if f.historyErr != nil {
 		return nil, f.historyErr
 	}
@@ -89,8 +110,9 @@ func (f *fakeRecipeService) GetRecipeHistory(ctx context.Context, projectID proj
 }
 
 // Additional required methods for the Service interface
-func (f *fakeRecipeService) ValidateRecipe(ctx context.Context, content []byte) error {
-	return nil
+func (f *fakeRecipeService) ValidateRecipe(ctx context.Context, input recipesvc.ValidateInput) (*recipesvc.ValidationResult, error) {
+	f.validateReq = &input
+	return f.validateResp, f.validateErr
 }
 
 func (f *fakeRecipeService) SyncFromRemote(ctx context.Context, projectID project.ID) error {
@@ -217,6 +239,119 @@ func TestHandleListRecipes_FilterPublished(t *testing.T) {
 
 	if fake.listReq == nil || fake.listReq.PublishStatus != "published" {
 		t.Fatalf("expected status filter 'published', got %q", fake.listReq.PublishStatus)
+	}
+}
+
+func TestHandleValidateRecipe_OK(t *testing.T) {
+	projectID := "proj_123"
+
+	fake := &fakeRecipeService{
+		validateResp: &recipesvc.ValidationResult{Valid: true},
+	}
+
+	h := &Handlers{recipeSvc: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	body, err := json.Marshal(openapi.ValidateRecipeRequest{
+		Name:    "workflows/ci/build",
+		Content: "version: \"1.0\"\nid: workflows/ci/build\nop: echo\ninputs:\n  message: \"hi\"\n",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/api/projects/"+projectID+"/recipes/validate", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var bodyResp openapi.RecipeValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&bodyResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !bodyResp.Valid {
+		t.Fatalf("expected valid response, got %+v", bodyResp)
+	}
+
+	if fake.validateReq == nil {
+		t.Fatalf("expected validate request to be captured")
+	}
+	if fake.validateReq.ProjectID != project.ID(projectID) {
+		t.Fatalf("expected project ID %q, got %q", projectID, fake.validateReq.ProjectID)
+	}
+}
+
+func TestHandleValidateRecipe_Invalid(t *testing.T) {
+	projectID := "proj_123"
+	fake := &fakeRecipeService{
+		validateErr: &recipesvc.ValidationFailedError{
+			Result: &recipesvc.ValidationResult{
+				Valid: false,
+				Errors: []recipesvc.ValidationError{
+					{
+						Code:    "cel_invalid",
+						Message: "unknown identifier",
+						Path:    "steps[0].when",
+					},
+				},
+			},
+		},
+	}
+
+	h := &Handlers{recipeSvc: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	body, err := json.Marshal(openapi.ValidateRecipeRequest{
+		Name:    "workflows/ci/build",
+		Content: "version: \"1.0\"\nid: workflows/ci/build\nop: echo\ninputs:\n  message: \"hi\"\n",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/api/projects/"+projectID+"/recipes/validate", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+
+	var bodyResp openapi.RecipeValidationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&bodyResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if bodyResp.Valid {
+		t.Fatalf("expected invalid response, got %+v", bodyResp)
+	}
+	if len(bodyResp.Errors) != 1 {
+		t.Fatalf("expected 1 error, got %d", len(bodyResp.Errors))
+	}
+	if bodyResp.Errors[0].Code != "cel_invalid" {
+		t.Fatalf("expected error code cel_invalid, got %q", bodyResp.Errors[0].Code)
 	}
 }
 
@@ -973,8 +1108,8 @@ func (c *customIteratorRecipeService) UnpublishRecipe(ctx context.Context, input
 	return nil
 }
 
-func (c *customIteratorRecipeService) ValidateRecipe(ctx context.Context, content []byte) error {
-	return nil
+func (c *customIteratorRecipeService) ValidateRecipe(ctx context.Context, input recipesvc.ValidateInput) (*recipesvc.ValidationResult, error) {
+	return &recipesvc.ValidationResult{Valid: true}, nil
 }
 
 func (c *customIteratorRecipeService) SyncFromRemote(ctx context.Context, projectID project.ID) error {
