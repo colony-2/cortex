@@ -186,4 +186,8 @@ func normalizeTicketTimes(ticket *model.Ticket) {
 		completed := ticket.CompletedAt.UTC()
 		ticket.CompletedAt = &completed
 	}
+	if ticket.LastResetAt != nil {
+		lastReset := ticket.LastResetAt.UTC()
+		ticket.LastResetAt = &lastReset
+	}
 }

@@ -31,7 +31,6 @@ type stubEventStore struct {
 	appendBatchFunc func(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error
 	listFunc        func(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (store.Iterator[*model.TicketEvent], error)
 	markResetFunc   func(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
-	latestResetFunc func(ctx context.Context, ticketID model.ID) (*model.TicketReset, error)
 }
 
 type stubProjects struct {
@@ -162,16 +161,6 @@ func (s *stubEventStore) MarkReset(ctx context.Context, ticketID model.ID, reset
 		return s.markResetFunc(ctx, ticketID, reset, eventIDs)
 	}
 	return nil
-}
-
-func (s *stubEventStore) LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error) {
-	if s == nil {
-		return nil, errors.New("nil event store")
-	}
-	if s.latestResetFunc != nil {
-		return s.latestResetFunc(ctx, ticketID)
-	}
-	return nil, nil
 }
 
 func (s *stubProjects) CreateProject(ctx context.Context, input project.CreateInput) (*project.Project, error) {
@@ -566,9 +555,6 @@ func TestAppendTicketEventStoresNotes(t *testing.T) {
 			appended = evt
 			return nil
 		},
-		latestResetFunc: func(context.Context, model.ID) (*model.TicketReset, error) {
-			return nil, nil
-		},
 	}
 
 	svc, err := New(ServiceConfig{
@@ -602,11 +588,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 				return &model.Ticket{ID: model.ID("ticket-note-1"), ProjectID: testProjectID, ValidUntil: infinity()}, nil
 			},
 		},
-		EventStore: &stubEventStore{
-			latestResetFunc: func(context.Context, model.ID) (*model.TicketReset, error) {
-				return nil, nil
-			},
-		},
+		EventStore: &stubEventStore{},
 		Projects: okProjects,
 		Cells:    okCells,
 	})

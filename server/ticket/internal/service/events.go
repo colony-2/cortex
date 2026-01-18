@@ -145,21 +145,20 @@ func (s *service) appendEventInTx(ctx context.Context, st store.Store, snapshot 
 	}
 
 	lock := clause.Locking{Strength: "UPDATE"}
+	var lockedTicket model.Ticket
 	if err := txDB.WithContext(ctx).
 		Clauses(lock).
 		Where("id = ? AND valid_until = ?", id, infinity()).
-		First(&model.Ticket{}).Error; err != nil {
+		First(&lockedTicket).Error; err != nil {
 		return nil, err
 	}
 
-	txEvents, err := eventstore.NewWithDB(txDB)
-	if err != nil {
-		return nil, err
-	}
-
-	latestReset, err := txEvents.LatestReset(ctx, id)
-	if err != nil {
-		return nil, err
+	var latestReset *model.TicketReset
+	if lockedTicket.LastResetID != nil && lockedTicket.LastResetAt != nil {
+		latestReset = &model.TicketReset{
+			ID:        *lockedTicket.LastResetID,
+			CreatedAt: lockedTicket.LastResetAt.UTC(),
+		}
 	}
 
 	var resetID *model.TicketResetID
@@ -169,6 +168,11 @@ func (s *service) appendEventInTx(ctx context.Context, st store.Store, snapshot 
 	}
 
 	event := buildEvent(resetID)
+
+	txEvents, err := eventstore.NewWithDB(txDB)
+	if err != nil {
+		return nil, err
+	}
 
 	if err := txEvents.Append(ctx, event); err != nil {
 		return nil, err
@@ -285,10 +289,25 @@ func (s *service) ResetTicket(ctx context.Context, id model.ID, input TicketRese
 			resetTime = ticketCurrent.ValidFrom.Add(time.Microsecond)
 		}
 
+		resetID, err := s.eventIDGen.NewID()
+		if err != nil {
+			return errors.Join(ErrIDGeneration, err)
+		}
+
+		reset := &model.TicketReset{
+			ID:        model.TicketResetID(resetID),
+			TicketID:  id,
+			ProjectID: ticketCurrent.ProjectID,
+			Actor:     actor,
+			Reason:    sanitized.Reason,
+			CreatedAt: resetTime,
+		}
+
 		closeSlice := *ticketCurrent
 		closeSlice.ValidUntil = resetTime
 		closeSlice.UpdatedAt = resetTime
-		if err := st.Update(ctx, &closeSlice, "ValidUntil", "UpdatedAt"); err != nil {
+		applyTicketResetMetadata(&closeSlice, reset)
+		if err := st.Update(ctx, &closeSlice, "ValidUntil", "UpdatedAt", "LastResetID", "LastResetAt"); err != nil {
 			if errors.Is(err, store.ErrOptimisticLock) {
 				return ErrVersionConflict
 			}
@@ -312,23 +331,10 @@ func (s *service) ResetTicket(ctx context.Context, id model.ID, input TicketRese
 		restored.ValidUntil = infinity()
 		restored.UpdatedAt = resetTime
 		restored.Version = optimisticlock.Version{Int64: ticketCurrent.Version.Int64 + 1, Valid: true}
+		applyTicketResetMetadata(&restored, reset)
 
 		if err := st.Create(ctx, &restored); err != nil {
 			return err
-		}
-
-		resetID, err := s.eventIDGen.NewID()
-		if err != nil {
-			return errors.Join(ErrIDGeneration, err)
-		}
-
-		reset := &model.TicketReset{
-			ID:        model.TicketResetID(resetID),
-			TicketID:  id,
-			ProjectID: ticketCurrent.ProjectID,
-			Actor:     actor,
-			Reason:    sanitized.Reason,
-			CreatedAt: resetTime,
 		}
 
 		if err := txDB.WithContext(ctx).Create(reset).Error; err != nil {

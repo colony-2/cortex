@@ -125,52 +125,6 @@ func TestStoreAppendListReset(t *testing.T) {
 	require.Equal(t, first.ID, snapshotAfter[0].ID)
 }
 
-func TestStoreLatestReset(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
-	t.Cleanup(func() { pg.Close(t) })
-
-	evtStore, err := events.New(pg.DB)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	ticketID := model.ID("tic123456789012345678901234")
-	projectID := project.ID("prj123456789012345678901234")
-
-	latest, err := evtStore.LatestReset(ctx, ticketID)
-	require.NoError(t, err)
-	require.Nil(t, latest)
-
-	first := &model.TicketReset{
-		ID:        model.TicketResetID("rst123456789012345678901234"),
-		TicketID:  ticketID,
-		ProjectID: projectID,
-		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
-		Reason:    "first",
-		CreatedAt: time.Now().UTC().Add(-time.Hour),
-	}
-	require.NoError(t, evtStore.MarkReset(ctx, ticketID, first, nil))
-
-	second := &model.TicketReset{
-		ID:        model.TicketResetID("rst223456789012345678901234"),
-		TicketID:  ticketID,
-		ProjectID: projectID,
-		Actor:     model.Actor{Type: model.ActorTypeUser, User: &model.ActorUser{Email: "owner@example.com"}},
-		Reason:    "second",
-		CreatedAt: time.Now().UTC(),
-	}
-	require.NoError(t, evtStore.MarkReset(ctx, ticketID, second, nil))
-
-	latest, err = evtStore.LatestReset(ctx, ticketID)
-	require.NoError(t, err)
-	require.NotNil(t, latest)
-	require.Equal(t, second.ID, latest.ID)
-	require.WithinDuration(t, second.CreatedAt, latest.CreatedAt, time.Millisecond)
-
-	other, err := evtStore.LatestReset(ctx, model.ID("oth12345678901234567890123"))
-	require.NoError(t, err)
-	require.Nil(t, other)
-}
-
 func collectEvents(t testing.TB, ctx context.Context, iter store.Iterator[*model.TicketEvent]) []*model.TicketEvent {
 	t.Helper()
 	var events []*model.TicketEvent

@@ -448,11 +448,10 @@ func (s *service) attachLastReset(ctx context.Context, ticket *model.Ticket) err
 	if ticket == nil {
 		return nil
 	}
-	reset, err := s.events.LatestReset(ctx, ticket.ID)
-	if err != nil {
-		return err
+	if ticket.LastResetAt != nil {
+		lastReset := ticket.LastResetAt.UTC()
+		ticket.LastResetAt = &lastReset
 	}
-	applyTicketResetMetadata(ticket, reset)
 	return nil
 }
 

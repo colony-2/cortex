@@ -15,7 +15,6 @@ type Store interface {
 	AppendBatch(ctx context.Context, ticketID model.ID, events []*model.TicketEvent) error
 	ListByTicket(ctx context.Context, ticketID model.ID, filter model.TicketEventFilter) (ticketstore.Iterator[*model.TicketEvent], error)
 	MarkReset(ctx context.Context, ticketID model.ID, reset *model.TicketReset, eventIDs []model.TicketEventID) error
-	LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error)
 }
 
 type store struct {
@@ -100,26 +99,6 @@ func (s *store) MarkReset(ctx context.Context, ticketID model.ID, reset *model.T
 	})
 }
 
-func (s *store) LatestReset(ctx context.Context, ticketID model.ID) (*model.TicketReset, error) {
-	if s == nil {
-		return nil, errors.New("ticket events store: nil store")
-	}
-	var reset model.TicketReset
-	query := s.db.WithContext(ctx).
-		Model(&model.TicketReset{}).
-		Select("id", "ticket_id", "project_id", "created_at").
-		Where("ticket_id = ?", ticketID).
-		Order("created_at DESC").
-		Limit(1)
-	if err := query.Take(&reset).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	reset.CreatedAt = reset.CreatedAt.UTC()
-	return &reset, nil
-}
 
 func normalizeEventTimes(event *model.TicketEvent) {
 	if event == nil {

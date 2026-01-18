@@ -286,6 +286,13 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	require.NotZero(t, reset.ID)
 	require.Equal(t, created.ID, reset.TicketID)
 
+	persisted, err := store.Get(ctx, created.ID)
+	require.NoError(t, err)
+	require.NotNil(t, persisted.LastResetID)
+	require.NotNil(t, persisted.LastResetAt)
+	require.Equal(t, reset.ID, *persisted.LastResetID)
+	require.WithinDuration(t, reset.CreatedAt.UTC(), persisted.LastResetAt.UTC(), time.Microsecond)
+
 	currentTicket, err := svc.GetTicketAt(ctx, created.ID, now.Add(2*time.Minute))
 	require.NoError(t, err)
 	require.NotNil(t, currentTicket.LastResetID)
