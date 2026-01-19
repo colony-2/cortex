@@ -23,6 +23,22 @@ import { TicketDetailModal, getUserEmail } from '@colony2/shared';
 const { Title } = Typography;
 const { TextArea } = Input;
 const { Search } = Input;
+const DRAFT_KEY_PREFIX = 'new-ticket-draft';
+const LAST_CELL_KEY_PREFIX = 'new-ticket-last-cell';
+const getStorage = () => {
+  try {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+    const storage = window.localStorage;
+    if (!storage || typeof storage.getItem !== 'function') {
+      return null;
+    }
+    return storage;
+  } catch {
+    return null;
+  }
+};
 
 interface KanbanBoardProps {
   projectId: string;
@@ -129,9 +145,6 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
     setFilteredTickets(filtered);
   }, [searchText, tickets]);
 
-  const defaultStage = availableStages[0] || 'backlog';
-  const defaultState = availableStates[0] || TicketState.WAITING_USER;
-
   const columns: TableColumnsType<Ticket> = [
     {
       title: 'Title',
@@ -188,7 +201,6 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   ];
 
   const openCreateModal = () => {
-    form.setFieldsValue({ stage: defaultStage, state: defaultState });
     setIsCreateOpen(true);
   };
 
@@ -266,12 +278,8 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         }}
         creating={creating}
         form={form}
-        defaultStage={defaultStage}
-        defaultState={defaultState}
         projectId={projectId}
         cells={cells}
-        stages={availableStages}
-        states={availableStates}
         setCreating={setCreating}
       />
 
@@ -291,12 +299,8 @@ interface CreateTicketModalProps {
   onCreated: (ticket: Ticket) => void;
   creating: boolean;
   form: FormInstance;
-  defaultStage: string;
-  defaultState: TicketState;
   projectId: string;
   cells: ManagedCell[];
-  stages: string[];
-  states: TicketState[];
   setCreating: (creating: boolean) => void;
 }
 
@@ -306,28 +310,59 @@ function CreateTicketModal({
   onCreated,
   creating,
   form,
-  defaultStage,
-  defaultState,
   projectId,
   cells,
-  stages,
-  states,
   setCreating,
 }: CreateTicketModalProps) {
+  const [hasDraft, setHasDraft] = useState(false);
+  const draftKey = `${DRAFT_KEY_PREFIX}:${projectId}`;
+  const lastCellKey = `${LAST_CELL_KEY_PREFIX}:${projectId}`;
+
+  useEffect(() => {
+    if (!open || !projectId) {
+      return;
+    }
+    const storage = getStorage();
+    if (!storage) {
+      setHasDraft(false);
+      return;
+    }
+    const raw = storage.getItem(draftKey);
+    const lastCell = storage.getItem(lastCellKey);
+    if (!raw) {
+      setHasDraft(false);
+    } else {
+      try {
+        const draft = JSON.parse(raw) as { title?: string; description?: string };
+        form.setFieldsValue({
+          title: draft.title,
+          description: draft.description,
+        });
+        setHasDraft(Boolean(draft.title || draft.description));
+      } catch {
+        setHasDraft(false);
+      }
+    }
+    if (lastCell) {
+      form.setFieldsValue({ cell: lastCell });
+    }
+  }, [open, projectId, form, draftKey, lastCellKey]);
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setCreating(true);
+      const userEmail = getUserEmail();
       const newTicket = await TicketsService.postApiProjectsTickets(projectId, {
         cell: values.cell,
         title: values.title,
         description: values.description,
-        stage: values.stage,
-        state: values.state,
+        stage: 'open',
+        state: TicketState.WAITING_USER,
         actor: {
           type: ActorType.USER,
           user: {
-            email: values.email,
+            email: userEmail || '',
           },
         },
       });
@@ -335,6 +370,11 @@ function CreateTicketModal({
       onCreated(newTicket);
       onClose();
       form.resetFields();
+      const storage = getStorage();
+      if (storage) {
+        storage.removeItem(draftKey);
+      }
+      setHasDraft(false);
     } catch (err) {
       if ((err as { errorFields?: unknown[] })?.errorFields) {
         return;
@@ -349,13 +389,54 @@ function CreateTicketModal({
     }
   };
 
-  const handleOpen = () => {
-    const userEmail = getUserEmail();
-    form.setFieldsValue({
-      stage: defaultStage,
-      state: defaultState,
-      email: userEmail || undefined,
-    });
+  const handleValuesChange = (_changed: unknown, allValues: { title?: string; description?: string }) => {
+    const storage = getStorage();
+    if (!storage) {
+      return;
+    }
+    persistDraft(allValues.title, allValues.description, storage);
+  };
+
+  const handleClearDraft = () => {
+    const storage = getStorage();
+    if (storage) {
+      storage.removeItem(draftKey);
+    }
+    form.setFieldsValue({ title: undefined, description: undefined });
+    setHasDraft(false);
+  };
+
+  const persistDraft = (title?: string, description?: string, storage?: Storage | null) => {
+    const activeStorage = storage ?? getStorage();
+    if (!activeStorage) {
+      return;
+    }
+    const payload = {
+      title: title?.trim() || '',
+      description: description?.trim() || '',
+    };
+    const hasContent = Boolean(payload.title || payload.description);
+    setHasDraft(hasContent);
+    if (!hasContent) {
+      activeStorage.removeItem(draftKey);
+      return;
+    }
+    activeStorage.setItem(draftKey, JSON.stringify(payload));
+  };
+
+  const appendDescriptionSnippet = (snippet: string) => {
+    const current = form.getFieldValue('description') || '';
+    const next = `${current}${current ? '\n' : ''}${snippet}`;
+    form.setFieldsValue({ description: next });
+    persistDraft(form.getFieldValue('title'), next);
+  };
+
+  const handleCellChange = (value: string) => {
+    const storage = getStorage();
+    if (!storage) {
+      return;
+    }
+    storage.setItem(lastCellKey, value);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -369,30 +450,31 @@ function CreateTicketModal({
     <Modal
       title="New Ticket"
       open={open}
-      onOk={handleSubmit}
       onCancel={onClose}
-      okText="Create"
       destroyOnClose
-      confirmLoading={creating}
-      afterOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          handleOpen();
-        }
-      }}
+      style={{ top: 24 }}
+      width="90vw"
+      bodyStyle={{ maxHeight: '80vh', overflowY: 'auto' }}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Button onClick={handleClearDraft} disabled={!hasDraft}>
+            Clear
+          </Button>
+          <Space>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button type="primary" onClick={handleSubmit} loading={creating}>
+              Create
+            </Button>
+          </Space>
+        </div>
+      }
     >
-      <Form layout="vertical" form={form} onKeyDown={handleKeyDown}>
-        <Form.Item
-          label="Title"
-          name="title"
-          rules={[{ required: true, message: 'Please enter a title' }]}
-        >
-          <Input placeholder="Ticket title" />
-        </Form.Item>
-
-        <Form.Item label="Description" name="description">
-          <TextArea rows={3} placeholder="Context, acceptance criteria, links…" />
-        </Form.Item>
-
+      <Form
+        layout="vertical"
+        form={form}
+        onKeyDown={handleKeyDown}
+        onValuesChange={handleValuesChange}
+      >
         <Form.Item
           label="Cell"
           name="cell"
@@ -402,6 +484,7 @@ function CreateTicketModal({
             showSearch
             placeholder="Select cell"
             optionFilterProp="label"
+            onChange={handleCellChange}
             options={cells.map((cell) => ({
               value: cell.name,
               label: cell.name,
@@ -410,39 +493,36 @@ function CreateTicketModal({
         </Form.Item>
 
         <Form.Item
-          label="Stage"
-          name="stage"
-          rules={[{ required: true, message: 'Select or enter a stage' }]}
+          label="Title"
+          name="title"
+          rules={[{ required: true, message: 'Please enter a title' }]}
         >
-          <Select
-            showSearch
-            placeholder="Stage"
-            mode="tags"
-            tokenSeparators={[',']}
-            options={stages.map((stage) => ({ value: stage, label: stage }))}
-          />
+          <Input placeholder="Ticket title" />
         </Form.Item>
 
-        <Form.Item
-          label="State"
-          name="state"
-          rules={[{ required: true, message: 'Select a state' }]}
-        >
-          <Select
-            placeholder="State"
-            options={states.map((state) => ({ value: state, label: state.replace(/_/g, ' ') }))}
-          />
-        </Form.Item>
-
-        <Form.Item
-          label="Reporter email"
-          name="email"
-          rules={[
-            { required: true, message: 'Enter your email' },
-            { type: 'email', message: 'Enter a valid email' },
-          ]}
-        >
-          <Input placeholder="you@example.com" />
+        <Form.Item label="Description">
+          <div>
+            <Space size="small" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+              <Button size="small" onClick={() => appendDescriptionSnippet('**bold**')}>
+                Bold
+              </Button>
+              <Button size="small" onClick={() => appendDescriptionSnippet('*italic*')}>
+                Italic
+              </Button>
+              <Button size="small" onClick={() => appendDescriptionSnippet('`code`')}>
+                Code
+              </Button>
+              <Button size="small" onClick={() => appendDescriptionSnippet('[link](https://example.com)')}>
+                Link
+              </Button>
+              <Button size="small" onClick={() => appendDescriptionSnippet('- item')}>
+                List
+              </Button>
+            </Space>
+            <Form.Item name="description" noStyle>
+              <TextArea rows={12} placeholder="Write in markdown... (Context, acceptance criteria, links)" />
+            </Form.Item>
+          </div>
         </Form.Item>
       </Form>
     </Modal>

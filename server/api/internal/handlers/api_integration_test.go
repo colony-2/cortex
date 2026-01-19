@@ -175,7 +175,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 			User: &openapi.ActorUser{Email: openapi_types.Email("user@example.com")},
 		},
 		Cell:        "cell-a",
-		Stage:       "triage",
+		Stage:       "open",
 		State:       openapi.Working,
 		Title:       "test ticket",
 		Description: nil,
@@ -198,7 +198,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 	}
 
 	// Update ticket
-	stage := "review"
+	stage := "completed"
 	expVersion := version
 	patchResp, err := client.PatchApiProjectsProjectIdTicketsTicketIdWithResponse(ctx, projID, ticketID, openapi.TicketUpdateRequest{
 		ExpectedVersion: &expVersion,
@@ -207,7 +207,7 @@ func TestOpenAPIIntegration_ProjectCellTicketFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("patch ticket: %v", err)
 	}
-	if patchResp.JSON200 == nil || patchResp.JSON200.Stage != "review" {
+	if patchResp.JSON200 == nil || patchResp.JSON200.Stage != "completed" {
 		t.Fatalf("expected stage update, got %#v", patchResp.JSON200)
 	}
 }

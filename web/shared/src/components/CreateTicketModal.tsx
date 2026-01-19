@@ -1,10 +1,69 @@
-import React, { useEffect, useState } from 'react';
-import { Form, Input, Modal, Select, message } from 'antd';
-import type { ManagedCell, Ticket, TicketState } from '@colony2/openapi-client';
-import { ActorType, CellsService, TicketsService } from '@colony2/openapi-client';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Form, Input, Modal, Select, Space, message } from 'antd';
+import type { ManagedCell, Ticket } from '@colony2/openapi-client';
+import { ActorType, CellsService, TicketState, TicketsService } from '@colony2/openapi-client';
 import { getUserEmail } from '../auth';
 
 const { TextArea } = Input;
+const DRAFT_KEY_PREFIX = 'new-ticket-draft';
+const LAST_CELL_KEY_PREFIX = 'new-ticket-last-cell';
+const getStorage = () => {
+    try {
+        if (typeof window === 'undefined') {
+            return null;
+        }
+        const storage = window.localStorage;
+        if (!storage || typeof storage.getItem !== 'function') {
+            return null;
+        }
+        return storage;
+    } catch {
+        return null;
+    }
+};
+
+const MarkdownEditor: React.FC<{
+    value?: string;
+    onChange?: (value: string) => void;
+    disabled?: boolean;
+}> = ({ value, onChange, disabled }) => {
+    const handleInsert = (snippet: string) => {
+        onChange?.(`${value || ''}${value ? '\n' : ''}${snippet}`);
+    };
+
+    return (
+        <div>
+            <Space size="small" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+                <Button size="small" onClick={() => handleInsert('**bold**')} disabled={disabled}>
+                    Bold
+                </Button>
+                <Button size="small" onClick={() => handleInsert('*italic*')} disabled={disabled}>
+                    Italic
+                </Button>
+                <Button size="small" onClick={() => handleInsert('`code`')} disabled={disabled}>
+                    Code
+                </Button>
+                <Button
+                    size="small"
+                    onClick={() => handleInsert('[link](https://example.com)')}
+                    disabled={disabled}
+                >
+                    Link
+                </Button>
+                <Button size="small" onClick={() => handleInsert('- item')} disabled={disabled}>
+                    List
+                </Button>
+            </Space>
+            <TextArea
+                rows={12}
+                placeholder="Write in markdown... (Context, acceptance criteria, links)"
+                value={value}
+                onChange={(event) => onChange?.(event.target.value)}
+                disabled={disabled}
+            />
+        </div>
+    );
+};
 
 export interface CreateTicketModalProps {
     /** Whether the modal is visible */
@@ -27,37 +86,21 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     const [creating, setCreating] = useState(false);
     const [loading, setLoading] = useState(false);
     const [cells, setCells] = useState<ManagedCell[]>([]);
-    const [stages, setStages] = useState<string[]>([]);
-    const [states, setStates] = useState<TicketState[]>([]);
+    const [hasDraft, setHasDraft] = useState(false);
+    const draftKey = useMemo(() => `${DRAFT_KEY_PREFIX}:${projectId}`, [projectId]);
+    const lastCellKey = useMemo(() => `${LAST_CELL_KEY_PREFIX}:${projectId}`, [projectId]);
 
-    // Fetch data when modal opens
     useEffect(() => {
-        if (!open || !projectId) {
+        if (!projectId) {
+            setCells([]);
             return;
         }
 
-        const fetchData = async () => {
+        const fetchCells = async () => {
             setLoading(true);
             try {
-                const [cellData, stageData, stateData] = await Promise.all([
-                    CellsService.getApiProjectsCells(projectId),
-                    TicketsService.getApiProjectsTicketsStages(projectId),
-                    TicketsService.getApiProjectsTicketsStates(projectId),
-                ]);
+                const cellData = await CellsService.getApiProjectsCells(projectId);
                 setCells(cellData || []);
-                setStages(stageData && stageData.length > 0 ? stageData : ['backlog', 'todo', 'doing', 'review', 'done']);
-                setStates(stateData && stateData.length > 0 ? stateData : ['waiting_user', 'waiting_dev', 'in_progress', 'blocked', 'completed', 'abandoned'] as TicketState[]);
-
-                // Set default values
-                const defaultStage = (stageData && stageData.length > 0 ? stageData[0] : 'backlog');
-                const defaultState = (stateData && stateData.length > 0 ? stateData[0] : 'waiting_user');
-                const userEmail = getUserEmail();
-
-                form.setFieldsValue({
-                    stage: defaultStage,
-                    state: defaultState,
-                    email: userEmail || undefined,
-                });
             } catch (err) {
                 console.error('Failed to load ticket creation data:', err);
                 message.error('Failed to load form data');
@@ -66,23 +109,54 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             }
         };
 
-        fetchData();
-    }, [open, projectId, form]);
+        fetchCells();
+    }, [projectId]);
+
+    useEffect(() => {
+        if (!open || !projectId) {
+            return;
+        }
+        const storage = getStorage();
+        if (!storage) {
+            setHasDraft(false);
+            return;
+        }
+        const raw = storage.getItem(draftKey);
+        const lastCell = storage.getItem(lastCellKey);
+        if (!raw) {
+            setHasDraft(false);
+        } else {
+            try {
+                const draft = JSON.parse(raw) as { title?: string; description?: string };
+                form.setFieldsValue({
+                    title: draft.title,
+                    description: draft.description,
+                });
+                setHasDraft(Boolean(draft.title || draft.description));
+            } catch {
+                setHasDraft(false);
+            }
+        }
+        if (lastCell) {
+            form.setFieldsValue({ cell: lastCell });
+        }
+    }, [open, projectId, form, draftKey, lastCellKey]);
 
     const handleSubmit = async () => {
         try {
             const values = await form.validateFields();
             setCreating(true);
+            const userEmail = getUserEmail();
             const newTicket = await TicketsService.postApiProjectsTickets(projectId, {
                 cell: values.cell,
                 title: values.title,
                 description: values.description,
-                stage: values.stage,
-                state: values.state,
+                stage: 'open',
+                state: TicketState.WAITING_USER,
                 actor: {
                     type: ActorType.USER,
                     user: {
-                        email: values.email,
+                        email: userEmail || '',
                     },
                 },
             });
@@ -92,6 +166,11 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             }
             onClose();
             form.resetFields();
+            const storage = getStorage();
+            if (storage) {
+                storage.removeItem(draftKey);
+            }
+            setHasDraft(false);
         } catch (err) {
             if ((err as { errorFields?: unknown[] })?.errorFields) {
                 return;
@@ -106,6 +185,41 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
         }
     };
 
+    const handleValuesChange = (_changed: unknown, allValues: { title?: string; description?: string }) => {
+        const storage = getStorage();
+        if (!storage) {
+            return;
+        }
+        const payload = {
+            title: allValues.title?.trim() || '',
+            description: allValues.description?.trim() || '',
+        };
+        const hasContent = Boolean(payload.title || payload.description);
+        setHasDraft(hasContent);
+        if (!hasContent) {
+            storage.removeItem(draftKey);
+            return;
+        }
+        storage.setItem(draftKey, JSON.stringify(payload));
+    };
+
+    const handleCellChange = (value: string) => {
+        const storage = getStorage();
+        if (!storage) {
+            return;
+        }
+        storage.setItem(lastCellKey, value);
+    };
+
+    const handleClearDraft = () => {
+        const storage = getStorage();
+        if (storage) {
+            storage.removeItem(draftKey);
+        }
+        form.setFieldsValue({ title: undefined, description: undefined });
+        setHasDraft(false);
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
@@ -117,13 +231,50 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
         <Modal
             title="New Ticket"
             open={open}
-            onOk={handleSubmit}
             onCancel={onClose}
-            okText="Create"
             destroyOnClose
-            confirmLoading={creating}
+            style={{ top: 24 }}
+            width="90vw"
+            bodyStyle={{ maxHeight: '80vh', overflowY: 'auto' }}
+            footer={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Button onClick={handleClearDraft} disabled={!hasDraft}>
+                        Clear
+                    </Button>
+                    <Space>
+                        <Button onClick={onClose}>Cancel</Button>
+                        <Button type="primary" onClick={handleSubmit} loading={creating}>
+                            Create
+                        </Button>
+                    </Space>
+                </div>
+            }
         >
-            <Form layout="vertical" form={form} onKeyDown={handleKeyDown}>
+            <Form
+                layout="vertical"
+                form={form}
+                onKeyDown={handleKeyDown}
+                onValuesChange={handleValuesChange}
+            >
+            <Form.Item
+                label="Cell"
+                name="cell"
+                rules={[{ required: true, message: 'Select a cell' }]}
+                >
+                    <Select
+                        showSearch
+                        placeholder="Select cell"
+                        optionFilterProp="label"
+                        loading={loading}
+                        disabled={loading}
+                        onChange={handleCellChange}
+                        options={cells.map((cell) => ({
+                            value: cell.name,
+                            label: cell.name,
+                        }))}
+                    />
+                </Form.Item>
+
                 <Form.Item
                     label="Title"
                     name="title"
@@ -133,65 +284,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 </Form.Item>
 
                 <Form.Item label="Description" name="description">
-                    <TextArea rows={3} placeholder="Context, acceptance criteria, links…" disabled={loading} />
-                </Form.Item>
-
-                <Form.Item
-                    label="Cell"
-                    name="cell"
-                    rules={[{ required: true, message: 'Select a cell' }]}
-                >
-                    <Select
-                        showSearch
-                        placeholder="Select cell"
-                        optionFilterProp="label"
-                        loading={loading}
-                        disabled={loading}
-                        options={cells.map((cell) => ({
-                            value: cell.name,
-                            label: cell.name,
-                        }))}
-                    />
-                </Form.Item>
-
-                <Form.Item
-                    label="Stage"
-                    name="stage"
-                    rules={[{ required: true, message: 'Select or enter a stage' }]}
-                >
-                    <Select
-                        showSearch
-                        placeholder="Stage"
-                        mode="tags"
-                        tokenSeparators={[',']}
-                        loading={loading}
-                        disabled={loading}
-                        options={stages.map((stage) => ({ value: stage, label: stage }))}
-                    />
-                </Form.Item>
-
-                <Form.Item
-                    label="State"
-                    name="state"
-                    rules={[{ required: true, message: 'Select a state' }]}
-                >
-                    <Select
-                        placeholder="State"
-                        loading={loading}
-                        disabled={loading}
-                        options={states.map((state) => ({ value: state, label: state.replace(/_/g, ' ') }))}
-                    />
-                </Form.Item>
-
-                <Form.Item
-                    label="Reporter email"
-                    name="email"
-                    rules={[
-                        { required: true, message: 'Enter your email' },
-                        { type: 'email', message: 'Enter a valid email' },
-                    ]}
-                >
-                    <Input placeholder="you@example.com" disabled={loading} />
+                    <MarkdownEditor disabled={loading} />
                 </Form.Item>
             </Form>
         </Modal>

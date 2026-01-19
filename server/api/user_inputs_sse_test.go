@@ -69,9 +69,6 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 	projID := string(testProject.ID)
 
 	// Setup workflow engine and input activity
-	registry, err := ops.NewActivityRegistry()
-	require.NoError(t, err)
-
 	g := jobIDGenerator{max: 10}
 	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
 
@@ -92,6 +89,9 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 			c()
 		}
 	}()
+
+	registry, err := ops.NewActivityRegistry()
+	require.NoError(t, err)
 
 	// Convert web.ExtensionRoute to handlers.ExtensionRoute
 	extensionRoutes := make([]handlers.ExtensionRoute, len(webExtensionRoutes))
@@ -141,9 +141,11 @@ inputs:
 
 	// Give job time to start
 	time.Sleep(300 * time.Millisecond)
+	logJobSnapshot(t, &wf, projID, "after_start")
 
 	// Test SSE stream endpoint
 	t.Run("SSEStreamWithEvents", func(t *testing.T) {
+		logJobSnapshot(t, &wf, projID, "before_sse_request")
 		url := fmt.Sprintf("%s/api/projects/%s/user-inputs/stream", srv.URL, projID)
 		req := httptest.NewRequest("GET", url, nil)
 
@@ -155,6 +157,7 @@ inputs:
 		// Record response
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
+		logJobSnapshot(t, &wf, projID, "after_sse_request")
 
 		// Verify SSE headers
 		require.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
@@ -231,6 +234,71 @@ func parseSSEEvents(body string) []SSEEvent {
 	}
 
 	return events
+}
+
+func logJobSnapshot(t *testing.T, ctl workflowctl.WorkflowControl, tenantID string, label string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	jobs, _, err := ctl.ListJobs(ctx, swf.ListJobsRequest{
+		Stores:    []swf.JobStore{swf.JobStoreActive},
+		TenantIds: []string{tenantID},
+		PageSize:  100,
+	})
+	if err != nil {
+		t.Logf("job_snapshot[%s]: list error: %v", label, err)
+		return
+	}
+	t.Logf("job_snapshot[%s]: count=%d", label, len(jobs))
+	for _, job := range jobs {
+		waitNext := "<nil>"
+		if job.TaskWaitNext != nil {
+			waitNext = *job.TaskWaitNext
+		}
+		t.Logf(
+			"job_snapshot[%s]: job=%s status=%s type=%s wait_next=%s wait_in=%v wait_out=%v cancel=%v",
+			label,
+			job.JobKey.JobId,
+			job.Status,
+			job.JobType,
+			waitNext,
+			job.TaskWaitInput,
+			job.TaskWaitOutput,
+			job.CancelRequested,
+		)
+	}
+
+	filtered, _, err := ctl.ListJobs(ctx, swf.ListJobsRequest{
+		Stores:    []swf.JobStore{swf.JobStoreActive},
+		TenantIds: []string{tenantID},
+		Statuses:  []swf.JobStatus{swf.JobStatusReady},
+		JobTasks: []swf.JobTaskFilter{{
+			JobType:  "recipe",
+			TaskType: "input:collect_user_input",
+		}},
+		PageSize: 100,
+	})
+	if err != nil {
+		t.Logf("job_snapshot[%s]: pending filter error: %v", label, err)
+		return
+	}
+	t.Logf("job_snapshot[%s]: pending_input_count=%d", label, len(filtered))
+	for _, job := range filtered {
+		waitNext := "<nil>"
+		if job.TaskWaitNext != nil {
+			waitNext = *job.TaskWaitNext
+		}
+		t.Logf(
+			"job_snapshot[%s]: pending job=%s status=%s type=%s wait_next=%s wait_in=%v wait_out=%v",
+			label,
+			job.JobKey.JobId,
+			job.Status,
+			job.JobType,
+			waitNext,
+			job.TaskWaitInput,
+			job.TaskWaitOutput,
+		)
+	}
 }
 
 // TestUserInputsSSEFlushingWorks verifies that Flush() actually sends data

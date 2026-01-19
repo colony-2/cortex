@@ -7,5 +7,5 @@ inputs:
   actions:
     - type: update_ticket
       expected_version: 1
-      stage: "__completed__"
+      stage: "completed"
       state: "waiting_user"

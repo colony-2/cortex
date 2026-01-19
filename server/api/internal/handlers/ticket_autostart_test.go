@@ -146,7 +146,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 		Cell:        core.CellName(cellRecord.Name),
 		ProjectID:   proj.ID,
 		Title:       "autostart",
-		Stage:       ticket.Stage("triage"),
+		Stage:       ticket.Stage("open"),
 		State:       ticket.StateWaitingUser,
 		Description: "ensure recipe auto-starts",
 		Actor:       ticket.NewUserActor("tester@example.com"),
