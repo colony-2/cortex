@@ -119,6 +119,63 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 	assert.Equal(t, int64(15), result)
 }
 
+func TestResolveTemplate_TicketContext(t *testing.T) {
+	createdAt := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC)
+	updatedAt := createdAt.Add(2 * time.Hour)
+	commitCtx := &contextual.GitCommitContext{}
+	jobCtx := contextual.JobContext{
+		Ticket: contextual.TicketContext{
+			ID:          "ticket-123",
+			Title:       "Fix templates",
+			Description: "Ensure ticket context resolves",
+			Creator: contextual.TicketCreatorContext{
+				Type: "user",
+				User: &contextual.TicketCreatorUserContext{
+					Email: "creator@example.com",
+				},
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		},
+	}
+	ctx, err := NewRecipeResolutionContext(commitCtx, map[string]interface{}{}, jobCtx)
+	require.NoError(t, err)
+
+	val, err := ctx.resolveTemplate("{{ context.ticket.id }}")
+	require.NoError(t, err)
+	assert.Equal(t, "ticket-123", val)
+
+	val, err = ctx.resolveTemplate("{{ context.ticket.title }}")
+	require.NoError(t, err)
+	assert.Equal(t, "Fix templates", val)
+
+	val, err = ctx.resolveTemplate("{{ context.ticket.creator.user.email }}")
+	require.NoError(t, err)
+	assert.Equal(t, "creator@example.com", val)
+
+	val, err = ctx.resolveTemplate("{{ context.ticket.created_at }}")
+	require.NoError(t, err)
+	assertResolvedTime(t, val, createdAt)
+
+	val, err = ctx.resolveTemplate("{{ context.ticket.updated_at }}")
+	require.NoError(t, err)
+	assertResolvedTime(t, val, updatedAt)
+}
+
+func assertResolvedTime(t *testing.T, value interface{}, expected time.Time) {
+	t.Helper()
+	switch v := value.(type) {
+	case time.Time:
+		assert.True(t, v.Equal(expected))
+	case string:
+		parsed, err := time.Parse(time.RFC3339Nano, v)
+		require.NoError(t, err)
+		assert.True(t, parsed.Equal(expected))
+	default:
+		t.Fatalf("unexpected time value type %T", value)
+	}
+}
+
 func TestEvaluateCEL_Conditions(t *testing.T) {
 	recipeCtx := newRecipeCtx(t, nil)
 	seqCtx := newSequenceCtx(t, recipeCtx, "test", map[string]interface{}{})

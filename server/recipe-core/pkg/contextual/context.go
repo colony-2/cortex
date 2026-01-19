@@ -1,5 +1,7 @@
 package contextual
 
+import "time"
+
 // WorktreePathSentinel is a placeholder value used during template resolution
 // Templates that reference {{ environment.worktree_path }} will resolve to this sentinel
 // The actual worktree path is determined at execution time on the target machine
@@ -33,9 +35,37 @@ type WorkflowContext struct {
 	JobID    string `json:"job_id,omitempty"`
 }
 
+type TicketCreatorUserContext struct {
+	Email string `json:"email,omitempty"`
+}
+
+type TicketCreatorAgentContext struct {
+	CellName       string `json:"cell,omitempty"`
+	WorkflowName   string `json:"workflow_name,omitempty"`
+	ExecutionID    string `json:"execution_id,omitempty"`
+	InvocationHash string `json:"invocation_hash,omitempty"`
+}
+
+type TicketCreatorContext struct {
+	Type  string                     `json:"type,omitempty"`
+	User  *TicketCreatorUserContext  `json:"user,omitempty"`
+	Agent *TicketCreatorAgentContext `json:"agent,omitempty"`
+}
+
+// TicketContext represents ticket metadata available to recipes.
+type TicketContext struct {
+	ID          string               `json:"id,omitempty"`
+	Title       string               `json:"title,omitempty"`
+	Description string               `json:"description,omitempty"`
+	Creator     TicketCreatorContext `json:"creator,omitempty"`
+	CreatedAt   time.Time            `json:"created_at,omitempty"`
+	UpdatedAt   time.Time            `json:"updated_at,omitempty"`
+}
+
 // ExecutionContext holds typed workflow context available to templates. It is created per task.
 type JobContext struct {
 	Actor       ActorContext       `json:"actor,omitempty"`
+	Ticket      TicketContext      `json:"ticket,omitempty"`
 	Environment EnvironmentContext `json:"environment,omitempty"`
 	Workflow    WorkflowContext    `json:"workflow,omitempty"`
 	GitBase     GitBaseContext     `json:"git,omitempty"`
@@ -50,6 +80,7 @@ type TaskContext struct {
 func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionContext {
 	return TaskExecutionContext{
 		Actor:       ctx.Actor,
+		Ticket:      ctx.Ticket,
 		Environment: ctx.Environment,
 		Workflow:    ctx.Workflow,
 		GitBase:     ctx.GitBase,
@@ -61,6 +92,7 @@ func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionCont
 type TaskExecutionContext struct {
 	// embed these directly from task and job contexts for easier resolution.
 	Actor       ActorContext       `json:"actor,omitempty"`
+	Ticket      TicketContext      `json:"ticket,omitempty"`
 	Environment EnvironmentContext `json:"environment,omitempty"`
 	Workflow    WorkflowContext    `json:"workflow,omitempty"`
 	GitBase     GitBaseContext     `json:"git,omitempty"`
@@ -78,6 +110,7 @@ func (t TaskExecutionContext) TaskContext() TaskContext {
 func (t TaskExecutionContext) JobContext() JobContext {
 	return JobContext{
 		Actor:       t.Actor,
+		Ticket:      t.Ticket,
 		Environment: t.Environment,
 		Workflow:    t.Workflow,
 		GitBase:     t.GitBase,
