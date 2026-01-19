@@ -8,7 +8,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260106192111-1c577c9932c0
 	github.com/colony-2/shai v0.0.6
-	github.com/colony-2/swf-go v0.0.0-20260114065339-1156514c38d1
+	github.com/colony-2/swf-go v0.0.0-20260119195135-de439e071d92
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
