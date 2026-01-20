@@ -18,7 +18,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260120024540-b197a6ff0da3
+	github.com/colony-2/swf-go v0.0.0-20260120194644-09f85cf00971
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2

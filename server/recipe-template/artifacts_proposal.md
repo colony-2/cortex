@@ -1,70 +1,144 @@
-# Artifact Support in Template Resolution (user experience first)
+# Artifact Support in Template Resolution - Detailed Spec
 
-This doc focuses on the authoring and template experience for artifacts as first-class, opaque values that flow between ops. Implementation/storage details are intentionally omitted.
+This spec defines how artifacts flow through template resolution as first-class,
+opaque values. It extends existing template semantics with artifact-aware CEL
+types and input schema validation.
 
-## Goals (UX)
-- Authors can declare inputs that expect a single artifact or an artifact tree.
-- Templates can reference artifacts explicitly (e.g., `sequence.myop1.outputs.artifacts['foo.txt']`) or artifact trees via globs (e.g., `sequence.myop1.outputs.artifacts['foo/*']`, `sequence.myop1.outputs.artifacts['*']`).
-- Artifact-typed inputs only accept artifact references; artifact-tree inputs accept glob selections; non-artifact inputs cannot point to artifacts.
-- Artifacts remain opaque in CEL/interpolation; authors can see metadata (name/size/type) but not bytes.
+## Goals
+- Allow templates to reference artifacts produced by upstream ops.
+- Add explicit artifact output maps to step outputs and per-run outputs.
+- Add a CEL-visible artifact datatype with metadata fields.
+- Allow op inputs to require a single artifact or a collection of artifacts.
+- Keep artifacts opaque; template authors cannot access bytes.
 
-## UX Concepts
-- **Artifact-typed input fields**: Inputs on ops can be typed as `artifact`. These fields only resolve from single-artifact expressions; non-artifact values are validation errors.
-- **Artifact-tree input fields**: Inputs on ops can be typed as `artifact_tree` (glob-based selection). Expressions must be a glob index into an artifacts map (e.g., `artifacts['foo/*']` or `artifacts['*']`), returning a collection with relative paths preserved.
-- **Scoped access**: Visibility mirrors outputs today—sequences see sibling artifacts; states see prior state artifacts; ops see their container’s artifacts.
-- **CEL access shape**:
-  - Single artifact: `sequence.myop1.outputs.artifacts['foo.txt']` returns an opaque artifact handle with metadata fields (e.g., `.name`, `.size_bytes`) but no byte content.
-  - Artifact tree (glob): `sequence.myop1.outputs.artifacts['foo/*']` or `sequence.myop1.outputs.artifacts['*']` returns an opaque artifact-tree handle representing all matching artifacts with relative paths.
-- **Interpolation rules**: `{{ sequence.myop1.outputs.artifacts['foo.txt'] }}` is invalid in string contexts; artifacts cannot be stringified. Metadata fields can be interpolated (`{{ sequence.myop1.outputs.artifacts['foo.txt'].size_bytes }}`). Artifact-tree handles cannot be stringified; only their aggregate metadata (if exposed) is interpolable.
+## Non-Goals
+- Defining artifact storage, upload, or retrieval APIs.
+- Defining how ops produce artifacts at execution time (covered elsewhere).
+- Introducing automatic globbing or filesystem discovery (can be added later).
 
-## Authoring Examples (conceptual)
-- Declaring an artifact input:
-  ```yaml
-  inputs:
-    build_log: # type: artifact (enforced by schema/types)
-      from: "{{ sequence.build.outputs.artifacts['build.log'] }}"
-  ```
-- Declaring an artifact-tree input (glob):
-  ```yaml
-  inputs:
-    reports_dir: # type: artifact_tree
-      from: "{{ sequence.aggregate.outputs.artifacts['reports/*'] }}"
-  ```
-- Referencing metadata (allowed):
-  ```yaml
-  when: "sequence.build.outputs.artifacts['build.log'].size_bytes < 10_000_000"
-  ```
-- Invalid (stringify artifact):
-  ```yaml
-  # error: artifact used in string interpolation
-  note: "See artifact: {{ sequence.build.outputs.artifacts['build.log'] }}"
-  ```
+## Data Model Changes
 
-## Validation Rules (UX-level)
-- Artifact-typed inputs must resolve to single artifacts; non-artifact-typed inputs must not.
-- Artifact-tree inputs must resolve from one or more glob expressions into artifacts; selecting zero artifacts may be allowed or not per field config.
-- Referenced artifact names/patterns must exist in the visible scope (produced upstream).
-- Interpolation of an artifact or artifact-tree handle into a string is a validation error; only metadata fields are allowed.
-- When an op declares `consumes` artifact names/patterns, template validation ensures those are available in scope before execution.
+### StepOutput / RunOutput
+`StepOutput` and `RunOutput` gain an `Artifacts` map, keyed by artifact name.
+The map holds opaque artifact references with metadata.
 
-## Merging Multiple Artifact Trees
-- Some inputs may need multiple artifact trees (e.g., `artifacts_needed`). Authors can merge glob results to create a single composite tree.
-- Merge semantics: later entries overwrite earlier ones on path collisions; non-colliding paths are unified.
-- CEL helper (proposed): `artifacts.merge(tree1, tree2, ...)` returning an artifact-tree handle with merged contents and relative paths preserved.
-- Authoring example:
-  ```yaml
-  inputs:
-    artifacts_needed: # type: artifact_tree
-      from: "{{ artifacts.merge(
-        sequence.build.outputs.artifacts['reports/*'],
-        sequence.test.outputs.artifacts['coverage/*']
-      ) }}"
-  ```
-  If both trees contain `foo/bar.txt`, the value from the latter argument (`coverage/*` above) wins.
+```go
+type StepOutput struct {
+    Outputs   map[string]interface{} `json:"outputs"`
+    Artifacts map[string]ArtifactRef `json:"artifacts"`
+    Runs      []RunOutput            `json:"runs"`
+}
 
-## Open UX Questions
-- Syntax: use bracket form `artifacts['foo.txt']` (no auto-sanitized dot variant).
-- Metadata exposure: only `name` and `size_bytes` are visible in templates.
-- Artifact-tree shape: return an opaque handle (no list/map in templates).
-- Glob semantics: align with gitignore-style patterns (`*`, `**`, `?`, path separators honored).
-- Artifact-tree inputs: a single glob per field (no multiple globs per field).***
+type RunOutput struct {
+    Outputs   map[string]interface{} `json:"outputs"`
+    Artifacts map[string]ArtifactRef `json:"artifacts"`
+    RunID     string                 `json:"run_id"`
+    Timestamp time.Time              `json:"timestamp"`
+}
+```
+
+`StepOutput.Artifacts` reflects the latest run (mirrors `Outputs` today).
+`RunOutput.Artifacts` holds per-run artifacts for loops/retries.
+
+### ArtifactRef (template-visible)
+Artifact references are opaque and metadata-only. Use a shared type
+compatible with API/workflow representations (or introduce a shared
+`recipe-core` type).
+
+Minimum fields exposed to templates:
+```go
+type ArtifactRef struct {
+    Name      string  `json:"name"`
+    SizeBytes *int64  `json:"size_bytes,omitempty"`
+    URL       *string `json:"url,omitempty"`
+}
+```
+
+## Template Data Shape
+Artifacts are exposed alongside outputs:
+- `sequence.<step_id>.artifacts["<name>"]`
+- `states.<state_id>.artifacts["<name>"]`
+- `sequence.<step_id>.runs[0].artifacts["<name>"]`
+
+Example:
+```yaml
+readme_file: '{{ sequence.build.artifacts["readme.md"] }}'
+```
+
+## CEL Integration
+
+### Types
+- `artifact`: opaque CEL object with readable metadata fields.
+- `map<string, artifact>`: artifact collections.
+
+### CEL Environment
+Add `ArtifactRef` as a native type in the CEL adapter and allow it to be
+returned as a value from expressions.
+
+### Allowed Operations
+- Field access: `artifact.name`, `artifact.size_bytes`, etc.
+- Equality/inequality by reference (optional) if needed for comparisons.
+- No string conversion; artifacts are not interpolable into strings.
+
+## Resolution Rules
+
+### Interpolation
+- `{{ <expr> }}` returns the raw value.
+- Mixed string interpolation (e.g., `"x {{ expr }}"`) is only allowed if
+  `expr` yields a string/number/bool; artifacts are invalid in string context.
+
+Valid:
+```yaml
+readme: '{{ sequence.build.artifacts["readme.md"] }}'
+size: '{{ sequence.build.artifacts["readme.md"].size_bytes }}'
+```
+
+Invalid:
+```yaml
+note: 'See {{ sequence.build.artifacts["readme.md"] }}'
+```
+
+### Scope Visibility
+Artifact visibility mirrors outputs:
+- Sequence nodes can see sibling artifacts via `sequence.<id>.artifacts`.
+- State nodes can see completed states via `states.<id>.artifacts`.
+- Ops see their surrounding sequence/state machine scope.
+
+## Input Schema Changes
+
+Extend `recipe.InputSchema.Type` with:
+- `artifact`: single artifact reference
+- `artifact_map`: map of artifacts keyed by name
+
+Input validation rules:
+- `artifact` requires a single `ArtifactRef` value.
+- `artifact_map` requires `map<string, ArtifactRef>`.
+- Non-artifact input types reject artifact values.
+
+Examples:
+```yaml
+inputs:
+  readme_file: '{{ sequence.build.artifacts["readme.md"] }}'
+  build_artifacts: '{{ sequence.build.artifacts }}'
+```
+
+## Validation Behavior
+
+### Runtime
+- Missing artifact keys or wrong types raise resolution errors.
+- Artifact values in string interpolation are rejected.
+
+### Validation Mode (template-only)
+- Placeholder outputs should include empty `Artifacts` maps to allow
+  reference resolution without execution.
+- `artifact_map` placeholders are empty maps; `artifact` placeholders are
+  zero-value `ArtifactRef` with empty fields.
+
+## Backwards Compatibility
+- Existing templates and outputs remain unchanged.
+- `artifacts` is a new field; no change to existing output names.
+- No change to current scope rules.
+
+## Open Questions
+- Should `artifact_map` allow filtering helpers (e.g., `artifacts.pick(...)`)?
+- Should equality comparisons on artifacts be enabled (by `name` and metadata)?
