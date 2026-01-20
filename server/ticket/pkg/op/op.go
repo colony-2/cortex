@@ -161,7 +161,7 @@ type createTicketAction struct {
 }
 
 type updateTicketAction struct {
-	ExpectedVersion int64         `json:"expected_version"`
+	ExpectedVersion *int64        `json:"expected_version,omitempty"`
 	Stage           *string       `json:"stage,omitempty"`
 	State           *string       `json:"state,omitempty"`
 	Description     *string       `json:"description,omitempty"`
@@ -499,11 +499,12 @@ func handleUpdateTicket(
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return ActionResult{}, err
 	}
-	if payload.ExpectedVersion <= 0 {
-		return ActionResult{}, errInvalidExpectedVersion
-	}
-	input := ticket.UpdateInput{
-		ExpectedVersion: toVersion(payload.ExpectedVersion),
+	input := ticket.UpdateInput{}
+	if payload.ExpectedVersion != nil {
+		if *payload.ExpectedVersion <= 0 {
+			return ActionResult{}, errInvalidExpectedVersion
+		}
+		input.ExpectedVersion = toVersion(*payload.ExpectedVersion)
 	}
 	var fields int
 	if payload.Stage != nil {

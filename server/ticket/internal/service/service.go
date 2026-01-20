@@ -236,7 +236,7 @@ func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInp
 		if err != nil {
 			return err
 		}
-		if existing.Version != normalized.ExpectedVersion {
+		if normalized.ExpectedVersion.Valid && existing.Version != normalized.ExpectedVersion {
 			return ErrVersionConflict
 		}
 		if err := s.attachLastReset(ctx, existing); err != nil {

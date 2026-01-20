@@ -3,7 +3,6 @@ package codex
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -36,22 +35,6 @@ func (o *Options) validate() error {
 		o.CellRelativePath = "."
 	}
 	return nil
-}
-
-func (o Options) tempDir() (string, error) {
-	rwPath := filepath.Join(o.WorktreeRoot, o.CellRelativePath)
-	if err := os.MkdirAll(rwPath, 0o755); err != nil {
-		return "", fmt.Errorf("create cell path: %w", err)
-	}
-	dir, err := os.MkdirTemp(rwPath, "codex-*")
-	if err != nil {
-		return "", fmt.Errorf("create temp dir: %w", err)
-	}
-	return dir, nil
-}
-
-func (o Options) schemaPath(dir string) string {
-	return filepath.Join(dir, "schema.json")
 }
 
 func (o Options) stdoutPath(dir string) string {

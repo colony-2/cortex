@@ -31,7 +31,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
-	github.com/colony-2/strata-go v0.0.0-20260111001323-608931bce986 // indirect
+	github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect

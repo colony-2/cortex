@@ -188,7 +188,7 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 			{
 				Type: ActionUpdateTicket,
 				Raw: mustMarshal(t, updateTicketAction{
-					ExpectedVersion: 1,
+					ExpectedVersion: int64Ptr(1),
 					Stage:           strPtr("Cancelled"),
 				}),
 			},
@@ -251,6 +251,44 @@ func TestExecute_AppendTicketNoteUpdatesContext(t *testing.T) {
 	require.NotNil(t, output.Results[0].Event)
 }
 
+func TestExecute_UpdateWithoutExpectedVersion(t *testing.T) {
+	svc := &stubService{}
+	restore := TestingStub{Service: svc}.Install()
+	defer restore()
+
+	updated := &ticket.Ticket{
+		ID:        ticket.ID("T-2"),
+		ProjectID: ticket.ProjectID("proj-1"),
+		Stage:     ticket.Stage("cancelled"),
+		State:     ticket.StateWorking,
+		UpdatedAt: time.Date(2024, 9, 21, 9, 0, 0, 0, time.UTC),
+		Version:   optimisticlock.Version{Int64: 2, Valid: true},
+	}
+	svc.updateFunc = func(ctx context.Context, id ticket.ID, in ticket.UpdateInput) (*ticket.Ticket, error) {
+		require.Equal(t, ticket.ID("T-2"), id)
+		require.False(t, in.ExpectedVersion.Valid)
+		require.NotNil(t, in.Stage)
+		require.Equal(t, ticket.Stage("cancelled"), *in.Stage)
+		return updated, nil
+	}
+
+	deps := newOpDeps()
+	input := Input{
+		TicketID: "T-2",
+		Actions: []Action{{
+			Type: ActionUpdateTicket,
+			Raw: mustMarshal(t, updateTicketAction{
+				Stage: strPtr("Cancelled"),
+			}),
+		}},
+	}
+
+	output, err := execute(deps, context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, output.Ticket)
+	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
+}
+
 func TestExecute_UpdateRequiresField(t *testing.T) {
 	svc := &stubService{}
 	restore := TestingStub{Service: svc}.Install()
@@ -261,7 +299,7 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 		TicketID: "T-1",
 		Actions: []Action{{
 			Type: ActionUpdateTicket,
-			Raw:  mustMarshal(t, updateTicketAction{ExpectedVersion: 2}),
+			Raw:  mustMarshal(t, updateTicketAction{ExpectedVersion: int64Ptr(2)}),
 		}},
 	}
 
@@ -325,7 +363,7 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 		Actions: []Action{{
 			Type: ActionUpdateTicket,
 			Raw: mustMarshal(t, updateTicketAction{
-				ExpectedVersion: 2,
+				ExpectedVersion: int64Ptr(2),
 				Stage:           strPtr("Cancelled"),
 			}),
 		}},
@@ -346,6 +384,10 @@ func mustMarshal(tb testing.TB, v any) json.RawMessage {
 }
 
 func strPtr(v string) *string {
+	return &v
+}
+
+func int64Ptr(v int64) *int64 {
 	return &v
 }
 

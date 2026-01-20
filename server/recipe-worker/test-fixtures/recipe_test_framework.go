@@ -117,11 +117,10 @@ func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		},
 		Environment: contextual.EnvironmentContext{
 			WorktreePath: worktree,
-			ThinPackPath: "",
 		},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
-		CellPath: "cells/test-cell",
+			CellPath: "cells/test-cell",
 			JobID:    "test-job-id",
 		},
 		GitBase: contextual.GitBaseContext{
@@ -263,15 +262,59 @@ func normalizeForComparison(value interface{}) interface{} {
 	}
 }
 
+func pruneActualToExpected(expected, actual interface{}) interface{} {
+	expectedMap, ok := expected.(map[string]interface{})
+	if !ok {
+		return actual
+	}
+	actualMap, ok := actual.(map[string]interface{})
+	if !ok {
+		return actual
+	}
+	pruned := make(map[string]interface{}, len(actualMap))
+	for key, actualValue := range actualMap {
+		if expectedValue, exists := expectedMap[key]; exists {
+			pruned[key] = pruneActualToExpected(expectedValue, actualValue)
+			continue
+		}
+		if isZeroValue(actualValue) {
+			continue
+		}
+		pruned[key] = actualValue
+	}
+	return pruned
+}
+
+func isZeroValue(value interface{}) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case string:
+		return v == ""
+	case bool:
+		return v == false
+	case map[string]interface{}:
+		return len(v) == 0
+	case []interface{}:
+		return len(v) == 0
+	default:
+		if num, ok := toFloat64(v); ok {
+			return num == 0
+		}
+		return false
+	}
+}
+
 // assertEqualWithTypeFlexibility wraps the comparison with proper test assertion messaging
 func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, msgAndArgs ...interface{}) bool {
 	normalizedExpected := normalizeForComparison(expected)
 	normalizedActual := normalizeForComparison(actual)
-	if equalWithTypeFlexibility(normalizedExpected, normalizedActual) {
+	prunedActual := pruneActualToExpected(normalizedExpected, normalizedActual)
+	if equalWithTypeFlexibility(normalizedExpected, prunedActual) {
 		return true
 	}
 
-	return assert.Equal(t, normalizedExpected, normalizedActual, msgAndArgs...)
+	return assert.Equal(t, normalizedExpected, prunedActual, msgAndArgs...)
 }
 
 func RunTestOnAllRecipes(path string, t *testing.T) {

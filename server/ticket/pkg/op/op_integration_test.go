@@ -54,7 +54,7 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 			{
 				Type: ActionUpdateTicket,
 				Raw: mustMarshal(t, updateTicketAction{
-					ExpectedVersion: 1,
+					ExpectedVersion: int64Ptr(1),
 					Stage:           strPtr("Cancelled"),
 					Description:     strPtr("Shift to cancelled"),
 				}),

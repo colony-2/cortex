@@ -42,6 +42,10 @@ func (f *fakeOpDependencies) WorkflowControl() workflowctl.WorkflowControl {
 	return nil
 }
 
+func (f *fakeOpDependencies) WorktreePath() string {
+	return ""
+}
+
 func TestRunCodexActivitySuccess(t *testing.T) {
 	worktree := t.TempDir()
 	cellDir := filepath.Join(worktree, "cells", "alpha")

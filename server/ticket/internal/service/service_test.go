@@ -378,6 +378,47 @@ func TestUpdateTicketVersionConflict(t *testing.T) {
 	require.ErrorIs(t, err, ErrVersionConflict)
 }
 
+func TestUpdateTicketWithoutExpectedVersion(t *testing.T) {
+	now := time.Date(2024, 9, 10, 13, 30, 0, 0, time.UTC)
+	stored := &model.Ticket{
+		ID:        "abc",
+		Version:   version(2),
+		Stage:     "open",
+		State:     model.StateWorking,
+		ProjectID: testProjectID,
+		Creator:   NewUserActor("user@example.com"),
+		UpdatedAt: now.Add(-time.Hour),
+	}
+	st := &stubStore{
+		getFunc: func(ctx context.Context, id model.ID) (*model.Ticket, error) {
+			return stored, nil
+		},
+		updateFunc: func(ctx context.Context, ticket *model.Ticket, fields ...string) error {
+			return nil
+		},
+		createFunc: func(ctx context.Context, ticket *model.Ticket) error {
+			stored = ticket
+			return nil
+		},
+	}
+	svc, err := New(ServiceConfig{
+		Store:      st,
+		EventStore: &stubEventStore{},
+		Projects:   okProjects,
+		Cells:      okCells,
+		Clock:      fixedClock{now: now},
+		IDGen:      stubIDGen{id: "abc"},
+	})
+	require.NoError(t, err)
+
+	updated, err := svc.UpdateTicket(context.Background(), model.ID("abc"), UpdateInput{
+		Stage: StagePtr("cancelled"),
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), updated.Version.Int64)
+	require.Equal(t, model.Stage("cancelled"), updated.Stage)
+}
+
 func TestUpdateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	now := time.Date(2024, 9, 10, 14, 0, 0, 0, time.UTC)
 	stored := &model.Ticket{

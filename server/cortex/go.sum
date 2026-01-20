@@ -88,10 +88,10 @@ github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 h1:XNwMo2lML7tyGHlp3
 github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7/go.mod h1:QJKHOf9Ybwm9V+74tls15xhPVbcDLBwkZ2dcVNAkLuw=
 github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d h1:C6BF7Npa0ZIeRAVLHmfwJXGC0ETtYia/mSwOtoBSy+M=
 github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d/go.mod h1:owsJ9Iom1sujMFD6RtdH3kKnM2CtYIBQIwmqtc7w5Mo=
-github.com/colony-2/shai v0.0.6 h1:7V9cfLUINltcn/r3BxcDVez4q6KToyLUof+EflC/hWA=
-github.com/colony-2/shai v0.0.6/go.mod h1:NgdBnmMCmWslGxhHzvpl8PvyW+CvQI+TEmPdFmZ37uo=
-github.com/colony-2/strata-go v0.0.0-20260111001323-608931bce986 h1:m0vthBdzTYG96R+QyC3I4M2hPmWEtFoHE+kdBv08FNk=
-github.com/colony-2/strata-go v0.0.0-20260111001323-608931bce986/go.mod h1:JV8xTWRS2RFm4I1A9Qtn246hnyNnSL0S2iO+jmeUfWs=
+github.com/colony-2/shai v0.0.7 h1:Tug4RK5vMvK/XT1xJ+lCBKU2LZUzoxKmmYKJitMVuaU=
+github.com/colony-2/shai v0.0.7/go.mod h1:NgdBnmMCmWslGxhHzvpl8PvyW+CvQI+TEmPdFmZ37uo=
+github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069 h1:kXpyo4CraN5AgeFNfpfgWzGLjV44LHZPdFWr5W3vVf4=
+github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069/go.mod h1:JV8xTWRS2RFm4I1A9Qtn246hnyNnSL0S2iO+jmeUfWs=
 github.com/colony-2/swf-go v0.0.0-20260119195135-de439e071d92 h1:pBeKL/9HOkWZlddmzXDT5afXeIzeGA+J44qZeAmeRxQ=
 github.com/colony-2/swf-go v0.0.0-20260119195135-de439e071d92/go.mod h1:LqcX2EAt3qvl51Ogza+SeXRyAaHTvqsYYd6xpHA5XvE=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=

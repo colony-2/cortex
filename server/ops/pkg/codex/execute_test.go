@@ -77,8 +77,8 @@ func TestExecuteCompleted(t *testing.T) {
 		RunnerFactory:    harness.factory,
 	}
 
-	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
-	defer os.RemoveAll(tempDir) // Clean up temp directory
+	res, stdoutPath, stderrPath, artifactDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(artifactDir)
 	require.NoError(t, err)
 	require.Equal(t, StatusCompleted, res.Status)
 	require.Equal(t, "All done", res.AssistantSummary)
@@ -89,21 +89,25 @@ func TestExecuteCompleted(t *testing.T) {
 	// Verify paths are returned
 	require.NotEmpty(t, stdoutPath)
 	require.NotEmpty(t, stderrPath)
-	require.NotEmpty(t, tempDir)
+	require.NotEmpty(t, artifactDir)
 	require.FileExists(t, stdoutPath)
 	require.FileExists(t, stderrPath)
 
 	require.NotNil(t, harness.config)
 	require.NotNil(t, harness.config.PostSetupExec)
 	require.False(t, harness.config.PostSetupExec.UseTTY)
-	require.Contains(t, harness.config.PostSetupExec.Command, "--experimental-json")
 
-	// Verify schema path points into /src and prompt is final argument.
+	// Verify command uses the output schema path and prompt.
 	cmd := harness.config.PostSetupExec.Command
 	idx := indexOf(cmd, "--output-schema")
 	require.NotEqual(t, -1, idx)
-	require.True(t, strings.HasPrefix(cmd[idx+1], "/src/"))
+	require.True(t, strings.HasPrefix(cmd[idx+1], "/tmp/codex-schema-"))
 	require.Equal(t, "do the task", cmd[len(cmd)-1])
+
+	require.NotNil(t, harness.config.PrependResourceSet)
+	require.Len(t, harness.config.PrependResourceSet.RootCommands, 1)
+	require.Contains(t, harness.config.PrependResourceSet.RootCommands[0], "/tmp/codex-schema-")
+	require.False(t, harness.config.ShowScriptOutput)
 	require.Contains(t, harness.config.PostSetupExec.Env, "CODEX_APPROVAL_POLICY")
 	require.Equal(t, "never", harness.config.PostSetupExec.Env["CODEX_APPROVAL_POLICY"])
 	require.Equal(t, []string{cellRel}, harness.config.ReadWritePaths)
@@ -129,8 +133,8 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 		RunnerFactory:    harness.factory,
 	}
 
-	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
-	defer os.RemoveAll(tempDir) // Clean up temp directory
+	res, stdoutPath, stderrPath, artifactDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(artifactDir)
 	require.NoError(t, err)
 	require.Equal(t, StatusIncomplete, res.Status)
 	require.Equal(t, "Needs follow-up", res.AssistantSummary)
@@ -143,7 +147,7 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 	// Verify paths are returned
 	require.NotEmpty(t, stdoutPath)
 	require.NotEmpty(t, stderrPath)
-	require.NotEmpty(t, tempDir)
+	require.NotEmpty(t, artifactDir)
 }
 
 func TestExecuteStructuredPayloadError(t *testing.T) {
@@ -166,8 +170,8 @@ func TestExecuteStructuredPayloadError(t *testing.T) {
 		RunnerFactory:    harness.factory,
 	}
 
-	res, _, stderrPath, tempDir, err := Execute(context.Background(), opts)
-	defer os.RemoveAll(tempDir) // Clean up temp directory
+	res, _, stderrPath, artifactDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(artifactDir)
 	require.NoError(t, err)
 	require.Equal(t, StatusError, res.Status)
 	require.Contains(t, res.ErrorMessage, "assistant payload missing assistantSummary")
@@ -200,8 +204,8 @@ func TestExecuteRunError(t *testing.T) {
 		RunnerFactory:    harness.factory,
 	}
 
-	res, stdoutPath, stderrPath, tempDir, err := Execute(context.Background(), opts)
-	defer os.RemoveAll(tempDir) // Clean up temp directory
+	res, stdoutPath, stderrPath, artifactDir, err := Execute(context.Background(), opts)
+	defer os.RemoveAll(artifactDir)
 	require.NoError(t, err)
 	require.Equal(t, StatusError, res.Status)
 	require.Contains(t, res.ErrorMessage, "codex exit 1")
@@ -210,7 +214,7 @@ func TestExecuteRunError(t *testing.T) {
 	// Verify paths are returned even on error
 	require.NotEmpty(t, stdoutPath)
 	require.NotEmpty(t, stderrPath)
-	require.NotEmpty(t, tempDir)
+	require.NotEmpty(t, artifactDir)
 }
 
 func indexOf(haystack []string, needle string) int {

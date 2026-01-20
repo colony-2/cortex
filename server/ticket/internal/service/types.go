@@ -20,7 +20,7 @@ type CreateInput struct {
 }
 
 type UpdateInput struct {
-	ExpectedVersion optimisticlock.Version `validate:"version"`
+	ExpectedVersion optimisticlock.Version `validate:"omitempty,version"`
 	Stage           *model.Stage           `validate:"omitempty,stage"`
 	State           *model.State           `validate:"omitempty,state"`
 	CompletedAt     *time.Time
