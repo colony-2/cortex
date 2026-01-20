@@ -25,12 +25,12 @@ type CommandExecutionConfig struct {
 
 // CommandExecutionInput defines the input for command execution activities - ALL fields MUST have json tags
 type CommandExecutionInput struct {
-	Run              string            `json:"run"`               // Required: command to execute
-	WorkingDirectory string            `json:"working_directory"` // Optional: override working directory
-	Shell            string            `json:"shell"`             // Optional: override shell
-	Env              map[string]string `json:"env"`               // Optional: additional env vars
-	ContinueOnError  bool              `json:"continue_on_error"` // Optional: don't fail on non-zero exit
-	Timeout          string            `json:"timeout"`           // Optional: timeout duration (e.g., "30s")
+	Run              string            `json:"run" validate:"required"`                                             // Required: command to execute
+	WorkingDirectory string            `json:"working_directory" default:"{{ context.environment.worktree_path }}"` // Optional: override working directory
+	Shell            string            `json:"shell" validate:"omitempty,oneof=bash sh powershell cmd"`             // Optional: override shell
+	Env              map[string]string `json:"env"`                                                                 // Optional: additional env vars
+	ContinueOnError  bool              `json:"continue_on_error"`                                                   // Optional: don't fail on non-zero exit
+	Timeout          string            `json:"timeout"`                                                             // Optional: timeout duration (e.g., "30s")
 }
 
 // CommandExecutionOutput defines the output from command execution activities - ALL fields MUST have json tags

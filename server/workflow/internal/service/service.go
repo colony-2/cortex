@@ -67,11 +67,20 @@ type chapterEnvelope struct {
 }
 
 type chapterMeta struct {
-	Ordinal   int64               `json:"ordinal"`
-	TaskType  string              `json:"task_type"`
-	CreatedAt time.Time           `json:"created_at"`
-	InputRef  *swf.InputReference `json:"input_ref,omitempty"`
-	Attempt   int                 `json:"attempt,omitempty"`
+	Version       int                 `json:"version"`
+	Ordinal       int64               `json:"ordinal"`
+	TaskType      string              `json:"task_type"`
+	WorkerID      string              `json:"worker_id"`
+	CreatedAt     time.Time           `json:"created_at"`
+	InputHash     string              `json:"input_hash"`
+	Input         json.RawMessage     `json:"input,omitempty"`
+	Attempt       int                 `json:"attempt,omitempty"`
+	MaxAttempts   int                 `json:"max_attempts,omitempty"`
+	NextAttemptAt *time.Time          `json:"next_attempt_at,omitempty"`
+	BackoffMillis int64               `json:"backoff_ms,omitempty"`
+	Retryable     *bool               `json:"retryable,omitempty"`
+	InputRef      *swf.InputReference `json:"input_ref,omitempty"`
+	RunPolicy     *swf.RunPolicy      `json:"run_policy,omitempty"`
 }
 
 func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequest) ([]model.WorkflowSummary, error) {
@@ -266,7 +275,7 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 	}
 
 	if req.IncludeRawJobData {
-		if raw := parseRawJobPayload(job.Payload); raw != nil {
+		if raw := mapFromRaw(job.Payload); raw != nil {
 			detail.RawJobData = raw
 		}
 	}
@@ -450,6 +459,13 @@ func chapterToDetail(chap story.Chapter) (model.ChapterDetail, error) {
 	startTime := env.Meta.CreatedAt
 
 	input := map[string]interface{}{}
+	if env.Meta.Input != nil {
+		inputM := mapFromRaw(env.Meta.Input)
+		if inputM != nil {
+			input = *inputM
+		}
+	}
+
 	var output *map[string]interface{}
 	var errMsg *string
 
@@ -560,7 +576,7 @@ func extractErrorMessage(payload map[string]interface{}) string {
 	return ""
 }
 
-func parseRawJobPayload(payload json.RawMessage) *map[string]interface{} {
+func mapFromRaw(payload json.RawMessage) *map[string]interface{} {
 	if len(payload) == 0 {
 		return nil
 	}

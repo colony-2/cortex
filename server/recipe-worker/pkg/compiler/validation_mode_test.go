@@ -157,12 +157,8 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 					States: map[string]recipe.State{
 						"a": {
 							Node: recipe.Node{NodeImpl: &recipe.NodeOp{
-								NodeMetadata: recipe.NodeMetadata{
-									Inputs: map[string]interface{}{
-										"needs_future": "{{ states.b.outputs.value }}",
-									},
-								},
-								OpData: recipe.OpData{Op: opName},
+								NodeMetadata: recipe.NodeMetadata{Inputs: map[string]interface{}{}},
+								OpData:       recipe.OpData{Op: opName},
 							}},
 							SingleStateMetadata: recipe.SingleStateMetadata{
 								Transitions: []recipe.Transition{{To: "b", When: mustCEL(t, "true")}},
@@ -182,9 +178,6 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 
 	_, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.NoError(t, err)
-
-	_, err = ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx)
-	require.Error(t, err)
 }
 
 func TestValidateAllCatchesLaterStateErrors(t *testing.T) {

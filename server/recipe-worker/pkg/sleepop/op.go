@@ -16,7 +16,7 @@ type SleepConfig struct {
 
 // SleepInput defines the input for sleep activities - ALL fields MUST have json tags
 type SleepInput struct {
-	Duration string `json:"duration"` // Required: duration to sleep (e.g., "5s", "1m", "500ms")
+	Duration string `json:"duration" validate:"required"` // Required: duration to sleep (e.g., "5s", "1m", "500ms")
 }
 
 // SleepOutput defines the output from sleep activities - ALL fields MUST have json tags

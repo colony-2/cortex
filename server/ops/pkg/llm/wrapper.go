@@ -17,15 +17,15 @@ type LLMConfig struct {
 
 // LLMInput defines the input for LLM activities - ALL fields MUST have json tags
 type LLMInput struct {
-	Provider       string          `json:"provider"`                  // Required: openai, anthropic, gemini
-	Model          string          `json:"model"`                     // Required: model name
-	Prompt         string          `json:"prompt"`                    // Required: the prompt to send
-	SystemPrompt   string          `json:"system_prompt"`             // Optional: system prompt
-	Temperature    float64         `json:"temperature"`               // Optional: temperature (0-2)
-	MaxTokens      int             `json:"max_tokens"`                // Optional: max tokens to generate
-	TopP           float64         `json:"top_p"`                     // Optional: nucleus sampling
-	StopSequences  []string        `json:"stop_sequences"`            // Optional: stop sequences
-	ResponseSchema json.RawMessage `json:"response_schema,omitempty"` // Optional: JSON schema for structured output
+	Provider       string          `json:"provider" validate:"required,oneof=openai anthropic gemini"` // Required: openai, anthropic, gemini
+	Model          string          `json:"model" validate:"required"`                                  // Required: model name
+	Prompt         string          `json:"prompt" validate:"required"`                                 // Required: the prompt to send
+	SystemPrompt   string          `json:"system_prompt"`                                              // Optional: system prompt
+	Temperature    float64         `json:"temperature" validate:"omitempty,gte=0,lte=2"`               // Optional: temperature (0-2)
+	MaxTokens      int             `json:"max_tokens" validate:"omitempty,gte=1"`                      // Optional: max tokens to generate
+	TopP           float64         `json:"top_p" validate:"omitempty,gte=0,lte=1"`                     // Optional: nucleus sampling
+	StopSequences  []string        `json:"stop_sequences" validate:"omitempty,dive,required"`          // Optional: stop sequences
+	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`                                  // Optional: JSON schema for structured output
 }
 
 // LLMOutput defines the output from LLM activities - ALL fields MUST have json tags

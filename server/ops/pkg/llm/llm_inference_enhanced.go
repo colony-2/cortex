@@ -17,12 +17,12 @@ import (
 
 // LLMInferenceInput defines enhanced input (backward compatible)
 type LLMInferenceInput struct {
-	Provider      string            `yaml:"default_provider" json:"default_provider,omitempty"`
-	Model         string            `yaml:"default_model" json:"default_model,omitempty"`
+	Provider      string            `yaml:"default_provider" json:"default_provider,omitempty" validate:"required,oneof=openai anthropic gemini"`
+	Model         string            `yaml:"default_model" json:"default_model,omitempty" validate:"required"`
 	APIKeys       map[string]string `yaml:"api_keys" json:"api_keys,omitempty"`
-	Temperature   float64           `json:"temperature,omitempty"`
-	MaxTokens     int               `json:"max_tokens,omitempty"`
-	TopP          float64           `json:"top_p,omitempty"`
+	Temperature   float64           `json:"temperature,omitempty" validate:"omitempty,gte=0,lte=2"`
+	MaxTokens     int               `json:"max_tokens,omitempty" validate:"omitempty,gte=1"`
+	TopP          float64           `json:"top_p,omitempty" validate:"omitempty,gte=0,lte=1"`
 	StopSequences []string          `json:"stop_sequences,omitempty"`
 
 	EnableSandbox   bool     `yaml:"enable_sandbox" json:"enable_sandbox,omitempty"`
@@ -31,21 +31,21 @@ type LLMInferenceInput struct {
 
 	// File handling settings
 	DefaultFileHandling string `yaml:"default_file_handling" json:"default_file_handling,omitempty"`
-	MaxFileContextSize  int    `yaml:"max_file_context_size" json:"max_file_context_size,omitempty"`
+	MaxFileContextSize  int    `yaml:"max_file_context_size" json:"max_file_context_size,omitempty" validate:"omitempty,gte=0"`
 
-	Prompt         string          `json:"prompt,omitempty"`
+	Prompt         string          `json:"prompt,omitempty" validate:"required_without=Files"`
 	SystemPrompt   string          `json:"system_prompt,omitempty"`
 	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
 
 	// Enhanced fields (new)
-	Files               []f2.File              `json:"files,omitempty"`
-	FileHandling        string                 `json:"file_handling,omitempty"` // native, text_fallback, hybrid
-	Tools               []ToolDefinition       `json:"tools,omitempty"`
+	Files               []f2.File              `json:"files,omitempty" validate:"required_without=Prompt"`
+	FileHandling        string                 `json:"file_handling,omitempty" validate:"omitempty,oneof=native text_fallback hybrid"` // native, text_fallback, hybrid
+	Tools               []ToolDefinition       `json:"tools,omitempty" validate:"required_if=ExecuteTools true,min=1,dive"`
 	ExecuteTools        bool                   `json:"execute_tools,omitempty"`
-	DefaultWorkingDir   string                 `yaml:"default_working_dir" json:"default_working_dir,omitempty"`
-	ToolWorkingDir      string                 `json:"tool_working_dir,omitempty"`
+	DefaultWorkingDir   string                 `yaml:"default_working_dir" json:"default_working_dir,omitempty" default:"{{ context.environment.worktree_path }}"`
+	ToolWorkingDir      string                 `json:"tool_working_dir,omitempty" default:"{{ context.environment.worktree_path }}"`
 	EnableToolExecution bool                   `yaml:"enable_tool_execution" json:"enable_tool_execution,omitempty"`
-	MaxToolRounds       int                    `yaml:"max_tool_rounds" json:"max_tool_rounds,omitempty"`
+	MaxToolRounds       int                    `yaml:"max_tool_rounds" json:"max_tool_rounds,omitempty" validate:"omitempty,gte=0"`
 	ContinueOnToolError bool                   `json:"continue_on_tool_error,omitempty"`
 	ToolTimeout         string                 `json:"tool_timeout,omitempty"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty"`

@@ -44,7 +44,7 @@ require (
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251225022150-97f04a11c9ec // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
-	github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069 // indirect
+	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/colony-2/swf-go v0.0.0-20260120024540-b197a6ff0da3 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

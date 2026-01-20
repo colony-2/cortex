@@ -80,12 +80,12 @@ type (
 	ActionType string
 
 	Input struct {
-		TicketID string   `json:"ticket_id,omitempty"`
-		Actions  []Action `json:"actions"`
+		TicketID string   `json:"ticket_id,omitempty" default:"{{ context.ticket.id }}"`
+		Actions  []Action `json:"actions" validate:"required,min=1,dive"`
 	}
 
 	Action struct {
-		Type   ActionType             `json:"type"`
+		Type   ActionType             `json:"type" validate:"required,oneof=create_ticket update_ticket append_ticket_note link_markdown_doc override_markdown_doc remove_markdown_doc append_workflow_event reset_ticket"`
 		Raw    json.RawMessage        `json:"-"`
 		Extras map[string]interface{} `json:"-,remain"`
 	}
@@ -151,17 +151,17 @@ type actorAgentPayload struct {
 }
 
 type createTicketAction struct {
-	Cell        string        `json:"cell"`
-	ProjectID   string        `json:"project_id"`
-	Title       string        `json:"title"`
-	Stage       string        `json:"stage"`
-	State       string        `json:"state"`
+	Cell        string        `json:"cell" validate:"required"`
+	ProjectID   string        `json:"project_id" validate:"required"`
+	Title       string        `json:"title" validate:"required"`
+	Stage       string        `json:"stage" validate:"required"`
+	State       string        `json:"state" validate:"required"`
 	Description string        `json:"description,omitempty"`
 	Actor       *actorPayload `json:"actor,omitempty"`
 }
 
 type updateTicketAction struct {
-	ExpectedVersion *int64        `json:"expected_version,omitempty"`
+	ExpectedVersion *int64        `json:"expected_version,omitempty" validate:"omitempty,gt=0"`
 	Stage           *string       `json:"stage,omitempty"`
 	State           *string       `json:"state,omitempty"`
 	Description     *string       `json:"description,omitempty"`
@@ -169,29 +169,29 @@ type updateTicketAction struct {
 }
 
 type appendTicketNoteAction struct {
-	Note      string        `json:"note"`
+	Note      string        `json:"note" validate:"required"`
 	Actor     *actorPayload `json:"actor,omitempty"`
 	EventTime *time.Time    `json:"event_time,omitempty"`
 }
 
 type markdownAction struct {
-	Name      string        `json:"name"`
-	Path      string        `json:"path"`
+	Name      string        `json:"name" validate:"required"`
+	Path      string        `json:"path" validate:"required"`
 	Reason    string        `json:"reason,omitempty"`
 	Actor     *actorPayload `json:"actor,omitempty"`
 	EventTime *time.Time    `json:"event_time,omitempty"`
 }
 
 type appendWorkflowAction struct {
-	WorkflowID string                   `json:"workflow_id"`
-	RunID      string                   `json:"run_id"`
-	Status     ticket.WorkflowEventType `json:"status"`
+	WorkflowID string                   `json:"workflow_id" validate:"required"`
+	RunID      string                   `json:"run_id" validate:"required"`
+	Status     ticket.WorkflowEventType `json:"status" validate:"required"`
 	Actor      *actorPayload            `json:"actor,omitempty"`
 	EventTime  *time.Time               `json:"event_time,omitempty"`
 }
 
 type resetTicketAction struct {
-	Reason        string                `json:"reason"`
+	Reason        string                `json:"reason" validate:"required"`
 	AnchorEventID *ticket.TicketEventID `json:"anchor_event_id,omitempty"`
 	Actor         *actorPayload         `json:"actor,omitempty"`
 }

@@ -23,14 +23,14 @@ const (
 
 // Option represents a choice option for fields like multiple choice, dropdown, etc.
 type Option struct {
-	Value string `json:"value" jsonschema:"required,description=Option value"`
+	Value string `json:"value" validate:"required" jsonschema:"required,description=Option value"`
 	Label string `json:"label,omitempty" jsonschema:"description=Optional display label"`
 }
 
 // LinearScale represents configuration for linear scale fields
 type LinearScale struct {
-	Min      int    `json:"min" jsonschema:"required,minimum=0,maximum=10,description=Minimum scale value"`
-	Max      int    `json:"max" jsonschema:"required,minimum=1,maximum=10,description=Maximum scale value"`
+	Min      int    `json:"min" validate:"required,gte=0,lte=10" jsonschema:"required,minimum=0,maximum=10,description=Minimum scale value"`
+	Max      int    `json:"max" validate:"required,gte=1,lte=10" jsonschema:"required,minimum=1,maximum=10,description=Maximum scale value"`
 	MinLabel string `json:"min_label,omitempty" jsonschema:"description=Label for minimum value"`
 	MaxLabel string `json:"max_label,omitempty" jsonschema:"description=Label for maximum value"`
 }
@@ -46,13 +46,13 @@ type FieldValidation struct {
 
 // FormField represents a single field in a multi-field form
 type FormField struct {
-	ID          string          `json:"id" jsonschema:"required,description=Unique field identifier"`
-	Type        FieldType       `json:"type" jsonschema:"required,enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|multiple_choice_grid|checkbox_grid|date|time|file_upload,description=Field type"`
-	Question    string          `json:"question" jsonschema:"required,description=Field question or label"`
+	ID          string          `json:"id" validate:"required" jsonschema:"required,description=Unique field identifier"`
+	Type        FieldType       `json:"type" validate:"required,oneof=short_answer paragraph_text multiple_choice checkboxes dropdown linear_scale multiple_choice_grid checkbox_grid date time file_upload" jsonschema:"required,enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|multiple_choice_grid|checkbox_grid|date|time|file_upload,description=Field type"`
+	Question    string          `json:"question" validate:"required" jsonschema:"required,description=Field question or label"`
 	Required    bool            `json:"required,omitempty" jsonschema:"description=Whether field is required"`
 	Placeholder string          `json:"placeholder,omitempty" jsonschema:"description=Placeholder text"`
-	Options     []Option        `json:"options,omitempty" jsonschema:"description=Options for choice fields"`
-	Scale       *LinearScale    `json:"scale,omitempty" jsonschema:"description=Configuration for linear scale fields"`
+	Options     []Option        `json:"options,omitempty" validate:"omitempty,required_if=Type multiple_choice required_if=Type checkboxes required_if=Type dropdown,min=1,dive" jsonschema:"description=Options for choice fields"`
+	Scale       *LinearScale    `json:"scale,omitempty" validate:"required_if=Type linear_scale" jsonschema:"description=Configuration for linear scale fields"`
 	Validation  FieldValidation `json:"validation,omitempty" jsonschema:"description=Field validation rules"`
 }
 
@@ -65,12 +65,12 @@ type FormContext struct {
 
 // Artifact represents a static artifact reference
 type Artifact struct {
-	Path string `json:"path" jsonschema:"required,description=Path to artifact file"`
+	Path string `json:"path" validate:"required" jsonschema:"required,description=Path to artifact file"`
 }
 
 // GlobPattern represents a glob pattern for artifact discovery
 type GlobPattern struct {
-	Pattern string `json:"pattern" jsonschema:"required,description=Glob pattern for matching files"`
+	Pattern string `json:"pattern" validate:"required" jsonschema:"required,description=Glob pattern for matching files"`
 }
 
 // InputForm represents the complete form structure

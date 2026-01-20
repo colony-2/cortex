@@ -12,7 +12,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
-	github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069 // indirect
+	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect

@@ -8,12 +8,12 @@ import (
 
 // ThinpackRebaseInput captures the parameters required to rebase a thin-pack backed workspace.
 type ThinpackRebaseInput struct {
-	RepoPath       string                 `json:"repo_path,omitempty"`
-	TargetBaseHash string                 `json:"target_base_hash"`
+	RepoPath       string                 `json:"repo_path,omitempty" default:"{{ context.environment.worktree_path }}" validate:"required,dir"`
+	TargetBaseHash string                 `json:"target_base_hash" validate:"required,hexadecimal,min=7,max=40"`
 	UpstreamRemote string                 `json:"upstream_remote,omitempty"`
 	PreserveAuthor *bool                  `json:"preserve_author,omitempty"`
 	UpdateRefs     string                 `json:"update_refs,omitempty"`
-	Context        map[string]interface{} `json:"context,omitempty"`
+	Context        map[string]interface{} `json:"context,omitempty" default:"{{ context }}"`
 }
 
 // RebasedFromSummary records the base/persist pair prior to the rebase.

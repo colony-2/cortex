@@ -14,7 +14,7 @@ import (
 
 // Input defines the payload for the recipe_set op.
 type Input struct {
-	Recipes []map[string]interface{} `json:"recipes"`
+	Recipes []map[string]interface{} `json:"recipes" validate:"required,min=1"`
 	Raw     map[string]interface{}   `json:"-" mapstructure:",remain"`
 }
 

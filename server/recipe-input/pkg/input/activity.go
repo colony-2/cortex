@@ -10,16 +10,16 @@ import (
 // Config represents the configuration for the input activity
 type Config struct {
 	// Single question format
-	Question string       `json:"question,omitempty" jsonschema:"description=Question to ask the user"`
-	Type     FieldType    `json:"type,omitempty" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Input field type"`
-	Options  []Option     `json:"options,omitempty" jsonschema:"description=Options for choice fields"`
-	Scale    *LinearScale `json:"scale,omitempty" jsonschema:"description=Configuration for linear scale fields"`
+	Question string       `json:"question,omitempty" validate:"required_without=Fields" jsonschema:"description=Question to ask the user"`
+	Type     FieldType    `json:"type,omitempty" validate:"omitempty,oneof=short_answer paragraph_text multiple_choice checkboxes dropdown linear_scale date time" jsonschema:"enum=short_answer|paragraph_text|multiple_choice|checkboxes|dropdown|linear_scale|date|time,description=Input field type"`
+	Options  []Option     `json:"options,omitempty" validate:"omitempty,required_if=Type multiple_choice required_if=Type checkboxes required_if=Type dropdown,min=1,dive" jsonschema:"description=Options for choice fields"`
+	Scale    *LinearScale `json:"scale,omitempty" validate:"required_if=Type linear_scale" jsonschema:"description=Configuration for linear scale fields"`
 
 	// Multi-field format
 	Title   string      `json:"title,omitempty" jsonschema:"description=Form title"`
-	Fields  []FormField `json:"fields,omitempty" jsonschema:"description=Form fields"`
+	Fields  []FormField `json:"fields,omitempty" validate:"omitempty,min=1,dive" jsonschema:"description=Form fields"`
 	Context FormContext `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
-	Timeout int         `json:"timeout,omitempty" jsonschema:"default=300,minimum=1,maximum=3600,description=Timeout in seconds"`
+	Timeout int         `json:"timeout,omitempty" validate:"omitempty,gte=1,lte=3600" jsonschema:"default=300,minimum=1,maximum=3600,description=Timeout in seconds"`
 
 	// Default value on timeout
 	DefaultOnTimeout interface{} `json:"default_on_timeout,omitempty" jsonschema:"description=Default value to return if input times out"`
@@ -27,7 +27,7 @@ type Config struct {
 
 // Input represents the inputs passed to the input activity
 type Input struct {
-	Form Config `json:"form,omitempty" jsonschema:"description=Form formuration"`
+	Form Config `json:"form,omitempty" validate:"required" jsonschema:"description=Form formuration"`
 }
 
 // Output represents the output from the input activity

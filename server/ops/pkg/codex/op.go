@@ -21,12 +21,12 @@ import (
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.
 type ExecOpInput struct {
-	Prompt           string            `json:"prompt"`
+	Prompt           string            `json:"prompt" validate:"required"`
 	SessionID        string            `json:"sessionId,omitempty"`
 	Model            string            `json:"model,omitempty"`
 	Env              map[string]string `json:"env,omitempty"`
-	WorktreePath     string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}"`
-	CellRelativePath string            `json:"cell_relative_path" default:"{{ context.workflow.cell_path }}"`
+	WorktreePath     string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}" validate:"required"`
+	CellRelativePath string            `json:"cell_relative_path" default:"{{ context.workflow.cell_path }}" validate:"required"`
 }
 
 // ExecOpOutput mirrors the structured response surfaced by the codex library.

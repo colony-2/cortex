@@ -112,6 +112,13 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 		return fmt.Errorf("failed to resolve templates op inputs: %w", err)
 	}
 
+	if len(chain) > 0 {
+		allowNulls := resCtx.Options.Mode == string(ExecutionModeValidate)
+		if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
+			return fmt.Errorf("op input validation failed: %w", err)
+		}
+	}
+
 	// Execute the operation
 	retry := swf.RetryPolicy{}
 	if metadata.Retry != nil {

@@ -17,7 +17,7 @@ require (
 	github.com/colony-2/colony2/server/registry v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/workflow v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069
+	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260120024540-b197a6ff0da3
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	github.com/gorilla/mux v1.8.1
@@ -37,8 +37,10 @@ require (
 	cloud.google.com/go/auth v0.15.0 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
-	github.com/DataDog/zstd v1.4.5 // indirect
+	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657 // indirect
+	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
@@ -47,11 +49,13 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cockroachdb/errors v1.8.1 // indirect
-	github.com/cockroachdb/logtags v0.0.0-20190617123548-eb05cc24525f // indirect
-	github.com/cockroachdb/pebble v1.0.0 // indirect
-	github.com/cockroachdb/redact v1.0.8 // indirect
-	github.com/cockroachdb/sentry-go v0.6.1-cockroachdb.2 // indirect
+	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
+	github.com/cockroachdb/errors v1.11.3 // indirect
+	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
+	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
+	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
+	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
 	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
@@ -69,6 +73,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
+	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -79,7 +84,7 @@ require (
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
+	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -104,6 +109,7 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
@@ -135,7 +141,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect

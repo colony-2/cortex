@@ -18,15 +18,15 @@ import (
 // GitFileCollectorInput defines the input parameters
 type GitFileCollectorInput struct {
 	// Required
-	ContextDir string `json:"context_dir" validate:"required,dir"`
+	ContextDir string `json:"context_dir" default:"{{ context.environment.worktree_path }}" validate:"required,dir"`
 
 	// File filtering
-	FilePatterns    []string `json:"file_patterns,omitempty"`
-	ExcludePatterns []string `json:"exclude_patterns,omitempty"`
+	FilePatterns    []string `json:"file_patterns,omitempty" validate:"omitempty,dive,required"`
+	ExcludePatterns []string `json:"exclude_patterns,omitempty" validate:"omitempty,dive,required"`
 
 	// Size limits
-	MaxFileSize  int `json:"max_file_size,omitempty"`
-	MaxTotalSize int `json:"max_total_size,omitempty"`
+	MaxFileSize  int `json:"max_file_size,omitempty" validate:"omitempty,gte=0"`
+	MaxTotalSize int `json:"max_total_size,omitempty" validate:"omitempty,gte=0"`
 
 	// Git options
 	IncludeStaged    bool `json:"include_staged,omitempty"`
