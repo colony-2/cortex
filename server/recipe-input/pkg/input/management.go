@@ -359,6 +359,12 @@ func (s *inputManagementService) submitResponse(ctx context.Context, projectID s
 		slog.Warn("submitResponse: SSE subsystem missing", "project_id", projectID, "job_id", jobId)
 		return result[bool]{err: "sse subsystem missing"}
 	}
+	s.sse.Broadcast(ops.SSEEvent{
+		Type: "input_completed",
+		Data: map[string]interface{}{
+			"jobId": jobId,
+		},
+	})
 	slog.Info("submitResponse: successfully completed", "project_id", projectID, "job_id", jobId)
 	return result[bool]{value: true}
 }
@@ -485,6 +491,8 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 	fmt.Fprintf(w, "event: connected\ndata: {\"client_id\": \"%s\"}\n\n", clientID)
 	flush(w)
 
+	sentPending := make(map[string]struct{})
+
 	// Emit snapshot of current pending inputs so subscribers have immediate context.
 	slog.Info("sse_stream: collecting pending inputs snapshot", "project_id", projectID, "client_id", clientID)
 	if pending, err := s.collectPendingInputs(r.Context(), projectID); err != nil {
@@ -510,6 +518,7 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 				continue
 			}
 			fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
+			sentPending[item.JobID] = struct{}{}
 		}
 		flush(w)
 		slog.Info("sse_stream: finished sending pending inputs", "project_id", projectID, "client_id", clientID)
@@ -518,6 +527,11 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 	// Create a ticker for heartbeat
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+
+	pendingInterval := 1 * time.Second
+	pendingTimer := time.NewTimer(pendingInterval)
+	defer pendingTimer.Stop()
+	lastNewPendingAt := time.Now()
 
 	slog.Info("sse_stream: entering event loop", "project_id", projectID, "client_id", clientID)
 
@@ -541,6 +555,43 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 			data, _ := json.Marshal(event.Data)
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, string(data))
 			flush(w)
+
+		case <-pendingTimer.C:
+			newPending := false
+			pending, err := s.collectPendingInputs(r.Context(), projectID)
+			if err != nil {
+				slog.Warn("sse_stream: pending input poll failed",
+					"project_id", projectID,
+					"client_id", clientID,
+					"error", err)
+			} else {
+				for _, item := range pending {
+					if _, ok := sentPending[item.JobID]; ok {
+						continue
+					}
+					payload, err := json.Marshal(item)
+					if err != nil {
+						slog.Error("sse_stream: failed to marshal polled pending input",
+							"project_id", projectID,
+							"client_id", clientID,
+							"job_id", item.JobID,
+							"error", err)
+						continue
+					}
+					fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
+					sentPending[item.JobID] = struct{}{}
+					newPending = true
+					flush(w)
+				}
+			}
+
+			if newPending {
+				lastNewPendingAt = time.Now()
+				pendingInterval = 1 * time.Second
+			} else if time.Since(lastNewPendingAt) >= 30*time.Minute {
+				pendingInterval = 1 * time.Minute
+			}
+			pendingTimer.Reset(pendingInterval)
 
 		case <-ticker.C:
 			// Send heartbeat

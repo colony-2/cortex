@@ -66,7 +66,7 @@ sequence:
         question: "provide a user prompt"
   - op: codex.exec
     inputs:
-      prompt: "{{ q1.outputs.fields.response }}"
+      prompt: "{{ sequence.q1.outputs.fields.response }}"
   - op: ticket.manage
     inputs:
       ticket_id: "{{ context.actor.ticket_id }}"

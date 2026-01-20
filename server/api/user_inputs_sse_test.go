@@ -2,9 +2,11 @@ package api_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,9 +44,18 @@ func (g *jobIDGenerator) Generate(tenantId string) (swf.JobKey, error) {
 	return swf.JobKey{TenantId: tenantId, JobId: fmt.Sprintf("job-%d", g.count)}, nil
 }
 
-// TestUserInputsSSEIntegration tests the SSE stream endpoint with full server stack
-func TestUserInputsSSEIntegration(t *testing.T) {
-	// Setup database
+type sseTestEnv struct {
+	projID     string
+	job        workflowctl.StartJob
+	eng        swf.SWFEngine
+	testRecipe *recipe.Recipe
+	srv        *httptest.Server
+	cleanup    func()
+}
+
+func setupSSETestEnv(t *testing.T) sseTestEnv {
+	t.Helper()
+
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
@@ -59,7 +70,6 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 	cellSvc, err := cell.NewService(cell.ServiceConfig{Store: cellStore, Projects: projectSvc})
 	require.NoError(t, err)
 
-	// Create a test project
 	ctx := context.Background()
 	testProject, err := projectSvc.CreateProject(ctx, project.CreateInput{
 		Name:        "test-project",
@@ -68,7 +78,6 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 	require.NoError(t, err)
 	projID := string(testProject.ID)
 
-	// Setup workflow engine and input activity
 	g := jobIDGenerator{max: 10}
 	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
 
@@ -76,7 +85,6 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 		Engine: eng,
 	}
 
-	// Setup ops with SSE manager
 	depContainer := opssetup.NewDependencyContainer().
 		WithWorkflowControl(&wf).
 		WithSSEManager(input.NewSimpleSSEManager()).
@@ -84,16 +92,10 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 
 	webExtensionRoutes, cleanup, err := opssetup.SetupOps(depContainer)
 	require.NoError(t, err)
-	defer func() {
-		for _, c := range cleanup {
-			c()
-		}
-	}()
 
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	// Convert web.ExtensionRoute to handlers.ExtensionRoute
 	extensionRoutes := make([]handlers.ExtensionRoute, len(webExtensionRoutes))
 	for i, ext := range webExtensionRoutes {
 		extensionRoutes[i] = handlers.ExtensionRoute{
@@ -107,13 +109,10 @@ func TestUserInputsSSEIntegration(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 
-	// Setup HTTP server with extension routes
 	h := handlers.New(nil, nil, projectSvc, cellSvc, nil, nil, nil, cellStore)
 	router := h.SetupRoutesWithExtensions(nil, extensionRoutes)
 	srv := httptest.NewServer(router)
-	defer srv.Close()
 
-	// Start a job that requires input
 	recipeYaml := `
 ---
 id: test-input-recipe
@@ -134,67 +133,220 @@ inputs:
 		GitRef:     gitCtx.ParentRef,
 	}
 
-	// Start job in background
-	go func() {
-		_, _ = starter.StartRecipeJob(context.Background(), job, eng, *testRecipe)
-	}()
+	cleanupFunc := func() {
+		for _, c := range cleanup {
+			c()
+		}
+		srv.Close()
+	}
 
-	// Give job time to start
-	time.Sleep(300 * time.Millisecond)
-	logJobSnapshot(t, &wf, projID, "after_start")
+	return sseTestEnv{
+		projID:     projID,
+		job:        job,
+		eng:        eng,
+		testRecipe: testRecipe,
+		srv:        srv,
+		cleanup:    cleanupFunc,
+	}
+}
+
+// TestUserInputsSSEIntegration tests the SSE stream endpoint with full server stack
+func TestUserInputsSSEIntegration(t *testing.T) {
+	env := setupSSETestEnv(t)
+	defer env.cleanup()
 
 	// Test SSE stream endpoint
 	t.Run("SSEStreamWithEvents", func(t *testing.T) {
-		logJobSnapshot(t, &wf, projID, "before_sse_request")
-		url := fmt.Sprintf("%s/api/projects/%s/user-inputs/stream", srv.URL, projID)
-		req := httptest.NewRequest("GET", url, nil)
+		url := fmt.Sprintf("%s/api/projects/%s/user-inputs/stream", env.srv.URL, env.projID)
+		client := env.srv.Client()
 
-		// Create a context with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		// Create a context with timeout for the stream.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		req = req.WithContext(ctx)
 
-		// Record response
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-		logJobSnapshot(t, &wf, projID, "after_sse_request")
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		require.NoError(t, err)
+
+		respCh := make(chan *http.Response, 1)
+		reqErrs := make(chan error, 1)
+
+		go func() {
+			resp, err := client.Do(req)
+			if err != nil {
+				reqErrs <- err
+				return
+			}
+			respCh <- resp
+		}()
+
+		// Submit job after the stream request is in flight.
+		go func() {
+			_, _ = starter.StartRecipeJob(context.Background(), env.job, env.eng, *env.testRecipe)
+		}()
+
+		var resp *http.Response
+		select {
+		case err := <-reqErrs:
+			require.NoError(t, err)
+		case resp = <-respCh:
+		}
+		require.NotNil(t, resp)
+		defer resp.Body.Close()
 
 		// Verify SSE headers
-		require.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
-		require.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
-		require.Equal(t, "keep-alive", w.Header().Get("Connection"))
+		require.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+		require.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "keep-alive", resp.Header.Get("Connection"))
 
-		// Parse SSE events
-		body := w.Body.String()
-		t.Logf("SSE Response Body:\n%s", body)
+		events := make(chan SSEEvent, 1)
+		readErrs := make(chan error, 1)
 
-		require.NotEmpty(t, body, "SSE stream should send events")
-
-		// Verify we got events
-		events := parseSSEEvents(body)
-		require.NotEmpty(t, events, "Should receive SSE events")
-
-		// Check for expected event types
-		var hasConnected, hasPending bool
-		for _, event := range events {
-			t.Logf("Event: type=%s, data=%s", event.Type, event.Data)
-			if event.Type == "connected" {
-				hasConnected = true
-				// Verify client_id in data
-				require.Contains(t, event.Data, "client_id")
+		go func() {
+			scanner := bufio.NewScanner(resp.Body)
+			var currentEvent SSEEvent
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line == "" {
+					if currentEvent.Type == "input_pending" {
+						events <- currentEvent
+						return
+					}
+					currentEvent = SSEEvent{}
+					continue
+				}
+				if strings.HasPrefix(line, "event: ") {
+					currentEvent.Type = strings.TrimPrefix(line, "event: ")
+				} else if strings.HasPrefix(line, "data: ") {
+					currentEvent.Data = strings.TrimPrefix(line, "data: ")
+				}
 			}
-			if event.Type == "input_pending" {
-				hasPending = true
-				// Verify it's valid JSON
-				var pendingData map[string]interface{}
-				err := json.Unmarshal([]byte(event.Data), &pendingData)
-				require.NoError(t, err)
+			if err := scanner.Err(); err != nil {
+				readErrs <- err
+				return
+			}
+			readErrs <- io.EOF
+		}()
+
+		select {
+		case event := <-events:
+			t.Logf("Event: type=%s, data=%s", event.Type, event.Data)
+			var pendingData map[string]interface{}
+			err := json.Unmarshal([]byte(event.Data), &pendingData)
+			require.NoError(t, err)
+			cancel()
+		case err := <-readErrs:
+			require.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for input_pending event")
+		}
+	})
+}
+
+func TestUserInputsSSECompletion(t *testing.T) {
+	env := setupSSETestEnv(t)
+	defer env.cleanup()
+
+	url := fmt.Sprintf("%s/api/projects/%s/user-inputs/stream", env.srv.URL, env.projID)
+	client := env.srv.Client()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	require.NoError(t, err)
+
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+
+	pendingCh := make(chan SSEEvent, 1)
+	completedCh := make(chan SSEEvent, 1)
+	readErrs := make(chan error, 1)
+
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		var currentEvent SSEEvent
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				switch currentEvent.Type {
+				case "input_pending":
+					pendingCh <- currentEvent
+				case "input_completed":
+					completedCh <- currentEvent
+					return
+				}
+				currentEvent = SSEEvent{}
+				continue
+			}
+			if strings.HasPrefix(line, "event: ") {
+				currentEvent.Type = strings.TrimPrefix(line, "event: ")
+			} else if strings.HasPrefix(line, "data: ") {
+				currentEvent.Data = strings.TrimPrefix(line, "data: ")
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			readErrs <- err
+			return
+		}
+		readErrs <- io.EOF
+	}()
 
-		require.True(t, hasConnected, "Should receive 'connected' event")
-		require.True(t, hasPending, "Should receive 'input_pending' event for the pending job")
-	})
+	go func() {
+		_, _ = starter.StartRecipeJob(context.Background(), env.job, env.eng, *env.testRecipe)
+	}()
+
+	var jobID string
+	select {
+	case event := <-pendingCh:
+		var pendingData map[string]interface{}
+		err := json.Unmarshal([]byte(event.Data), &pendingData)
+		require.NoError(t, err)
+		id, ok := pendingData["id"].(string)
+		require.True(t, ok, "pending id should be a string")
+		jobID = id
+	case err := <-readErrs:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for input_pending event")
+	}
+
+	require.NotEmpty(t, jobID)
+
+	payload := map[string]interface{}{
+		"response": "Test User",
+		"fields": map[string]interface{}{
+			"name": "Test User",
+		},
+		"user_id": "test-user",
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	submitURL := fmt.Sprintf("%s/api/projects/%s/user-inputs/%s/respond", env.srv.URL, env.projID, jobID)
+	submitReq, err := http.NewRequestWithContext(ctx, "POST", submitURL, bytes.NewReader(body))
+	require.NoError(t, err)
+	submitReq.Header.Set("Content-Type", "application/json")
+
+	submitResp, err := client.Do(submitReq)
+	require.NoError(t, err)
+	defer submitResp.Body.Close()
+
+	require.Equal(t, http.StatusOK, submitResp.StatusCode)
+
+	select {
+	case event := <-completedCh:
+		var completedData map[string]interface{}
+		err := json.Unmarshal([]byte(event.Data), &completedData)
+		require.NoError(t, err)
+		cancel()
+	case err := <-readErrs:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for input_completed event")
+	}
 }
 
 // SSEEvent represents a parsed server-sent event

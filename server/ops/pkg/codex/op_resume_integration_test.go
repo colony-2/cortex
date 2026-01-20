@@ -32,7 +32,7 @@ type resumeSequenceOutput struct {
 
 func TestCodexOpResumeSequence(t *testing.T) {
 	ensureCodexRequired(t)
-	//t.Setenv("VIBETHIS_CODEX_USE_DIRECT", "1")
+	t.Setenv("VIBETHIS_CODEX_USE_DIRECT", "1")
 
 	originalOps := coreops.List()
 	t.Cleanup(func() {
