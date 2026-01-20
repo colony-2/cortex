@@ -48,7 +48,7 @@ describe('TicketDetailModal', () => {
             />
         );
 
-        expect(screen.getByText('Ticket: Test Ticket')).toBeInTheDocument();
+        expect(screen.getByText('[test-cell] Test Ticket')).toBeInTheDocument();
         expect(screen.getByText('ticket-123')).toBeInTheDocument();
         expect(screen.getByText('test-cell')).toBeInTheDocument();
         expect(screen.getByText('todo')).toBeInTheDocument();
@@ -81,42 +81,8 @@ describe('TicketDetailModal', () => {
             />
         );
 
-        // Switch to events tab - click the visible tab label
-        const tabs = screen.getAllByRole('tab');
-        const eventsTab = tabs.find(tab => tab.textContent?.includes('Events'));
-        expect(eventsTab).toBeDefined();
-        if (eventsTab) {
-            await userEvent.click(eventsTab);
-        }
-
         await waitFor(() => {
             expect(screen.getByText('Workflow completed')).toBeInTheDocument();
-        });
-    });
-
-    it('switches to events tab', async () => {
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
-        );
-
-        // Switch to events tab
-        const tabs = screen.getAllByRole('tab');
-        const eventsTab = tabs.find(tab => tab.textContent?.includes('Events'));
-        expect(eventsTab).toBeDefined();
-
-        if (eventsTab) {
-            await userEvent.click(eventsTab);
-        }
-
-        // After switching, the tab should be active
-        await waitFor(() => {
-            const activeTab = tabs.find(tab => tab.getAttribute('aria-selected') === 'true');
-            expect(activeTab?.textContent).toContain('Events');
         });
     });
 
@@ -131,13 +97,6 @@ describe('TicketDetailModal', () => {
                 projectId="proj-1"
             />
         );
-
-        // Switch to events tab
-        const tabs = screen.getAllByRole('tab');
-        const eventsTab = tabs.find(tab => tab.textContent?.includes('Events'));
-        if (eventsTab) {
-            await userEvent.click(eventsTab);
-        }
 
         await waitFor(() => {
             expect(screen.getByText(/Failed to load ticket events/i)).toBeInTheDocument();
@@ -185,13 +144,6 @@ describe('TicketDetailModal', () => {
                 projectId="proj-1"
             />
         );
-
-        // Switch to events tab
-        const tabs = screen.getAllByRole('tab');
-        const eventsTab = tabs.find(tab => tab.textContent?.includes('Events'));
-        if (eventsTab) {
-            await userEvent.click(eventsTab);
-        }
 
         await waitFor(() => {
             expect(screen.getByText(/No events found for this ticket/i)).toBeInTheDocument();

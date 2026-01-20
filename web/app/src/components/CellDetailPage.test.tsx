@@ -148,7 +148,7 @@ describe('CellDetailPage', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+      expect(screen.getByText('[Test Cell] Test Ticket 1')).toBeDefined();
     });
 
     expect(screen.getByText('Ticket description')).toBeDefined();
@@ -393,11 +393,11 @@ describe('CellDetailPage', () => {
 
     // Wait for tickets to load
     await waitFor(() => {
-      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+      expect(screen.getByText('[Test Cell] Test Ticket 1')).toBeDefined();
     });
 
     // Click on the ticket row
-    const ticketRow = screen.getByText('Test Ticket 1').closest('tr');
+    const ticketRow = screen.getByText('[Test Cell] Test Ticket 1').closest('tr');
     expect(ticketRow).toBeDefined();
 
     if (ticketRow) {
@@ -418,11 +418,11 @@ describe('CellDetailPage', () => {
 
     // Wait for tickets to load
     await waitFor(() => {
-      expect(screen.getByText('Test Ticket 1')).toBeDefined();
+      expect(screen.getByText('[Test Cell] Test Ticket 1')).toBeDefined();
     });
 
     // Click on a ticket row
-    const ticketRow = screen.getByText('Test Ticket 1').closest('tr');
+    const ticketRow = screen.getByText('[Test Cell] Test Ticket 1').closest('tr');
     if (ticketRow) {
       await user.click(ticketRow);
     }
@@ -473,12 +473,12 @@ describe('CellDetailPage', () => {
 
     // Wait for tickets to load
     await waitFor(() => {
-      expect(screen.getByText('Test Ticket 1')).toBeDefined();
-      expect(screen.getByText('Test Ticket 2')).toBeDefined();
+      expect(screen.getByText('[Test Cell] Test Ticket 1')).toBeDefined();
+      expect(screen.getByText('[Test Cell] Test Ticket 2')).toBeDefined();
     });
 
     // Click on the second ticket
-    const ticket2Row = screen.getByText('Test Ticket 2').closest('tr');
+    const ticket2Row = screen.getByText('[Test Cell] Test Ticket 2').closest('tr');
     if (ticket2Row) {
       await user.click(ticket2Row);
     }

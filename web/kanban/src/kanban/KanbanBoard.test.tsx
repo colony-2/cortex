@@ -96,8 +96,8 @@ describe('KanbanBoard', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Implement feature A')).toBeInTheDocument();
-      expect(screen.getByText('Fix bug B')).toBeInTheDocument();
+      expect(screen.getByText('[web-app] Implement feature A')).toBeInTheDocument();
+      expect(screen.getByText('[api] Fix bug B')).toBeInTheDocument();
     });
 
     // Check that it's a table view, not kanban columns
@@ -116,11 +116,11 @@ describe('KanbanBoard', () => {
 
     // Wait for tickets to load
     await waitFor(() => {
-      expect(screen.getByText('Implement feature A')).toBeInTheDocument();
+      expect(screen.getByText('[web-app] Implement feature A')).toBeInTheDocument();
     });
 
     // Click on the first ticket row
-    const ticketRow = screen.getByText('Implement feature A').closest('tr');
+    const ticketRow = screen.getByText('[web-app] Implement feature A').closest('tr');
     expect(ticketRow).toBeInTheDocument();
 
     if (ticketRow) {
@@ -145,11 +145,11 @@ describe('KanbanBoard', () => {
 
     // Wait for tickets to load
     await waitFor(() => {
-      expect(screen.getByText('Implement feature A')).toBeInTheDocument();
+      expect(screen.getByText('[web-app] Implement feature A')).toBeInTheDocument();
     });
 
     // Click on a ticket row
-    const ticketRow = screen.getByText('Implement feature A').closest('tr');
+    const ticketRow = screen.getByText('[web-app] Implement feature A').closest('tr');
     if (ticketRow) {
       await user.click(ticketRow);
     }
@@ -178,12 +178,8 @@ describe('KanbanBoard', () => {
 
     await waitFor(() => {
       // Check both tickets are rendered
-      expect(screen.getByText('Implement feature A')).toBeInTheDocument();
-      expect(screen.getByText('Fix bug B')).toBeInTheDocument();
-
-      // Check cell tags
-      expect(screen.getByText('web-app')).toBeInTheDocument();
-      expect(screen.getByText('api')).toBeInTheDocument();
+      expect(screen.getByText('[web-app] Implement feature A')).toBeInTheDocument();
+      expect(screen.getByText('[api] Fix bug B')).toBeInTheDocument();
     });
   });
 

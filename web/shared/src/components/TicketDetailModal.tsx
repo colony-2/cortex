@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Modal, Descriptions, Timeline, Tag, Spin, Alert, Tabs } from 'antd';
+import { Modal, Descriptions, Timeline, Tag, Spin, Alert, Row, Col, Typography } from 'antd';
 import type {
     Ticket,
     TicketEvent,
@@ -69,38 +69,40 @@ export const TicketDetailModal: React.FC<TicketDetailModalProps> = ({
         return null;
     }
 
+    const cellLabel = ticket.cellName ? `[${ticket.cellName}] ` : '';
+
     return (
         <Modal
-            title={`Ticket: ${ticket.title}`}
+            title={`${cellLabel}${ticket.title}`}
             open={visible}
             onCancel={onClose}
             footer={null}
-            width={800}
+            width="90vw"
+            style={{ top: 24 }}
             afterClose={() => setEvents([])}
         >
-            <Tabs
-                defaultActiveKey="details"
-                items={[
-                    {
-                        key: 'details',
-                        label: 'Details',
-                        children: <TicketDetails ticket={ticket} />,
-                    },
-                    {
-                        key: 'events',
-                        label: `Events (${events.length})`,
-                        children: loading ? (
-                            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                                <Spin size="large" />
-                            </div>
-                        ) : error ? (
-                            <Alert type="error" message={error} showIcon />
-                        ) : (
-                            <TicketEventsTimeline events={events} projectId={projectId} />
-                        ),
-                    },
-                ]}
-            />
+            <Row gutter={[24, 24]}>
+                <Col xs={24} lg={11}>
+                    <Typography.Title level={5} style={{ marginTop: 0 }}>
+                        Details
+                    </Typography.Title>
+                    <TicketDetails ticket={ticket} />
+                </Col>
+                <Col xs={24} lg={13}>
+                    <Typography.Title level={5} style={{ marginTop: 0 }}>
+                        Events {events.length > 0 ? `(${events.length})` : ''}
+                    </Typography.Title>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                            <Spin size="large" />
+                        </div>
+                    ) : error ? (
+                        <Alert type="error" message={error} showIcon />
+                    ) : (
+                        <TicketEventsTimeline events={events} projectId={projectId} />
+                    )}
+                </Col>
+            </Row>
         </Modal>
     );
 };
@@ -115,9 +117,6 @@ const TicketDetails: React.FC<{ ticket: Ticket }> = ({ ticket }) => {
             </Descriptions.Item>
             <Descriptions.Item label="Stage">
                 <Tag color="blue">{ticket.stage}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="State">
-                <Tag color={getStateColor(ticket.state)}>{ticket.state}</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Description">
                 {ticket.description || <span style={{ color: '#999' }}>No description</span>}
@@ -256,22 +255,6 @@ const EventItem: React.FC<{ event: TicketEvent; projectId: string }> = ({ event,
         </div>
     );
 };
-
-// Helper: Get color for ticket state
-function getStateColor(state: string): string {
-    switch (state) {
-        case 'working':
-            return 'green';
-        case 'waiting_user':
-            return 'orange';
-        case 'waiting_dependency':
-            return 'blue';
-        case 'waiting_capacity':
-            return 'purple';
-        default:
-            return 'default';
-    }
-}
 
 // Helper: Get color for event timeline dot
 function getEventColor(event: TicketEvent): string {

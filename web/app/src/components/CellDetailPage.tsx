@@ -283,23 +283,16 @@ export default function CellDetailPage({ projectId }: CellDetailPageProps) {
                   title: 'Title',
                   dataIndex: 'title',
                   key: 'title',
-                  render: (text: string) => <Text strong>{text}</Text>,
+                  render: (text: string, record: Ticket) => {
+                    const cellLabel = record.cellName || cell.name;
+                    return <Text>{`[${cellLabel}] ${text}`}</Text>;
+                  },
                 },
                 {
                   title: 'Stage',
                   dataIndex: 'stage',
                   key: 'stage',
                   render: (stage: string) => <Tag color="blue">{stage}</Tag>,
-                },
-                {
-                  title: 'State',
-                  dataIndex: 'state',
-                  key: 'state',
-                  render: (state: TicketState) => (
-                    <Tag color={state === TicketState.WORKING ? 'green' : 'default'}>
-                      {state.replace(/_/g, ' ')}
-                    </Tag>
-                  ),
                 },
                 {
                   title: 'Description',

@@ -24,7 +24,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/strata-go v0.0.0-20260111003612-613ca5319069 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260119195135-de439e071d92
+	github.com/colony-2/swf-go v0.0.0-20260120024540-b197a6ff0da3
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

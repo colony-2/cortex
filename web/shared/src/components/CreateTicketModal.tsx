@@ -22,49 +22,6 @@ const getStorage = () => {
     }
 };
 
-const MarkdownEditor: React.FC<{
-    value?: string;
-    onChange?: (value: string) => void;
-    disabled?: boolean;
-}> = ({ value, onChange, disabled }) => {
-    const handleInsert = (snippet: string) => {
-        onChange?.(`${value || ''}${value ? '\n' : ''}${snippet}`);
-    };
-
-    return (
-        <div>
-            <Space size="small" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-                <Button size="small" onClick={() => handleInsert('**bold**')} disabled={disabled}>
-                    Bold
-                </Button>
-                <Button size="small" onClick={() => handleInsert('*italic*')} disabled={disabled}>
-                    Italic
-                </Button>
-                <Button size="small" onClick={() => handleInsert('`code`')} disabled={disabled}>
-                    Code
-                </Button>
-                <Button
-                    size="small"
-                    onClick={() => handleInsert('[link](https://example.com)')}
-                    disabled={disabled}
-                >
-                    Link
-                </Button>
-                <Button size="small" onClick={() => handleInsert('- item')} disabled={disabled}>
-                    List
-                </Button>
-            </Space>
-            <TextArea
-                rows={12}
-                placeholder="Write in markdown... (Context, acceptance criteria, links)"
-                value={value}
-                onChange={(event) => onChange?.(event.target.value)}
-                disabled={disabled}
-            />
-        </div>
-    );
-};
-
 export interface CreateTicketModalProps {
     /** Whether the modal is visible */
     open: boolean;
@@ -256,10 +213,10 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 onKeyDown={handleKeyDown}
                 onValuesChange={handleValuesChange}
             >
-            <Form.Item
-                label="Cell"
-                name="cell"
-                rules={[{ required: true, message: 'Select a cell' }]}
+                <Form.Item
+                    label="Cell"
+                    name="cell"
+                    rules={[{ required: true, message: 'Select a cell' }]}
                 >
                     <Select
                         showSearch
@@ -284,7 +241,11 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 </Form.Item>
 
                 <Form.Item label="Description" name="description">
-                    <MarkdownEditor disabled={loading} />
+                    <TextArea
+                        rows={12}
+                        placeholder="Write in markdown... (Context, acceptance criteria, links)"
+                        disabled={loading}
+                    />
                 </Form.Item>
             </Form>
         </Modal>

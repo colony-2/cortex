@@ -52,19 +52,6 @@ const stageColor: Record<string, string> = {
   done: 'green',
 };
 
-const stateColor: Record<string, string> = {
-  [TicketState.WAITING_USER]: 'orange',
-  [TicketState.WAITING_DEPENDENCY]: 'blue',
-  [TicketState.WAITING_CAPACITY]: 'purple',
-  [TicketState.WORKING]: 'green',
-  // Legacy/custom states
-  'waiting_dev': 'blue',
-  'in_progress': 'processing',
-  'blocked': 'red',
-  'completed': 'success',
-  'abandoned': 'default',
-};
-
 export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const location = useLocation();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -72,7 +59,6 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [availableStages, setAvailableStages] = useState<string[]>([]);
-  const [availableStates, setAvailableStates] = useState<TicketState[]>([]);
   const [cells, setCells] = useState<ManagedCell[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -95,10 +81,9 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
       setLoading(true);
       setError(null);
       try {
-        const [ticketData, stageData, stateData, cellData] = await Promise.all([
+        const [ticketData, stageData, cellData] = await Promise.all([
           TicketsService.getApiProjectsTickets(projectId),
           TicketsService.getApiProjectsTicketsStages(projectId),
-          TicketsService.getApiProjectsTicketsStates(projectId),
           CellsService.getApiProjectsCells(projectId),
         ]);
         const sortedTickets = (ticketData || []).sort((a, b) => {
@@ -111,7 +96,6 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
         setAvailableStages(
           (stageData && stageData.length > 0 && stageData) || ['backlog', 'todo', 'doing', 'review', 'done'],
         );
-        setAvailableStates(stateData && stateData.length > 0 ? stateData : Object.values(TicketState));
         setCells(cellData || []);
       } catch (err) {
         console.error('Failed to load tickets', err);
@@ -150,46 +134,26 @@ export default function KanbanBoard({ projectId }: KanbanBoardProps) {
       title: 'Title',
       dataIndex: 'title',
       key: 'title',
-      width: '30%',
-      render: (title: string) => <span style={{ fontWeight: 500 }}>{title}</span>,
-    },
-    {
-      title: 'Cell',
-      dataIndex: 'cellName',
-      key: 'cellName',
-      width: '20%',
-      filters: Array.from(new Set(tickets.map((t) => t.cellName).filter(Boolean))).map((name) => ({
-        text: name!,
-        value: name!,
-      })),
-      onFilter: (value, record) => record.cellName === value,
-      render: (cellName: string) => cellName && <Tag color="blue">{cellName}</Tag>,
+      width: '50%',
+      render: (title: string, record: Ticket) => {
+        const cellLabel = record.cellName || 'unknown';
+        return <span>{`[${cellLabel}] ${title}`}</span>;
+      },
     },
     {
       title: 'Stage',
       dataIndex: 'stage',
       key: 'stage',
-      width: '15%',
+      width: '20%',
       filters: availableStages.map((stage) => ({ text: stage, value: stage })),
       onFilter: (value, record) => record.stage === value,
       render: (stage: string) => <Tag color={stageColor[stage] || 'default'}>{stage}</Tag>,
     },
     {
-      title: 'State',
-      dataIndex: 'state',
-      key: 'state',
-      width: '15%',
-      filters: availableStates.map((state) => ({ text: state.replace(/_/g, ' '), value: state })),
-      onFilter: (value, record) => record.state === value,
-      render: (state: TicketState) => (
-        <Tag color={stateColor[state] || 'default'}>{state.replace(/_/g, ' ')}</Tag>
-      ),
-    },
-    {
       title: 'Updated',
       dataIndex: 'updated',
       key: 'updated',
-      width: '20%',
+      width: '30%',
       sorter: (a, b) => {
         const dateA = new Date(a.updatedAt || 0).getTime();
         const dateB = new Date(b.updatedAt || 0).getTime();
@@ -424,13 +388,6 @@ function CreateTicketModal({
     activeStorage.setItem(draftKey, JSON.stringify(payload));
   };
 
-  const appendDescriptionSnippet = (snippet: string) => {
-    const current = form.getFieldValue('description') || '';
-    const next = `${current}${current ? '\n' : ''}${snippet}`;
-    form.setFieldsValue({ description: next });
-    persistDraft(form.getFieldValue('title'), next);
-  };
-
   const handleCellChange = (value: string) => {
     const storage = getStorage();
     if (!storage) {
@@ -500,29 +457,8 @@ function CreateTicketModal({
           <Input placeholder="Ticket title" />
         </Form.Item>
 
-        <Form.Item label="Description">
-          <div>
-            <Space size="small" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-              <Button size="small" onClick={() => appendDescriptionSnippet('**bold**')}>
-                Bold
-              </Button>
-              <Button size="small" onClick={() => appendDescriptionSnippet('*italic*')}>
-                Italic
-              </Button>
-              <Button size="small" onClick={() => appendDescriptionSnippet('`code`')}>
-                Code
-              </Button>
-              <Button size="small" onClick={() => appendDescriptionSnippet('[link](https://example.com)')}>
-                Link
-              </Button>
-              <Button size="small" onClick={() => appendDescriptionSnippet('- item')}>
-                List
-              </Button>
-            </Space>
-            <Form.Item name="description" noStyle>
-              <TextArea rows={12} placeholder="Write in markdown... (Context, acceptance criteria, links)" />
-            </Form.Item>
-          </div>
+        <Form.Item label="Description" name="description">
+          <TextArea rows={12} placeholder="Write in markdown... (Context, acceptance criteria, links)" />
         </Form.Item>
       </Form>
     </Modal>
