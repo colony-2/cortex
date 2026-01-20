@@ -30,7 +30,7 @@ func Run(ctx context.Context, input ThinpackRebaseInput) (*ThinpackRebaseOutput,
 		return nil, fmt.Errorf("target_base_hash is required")
 	}
 
-	snapshot, err := resolveWorkspaceSnapshot(ctx, input)
+	snapshot, err := resolveWorkspaceSnapshot(input)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func Run(ctx context.Context, input ThinpackRebaseInput) (*ThinpackRebaseOutput,
 	}
 
 	if snapshot.BaseHash == "" {
-		return nil, fmt.Errorf("context.git.base_hash is required for thinpackrebase")
+		return nil, fmt.Errorf("base_hash is required for thinpackrebase")
 	}
 
 	if snapshot.PersistHash == "" {
@@ -119,49 +119,24 @@ func Run(ctx context.Context, input ThinpackRebaseInput) (*ThinpackRebaseOutput,
 	return output, nil
 }
 
-func resolveWorkspaceSnapshot(ctx context.Context, input ThinpackRebaseInput) (workspaceSnapshot, error) {
+func resolveWorkspaceSnapshot(input ThinpackRebaseInput) (workspaceSnapshot, error) {
 	snapshot := workspaceSnapshot{}
-	ctxMap := input.Context
-	var gitMap map[string]interface{}
-	if ctxMap != nil {
-		if m, ok := ctxMap["git"].(map[string]interface{}); ok {
-			gitMap = m
-		}
-	}
 
 	repoPath := strings.TrimSpace(input.RepoPath)
-	if repoPath == "" && gitMap != nil {
-		if val, ok := stringFromMap(gitMap, "worktree_path"); ok {
-			repoPath = val
-		}
-	}
-	if repoPath == "" && ctxMap != nil {
-		if val, ok := stringFromMap(ctxMap, "worktree"); ok {
-			repoPath = val
-		}
-	}
 	if repoPath == "" {
-		return snapshot, fmt.Errorf("repo_path or context.git.worktree_path is required")
+		return snapshot, fmt.Errorf("repo_path is required")
 	}
 
 	snapshot.RepoPath = repoPath
 	snapshot.Worktree = repoPath
+	snapshot.BaseHash = strings.TrimSpace(input.BaseHash)
+	snapshot.PersistHash = strings.TrimSpace(input.PersistHash)
+	snapshot.BaseRepo = strings.TrimSpace(input.BaseRepo)
+	snapshot.GitAuthor = strings.TrimSpace(input.GitAuthor)
+	snapshot.CellName = strings.TrimSpace(input.CellName)
 
-	if gitMap != nil {
-		snapshot.BaseHash, _ = stringFromMap(gitMap, "base_hash")
-		snapshot.PersistHash, _ = stringFromMap(gitMap, "persist_hash")
-		snapshot.BaseRepo, _ = stringFromMap(gitMap, "base_repo")
-		snapshot.GitAuthor, _ = stringFromMap(gitMap, "git_author")
-		if wt, ok := stringFromMap(gitMap, "worktree_path"); ok {
-			snapshot.Worktree = wt
-		}
-	}
-
-	if ctxMap != nil {
-		snapshot.CellName, _ = stringFromMap(ctxMap, "cellname")
-		if snapshot.GitAuthor == "" && snapshot.CellName != "" {
-			snapshot.GitAuthor = fmt.Sprintf("%s <%s@colony2>", snapshot.CellName, snapshot.CellName)
-		}
+	if snapshot.GitAuthor == "" && snapshot.CellName != "" {
+		snapshot.GitAuthor = fmt.Sprintf("%s <%s@colony2>", snapshot.CellName, snapshot.CellName)
 	}
 
 	return snapshot, nil
@@ -367,19 +342,4 @@ func shortHash(hash string) string {
 		return hash[:7]
 	}
 	return hash
-}
-
-func stringFromMap(m map[string]interface{}, key string) (string, bool) {
-	if m == nil {
-		return "", false
-	}
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			str = strings.TrimSpace(str)
-			if str != "" {
-				return str, true
-			}
-		}
-	}
-	return "", false
 }

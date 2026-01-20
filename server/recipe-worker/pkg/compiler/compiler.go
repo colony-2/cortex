@@ -93,6 +93,10 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 // executeOperation executes a single operation node
 func executeOp2(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
 
+	if metadata.Inputs == nil {
+		metadata.Inputs = map[string]interface{}{}
+	}
+	
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create resolution context: %w", err)

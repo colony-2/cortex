@@ -8,12 +8,13 @@ import (
 
 // SquashRebaseMergeInput defines the parameters for the squash-rebase-merge git op.
 type SquashRebaseMergeInput struct {
-	RepoPath       string                 `json:"repo_path,omitempty" default:"{{ context.environment.worktree_path }}" validate:"required,dir"`
-	TargetBranch   string                 `json:"target_branch,omitempty" default:"refs/heads/main"`
-	UpstreamRemote string                 `json:"upstream_remote,omitempty"`
-	PreserveAuthor *bool                  `json:"preserve_author,omitempty"`
-	SkipRebase     bool                   `json:"skip_rebase,omitempty"`
-	Context        map[string]interface{} `json:"context,omitempty" default:"{{ context }}"`
+	RepoPath       string  `json:"repo_path,omitempty" default:"{{ context.environment.worktree_path }}" validate:"required,dir"`
+	LocalHash      string  `json:"local_hash,omitempty" validate:"omitempty,hexadecimal,min=7,max=40"`
+	UpstreamRepo   string  `json:"upstream_repo" default:"{{ context.git.repo }}" validate:"required"`
+	UpstreamBranch string  `json:"upstream_branch,omitempty" default:"{{ context.git.ref }}" validate:"required"`
+	Rebase         *bool   `json:"rebase,omitempty"`
+	Author         string  `json:"author,omitempty" default:"{{ context.git.author }}"`
+	CommitMessage  string  `json:"commit_message,omitempty"`
 }
 
 // SquashRangeSummary captures the original commit range that was squashed.

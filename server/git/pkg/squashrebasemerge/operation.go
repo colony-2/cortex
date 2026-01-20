@@ -16,13 +16,10 @@ const defaultTargetBranch = "refs/heads/main"
 
 // workspaceSnapshot captures relevant git context for the operation.
 type workspaceSnapshot struct {
-	RepoPath    string
-	BaseHash    string
-	PersistHash string
-	BaseRepo    string
-	GitAuthor   string
-	Worktree    string
-	CellName    string
+	RepoPath     string
+	BaseHash     string
+	PersistHash  string
+	UpstreamRepo string
 }
 
 // Run executes the squash-rebase-merge flow.
@@ -36,13 +33,9 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		return nil, fmt.Errorf("validate repository: %w", err)
 	}
 
-	targetBranch := strings.TrimSpace(input.TargetBranch)
+	targetBranch := strings.TrimSpace(input.UpstreamBranch)
 	if targetBranch == "" {
 		targetBranch = defaultTargetBranch
-	}
-
-	if snapshot.BaseHash == "" {
-		return nil, fmt.Errorf("context.git.base_hash is required")
 	}
 
 	if snapshot.PersistHash == "" {
@@ -53,7 +46,7 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		snapshot.PersistHash = hash
 	}
 
-	remoteName, err := determineRemoteName(ctx, snapshot, input.UpstreamRemote)
+	remoteName, err := determineRemoteName(ctx, snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -71,17 +64,21 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		return nil, fmt.Errorf("resolve remote target %s: %w", remoteRef, err)
 	}
 
-	ancestor, err := isAncestor(ctx, snapshot.RepoPath, snapshot.BaseHash, remoteTip)
+	baseHash, err := mergeBase(ctx, snapshot.RepoPath, snapshot.PersistHash, remoteTip)
 	if err != nil {
 		return nil, err
 	}
-	if !ancestor {
-		return nil, fmt.Errorf("remote branch %s no longer descends from base %s", targetBranch, shortHash(snapshot.BaseHash))
+	if baseHash == "" {
+		return nil, fmt.Errorf("unable to determine merge base between local %s and %s", shortHash(snapshot.PersistHash), shortHash(remoteTip))
 	}
+	snapshot.BaseHash = baseHash
 
-	skipRebase := input.SkipRebase
+	doRebase := true
+	if input.Rebase != nil {
+		doRebase = *input.Rebase
+	}
 	rangeBaseHash := snapshot.BaseHash
-	if skipRebase {
+	if !doRebase {
 		fastForwardable, err := isAncestor(ctx, snapshot.RepoPath, remoteTip, snapshot.PersistHash)
 		if err != nil {
 			return nil, fmt.Errorf("check fast-forward eligibility: %w", err)
@@ -119,11 +116,11 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 				"persist_hash":  remoteTip,
 				"previous_hash": snapshot.PersistHash,
 			},
-			FastForward: skipRebase,
+			FastForward: !doRebase,
 		}, nil
 	}
 
-	commitLog, err := collectCommitSummaries(ctx, snapshot.RepoPath, rangeBaseHash, snapshot.PersistHash)
+	commitDetails, err := collectCommitDetails(ctx, snapshot.RepoPath, rangeBaseHash, snapshot.PersistHash)
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +130,14 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 		_, _ = common.ExecuteGitCommand(context.Background(), snapshot.RepoPath, "reset", "--hard", originalHead)
 	}
 
-	if err := createSquashCommit(ctx, snapshot, rangeBaseHash, targetBranch, commitLog, input.PreserveAuthor); err != nil {
+	commitAuthor, commitMessage := buildSquashCommit(input, commitDetails)
+	if err := createSquashCommit(ctx, snapshot, rangeBaseHash, commitMessage, commitAuthor); err != nil {
 		restoreOnError()
 		return nil, err
 	}
 
 	var mergedHash string
-	if skipRebase {
+	if !doRebase {
 		mergedHash, err = common.GetCommitHash(ctx, snapshot.RepoPath, "HEAD")
 		if err != nil {
 			restoreOnError()
@@ -172,7 +170,7 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 			return nil, fmt.Errorf("push to %s: %w", targetBranch, err)
 		}
 	} else {
-		if err := rebaseOntoTarget(ctx, snapshot.RepoPath, remoteTip, snapshot.BaseHash, input.PreserveAuthor, snapshot.GitAuthor); err != nil {
+		if err := rebaseOntoTarget(ctx, snapshot.RepoPath, remoteTip, snapshot.BaseHash); err != nil {
 			restoreOnError()
 			return nil, err
 		}
@@ -202,61 +200,27 @@ func Run(ctx context.Context, input SquashRebaseMergeInput) (*SquashRebaseMergeO
 			"persist_hash":  mergedHash,
 			"previous_hash": snapshot.PersistHash,
 		},
-		FastForward: skipRebase,
+		FastForward: !doRebase,
 	}, nil
 }
 
 func resolveWorkspaceSnapshot(input SquashRebaseMergeInput) (workspaceSnapshot, error) {
 	snapshot := workspaceSnapshot{}
-	ctxMap := input.Context
-	var gitMap map[string]interface{}
-	if ctxMap != nil {
-		if m, ok := ctxMap["git"].(map[string]interface{}); ok {
-			gitMap = m
-		}
-	}
-
 	repoPath := strings.TrimSpace(input.RepoPath)
-	if repoPath == "" && gitMap != nil {
-		if val, ok := stringFromMap(gitMap, "worktree_path"); ok {
-			repoPath = val
-		}
-	}
-	if repoPath == "" && ctxMap != nil {
-		if val, ok := stringFromMap(ctxMap, "worktree"); ok {
-			repoPath = val
-		}
-	}
 	if repoPath == "" {
-		return snapshot, fmt.Errorf("repo_path or context.git.worktree_path is required")
+		return snapshot, fmt.Errorf("repo_path is required")
 	}
 
 	snapshot.RepoPath = repoPath
-	snapshot.Worktree = repoPath
-
-	if gitMap != nil {
-		snapshot.BaseHash, _ = stringFromMap(gitMap, "base_hash")
-		snapshot.PersistHash, _ = stringFromMap(gitMap, "persist_hash")
-		snapshot.BaseRepo, _ = stringFromMap(gitMap, "base_repo")
-		snapshot.GitAuthor, _ = stringFromMap(gitMap, "git_author")
-		if wt, ok := stringFromMap(gitMap, "worktree_path"); ok {
-			snapshot.Worktree = wt
-		}
-	}
-
-	if ctxMap != nil {
-		snapshot.CellName, _ = stringFromMap(ctxMap, "cellname")
-		if snapshot.GitAuthor == "" && snapshot.CellName != "" {
-			snapshot.GitAuthor = fmt.Sprintf("%s <%s@colony2>", snapshot.CellName, snapshot.CellName)
-		}
-	}
+	snapshot.PersistHash = strings.TrimSpace(input.LocalHash)
+	snapshot.UpstreamRepo = strings.TrimSpace(input.UpstreamRepo)
 
 	return snapshot, nil
 }
 
-func determineRemoteName(ctx context.Context, snapshot workspaceSnapshot, explicit string) (string, error) {
-	if explicit = strings.TrimSpace(explicit); explicit != "" {
-		return explicit, nil
+func determineRemoteName(ctx context.Context, snapshot workspaceSnapshot) (string, error) {
+	if strings.TrimSpace(snapshot.UpstreamRepo) == "" {
+		return "", fmt.Errorf("upstream_repo is required")
 	}
 
 	out, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "remote", "-v")
@@ -265,7 +229,7 @@ func determineRemoteName(ctx context.Context, snapshot workspaceSnapshot, explic
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	baseNorm := normalizeRemoteURL(snapshot.BaseRepo)
+	baseNorm := normalizeRemoteURL(snapshot.UpstreamRepo)
 	remoteSeen := make(map[string]struct{})
 	var first string
 
@@ -297,7 +261,7 @@ func determineRemoteName(ctx context.Context, snapshot workspaceSnapshot, explic
 		return "", fmt.Errorf("repository has no remotes configured")
 	}
 
-	return "", fmt.Errorf("unable to determine remote; provide upstream_remote explicitly")
+	return "", fmt.Errorf("unable to determine remote for upstream_repo %s", snapshot.UpstreamRepo)
 }
 
 func fetchTargetBranch(ctx context.Context, repoPath, remoteName, targetBranch string) error {
@@ -318,35 +282,112 @@ func remoteTrackingRef(remoteName, targetBranch string) string {
 	return fmt.Sprintf("%s/%s", remoteName, short)
 }
 
-func collectCommitSummaries(ctx context.Context, repoPath, baseHash, persistHash string) (string, error) {
-	out, err := common.ExecuteGitCommand(ctx, repoPath, "log", "--pretty=format:%h %an <%ae> %s", fmt.Sprintf("%s..%s", baseHash, persistHash))
-	if err != nil {
-		return "", fmt.Errorf("collect commit summaries: %w", err)
-	}
-	return strings.TrimSpace(string(out)), nil
+type commitDetail struct {
+	Author  string
+	Subject string
 }
 
-func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, squashBaseHash, targetBranch, commitLog string, preserveAuthor *bool) error {
+func collectCommitDetails(ctx context.Context, repoPath, baseHash, persistHash string) ([]commitDetail, error) {
+	out, err := common.ExecuteGitCommand(ctx, repoPath, "log", "--reverse", "--pretty=format:%an <%ae>%x1f%s%x1e", fmt.Sprintf("%s..%s", baseHash, persistHash))
+	if err != nil {
+		return nil, fmt.Errorf("collect commit summaries: %w", err)
+	}
+	raw := strings.TrimRight(string(out), "\x1e")
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	records := strings.Split(raw, "\x1e")
+	details := make([]commitDetail, 0, len(records))
+	for _, record := range records {
+		record = strings.TrimSpace(record)
+		if record == "" {
+			continue
+		}
+		parts := strings.SplitN(record, "\x1f", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		author := strings.TrimSpace(parts[0])
+		subject := strings.TrimSpace(parts[1])
+		details = append(details, commitDetail{
+			Author:  author,
+			Subject: subject,
+		})
+	}
+	return details, nil
+}
+
+func buildSquashCommit(input SquashRebaseMergeInput, details []commitDetail) (string, string) {
+	message := strings.TrimSpace(input.CommitMessage)
+	if message == "" {
+		subjects := make([]string, 0, len(details))
+		for _, detail := range details {
+			if detail.Subject == "" {
+				continue
+			}
+			subjects = append(subjects, detail.Subject)
+		}
+		message = strings.TrimSpace(strings.Join(subjects, "\n"))
+	}
+	if message == "" {
+		message = "Squash commit"
+	}
+
+	author := strings.TrimSpace(input.Author)
+	if author == "" && len(details) > 0 {
+		author = strings.TrimSpace(details[0].Author)
+	}
+
+	coauthors := uniqueAuthors(details, author)
+	message = appendCoauthors(message, coauthors)
+	return author, message
+}
+
+func uniqueAuthors(details []commitDetail, primary string) []string {
+	seen := make(map[string]struct{})
+	primary = strings.TrimSpace(primary)
+	if primary != "" {
+		seen[strings.ToLower(primary)] = struct{}{}
+	}
+
+	authors := make([]string, 0, len(details))
+	for _, detail := range details {
+		author := strings.TrimSpace(detail.Author)
+		if author == "" {
+			continue
+		}
+		key := strings.ToLower(author)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		authors = append(authors, author)
+	}
+	return authors
+}
+
+func appendCoauthors(message string, coauthors []string) string {
+	message = strings.TrimRight(message, "\n")
+	if len(coauthors) == 0 {
+		return message
+	}
+	var b strings.Builder
+	if message != "" {
+		b.WriteString(message)
+		b.WriteString("\n\n")
+	}
+	for _, author := range coauthors {
+		fmt.Fprintf(&b, "Co-authored-by: %s\n", author)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, squashBaseHash, commitMessage, author string) error {
 	if _, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "reset", "--soft", squashBaseHash); err != nil {
 		return fmt.Errorf("prepare squash reset: %w", err)
 	}
 
-	author := snapshot.GitAuthor
-	keepAuthor := true
-	if preserveAuthor != nil {
-		keepAuthor = *preserveAuthor
-	}
-
-	if keepAuthor {
-		originalAuthor, err := common.ExecuteGitCommand(ctx, snapshot.RepoPath, "show", "-s", "--format=%an <%ae>", snapshot.PersistHash)
-		if err == nil {
-			author = strings.TrimSpace(string(originalAuthor))
-		}
-	}
-
-	message := buildSquashCommitMessage(snapshot, targetBranch, commitLog, squashBaseHash)
-
-	args := []string{"commit", "-m", message}
+	args := []string{"commit", "-m", commitMessage}
 	env := os.Environ()
 	env = append(env, "GIT_TERMINAL_PROMPT=0")
 	if author != "" {
@@ -363,22 +404,10 @@ func createSquashCommit(ctx context.Context, snapshot workspaceSnapshot, squashB
 	return nil
 }
 
-func rebaseOntoTarget(ctx context.Context, repoPath, remoteTip, originalBase string, preserveAuthor *bool, fallbackAuthor string) error {
-	keepAuthor := true
-	if preserveAuthor != nil {
-		keepAuthor = *preserveAuthor
-	}
-
+func rebaseOntoTarget(ctx context.Context, repoPath, remoteTip, originalBase string) error {
 	args := []string{"rebase", "--reapply-cherry-picks", "--onto", remoteTip, originalBase}
 
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_SEQUENCE_EDITOR=true")
-	if !keepAuthor && fallbackAuthor != "" {
-		name, email := splitAuthor(fallbackAuthor)
-		if name != "" && email != "" {
-			args = append([]string{"-c", fmt.Sprintf("user.name=%s", name), "-c", fmt.Sprintf("user.email=%s", email)}, args...)
-			args = append(args, "--exec", "git commit --amend --no-edit --reset-author")
-		}
-	}
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
@@ -433,37 +462,12 @@ func isAncestor(ctx context.Context, repoPath, ancestor, descendant string) (boo
 	return false, err
 }
 
-func buildSquashCommitMessage(snapshot workspaceSnapshot, targetBranch, commitLog string, baseHash string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Squash delivery to %s\n\n", targetBranch)
-	fmt.Fprintf(&b, "Base: %s\n", baseHash)
-	fmt.Fprintf(&b, "Original tip: %s\n", snapshot.PersistHash)
-	b.WriteString("\nCommits:\n")
-	if commitLog == "" {
-		b.WriteString("  - (no individual commits listed)\n")
-	} else {
-		for _, line := range strings.Split(commitLog, "\n") {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			fmt.Fprintf(&b, "  - %s\n", line)
-		}
+func mergeBase(ctx context.Context, repoPath, left, right string) (string, error) {
+	out, err := common.ExecuteGitCommand(ctx, repoPath, "merge-base", left, right)
+	if err != nil {
+		return "", fmt.Errorf("determine merge-base for %s and %s: %w", shortHash(left), shortHash(right), err)
 	}
-	return b.String()
-}
-
-func splitAuthor(author string) (string, string) {
-	author = strings.TrimSpace(author)
-	if author == "" {
-		return "", ""
-	}
-	if !strings.Contains(author, "<") {
-		return author, ""
-	}
-	idx := strings.Index(author, "<")
-	name := strings.TrimSpace(author[:idx])
-	email := strings.TrimSpace(strings.TrimSuffix(author[idx+1:], ">"))
-	return name, email
+	return strings.TrimSpace(string(out)), nil
 }
 
 func normalizeRemoteURL(url string) string {
@@ -489,21 +493,6 @@ func shortHash(hash string) string {
 		return hash[:7]
 	}
 	return hash
-}
-
-func stringFromMap(m map[string]interface{}, key string) (string, bool) {
-	if m == nil {
-		return "", false
-	}
-	if val, ok := m[key]; ok {
-		if str, ok := val.(string); ok {
-			str = strings.TrimSpace(str)
-			if str != "" {
-				return str, true
-			}
-		}
-	}
-	return "", false
 }
 
 func isNonFastForwardError(err error) bool {

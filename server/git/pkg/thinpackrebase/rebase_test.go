@@ -37,17 +37,11 @@ func TestRunThinpackRebase_ReplaysCommits(t *testing.T) {
 		RepoPath:       workspacePath,
 		TargetBaseHash: targetBase,
 		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspacePath,
-			"cellname": "alpha",
-			"git": map[string]interface{}{
-				"base_hash":     baseHash,
-				"persist_hash":  originalPersist,
-				"base_repo":     remotePath,
-				"git_author":    "Recipe Bot <bot@example.com>",
-				"worktree_path": workspacePath,
-			},
-		},
+		BaseHash:       baseHash,
+		PersistHash:    originalPersist,
+		BaseRepo:       remotePath,
+		GitAuthor:      "Recipe Bot <bot@example.com>",
+		CellName:       "alpha",
 	}
 
 	output, err := Run(context.Background(), input)
@@ -95,17 +89,11 @@ func TestRunThinpackRebase_ResetAuthor(t *testing.T) {
 		TargetBaseHash: targetBase,
 		UpstreamRemote: "origin",
 		PreserveAuthor: &preserve,
-		Context: map[string]interface{}{
-			"worktree": workspacePath,
-			"cellname": "workflow",
-			"git": map[string]interface{}{
-				"base_hash":     baseHash,
-				"persist_hash":  originalPersist,
-				"base_repo":     remotePath,
-				"git_author":    "Workflow Bot <workflow@example.com>",
-				"worktree_path": workspacePath,
-			},
-		},
+		BaseHash:       baseHash,
+		PersistHash:    originalPersist,
+		BaseRepo:       remotePath,
+		GitAuthor:      "Workflow Bot <workflow@example.com>",
+		CellName:       "workflow",
 	}
 
 	output, err := Run(context.Background(), input)
@@ -137,15 +125,9 @@ func TestRunThinpackRebase_FastForwardWhenNoLocalCommits(t *testing.T) {
 		RepoPath:       workspacePath,
 		TargetBaseHash: targetBase,
 		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspacePath,
-			"git": map[string]interface{}{
-				"base_hash":     baseHash,
-				"persist_hash":  baseHash,
-				"base_repo":     remotePath,
-				"worktree_path": workspacePath,
-			},
-		},
+		BaseHash:    baseHash,
+		PersistHash: baseHash,
+		BaseRepo:    remotePath,
 	}
 
 	output, err := Run(context.Background(), input)
@@ -191,15 +173,9 @@ func TestRunThinpackRebase_FailsWhenDiverged(t *testing.T) {
 		RepoPath:       workspacePath,
 		TargetBaseHash: divergent,
 		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspacePath,
-			"git": map[string]interface{}{
-				"base_hash":     baseHash,
-				"persist_hash":  persist,
-				"base_repo":     remotePath,
-				"worktree_path": workspacePath,
-			},
-		},
+		BaseHash:    baseHash,
+		PersistHash: persist,
+		BaseRepo:    remotePath,
 	}
 
 	_, err := Run(context.Background(), input)

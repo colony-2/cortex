@@ -20,8 +20,9 @@ The `squashrebasemerge` git op gives recipes a deterministic pathway to collapse
 - id: deliver_feature
   op: squashrebasemerge
   with:
-    target_branch: refs/heads/main
-    upstream_remote: origin
+    upstream_branch: refs/heads/main
+    upstream_repo: git@github.com:org/repo.git
+    rebase: true
 ```
 
 The op inherits the surrounding gitstate lifecycle.
@@ -30,17 +31,20 @@ The op inherits the surrounding gitstate lifecycle.
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `target_branch` | yes | Fully qualified ref that will receive the merged commit. Defaults to `refs/heads/main` if omitted. |
-| `upstream_remote` | no | Remote name to fetch/push; defaults to the remote encoded in `context.git.base_repo`. |
-| `preserve_author` | no | Defaults to `true`; toggle to `false` to rewrite the squash commit’s author info. |
+| `upstream_branch` | yes | Fully qualified ref that will receive the merged commit. Defaults to `refs/heads/main` if omitted. |
+| `upstream_repo` | yes | Remote URL/path used to locate the upstream remote for fetch/push. |
+| `local_hash` | no | Commit hash to squash (defaults to current `HEAD` when omitted). |
+| `rebase` | no | Defaults to `true`; set to `false` to skip the rebase step and only squash onto the existing upstream tip. |
+| `author` | no | Author to assign to the squash commit (defaults to the first commit author, with `Co-authored-by` tags for the rest). |
+| `commit_message` | no | Commit message to use; defaults to the concatenated commit subjects in the squash range. |
 
 ## Execution Flow
 
-1. **Fetch Target** – ensure the latest `target_branch` is available locally by fetching from `upstream_remote`.
-2. **Squash** – collapse the diff between `context.git.base_hash` and `context.git.persist_hash` into a single commit, preserving metadata in the commit message body for auditability.
-3. **Rebase** – replay the squashed commit onto the fetched tip (`git rebase --reapply-cherry-picks`). Conflicts abort with plain text errors.
-4. **Fast-Forward Merge** – push the rebased commit to the remote (`git push upstream_remote HEAD:<target_branch>`), requiring a fast-forward.
-5. **Thin Pack Persist & Context Refresh** – call `gitcommit.PersistCommit` to record the merged tip, then set `context.git.base_hash` and `context.git.persist_hash` to that remote head so subsequent ops (including additional thin-pack commits) treat it as the new base lineage.
+1. **Fetch Target** – ensure the latest `upstream_branch` is available locally by fetching from the matched `upstream_repo`.
+2. **Merge Base Discovery** – resolve the merge-base between the local hash (or `HEAD`) and the upstream tip to define the squash range.
+3. **Squash** – collapse the diff between merge-base and local hash into a single commit with the requested/derived author and commit message.
+4. **Rebase** – if enabled, replay the squashed commit onto the fetched tip (`git rebase --reapply-cherry-picks`). Conflicts abort with plain text errors.
+5. **Fast-Forward Merge** – push the resulting commit to the remote (`git push <remote> HEAD:<upstream_branch>`), requiring a fast-forward.
 
 ## Failure Semantics
 
@@ -60,4 +64,3 @@ The op inherits the surrounding gitstate lifecycle.
   - Run within shared and discrete workspaces to confirm isolation semantics are preserved.
   - Chain with `thinpackrebase` to ensure the resulting remote state can be rebased onto by another recipe.
 - **End-to-End:** exercise delivery of a feature branch into `main`, validating that thin packs and remote refs match the merged commit.
-

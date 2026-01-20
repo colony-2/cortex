@@ -48,19 +48,10 @@ func TestRunSquashRebaseMerge_PushesSquashedCommit(t *testing.T) {
 
 	input := SquashRebaseMergeInput{
 		RepoPath:       workspace,
-		TargetBranch:   "refs/heads/main",
-		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspace,
-			"git": map[string]interface{}{
-				"base_hash":      baseHash,
-				"persist_hash":   persistHash,
-				"base_repo":      remotePath,
-				"worktree_path":  workspace,
-				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
-				"git_author":     "Workflow Bot <bot@example.com>",
-			},
-		},
+		LocalHash:      persistHash,
+		UpstreamRepo:   remotePath,
+		UpstreamBranch: "refs/heads/main",
+		Author:         "Workflow Bot <bot@example.com>",
 	}
 
 	output, err := Run(context.Background(), input)
@@ -116,18 +107,9 @@ func TestRunSquashRebaseMerge_NoChangesFastForwards(t *testing.T) {
 
 	input := SquashRebaseMergeInput{
 		RepoPath:       workspace,
-		TargetBranch:   "refs/heads/main",
-		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspace,
-			"git": map[string]interface{}{
-				"base_hash":      baseHash,
-				"persist_hash":   baseHash,
-				"base_repo":      remotePath,
-				"worktree_path":  workspace,
-				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
-			},
-		},
+		LocalHash:      baseHash,
+		UpstreamRepo:   remotePath,
+		UpstreamBranch: "refs/heads/main",
 	}
 
 	output, err := Run(context.Background(), input)
@@ -168,24 +150,15 @@ func TestRunSquashRebaseMerge_FastForwardSuccess(t *testing.T) {
 	runGit(t, workspace, "git", "add", "two.txt")
 	runGit(t, workspace, "git", "commit", "-m", "feature two")
 
-	baseHash := initialHead
 	persistHash := revParse(t, workspace, "HEAD")
 
+	rebase := false
 	input := SquashRebaseMergeInput{
 		RepoPath:       workspace,
-		TargetBranch:   "refs/heads/main",
-		UpstreamRemote: "origin",
-		SkipRebase:     true,
-		Context: map[string]interface{}{
-			"worktree": workspace,
-			"git": map[string]interface{}{
-				"base_hash":      baseHash,
-				"persist_hash":   persistHash,
-				"base_repo":      remotePath,
-				"worktree_path":  workspace,
-				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
-			},
-		},
+		LocalHash:      persistHash,
+		UpstreamRepo:   remotePath,
+		UpstreamBranch: "refs/heads/main",
+		Rebase:         &rebase,
 	}
 
 	output, err := Run(context.Background(), input)
@@ -224,8 +197,6 @@ func TestRunSquashRebaseMerge_FastForwardFailsWhenRemoteAdvanced(t *testing.T) {
 	runGit(t, tempDir, "git", "clone", remotePath, "workspace")
 	configureAuthor(t, workspace, "Dev", "dev@example.com")
 
-	baseHash := revParse(t, workspace, "HEAD")
-
 	writeFile(t, workspace, "shared.txt", "base\nlocal\n")
 	runGit(t, workspace, "git", "add", "shared.txt")
 	runGit(t, workspace, "git", "commit", "-m", "local change")
@@ -237,21 +208,13 @@ func TestRunSquashRebaseMerge_FastForwardFailsWhenRemoteAdvanced(t *testing.T) {
 	runGit(t, seedRepo, "git", "commit", "-m", "remote change")
 	runGit(t, seedRepo, "git", "push", "origin", "main")
 
+	rebase := false
 	input := SquashRebaseMergeInput{
 		RepoPath:       workspace,
-		TargetBranch:   "refs/heads/main",
-		UpstreamRemote: "origin",
-		SkipRebase:     true,
-		Context: map[string]interface{}{
-			"worktree": workspace,
-			"git": map[string]interface{}{
-				"base_hash":      baseHash,
-				"persist_hash":   persistHash,
-				"base_repo":      remotePath,
-				"worktree_path":  workspace,
-				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
-			},
-		},
+		LocalHash:      persistHash,
+		UpstreamRepo:   remotePath,
+		UpstreamBranch: "refs/heads/main",
+		Rebase:         &rebase,
 	}
 
 	_, err := Run(context.Background(), input)
@@ -283,8 +246,6 @@ func TestRunSquashRebaseMerge_RebaseConflict(t *testing.T) {
 	runGit(t, tempDir, "git", "clone", remotePath, "workspace")
 	configureAuthor(t, workspace, "Dev", "dev@example.com")
 
-	baseHash := revParse(t, workspace, "HEAD")
-
 	writeFile(t, workspace, "shared.txt", "hello\nlocal\n")
 	runGit(t, workspace, "git", "add", "shared.txt")
 	runGit(t, workspace, "git", "commit", "-m", "local change")
@@ -298,18 +259,9 @@ func TestRunSquashRebaseMerge_RebaseConflict(t *testing.T) {
 
 	input := SquashRebaseMergeInput{
 		RepoPath:       workspace,
-		TargetBranch:   "refs/heads/main",
-		UpstreamRemote: "origin",
-		Context: map[string]interface{}{
-			"worktree": workspace,
-			"git": map[string]interface{}{
-				"base_hash":      baseHash,
-				"persist_hash":   persistHash,
-				"base_repo":      remotePath,
-				"worktree_path":  workspace,
-				"blob_store_uri": "file://" + filepath.ToSlash(tempDir),
-			},
-		},
+		LocalHash:      persistHash,
+		UpstreamRepo:   remotePath,
+		UpstreamBranch: "refs/heads/main",
 	}
 
 	_, err := Run(context.Background(), input)
