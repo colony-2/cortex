@@ -10,13 +10,19 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -30,6 +36,7 @@ type TestCase struct {
 	Want            map[string]interface{} `yaml:"want,omitempty"`
 	WantErr         bool                   `yaml:"wantErr"`
 	WantErrContains string                 `yaml:"wantErrContains,omitempty"`
+	WantArtifacts   []string               `yaml:"wantArtifacts,omitempty"`
 }
 
 type TestCases struct {
@@ -104,10 +111,6 @@ func runGit(dir string, name string, args ...string) error {
 
 func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
-	worktree, err := os.MkdirTemp("", "fixtures-worktree-*")
-	if err != nil {
-		panic(err)
-	}
 
 	job := contextual.JobContext{
 		Actor: contextual.ActorContext{
@@ -115,9 +118,7 @@ func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 			ActorName:  "test-actor",
 			ActorEmail: "test-actor@colony2",
 		},
-		Environment: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-		},
+		Environment: contextual.EnvironmentContext{},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
 			CellPath: "cells/test-cell",
@@ -366,7 +367,13 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				t.Run(tc.Name, func(t *testing.T) {
 					// Execute recipe using standalone executor
 					jobCtx, gitCtx := generateTestContext()
-					result, err := exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
+					var result map[string]interface{}
+					var artifacts []string
+					if len(tc.WantArtifacts) > 0 {
+						result, artifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
+					} else {
+						result, err = exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
+					}
 
 					// Check results
 					if tc.WantErr {
@@ -381,9 +388,126 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 						if tc.Want != nil {
 							assertEqualWithTypeFlexibility(t, tc.Want, result, "Output mismatch")
 						}
+						if len(tc.WantArtifacts) > 0 {
+							assertArtifactNames(t, tc.WantArtifacts, artifacts)
+						}
 					}
 				})
 			}
 		})
 	}
+}
+
+type artifactCapture struct {
+	mu    sync.Mutex
+	names map[string]bool
+}
+
+func newArtifactCapture() *artifactCapture {
+	return &artifactCapture{names: make(map[string]bool)}
+}
+
+func (c *artifactCapture) add(artifacts []swf.Artifact) {
+	if len(artifacts) == 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, artifact := range artifacts {
+		c.names[artifact.Name()] = true
+	}
+}
+
+func (c *artifactCapture) list() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]string, 0, len(c.names))
+	for name := range c.names {
+		out = append(out, name)
+	}
+	return out
+}
+
+type capturingTaskWorker struct {
+	inner   swf.TaskWorker
+	capture *artifactCapture
+}
+
+func (c *capturingTaskWorker) Name() string {
+	return c.inner.Name()
+}
+
+func (c *capturingTaskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData, error) {
+	output, err := c.inner.Run(ctx, input)
+	if output != nil {
+		if artifacts, artErr := output.GetArtifacts(); artErr == nil {
+			c.capture.add(artifacts)
+		}
+	}
+	return output, err
+}
+
+func wrapTaskWorkers(workers map[string]swf.TaskWorker, capture *artifactCapture) map[string]swf.TaskWorker {
+	wrapped := make(map[string]swf.TaskWorker, len(workers))
+	for name, worker := range workers {
+		wrapped[name] = &capturingTaskWorker{inner: worker, capture: capture}
+	}
+	return wrapped
+}
+
+func assertArtifactNames(t *testing.T, expected []string, actual []string) {
+	t.Helper()
+	seen := make(map[string]bool, len(actual))
+	for _, name := range actual {
+		seen[name] = true
+	}
+	for _, name := range expected {
+		assert.True(t, seen[name], "missing expected artifact: %s", name)
+	}
+}
+
+func executeRecipeWithArtifacts(
+	ctx context.Context,
+	registry *workerops.ActivityRegistry,
+	recipeDef recipe.Recipe,
+	inputs map[string]interface{},
+	jobCtx contextual.JobContext,
+	gitRef string,
+) (map[string]interface{}, []string, error) {
+	workset, err := compiler.NewRecipeWorker(coreops.NewServiceDepsBuilder().Build(), registry)
+	if err != nil {
+		return nil, nil, err
+	}
+	capture := newArtifactCapture()
+	workset.TaskWorkers = wrapTaskWorkers(workset.TaskWorkers, capture)
+
+	engine := toy.NewToyEngine([]swf.WorkSet{*workset})
+	job := workflowctl.StartJob{
+		TenantId:   "default",
+		RecipeName: recipeDef.GetMetadata().ID,
+		Inputs:     inputs,
+		JobContext: jobCtx,
+		GitRef:     gitRef,
+	}
+
+	jobKey, err := starter.StartRecipeJob(ctx, job, engine, recipeDef)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, engine); err != nil {
+		return nil, nil, err
+	}
+	out, err := engine.GetJobResult(ctx, jobKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	data, err := out.GetData()
+	if err != nil {
+		return nil, nil, err
+	}
+	outMap := make(map[string]interface{})
+	if err := yaml.Unmarshal(data, &outMap); err != nil {
+		return nil, nil, err
+	}
+	return outMap, capture.list(), nil
 }

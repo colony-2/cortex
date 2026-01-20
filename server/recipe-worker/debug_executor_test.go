@@ -109,16 +109,13 @@ inputs:
 	}
 
 	repo, hash := ensureDebugRepo()
-	worktree := filepath.Join(t.TempDir(), "debug-executor-worktree")
 	jobCtx := contextual.JobContext{
 		Actor: contextual.ActorContext{
 			TicketID:   "TEST-TICKET",
 			ActorName:  "test-user",
 			ActorEmail: "test-user@colony2",
 		},
-		Environment: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-		},
+		Environment: contextual.EnvironmentContext{},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
 			CellPath: "cells/test-cell",

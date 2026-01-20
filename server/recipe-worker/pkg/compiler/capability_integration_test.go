@@ -124,7 +124,6 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	engine := toy.NewToyEngine([]swf.WorkSet{*ws})
 
 	repoPath, baseHash := makeTwoCommitRepo(t)
-	worktree, err := cloneRepo(repoPath)
 	require.NoError(t, err)
 
 	// Recipe that invokes the two-step op.
@@ -150,9 +149,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 				ActorName:  "tester",
 				ActorEmail: "tester@example.com",
 			},
-			Environment: contextual.EnvironmentContext{
-				WorktreePath: worktree,
-			},
+			Environment: contextual.EnvironmentContext{},
 			Workflow: contextual.WorkflowContext{
 				CellName: "cells/test",
 				CellPath: "cells/test",

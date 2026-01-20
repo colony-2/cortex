@@ -19,6 +19,10 @@ import (
 )
 
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, error) {
+
+	// we forward thin packs from one task to the next to maintain state.
+	ctx.JobContext = newThinPackForwardingJobContext(ctx.JobContext)
+
 	execOpts := normalizeExecutionOptions(opts)
 	recipeInputs, err := prepareRecipeInputs(r.GetMetdata(), rawRecipeInputs, execOpts)
 	if err != nil {

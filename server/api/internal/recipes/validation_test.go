@@ -3,7 +3,6 @@ package recipes
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/colony-2/colony2/server/api/internal/opssetup"
@@ -39,12 +38,9 @@ func TestValidateRecipeR1(t *testing.T) {
 		}
 	})
 
-	worktree, err := os.MkdirTemp("", "recipe-validation-*")
-	require.NoError(t, err)
-
 	jobCtx := contextual.JobContext{
 		Actor:       contextual.ActorContext{TicketID: "TICKET-123"},
-		Environment: contextual.EnvironmentContext{WorktreePath: worktree},
+		Environment: contextual.EnvironmentContext{},
 		Workflow:    contextual.WorkflowContext{CellPath: "cells/test-cell"},
 	}
 	gitCtx := contextual.GitCommitContext{ParentRef: "HEAD"}

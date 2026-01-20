@@ -15,6 +15,8 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
+const ThinPackArtifactName = "__git_state_thin_pack__"
+
 // Controller orchestrates cloning, restoring, and persisting git state per activity invocation.
 type Controller struct {
 	adapters map[string]StorageAdapter
@@ -232,7 +234,7 @@ func (c *Controller) Persist(ctx context.Context, task *GitTaskContext) (*gitcom
 	// The temp directory will be cleaned up by SWF after the artifact is consumed
 	thinPackPath := output.ThinPackPath
 	artifact := swf.NewArtifact(
-		"__git_state_thin_pack__",
+		ThinPackArtifactName,
 		func() (io.ReadCloser, int64, error) {
 			f, err := os.Open(thinPackPath)
 			if err != nil {
@@ -339,7 +341,7 @@ func (c *Controller) PersistWithDiffs(ctx context.Context, task *GitTaskContext)
 	if hasThinPack {
 		thinPackPath := output.ThinPackPath
 		thinPackArtifact := swf.NewArtifact(
-			"__git_state_thin_pack__",
+			ThinPackArtifactName,
 			func() (io.ReadCloser, int64, error) {
 				f, err := os.Open(thinPackPath)
 				if err != nil {

@@ -16,6 +16,8 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+const thinPackSentinel = gitstate.ThinPackArtifactName
+
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
 	Input          map[string]interface{}        `json:"input"`
@@ -193,7 +195,7 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 		var nonThinPackArtifacts []swf.Artifact
 
 		for _, art := range inputArtifacts {
-			if art.Name() == "__git_state_thin_pack__" {
+			if art.Name() == gitstate.ThinPackArtifactName {
 				thinPackArtifact = art
 			} else {
 				nonThinPackArtifacts = append(nonThinPackArtifacts, art)

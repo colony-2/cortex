@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -59,18 +58,11 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	runContext := input.JobContext
-	var cleanupWorktree func()
-	if runContext.Environment.WorktreePath == "" {
-		working, err := os.MkdirTemp("", "recipe-git-artifacts")
-		if err != nil {
-			return nil, err
+	if runContext.Environment.WorktreePath != contextual.WorktreePathSentinel {
+		if runContext.Environment.WorktreePath != "" {
+			return nil, fmt.Errorf("unexpected worktree path: %s", runContext.Environment.WorktreePath)
 		}
-		runContext.Environment.WorktreePath = working
-		cleanupWorktree = func() { os.RemoveAll(working) }
-	}
-	// Cleanup worktree on job completion
-	if cleanupWorktree != nil {
-		defer cleanupWorktree()
+		runContext.Environment.WorktreePath = contextual.WorktreePathSentinel
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}

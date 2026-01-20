@@ -238,6 +238,76 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	assert.Empty(t, output.GitResult.PersistHash)
 }
 
+func TestWithGitWorkspaceProducesDiffAndThinPack(t *testing.T) {
+	t.Parallel()
+
+	repoDir, baseHash, _ := initTwoCommitRepo(t)
+
+	controller := gitstate.NewController(nil)
+	deps := recipeops.NewServiceDepsBuilder().Build()
+
+	type writeInput struct {
+		Message string `json:"message"`
+	}
+	type writeOutput struct {
+		Path string `json:"path"`
+	}
+
+	writeActivity := recipeops.NewActivityMappedOpV2[writeInput, writeOutput](
+		recipeops.OpMetadata{
+			Type:        "test_write_op",
+			Description: "writes file in worktree",
+			Version:     "1.0.0",
+		},
+		func(inv recipeops.OpDependencies, ctx context.Context, input writeInput) (writeOutput, error) {
+			path := filepath.Join(inv.WorktreePath(), "cells", "beta", "note.txt")
+			if err := os.WriteFile(path, []byte(input.Message), 0o644); err != nil {
+				return writeOutput{}, err
+			}
+			return writeOutput{Path: path}, nil
+		},
+	)
+
+	step := writeActivity.TaskChain()[0]
+	registration := ActivityRegistration{
+		Activity:  writeActivity,
+		Step:      step,
+		StepIndex: 0,
+		TaskType:  fmt.Sprintf("%s:%s", writeActivity.GetMetadata().Type, step.Name),
+		Metadata:  writeActivity.GetMetadata(),
+	}
+	wrapped := withGitWorkspace(deps, registration, controller)
+
+	_, artifacts, err := wrapped(context.Background(), ActivityInvocationRequest{
+		Input: map[string]interface{}{
+			"message": "hello",
+		},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
+			BaseRepo:         repoDir,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+			PersistHash:      "",
+			ParentHash:       "",
+			TicketID:         "T-1",
+			CellName:         "cells/beta",
+			CellPath:         "cells/beta",
+			GitAuthor:        "",
+			NodePath:         "",
+			InvokeSeq:        0,
+			InvokeHash:       "",
+		},
+	}, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, artifacts)
+
+	artifactNames := map[string]bool{}
+	for _, artifact := range artifacts {
+		artifactNames[artifact.Name()] = true
+	}
+	assert.True(t, artifactNames[gitstate.ThinPackArtifactName], "expected thin pack artifact")
+	assert.True(t, artifactNames["diff_from_parent.diff"], "expected parent diff artifact")
+}
+
 func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -593,7 +663,7 @@ func setupGitRepo(t *testing.T) (string, string, func()) {
 func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	t.Parallel()
 
-	thinPackArt := &mockArtifact{name: "__git_state_thin_pack__", data: []byte("thin pack data")}
+	thinPackArt := &mockArtifact{name: gitstate.ThinPackArtifactName, data: []byte("thin pack data")}
 	userArt1 := &mockArtifact{name: "user_file.txt", data: []byte("user data 1")}
 	userArt2 := &mockArtifact{name: "another.txt", data: []byte("user data 2")}
 
@@ -601,7 +671,7 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	// Store the thin pack as interface for comparison
 	var inputThinPack swf.Artifact
 	for _, art := range inputArtifacts {
-		if art.Name() == "__git_state_thin_pack__" {
+		if art.Name() == gitstate.ThinPackArtifactName {
 			inputThinPack = art
 		}
 	}
@@ -634,8 +704,8 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellPath: "cells/test",
 		},
 	}
 
@@ -651,7 +721,7 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	var foundThinPack swf.Artifact
 	var foundUserArts []swf.Artifact
 	for _, art := range outputArts {
-		if art.Name() == "__git_state_thin_pack__" {
+		if art.Name() == gitstate.ThinPackArtifactName {
 			foundThinPack = art
 		} else {
 			foundUserArts = append(foundUserArts, art)
@@ -691,8 +761,8 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellPath: "cells/test",
 		},
 	}
 
@@ -703,7 +773,7 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 	// output should not have thin pack
 	foundThinPack := false
 	for _, art := range outputArts {
-		if art.Name() == "__git_state_thin_pack__" {
+		if art.Name() == gitstate.ThinPackArtifactName {
 			foundThinPack = true
 		}
 	}
@@ -741,8 +811,8 @@ func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellPath: "cells/test",
 		},
 	}
 
@@ -792,8 +862,8 @@ func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *test
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellPath: "cells/test",
 		},
 	}
 
@@ -836,8 +906,8 @@ func TestWithGitWorkspace_RestoreFailure_ReturnsNoArtifacts(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     invalidRepo,
-			BaseRef:      invalidHash,		},
+			BaseRepo: invalidRepo,
+			BaseRef:  invalidHash},
 	}
 
 	_, outputArts, err := wrapped(context.Background(), req, nil)
@@ -875,8 +945,8 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellPath: "cells/test",
 		},
 	}
 
@@ -967,7 +1037,7 @@ func TestControllerPersist_DirectCall(t *testing.T) {
 	// CRITICAL: Verify thinpack artifact was created
 	require.True(t, output.HasChanges, "changes should be detected")
 	require.NotNil(t, artifact, "thinpack artifact should be created when changes are made")
-	require.Equal(t, "__git_state_thin_pack__", artifact.Name())
+	require.Equal(t, gitstate.ThinPackArtifactName, artifact.Name())
 	require.NotEmpty(t, ctx.PersistHash, "persist hash should be set")
 }
 
@@ -1000,9 +1070,9 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 
@@ -1023,7 +1093,7 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 	// CRITICAL: Verify thinpack artifact was created
 	var foundThinPack swf.Artifact
 	for _, art := range outputArts {
-		if art.Name() == "__git_state_thin_pack__" {
+		if art.Name() == gitstate.ThinPackArtifactName {
 			foundThinPack = art
 			break
 		}
@@ -1046,7 +1116,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 
 	// Test that when there's an input thinpack but the operation makes changes,
 	// the NEW thinpack is returned (not the input one)
-	inputThinPack := &mockArtifact{name: "__git_state_thin_pack__", data: []byte("old thin pack data")}
+	inputThinPack := &mockArtifact{name: gitstate.ThinPackArtifactName, data: []byte("old thin pack data")}
 
 	reg := ActivityRegistration{
 		Step: recipeops.TaskStep{
@@ -1073,9 +1143,9 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 
@@ -1089,7 +1159,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 	// CRITICAL: Verify a thinpack artifact is in output
 	var foundThinPack swf.Artifact
 	for _, art := range outputArts {
-		if art.Name() == "__git_state_thin_pack__" {
+		if art.Name() == gitstate.ThinPackArtifactName {
 			foundThinPack = art
 			break
 		}
@@ -1141,9 +1211,9 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 
@@ -1164,7 +1234,7 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 	require.Len(t, outputArts, 2, "should have 2 artifacts when parent == base: thin pack, diff_from_parent")
 
 	// Verify artifact names
-	require.Equal(t, "__git_state_thin_pack__", outputArts[0].Name())
+	require.Equal(t, gitstate.ThinPackArtifactName, outputArts[0].Name())
 	require.Equal(t, "diff_from_parent.diff", outputArts[1].Name())
 
 	// Verify all artifacts are readable
@@ -1201,9 +1271,9 @@ func TestWithGitWorkspace_PersistWithDiffs_NoChanges_NoArtifacts(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 
@@ -1225,7 +1295,7 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 
 	// Test that when there's an input thinpack but NO changes, the input thinpack is passed through
 	// (but no diff artifacts are created)
-	inputThinPack := &mockArtifact{name: "__git_state_thin_pack__", data: []byte("existing thin pack data"), id: "input-thinpack-123"}
+	inputThinPack := &mockArtifact{name: gitstate.ThinPackArtifactName, data: []byte("existing thin pack data"), id: "input-thinpack-123"}
 
 	reg := ActivityRegistration{
 		Step: recipeops.TaskStep{
@@ -1245,9 +1315,9 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 
@@ -1262,7 +1332,7 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 	require.Len(t, outputArts, 1, "should have 1 artifact: the passed-through input thinpack")
 
 	// Verify it's the SAME artifact as input (pass-through)
-	require.Equal(t, "__git_state_thin_pack__", outputArts[0].Name())
+	require.Equal(t, gitstate.ThinPackArtifactName, outputArts[0].Name())
 	require.Equal(t, inputThinPack.ID(), outputArts[0].ID(), "should be the same artifact (passed through)")
 
 	// Verify persist hash is empty
@@ -1299,9 +1369,9 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
-			BaseRepo:     baseRepo,
-			BaseRef:      baseHash,			CellName:     "cells/test",
-			CellPath:     "cells/test",
+			BaseRepo: baseRepo,
+			BaseRef:  baseHash, CellName: "cells/test",
+			CellPath: "cells/test",
 		},
 	}
 

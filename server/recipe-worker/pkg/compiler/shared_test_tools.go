@@ -65,10 +65,6 @@ func ensureTestRepo() (string, string) {
 
 func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
-	worktree, err := os.MkdirTemp("", "colony2-worktree-*")
-	if err != nil {
-		panic(err)
-	}
 
 	job := contextual.JobContext{
 		Actor: contextual.ActorContext{
@@ -76,9 +72,7 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 			ActorName:  "test-actor",
 			ActorEmail: "test-actor@colony2",
 		},
-		Environment: contextual.EnvironmentContext{
-			WorktreePath: worktree,
-		},
+		Environment: contextual.EnvironmentContext{},
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
 			CellPath: "cells/test-cell",

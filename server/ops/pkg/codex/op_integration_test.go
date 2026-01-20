@@ -44,7 +44,6 @@ func TestCodexOpToyEngine(t *testing.T) {
 	coreops.Clear()
 	coreops.Register(GetOp())
 
-	worktree := t.TempDir()
 	cellRel := filepath.Join("cells", "alpha")
 
 	tempDir := t.TempDir()
@@ -69,9 +68,8 @@ id: codex-op-toy
 op: codex.exec
 inputs:
   prompt: "do something"
-  worktree_path: %q
   cell_relative_path: %q
-`, worktree, cellRel)
+`, cellRel)
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(t, err)
 
@@ -88,7 +86,6 @@ inputs:
 	require.NoError(t, engine.RegisterWorkers(workSet))
 
 	jobCtx, gitCtx := compiler.GenerateTestContext()
-	jobCtx.Environment.WorktreePath = worktree
 	jobCtx.Workflow.CellName = cellRel
 	jobCtx.Workflow.CellPath = cellRel
 	start := workflowctl.StartJob{
@@ -129,8 +126,6 @@ func TestCodexOpToyEngineCLIOutput(t *testing.T) {
 	coreops.Clear()
 	coreops.Register(GetOp())
 
-	worktreeRoot := t.TempDir()
-	worktree := filepath.Join(worktreeRoot, "worktree")
 	cellRel := filepath.Join("cells", "alpha")
 
 	recipeYaml := fmt.Sprintf(`
@@ -139,9 +134,8 @@ id: codex-op-toy-cli
 op: codex.exec
 inputs:
   prompt: "Respond strictly with JSON matching the schema: status 'completed', assistantSummary 'All good', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies []."
-  worktree_path: %q
   cell_relative_path: %q
-`, worktree, cellRel)
+`, cellRel)
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(t, err)
 
@@ -157,7 +151,6 @@ inputs:
 	require.NoError(t, engine.RegisterWorkers(workSet))
 
 	jobCtx, gitCtx := compiler.GenerateTestContext()
-	jobCtx.Environment.WorktreePath = worktree
 	jobCtx.Workflow.CellName = cellRel
 	jobCtx.Workflow.CellPath = cellRel
 	start := workflowctl.StartJob{

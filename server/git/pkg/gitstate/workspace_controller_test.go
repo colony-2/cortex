@@ -59,7 +59,7 @@ func TestControllerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, output)
 	require.NotNil(t, artifact)
-	require.Equal(t, "__git_state_thin_pack__", artifact.Name())
+	require.Equal(t, ThinPackArtifactName, artifact.Name())
 
 	// Check output metadata
 	require.True(t, output.HasChanges)
@@ -400,7 +400,7 @@ func TestControllerPersistWithDiffs_WithChanges(t *testing.T) {
 	require.Len(t, artifacts, 2, "should have 2 artifacts when parent == base")
 
 	// Verify artifact names
-	require.Equal(t, "__git_state_thin_pack__", artifacts[0].Name())
+	require.Equal(t, ThinPackArtifactName, artifacts[0].Name())
 	require.Equal(t, "diff_from_parent.diff", artifacts[1].Name())
 
 	// Verify output has diff from parent
@@ -483,8 +483,8 @@ func TestControllerPersistWithDiffs_MultipleCommits(t *testing.T) {
 	// After the first PersistWithDiffs, ctx.ResolvedBaseHash was updated to firstCommit
 	// We need to restore it to the original baseHash to test the diff from base != parent case
 	ctx.ParentHash = firstCommit
-	ctx.PersistHash = ""  // Clear this so we can make a new commit
-	ctx.ResolvedBaseHash = baseHash  // Restore to original base
+	ctx.PersistHash = ""            // Clear this so we can make a new commit
+	ctx.ResolvedBaseHash = baseHash // Restore to original base
 
 	output2, artifacts2, err := controller.PersistWithDiffs(context.Background(), ctx)
 	require.NoError(t, err)

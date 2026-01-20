@@ -44,7 +44,6 @@ func TestCodexOpResumeSequence(t *testing.T) {
 	coreops.Clear()
 	coreops.Register(GetOp())
 
-	worktree := t.TempDir()
 	cellRel := filepath.Join("cells", "alpha")
 	secret := "blue-kiwi-73"
 
@@ -59,7 +58,6 @@ sequence:
         Remember this secret token for the next turn: %s.
         Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'stored', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
         Do not include any other text.
-      worktree_path: %q
       cell_relative_path: %q
   - id: op2
     op: codex.exec
@@ -69,7 +67,6 @@ sequence:
         Resume the previous session and tell me the secret token you were asked to remember.
         Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'secret: <token>', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
         Do not include any other text.
-      worktree_path: %q
       cell_relative_path: %q
 outputs:
   op2_summary: "{{ .sequence.op2.outputs.assistantSummary }}"
@@ -77,7 +74,7 @@ outputs:
   op2_incomplete_reason: "{{ .sequence.op2.outputs.incompleteReason }}"
   op2_incomplete_category: "{{ .sequence.op2.outputs.incompleteCategory }}"
   op1_session_id: "{{ .sequence.op1.outputs.sessionId }}"
-`, secret, worktree, cellRel, worktree, cellRel)
+`, secret, cellRel, cellRel)
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(t, err)
@@ -95,7 +92,6 @@ outputs:
 	require.NoError(t, engine.RegisterWorkers(workSet))
 
 	jobCtx, gitCtx := compiler.GenerateTestContext()
-	jobCtx.Environment.WorktreePath = worktree
 	jobCtx.Workflow.CellName = cellRel
 	jobCtx.Workflow.CellPath = cellRel
 	start := workflowctl.StartJob{
