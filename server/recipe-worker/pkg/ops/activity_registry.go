@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
@@ -100,8 +101,12 @@ func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.T
 		if registration.Step.DisallowAsTask {
 			continue
 		}
-		wrapped := withGitWorkspace(deps, registration, r.gitController)
-		workers = append(workers, &taskWorker{name: name, reg: registration, fn: wrapped})
+		controller := r.gitController
+		if controller == nil {
+			gitstate.NewController(nil)
+		}
+		doer := &opInnerExecutor{deps: deps, reg: registration, controller: controller}
+		workers = append(workers, &taskWorker{name: name, reg: registration, doer: doer})
 	}
 	return workers
 }
@@ -109,7 +114,142 @@ func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.T
 type taskWorker struct {
 	name string
 	reg  ActivityRegistration
-	fn   func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
+	doer *opInnerExecutor
+}
+
+type opInnerExecutor struct {
+	deps       ops.ServiceDependencies2
+	reg        ActivityRegistration
+	controller *gitstate.Controller
+}
+
+func (t *opInnerExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
+	deps := t.deps
+	controller := t.controller
+	reg := t.reg
+
+	var zero ActivityInvocationOutput
+
+	// Create temporary worktree directory for this invocation
+	workDir, err := createWorkDir()
+	worktreePath := filepath.Join(workDir, "worktree")
+	inbox := filepath.Join(workDir, "inbox")
+	outbox := filepath.Join(workDir, "outbox")
+	replacements := map[string]string{
+		contextual.WorktreePathSentinel:   worktreePath,
+		contextual.WorkdirPathSentinel:    workDir,
+		contextual.ArtifactInboxSentinel:  inbox,
+		contextual.ArtifactOutboxSentinel: outbox,
+	}
+
+	if err != nil {
+		return zero, nil, fmt.Errorf("create temp worktree: %w", err)
+	}
+	defer removeWorkDir(worktreePath)
+
+	// Build full GitTaskContext for controller from global context + local worktree path
+	fullContext := &gitstate.GitTaskContext{
+		GlobalGitTaskContext: &req.GitTaskContext,
+		WorktreePath:         worktreePath,
+	}
+
+	// Rehydrate referenced artifacts from keys.
+	if len(req.ArtifactKeys) > 0 {
+
+		ctl := deps.WorkflowControl()
+		if ctl == nil {
+			return zero, nil, fmt.Errorf("workflow control is required for artifact resolution")
+		}
+		rehydrated := make([]swf.Artifact, 0, len(req.ArtifactKeys))
+		for _, key := range req.ArtifactKeys {
+			artifact, err := ctl.GetArtifact(ctx, jobKey.TenantId, key)
+			if err != nil {
+				return zero, nil, err
+			}
+			rehydrated = append(rehydrated, artifact)
+		}
+		inputArtifacts = append(inputArtifacts, rehydrated...)
+	}
+
+	// Find and filter input thin pack artifact
+	var thinPackArtifact swf.Artifact
+	var nonThinPackArtifacts []swf.Artifact
+
+	for _, art := range inputArtifacts {
+		if art.Name() == gitstate.ThinPackArtifactName {
+			thinPackArtifact = art
+		} else {
+			nonThinPackArtifacts = append(nonThinPackArtifacts, art)
+		}
+	}
+
+	// Call Restore with full context (includes WorktreePath)
+	if err := controller.Restore(context.Background(), fullContext, thinPackArtifact); err != nil {
+		return zero, nil, err
+	}
+
+	// CRITICAL: Hydrate sentinel values in input with actual worktree path
+	// Templates like {{ environment.worktree_path }} resolved to sentinel at compile time
+	// Now replace with real local path
+	hydratedInput := replaceSentinels(req.Input, replacements)
+
+	// Build OpDependencies with WorktreePath and filtered artifacts (thin pack hidden from operation)
+	db := deps.Database()
+	if tx, ok := swf.TxFromCtx(ctx); ok && tx != nil {
+		db = tx
+	}
+	opDeps := ops.NewOpDependenciesBuilder().
+		WithArtifacts(nonThinPackArtifacts).
+		WithDatabase(db).
+		WithWorkflowControl(deps.WorkflowControl()).
+		WithWorktreePath(fullContext.WorktreePath).
+		Build()
+
+	// Ensure artifacts are collected on both success and failure paths
+	defer func() {
+		artifacts := opDeps.GetOutputArtifacts()
+		outputArtifacts = append(outputArtifacts, artifacts...)
+	}()
+
+	// Execute operation with HYDRATED input (sentinels replaced)
+	outputData, err := reg.Step.Invoke(opDeps, ctx, hydratedInput)
+	if err != nil {
+		return zero, outputArtifacts, err
+	}
+
+	// Call PersistWithDiffs with full context
+	_, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), fullContext)
+	if err != nil {
+		return zero, outputArtifacts, err
+	}
+
+	// Handle artifact pass-through logic
+	if len(persistArtifacts) > 0 {
+		// PersistWithDiffs created artifacts (changes were made)
+		// Append all artifacts (thin pack + diffs) to output
+		outputArtifacts = append(outputArtifacts, persistArtifacts...)
+	} else if thinPackArtifact != nil {
+		// No changes, but we had an input thin pack - pass through the SAME artifact
+		// This avoids re-uploading; SWF can reuse the existing artifact
+		outputArtifacts = append(outputArtifacts, thinPackArtifact)
+	}
+	// else: no input, no output - no artifacts to append
+
+	// Build response using fullContext (which has updated hashes from Persist)
+	parentRef := ""
+	if fullContext.PersistHash == "" {
+		parentRef = fullContext.BaseRef
+	}
+
+	return ActivityInvocationOutput{
+		OpOutput: outputData,
+		GitResult: contextual.GitCommitContext{
+			PersistHash: fullContext.PersistHash,
+			ParentHash:  fullContext.ParentHash,
+			ParentRef:   parentRef,
+		},
+		NextTask: reg.NextTaskType,
+	}, outputArtifacts, nil
 }
 
 func (t *taskWorker) Name() string {
@@ -129,7 +269,7 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 	if err != nil {
 		return nil, err
 	}
-	out, outArt, err := t.fn(context.Background(), ctx.JobKey, air, inArt)
+	out, outArt, err := t.doer.do(context.Background(), ctx.JobKey, air, inArt)
 	if err != nil {
 		return nil, err
 	}
@@ -139,154 +279,39 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 var _ swf.TaskWorker = &taskWorker{}
 
 // replaceSentinels recursively walks the input map and replaces sentinel values with actual worktree path
-func replaceSentinels(input map[string]interface{}, worktreePath string) map[string]interface{} {
+func replaceSentinels(input map[string]interface{}, replacements map[string]string) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range input {
-		result[k] = replaceSentinelValue(v, worktreePath)
+		result[k] = replaceSentinelValue(v, replacements)
 	}
 	return result
 }
 
+func replaceValue(val string, replacements map[string]string) string {
+	if replacement, exists := replacements[val]; exists {
+		return replacement
+	}
+	return val
+}
+
 // replaceSentinelValue handles different types recursively
-func replaceSentinelValue(value interface{}, worktreePath string) interface{} {
+func replaceSentinelValue(value interface{}, replacements map[string]string) interface{} {
 	switch v := value.(type) {
 	case string:
-		if v == contextual.WorktreePathSentinel {
-			return worktreePath
-		}
-		return v
+		return replaceValue(v, replacements)
 	case map[string]interface{}:
-		return replaceSentinels(v, worktreePath)
+		return replaceSentinels(v, replacements)
 	case recipe.InputMap:
 		// Convert to map[string]interface{} and process
-		return recipe.InputMap(replaceSentinels(map[string]interface{}(v), worktreePath))
+		return recipe.InputMap(replaceSentinels(v, replacements))
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, item := range v {
-			result[i] = replaceSentinelValue(item, worktreePath)
+			result[i] = replaceSentinelValue(item, replacements)
 		}
 		return result
 	default:
 		return v
-	}
-}
-
-func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
-	if controller == nil {
-		controller = gitstate.NewController(nil)
-	}
-	return func(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
-		var zero ActivityInvocationOutput
-
-		// Create temporary worktree directory for this invocation
-		worktreePath, err := createTempWorktree()
-		if err != nil {
-			return zero, nil, fmt.Errorf("create temp worktree: %w", err)
-		}
-		defer removeTempWorktree(worktreePath)
-
-		// Build full GitTaskContext for controller from global context + local worktree path
-		fullContext := &gitstate.GitTaskContext{
-			GlobalGitTaskContext: &req.GitTaskContext,
-			WorktreePath:         worktreePath,
-		}
-
-		// Rehydrate referenced artifacts from keys.
-		if len(req.ArtifactKeys) > 0 {
-			ctl := deps.WorkflowControl()
-			if ctl == nil {
-				return zero, nil, fmt.Errorf("workflow control is required for artifact resolution")
-			}
-			rehydrated := make([]swf.Artifact, 0, len(req.ArtifactKeys))
-			for _, key := range req.ArtifactKeys {
-				artifact, err := ctl.GetArtifact(ctx, jobKey.TenantId, key)
-				if err != nil {
-					return zero, nil, err
-				}
-				rehydrated = append(rehydrated, artifact)
-			}
-			inputArtifacts = append(inputArtifacts, rehydrated...)
-		}
-
-		// Find and filter input thin pack artifact
-		var thinPackArtifact swf.Artifact
-		var nonThinPackArtifacts []swf.Artifact
-
-		for _, art := range inputArtifacts {
-			if art.Name() == gitstate.ThinPackArtifactName {
-				thinPackArtifact = art
-			} else {
-				nonThinPackArtifacts = append(nonThinPackArtifacts, art)
-			}
-		}
-
-		// Call Restore with full context (includes WorktreePath)
-		if err := controller.Restore(context.Background(), fullContext, thinPackArtifact); err != nil {
-			return zero, nil, err
-		}
-
-		// CRITICAL: Hydrate sentinel values in input with actual worktree path
-		// Templates like {{ environment.worktree_path }} resolved to sentinel at compile time
-		// Now replace with real local path
-		hydratedInput := replaceSentinels(req.Input, worktreePath)
-
-		// Build OpDependencies with WorktreePath and filtered artifacts (thin pack hidden from operation)
-		db := deps.Database()
-		if tx, ok := swf.TxFromCtx(ctx); ok && tx != nil {
-			db = tx
-		}
-		opDeps := ops.NewOpDependenciesBuilder().
-			WithArtifacts(nonThinPackArtifacts).
-			WithDatabase(db).
-			WithWorkflowControl(deps.WorkflowControl()).
-			WithWorktreePath(fullContext.WorktreePath).
-			Build()
-
-		// Ensure artifacts are collected on both success and failure paths
-		defer func() {
-			artifacts := opDeps.GetOutputArtifacts()
-			outputArtifacts = append(outputArtifacts, artifacts...)
-		}()
-
-		// Execute operation with HYDRATED input (sentinels replaced)
-		outputData, err := reg.Step.Invoke(opDeps, ctx, hydratedInput)
-		if err != nil {
-			return zero, outputArtifacts, err
-		}
-
-		// Call PersistWithDiffs with full context
-		_, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), fullContext)
-		if err != nil {
-			return zero, outputArtifacts, err
-		}
-
-		// Handle artifact pass-through logic
-		if len(persistArtifacts) > 0 {
-			// PersistWithDiffs created artifacts (changes were made)
-			// Append all artifacts (thin pack + diffs) to output
-			outputArtifacts = append(outputArtifacts, persistArtifacts...)
-		} else if thinPackArtifact != nil {
-			// No changes, but we had an input thin pack - pass through the SAME artifact
-			// This avoids re-uploading; SWF can reuse the existing artifact
-			outputArtifacts = append(outputArtifacts, thinPackArtifact)
-		}
-		// else: no input, no output - no artifacts to append
-
-		// Build response using fullContext (which has updated hashes from Persist)
-		parentRef := ""
-		if fullContext.PersistHash == "" {
-			parentRef = fullContext.BaseRef
-		}
-
-		return ActivityInvocationOutput{
-			OpOutput: outputData,
-			GitResult: contextual.GitCommitContext{
-				PersistHash: fullContext.PersistHash,
-				ParentHash:  fullContext.ParentHash,
-				ParentRef:   parentRef,
-			},
-			NextTask: reg.NextTaskType,
-		}, outputArtifacts, nil
 	}
 }
 
@@ -316,8 +341,8 @@ type ActivityRegisterable interface {
 
 func (r *ActivityRegistry) EnableActivitiesInWorker(deps ops.ServiceDependencies2, worker ActivityRegisterable) {
 	for name, registration := range r.activities {
-		wrapped := withGitWorkspace(deps, registration, r.gitController)
-		worker.RegisterActivityWithOptions(wrapped, activity.RegisterOptions{Name: name})
+		doer := opInnerExecutor{deps: deps, reg: registration, controller: r.gitController}
+		worker.RegisterActivityWithOptions(doer.do, activity.RegisterOptions{Name: name})
 	}
 }
 
@@ -405,12 +430,12 @@ func (r *ActivityRegistry) UpdateRegistration(activityType string, registration 
 	r.activities[activityType] = registration
 }
 
-// createTempWorktree creates a temporary directory for git worktree
-func createTempWorktree() (string, error) {
+// createWorkDir creates a temporary directory for git worktree
+func createWorkDir() (string, error) {
 	return os.MkdirTemp("", "recipe-worktree-*")
 }
 
-// removeTempWorktree removes the temporary worktree directory
-func removeTempWorktree(path string) {
+// removeWorkDir removes the temporary worktree directory
+func removeWorkDir(path string) {
 	_ = os.RemoveAll(path)
 }

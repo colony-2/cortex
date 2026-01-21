@@ -214,7 +214,7 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 		TaskType:  fmt.Sprintf("%s:%s", patchActivity.GetMetadata().Type, step.Name),
 		Metadata:  patchActivity.GetMetadata(),
 	}
-	wrapped := withGitWorkspace(deps, registration, controller)
+	wrapped := opInnerExecutor{deps: deps, reg: registration, controller: controller}.do
 
 	jobKey := swf.JobKey{TenantId: "test", JobId: "job-1"}
 	output, artifacts, err := wrapped(context.Background(), jobKey, ActivityInvocationRequest{
@@ -289,7 +289,7 @@ func TestWithGitWorkspaceProducesDiffAndThinPack(t *testing.T) {
 		TaskType:  fmt.Sprintf("%s:%s", writeActivity.GetMetadata().Type, step.Name),
 		Metadata:  writeActivity.GetMetadata(),
 	}
-	wrapped := withGitWorkspace(deps, registration, controller)
+	wrapped := opInnerExecutor{deps: deps, reg: registration, controller: controller}.do
 
 	jobKey := swf.JobKey{TenantId: "test", JobId: "job-2"}
 	_, artifacts, err := wrapped(context.Background(), jobKey, ActivityInvocationRequest{
@@ -721,8 +721,7 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -780,8 +779,7 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -831,8 +829,7 @@ func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -883,8 +880,7 @@ func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *test
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -928,8 +924,7 @@ func TestWithGitWorkspace_RestoreFailure_ReturnsNoArtifacts(t *testing.T) {
 	invalidHash := "0000000000000000000000000000000000000000"
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -968,8 +963,7 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1094,8 +1088,7 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1168,8 +1161,7 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1237,8 +1229,7 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1298,8 +1289,7 @@ func TestWithGitWorkspace_PersistWithDiffs_NoChanges_NoArtifacts(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1343,8 +1333,7 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{
@@ -1398,8 +1387,7 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 	defer cleanup()
 
 	controller := gitstate.NewController(nil)
-	wrapped := withGitWorkspace(recipeops.NewServiceDepsBuilder().Build(), reg, controller)
-
+	wrapped := opInnerExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
 	req := ActivityInvocationRequest{
 		Input: map[string]interface{}{},
 		GitTaskContext: gitstate.GlobalGitTaskContext{

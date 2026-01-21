@@ -58,11 +58,21 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	runContext := input.JobContext
-	if runContext.Environment.WorktreePath != contextual.WorktreePathSentinel {
-		if runContext.Environment.WorktreePath != "" {
-			return nil, fmt.Errorf("unexpected worktree path: %s", runContext.Environment.WorktreePath)
-		}
-		runContext.Environment.WorktreePath = contextual.WorktreePathSentinel
+	err = ensureSentinel(&runContext.Environment.WorktreePath, contextual.WorktreePathSentinel, "worktree path")
+	if err != nil {
+		return nil, err
+	}
+	err = ensureSentinel(&runContext.Environment.WorkdirPath, contextual.WorkdirPathSentinel, "workdir path")
+	if err != nil {
+		return nil, err
+	}
+	err = ensureSentinel(&runContext.Environment.ArtifactInbox, contextual.ArtifactInboxSentinel, "artifact inbox")
+	if err != nil {
+		return nil, err
+	}
+	err = ensureSentinel(&runContext.Environment.ArtifactOutbox, contextual.ArtifactOutboxSentinel, "artifact outbox")
+	if err != nil {
+		return nil, err
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
@@ -79,6 +89,19 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	logger.Info("recipe execution completed successfully")
 	return swf.JobData(taskData), nil
 
+}
+
+func ensureSentinel(field *string, sentinel string, name string) error {
+	if *field == sentinel {
+		return nil
+	}
+
+	if *field != "" {
+		return fmt.Errorf("unexpected %s: %s", name, *field)
+	}
+
+	*field = sentinel
+	return nil
 }
 
 var _ swf.JobWorker = &recipeWorkerImpl{}
