@@ -16,11 +16,11 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	workflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/stretchr/testify/assert"
@@ -474,7 +474,17 @@ func executeRecipeWithArtifacts(
 	jobCtx contextual.JobContext,
 	gitRef string,
 ) (map[string]interface{}, []string, error) {
-	workset, err := compiler.NewRecipeWorker(coreops.NewServiceDepsBuilder().Build(), registry)
+	control := &workflow.SWFWorkflowControl{
+		Registry: func(_ string, recipeRef string) (*recipe.Recipe, error) {
+			if recipeRef != recipeDef.GetMetadata().ID {
+				return nil, fmt.Errorf("unknown recipe %s", recipeRef)
+			}
+			return &recipeDef, nil
+		},
+	}
+
+	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(control).Build()
+	workset, err := compiler.NewRecipeWorker(deps, registry)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -482,6 +492,7 @@ func executeRecipeWithArtifacts(
 	workset.TaskWorkers = wrapTaskWorkers(workset.TaskWorkers, capture)
 
 	engine := toy.NewToyEngine([]swf.WorkSet{*workset})
+	control.Engine = engine
 	job := workflowctl.StartJob{
 		TenantId:   "default",
 		RecipeName: recipeDef.GetMetadata().ID,
@@ -490,7 +501,7 @@ func executeRecipeWithArtifacts(
 		GitRef:     gitRef,
 	}
 
-	jobKey, err := starter.StartRecipeJob(ctx, job, engine, recipeDef)
+	jobKey, err := control.StartJob(ctx, job)
 	if err != nil {
 		return nil, nil, err
 	}

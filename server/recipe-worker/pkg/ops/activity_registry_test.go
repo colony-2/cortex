@@ -31,6 +31,7 @@ type mockArtifact struct {
 	name string
 	data []byte
 	id   string
+	key  *swf.ArtifactKey
 }
 
 func (m *mockArtifact) Name() string { return m.name }
@@ -77,6 +78,17 @@ func (m *mockArtifact) Open() (io.ReadCloser, error) {
 func (m *mockArtifact) WriteTo(ctx context.Context, w io.Writer) error {
 	_, err := w.Write(m.data)
 	return err
+}
+
+func (m *mockArtifact) ArtifactKey() (swf.ArtifactKey, error) {
+	if m.key == nil {
+		return swf.ArtifactKey{}, swf.ErrArtifactKeyUnavailable
+	}
+	return *m.key, nil
+}
+
+func (m *mockArtifact) setArtifactKey(key swf.ArtifactKey) {
+	m.key = &key
 }
 
 // Test types with proper JSON tags
@@ -204,7 +216,8 @@ func TestWithGitWorkspaceAppliesContextPatch(t *testing.T) {
 	}
 	wrapped := withGitWorkspace(deps, registration, controller)
 
-	output, artifacts, err := wrapped(context.Background(), ActivityInvocationRequest{
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-1"}
+	output, artifacts, err := wrapped(context.Background(), jobKey, ActivityInvocationRequest{
 		Input: map[string]interface{}{
 			"context": map[string]interface{}{
 				"git": map[string]interface{}{
@@ -278,7 +291,8 @@ func TestWithGitWorkspaceProducesDiffAndThinPack(t *testing.T) {
 	}
 	wrapped := withGitWorkspace(deps, registration, controller)
 
-	_, artifacts, err := wrapped(context.Background(), ActivityInvocationRequest{
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-2"}
+	_, artifacts, err := wrapped(context.Background(), jobKey, ActivityInvocationRequest{
 		Input: map[string]interface{}{
 			"message": "hello",
 		},
@@ -349,7 +363,8 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
 	input := map[string]interface{}{"message": "hi"}
-	_, _, err = handler(context.Background(), ActivityInvocationRequest{
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-3"}
+	_, _, err = handler(context.Background(), jobKey, ActivityInvocationRequest{
 		Input: input,
 		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:         repoPath,
@@ -372,15 +387,15 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 
 type capturingWorker struct {
 	t        *testing.T
-	handlers map[string]func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
+	handlers map[string]func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
 func newCapturingWorker(t *testing.T) *capturingWorker {
-	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))}
+	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))}
 }
 
 func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
-	handler, ok := a.(func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))
+	handler, ok := a.(func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))
 	if !ok {
 		return
 	}
@@ -415,6 +430,13 @@ func (s *stubWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobs
 	_ = ctx
 	_ = request
 	return nil, "", nil
+}
+
+func (s *stubWorkflowControl) GetArtifact(ctx context.Context, tenantId string, key swf.ArtifactKey) (swf.Artifact, error) {
+	_ = ctx
+	_ = tenantId
+	_ = key
+	return nil, nil
 }
 
 func initTwoCommitRepo(t *testing.T) (string, string, string) {
@@ -709,13 +731,15 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 		},
 	}
 
-	_, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-4"}
+	_, outputArts, err := wrapped(context.Background(), jobKey, req, inputArtifacts)
 	require.NoError(t, err)
 
-	// NOTE: Cannot verify operation received filtered artifacts due to bug in recipe-core
-	// OpDependenciesBuilder.WithArtifacts() doesn't actually set the artifacts
-	// This is a pre-existing bug outside our scope (recipe-core is read-only)
-	// Instead, verify the critical behavior: output artifacts
+	// Verify the operation received only user artifacts (thin pack filtered out).
+	require.Len(t, receivedArtifacts, 2, "operation should receive only user artifacts")
+	for _, art := range receivedArtifacts {
+		assert.NotEqual(t, gitstate.ThinPackArtifactName, art.Name(), "thin pack should be filtered from op inputs")
+	}
 
 	// Verify output contains the thin pack artifact (passed through)
 	var foundThinPack swf.Artifact
@@ -734,7 +758,7 @@ func TestWithGitWorkspace_ThinPackFiltering(t *testing.T) {
 	require.True(t, foundThinPack == inputThinPack, "should be same artifact reference (pointer equality)")
 
 	// User artifacts should also be in output (added by the operation)
-	require.Len(t, addedArtifacts, 0, "operation should receive 0 artifacts due to builder bug, but this doesn't affect the real system")
+	require.Len(t, addedArtifacts, 2, "operation should pass through user artifacts")
 }
 
 func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
@@ -766,7 +790,8 @@ func TestWithGitWorkspace_NoThinPackPassThrough(t *testing.T) {
 		},
 	}
 
-	_, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-5"}
+	_, outputArts, err := wrapped(context.Background(), jobKey, req, inputArtifacts)
 	require.NoError(t, err)
 
 	// Critical test: When there's no input thin pack and Persist returns nil,
@@ -816,7 +841,8 @@ func TestWithGitWorkspace_OperationFailure_PreservesArtifacts(t *testing.T) {
 		},
 	}
 
-	_, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-6"}
+	_, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify operation failed
 	require.Error(t, err)
@@ -867,7 +893,8 @@ func TestWithGitWorkspace_OperationArtifactsPreservedRegardlessOfPersist(t *test
 		},
 	}
 
-	_, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-7"}
+	_, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 	require.NoError(t, err)
 
 	// Critical test: Operation artifacts should be preserved
@@ -910,7 +937,8 @@ func TestWithGitWorkspace_RestoreFailure_ReturnsNoArtifacts(t *testing.T) {
 			BaseRef:  invalidHash},
 	}
 
-	_, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-8"}
+	_, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify restore failed
 	require.Error(t, err)
@@ -950,7 +978,8 @@ func TestWithGitWorkspace_SuccessPath_StillWorks(t *testing.T) {
 		},
 	}
 
-	output, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-9"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1076,7 +1105,8 @@ func TestWithGitWorkspace_NewThinPackCreatedWhenChanges(t *testing.T) {
 		},
 	}
 
-	output, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-10"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1150,7 +1180,8 @@ func TestWithGitWorkspace_NewThinPackReplacesInputWhenChanges(t *testing.T) {
 	}
 
 	inputArtifacts := []swf.Artifact{inputThinPack}
-	output, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-11"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, inputArtifacts)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1217,7 +1248,8 @@ func TestWithGitWorkspace_PersistWithDiffs_CreatesThreeArtifacts(t *testing.T) {
 		},
 	}
 
-	output, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-12"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1277,7 +1309,8 @@ func TestWithGitWorkspace_PersistWithDiffs_NoChanges_NoArtifacts(t *testing.T) {
 		},
 	}
 
-	output, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-13"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1322,7 +1355,8 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 	}
 
 	inputArtifacts := []swf.Artifact{inputThinPack}
-	output, outputArts, err := wrapped(context.Background(), req, inputArtifacts)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-14"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, inputArtifacts)
 
 	// Verify success
 	require.NoError(t, err)
@@ -1333,7 +1367,7 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 
 	// Verify it's the SAME artifact as input (pass-through)
 	require.Equal(t, gitstate.ThinPackArtifactName, outputArts[0].Name())
-	require.Equal(t, inputThinPack.ID(), outputArts[0].ID(), "should be the same artifact (passed through)")
+	require.True(t, outputArts[0] == inputThinPack, "should be the same artifact (passed through)")
 
 	// Verify persist hash is empty
 	require.Empty(t, output.GitResult.PersistHash, "persist hash should be empty when no changes")
@@ -1375,7 +1409,8 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 		},
 	}
 
-	output, outputArts, err := wrapped(context.Background(), req, nil)
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-15"}
+	output, outputArts, err := wrapped(context.Background(), jobKey, req, nil)
 
 	// Verify success
 	require.NoError(t, err)

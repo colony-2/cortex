@@ -30,9 +30,10 @@ type GitBaseContext struct {
 
 // WorkflowContext provides high-level workflow/session identifiers.
 type WorkflowContext struct {
-	CellName string `json:"cell,omitempty"`
-	CellPath string `json:"cell_path,omitempty"` // Cell relative path from repo root
-	JobID    string `json:"job_id,omitempty"`
+	CellName  string `json:"cell,omitempty"`
+	CellPath  string `json:"cell_path,omitempty"` // Cell relative path from repo root
+	JobID     string `json:"job_id,omitempty"`
+	ProjectId string `json:"project_id,omitempty"`
 }
 
 type TicketCreatorUserContext struct {

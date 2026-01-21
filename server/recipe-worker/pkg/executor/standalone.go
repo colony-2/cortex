@@ -3,14 +3,15 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	workflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"go.uber.org/zap"
@@ -41,12 +42,28 @@ func (e *StandaloneExecutor) Execute(
 	gitRef string,
 ) (map[string]interface{}, error) {
 
-	workset, err := compiler.NewRecipeWorker(e.deps, e.registry)
+	control := &workflow.SWFWorkflowControl{
+		Registry: func(_ string, recipeRef string) (*recipe.Recipe, error) {
+			if recipeRef != r.GetMetadata().ID {
+				return nil, fmt.Errorf("unknown recipe %s", recipeRef)
+			}
+			return &r, nil
+		},
+	}
+
+	deps := ops2.NewServiceDepsBuilder().
+		WithWorkflowControl(control).
+		WithDatabase(e.deps.Database()).
+		WithSSEManager(e.deps.SSEManager()).
+		Build()
+
+	workset, err := compiler.NewRecipeWorker(deps, e.registry)
 	if err != nil {
 		return nil, err
 	}
 
 	eng := toy.NewToyEngine([]swf.WorkSet{*workset})
+	control.Engine = eng
 
 	job := workflowctl.StartJob{
 		TenantId:   "default",
@@ -56,7 +73,7 @@ func (e *StandaloneExecutor) Execute(
 		GitRef:     gitRef,
 	}
 
-	jobKey, err := starter.StartRecipeJob(ctx, job, eng, r)
+	jobKey, err := control.StartJob(ctx, job)
 	if err != nil {
 		return nil, err
 	}

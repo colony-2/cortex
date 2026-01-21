@@ -9,6 +9,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 func zeroOutputForOp(opName string) (map[string]interface{}, error) {
@@ -152,9 +153,13 @@ func zeroValueForType(t reflect.Type) interface{} {
 
 func placeholderStepOutput(outputs map[string]interface{}) template.StepOutput {
 	return template.StepOutput{
-		Outputs: outputs,
+		Outputs:   outputs,
+		Artifacts: map[string]swf.Artifact{},
 		Runs: []template.RunOutput{
-			{Outputs: outputs},
+			{
+				Outputs:   outputs,
+				Artifacts: map[string]swf.Artifact{},
+			},
 		},
 	}
 }

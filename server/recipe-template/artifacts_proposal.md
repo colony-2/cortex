@@ -20,18 +20,18 @@ types and input schema validation.
 
 ### StepOutput / RunOutput
 `StepOutput` and `RunOutput` gain an `Artifacts` map, keyed by artifact name.
-The map holds opaque artifact references with metadata.
+The map holds opaque artifact handles. CEL exposes them as `swf.ArtifactKey`.
 
 ```go
 type StepOutput struct {
     Outputs   map[string]interface{} `json:"outputs"`
-    Artifacts map[string]ArtifactRef `json:"artifacts"`
+    Artifacts map[string]swf.Artifact `json:"artifacts"`
     Runs      []RunOutput            `json:"runs"`
 }
 
 type RunOutput struct {
     Outputs   map[string]interface{} `json:"outputs"`
-    Artifacts map[string]ArtifactRef `json:"artifacts"`
+    Artifacts map[string]swf.Artifact `json:"artifacts"`
     RunID     string                 `json:"run_id"`
     Timestamp time.Time              `json:"timestamp"`
 }
@@ -40,17 +40,17 @@ type RunOutput struct {
 `StepOutput.Artifacts` reflects the latest run (mirrors `Outputs` today).
 `RunOutput.Artifacts` holds per-run artifacts for loops/retries.
 
-### ArtifactRef (template-visible)
-Artifact references are opaque and metadata-only. Use a shared type
-compatible with API/workflow representations (or introduce a shared
-`recipe-core` type).
+### ArtifactKey (template-visible)
+Templates resolve artifacts to `swf.ArtifactKey`. These are opaque pointers to
+stored artifacts (no bytes exposed in templates).
 
-Minimum fields exposed to templates:
+Fields exposed to templates:
 ```go
-type ArtifactRef struct {
-    Name      string  `json:"name"`
-    SizeBytes *int64  `json:"size_bytes,omitempty"`
-    URL       *string `json:"url,omitempty"`
+type ArtifactKey struct {
+    JobId       string `json:"jobId"`
+    TaskOrdinal int64  `json:"taskOrdinal"`
+    Name        string `json:"name"`
+    SizeBytes   int64  `json:"sizeBytes"`
 }
 ```
 
@@ -68,12 +68,13 @@ readme_file: '{{ sequence.build.artifacts["readme.md"] }}'
 ## CEL Integration
 
 ### Types
-- `artifact`: opaque CEL object with readable metadata fields.
-- `map<string, artifact>`: artifact collections.
+- `artifact`: `swf.ArtifactKey` with readable fields.
+- `map<string, artifact>`: artifact-key collections.
 
 ### CEL Environment
-Add `ArtifactRef` as a native type in the CEL adapter and allow it to be
-returned as a value from expressions.
+Add `swf.ArtifactKey` as a native type in the CEL adapter and allow it to be
+returned as a value from expressions (derived by calling `ArtifactKey()` on
+artifacts stored in step outputs).
 
 ### Allowed Operations
 - Field access: `artifact.name`, `artifact.size_bytes`, etc.
@@ -111,8 +112,8 @@ Extend `recipe.InputSchema.Type` with:
 - `artifact_map`: map of artifacts keyed by name
 
 Input validation rules:
-- `artifact` requires a single `ArtifactRef` value.
-- `artifact_map` requires `map<string, ArtifactRef>`.
+- `artifact` requires a single `swf.ArtifactKey` value.
+- `artifact_map` requires `map<string, swf.ArtifactKey>`.
 - Non-artifact input types reject artifact values.
 
 Examples:
@@ -132,7 +133,7 @@ inputs:
 - Placeholder outputs should include empty `Artifacts` maps to allow
   reference resolution without execution.
 - `artifact_map` placeholders are empty maps; `artifact` placeholders are
-  zero-value `ArtifactRef` with empty fields.
+  zero-value `swf.ArtifactKey` with empty fields.
 
 ## Backwards Compatibility
 - Existing templates and outputs remain unchanged.

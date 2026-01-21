@@ -9,6 +9,7 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -37,15 +38,17 @@ type templateData struct {
 }
 
 type StepOutput struct {
-	Outputs map[string]interface{} `json:"outputs"`
-	Runs    []RunOutput            `json:"runs"` // Previous runs (state loops)
+	Outputs   map[string]interface{}  `json:"outputs"`
+	Artifacts map[string]swf.Artifact `json:"artifacts"`
+	Runs      []RunOutput             `json:"runs"` // Previous runs (state loops)
 }
 
 // RunOutput represents a single execution run
 type RunOutput struct {
-	Outputs   map[string]interface{} `json:"outputs"`
-	RunID     string                 `json:"run_id"`
-	Timestamp time.Time              `json:"timestamp"`
+	Outputs   map[string]interface{}  `json:"outputs"`
+	Artifacts map[string]swf.Artifact `json:"artifacts"`
+	RunID     string                  `json:"run_id"`
+	Timestamp time.Time               `json:"timestamp"`
 }
 
 // ScopeMetadata contains execution context metadata
@@ -153,6 +156,7 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 			reflect.TypeOf(contextual.TicketCreatorAgentContext{}),
 			reflect.TypeOf(contextual.TicketContext{}),
 			reflect.TypeOf(contextual.Invocation{}),
+			reflect.TypeOf(swf.ArtifactKey{}),
 			ext.ParseStructTag("json"),
 		),
 	)
@@ -323,7 +327,17 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 		return nil, fmt.Errorf("failed to evaluate CEL expression: %w", err)
 	}
 
-	return result.Value(), nil
+	value := result.Value()
+	if keyer, ok := value.(interface {
+		ArtifactKey() (swf.ArtifactKey, error)
+	}); ok {
+		key, err := keyer.ArtifactKey()
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve artifact key: %w", err)
+		}
+		return key, nil
+	}
+	return value, nil
 }
 
 // resolveValue recursively resolves templates in a value (uses interpolation mode by default)
@@ -332,7 +346,14 @@ func (rc *ResolutionContext) resolveValue(value interface{}) (interface{}, error
 }
 
 func (rc *ResolutionContext) AddExecution(output map[string]interface{}) {
+	rc.AddExecutionWithArtifacts(output, nil)
+}
+
+func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interface{}, artifacts map[string]swf.Artifact) {
 	rc.lastExecution = output
+	if artifacts == nil {
+		artifacts = map[string]swf.Artifact{}
+	}
 
 	var container map[string]StepOutput
 
@@ -363,15 +384,18 @@ func (rc *ResolutionContext) AddExecution(output map[string]interface{}) {
 	if existing, ok := container[rc.scopeId]; ok {
 		existing.Runs = append(existing.Runs, RunOutput{
 			Outputs:   existing.Outputs,
+			Artifacts: existing.Artifacts,
 			RunID:     generateRunID(),
 			Timestamp: time.Now(),
 		})
 		existing.Outputs = output
+		existing.Artifacts = artifacts
 		container[rc.scopeId] = existing
 	} else {
 		container[rc.scopeId] = StepOutput{
-			Outputs: output,
-			Runs:    []RunOutput{},
+			Outputs:   output,
+			Artifacts: artifacts,
+			Runs:      []RunOutput{},
 		}
 	}
 }

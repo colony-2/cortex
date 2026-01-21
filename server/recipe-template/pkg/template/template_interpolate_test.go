@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,6 +37,19 @@ func TestInterpolateString(t *testing.T) {
 	addOpOutput(t, ctx, "timer", map[string]interface{}{
 		"duration": 1500,
 	})
+	readme := swf.NewArtifactFromBytes("readme.md", []byte("data"))
+	swf.AssignArtifactKey(readme, swf.ArtifactKey{
+		JobId:       "job",
+		TaskOrdinal: 1,
+		Name:        "readme.md",
+		SizeBytes:   int64(len("data")),
+	})
+	ctx.TemplateData.Sequence["build"] = StepOutput{
+		Outputs: map[string]interface{}{},
+		Artifacts: map[string]swf.Artifact{
+			"readme.md": readme,
+		},
+	}
 
 	tests := []struct {
 		name     string
@@ -71,6 +85,13 @@ func TestInterpolateString(t *testing.T) {
 			template: "{{ sequence.fetch.outputs.body }}",
 			mode:     ModeInterpolation,
 			expected: map[string]interface{}{"data": "test"},
+			isString: false,
+		},
+		{
+			name:     "single expression returns raw type - artifact",
+			template: "{{ sequence.build.artifacts[\"readme.md\"] }}",
+			mode:     ModeInterpolation,
+			expected: swf.ArtifactKey{JobId: "job", TaskOrdinal: 1, Name: "readme.md", SizeBytes: int64(len("data"))},
 			isString: false,
 		},
 
@@ -198,6 +219,19 @@ func TestInterpolateString(t *testing.T) {
 
 func TestInterpolateString_Errors(t *testing.T) {
 	ctx := newSequenceCtx(t, newRecipeCtx(t, nil), "test", map[string]interface{}{})
+	readme := swf.NewArtifactFromBytes("readme.md", []byte("data"))
+	swf.AssignArtifactKey(readme, swf.ArtifactKey{
+		JobId:       "job",
+		TaskOrdinal: 1,
+		Name:        "readme.md",
+		SizeBytes:   int64(len("data")),
+	})
+	ctx.TemplateData.Sequence["build"] = StepOutput{
+		Outputs: map[string]interface{}{},
+		Artifacts: map[string]swf.Artifact{
+			"readme.md": readme,
+		},
+	}
 
 	tests := []struct {
 		name      string
@@ -228,6 +262,12 @@ func TestInterpolateString_Errors(t *testing.T) {
 			template:  "Hello {{ inputs.name }}, ID: {{ inputs.missing }}",
 			mode:      ModeInterpolation,
 			expectErr: "expression error at position",
+		},
+		{
+			name:      "artifact in mixed interpolation",
+			template:  "Artifact {{ sequence.build.artifacts[\"readme.md\"] }}",
+			mode:      ModeInterpolation,
+			expectErr: "artifact values cannot be interpolated",
 		},
 	}
 

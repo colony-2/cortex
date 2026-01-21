@@ -85,6 +85,10 @@ func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) erro
 	return s.Engine.CancelJob(ctx, swf.CancelJob{JobKey: jobKey})
 }
 
+func (s *SWFWorkflowControl) GetArtifact(ctx context.Context, tenantId string, key swf.ArtifactKey) (swf.Artifact, error) {
+	return s.Engine.GetArtifact(tenantId, key)
+}
+
 type taskDataGetter struct {
 	loaded  bool
 	engine  swf.SWFEngine

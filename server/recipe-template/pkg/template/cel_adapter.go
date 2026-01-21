@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
@@ -23,6 +24,16 @@ func newResolutionTypeAdapter(base types.Adapter, options ResolutionOptions) typ
 }
 
 func (a *resolutionTypeAdapter) NativeToValue(value interface{}) ref.Val {
+	if keyer, ok := value.(interface {
+		ArtifactKey() (swf.ArtifactKey, error)
+	}); ok {
+		key, err := keyer.ArtifactKey()
+		if err != nil {
+			return types.NewErr("failed to resolve artifact key: %v", err)
+		}
+		return a.base.NativeToValue(key)
+	}
+
 	if ctx, ok := value.(contextual.TaskExecutionContext); ok {
 		data, err := json.Marshal(ctx)
 		if err != nil {

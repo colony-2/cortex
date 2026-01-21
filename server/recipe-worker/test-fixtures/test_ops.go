@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 type testWriteFileInput struct {
@@ -35,6 +36,20 @@ type testGitCommitInput struct {
 
 type testGitCommitOutput struct {
 	CommitHash string `json:"commit_hash"`
+}
+
+type testEmitArtifactInput struct{}
+
+type testEmitArtifactOutput struct {
+	Name string `json:"name"`
+}
+
+type testConsumeArtifactInput struct {
+	InputArtifact swf.ArtifactKey `json:"artifact" validate:"required"`
+}
+
+type testConsumeArtifactOutput struct {
+	Name string `json:"name"`
 }
 
 func init() {
@@ -99,6 +114,48 @@ func init() {
 					return testGitCommitOutput{}, err
 				}
 				return testGitCommitOutput{CommitHash: hash}, nil
+			},
+		),
+		recipeops.NewActivityMappedOpV2[testEmitArtifactInput, testEmitArtifactOutput](
+			recipeops.OpMetadata{
+				Type:        "test_emit_artifact",
+				Description: "emits a named artifact for artifact flow tests",
+				Version:     "1.0.0",
+			},
+			func(deps recipeops.OpDependencies, ctx context.Context, input testEmitArtifactInput) (testEmitArtifactOutput, error) {
+				artifact := swf.NewArtifactFromBytes("foo", []byte("hello world"))
+				if err := deps.AddOutputArtifact(artifact); err != nil {
+					return testEmitArtifactOutput{}, err
+				}
+				return testEmitArtifactOutput{Name: artifact.Name()}, nil
+			},
+		),
+		recipeops.NewActivityMappedOpV2[testConsumeArtifactInput, testConsumeArtifactOutput](
+			recipeops.OpMetadata{
+				Type:        "test_consume_artifact",
+				Description: "consumes a named artifact reference and input artifacts",
+				Version:     "1.0.0",
+			},
+			func(deps recipeops.OpDependencies, ctx context.Context, input testConsumeArtifactInput) (testConsumeArtifactOutput, error) {
+				ref := input.InputArtifact
+				var matched swf.Artifact
+				for _, artifact := range deps.GetInputArtifacts() {
+					if artifact.Name() == ref.Name {
+						matched = artifact
+						break
+					}
+				}
+				if matched == nil {
+					return testConsumeArtifactOutput{}, fmt.Errorf("input artifact not found: %s", ref.Name)
+				}
+				data, err := matched.Bytes(ctx)
+				if err != nil {
+					return testConsumeArtifactOutput{}, err
+				}
+				if string(data) != "hello world" {
+					return testConsumeArtifactOutput{}, fmt.Errorf("unexpected artifact content: %s", string(data))
+				}
+				return testConsumeArtifactOutput{Name: matched.Name()}, nil
 			},
 		),
 	)

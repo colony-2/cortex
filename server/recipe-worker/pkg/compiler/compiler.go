@@ -20,6 +20,10 @@ import (
 
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, error) {
 
+	jobKey := ctx.GetJobKey()
+	execCtx.Workflow.JobID = jobKey.JobId
+	execCtx.Workflow.ProjectId = jobKey.TenantId
+
 	// we forward thin packs from one task to the next to maintain state.
 	ctx.JobContext = newThinPackForwardingJobContext(ctx.JobContext)
 
@@ -96,7 +100,7 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	if metadata.Inputs == nil {
 		metadata.Inputs = map[string]interface{}{}
 	}
-	
+
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create resolution context: %w", err)
@@ -127,6 +131,11 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 		}
 	}
 
+	artifactKeys, err := collectArtifactKeysFromInput(resolvedNodeInputs)
+	if err != nil {
+		return fmt.Errorf("failed to collect artifact keys: %w", err)
+	}
+
 	// Execute the operation
 	retry := swf.RetryPolicy{}
 	if metadata.Retry != nil {
@@ -143,11 +152,13 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 
 	stepInput := resolvedNodeInputs
 
+	var stepArtifacts map[string]swf.Artifact
 	for i := 0; i < 64; i++ { // guard against accidental loops
 		taskType := fmt.Sprintf("%s:%s", op, chain[i].Name)
 		invocation := workerops.ActivityInvocationRequest{
 			Input:          stepInput,
 			GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
+			ArtifactKeys:   artifactKeys,
 		}
 
 		taskData, err := swf.NewTaskData(invocation)
@@ -184,11 +195,16 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 		resCtx.UpdateGitState(gitResult)
 		stepInput = normalizeOpOutput(chain[i].OutputType, envelope.OpOutput)
 		if envelope.NextTask == "" {
+			outputArtifacts, err := out.GetArtifacts()
+			if err != nil {
+				return err
+			}
+			stepArtifacts = artifactsToMap(outputArtifacts)
 			break
 		}
 		taskType = envelope.NextTask
 	}
-	resCtx.AddExecution(stepInput)
+	resCtx.AddExecutionWithArtifacts(stepInput, stepArtifacts)
 	return nil
 }
 

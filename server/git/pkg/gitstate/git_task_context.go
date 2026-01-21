@@ -10,8 +10,6 @@ type GlobalGitTaskContext struct {
 	ResolvedBaseHash string
 	PersistHash      string
 	ParentHash       string
-	// WorktreePath removed - stored in OpDependencies
-	// ThinPackPath removed - no longer used
 	TicketID   string
 	CellName   string
 	CellPath   string // Cell relative path from repo root

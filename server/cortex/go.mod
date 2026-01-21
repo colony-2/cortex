@@ -45,7 +45,7 @@ require (
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260120194644-09f85cf00971 // indirect
+	github.com/colony-2/swf-go v0.0.0-20260121030101-af65334ca30a // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/swf-go v0.0.0-20260121030101-af65334ca30a
 	github.com/google/cel-go v0.26.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -17,7 +18,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260120194644-09f85cf00971 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect

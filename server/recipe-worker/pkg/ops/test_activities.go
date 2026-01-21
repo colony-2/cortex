@@ -6,6 +6,7 @@ import (
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/sleepop"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 // Test activity input/output types
@@ -51,6 +52,18 @@ type GenericOutput struct {
 	Items []interface{} `json:"items,omitempty"`
 }
 
+type EmitArtifactOutput struct {
+	Name string `json:"name"`
+}
+
+type ConsumeArtifactInput struct {
+	Artifact swf.ArtifactKey `json:"artifact" validate:"required"`
+}
+
+type ConsumeArtifactOutput struct {
+	Name string `json:"name"`
+}
+
 func init() {
 	// Register all test activities needed by the test suite
 	registerTestActivities()
@@ -80,4 +93,24 @@ func registerTestActivities() {
 
 	// Register all other typed test activities
 	registerTypedTestActivities()
+
+	emitArtifact := recipeops.NewActivityMappedOpV2[struct{}, EmitArtifactOutput](
+		recipeops.OpMetadata{Type: "test_emit_artifact"},
+		func(deps recipeops.OpDependencies, ctx context.Context, _ struct{}) (EmitArtifactOutput, error) {
+			artifact := swf.NewArtifactFromBytes("foo", []byte("hello world"))
+			if err := deps.AddOutputArtifact(artifact); err != nil {
+				return EmitArtifactOutput{}, err
+			}
+			return EmitArtifactOutput{Name: artifact.Name()}, nil
+		},
+	)
+	recipeops.Register(emitArtifact)
+
+	consumeArtifact := recipeops.NewActivityMappedOpV2[ConsumeArtifactInput, ConsumeArtifactOutput](
+		recipeops.OpMetadata{Type: "test_consume_artifact"},
+		func(_ recipeops.OpDependencies, ctx context.Context, input ConsumeArtifactInput) (ConsumeArtifactOutput, error) {
+			return ConsumeArtifactOutput{Name: input.Artifact.Name}, nil
+		},
+	)
+	recipeops.Register(consumeArtifact)
 }

@@ -82,6 +82,13 @@ func (b *OpDependenciesBuilder) WithDatabase(db *gorm.DB) *OpDependenciesBuilder
 }
 
 func (b *OpDependenciesBuilder) WithArtifacts(initialArtifacts []swf.Artifact) *OpDependenciesBuilder {
+	if initialArtifacts == nil {
+		b.artifacts = make([]swf.Artifact, 0)
+		return b
+	}
+	out := make([]swf.Artifact, len(initialArtifacts))
+	copy(out, initialArtifacts)
+	b.artifacts = out
 	return b
 }
 

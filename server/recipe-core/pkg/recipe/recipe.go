@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	yamlv3 "gopkg.in/yaml.v3"
 )
 
@@ -182,6 +183,16 @@ func (def InputSchema) validate(key string, value interface{}) error {
 		expectedGoType = "number (float64, int, or int64)"
 	case "boolean":
 		expectedGoType = "bool"
+	case "artifact":
+		if isArtifactValue(value) {
+			return nil
+		}
+		expectedGoType = "swf.ArtifactKey"
+	case "artifact_map":
+		if isArtifactMapValue(value) {
+			return nil
+		}
+		expectedGoType = "map[string]swf.ArtifactKey"
 	default:
 		return fmt.Errorf("field '%s' has an unsupported schema type: %s", key, def.Type)
 	}
@@ -191,6 +202,38 @@ func (def InputSchema) validate(key string, value interface{}) error {
 	}
 	return fmt.Errorf("field '%s' has wrong type: expected '%s' (Go type: %s) but got '%s' (Go type: %s)",
 		key, def.Type, expectedGoType, value, valueType)
+}
+
+func isArtifactValue(value interface{}) bool {
+	switch v := value.(type) {
+	case swf.ArtifactKey:
+		return true
+	case *swf.ArtifactKey:
+		return v != nil
+	default:
+		return false
+	}
+}
+
+func isArtifactMapValue(value interface{}) bool {
+	switch v := value.(type) {
+	case map[string]swf.ArtifactKey:
+		return true
+	case map[string]*swf.ArtifactKey:
+		return true
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return true
+		}
+		for _, entry := range v {
+			if !isArtifactValue(entry) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (def InputSchema) validateMissing(key string) error {

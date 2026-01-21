@@ -84,7 +84,14 @@ func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
 		} else {
 			inputStruct = reflect.New(inT).Elem().Interface()
 		}
-		inputsSchema := stripSchema(r.Reflect(inputStruct))
+		inputsSchema, err := safeReflectSchema(r, inputStruct)
+		if err != nil {
+			inputsSchema = &jsonschema.Schema{
+				Type:                 "object",
+				AdditionalProperties: &jsonschema.Schema{},
+			}
+		}
+		inputsSchema = stripSchema(inputsSchema)
 
 		// Tighten required fields for certain well-known ops without changing unmarshalling
 		switch opTypeName {
@@ -131,6 +138,16 @@ func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
 		OneOf: items,
 	}
 	return nodeopSchema, nil
+}
+
+func safeReflectSchema(reflector *jsonschema.Reflector, value interface{}) (schema *jsonschema.Schema, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("schema reflect panic: %v", r)
+			err = fmt.Errorf("schema reflect panic: %v", r)
+		}
+	}()
+	return reflector.Reflect(value), nil
 }
 
 func cloneSchema(src *jsonschema.Schema) (*jsonschema.Schema, error) {

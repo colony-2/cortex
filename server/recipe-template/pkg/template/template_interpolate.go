@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 // interpolateString performs string interpolation with embedded CEL expressions
@@ -46,11 +47,45 @@ func (rc *ResolutionContext) interpolateString(template string, mode ResolutionM
 				// Include position in error for better debugging
 				return nil, fmt.Errorf("expression error at position %d: %w", s.Pos, err)
 			}
+			if isArtifactInterpolationValue(value) {
+				return nil, fmt.Errorf("artifact values cannot be interpolated into strings")
+			}
 			result.WriteString(convertToString(value))
 		}
 	}
 
 	return result.String(), nil
+}
+
+func isArtifactInterpolationValue(value interface{}) bool {
+	switch v := value.(type) {
+	case swf.ArtifactKey:
+		return true
+	case *swf.ArtifactKey:
+		return v != nil
+	case map[string]swf.ArtifactKey:
+		return true
+	case map[string]*swf.ArtifactKey:
+		return true
+	case map[string]interface{}:
+		for _, entry := range v {
+			if isArtifactInterpolationValue(entry) {
+				return true
+			}
+		}
+		return false
+	case []swf.ArtifactKey:
+		return true
+	case []interface{}:
+		for _, entry := range v {
+			if isArtifactInterpolationValue(entry) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 // ResolveTemplateWithMode handles expression evaluation with a specific mode

@@ -1,6 +1,7 @@
 package template
 
 import (
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/traits"
 )
@@ -22,9 +23,14 @@ func (rc *ResolutionContext) celStatesValue() interface{} {
 func clampStepOutputs(stepOutputs map[string]StepOutput, adapter types.Adapter) map[string]interface{} {
 	out := make(map[string]interface{}, len(stepOutputs))
 	for key, step := range stepOutputs {
+		artifacts := step.Artifacts
+		if artifacts == nil {
+			artifacts = map[string]swf.Artifact{}
+		}
 		out[key] = map[string]interface{}{
-			"outputs": step.Outputs,
-			"runs":    clampRuns(step.Runs, adapter),
+			"outputs":   step.Outputs,
+			"artifacts": artifacts,
+			"runs":      clampRuns(step.Runs, adapter),
 		}
 	}
 	return out
@@ -36,8 +42,13 @@ func clampRuns(runs []RunOutput, adapter types.Adapter) traits.Lister {
 	}
 	runMaps := make([]interface{}, 0, len(runs))
 	for _, run := range runs {
+		artifacts := run.Artifacts
+		if artifacts == nil {
+			artifacts = map[string]swf.Artifact{}
+		}
 		runMaps = append(runMaps, map[string]interface{}{
 			"outputs":   run.Outputs,
+			"artifacts": artifacts,
 			"run_id":    run.RunID,
 			"timestamp": run.Timestamp,
 		})

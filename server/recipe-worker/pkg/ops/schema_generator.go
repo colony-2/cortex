@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/invopop/jsonschema"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 // DefaultSchemaGenerator uses invopop/jsonschema for schema generation
@@ -31,35 +33,67 @@ func (g *DefaultSchemaGenerator) GenerateSchema(typ reflect.Type) (*jsonschema.S
 	// Handle nil types
 	if typ == nil {
 		return &jsonschema.Schema{
-			Type: "object",
+			Type:                 "object",
 			AdditionalProperties: &jsonschema.Schema{},
 		}, nil
 	}
-	
+
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	if typ == reflect.TypeOf(swf.ArtifactKey{}) {
+		props := orderedmap.New[string, *jsonschema.Schema]()
+		props.Set("jobId", &jsonschema.Schema{Type: "string"})
+		props.Set("taskOrdinal", &jsonschema.Schema{Type: "integer"})
+		props.Set("name", &jsonschema.Schema{Type: "string"})
+		props.Set("sizeBytes", &jsonschema.Schema{Type: "integer"})
+		return &jsonschema.Schema{
+			Type:       "object",
+			Properties: props,
+			Required:   []string{"jobId", "taskOrdinal", "name"},
+		}, nil
+	}
+
 	// Handle interface types
 	if typ.Kind() == reflect.Interface {
 		// For interface{} types, return a schema that accepts any type
 		return &jsonschema.Schema{
-			Type: "object",
+			Type:                 "object",
 			AdditionalProperties: &jsonschema.Schema{},
 		}, nil
 	}
-	
+
 	// Handle map types
 	if typ.Kind() == reflect.Map {
 		// For map[string]interface{} types, return a flexible object schema
 		return &jsonschema.Schema{
-			Type: "object",
+			Type:                 "object",
 			AdditionalProperties: &jsonschema.Schema{},
 		}, nil
 	}
-	
+
 	// Create a value from the type
 	val := reflect.New(typ).Interface()
-	
-	// Use invopop/jsonschema to generate the schema
-	schema := g.reflector.Reflect(val)
+
+	// Use invopop/jsonschema to generate the schema, guarding against panics.
+	schema, err := safeReflectSchema(g.reflector, val)
+	if err != nil {
+		return &jsonschema.Schema{
+			Type:                 "object",
+			AdditionalProperties: &jsonschema.Schema{},
+		}, nil
+	}
 	return schema, nil
+}
+
+func safeReflectSchema(reflector *jsonschema.Reflector, value interface{}) (schema *jsonschema.Schema, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("schema reflection failed: %v", r)
+		}
+	}()
+	return reflector.Reflect(value), nil
 }
 
 // ValidateStructTags ensures all fields have explicit json tags
@@ -68,12 +102,12 @@ func (g *DefaultSchemaGenerator) ValidateStructTags(typ reflect.Type) error {
 	if typ == nil {
 		return nil
 	}
-	
+
 	// Handle interface and map types - they don't need validation
 	if typ.Kind() == reflect.Interface || typ.Kind() == reflect.Map {
 		return nil
 	}
-	
+
 	// Ensure type is a struct
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
@@ -118,11 +152,11 @@ func (g *DefaultSchemaGenerator) ValidateStructTags(typ reflect.Type) error {
 		// Only validate struct types
 		if fieldType.Kind() == reflect.Struct {
 			// Skip time.Time and other standard library types
-			if fieldType.PkgPath() == "" || fieldType.PkgPath() == "time" || 
-			   fieldType.PkgPath() == "encoding/json" {
+			if fieldType.PkgPath() == "" || fieldType.PkgPath() == "time" ||
+				fieldType.PkgPath() == "encoding/json" {
 				continue
 			}
-			
+
 			if err := g.ValidateStructTags(fieldType); err != nil {
 				return err
 			}

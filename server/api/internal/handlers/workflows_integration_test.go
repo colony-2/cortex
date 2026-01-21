@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/strata-go/pkg/client"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -91,6 +91,12 @@ func (f *fakeSWFEngine) FindTasksWaitingForCapability(context.Context, string, s
 }
 func (f *fakeSWFEngine) GetWaitingTask(context.Context, swf.JobKey) (swf.TaskHandle, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeSWFEngine) GetArtifact(string, swf.ArtifactKey) (swf.Artifact, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeSWFEngine) GetJobRun(context.Context, swf.GetJobRunRequest) (swf.GetJobRunResponse, error) {
+	return swf.GetJobRunResponse{}, fmt.Errorf("not implemented")
 }
 
 func TestWorkflowIntegration_ListAndGet(t *testing.T) {
@@ -190,7 +196,7 @@ func TestWorkflowIntegration_ListAndGet(t *testing.T) {
 				return
 			}
 			payload := map[string]interface{}{
-				"artifacts":   []map[string]interface{}{},
+				"artifacts":    []map[string]interface{}{},
 				"chapter_json": chapter,
 			}
 			w.Header().Set("Content-Type", "application/json")

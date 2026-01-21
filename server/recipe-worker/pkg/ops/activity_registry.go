@@ -21,7 +21,8 @@ const thinPackSentinel = gitstate.ThinPackArtifactName
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
 	Input          map[string]interface{}        `json:"input"`
-	GitTaskContext gitstate.GlobalGitTaskContext `json:"context"` // Changed to GlobalGitTaskContext for serializability
+	GitTaskContext gitstate.GlobalGitTaskContext `json:"context"`
+	ArtifactKeys   []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
 	Deps           ops.OpDependencies            `json:"-"`
 }
 
@@ -108,7 +109,7 @@ func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.T
 type taskWorker struct {
 	name string
 	reg  ActivityRegistration
-	fn   func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
+	fn   func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
 func (t *taskWorker) Name() string {
@@ -128,7 +129,7 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 	if err != nil {
 		return nil, err
 	}
-	out, outArt, err := t.fn(context.Background(), air, inArt)
+	out, outArt, err := t.fn(context.Background(), ctx.JobKey, air, inArt)
 	if err != nil {
 		return nil, err
 	}
@@ -170,11 +171,11 @@ func replaceSentinelValue(value interface{}, worktreePath string) interface{} {
 	}
 }
 
-func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
+func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, controller *gitstate.Controller) func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error) {
 	if controller == nil {
 		controller = gitstate.NewController(nil)
 	}
-	return func(ctx context.Context, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
+	return func(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 		var zero ActivityInvocationOutput
 
 		// Create temporary worktree directory for this invocation
@@ -188,6 +189,23 @@ func withGitWorkspace(deps ops.ServiceDependencies2, reg ActivityRegistration, c
 		fullContext := &gitstate.GitTaskContext{
 			GlobalGitTaskContext: &req.GitTaskContext,
 			WorktreePath:         worktreePath,
+		}
+
+		// Rehydrate referenced artifacts from keys.
+		if len(req.ArtifactKeys) > 0 {
+			ctl := deps.WorkflowControl()
+			if ctl == nil {
+				return zero, nil, fmt.Errorf("workflow control is required for artifact resolution")
+			}
+			rehydrated := make([]swf.Artifact, 0, len(req.ArtifactKeys))
+			for _, key := range req.ArtifactKeys {
+				artifact, err := ctl.GetArtifact(ctx, jobKey.TenantId, key)
+				if err != nil {
+					return zero, nil, err
+				}
+				rehydrated = append(rehydrated, artifact)
+			}
+			inputArtifacts = append(inputArtifacts, rehydrated...)
 		}
 
 		// Find and filter input thin pack artifact

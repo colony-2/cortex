@@ -6,11 +6,12 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20260120194644-09f85cf00971
+	github.com/colony-2/swf-go v0.0.0-20260121030101-af65334ca30a
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/stretchr/testify v1.11.1
+	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd
 	go.uber.org/zap v1.27.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
@@ -53,7 +54,6 @@ require (
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
-	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
