@@ -167,10 +167,11 @@ func (NodeOp) JSONSchema() *jsonschema.Schema {
 func (n *NodeOp) isNode() {}
 
 type NodeMetadata struct {
-	ID      string       `yaml:"id,omitempty"`
-	Desc    string       `yaml:"desc,omitempty"`
-	Timeout Duration     `yaml:"timeout,omitempty"`
-	Retry   *RetryPolicy `yaml:"retry,omitempty"`
-	Inputs  InputMap     `yaml:"inputs,omitempty"`
-	When    cel.CELExpr  `yaml:"when,omitempty"` // Conditional execution
+	ID        string       `yaml:"id,omitempty"`
+	Desc      string       `yaml:"desc,omitempty"`
+	Timeout   Duration     `yaml:"timeout,omitempty"`
+	Retry     *RetryPolicy `yaml:"retry,omitempty"`
+	Inputs    InputMap     `yaml:"inputs,omitempty"`
+	Artifacts InputMap     `yaml:"artifacts,omitempty"`
+	When      cel.CELExpr  `yaml:"when,omitempty"` // Conditional execution
 }

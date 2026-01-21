@@ -75,6 +75,31 @@
               },
               "additionalProperties": true,
               "type": "object"
+            },
+            "artifacts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "jobId": {
+                    "type": "string"
+                  },
+                  "taskOrdinal": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "jobId",
+                  "taskOrdinal",
+                  "name"
+                ]
+              }
             }
           },
           "additionalProperties": true,
@@ -138,6 +163,31 @@
               },
               "additionalProperties": true,
               "type": "object"
+            },
+            "artifacts": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "jobId": {
+                    "type": "string"
+                  },
+                  "taskOrdinal": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "sizeBytes": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "jobId",
+                  "taskOrdinal",
+                  "name"
+                ]
+              }
             }
           },
           "additionalProperties": true,
@@ -536,6 +586,31 @@
         },
         "inputs": {
           "type": "object"
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string"
+              },
+              "taskOrdinal": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "sizeBytes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "jobId",
+              "taskOrdinal",
+              "name"
+            ]
+          }
         }
       },
       "additionalProperties": true,
@@ -544,4 +619,3 @@
   ],
   "title": "recipe"
 }
-

@@ -21,6 +21,7 @@ type ActivityInvocationRequest struct {
 	Input          map[string]interface{}        `json:"input"`
 	GitTaskContext gitstate.GlobalGitTaskContext `json:"context"`
 	ArtifactKeys   []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
+	Artifacts      map[string]swf.ArtifactKey    `json:"artifacts,omitempty"`
 	Deps           ops.OpDependencies            `json:"-"`
 }
 

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -20,7 +21,7 @@ type opExecutor struct {
 	controller *gitstate.Controller
 }
 
-func (t *opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
+func (t opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 	deps := t.deps
 	controller := t.controller
 	reg := t.reg
@@ -75,6 +76,13 @@ func (t *opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvo
 			rehydrated = append(rehydrated, artifact)
 		}
 		inputArtifacts = append(inputArtifacts, rehydrated...)
+	}
+
+	artifactByKey := indexArtifactsByKey(inputArtifacts)
+	if len(req.Artifacts) > 0 {
+		if err := materializeArtifactBindings(ctx, inbox, req.Artifacts, artifactByKey); err != nil {
+			return zero, nil, err
+		}
 	}
 
 	// Find and filter input thin pack artifact
@@ -213,4 +221,89 @@ func replaceSentinelValue(value interface{}, replacements map[string]string) int
 	default:
 		return v
 	}
+}
+
+func indexArtifactsByKey(artifacts []swf.Artifact) map[string]swf.Artifact {
+	index := make(map[string]swf.Artifact, len(artifacts))
+	for _, artifact := range artifacts {
+		key, err := artifact.ArtifactKey()
+		if err != nil {
+			continue
+		}
+		index[artifactKeyIdentity(key)] = artifact
+	}
+	return index
+}
+
+func materializeArtifactBindings(ctx context.Context, inbox string, bindings map[string]swf.ArtifactKey, artifactsByKey map[string]swf.Artifact) error {
+	for name, key := range bindings {
+		if err := validateBindingName(name); err != nil {
+			return fmt.Errorf("invalid artifact binding %q: %w", name, err)
+		}
+		artifact, ok := artifactsByKey[artifactKeyIdentity(key)]
+		if !ok {
+			return fmt.Errorf("artifact binding %q refers to missing artifact %s", name, artifactKeyIdentity(key))
+		}
+
+		destPath, err := bindingDestination(inbox, name, artifact.Name())
+		if err != nil {
+			return fmt.Errorf("artifact binding %q invalid destination: %w", name, err)
+		}
+		if _, err := os.Stat(destPath); err == nil {
+			return fmt.Errorf("artifact binding %q would overwrite %s", name, destPath)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("artifact binding %q stat failed: %w", name, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+			return fmt.Errorf("artifact binding %q mkdir failed: %w", name, err)
+		}
+		if err := artifact.SaveToFile(ctx, destPath); err != nil {
+			return fmt.Errorf("artifact binding %q save failed: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func validateBindingName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	if filepath.IsAbs(name) {
+		return fmt.Errorf("name must be relative")
+	}
+	for _, segment := range splitPathSegments(name) {
+		if segment == ".." {
+			return fmt.Errorf("name must not contain '..' segments")
+		}
+	}
+	return nil
+}
+
+func bindingDestination(inbox, name, artifactName string) (string, error) {
+	if hasTrailingSlash(name) {
+		trimmed := strings.TrimRight(name, "/\\")
+		if trimmed == "" {
+			return "", fmt.Errorf("name cannot be root")
+		}
+		name = filepath.Join(trimmed, artifactName)
+	}
+	destPath := filepath.Clean(filepath.Join(inbox, name))
+	if !strings.HasPrefix(destPath, inbox+string(filepath.Separator)) && destPath != inbox {
+		return "", fmt.Errorf("destination escapes inbox")
+	}
+	return destPath, nil
+}
+
+func splitPathSegments(name string) []string {
+	return strings.FieldsFunc(name, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+}
+
+func hasTrailingSlash(name string) bool {
+	return strings.HasSuffix(name, "/") || strings.HasSuffix(name, "\\")
+}
+
+func artifactKeyIdentity(key swf.ArtifactKey) string {
+	return fmt.Sprintf("%s:%d:%s", key.JobId, key.TaskOrdinal, key.Name)
 }

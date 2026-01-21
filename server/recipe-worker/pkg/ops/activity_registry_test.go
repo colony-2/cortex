@@ -1428,6 +1428,9 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 
 func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 	testPath := "/test/worktree/path"
+	replacements := map[string]string{
+		contextual.WorktreePathSentinel: testPath,
+	}
 
 	t.Run("map[string]interface{} with sentinel", func(t *testing.T) {
 		input := map[string]interface{}{
@@ -1435,7 +1438,7 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 			"other":  "value",
 			"nested": map[string]interface{}{"inner": contextual.WorktreePathSentinel},
 		}
-		result := replaceSentinels(input, testPath)
+		result := replaceSentinels(input, replacements)
 		assert.Equal(t, testPath, result["path"])
 		assert.Equal(t, "value", result["other"])
 		nested := result["nested"].(map[string]interface{})
@@ -1448,7 +1451,7 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 			"other":  "value",
 			"nested": recipe.InputMap{"inner": contextual.WorktreePathSentinel},
 		}
-		result := replaceSentinelValue(input, testPath)
+		result := replaceSentinelValue(input, replacements)
 		resultMap := result.(recipe.InputMap)
 		assert.Equal(t, testPath, resultMap["path"])
 		assert.Equal(t, "value", resultMap["other"])
@@ -1463,7 +1466,7 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 			map[string]interface{}{"key": contextual.WorktreePathSentinel},
 			recipe.InputMap{"key": contextual.WorktreePathSentinel},
 		}
-		result := replaceSentinelValue(input, testPath)
+		result := replaceSentinelValue(input, replacements)
 		resultArr := result.([]interface{})
 		assert.Equal(t, testPath, resultArr[0])
 		assert.Equal(t, "normal", resultArr[1])
@@ -1478,7 +1481,7 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 			"bool":   true,
 			"nil":    nil,
 		}
-		result := replaceSentinels(input, testPath)
+		result := replaceSentinels(input, replacements)
 		assert.Equal(t, "hello", result["string"])
 		assert.Equal(t, 42, result["number"])
 		assert.Equal(t, true, result["bool"])

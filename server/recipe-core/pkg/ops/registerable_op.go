@@ -30,10 +30,11 @@ type HasManagmentService interface {
 // OpMetadata describes the activity for registration and documentation.
 // Task-level DisallowAsTask is handled on TaskStep.
 type OpMetadata struct {
-	Type           string        // Unique identifier for the activity type
-	Description    string        // Detailed description
-	Version        string        // Semantic version
-	DefaultTimeout time.Duration // Default execution timeout
+	Type             string        // Unique identifier for the activity type
+	Description      string        // Detailed description
+	Version          string        // Semantic version
+	DefaultTimeout   time.Duration // Default execution timeout
+	AcceptsArtifacts bool          // Whether the op accepts inbox artifact bindings
 }
 
 type OpExecutor interface {
@@ -132,6 +133,7 @@ type OpBuilder interface {
 	WithDescription(desc string) OpBuilder
 	WithVersion(ver string) OpBuilder
 	WithDefaultTimeout(d time.Duration) OpBuilder
+	WithAcceptsArtifacts(accept bool) OpBuilder
 	AddStep(name string, step Step) OpBuilder
 	WithManagementService(svc ManagementService) OpBuilder
 	Build() (RegisterableOp, error)
@@ -165,6 +167,11 @@ func (b *opBuilder) WithVersion(ver string) OpBuilder {
 
 func (b *opBuilder) WithDefaultTimeout(d time.Duration) OpBuilder {
 	b.metadata.DefaultTimeout = d
+	return b
+}
+
+func (b *opBuilder) WithAcceptsArtifacts(accept bool) OpBuilder {
+	b.metadata.AcceptsArtifacts = accept
 	return b
 }
 
@@ -255,6 +262,7 @@ func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler Activit
 		WithDescription(metadata.Description).
 		WithVersion(metadata.Version).
 		WithDefaultTimeout(metadata.DefaultTimeout).
+		WithAcceptsArtifacts(metadata.AcceptsArtifacts).
 		AddStep(metadata.Type, NewStepWithDeps(handler)).
 		Build()
 	if err != nil {
@@ -269,6 +277,7 @@ func NewActivityMappedOpWithManagementV2[In any, Out any](metadata OpMetadata, h
 		WithDescription(metadata.Description).
 		WithVersion(metadata.Version).
 		WithDefaultTimeout(metadata.DefaultTimeout).
+		WithAcceptsArtifacts(metadata.AcceptsArtifacts).
 		AddStep(metadata.Type, NewStepWithDeps(handler)).
 		WithManagementService(service).
 		Build()
@@ -319,6 +328,7 @@ func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, han
 		WithDescription(metadata.Description).
 		WithVersion(metadata.Version).
 		WithDefaultTimeout(metadata.DefaultTimeout).
+		WithAcceptsArtifacts(metadata.AcceptsArtifacts).
 		AddStep(metadata.Type, step).
 		Build()
 	if err != nil {

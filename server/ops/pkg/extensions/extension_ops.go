@@ -239,9 +239,10 @@ func Discover(startDir string) ([]ops.RegisterableOp, error) {
 			opName = name // default from directory name
 		}
 		md := ops.OpMetadata{
-			Type:        opName,
-			Description: orDefault(spec.Description, fmt.Sprintf("extension op '%s'", opName)),
-			Version:     orDefault(spec.Version, "0.1.0"),
+			Type:             opName,
+			Description:      orDefault(spec.Description, fmt.Sprintf("extension op '%s'", opName)),
+			Version:          orDefault(spec.Version, "0.1.0"),
+			AcceptsArtifacts: true,
 		}
 		if d, err := parseDurationOrZero(spec.Timeout); err == nil && d > 0 {
 			md.DefaultTimeout = d

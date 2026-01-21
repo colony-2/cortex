@@ -100,6 +100,10 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	if metadata.Inputs == nil {
 		metadata.Inputs = map[string]interface{}{}
 	}
+	artifactsDefined := metadata.Artifacts != nil
+	if metadata.Artifacts == nil {
+		metadata.Artifacts = recipe.InputMap{}
+	}
 
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)
 	if err != nil {
@@ -110,6 +114,9 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	registeredOp, exists := ops.Get(op)
 	if !exists {
 		return fmt.Errorf("operation %s not found", op)
+	}
+	if artifactsDefined && !registeredOp.GetMetadata().AcceptsArtifacts {
+		return fmt.Errorf("operation %s does not accept artifacts", op)
 	}
 
 	chain := registeredOp.TaskChain()
@@ -124,6 +131,11 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 		return fmt.Errorf("failed to resolve templates op inputs: %w", err)
 	}
 
+	resolvedArtifacts, err := resolveArtifactBindings(resCtx, map[string]interface{}(metadata.Artifacts))
+	if err != nil {
+		return err
+	}
+
 	if len(chain) > 0 {
 		allowNulls := resCtx.Options.Mode == string(ExecutionModeValidate)
 		if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
@@ -134,6 +146,9 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	artifactKeys, err := collectArtifactKeysFromInput(resolvedNodeInputs)
 	if err != nil {
 		return fmt.Errorf("failed to collect artifact keys: %w", err)
+	}
+	if len(resolvedArtifacts) > 0 {
+		artifactKeys = appendArtifactKeys(artifactKeys, resolvedArtifacts)
 	}
 
 	// Execute the operation
@@ -159,6 +174,7 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 			Input:          stepInput,
 			GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
 			ArtifactKeys:   artifactKeys,
+			Artifacts:      resolvedArtifacts,
 		}
 
 		taskData, err := swf.NewTaskData(invocation)

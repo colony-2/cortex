@@ -83,3 +83,21 @@ func collectArtifactKeysFromInput(input map[string]interface{}) ([]swf.ArtifactK
 	}
 	return out, nil
 }
+
+func appendArtifactKeys(existing []swf.ArtifactKey, bindings map[string]swf.ArtifactKey) []swf.ArtifactKey {
+	if len(bindings) == 0 {
+		return existing
+	}
+	seen := make(map[string]swf.ArtifactKey, len(existing)+len(bindings))
+	for _, key := range existing {
+		seen[artifactKeyIdentity(key)] = key
+	}
+	for _, key := range bindings {
+		seen[artifactKeyIdentity(key)] = key
+	}
+	out := make([]swf.ArtifactKey, 0, len(seen))
+	for _, key := range seen {
+		out = append(out, key)
+	}
+	return out
+}
