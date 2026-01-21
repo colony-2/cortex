@@ -21,8 +21,8 @@ type ActorContext struct {
 type EnvironmentContext struct {
 	WorktreePath   string `json:"worktree_path,omitempty"`
 	WorkdirPath    string `json:"workdir,omitempty"`
-	ArtifactInbox  string `json:"artifact_inbox,omitempty"`
-	ArtifactOutbox string `json:"artifact_outbox,omitempty"`
+	ArtifactInbox  string `json:"inbox,omitempty"`
+	ArtifactOutbox string `json:"outbox,omitempty"`
 }
 
 // GitBaseContext captures immutable git state information at a point in time.

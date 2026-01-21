@@ -2,7 +2,6 @@ package ops
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -108,7 +107,6 @@ func (r *ActivityRegistry) GetTaskWorkers(deps ops.ServiceDependencies2) []swf.T
 	}
 	return workers
 }
-
 
 // RegisterGeneric registers any activity without knowing its specific generic types
 // This allows dynamic registration of activities from external packages

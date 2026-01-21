@@ -3,6 +3,8 @@ package ops
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
@@ -27,9 +29,21 @@ func (t *opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvo
 
 	// Create temporary worktree directory for this invocation
 	workDir, err := createWorkDir()
+	if err != nil {
+		return zero, nil, fmt.Errorf("create temp worktree: %w", err)
+	}
+
 	worktreePath := filepath.Join(workDir, "worktree")
 	inbox := filepath.Join(workDir, "inbox")
+	err = os.Mkdir(inbox, 0o755)
+	if err != nil {
+		return zero, nil, err
+	}
 	outbox := filepath.Join(workDir, "outbox")
+	err = os.Mkdir(outbox, 0o755)
+	if err != nil {
+		return zero, nil, err
+	}
 	replacements := map[string]string{
 		contextual.WorktreePathSentinel:   worktreePath,
 		contextual.WorkdirPathSentinel:    workDir,
@@ -37,9 +51,6 @@ func (t *opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvo
 		contextual.ArtifactOutboxSentinel: outbox,
 	}
 
-	if err != nil {
-		return zero, nil, fmt.Errorf("create temp worktree: %w", err)
-	}
 	defer removeWorkDir(worktreePath)
 
 	// Build full GitTaskContext for controller from global context + local worktree path
@@ -109,6 +120,26 @@ func (t *opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvo
 	// Execute operation with HYDRATED input (sentinels replaced)
 	outputData, err := reg.Step.Invoke(opDeps, ctx, hydratedInput)
 	if err != nil {
+		return zero, outputArtifacts, err
+	}
+	if err := filepath.WalkDir(outbox, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(outbox, path)
+		if err != nil {
+			return err
+		}
+		artifact, err := swf.NewArtifactFromFile(rel, path)
+		if err != nil {
+			return err
+		}
+		outputArtifacts = append(outputArtifacts, artifact)
+		return nil
+	}); err != nil {
 		return zero, outputArtifacts, err
 	}
 
