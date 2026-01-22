@@ -119,6 +119,48 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 	assert.Equal(t, int64(15), result)
 }
 
+func TestResolveTemplate_JSONParse(t *testing.T) {
+	inputs := map[string]interface{}{
+		"config_json": `{"enabled":true,"threshold":2,"nested":{"name":"demo"},"items":[{"id":1},{"id":2}]}`,
+		"invalid_json": "{bad",
+		"flag":        true,
+	}
+	recipeCtx := newRecipeCtx(t, inputs)
+	seqCtx := newSequenceCtx(t, recipeCtx, "test", inputs)
+
+	result, err := seqCtx.resolveTemplate("{{ json_parse(inputs.config_json) }}")
+	require.NoError(t, err)
+
+	resultMap, ok := result.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, true, resultMap["enabled"])
+	assert.Equal(t, float64(2), resultMap["threshold"])
+
+	nested, ok := resultMap["nested"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "demo", nested["name"])
+
+	items, ok := resultMap["items"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, items, 2)
+
+	firstItem, ok := items[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, float64(1), firstItem["id"])
+
+	_, err = seqCtx.resolveTemplate("{{ json_parse(inputs.invalid_json) }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json_parse: invalid JSON")
+
+	_, err = seqCtx.resolveTemplate("{{ json_parse(\"\") }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json_parse: expected string")
+
+	_, err = seqCtx.resolveTemplate("{{ json_parse(inputs.flag) }}")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "json_parse: expected string")
+}
+
 func TestResolveTemplate_TicketContext(t *testing.T) {
 	createdAt := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC)
 	updatedAt := createdAt.Add(2 * time.Hour)

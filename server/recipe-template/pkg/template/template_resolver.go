@@ -167,6 +167,10 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure CEL adapter: %w", err)
 	}
+	env, err = env.Extend(jsonParseEnvOption(env.CELTypeAdapter()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure CEL json_parse: %w", err)
+	}
 	rc.CELEnv = env
 	rc.ensureContextBackfill()
 
@@ -175,6 +179,47 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 
 func (rc *ResolutionContext) TaskExecutionContext() contextual.TaskExecutionContext {
 	return rc.TemplateData.Context
+}
+
+func jsonParseEnvOption(adapter types.Adapter) cel.EnvOption {
+	return cel.Function(
+		"json_parse",
+		cel.Overload(
+			"json_parse_dyn",
+			[]*cel.Type{cel.DynType},
+			cel.DynType,
+			cel.UnaryBinding(jsonParseBinding(adapter)),
+		),
+	)
+}
+
+func jsonParseBinding(adapter types.Adapter) func(ref.Val) ref.Val {
+	return func(value ref.Val) ref.Val {
+		if value == nil {
+			return types.NewErr("json_parse: expected string")
+		}
+
+		raw, ok := value.(types.String)
+		if !ok {
+			strValue, ok := value.Value().(string)
+			if !ok {
+				return types.NewErr("json_parse: expected string")
+			}
+			raw = types.String(strValue)
+		}
+
+		input := string(raw)
+		if strings.TrimSpace(input) == "" {
+			return types.NewErr("json_parse: expected string")
+		}
+
+		var decoded interface{}
+		if err := json.Unmarshal([]byte(input), &decoded); err != nil {
+			return types.NewErr("json_parse: invalid JSON: %v", err)
+		}
+
+		return adapter.NativeToValue(decoded)
+	}
 }
 
 func scopeId(meta recipe.NodeMetadata, fallback string, scopeType ScopeType) string {

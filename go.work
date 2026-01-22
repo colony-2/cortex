@@ -2,7 +2,7 @@ go 1.25.5
 
 use (
 	./server/api
-	./server/astore
+        ./server/child
 	./server/cell
 	./server/core
 	./server/cortex

@@ -3,6 +3,7 @@ package recipe
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/cel"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -91,9 +92,50 @@ func checkOpInputs(opName string, inputs map[string]interface{}, line int, col i
 		return err
 	}
 	if err := yamlv3.Unmarshal(data, dest); err != nil {
+		if containsTemplateValue(inputs) {
+			// Allow template expressions to defer type checks until runtime.
+			return nil
+		}
 		return fmt.Errorf("invalid inputs for op [%s] at [%d:%d]: %w", opName, line, col, err)
 	}
 	return nil
+}
+
+func containsTemplateValue(value interface{}) bool {
+	switch v := value.(type) {
+	case string:
+		return isTemplateString(v)
+	case InputMap:
+		for _, item := range v {
+			if containsTemplateValue(item) {
+				return true
+			}
+		}
+	case map[string]interface{}:
+		for _, item := range v {
+			if containsTemplateValue(item) {
+				return true
+			}
+		}
+	case map[interface{}]interface{}:
+		for _, item := range v {
+			if containsTemplateValue(item) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if containsTemplateValue(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isTemplateString(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return strings.HasPrefix(trimmed, "{{") && strings.HasSuffix(trimmed, "}}")
 }
 
 type NodeImpl interface {

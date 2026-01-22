@@ -52,6 +52,36 @@ type testConsumeArtifactOutput struct {
 	Name string `json:"name"`
 }
 
+type testComplexMeta struct {
+	Label string   `json:"label"`
+	Flags []string `json:"flags"`
+}
+
+type testComplexConfigItem struct {
+	ID float64 `json:"id" yaml:"id"`
+}
+
+type testComplexConfigNested struct {
+	Name string `json:"name" yaml:"name"`
+}
+
+type testComplexConfig struct {
+	Enabled   bool                    `json:"enabled" yaml:"enabled"`
+	Threshold float64                 `json:"threshold" yaml:"threshold"`
+	Nested    testComplexConfigNested `json:"nested" yaml:"nested"`
+	Items     []testComplexConfigItem `json:"items" yaml:"items"`
+}
+
+type testComplexInput struct {
+	Config testComplexConfig `json:"config"`
+	Meta   testComplexMeta   `json:"meta"`
+}
+
+type testComplexOutput struct {
+	Config testComplexConfig `json:"config"`
+	Meta   testComplexMeta   `json:"meta"`
+}
+
 func init() {
 	recipeops.Register(
 		recipeops.NewActivityMappedOpV2[testWriteFileInput, testWriteFileOutput](
@@ -128,6 +158,22 @@ func init() {
 					return testEmitArtifactOutput{}, err
 				}
 				return testEmitArtifactOutput{Name: artifact.Name()}, nil
+			},
+		),
+		recipeops.NewActivityMappedOpV2[testComplexInput, testComplexOutput](
+			recipeops.OpMetadata{
+				Type:        "test_complex_input",
+				Description: "echoes complex structured input for template tests",
+				Version:     "1.0.0",
+			},
+			func(_ recipeops.OpDependencies, ctx context.Context, input testComplexInput) (testComplexOutput, error) {
+				if input.Meta.Label == "" {
+					return testComplexOutput{}, fmt.Errorf("meta.label is required")
+				}
+				return testComplexOutput{
+					Config: input.Config,
+					Meta:   input.Meta,
+				}, nil
 			},
 		),
 		recipeops.NewActivityMappedOpV2[testConsumeArtifactInput, testConsumeArtifactOutput](

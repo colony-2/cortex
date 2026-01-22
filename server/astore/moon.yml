@@ -1,6 +1,0 @@
-id: 'server/astore'
-language: 'go'
-type: 'library'
-
-project:
-  description: Artifact storage service

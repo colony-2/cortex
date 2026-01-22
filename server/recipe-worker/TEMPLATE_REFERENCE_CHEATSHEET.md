@@ -148,6 +148,19 @@ states:
 - `string()` - Convert to string
 - `bool()` - Convert to boolean
 
+## JSON Parsing
+Use `json_parse()` to turn a JSON string into a structured value (map/list) for op inputs.
+
+```yaml
+inputs:
+  config_json: '{"enabled":true,"threshold":2}'
+sequence:
+  - id: run
+    op: some_op
+    inputs:
+      config: "{{ json_parse(inputs.config_json) }}"  # map/object
+```
+
 ## Important Notes
 1. **String Interpolation**: `"Text {{ expr1 }} more {{ expr2 }}"` → interpolated string
 2. **Raw Types**: `"{{ single.expr }}"` → returns actual type (not stringified)

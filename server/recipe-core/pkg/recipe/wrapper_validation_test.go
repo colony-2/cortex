@@ -66,6 +66,36 @@ func TestOpInputs_Normal_InvalidType_ProducesError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestOpInputs_Template_AllowsTypeMismatch(t *testing.T) {
+	ops.Clear()
+	op := ops.NewActivityMappedOpV2[normalIn, normalOut](
+		ops.OpMetadata{Type: "normal"},
+		func(_ ops.OpDependencies, _ context.Context, in normalIn) (normalOut, error) {
+			return normalOut{M: in.N}, nil
+		},
+	)
+	ops.Register(op)
+
+	var n Node
+	err := yamlv3.Unmarshal([]byte("op: normal\ninputs: {n: \"{{ inputs.n }}\"}"), &n)
+	require.NoError(t, err)
+}
+
+func TestOpInputs_Template_AllowsNumericFieldExpression(t *testing.T) {
+	ops.Clear()
+	op := ops.NewActivityMappedOpV2[normalIn, normalOut](
+		ops.OpMetadata{Type: "normal"},
+		func(_ ops.OpDependencies, _ context.Context, in normalIn) (normalOut, error) {
+			return normalOut{M: in.N}, nil
+		},
+	)
+	ops.Register(op)
+
+	data := "id: demo\nversion: 1.0.0\nop: normal\ninputs: {n: \"{{ inputs.count + 1 }}\"}\n"
+	_, err := LoadRecipeFromString([]byte(data))
+	require.NoError(t, err)
+}
+
 func TestOpInputs_Wrapper_UnmarshalYAML_Validation_Invoked(t *testing.T) {
 	ops.Clear()
 	op := ops.NewActivityMappedOpV2[wrapperIn, normalOut](
@@ -85,4 +115,36 @@ func TestOpInputs_Wrapper_UnmarshalYAML_Validation_Invoked(t *testing.T) {
 	// When key is present, it should decode successfully
 	var n2 Node
 	require.NoError(t, yamlv3.Unmarshal([]byte("op: wrapped\ninputs: {must: yes}"), &n2))
+}
+
+func TestOpInputs_Template_AllowsNestedNumericFieldExpression(t *testing.T) {
+	ops.Clear()
+	type nestedCfg struct {
+		Threshold float64 `json:"threshold"`
+	}
+	type normalIn struct {
+		Config nestedCfg `json:"config"`
+	}
+	type normalOut struct {
+		Threshold float64 `json:"threshold"`
+	}
+
+	op := ops.NewActivityMappedOpV2[normalIn, normalOut](
+		ops.OpMetadata{Type: "normal"},
+		func(_ ops.OpDependencies, _ context.Context, in normalIn) (normalOut, error) {
+			return normalOut{Threshold: in.Config.Threshold}, nil
+		},
+	)
+	ops.Register(op)
+
+	data := `
+    id: demo
+    version: 1.0.0
+    op: normal
+    inputs:
+      config:
+        threshold: "{{ inputs.count + 1 }}"
+    `
+	_, err := LoadRecipeFromString([]byte(data))
+	require.NoError(t, err)
 }
