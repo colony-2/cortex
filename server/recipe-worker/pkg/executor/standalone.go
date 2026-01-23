@@ -41,14 +41,25 @@ func (e *StandaloneExecutor) Execute(
 	jobCtx contextual.JobContext,
 	gitRef string,
 ) (map[string]interface{}, error) {
+	return e.ExecuteWithRegistry(ctx, r, inputs, jobCtx, gitRef, func(_ string, recipeRef string) (*recipe.Recipe, error) {
+		if recipeRef != r.GetMetadata().ID {
+			return nil, fmt.Errorf("unknown recipe %s", recipeRef)
+		}
+		return &r, nil
+	})
+}
 
+// ExecuteWithRegistry runs a recipe with a custom registry for resolving recipe references.
+func (e *StandaloneExecutor) ExecuteWithRegistry(
+	ctx context.Context,
+	r recipe.Recipe,
+	inputs map[string]interface{},
+	jobCtx contextual.JobContext,
+	gitRef string,
+	registry workflow.RecipeProjectProvider,
+) (map[string]interface{}, error) {
 	control := &workflow.SWFWorkflowControl{
-		Registry: func(_ string, recipeRef string) (*recipe.Recipe, error) {
-			if recipeRef != r.GetMetadata().ID {
-				return nil, fmt.Errorf("unknown recipe %s", recipeRef)
-			}
-			return &r, nil
-		},
+		Registry: registry,
 	}
 
 	deps := ops2.NewServiceDepsBuilder().

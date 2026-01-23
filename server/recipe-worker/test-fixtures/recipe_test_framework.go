@@ -40,7 +40,8 @@ type TestCase struct {
 }
 
 type TestCases struct {
-	Tests []TestCase `yaml:"tests"`
+	Recipes []string  `yaml:"recipes"`
+	Tests   []TestCase `yaml:"tests"`
 }
 
 var (
@@ -318,6 +319,61 @@ func assertEqualWithTypeFlexibility(t *testing.T, expected, actual interface{}, 
 	return assert.Equal(t, normalizedExpected, prunedActual, msgAndArgs...)
 }
 
+func loadRecipeDefinition(path string) (recipe.Recipe, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return recipe.Recipe{}, fmt.Errorf("failed to read recipe file %s: %w", path, err)
+	}
+	var def recipe.Recipe
+	if err := yaml.Unmarshal(data, &def); err != nil {
+		return recipe.Recipe{}, fmt.Errorf("failed to parse recipe file %s: %w", path, err)
+	}
+	if def.GetMetadata().ID == "" {
+		return recipe.Recipe{}, fmt.Errorf("recipe id missing in %s", path)
+	}
+	return def, nil
+}
+
+func buildRecipeRegistry(primaryPath string, primary recipe.Recipe, secondaryPaths []string) (workflow.RecipeProjectProvider, error) {
+	recipes := make(map[string]*recipe.Recipe)
+	recipeSources := make(map[string]string)
+
+	addRecipe := func(path string, def recipe.Recipe) error {
+		id := def.GetMetadata().ID
+		if id == "" {
+			return fmt.Errorf("recipe id missing in %s", path)
+		}
+		if existing, ok := recipeSources[id]; ok {
+			return fmt.Errorf("duplicate recipe id %s in %s (already registered from %s)", id, path, existing)
+		}
+		recipes[id] = &def
+		recipeSources[id] = path
+		return nil
+	}
+
+	if err := addRecipe(primaryPath, primary); err != nil {
+		return nil, err
+	}
+
+	for _, relPath := range secondaryPaths {
+		recipePath := filepath.Join("recipes", relPath)
+		def, err := loadRecipeDefinition(recipePath)
+		if err != nil {
+			return nil, err
+		}
+		if err := addRecipe(recipePath, def); err != nil {
+			return nil, err
+		}
+	}
+
+	return func(_ string, recipeRef string) (*recipe.Recipe, error) {
+		if def, ok := recipes[recipeRef]; ok {
+			return def, nil
+		}
+		return nil, fmt.Errorf("unknown recipe %s", recipeRef)
+	}, nil
+}
+
 func RunTestOnAllRecipes(path string, t *testing.T) {
 	// Create standalone executor once for all tests
 	logger := zaptest.NewLogger(t)
@@ -361,6 +417,9 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 			err = yaml.Unmarshal(recipeData, &recipeDef)
 			require.NoError(t, err, "Failed to parse recipe file: %s", recipePath)
 
+			registry, err := buildRecipeRegistry(recipePath, recipeDef, testCases.Recipes)
+			require.NoError(t, err, "Failed to build recipe registry")
+
 			// Run table-driven tests
 			for _, tc := range testCases.Tests {
 				tc := tc // capture range variable
@@ -370,9 +429,9 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 					var result map[string]interface{}
 					var artifacts []string
 					if len(tc.WantArtifacts) > 0 {
-						result, artifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
+						result, artifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
 					} else {
-						result, err = exec.Execute(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef)
+						result, err = exec.ExecuteWithRegistry(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
 					}
 
 					// Check results
@@ -473,14 +532,10 @@ func executeRecipeWithArtifacts(
 	inputs map[string]interface{},
 	jobCtx contextual.JobContext,
 	gitRef string,
+	recipeRegistry workflow.RecipeProjectProvider,
 ) (map[string]interface{}, []string, error) {
 	control := &workflow.SWFWorkflowControl{
-		Registry: func(_ string, recipeRef string) (*recipe.Recipe, error) {
-			if recipeRef != recipeDef.GetMetadata().ID {
-				return nil, fmt.Errorf("unknown recipe %s", recipeRef)
-			}
-			return &recipeDef, nil
-		},
+		Registry: recipeRegistry,
 	}
 
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(control).Build()

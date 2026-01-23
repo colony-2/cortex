@@ -271,22 +271,6 @@ func NewActivityMappedOpV2[In any, Out any](metadata OpMetadata, handler Activit
 	return op
 }
 
-func NewActivityMappedOpWithManagementV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], service ManagementService) RegisterableOp {
-	op, err := NewOp().
-		WithType(metadata.Type).
-		WithDescription(metadata.Description).
-		WithVersion(metadata.Version).
-		WithDefaultTimeout(metadata.DefaultTimeout).
-		WithAcceptsArtifacts(metadata.AcceptsArtifacts).
-		AddStep(metadata.Type, NewStepWithDeps(handler)).
-		WithManagementService(service).
-		Build()
-	if err != nil {
-		panic(err)
-	}
-	return op
-}
-
 func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, handler ActivityHandlerV2[In, Out], getInputStruct func() interface{}) RegisterableOp {
 	var step Step
 	if getInputStruct != nil {
