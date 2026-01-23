@@ -9,6 +9,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
@@ -182,11 +183,11 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&CreateTicketAction{
-				BaseAction: BaseAction{
-					Actor: &ActorPayload{
+			&model.CreateTicketAction{
+				BaseAction: model.BaseAction{
+					Actor: &model.ActorPayload{
 						Type: "agent",
-						Agent: &ActorAgentPayload{
+						Agent: &model.ActorAgentPayload{
 							CellName:       "cell-x",
 							WorkflowName:   "recipe-alpha",
 							ExecutionID:    "exec-1",
@@ -200,8 +201,8 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 				Stage:     "Open",
 				State:     string(ticket.StateWorking),
 			},
-			&UpdateTicketAction{
-				existingTicketOp: existingTicketOp{
+			&model.UpdateTicketAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("TCK-001"),
 				},
 				ExpectedVersion: int64Ptr(1),
@@ -213,10 +214,10 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.Len(t, output.Results, 2)
-	createResult, ok := output.Results[0].(*CreateResult)
+	createResult, ok := output.Results[0].(*model.CreateResult)
 	require.True(t, ok)
 	require.Equal(t, ticket.ID("TCK-001"), createResult.ID)
-	updateResult, ok := output.Results[1].(*UpdateResult)
+	updateResult, ok := output.Results[1].(*model.UpdateResult)
 	require.True(t, ok)
 	require.NotNil(t, updateResult.Ticket)
 	require.Equal(t, ticket.Stage("cancelled"), updateResult.Ticket.Stage)
@@ -245,8 +246,8 @@ func TestExecute_AppendTicketNote(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&AppendTicketNoteAction{
-				existingTicketOp: existingTicketOp{
+			&model.AppendTicketNoteAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("TCK-42"),
 				},
 				Note:      " note ",
@@ -258,7 +259,7 @@ func TestExecute_AppendTicketNote(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.Len(t, output.Results, 1)
-	appendResult, ok := output.Results[0].(*AppendTicketNoteResult)
+	appendResult, ok := output.Results[0].(*model.AppendTicketNoteResult)
 	require.True(t, ok)
 	require.NotNil(t, appendResult.Event)
 	require.Equal(t, ticket.TicketEventID("EVT-1"), appendResult.Event.ID)
@@ -288,8 +289,8 @@ func TestExecute_UpdateWithoutExpectedVersion(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&UpdateTicketAction{
-				existingTicketOp: existingTicketOp{
+			&model.UpdateTicketAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("T-2"),
 				},
 				Stage: strPtr("Cancelled"),
@@ -300,7 +301,7 @@ func TestExecute_UpdateWithoutExpectedVersion(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.Len(t, output.Results, 1)
-	updateResult, ok := output.Results[0].(*UpdateResult)
+	updateResult, ok := output.Results[0].(*model.UpdateResult)
 	require.True(t, ok)
 	require.NotNil(t, updateResult.Ticket)
 	require.Equal(t, ticket.Stage("cancelled"), updateResult.Ticket.Stage)
@@ -314,8 +315,8 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&UpdateTicketAction{
-				existingTicketOp: existingTicketOp{
+			&model.UpdateTicketAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("T-1"),
 				},
 				ExpectedVersion: int64Ptr(2),
@@ -353,8 +354,8 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&ResetTicketAction{
-				existingTicketOp: existingTicketOp{
+			&model.ResetTicketAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("T-55"),
 				},
 				Reason: "cleanup",
@@ -365,7 +366,7 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
 	require.Len(t, output.Results, 1)
-	resetResult, ok := output.Results[0].(*ResetResult)
+	resetResult, ok := output.Results[0].(*model.ResetResult)
 	require.True(t, ok)
 	require.NotNil(t, resetResult.Ticket)
 	require.Equal(t, ticket.Stage("open"), resetResult.Ticket.Stage)
@@ -383,8 +384,8 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 	deps := newOpDeps()
 	input := Input{
 		Actions: ActionList{
-			&UpdateTicketAction{
-				existingTicketOp: existingTicketOp{
+			&model.UpdateTicketAction{
+				ExistingTicketOp: model.ExistingTicketOp{
 					TicketID: ticket.ID("T-1"),
 				},
 				ExpectedVersion: int64Ptr(2),

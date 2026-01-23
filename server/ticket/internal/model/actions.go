@@ -1,10 +1,7 @@
-package ticketop
+package model
 
 import (
 	"time"
-
-	"github.com/colony-2/colony2/server/ticket/internal/model"
-	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 )
 
 type ActionType string
@@ -49,7 +46,7 @@ type CreateTicketAction struct {
 
 type UpdateTicketAction struct {
 	BaseAction
-	existingTicketOp
+	ExistingTicketOp
 	ExpectedVersion *int64  `json:"expected_version,omitempty" yaml:"expected_version,omitempty" validate:"omitempty,gt=0"`
 	Stage           *string `json:"stage,omitempty" yaml:"stage,omitempty"`
 	State           *string `json:"state,omitempty" yaml:"state,omitempty"`
@@ -58,22 +55,22 @@ type UpdateTicketAction struct {
 
 type AppendTicketNoteAction struct {
 	BaseAction
-	existingTicketOp
+	ExistingTicketOp
 	Note      string     `json:"note" yaml:"note" validate:"required"`
 	EventTime *time.Time `json:"event_time,omitempty" yaml:"event_time,omitempty"`
 }
 
 type BaseMarkdownAction struct {
 	BaseAction
-	existingTicketOp
+	ExistingTicketOp
 	Name      string     `json:"name" yaml:"name" validate:"required"`
 	Path      string     `json:"path" yaml:"path" validate:"required"`
 	Reason    string     `json:"reason,omitempty" yaml:"reason,omitempty"`
 	EventTime *time.Time `json:"event_time,omitempty" yaml:"event_time,omitempty"`
 }
 
-type existingTicketOp struct {
-	TicketID model.ID `json:"ticket_id" validate:"required"`
+type ExistingTicketOp struct {
+	TicketID ID `json:"ticket_id" validate:"required"`
 }
 
 type MarkdownLinkAction struct {
@@ -88,18 +85,18 @@ type MarkdownRemoveAction struct {
 
 type AppendWorkflowAction struct {
 	BaseAction
-	existingTicketOp
-	WorkflowID string                   `json:"workflow_id" yaml:"workflow_id" validate:"required"`
-	RunID      string                   `json:"run_id" yaml:"run_id" validate:"required"`
-	Status     ticket.WorkflowEventType `json:"status" yaml:"status" validate:"required"`
-	EventTime  *time.Time               `json:"event_time,omitempty" yaml:"event_time,omitempty"`
+	ExistingTicketOp
+	WorkflowID string            `json:"workflow_id" yaml:"workflow_id" validate:"required"`
+	RunID      string            `json:"run_id" yaml:"run_id" validate:"required"`
+	Status     WorkflowEventType `json:"status" yaml:"status" validate:"required"`
+	EventTime  *time.Time        `json:"event_time,omitempty" yaml:"event_time,omitempty"`
 }
 
 type ResetTicketAction struct {
 	BaseAction
-	existingTicketOp
-	Reason        string                `json:"reason" yaml:"reason" validate:"required"`
-	AnchorEventID *ticket.TicketEventID `json:"anchor_event_id,omitempty" yaml:"anchor_event_id,omitempty"`
+	ExistingTicketOp
+	Reason        string         `json:"reason" yaml:"reason" validate:"required"`
+	AnchorEventID *TicketEventID `json:"anchor_event_id,omitempty" yaml:"anchor_event_id,omitempty"`
 }
 
 // ActorPayload represents action-level actor configuration.

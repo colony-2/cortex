@@ -13,6 +13,7 @@ import (
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	yamlv3 "gopkg.in/yaml.v3"
 	"gorm.io/gorm"
@@ -35,20 +36,20 @@ type (
 	}
 
 	Output struct {
-		Results []ActionResult `json:"results"`
+		Results []model.ActionResult `json:"results"`
 	}
 )
-type ActionList []Action
+type ActionList []model.Action
 
 func (l *ActionList) UnmarshalJSON(data []byte) error {
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	actions := make([]Action, 0, len(raw))
+	actions := make([]model.Action, 0, len(raw))
 	for _, item := range raw {
 		aux := struct {
-			Type ActionType `json:"type"`
+			Type model.ActionType `json:"type"`
 		}{}
 		if err := json.Unmarshal(item, &aux); err != nil {
 			return err
@@ -72,10 +73,10 @@ func (l *ActionList) UnmarshalYAML(node *yamlv3.Node) error {
 	if node.Kind != yamlv3.SequenceNode {
 		return fmt.Errorf("actions must be a sequence")
 	}
-	actions := make([]Action, 0, len(node.Content))
+	actions := make([]model.Action, 0, len(node.Content))
 	for _, item := range node.Content {
 		aux := struct {
-			Type ActionType `yaml:"type"`
+			Type model.ActionType `yaml:"type"`
 		}{}
 		if err := item.Decode(&aux); err != nil {
 			return err
@@ -95,24 +96,24 @@ func (l *ActionList) UnmarshalYAML(node *yamlv3.Node) error {
 	return nil
 }
 
-func unmarshalActionPayload(actionType ActionType, decode func(any) error) (Action, error) {
+func unmarshalActionPayload(actionType model.ActionType, decode func(any) error) (model.Action, error) {
 	switch actionType {
-	case ActionCreateTicket:
-		return decodeToType[CreateTicketAction](decode)
-	case ActionUpdateTicket:
-		return decodeToType[UpdateTicketAction](decode)
-	case ActionAppendTicketNote:
-		return decodeToType[AppendTicketNoteAction](decode)
-	case ActionLinkMarkdown:
-		return decodeToType[MarkdownLinkAction](decode)
-	case ActionOverrideMarkdown:
-		return decodeToType[MarkdownOverrideAction](decode)
-	case ActionRemoveMarkdown:
-		return decodeToType[MarkdownRemoveAction](decode)
-	case ActionAppendWorkflow:
-		return decodeToType[AppendWorkflowAction](decode)
-	case ActionResetTicket:
-		return decodeToType[ResetTicketAction](decode)
+	case model.ActionCreateTicket:
+		return decodeToType[model.CreateTicketAction](decode)
+	case model.ActionUpdateTicket:
+		return decodeToType[model.UpdateTicketAction](decode)
+	case model.ActionAppendTicketNote:
+		return decodeToType[model.AppendTicketNoteAction](decode)
+	case model.ActionLinkMarkdown:
+		return decodeToType[model.MarkdownLinkAction](decode)
+	case model.ActionOverrideMarkdown:
+		return decodeToType[model.MarkdownOverrideAction](decode)
+	case model.ActionRemoveMarkdown:
+		return decodeToType[model.MarkdownRemoveAction](decode)
+	case model.ActionAppendWorkflow:
+		return decodeToType[model.AppendWorkflowAction](decode)
+	case model.ActionResetTicket:
+		return decodeToType[model.ResetTicketAction](decode)
 	default:
 		return nil, fmt.Errorf("unsupported action type %q", actionType)
 	}
@@ -120,7 +121,7 @@ func unmarshalActionPayload(actionType ActionType, decode func(any) error) (Acti
 
 func decodeToType[T any, P interface {
 	*T
-	Action
+	model.Action
 }](decode func(any) error) (P, error) {
 	var payload T
 	p := P(&payload)
@@ -191,7 +192,7 @@ func execute(inv ops.OpDependencies, ctx context.Context, input Input) (Output, 
 	fallbackActor := defaultAutomationActor(inv)
 	batchStart := time.Now()
 
-	results := make([]ActionResult, 0, len(input.Actions))
+	results := make([]model.ActionResult, 0, len(input.Actions))
 
 	for _, action := range input.Actions {
 		actor, err := resolveActor(action.ActorPayload(), fallbackActor)
@@ -234,7 +235,7 @@ func resolveService(inv ops.OpDependencies) (ticket.Service, error) {
 	return svc, nil
 }
 
-func mapError(err error, partial []ActionResult) error {
+func mapError(err error, partial []model.ActionResult) error {
 	if err == nil {
 		return nil
 	}
@@ -259,26 +260,26 @@ func mapError(err error, partial []ActionResult) error {
 func executeAction(
 	ctx context.Context,
 	svc ticket.Service,
-	action Action,
+	action model.Action,
 	actor ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 
 	switch payload := action.(type) {
-	case *CreateTicketAction:
+	case *model.CreateTicketAction:
 		return handleCreateTicket(ctx, svc, *payload, actor)
-	case *UpdateTicketAction:
+	case *model.UpdateTicketAction:
 		return handleUpdateTicket(ctx, svc, *payload, actor)
-	case *AppendTicketNoteAction:
+	case *model.AppendTicketNoteAction:
 		return handleAppendTicketNote(ctx, svc, *payload, actor)
-	case *MarkdownRemoveAction:
+	case *model.MarkdownRemoveAction:
 		return handleMarkdownRemoveAction(ctx, svc, *payload, actor)
-	case *MarkdownOverrideAction:
+	case *model.MarkdownOverrideAction:
 		return handleMarkdownOverrideAction(ctx, svc, *payload, actor)
-	case *MarkdownLinkAction:
+	case *model.MarkdownLinkAction:
 		return handleMarkdownLinkAction(ctx, svc, *payload, actor)
-	case *AppendWorkflowAction:
+	case *model.AppendWorkflowAction:
 		return handleWorkflowEvent(ctx, svc, *payload, actor)
-	case *ResetTicketAction:
+	case *model.ResetTicketAction:
 		return handleResetTicket(ctx, svc, *payload, actor)
 	default:
 		return nil, fmt.Errorf("unsupported action type %T", action)
@@ -289,7 +290,7 @@ func defaultAutomationActor(inv ops.OpDependencies) ticket.Actor {
 	return ticket.NewAgentActor("unknown", "unknown", "unknown", "unknown")
 }
 
-func resolveActor(payload *ActorPayload, fallback ticket.Actor) (ticket.Actor, error) {
+func resolveActor(payload *model.ActorPayload, fallback ticket.Actor) (ticket.Actor, error) {
 	if payload == nil {
 		return fallback, nil
 	}
@@ -334,9 +335,9 @@ func normalizeStateValue(state string) (ticket.State, error) {
 func handleCreateTicket(
 	ctx context.Context,
 	svc ticket.Service,
-	payload CreateTicketAction,
+	payload model.CreateTicketAction,
 	actor ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	state, err := normalizeStateValue(payload.State)
 	if err != nil {
 		return nil, err
@@ -358,15 +359,15 @@ func handleCreateTicket(
 	if err != nil {
 		return nil, err
 	}
-	return &CreateResult{Ticket: *created}, nil
+	return &model.CreateResult{Ticket: *created}, nil
 }
 
 func handleUpdateTicket(
 	ctx context.Context,
 	svc ticket.Service,
-	payload UpdateTicketAction,
+	payload model.UpdateTicketAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	input := ticket.UpdateInput{}
 	input.ExpectedVersion = toVersion(payload.ExpectedVersion)
 	var fields int
@@ -404,15 +405,15 @@ func handleUpdateTicket(
 	if err != nil {
 		return nil, err
 	}
-	return &UpdateResult{Ticket: updated}, nil
+	return &model.UpdateResult{Ticket: updated}, nil
 }
 
 func handleAppendTicketNote(
 	ctx context.Context,
 	svc ticket.Service,
-	payload AppendTicketNoteAction,
+	payload model.AppendTicketNoteAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	actor, err := resolveActor(payload.Actor, fallback)
 	if err != nil {
 		return nil, err
@@ -429,7 +430,7 @@ func handleAppendTicketNote(
 	if err != nil {
 		return nil, err
 	}
-	return &AppendTicketNoteResult{
+	return &model.AppendTicketNoteResult{
 		Event: event,
 	}, nil
 }
@@ -437,27 +438,27 @@ func handleAppendTicketNote(
 func handleMarkdownRemoveAction(
 	ctx context.Context,
 	svc ticket.Service,
-	payload MarkdownRemoveAction,
+	payload model.MarkdownRemoveAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	return handleMarkdownEvent(ctx, svc, ticket.MarkdownDocRemoved, payload.BaseMarkdownAction, fallback)
 }
 
 func handleMarkdownLinkAction(
 	ctx context.Context,
 	svc ticket.Service,
-	payload MarkdownLinkAction,
+	payload model.MarkdownLinkAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	return handleMarkdownEvent(ctx, svc, ticket.MarkdownDocAttached, payload.BaseMarkdownAction, fallback)
 }
 
 func handleMarkdownOverrideAction(
 	ctx context.Context,
 	svc ticket.Service,
-	payload MarkdownOverrideAction,
+	payload model.MarkdownOverrideAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	return handleMarkdownEvent(ctx, svc, ticket.MarkdownDocOverridden, payload.BaseMarkdownAction, fallback)
 }
 
@@ -465,9 +466,9 @@ func handleMarkdownEvent(
 	ctx context.Context,
 	svc ticket.Service,
 	markdownEventType ticket.MarkdownDocEventType,
-	payload BaseMarkdownAction,
+	payload model.BaseMarkdownAction,
 	fallback ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	actor, err := resolveActor(payload.Actor, fallback)
 	if err != nil {
 		return nil, err
@@ -488,15 +489,15 @@ func handleMarkdownEvent(
 	if err != nil {
 		return nil, err
 	}
-	return &MarkdownResult{Event: event}, nil
+	return &model.MarkdownResult{Event: event}, nil
 }
 
 func handleWorkflowEvent(
 	ctx context.Context,
 	svc ticket.Service,
-	payload AppendWorkflowAction,
+	payload model.AppendWorkflowAction,
 	actor ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	eventTime := time.Now().UTC()
 	if payload.EventTime != nil {
 		eventTime = payload.EventTime.UTC()
@@ -513,15 +514,15 @@ func handleWorkflowEvent(
 	if err != nil {
 		return nil, err
 	}
-	return &WorkflowResult{Event: event}, nil
+	return &model.WorkflowResult{Event: event}, nil
 }
 
 func handleResetTicket(
 	ctx context.Context,
 	svc ticket.Service,
-	payload ResetTicketAction,
+	payload model.ResetTicketAction,
 	actor ticket.Actor,
-) (ActionResult, error) {
+) (model.ActionResult, error) {
 	input := ticket.TicketResetInput{
 		Actor:  actor,
 		Reason: strings.TrimSpace(payload.Reason),
@@ -537,19 +538,19 @@ func handleResetTicket(
 	if err != nil {
 		return nil, err
 	}
-	return &ResetResult{
+	return &model.ResetResult{
 		Reset:  reset,
 		Ticket: refreshed,
 	}, nil
 }
 
-func markdownEventType(action ActionType) (ticket.MarkdownDocEventType, error) {
+func markdownEventType(action model.ActionType) (ticket.MarkdownDocEventType, error) {
 	switch action {
-	case ActionLinkMarkdown:
+	case model.ActionLinkMarkdown:
 		return ticket.MarkdownDocAttached, nil
-	case ActionOverrideMarkdown:
+	case model.ActionOverrideMarkdown:
 		return ticket.MarkdownDocOverridden, nil
-	case ActionRemoveMarkdown:
+	case model.ActionRemoveMarkdown:
 		return ticket.MarkdownDocRemoved, nil
 	default:
 		return "", fmt.Errorf("unsupported markdown action %s", action)
