@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
@@ -17,8 +18,18 @@ type capture struct {
 	options Options
 }
 
+var _ ops.OpDependencies = (*fakeOpDependencies)(nil)
+
 type fakeOpDependencies struct {
 	artifacts []swf.Artifact
+}
+
+func (f *fakeOpDependencies) JobTool() ops.JobTool {
+	return nil
+}
+
+func (f *fakeOpDependencies) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
+	return nil, nil
 }
 
 func (f *fakeOpDependencies) AddOutputArtifact(artifact swf.Artifact) error {

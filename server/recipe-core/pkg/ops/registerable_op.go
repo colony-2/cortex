@@ -349,6 +349,7 @@ func DecodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 		TagName:     "json", // Use JSON tags instead of mapstructure tags
 		Result:      input,
 		ErrorUnused: true,
+		DecodeHook:  DecodeHookMapDecoder,
 	}
 	decoder, err := mapstructure.NewDecoder(config)
 	if err != nil {
@@ -361,6 +362,30 @@ func DecodeWithJsonTags[T any](data map[string]interface{}, input *T) error {
 	}
 
 	return nil
+}
+
+type MapDecoder interface {
+	DecodeFromMap(input any) error
+}
+
+func DecodeHookMapDecoder(from reflect.Type, to reflect.Type, data any) (any, error) {
+	_ = from
+	decoderType := reflect.TypeOf((*MapDecoder)(nil)).Elem()
+	if to.Implements(decoderType) {
+		target := reflect.New(to).Elem().Interface().(MapDecoder)
+		if err := target.DecodeFromMap(data); err != nil {
+			return nil, err
+		}
+		return target, nil
+	}
+	if reflect.PointerTo(to).Implements(decoderType) {
+		target := reflect.New(to).Interface().(MapDecoder)
+		if err := target.DecodeFromMap(data); err != nil {
+			return nil, err
+		}
+		return reflect.ValueOf(target).Elem().Interface(), nil
+	}
+	return data, nil
 }
 
 // ManagementService provides HTTP endpoints for managing input requests

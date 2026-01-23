@@ -50,7 +50,7 @@ func (v *RecipeWorkerCELValidator) ValidateCEL(ctx context.Context, projectID pr
 	jobCtx := contextual.JobContext{}
 	gitCtx := contextual.GitCommitContext{}
 
-	_, err := compiler.ExecuteRecipe(execCtx, rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{
+	_, _, err := compiler.ExecuteRecipe(execCtx, rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{
 		Mode: compiler.ExecutionModeValidate,
 		Validation: compiler.ValidationOptions{
 			Mode:       compiler.ValidateAll,
@@ -78,3 +78,7 @@ func (n *noopJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
 func (n *noopJobContext) DoTask(swf.RunPolicy, string, swf.TaskData) (swf.TaskData, error) {
 	return nil, fmt.Errorf("unexpected task invocation")
 }
+
+func (n *noopJobContext) AwaitJobs(jobIds ...string) error { return nil }
+
+var _ swf.JobContext = &noopJobContext{}

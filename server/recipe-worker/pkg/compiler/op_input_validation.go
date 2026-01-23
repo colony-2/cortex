@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -63,6 +64,7 @@ func validateOpInputType(inputType reflect.Type, input map[string]interface{}, a
 		TagName:     "json",
 		Result:      target,
 		ErrorUnused: true,
+		DecodeHook:  coreops.DecodeHookMapDecoder,
 	})
 	if err != nil {
 		return err

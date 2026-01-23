@@ -1,6 +1,0 @@
-id: 'server/child'
-language: 'go'
-type: 'library'
-
-project:
-  description: Child recipe ops

@@ -96,6 +96,37 @@ func (l *ActionList) UnmarshalYAML(node *yamlv3.Node) error {
 	return nil
 }
 
+func (l *ActionList) DecodeFromMap(input any) error {
+	raw, ok := input.([]any)
+	if !ok {
+		return fmt.Errorf("actions must be a list")
+	}
+	actions := make([]model.Action, 0, len(raw))
+	for _, item := range raw {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			return fmt.Errorf("action must be a map")
+		}
+		typeValue, ok := entry["type"].(string)
+		if !ok || strings.TrimSpace(typeValue) == "" {
+			return fmt.Errorf("action type is required")
+		}
+		payload, err := json.Marshal(entry)
+		if err != nil {
+			return err
+		}
+		action, err := unmarshalActionPayload(model.ActionType(typeValue), func(v any) error {
+			return json.Unmarshal(payload, v)
+		})
+		if err != nil {
+			return err
+		}
+		actions = append(actions, action)
+	}
+	*l = actions
+	return nil
+}
+
 func unmarshalActionPayload(actionType model.ActionType, decode func(any) error) (model.Action, error) {
 	switch actionType {
 	case model.ActionCreateTicket:
@@ -192,19 +223,9 @@ func execute(inv ops.OpDependencies, ctx context.Context, input Input) (Output, 
 	fallbackActor := defaultAutomationActor(inv)
 	batchStart := time.Now()
 
-	results := make([]model.ActionResult, 0, len(input.Actions))
-
-	for _, action := range input.Actions {
-		actor, err := resolveActor(action.ActorPayload(), fallbackActor)
-		if err != nil {
-			return Output{}, mapError(err, results)
-		}
-		result, err := executeAction(ctx, svc, action, actor)
-		if err != nil {
-			wrapped := mapError(err, results)
-			return Output{}, wrapped
-		}
-		results = append(results, result)
+	results, err := svc.ApplyActions(ctx, input.Actions, fallbackActor)
+	if err != nil {
+		return Output{}, mapError(err, results)
 	}
 
 	output := Output{Results: results}
@@ -242,7 +263,7 @@ func mapError(err error, partial []model.ActionResult) error {
 	detail := Output{Results: partial}
 
 	switch {
-	case errors.Is(err, errMissingActions), errors.Is(err, errCreateWithTicketID), errors.Is(err, errTicketIDRequired), errors.Is(err, errUpdateNoFields), errors.Is(err, errInvalidExpectedVersion):
+	case errors.Is(err, errMissingActions), errors.Is(err, errCreateWithTicketID), errors.Is(err, errTicketIDRequired), errors.Is(err, errUpdateNoFields), errors.Is(err, errInvalidExpectedVersion), errors.Is(err, ticket.ErrUpdateNoFields):
 		return workflow.NewNonRetryableApplicationError(err.Error(), err, detail)
 	case errors.Is(err, ticket.ErrVersionConflict):
 		return workflow.NewNonRetryableApplicationError(err.Error(), err, detail)
@@ -355,11 +376,11 @@ func handleCreateTicket(
 		State:       state,
 		Actor:       actor,
 	}
-	created, err := svc.CreateTicket(ctx, input)
+	created, jobID, err := svc.CreateTicket(ctx, input)
 	if err != nil {
 		return nil, err
 	}
-	return &model.CreateResult{Ticket: *created}, nil
+	return &model.CreateResult{Ticket: *created, JobID: jobID}, nil
 }
 
 func handleUpdateTicket(

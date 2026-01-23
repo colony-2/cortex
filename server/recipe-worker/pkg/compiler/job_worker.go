@@ -76,13 +76,13 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
-	out, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
+	out, artifacts, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
 
 	if err != nil {
 		logger.Error("recipe execution failed", "error", err)
 		return nil, err
 	}
-	taskData, err := swf.NewTaskData(out)
+	taskData, err := swf.NewTaskData(out, artifacts...)
 	if err != nil {
 		return nil, err
 	}

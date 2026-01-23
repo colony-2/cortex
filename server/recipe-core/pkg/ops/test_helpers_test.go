@@ -11,6 +11,14 @@ type testDeps struct {
 	artifacts []swf.Artifact
 }
 
+func (d *testDeps) JobTool() JobTool {
+	return nil
+}
+
+func (d *testDeps) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
+	return nil, nil
+}
+
 func (d *testDeps) AddOutputArtifact(artifact swf.Artifact) error {
 	return nil
 }

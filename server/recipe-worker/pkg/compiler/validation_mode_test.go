@@ -19,6 +19,10 @@ type countingJobContext struct {
 	calls  int
 }
 
+func (c *countingJobContext) AwaitJobs(jobIds ...string) error {
+	return nil
+}
+
 func (c *countingJobContext) GetJobKey() swf.JobKey            { return c.jobKey }
 func (c *countingJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (c *countingJobContext) AwaitDuration(swf.Duration) error { return nil }
@@ -97,7 +101,7 @@ func TestValidationAllowsNilInputsAndReturnsZeroOutputs(t *testing.T) {
 		},
 	}
 
-	result, err := ExecuteRecipe(ctx, rec, nil, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
+	result, _, err := ExecuteRecipe(ctx, rec, nil, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"value": "", "flag": false}, result)
 	require.Equal(t, 0, inner.calls)
@@ -130,7 +134,7 @@ func TestValidationClampsRunIndex(t *testing.T) {
 		},
 	}
 
-	result, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
+	result, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"value": "", "flag": false}, result)
 }
@@ -176,7 +180,7 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 		},
 	}
 
-	_, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
+	_, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.NoError(t, err)
 }
 
@@ -228,13 +232,13 @@ func TestValidateAllCatchesLaterStateErrors(t *testing.T) {
 		},
 	}
 
-	_, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{
+	_, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{
 		Mode:       ExecutionModeValidate,
 		Validation: ValidationOptions{Mode: ValidateAll},
 	})
 	require.Error(t, err)
 
-	_, err = ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{
+	_, _, err = ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{
 		Mode:       ExecutionModeValidate,
 		Validation: ValidationOptions{Mode: ValidatePathOnly},
 	})
@@ -267,6 +271,6 @@ func TestValidationRejectsInvalidCEL(t *testing.T) {
 		},
 	}
 
-	_, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
+	_, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.Error(t, err)
 }

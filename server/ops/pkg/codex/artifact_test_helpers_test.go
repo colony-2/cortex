@@ -30,6 +30,10 @@ type artifactValidatingJobContext struct {
 	t     *testing.T
 }
 
+func (c *artifactValidatingJobContext) AwaitJobs(jobIds ...string) error {
+	return nil
+}
+
 func (c *artifactValidatingJobContext) GetJobKey() swf.JobKey {
 	return c.inner.GetJobKey()
 }

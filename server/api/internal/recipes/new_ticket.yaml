@@ -3,9 +3,9 @@ version: "0.0.1"
 desc: Default new ticket auto-complete recipe
 op: ticket.manage
 inputs:
-  ticket_id: "{{ context.actor.ticket_id }}"
   actions:
     - type: update_ticket
+      ticket_id: "{{ context.actor.ticket_id }}"
       expected_version: 1
       stage: "completed"
       state: "waiting_user"

@@ -19,6 +19,10 @@ type validationJobContext struct {
 	gitContext contextual.GitCommitContext
 }
 
+func (v *validationJobContext) AwaitJobs(jobIds ...string) error {
+	return v.AwaitJobs(jobIds...)
+}
+
 func wrapValidationContext(ctx workflow.Context, commitContext contextual.GitCommitContext) workflow.Context {
 	if _, ok := ctx.JobContext.(*validationJobContext); ok {
 		return ctx

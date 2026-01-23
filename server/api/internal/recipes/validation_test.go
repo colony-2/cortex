@@ -20,6 +20,7 @@ type noopJobContext struct{}
 func (n *noopJobContext) GetJobKey() swf.JobKey            { return swf.JobKey{TenantId: "tenant", JobId: "job"} }
 func (n *noopJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (n *noopJobContext) AwaitDuration(swf.Duration) error { return nil }
+func (n *noopJobContext) AwaitJobs(...string) error        { return nil }
 func (n *noopJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
 	return nil, fmt.Errorf("not supported")
 }
@@ -65,9 +66,9 @@ sequence:
       prompt: "{{ sequence.q1.outputs.fields.response }}"
   - op: ticket.manage
     inputs:
-      ticket_id: "{{ context.actor.ticket_id }}"
       actions:
         - type: update_ticket
+          ticket_id: "{{ context.actor.ticket_id }}"
           expected_version: 1
           stage: "__completed__"
           state: "waiting_user"
@@ -86,7 +87,7 @@ sequence:
 `))
 		require.NoError(t, err)
 
-		_, err = compiler.ExecuteRecipe(ctx, *rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{Mode: compiler.ExecutionModeValidate})
+		_, _, err = compiler.ExecuteRecipe(ctx, *rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{Mode: compiler.ExecutionModeValidate})
 		require.Error(t, err)
 	})
 
@@ -105,9 +106,9 @@ sequence:
       prompt: "{{ sequence.q1.outputs.response }}"
   - op: ticket.manage
     inputs:
-      ticket_id: "{{ context.actor.ticket_id }}"
       actions:
         - type: update_ticket
+          ticket_id: "{{ context.actor.ticket_id }}"
           expected_version: 1
           stage: "__completed__"
           state: "waiting_user"
@@ -126,7 +127,7 @@ sequence:
 `))
 		require.NoError(t, err)
 
-		result, err := compiler.ExecuteRecipe(ctx, *rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{Mode: compiler.ExecutionModeValidate})
+		result, _, err := compiler.ExecuteRecipe(ctx, *rec, nil, jobCtx, gitCtx, compiler.ExecutionOptions{Mode: compiler.ExecutionModeValidate})
 		require.NoError(t, err)
 		require.NotNil(t, result)
 	})

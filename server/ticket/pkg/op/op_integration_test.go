@@ -42,7 +42,7 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 
 	ticketSvc, err := ticket.NewServiceFromDB(pg.DB)
 	require.NoError(t, err)
-	created, err := ticketSvc.CreateTicket(ctx, ticket.CreateInput{
+	created, _, err := ticketSvc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:        "cell-integration",
 		ProjectID:   ticket.ProjectID(proj.ID),
 		Title:       "Integration Test",

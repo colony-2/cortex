@@ -90,7 +90,7 @@ func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) erro
 }
 
 func (s *SWFWorkflowControl) GetArtifactLazy(ctx context.Context, tenantId string, key swf.ArtifactKey) swf.Artifact {
-	return key.ToLazyArtifact(s.Engine, tenantId), nil
+	return key.ToLazyArtifact(s.Engine, tenantId)
 }
 
 type taskDataGetter struct {

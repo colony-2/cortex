@@ -342,6 +342,19 @@ func TestWithGitWorkspaceProducesDiffAndThinPack(t *testing.T) {
 	assert.True(t, artifactNames["diff_from_parent.diff"], "expected parent diff artifact")
 }
 
+type stubJobTool struct {
+	JobKey swf.JobKey
+}
+
+func (s *stubJobTool) GetJobKey() swf.JobKey {
+	return s.JobKey
+}
+func (s *stubJobTool) AwaitJobs(jobIds ...string) error {
+	return nil
+}
+
+var _ recipeops.JobTool = &stubJobTool{}
+
 func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -384,7 +397,7 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 	repoPath, baseHash, _ := initTwoCommitRepo(t)
 	input := map[string]interface{}{"message": "hi"}
 	jobKey := swf.JobKey{TenantId: "test", JobId: "job-3"}
-	_, _, err = handler(context.Background(), jobKey, ActivityInvocationRequest{
+	_, _, err = handler(context.Background(), &stubJobTool{JobKey: jobKey}, ActivityInvocationRequest{
 		Input: input,
 		GitTaskContext: gitstate.GlobalGitTaskContext{
 			BaseRepo:         repoPath,
@@ -407,17 +420,17 @@ func TestEnableActivitiesInWorkerInjectsDependencies(t *testing.T) {
 
 type capturingWorker struct {
 	t        *testing.T
-	handlers map[string]func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
+	handlers map[string]func(context.Context, recipeops.JobTool, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error)
 }
 
 func newCapturingWorker(t *testing.T) *capturingWorker {
-	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))}
+	return &capturingWorker{t: t, handlers: make(map[string]func(context.Context, recipeops.JobTool, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))}
 }
 
 func (c *capturingWorker) RegisterActivityWithOptions(a interface{}, options activity.RegisterOptions) {
-	handler, ok := a.(func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))
+	handler, ok := a.(func(context.Context, recipeops.JobTool, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error))
 	if !ok {
-		return
+		panic(fmt.Errorf("%s expected func(context.Context, swf.JobKey, ActivityInvocationRequest, []swf.Artifact) (ActivityInvocationOutput, []swf.Artifact, error), got %T", options.Name, a))
 	}
 	c.handlers[options.Name] = handler
 }

@@ -12,6 +12,7 @@ func (isResult) isResultType() {}
 type CreateResult struct {
 	isResult
 	Ticket `json:"ticket"`
+	JobID  string `json:"job_id,omitempty"`
 }
 
 type UpdateResult struct {

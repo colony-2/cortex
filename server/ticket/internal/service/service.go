@@ -38,6 +38,7 @@ var (
 	ErrInvalidEventPayload = errors.New("ticket: invalid event payload")
 	ErrEventNotFound       = errors.New("ticket: event not found")
 	ErrResetNoEvents       = errors.New("ticket: no events to reset")
+	ErrUpdateNoFields      = errors.New("ticket: update requires at least one field")
 )
 
 type Clock interface {
@@ -45,8 +46,9 @@ type Clock interface {
 }
 
 type Service interface {
-	CreateTicket(ctx context.Context, input CreateInput) (*model.Ticket, error)
+	CreateTicket(ctx context.Context, input CreateInput) (*model.Ticket, string, error)
 	UpdateTicket(ctx context.Context, id model.ID, patch UpdateInput) (*model.Ticket, error)
+	ApplyActions(ctx context.Context, actions []model.Action, fallbackActor model.Actor) ([]model.ActionResult, error)
 	SearchTickets(ctx context.Context, filter model.SearchFilter) (store.Iterator[*model.Ticket], error)
 	SearchStages(ctx context.Context, filter model.SearchFilter) (store.Iterator[model.Stage], error)
 	GetStates(ctx context.Context) ([]model.State, error)
@@ -131,40 +133,40 @@ type systemClock struct{}
 
 func (systemClock) Now() time.Time { return time.Now().UTC() }
 
-func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.Ticket, error) {
+func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.Ticket, string, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Stage = normalizeStage(input.Stage)
 	input.Actor = sanitizeActorFields(input.Actor)
 
 	if err := s.validateCreateInput(input); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	actor, err := s.normalizeActor(input.Actor)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	projectID := strings.TrimSpace(string(input.ProjectID))
 	if projectID == "" {
-		return nil, ErrInvalidProject
+		return nil, "", ErrInvalidProject
 	}
 	projectRecord, err := s.projects.GetProject(ctx, project.ID(projectID))
 	if err != nil {
 		if errors.Is(err, project.ErrNotFound) {
-			return nil, ErrInvalidProject
+			return nil, "", ErrInvalidProject
 		}
-		return nil, err
+		return nil, "", err
 	}
 
 	cellRecord, err := s.resolveCell(ctx, project.ID(projectID), input.Cell)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	ticketID, err := s.idGen.NewID()
 	if err != nil {
-		return nil, errors.Join(ErrIDGeneration, err)
+		return nil, "", errors.Join(ErrIDGeneration, err)
 	}
 
 	now := s.clock.Now()
@@ -188,6 +190,7 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	ticket.ValidUntil = infinity()
 
 	var created *model.Ticket
+	var jobID string
 	err = s.store.WithTx(ctx, func(ctx context.Context, st store.Store) error {
 		if err := st.Create(ctx, ticket); err != nil {
 			return err
@@ -195,23 +198,25 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 
 		// Kick off recipe job only when dependencies are provided.
 		if s.engine != nil && s.recipes != nil {
-			if err := s.startTicketRecipe(ctx, st, ticket, projectRecord, cellRecord); err != nil {
+			jobKey, err := s.startTicketRecipe(ctx, st, ticket, projectRecord, cellRecord)
+			if err != nil {
 				return err
 			}
+			jobID = jobKey
 		}
 
 		created = ticket
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if err := s.attachLastReset(ctx, created); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return created, nil
+	return created, jobID, nil
 }
 
 func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInput) (*model.Ticket, error) {
@@ -470,18 +475,18 @@ func applyTicketResetMetadata(ticket *model.Ticket, reset *model.TicketReset) {
 	ticket.LastResetAt = &atCopy
 }
 
-func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket *model.Ticket, projectRecord *project.Project, cellRecord *cell.Cell) error {
+func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket *model.Ticket, projectRecord *project.Project, cellRecord *cell.Cell) (string, error) {
 	if st == nil || ticket == nil || projectRecord == nil || cellRecord == nil {
-		return errors.New("ticket: missing dependencies for recipe start")
+		return "", errors.New("ticket: missing dependencies for recipe start")
 	}
 
 	recipeName := defaultRecipeName(cellRecord, projectRecord)
 	rec, err := s.recipes(string(ticket.ProjectID), recipeName)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if rec == nil {
-		return fmt.Errorf("ticket: recipe %q resolved to nil", recipeName)
+		return "", fmt.Errorf("ticket: recipe %q resolved to nil", recipeName)
 	}
 
 	repo := projectRecord.GitRepoPath
@@ -495,9 +500,6 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	if cellRecord.GitBranch != nil && strings.TrimSpace(*cellRecord.GitBranch) != "" {
 		ref = strings.TrimSpace(*cellRecord.GitBranch)
 	}
-
-
-
 
 	//blobStore := filepath.Join(projectRecord.GitRepoPath, ".colony2", "blobstore")
 	//filepath.Join(blobStore, "artifacts")
@@ -542,7 +544,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 
 	jobKey, err := starter.StartRecipeJob(jobCtx, startJob, s.engine, *rec)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	workflowPayload := model.WorkflowEventPayload{
@@ -551,7 +553,10 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 		RunID:      model.WorkflowRunID(jobKey.JobId),
 	}
 	_, err = s.appendEventInTx(ctx, st, ticket, ticket.ID, ticket.Creator, model.TicketEventKindWorkflow, model.TicketEventBody{Workflow: &workflowPayload}, s.clock.Now())
-	return err
+	if err != nil {
+		return "", err
+	}
+	return jobKey.JobId, nil
 }
 
 func (s *service) resolveCell(ctx context.Context, projectID project.ID, name core.CellName) (*cell.Cell, error) {

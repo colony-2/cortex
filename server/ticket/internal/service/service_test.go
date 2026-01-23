@@ -310,7 +310,7 @@ func TestCreateTicketCompletedStageSetsTimestamp(t *testing.T) {
 	require.NoError(t, err)
 
 	actor := NewUserActor("user@example.com")
-	created, err := svc.CreateTicket(context.Background(), CreateInput{
+	created, _, err := svc.CreateTicket(context.Background(), CreateInput{
 		Cell:      "cell-a",
 		ProjectID: testProjectID,
 		Title:     "Demo",
@@ -338,7 +338,7 @@ func TestCreateTicketInvalidState(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = svc.CreateTicket(context.Background(), CreateInput{
+	_, _, err = svc.CreateTicket(context.Background(), CreateInput{
 		Cell:      "cell-a",
 		ProjectID: testProjectID,
 		Title:     "Demo",
@@ -630,8 +630,8 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 			},
 		},
 		EventStore: &stubEventStore{},
-		Projects: okProjects,
-		Cells:    okCells,
+		Projects:   okProjects,
+		Cells:      okCells,
 	})
 	require.NoError(t, err)
 
@@ -684,7 +684,7 @@ func TestResetTicketMissingAnchor(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	created, err := svc.CreateTicket(ctx, CreateInput{
+	created, _, err := svc.CreateTicket(ctx, CreateInput{
 		Cell:      "cell-reset",
 		ProjectID: proj.ID,
 		Title:     "Rollback",

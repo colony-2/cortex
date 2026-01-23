@@ -111,7 +111,7 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+	created, _, err := svc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:      "cell-a",
 		ProjectID: projectID,
 		Title:     "Proposal review",
@@ -204,7 +204,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 
 	creator := ticket.NewUserActor("user@example.com")
 
-	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+	created, _, err := svc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:      "cell-a",
 		ProjectID: projectID,
 		Title:     "Lifecycle",
@@ -418,7 +418,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 
 	actor := ticket.NewUserActor("owner@example.com")
 
-	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+	created, _, err := svc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:      "cell-reset",
 		ProjectID: projectID,
 		Title:     "Concurrent",
@@ -564,7 +564,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 
 	creator := ticket.NewUserActor("stage@example.com")
 
-	created, err := svc.CreateTicket(ctx, ticket.CreateInput{
+	created, _, err := svc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:      "cell-stage",
 		ProjectID: projectID,
 		Title:     "Stage reset",

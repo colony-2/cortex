@@ -92,7 +92,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 		taskWorkers = append(taskWorkers, tw)
 	}
 	engine, err := swf.NewEngineBuilder().
-		WithAwaitRecycleThreshold(5 * time.Second).
+		WithAwaitRecycleThreshold(5*time.Second).
 		WithPostgresDSN(pg.DSN()).
 		WithStrata(strata.BaseURL).
 		WithStrataAPIKey(strata.APIKey).
@@ -142,7 +142,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	created, err := ticketSvc.CreateTicket(ctx, ticket.CreateInput{
+	created, jobID, err := ticketSvc.CreateTicket(ctx, ticket.CreateInput{
 		Cell:        core.CellName(cellRecord.Name),
 		ProjectID:   proj.ID,
 		Title:       "autostart",
@@ -152,13 +152,14 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 		Actor:       ticket.NewUserActor("tester@example.com"),
 	})
 	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
 
 	// Fetch workflow event to learn the job id.
 	iter, err := ticketSvc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
 	defer iter.Close(ctx)
 
-	var jobID string
+	var workflowJobID string
 	for {
 		ev, err := iter.Next(ctx)
 		if err != nil {
@@ -168,11 +169,12 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 			require.NoError(t, err)
 		}
 		if ev != nil && ev.WorkflowData.WorkflowID != "" {
-			jobID = string(ev.WorkflowData.WorkflowID)
+			workflowJobID = string(ev.WorkflowData.WorkflowID)
 			break
 		}
 	}
-	require.NotEmpty(t, jobID, "expected workflow event with job id")
+	require.NotEmpty(t, workflowJobID, "expected workflow event with job id")
+	require.Equal(t, jobID, workflowJobID)
 
 	// Wait for job completion
 	require.NoError(t, swf.WaitForJobToComplete(ctx, 30*time.Second, swf.JobKey{TenantId: string(proj.ID), JobId: jobID}, engine))

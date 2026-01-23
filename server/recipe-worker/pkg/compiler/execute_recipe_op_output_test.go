@@ -76,7 +76,7 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 		},
 	}
 
-	result, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx)
+	result, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx)
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"value": true}, result, "ExecuteRecipe should return op outputs for single-op recipes")
 	require.Equal(t, 1, stub.calls)
@@ -91,6 +91,12 @@ type stubJobContext struct {
 	taskType     string
 	lastTaskType string
 }
+
+func (s *stubJobContext) AwaitJobs(jobIds ...string) error {
+	return nil
+}
+
+var _ swf.JobContext = &stubJobContext{}
 
 func (s *stubJobContext) GetJobKey() swf.JobKey            { return s.jobKey }
 func (s *stubJobContext) Logger() *slog.Logger             { return slog.Default() }

@@ -8,6 +8,35 @@ import (
 )
 
 func registerTypedTestActivities() {
+	type testComplexInput struct {
+		Config map[string]interface{} `json:"config"`
+		Meta   struct {
+			Label string   `json:"label"`
+			Flags []string `json:"flags"`
+		} `json:"meta"`
+	}
+
+	type testComplexOutput struct {
+		Config map[string]interface{} `json:"config"`
+		Meta   struct {
+			Label string   `json:"label"`
+			Flags []string `json:"flags"`
+		} `json:"meta"`
+	}
+
+	testComplex := recipeops.NewActivityMappedOpV2[testComplexInput, testComplexOutput](
+		recipeops.OpMetadata{
+			Type: "test_complex_input",
+		},
+		func(_ recipeops.OpDependencies, ctx context.Context, input testComplexInput) (testComplexOutput, error) {
+			return testComplexOutput{
+				Config: input.Config,
+				Meta:   input.Meta,
+			}, nil
+		},
+	)
+	recipeops.Register(testComplex)
+
 	// Register context_logger activity
 	contextLogger := recipeops.NewActivityMappedOpV2[GenericInput, GenericOutput](
 		recipeops.OpMetadata{

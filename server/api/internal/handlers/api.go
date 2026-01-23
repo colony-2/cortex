@@ -632,7 +632,7 @@ func (h *Handlers) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		State:       ticket.State(body.State),
 		Actor:       toTicketActor(body.Actor),
 	}
-	created, err := h.tickets.CreateTicket(r.Context(), input)
+	created, _, err := h.tickets.CreateTicket(r.Context(), input)
 	if err != nil {
 		writeDomainError(w, err, ticketErrorStatus(err))
 		return

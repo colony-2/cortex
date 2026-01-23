@@ -21,12 +21,20 @@ type MockTicketService struct {
 	mock.Mock
 }
 
-func (m *MockTicketService) CreateTicket(ctx context.Context, input ticket.CreateInput) (*ticket.Ticket, error) {
+func (m *MockTicketService) CreateTicket(ctx context.Context, input ticket.CreateInput) (*ticket.Ticket, string, error) {
 	args := m.Called(ctx, input)
+	if args.Get(0) == nil {
+		return nil, "", args.Error(1)
+	}
+	return args.Get(0).(*ticket.Ticket), args.String(1), args.Error(2)
+}
+
+func (m *MockTicketService) ApplyActions(ctx context.Context, actions []ticket.Action, fallback ticket.Actor) ([]ticket.ActionResult, error) {
+	args := m.Called(ctx, actions, fallback)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*ticket.Ticket), args.Error(1)
+	return args.Get(0).([]ticket.ActionResult), args.Error(1)
 }
 
 func (m *MockTicketService) UpdateTicket(ctx context.Context, id ticket.ID, patch ticket.UpdateInput) (*ticket.Ticket, error) {

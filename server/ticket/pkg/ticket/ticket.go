@@ -45,6 +45,19 @@ type (
 	TicketResetEventPayload = model.TicketResetEventPayload
 	TicketEventFilter       = model.TicketEventFilter
 	SearchFilter            = model.SearchFilter
+	Action                  = model.Action
+	ActionResult            = model.ActionResult
+	ActionType              = model.ActionType
+	BaseAction              = model.BaseAction
+	CreateTicketAction      = model.CreateTicketAction
+	UpdateTicketAction      = model.UpdateTicketAction
+	AppendTicketNoteAction  = model.AppendTicketNoteAction
+	BaseMarkdownAction      = model.BaseMarkdownAction
+	MarkdownLinkAction      = model.MarkdownLinkAction
+	MarkdownOverrideAction  = model.MarkdownOverrideAction
+	MarkdownRemoveAction    = model.MarkdownRemoveAction
+	AppendWorkflowAction    = model.AppendWorkflowAction
+	ResetTicketAction       = model.ResetTicketAction
 	Service                 = internalservice.Service
 	ServiceConfig           = internalservice.ServiceConfig
 	Clock                   = internalservice.Clock
@@ -61,9 +74,9 @@ type (
 )
 
 const (
-	StageOpen                        = model.StageOpen
-	StageCompleted                   = model.StageCompleted
-	StageCancelled                   = model.StageCancelled
+	StageOpen                         = model.StageOpen
+	StageCompleted                    = model.StageCompleted
+	StageCancelled                    = model.StageCancelled
 	StateWaitingUser                  = model.StateWaitingUser
 	StateWaitingDependency            = model.StateWaitingDependency
 	StateWaitingCapacity              = model.StateWaitingCapacity
@@ -105,6 +118,7 @@ var (
 	ErrInvalidEventPayload = internalservice.ErrInvalidEventPayload
 	ErrEventNotFound       = internalservice.ErrEventNotFound
 	ErrResetNoEvents       = internalservice.ErrResetNoEvents
+	ErrUpdateNoFields      = internalservice.ErrUpdateNoFields
 	ErrIteratorDone        = internalstore.ErrIteratorDone
 )
 

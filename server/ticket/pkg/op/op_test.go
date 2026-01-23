@@ -18,7 +18,7 @@ import (
 )
 
 type stubService struct {
-	createFunc         func(context.Context, ticket.CreateInput) (*ticket.Ticket, error)
+	createFunc         func(context.Context, ticket.CreateInput) (*ticket.Ticket, string, error)
 	updateFunc         func(context.Context, ticket.ID, ticket.UpdateInput) (*ticket.Ticket, error)
 	appendTicketFunc   func(context.Context, ticket.ID, ticket.TicketEventInput) (*ticket.TicketEvent, error)
 	appendMarkdownFunc func(context.Context, ticket.ID, ticket.MarkdownEventInput) (*ticket.TicketEvent, error)
@@ -27,11 +27,11 @@ type stubService struct {
 	getTicketAtFunc    func(context.Context, ticket.ID, time.Time) (*ticket.Ticket, error)
 }
 
-func (s *stubService) CreateTicket(ctx context.Context, in ticket.CreateInput) (*ticket.Ticket, error) {
+func (s *stubService) CreateTicket(ctx context.Context, in ticket.CreateInput) (*ticket.Ticket, string, error) {
 	if s.createFunc != nil {
 		return s.createFunc(ctx, in)
 	}
-	return nil, errors.New("unexpected CreateTicket call")
+	return nil, "", errors.New("unexpected CreateTicket call")
 }
 
 func (s *stubService) UpdateTicket(ctx context.Context, id ticket.ID, in ticket.UpdateInput) (*ticket.Ticket, error) {
@@ -39,6 +39,22 @@ func (s *stubService) UpdateTicket(ctx context.Context, id ticket.ID, in ticket.
 		return s.updateFunc(ctx, id, in)
 	}
 	return nil, errors.New("unexpected UpdateTicket call")
+}
+
+func (s *stubService) ApplyActions(ctx context.Context, actions []model.Action, fallback ticket.Actor) ([]model.ActionResult, error) {
+	results := make([]model.ActionResult, 0, len(actions))
+	for _, action := range actions {
+		actor, err := resolveActor(action.ActorPayload(), fallback)
+		if err != nil {
+			return results, err
+		}
+		result, err := executeAction(ctx, s, action, actor)
+		if err != nil {
+			return results, err
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func (s *stubService) SearchTickets(context.Context, ticket.SearchFilter) (ticket.Iterator[*ticket.Ticket], error) {
@@ -154,14 +170,14 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 		UpdatedAt: time.Date(2024, 9, 20, 10, 0, 0, 0, time.UTC),
 		Version:   optimisticlock.Version{Int64: 1, Valid: true},
 	}
-	svc.createFunc = func(ctx context.Context, input ticket.CreateInput) (*ticket.Ticket, error) {
+	svc.createFunc = func(ctx context.Context, input ticket.CreateInput) (*ticket.Ticket, string, error) {
 		require.Equal(t, ticket.Stage("open"), input.Stage)
 		require.Equal(t, ticket.StateWorking, input.State)
 		require.Equal(t, ticket.ActorTypeAgent, input.Actor.Type)
 		require.Equal(t, "cell-x", input.Actor.Agent.CellName)
 		require.Equal(t, "recipe-alpha", input.Actor.Agent.WorkflowName)
 		require.Equal(t, ticket.ProjectID("proj-1"), input.ProjectID)
-		return created, nil
+		return created, "job-1", nil
 	}
 
 	updated := &ticket.Ticket{
