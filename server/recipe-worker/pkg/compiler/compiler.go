@@ -18,7 +18,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
-func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, error) {
+func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error) {
 
 	jobKey := ctx.GetJobKey()
 	execCtx.Workflow.JobID = jobKey.JobId
@@ -30,7 +30,7 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 	execOpts := normalizeExecutionOptions(opts)
 	recipeInputs, err := prepareRecipeInputs(r.GetMetdata(), rawRecipeInputs, execOpts)
 	if err != nil {
-		return nil, fmt.Errorf("recipe inputs do not match schema. %w", err)
+		return nil, nil, fmt.Errorf("recipe inputs do not match schema. %w", err)
 	}
 
 	if execOpts.Mode == ExecutionModeValidate {
@@ -39,7 +39,7 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 
 	rCtx, err := template.NewRecipeResolutionContext(&commitContext, recipeInputs, execCtx, resolutionOptionsFromExecution(execOpts))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resolution context: %w", err)
+		return nil, nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
 
 	metadata := r.GetMetadata().NodeMetadata
@@ -52,13 +52,13 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 	case *recipe.RecipeSequence:
 		err = executeSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
-		return nil, fmt.Errorf("unsupported recipe type: %T", t)
+		return nil, nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return rCtx.GetLastExecution(), nil
+	return rCtx.GetLastExecution(), rCtx.GetLastArtifacts(), nil
 }
 
 // ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes

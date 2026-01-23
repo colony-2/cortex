@@ -12,6 +12,10 @@ type thinpackForwarder struct {
 	lastThinpack swf.Artifact
 }
 
+func (a *thinpackForwarder) AwaitJobs(jobIds ...string) error {
+	return a.AwaitJobs(jobIds...)
+}
+
 func newThinPackForwardingJobContext(inner swf.JobContext) *thinpackForwarder {
 	return &thinpackForwarder{inner: inner}
 }

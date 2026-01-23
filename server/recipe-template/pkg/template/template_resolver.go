@@ -82,6 +82,7 @@ type ResolutionContext struct {
 	tracker *invocationTracker
 
 	lastExecution map[string]interface{}
+	lastArtifacts []swf.Artifact
 }
 
 func (rc *ResolutionContext) UpdateGitState(commit contextual.GitCommitContext) {
@@ -400,6 +401,12 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 		artifacts = map[string]swf.Artifact{}
 	}
 
+	artList := make([]swf.Artifact, 0, len(artifacts))
+	for _, art := range artifacts {
+		artList = append(artList, art)
+	}
+	rc.lastArtifacts = artList
+
 	var container map[string]StepOutput
 
 	switch rc.ScopeType {
@@ -447,6 +454,10 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 
 func (rc *ResolutionContext) GetLastExecution() map[string]interface{} {
 	return rc.lastExecution
+}
+
+func (rc *ResolutionContext) GetLastArtifacts() []swf.Artifact {
+	return rc.lastArtifacts
 }
 
 // validateTemplateReferences validates all template references before execution

@@ -183,17 +183,11 @@ func init() {
 				Version:     "1.0.0",
 			},
 			func(deps recipeops.OpDependencies, ctx context.Context, input testConsumeArtifactInput) (testConsumeArtifactOutput, error) {
-				ref := input.InputArtifact
-				var matched swf.Artifact
-				for _, artifact := range deps.GetInputArtifacts() {
-					if artifact.Name() == ref.Name {
-						matched = artifact
-						break
-					}
+				matched, err := deps.FindArtifact(input.InputArtifact)
+				if err != nil {
+					return testConsumeArtifactOutput{}, err
 				}
-				if matched == nil {
-					return testConsumeArtifactOutput{}, fmt.Errorf("input artifact not found: %s", ref.Name)
-				}
+				
 				data, err := matched.Bytes(ctx)
 				if err != nil {
 					return testConsumeArtifactOutput{}, err

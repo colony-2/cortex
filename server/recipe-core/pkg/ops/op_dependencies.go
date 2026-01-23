@@ -15,6 +15,26 @@ type OpDependencies interface {
 	AddOutputArtifact(swf.Artifact) error
 	GetOutputArtifacts() []swf.Artifact
 	WorktreePath() string
+	JobTool() JobTool
+	FindArtifact(key swf.ArtifactKey) (swf.Artifact, error)
+}
+
+// JobTool provides a way to influence the current jobs operation. It is separate from workflowcontrol, which is about running jobs independent of this jobs context.
+type JobTool interface {
+	GetJobKey() swf.JobKey
+	AwaitJobs(jobIds ...string) error
+}
+
+type TaskBasedJobTool struct {
+	TaskContext swf.TaskContext
+}
+
+func (j *TaskBasedJobTool) GetJobKey() swf.JobKey {
+	return j.TaskContext.JobKey
+}
+
+func (j *TaskBasedJobTool) AwaitJobs(jobIds ...string) error {
+	return j.TaskContext.AwaitJobs(jobIds...)
 }
 
 // opDepImpl holds the actual dependencies.
@@ -24,12 +44,34 @@ type opDepImpl struct {
 	outputArtifacts []swf.Artifact
 	workflowControl workflowctl.WorkflowControl
 	worktreePath    string
+	jobTool         JobTool
+}
+
+func (c *opDepImpl) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
+	var found swf.Artifact
+	for _, artifact := range c.GetInputArtifacts() {
+		if artifact.Name() == key.Name {
+			if found != nil {
+				return nil, errors.New("duplicate artifact found")
+			}
+			found = artifact
+		}
+	}
+
+	if found == nil {
+		return nil, errors.New("artifact not found")
+	}
+	return found, nil
 }
 
 func (c *opDepImpl) GetOutputArtifacts() []swf.Artifact {
 	out := make([]swf.Artifact, len(c.outputArtifacts))
 	copy(out, c.outputArtifacts)
 	return out
+}
+
+func (c *opDepImpl) JobTool() JobTool {
+	return c.jobTool
 }
 
 // Database implements the OpDependencies interface.
@@ -67,6 +109,7 @@ type OpDependenciesBuilder struct {
 	artifacts       []swf.Artifact
 	workflowControl workflowctl.WorkflowControl
 	worktreePath    string
+	jobTool         JobTool
 }
 
 // NewOpDependenciesBuilder creates a new, empty builder instance.
@@ -78,6 +121,16 @@ func NewOpDependenciesBuilder() *OpDependenciesBuilder {
 
 func (b *OpDependenciesBuilder) WithDatabase(db *gorm.DB) *OpDependenciesBuilder {
 	b.db = db
+	return b
+}
+
+func (b *OpDependenciesBuilder) WithTaskContext(tc swf.TaskContext) *OpDependenciesBuilder {
+	b.jobTool = &TaskBasedJobTool{tc}
+	return b
+}
+
+func (b *OpDependenciesBuilder) WithJobTool(jt JobTool) *OpDependenciesBuilder {
+	b.jobTool = jt
 	return b
 }
 
@@ -109,6 +162,7 @@ func (b *OpDependenciesBuilder) Build() OpDependencies {
 		workflowControl: b.workflowControl,
 		worktreePath:    b.worktreePath,
 		outputArtifacts: make([]swf.Artifact, 0),
+		jobTool:         b.jobTool,
 	}
 
 	return deps

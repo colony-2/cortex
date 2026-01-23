@@ -21,7 +21,7 @@ type opExecutor struct {
 	controller *gitstate.Controller
 }
 
-func (t opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
+func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 	deps := t.deps
 	controller := t.controller
 	reg := t.reg
@@ -69,10 +69,7 @@ func (t opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvoc
 		}
 		rehydrated := make([]swf.Artifact, 0, len(req.ArtifactKeys))
 		for _, key := range req.ArtifactKeys {
-			artifact, err := ctl.GetArtifact(ctx, jobKey.TenantId, key)
-			if err != nil {
-				return zero, nil, err
-			}
+			artifact := ctl.GetArtifactLazy(ctx, jobTool.GetJobKey().TenantId, key)
 			rehydrated = append(rehydrated, artifact)
 		}
 		inputArtifacts = append(inputArtifacts, rehydrated...)
@@ -114,6 +111,7 @@ func (t opExecutor) do(ctx context.Context, jobKey swf.JobKey, req ActivityInvoc
 	}
 	opDeps := ops.NewOpDependenciesBuilder().
 		WithArtifacts(nonThinPackArtifacts).
+		WithJobTool(jobTool).
 		WithDatabase(db).
 		WithWorkflowControl(deps.WorkflowControl()).
 		WithWorktreePath(fullContext.WorktreePath).

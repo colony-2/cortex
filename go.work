@@ -2,7 +2,6 @@ go 1.25.5
 
 use (
 	./server/api
-        ./server/child
 	./server/cell
 	./server/core
 	./server/cortex
@@ -13,6 +12,7 @@ use (
 	./server/ops
 	./server/project
 	./server/recipe-core
+    ./server/recipe-child
 	./server/recipe-input
 	./server/recipe-template
 	./server/recipe-worker

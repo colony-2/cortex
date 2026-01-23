@@ -48,6 +48,10 @@ func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsR
 	return jobs, resp.NextPageToken, nil
 }
 
+func (s *SWFWorkflowControl) JobResult(ctx context.Context, key swf.JobKey) (swf.JobData, error) {
+	return s.Engine.GetJobResult(ctx, key)
+}
+
 func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, outType any) error {
 	handle, err := s.Engine.GetWaitingTask(ctx, jobKey)
 	if err != nil {
@@ -85,8 +89,8 @@ func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) erro
 	return s.Engine.CancelJob(ctx, swf.CancelJob{JobKey: jobKey})
 }
 
-func (s *SWFWorkflowControl) GetArtifact(ctx context.Context, tenantId string, key swf.ArtifactKey) (swf.Artifact, error) {
-	return s.Engine.GetArtifact(tenantId, key)
+func (s *SWFWorkflowControl) GetArtifactLazy(ctx context.Context, tenantId string, key swf.ArtifactKey) swf.Artifact {
+	return key.ToLazyArtifact(s.Engine, tenantId), nil
 }
 
 type taskDataGetter struct {
