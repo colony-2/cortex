@@ -39,63 +39,68 @@ func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	ticketSvc, err := ticket.NewServiceFromDB(pg.DB)
+	require.NoError(t, err)
+	created, err := ticketSvc.CreateTicket(ctx, ticket.CreateInput{
+		Cell:        "cell-integration",
+		ProjectID:   ticket.ProjectID(proj.ID),
+		Title:       "Integration Test",
+		Stage:       ticket.Stage("open"),
+		State:       ticket.StateWorking,
+		Description: "Seed ticket for manage op",
+		Actor:       ticket.NewAgentActor("cell-integration", "integration", "exec-1", "inv-1"),
+	})
+	require.NoError(t, err)
+
 	input := Input{
-		Actions: []Action{
-			{
-				Type: ActionCreateTicket,
-				Raw: mustMarshal(t, createTicketAction{
-					Cell:      "cell-integration",
-					ProjectID: string(proj.ID),
-					Title:     "Integration Test",
-					Stage:     "Open",
-					State:     string(ticket.StateWorking),
-				}),
+		Actions: ActionList{
+			&UpdateTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: created.ID,
+				},
+				ExpectedVersion: int64Ptr(created.Version.Int64),
+				Stage:           strPtr("Cancelled"),
+				Description:     strPtr("Shift to cancelled"),
 			},
-			{
-				Type: ActionUpdateTicket,
-				Raw: mustMarshal(t, updateTicketAction{
-					ExpectedVersion: int64Ptr(1),
-					Stage:           strPtr("Cancelled"),
-					Description:     strPtr("Shift to cancelled"),
-				}),
-			},
-			{
-				Type: ActionLinkMarkdown,
-				Raw: mustMarshal(t, markdownAction{
+			&MarkdownLinkAction{
+				BaseMarkdownAction: BaseMarkdownAction{
+					existingTicketOp: existingTicketOp{
+						TicketID: created.ID,
+					},
 					Name:   "Design Doc",
 					Path:   "docs/design.md",
 					Reason: "Initial link",
-				}),
+				},
 			},
-			{
-				Type: ActionAppendWorkflow,
-				Raw: mustMarshal(t, appendWorkflowAction{
-					WorkflowID: "wf-123",
-					RunID:      "run-abc",
-					Status:     ticket.WorkflowEventRunning,
-				}),
+			&AppendWorkflowAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: created.ID,
+				},
+				WorkflowID: "wf-123",
+				RunID:      "run-abc",
+				Status:     ticket.WorkflowEventRunning,
 			},
-			{
-				Type: ActionResetTicket,
-				Raw: mustMarshal(t, resetTicketAction{
-					Reason: "Rewind after workflow",
-				}),
+			&ResetTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: created.ID,
+				},
+				Reason: "Rewind after workflow",
 			},
 		},
 	}
 
 	output, err := execute(inv, context.Background(), input)
 	require.NoError(t, err)
-	require.Len(t, output.Results, 5)
-	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
-	require.Equal(t, "wf-123", output.ContextPatch["ticket.workflow_id"])
-	require.Contains(t, output.ContextPatch, "ticket.last_event_id")
-	require.Contains(t, output.ContextPatch, "ticket.last_reset_id")
-
-	createResult := output.Results[0]
-	require.NotNil(t, createResult.Ticket)
-	ticketID := string(createResult.Ticket.ID)
-	require.NotEmpty(t, ticketID)
-	require.Equal(t, ticketID, output.ContextPatch["ticket.id"])
+	require.Len(t, output.Results, 4)
+	updateResult, ok := output.Results[0].(*UpdateResult)
+	require.True(t, ok)
+	require.NotNil(t, updateResult.Ticket)
+	require.Equal(t, ticket.Stage("cancelled"), updateResult.Ticket.Stage)
+	_, ok = output.Results[1].(*MarkdownResult)
+	require.True(t, ok)
+	_, ok = output.Results[2].(*WorkflowResult)
+	require.True(t, ok)
+	resetResult, ok := output.Results[3].(*ResetResult)
+	require.True(t, ok)
+	require.NotNil(t, resetResult.Ticket)
 }

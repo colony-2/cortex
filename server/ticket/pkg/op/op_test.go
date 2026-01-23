@@ -2,7 +2,6 @@ package ticketop
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -102,6 +101,7 @@ type stubDeps struct {
 	outputs        []swf.Artifact
 	workflow       workflowctl.WorkflowControl
 	worktreePath   string
+	jobTool        ops.JobTool
 }
 
 func (d *stubDeps) Database() *gorm.DB { return d.db }
@@ -118,6 +118,22 @@ func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }
 func (d *stubDeps) WorktreePath() string { return d.worktreePath }
+func (d *stubDeps) JobTool() ops.JobTool { return d.jobTool }
+func (d *stubDeps) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
+	var found swf.Artifact
+	for _, artifact := range d.inputArtifacts {
+		if artifact.Name() == key.Name {
+			if found != nil {
+				return nil, errors.New("duplicate artifact found")
+			}
+			found = artifact
+		}
+	}
+	if found == nil {
+		return nil, errors.New("artifact not found")
+	}
+	return found, nil
+}
 
 func newOpDeps() ops.OpDependencies { return newOpDepsWithDB(&gorm.DB{}) }
 func newOpDepsWithDB(db *gorm.DB) ops.OpDependencies {
@@ -165,49 +181,48 @@ func TestExecute_CreateAndUpdate(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		Actions: []Action{
-			{
-				Type: ActionCreateTicket,
-				Raw: mustMarshal(t, createTicketAction{
-					Cell:      "cell-x",
-					ProjectID: "proj-1",
-					Title:     "Bootstrap",
-					Stage:     "Open",
-					State:     string(ticket.StateWorking),
-					Actor: &actorPayload{
+		Actions: ActionList{
+			&CreateTicketAction{
+				BaseAction: BaseAction{
+					Actor: &ActorPayload{
 						Type: "agent",
-						Agent: &actorAgentPayload{
+						Agent: &ActorAgentPayload{
 							CellName:       "cell-x",
 							WorkflowName:   "recipe-alpha",
 							ExecutionID:    "exec-1",
 							InvocationHash: "inv-1",
 						},
 					},
-				}),
+				},
+				Cell:      "cell-x",
+				ProjectID: "proj-1",
+				Title:     "Bootstrap",
+				Stage:     "Open",
+				State:     string(ticket.StateWorking),
 			},
-			{
-				Type: ActionUpdateTicket,
-				Raw: mustMarshal(t, updateTicketAction{
-					ExpectedVersion: int64Ptr(1),
-					Stage:           strPtr("Cancelled"),
-				}),
+			&UpdateTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("TCK-001"),
+				},
+				ExpectedVersion: int64Ptr(1),
+				Stage:           strPtr("Cancelled"),
 			},
 		},
 	}
 
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
-	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
-	require.Equal(t, "TCK-001", output.ContextPatch["ticket.id"])
-	require.Equal(t, "cancelled", output.ContextPatch["ticket.stage"])
-	require.Equal(t, "proj-1", output.ContextPatch["ticket.project_id"])
 	require.Len(t, output.Results, 2)
-	require.Equal(t, ActionCreateTicket, output.Results[0].Type)
-	require.Equal(t, ActionUpdateTicket, output.Results[1].Type)
+	createResult, ok := output.Results[0].(*CreateResult)
+	require.True(t, ok)
+	require.Equal(t, ticket.ID("TCK-001"), createResult.ID)
+	updateResult, ok := output.Results[1].(*UpdateResult)
+	require.True(t, ok)
+	require.NotNil(t, updateResult.Ticket)
+	require.Equal(t, ticket.Stage("cancelled"), updateResult.Ticket.Stage)
 }
 
-func TestExecute_AppendTicketNoteUpdatesContext(t *testing.T) {
+func TestExecute_AppendTicketNote(t *testing.T) {
 	svc := &stubService{}
 	restore := TestingStub{Service: svc}.Install()
 	defer restore()
@@ -229,26 +244,24 @@ func TestExecute_AppendTicketNoteUpdatesContext(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		TicketID: "TCK-42",
-		Actions: []Action{
-			{
-				Type: ActionAppendTicketNote,
-				Raw: mustMarshal(t, appendTicketNoteAction{
-					Note:      " note ",
-					EventTime: timePtr(time.Date(2024, 9, 20, 12, 0, 0, 0, time.UTC)),
-				}),
+		Actions: ActionList{
+			&AppendTicketNoteAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("TCK-42"),
+				},
+				Note:      " note ",
+				EventTime: timePtr(time.Date(2024, 9, 20, 12, 0, 0, 0, time.UTC)),
 			},
 		},
 	}
 
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
-	require.Nil(t, output.Ticket)
-	require.Equal(t, "EVT-1", output.ContextPatch["ticket.last_event_id"])
-	require.Equal(t, string(ticket.TicketEventKindTicket), output.ContextPatch["ticket.last_event_kind"])
 	require.Len(t, output.Results, 1)
-	require.Nil(t, output.Results[0].Ticket)
-	require.NotNil(t, output.Results[0].Event)
+	appendResult, ok := output.Results[0].(*AppendTicketNoteResult)
+	require.True(t, ok)
+	require.NotNil(t, appendResult.Event)
+	require.Equal(t, ticket.TicketEventID("EVT-1"), appendResult.Event.ID)
 }
 
 func TestExecute_UpdateWithoutExpectedVersion(t *testing.T) {
@@ -274,19 +287,23 @@ func TestExecute_UpdateWithoutExpectedVersion(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		TicketID: "T-2",
-		Actions: []Action{{
-			Type: ActionUpdateTicket,
-			Raw: mustMarshal(t, updateTicketAction{
+		Actions: ActionList{
+			&UpdateTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("T-2"),
+				},
 				Stage: strPtr("Cancelled"),
-			}),
-		}},
+			},
+		},
 	}
 
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
-	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("cancelled"), output.Ticket.Stage)
+	require.Len(t, output.Results, 1)
+	updateResult, ok := output.Results[0].(*UpdateResult)
+	require.True(t, ok)
+	require.NotNil(t, updateResult.Ticket)
+	require.Equal(t, ticket.Stage("cancelled"), updateResult.Ticket.Stage)
 }
 
 func TestExecute_UpdateRequiresField(t *testing.T) {
@@ -296,11 +313,14 @@ func TestExecute_UpdateRequiresField(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		TicketID: "T-1",
-		Actions: []Action{{
-			Type: ActionUpdateTicket,
-			Raw:  mustMarshal(t, updateTicketAction{ExpectedVersion: int64Ptr(2)}),
-		}},
+		Actions: ActionList{
+			&UpdateTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("T-1"),
+				},
+				ExpectedVersion: int64Ptr(2),
+			},
+		},
 	}
 
 	_, err := execute(deps, context.Background(), input)
@@ -332,20 +352,23 @@ func TestExecute_ResetFetchesLatestTicket(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		TicketID: "T-55",
-		Actions: []Action{{
-			Type: ActionResetTicket,
-			Raw:  mustMarshal(t, resetTicketAction{Reason: "cleanup"}),
-		}},
+		Actions: ActionList{
+			&ResetTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("T-55"),
+				},
+				Reason: "cleanup",
+			},
+		},
 	}
 
 	output, err := execute(deps, context.Background(), input)
 	require.NoError(t, err)
-	require.NotNil(t, output.Ticket)
-	require.Equal(t, ticket.Stage("open"), output.Ticket.Stage)
-	require.Equal(t, "RST-1", output.ContextPatch["ticket.last_reset_id"])
 	require.Len(t, output.Results, 1)
-	require.NotNil(t, output.Results[0].Reset)
+	resetResult, ok := output.Results[0].(*ResetResult)
+	require.True(t, ok)
+	require.NotNil(t, resetResult.Ticket)
+	require.Equal(t, ticket.Stage("open"), resetResult.Ticket.Stage)
 }
 
 func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
@@ -359,14 +382,15 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 
 	deps := newOpDeps()
 	input := Input{
-		TicketID: "T-1",
-		Actions: []Action{{
-			Type: ActionUpdateTicket,
-			Raw: mustMarshal(t, updateTicketAction{
+		Actions: ActionList{
+			&UpdateTicketAction{
+				existingTicketOp: existingTicketOp{
+					TicketID: ticket.ID("T-1"),
+				},
 				ExpectedVersion: int64Ptr(2),
 				Stage:           strPtr("Cancelled"),
-			}),
-		}},
+			},
+		},
 	}
 
 	_, err := execute(deps, context.Background(), input)
@@ -374,13 +398,6 @@ func TestExecute_ErrorMappingVersionConflict(t *testing.T) {
 	appErr := new(workflow.NonRetryableError)
 	require.True(t, errors.As(err, &appErr))
 	require.True(t, appErr.NonRetryable())
-}
-
-func mustMarshal(tb testing.TB, v any) json.RawMessage {
-	tb.Helper()
-	data, err := json.Marshal(v)
-	require.NoError(tb, err)
-	return data
 }
 
 func strPtr(v string) *string {
