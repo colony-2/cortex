@@ -30,11 +30,15 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 
 	if resCtx.Options.Mode == string(ExecutionModeValidate) && resCtx.Options.ValidationMode == string(ValidateAll) {
 		stateNames := sortedStateNames(stateMap.States)
+		lastStateName := ""
+		lastStateDef := recipe.State{}
 		for _, stateName := range stateNames {
 			stateDef := stateMap.States[stateName]
 			if err := runState(ctx, resCtx, stateName, stateDef); err != nil {
 				return fmt.Errorf("state '%s' execution failed: %w", stateName, err)
 			}
+			lastStateName = stateName
+			lastStateDef = stateDef
 			if _, err := evaluateTransitionsWithContext(stateDef.Transitions, resCtx); err != nil {
 				return fmt.Errorf("failed to evaluate state transitions: %w", err)
 			}
@@ -45,7 +49,7 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 			return fmt.Errorf("failed to resolve state machine outputs: %w", err)
 		}
 
-		parentContext.AddExecution(resolvedOutputs)
+		parentContext.AddExecutionWithArtifacts(resolvedOutputs, stateArtifacts(resCtx, lastStateName, lastStateDef))
 		return nil
 	}
 
@@ -87,7 +91,7 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 		return fmt.Errorf("failed to resolve state machine outputs: %w", err)
 	}
 
-	parentContext.AddExecution(resolvedOutputs)
+	parentContext.AddExecutionWithArtifacts(resolvedOutputs, stateArtifacts(resCtx, currentState, finalState))
 
 	return nil
 }

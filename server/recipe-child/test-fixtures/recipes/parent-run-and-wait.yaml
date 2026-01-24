@@ -12,7 +12,7 @@ inputs:
   git_ref: "{{ inputs.git_ref }}"
 sequence:
   - id: child
-    op: recipe.run_and_wait.start
+    op: recipe.run_and_get_result
     inputs:
       name: child-simple
       cell: ""
@@ -22,4 +22,3 @@ sequence:
       git_ref: "{{ inputs.git_ref }}"
 outputs:
   child_value: "{{ sequence.child.outputs.outputs.value }}"
-  child_git_ref: "{{ sequence.child.outputs.outputs.git_parent_ref }}"

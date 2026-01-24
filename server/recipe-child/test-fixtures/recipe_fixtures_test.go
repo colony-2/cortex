@@ -1,4 +1,4 @@
-package recipechild_test
+package test_fixtures_test
 
 import (
 	"testing"
@@ -10,6 +10,5 @@ import (
 
 func TestRecipeChildFixtures(t *testing.T) {
 	ops.Register(recipechild.GetOps()...)
-	testfixtures.RunTestOnAllRecipes("test-fixtures/recipes/*.test.yaml", t)
+	testfixtures.RunTestOnAllRecipes("recipes/*.test.yaml", t)
 }
-

@@ -21,7 +21,18 @@ func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.Workflo
 		RecipeName: recipe.Name,
 		Inputs:     recipe.Inputs,
 		Artifacts:  artifacts,
-		JobContext: contextual.JobContext{},
+		JobContext: contextual.JobContext{
+			Workflow: contextual.WorkflowContext{
+				CellName: recipe.CellName,
+				CellPath: recipe.CellPath,
+			},
+			GitBase: contextual.GitBaseContext{
+				BaseRepo:         recipe.Git.BaseRepo,
+				BaseRef:          recipe.Git.BaseRef,
+				ResolvedBaseHash: recipe.Git.BaseHash,
+				GitAuthor:        recipe.Git.Author,
+			},
+		},
 		GitRef:     gitRef,
 	}
 }
@@ -46,6 +57,16 @@ func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowct
 		return []swf.JobKey{key}, nil
 	}
 	keys := make([]swf.JobKey, len(jobs))
+	if db == nil {
+		for i, job := range jobs {
+			key, err := ctl.StartJob(ctx, job)
+			if err != nil {
+				return nil, err
+			}
+			keys[i] = key
+		}
+		return keys, nil
+	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
 		txctx := swf.WithTx(ctx, tx)

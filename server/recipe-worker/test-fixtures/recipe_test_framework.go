@@ -408,11 +408,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 
 			// Load recipe
 			recipeData, err := os.ReadFile(recipePath)
-			if err != nil {
-				// Skip if recipe file doesn't exist
-				t.Skipf("Recipe file not found: %s", recipePath)
-				return
-			}
+			require.NoError(t, err, "Failed to read recipe file: %s", recipePath)
 
 			var recipeDef recipe.Recipe
 			err = yaml.Unmarshal(recipeData, &recipeDef)

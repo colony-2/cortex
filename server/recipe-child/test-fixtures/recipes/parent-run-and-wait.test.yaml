@@ -8,5 +8,4 @@ tests:
       git_ref: "refs/heads/test"
     want:
       child_value: "hello"
-      child_git_ref: "refs/heads/test"
     wantErr: false

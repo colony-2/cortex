@@ -8,7 +8,7 @@ inputs:
   git_ref: "{{ inputs.git_ref }}"
 sequence:
   - id: start
-    op: recipes.start
+    op: recipes.run
     inputs:
       git_ref: "{{ inputs.git_ref }}"
       recipes:
@@ -23,11 +23,11 @@ sequence:
             value: "two"
           artifacts: []
   - id: wait_one
-    op: recipe.wait_and_get_result
+    op: recipe.await_result
     inputs:
       job_id: "{{ sequence.start.outputs.job_ids[0] }}"
   - id: wait_two
-    op: recipe.wait_and_get_result
+    op: recipe.await_result
     inputs:
       job_id: "{{ sequence.start.outputs.job_ids[1] }}"
 outputs:

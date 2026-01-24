@@ -182,9 +182,6 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 			return err
 		}
 
-		fmt.Println("invoking activity")
-		fmt.Println(taskType)
-		fmt.Println(invocation)
 		out, err := ctx.DoTask(
 			runPolicy,
 			taskType,
@@ -253,7 +250,7 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 	}
 
 	// add resolved output to parent context.
-	parentCtx.AddExecution(outputs)
+	parentCtx.AddExecutionWithArtifacts(outputs, lastSequenceArtifacts(resCtx, sequence))
 	return nil
 }
 
