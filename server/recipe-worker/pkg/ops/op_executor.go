@@ -21,6 +21,10 @@ type opExecutor struct {
 	controller *gitstate.Controller
 }
 
+type nextTaskOverride interface {
+	NextTaskType() (string, bool)
+}
+
 func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 	deps := t.deps
 	controller := t.controller
@@ -128,6 +132,12 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 	if err != nil {
 		return zero, outputArtifacts, err
 	}
+	nextTask := reg.NextTaskType
+	if override, ok := opDeps.(nextTaskOverride); ok {
+		if overrideValue, set := override.NextTaskType(); set {
+			nextTask = overrideValue
+		}
+	}
 	if err := filepath.WalkDir(outbox, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -180,7 +190,7 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 			ParentHash:  fullContext.ParentHash,
 			ParentRef:   parentRef,
 		},
-		NextTask: reg.NextTaskType,
+		NextTask: nextTask,
 	}, outputArtifacts, nil
 }
 

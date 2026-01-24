@@ -40,4 +40,8 @@ func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }
 
 func (d *testDeps) WorktreePath() string { return "" }
 
+func (d *testDeps) SetNextTaskType(taskType string) {
+	_ = taskType
+}
+
 var _ OpDependencies = &testDeps{}

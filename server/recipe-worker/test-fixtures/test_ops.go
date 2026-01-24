@@ -82,6 +82,15 @@ type testComplexOutput struct {
 	Meta   testComplexMeta   `json:"meta"`
 }
 
+type testNextTaskInput struct {
+	Message string `json:"message"`
+}
+
+type testNextTaskOutput struct {
+	Message string `json:"message"`
+	Step    string `json:"step"`
+}
+
 func init() {
 	recipeops.Register(
 		recipeops.NewActivityMappedOpV2[testWriteFileInput, testWriteFileOutput](
@@ -198,6 +207,24 @@ func init() {
 				return testConsumeArtifactOutput{Name: matched.Name()}, nil
 			},
 		),
+		recipeops.NewOp().
+			WithType("test_next_task_override").
+			WithDescription("overrides the next task type from within an op").
+			WithVersion("1.0.0").
+			AddStep("first", recipeops.NewStepWithDeps(func(deps recipeops.OpDependencies, ctx context.Context, input testNextTaskInput) (testNextTaskOutput, error) {
+				_ = ctx
+				deps.SetNextTaskType("")
+				return testNextTaskOutput{
+					Message: input.Message,
+					Step:    "first",
+				}, nil
+			})).
+			AddStep("second", recipeops.NewStepWithDeps(func(_ recipeops.OpDependencies, ctx context.Context, input testNextTaskOutput) (testNextTaskOutput, error) {
+				_ = ctx
+				_ = input
+				return testNextTaskOutput{}, fmt.Errorf("unexpected second step execution")
+			})).
+			BuildOrPanic(),
 	)
 }
 

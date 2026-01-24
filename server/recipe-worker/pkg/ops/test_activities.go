@@ -64,6 +64,15 @@ type ConsumeArtifactOutput struct {
 	Name string `json:"name"`
 }
 
+type NextTaskOverrideInput struct {
+	Message string `json:"message"`
+}
+
+type NextTaskOverrideOutput struct {
+	Message string `json:"message"`
+	Step    string `json:"step"`
+}
+
 func init() {
 	// Register all test activities needed by the test suite
 	registerTestActivities()
@@ -113,4 +122,24 @@ func registerTestActivities() {
 		},
 	)
 	recipeops.Register(consumeArtifact)
+
+	nextTaskOverride := recipeops.NewOp().
+		WithType("test_next_task_override").
+		WithDescription("overrides the next task type from within an op").
+		WithVersion("1.0.0").
+		AddStep("first", recipeops.NewStepWithDeps(func(deps recipeops.OpDependencies, ctx context.Context, input NextTaskOverrideInput) (NextTaskOverrideOutput, error) {
+			_ = ctx
+			deps.SetNextTaskType("")
+			return NextTaskOverrideOutput{
+				Message: input.Message,
+				Step:    "first",
+			}, nil
+		})).
+		AddStep("second", recipeops.NewStepWithDeps(func(_ recipeops.OpDependencies, ctx context.Context, input NextTaskOverrideOutput) (NextTaskOverrideOutput, error) {
+			_ = ctx
+			_ = input
+			return NextTaskOverrideOutput{}, nil
+		})).
+		BuildOrPanic()
+	recipeops.Register(nextTaskOverride)
 }

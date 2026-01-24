@@ -17,6 +17,7 @@ type OpDependencies interface {
 	WorktreePath() string
 	JobTool() JobTool
 	FindArtifact(key swf.ArtifactKey) (swf.Artifact, error)
+	SetNextTaskType(taskType string)
 }
 
 // JobTool provides a way to influence the current jobs operation. It is separate from workflowcontrol, which is about running jobs independent of this jobs context.
@@ -45,6 +46,8 @@ type opDepImpl struct {
 	workflowControl workflowctl.WorkflowControl
 	worktreePath    string
 	jobTool         JobTool
+	nextTaskType    string
+	nextTaskTypeSet bool
 }
 
 func (c *opDepImpl) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
@@ -102,6 +105,15 @@ func (c *opDepImpl) WorkflowControl() workflowctl.WorkflowControl {
 // WorktreePath implements the OpDependencies interface.
 func (c *opDepImpl) WorktreePath() string {
 	return c.worktreePath
+}
+
+func (c *opDepImpl) SetNextTaskType(taskType string) {
+	c.nextTaskType = taskType
+	c.nextTaskTypeSet = true
+}
+
+func (c *opDepImpl) NextTaskType() (string, bool) {
+	return c.nextTaskType, c.nextTaskTypeSet
 }
 
 type OpDependenciesBuilder struct {
