@@ -11,7 +11,7 @@ import (
 )
 
 func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.WorkflowControl, recipe SingleRecipe, gitRef string) workflowctl.StartJob {
-	artifacts := make([]swf.Artifact, 0, len(recipe.Artifacts))
+	artifacts := make([]swf.Artifact, len(recipe.Artifacts))
 	for i, artifact := range recipe.Artifacts {
 		artifacts[i] = ctl.GetArtifactLazy(ctx, tenantId, artifact)
 	}
@@ -33,7 +33,7 @@ func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowct
 		return nil, fmt.Errorf("no jobs to start")
 	}
 
-	jobs := make([]workflowctl.StartJob, 0, len(recipes))
+	jobs := make([]workflowctl.StartJob, len(recipes))
 	for i, recipe := range recipes {
 		jobs[i] = recipeToStart(ctx, tenantId, ctl, recipe, gitRef)
 	}
@@ -45,7 +45,7 @@ func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowct
 		}
 		return []swf.JobKey{key}, nil
 	}
-	keys := make([]swf.JobKey, 0, len(jobs))
+	keys := make([]swf.JobKey, len(jobs))
 
 	err := db.Transaction(func(tx *gorm.DB) error {
 		txctx := swf.WithTx(ctx, tx)
@@ -60,5 +60,8 @@ func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowct
 		}
 		return nil
 	})
-	return keys, err
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
 }

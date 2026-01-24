@@ -30,17 +30,18 @@ import (
 )
 
 type TestCase struct {
-	Name            string                 `yaml:"name"`
-	Description     string                 `yaml:"description,omitempty"`
-	Inputs          map[string]interface{} `yaml:"inputs"`
-	Want            map[string]interface{} `yaml:"want,omitempty"`
-	WantErr         bool                   `yaml:"wantErr"`
-	WantErrContains string                 `yaml:"wantErrContains,omitempty"`
-	WantArtifacts   []string               `yaml:"wantArtifacts,omitempty"`
+	Name             string                 `yaml:"name"`
+	Description      string                 `yaml:"description,omitempty"`
+	Inputs           map[string]interface{} `yaml:"inputs"`
+	Want             map[string]interface{} `yaml:"want,omitempty"`
+	WantErr          bool                   `yaml:"wantErr"`
+	WantErrContains  string                 `yaml:"wantErrContains,omitempty"`
+	WantArtifacts    []string               `yaml:"wantArtifacts,omitempty"`
+	WantJobArtifacts []string               `yaml:"wantJobArtifacts,omitempty"`
 }
 
 type TestCases struct {
-	Recipes []string  `yaml:"recipes"`
+	Recipes []string   `yaml:"recipes"`
 	Tests   []TestCase `yaml:"tests"`
 }
 
@@ -428,8 +429,9 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 					jobCtx, gitCtx := generateTestContext()
 					var result map[string]interface{}
 					var artifacts []string
-					if len(tc.WantArtifacts) > 0 {
-						result, artifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
+					var jobArtifacts []string
+					if len(tc.WantArtifacts) > 0 || len(tc.WantJobArtifacts) > 0 {
+						result, artifacts, jobArtifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
 					} else {
 						result, err = exec.ExecuteWithRegistry(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
 					}
@@ -449,6 +451,9 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 						}
 						if len(tc.WantArtifacts) > 0 {
 							assertArtifactNames(t, tc.WantArtifacts, artifacts)
+						}
+						if len(tc.WantJobArtifacts) > 0 {
+							assertArtifactNames(t, tc.WantJobArtifacts, jobArtifacts)
 						}
 					}
 				})
@@ -533,7 +538,7 @@ func executeRecipeWithArtifacts(
 	jobCtx contextual.JobContext,
 	gitRef string,
 	recipeRegistry workflow.RecipeProjectProvider,
-) (map[string]interface{}, []string, error) {
+) (map[string]interface{}, []string, []string, error) {
 	control := &workflow.SWFWorkflowControl{
 		Registry: recipeRegistry,
 	}
@@ -541,7 +546,7 @@ func executeRecipeWithArtifacts(
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(control).Build()
 	workset, err := compiler.NewRecipeWorker(deps, registry)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	capture := newArtifactCapture()
 	workset.TaskWorkers = wrapTaskWorkers(workset.TaskWorkers, capture)
@@ -558,22 +563,30 @@ func executeRecipeWithArtifacts(
 
 	jobKey, err := control.StartJob(ctx, job)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, engine); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	out, err := engine.GetJobResult(ctx, jobKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	jobArtifacts, err := out.GetArtifacts()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	jobArtifactNames := make([]string, 0, len(jobArtifacts))
+	for _, artifact := range jobArtifacts {
+		jobArtifactNames = append(jobArtifactNames, artifact.Name())
 	}
 	data, err := out.GetData()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	outMap := make(map[string]interface{})
 	if err := yaml.Unmarshal(data, &outMap); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return outMap, capture.list(), nil
+	return outMap, capture.list(), jobArtifactNames, nil
 }

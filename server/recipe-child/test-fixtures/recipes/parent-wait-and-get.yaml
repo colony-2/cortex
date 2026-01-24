@@ -1,0 +1,24 @@
+id: parent-wait-and-get
+version: "1.0"
+input_schema:
+  git_ref:
+    type: string
+    required: true
+inputs:
+  git_ref: "{{ inputs.git_ref }}"
+sequence:
+  - id: start
+    op: recipes.start
+    inputs:
+      git_ref: "{{ inputs.git_ref }}"
+      recipes:
+        - name: child-artifact
+          cell: ""
+          inputs: {}
+          artifacts: []
+  - id: wait
+    op: recipe.wait_and_get_result
+    inputs:
+      job_id: "{{ sequence.start.outputs.job_ids[0] }}"
+outputs:
+  artifact_name: "{{ sequence.wait.outputs.outputs.name }}"

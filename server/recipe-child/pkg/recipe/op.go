@@ -20,8 +20,8 @@ type SingleRecipe struct {
 }
 
 type SingleRecipeWithRef struct {
-	SingleRecipe
-	GitRef string `json:"git_ref"`
+	SingleRecipe `json:",inline"`
+	GitRef       string `json:"git_ref"`
 }
 
 type MultipleRecipes struct {
@@ -49,17 +49,25 @@ type StartedJobs struct {
 func GetOps() []ops.RegisterableOp {
 	list := []ops.RegisterableOp{}
 
-	list = appendE(list, ops.NewOp().AddStep("recipe.wait_and_get_result", ops.NewStepWithDeps[StartedJob, SingleRecipeOutput](waitAndGetRecipeOutput)))
-	list = appendE(list, ops.NewOp().AddStep("recipe.get_result", ops.NewStepWithDeps[StartedJob, SingleRecipeOutput](getRecipeOutput)))
+	list = appendE(list, ops.NewOp().
+		WithType("recipe.wait_and_get_result").
+		AddStep("recipe.wait_and_get_result", ops.NewStepWithDeps[StartedJob, SingleRecipeOutput](waitAndGetRecipeOutput)),
+	)
+	list = appendE(list, ops.NewOp().
+		WithType("recipe.get_result").
+		AddStep("recipe.get_result", ops.NewStepWithDeps[StartedJob, SingleRecipeOutput](getRecipeOutput)),
+	)
 
 	// single recipe sync
 	list = appendE(list, ops.NewOp().
+		WithType("recipe.run_and_wait.start").
 		AddStep("recipe.run_and_wait.start", ops.NewStepWithDeps[SingleRecipeWithRef, StartedJob](startSingleJob)).
 		AddStep("recipe.run_and_wait.finish", ops.NewStepWithDeps[StartedJob, SingleRecipeOutput](waitAndGetRecipeOutput)),
 	)
 
 	// mutliple recipes sync
 	list = appendE(list, ops.NewOp().
+		WithType("recipes.start").
 		AddStep("recipes.start", ops.NewStepWithDeps[MultipleRecipes, StartedJobs](startMultipleJobs)),
 	)
 

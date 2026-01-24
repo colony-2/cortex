@@ -36,6 +36,10 @@ Create `test-fixtures/recipes/<recipe-name>.test.yaml`. The harness derives the 
 
 Test case schema:
 ```yaml
+recipes:
+  - child-simple.yaml
+  - child-artifact.yaml
+
 tests:
   - name: case_name
     description: Optional description
@@ -45,13 +49,17 @@ tests:
     wantErrContains: Optional substring
     wantArtifacts:
       - optional-artifact-name
+    wantJobArtifacts:
+      - optional-job-artifact-name
 ```
 
 Notes:
+- `recipes` is optional; list additional recipe YAML files (relative to `recipes/`) when the main recipe invokes other recipes (e.g., via `recipe-child` ops).
 - `want` is compared after pruning `context` and `git_persist_hash`. The framework also prunes actual output down to keys present in `want` and ignores zero-value extras.
 - Numeric comparisons are type-flexible (`1` equals `1.0`).
 - Set `wantErr: true` to assert errors; use `wantErrContains` for substring matching.
 - Set `wantArtifacts` to assert artifact names; this switches execution to the toy engine so artifacts can be captured.
+- Set `wantJobArtifacts` to assert artifact names on the final job result (also uses the toy engine).
 
 Example:
 ```yaml
