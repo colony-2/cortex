@@ -16,7 +16,7 @@ inputs:
   analysis_depth: '{{ has(inputs.analysis_depth) ? inputs.analysis_depth : "medium" }}'
   output_format: '{{ has(inputs.output_format) ? inputs.output_format : "json" }}'
 state:
-  initial_state: processing
+  initial: processing
   states:
     processing:
       op: echo_activity

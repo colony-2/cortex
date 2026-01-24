@@ -57,7 +57,14 @@ func stateArtifacts(resCtx *template.ResolutionContext, stateName string, stateD
 	if resCtx == nil {
 		return nil
 	}
-	scopeID := template.ScopeID(stateDef.GetMetadata(), stateName, template.ScopeState)
+	if stateName == "" {
+		return nil
+	}
+	metadata := recipe.NodeMetadata{}
+	if stateDef.NodeImpl != nil {
+		metadata = stateDef.GetMetadata()
+	}
+	scopeID := template.ScopeID(metadata, stateName, template.ScopeState)
 	if scopeID == "" {
 		return nil
 	}

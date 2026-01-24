@@ -8,7 +8,7 @@ input_schema:
 inputs:
   message: '{{ inputs.message }}'
 state:
-  initial_state: simple_state
+  initial: simple_state
   states:
     simple_state:
       op: echo_activity

@@ -26,6 +26,12 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 
 	// Initialize state tracking
 	currentState := stateMap.Initial
+	if currentState == "" {
+		return fmt.Errorf("state machine initial state is required")
+	}
+	if _, ok := stateMap.States[currentState]; !ok {
+		return fmt.Errorf("state '%s' not found", currentState)
+	}
 	stateInvocationCount := make(map[string]int)
 
 	if resCtx.Options.Mode == string(ExecutionModeValidate) && resCtx.Options.ValidationMode == string(ValidateAll) {
@@ -83,8 +89,10 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 	}
 
 	// Return final outputs
-	finalState := stateMap.States[currentState]
-	_ = finalState
+	finalState, ok := stateMap.States[currentState]
+	if currentState != "" && !ok {
+		return fmt.Errorf("state '%s' not found", currentState)
+	}
 
 	resolvedOutputs, err := resCtx.ResolveMap(outputTemplate)
 	if err != nil {

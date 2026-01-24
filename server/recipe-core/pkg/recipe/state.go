@@ -4,8 +4,8 @@ import "github.com/colony-2/colony2/server/recipe-core/pkg/cel"
 
 // StateMap represents a state machine configuration
 type StateMap struct {
-	Initial string           `yaml:"initial"` // Which state to start with
-	States  map[string]State `yaml:"states"`  // Inline the states
+	Initial string           `yaml:"initial" validate:"required"` // Which state to start with
+	States  map[string]State `yaml:"states"`                      // Inline the states
 }
 
 // State represents a state in a state machine
