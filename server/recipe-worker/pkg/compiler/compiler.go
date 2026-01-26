@@ -167,9 +167,11 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 
 	stepInput := resolvedNodeInputs
 
+	taskType := fmt.Sprintf("%s:%s", op, chain[0].Name)
+
 	var stepArtifacts map[string]swf.Artifact
 	for i := 0; i < 64; i++ { // guard against accidental loops
-		taskType := fmt.Sprintf("%s:%s", op, chain[i].Name)
+
 		invocation := workerops.ActivityInvocationRequest{
 			Input:          stepInput,
 			GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),

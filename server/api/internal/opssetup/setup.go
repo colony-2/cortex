@@ -23,6 +23,7 @@ func RegisterOps() []ops.RegisterableOp {
 	impls := opsexport.GetAll()
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, input.GetOp())
+	impls = append(impls, input.GetAutoFillOp())
 	impls = append(impls, gitexport.GetAll()...)
 	impls = append(impls, ticketop.GetOp())
 	ops.Register(impls...)

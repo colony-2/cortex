@@ -23,6 +23,9 @@ type Config struct {
 
 	// Default value on timeout
 	DefaultOnTimeout interface{} `json:"default_on_timeout,omitempty" jsonschema:"description=Default value to return if input times out"`
+
+	// Optional auto-fill response
+	Output *Output `json:"output,omitempty" jsonschema:"description=Optional auto-fill output response"`
 }
 
 // Input represents the inputs passed to the input activity
@@ -42,7 +45,7 @@ func GetOp() ops.RegisterableOp {
 	op, err := ops.NewOp().
 		WithType("input").
 		WithManagementService(newInputManagementService()).
-		AddStep("generate_form", ops.NewStep[Input, InputForm](buildForm)).
+		AddStep("generate_form", ops.NewStepWithDeps(buildForm)).
 		AddStep("collect_user_input", ops.NewNoTaskStep[InputForm, Output]()).
 		Build()
 	if err != nil {
@@ -52,7 +55,7 @@ func GetOp() ops.RegisterableOp {
 }
 
 // buildForm constructs the InputForm from config and input
-func buildForm(ctx context.Context, in Input) (InputForm, error) {
+func buildForm(deps ops.OpDependencies, ctx context.Context, in Input) (InputForm, error) {
 	config := in.Form
 	form := InputForm{
 		Timeout: time.Duration(config.Timeout) * time.Second,
@@ -73,6 +76,10 @@ func buildForm(ctx context.Context, in Input) (InputForm, error) {
 
 	// Add context
 	form.Context = config.Context
+	form.Output = config.Output
+	if config.Output != nil {
+		deps.SetNextTaskType(autoFillTaskType)
+	}
 
 	// Process artifacts from input context if needed
 	if form.Context.ArtifactsFromOutput != "" {

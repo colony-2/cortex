@@ -87,6 +87,7 @@ type InputForm struct {
 
 	// Common fields
 	Context FormContext   `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
+	Output  *Output       `json:"output,omitempty" jsonschema:"description=Optional auto-fill output response"`
 	Timeout time.Duration `json:"timeout,omitempty" jsonschema:"default=300,description=Timeout in seconds"`
 }
 
