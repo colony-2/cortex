@@ -37,14 +37,16 @@ func main() {
 // Execute runs the CLI application.
 func Execute() error {
 	var cfg config.Config
-	var createNew bool
 
 	rootCmd := &cobra.Command{
 		Use:     "cortex",
 		Short:   "Cortex - Recipe management and visualization tool",
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
-		Args:    cobra.MaximumNArgs(0),
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				cfg.RootPath = args[0]
+			}
 			// If no subcommand is provided, run the server (default behavior)
 			return run(cfg)
 		},
@@ -52,7 +54,12 @@ func Execute() error {
 
 	// Define root flags (for default server behavior)
 	defaultPortInt, _ := strconv.Atoi(defaultPort)
-	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
+	rootCmd.PersistentFlags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
+	rootCmd.PersistentFlags().StringSliceVar(&cfg.CORSOrigins, "cors-origins", []string{"http://localhost:3000", "http://localhost:5173"}, "Allowed CORS origins")
+	rootCmd.PersistentFlags().StringVar(&cfg.StaticPath, "static", "embedded", "Path to static files (use 'embedded' for built-in assets)")
+	rootCmd.PersistentFlags().StringVar(&cfg.StoragePath, "storage", "", "Path to storage directory (default: <root>/.colony2)")
+	rootCmd.PersistentFlags().StringVar(&cfg.DatabaseDSN, "db-dsn", "", "PostgreSQL DSN for workflow engine (defaults to NEON_C2_DEV_DSN)")
+	rootCmd.PersistentFlags().BoolVarP(&cfg.CreateNew, "new", "n", false, "Create a new state database if one does not exist (currently no-op)")
 
 	// Server command (explicit subcommand)
 	serverCmd := &cobra.Command{
@@ -60,16 +67,15 @@ func Execute() error {
 		Short: "Start the web server for visualization",
 		Long: `Start a web server that provides an interactive graph interface for browsing files,
 managing dependencies, and working with development containers.`,
-		Args: cobra.MaximumNArgs(0),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				cfg.RootPath = args[0]
+			}
 			// Set path from positional argument
 			return run(cfg)
 		},
 	}
-
-	// Define server-specific flags
-	serverCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
-	serverCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
 	// Add subcommands
 	rootCmd.AddCommand(serverCmd)

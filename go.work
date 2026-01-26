@@ -18,8 +18,6 @@ use (
 	./server/recipe-worker
 	./server/recipes
 	./server/registry
-	./server/rstore
-	./server/storage
 	./server/ticket
 	./server/workflow
 )
