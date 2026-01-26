@@ -18,8 +18,9 @@ func NewDependencyContainer() *ops.ServiceDepsBuilder {
 	return ops.NewServiceDepsBuilder()
 }
 
-// RegisterOps registers all known ops into the registry and returns the list
+// RegisterOps registers all known ops into the registry and returns the list.
 func RegisterOps() []ops.RegisterableOp {
+	ops.Clear()
 	impls := opsexport.GetAll()
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, input.GetOp())
@@ -30,7 +31,7 @@ func RegisterOps() []ops.RegisterableOp {
 	return impls
 }
 
-// SetupOps initializes management services for registered ops and returns routes + cleanup
+// SetupOps initializes management services for registered ops and returns routes + cleanup.
 func SetupOps(deps ops.ServiceDependencies2) (routes []web.ExtensionRoute, cleanup []func(), err error) {
 	cleanupFuncs := []func(){}
 	var extensionRoutes []web.ExtensionRoute

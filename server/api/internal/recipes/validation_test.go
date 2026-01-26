@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/colony-2/colony2/server/api/internal/opssetup"
+	opssetup "github.com/colony-2/colony2/server/api/pkg/serverdeps/opssetup"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"

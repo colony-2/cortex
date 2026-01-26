@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/cortex/internal/shared"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	rec "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
@@ -413,17 +414,20 @@ func executeRecipe(ctx context.Context, recipe *rec.Recipe, inputs map[string]in
 	if err != nil {
 		return nil, fmt.Errorf("failed to create activity registry: %w", err)
 	}
-	registry.SetDependencies(coreops.NewServiceDepsBuilder().Build())
+	deps := coreops.NewServiceDepsBuilder().Build()
+	registry.SetDependencies(deps)
 
-	execute, err := executor.NewStandaloneExecutor(registry, logger)
+	execute, err := executor.NewStandaloneExecutor(deps, registry, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create standalone executor: %w", err)
 	}
 
-	opts := executor.DefaultExecutionOptions()
+	jobCtx := contextual.JobContext{
+		Workflow: contextual.WorkflowContext{JobID: state.RunID},
+	}
 
 	// Execute the rec
-	outputs, err := execute.Execute(ctx, *recipe, inputs, opts)
+	outputs, err := execute.Execute(ctx, *recipe, inputs, jobCtx, "")
 	if err != nil {
 		// Check if it's a timeout error
 		if ctx.Err() == context.DeadlineExceeded {

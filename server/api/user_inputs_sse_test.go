@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/api/internal/handlers"
-	"github.com/colony-2/colony2/server/api/internal/opssetup"
+	serverdepsops "github.com/colony-2/colony2/server/api/pkg/serverdeps/opssetup"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
@@ -85,12 +85,12 @@ func setupSSETestEnv(t *testing.T) sseTestEnv {
 		Engine: eng,
 	}
 
-	depContainer := opssetup.NewDependencyContainer().
+	depContainer := serverdepsops.NewDependencyContainer().
 		WithWorkflowControl(&wf).
 		WithSSEManager(input.NewSimpleSSEManager()).
 		Build()
 
-	webExtensionRoutes, cleanup, err := opssetup.SetupOps(depContainer)
+	webExtensionRoutes, cleanup, err := serverdepsops.SetupOps(depContainer)
 	require.NoError(t, err)
 
 	registry, err := ops.NewActivityRegistry()
@@ -483,12 +483,12 @@ func TestUserInputsSSEFlushingWorks(t *testing.T) {
 	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
 	wf := workflow.SWFWorkflowControl{Engine: eng}
 
-	depContainer := opssetup.NewDependencyContainer().
+	depContainer := serverdepsops.NewDependencyContainer().
 		WithWorkflowControl(&wf).
 		WithSSEManager(input.NewSimpleSSEManager()).
 		Build()
 
-	webExtensionRoutes, cleanup, err := opssetup.SetupOps(depContainer)
+	webExtensionRoutes, cleanup, err := serverdepsops.SetupOps(depContainer)
 	require.NoError(t, err)
 	defer func() {
 		for _, c := range cleanup {

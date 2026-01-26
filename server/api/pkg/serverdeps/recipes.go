@@ -1,4 +1,4 @@
-package recipes
+package serverdeps
 
 import (
 	_ "embed"

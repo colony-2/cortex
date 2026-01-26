@@ -60,6 +60,9 @@ func Execute() error {
 	rootCmd.PersistentFlags().StringVar(&cfg.StoragePath, "storage", "", "Path to storage directory (default: <root>/.colony2)")
 	rootCmd.PersistentFlags().StringVar(&cfg.DatabaseDSN, "db-dsn", "", "PostgreSQL DSN for workflow engine (defaults to NEON_C2_DEV_DSN)")
 	rootCmd.PersistentFlags().BoolVarP(&cfg.CreateNew, "new", "n", false, "Create a new state database if one does not exist (currently no-op)")
+	rootCmd.PersistentFlags().StringVar(&cfg.StrataMode, "strata-mode", "embedded", "Strata mode: embedded or remote")
+	rootCmd.PersistentFlags().StringVar(&cfg.StrataURL, "strata-url", "", "Remote Strata base URL (required when strata-mode=remote)")
+	rootCmd.PersistentFlags().StringVar(&cfg.StrataAPIKey, "strata-api-key", "", "Strata API key (default: local)")
 
 	// Server command (explicit subcommand)
 	serverCmd := &cobra.Command{

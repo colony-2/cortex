@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/require"
 )
@@ -125,7 +126,7 @@ func TestChainedProvider_SkipNilProviders(t *testing.T) {
 func TestChainedProvider_WithEmbeddedProvider(t *testing.T) {
 	// Test with the actual embedded provider
 	// Note: This may fail if ops are not registered, which is expected in unit tests
-	embedded, err := NewEmbeddedProvider()
+	embedded, err := serverdeps.NewEmbeddedProvider()
 	if err != nil {
 		t.Skipf("Skipping test due to ops not being registered: %v", err)
 		return

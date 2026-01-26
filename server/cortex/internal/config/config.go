@@ -4,17 +4,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Config holds the application configuration
 type Config struct {
-	Port        int
-	RootPath    string
-	StoragePath string
-	StaticPath  string
-	CORSOrigins []string
-	DatabaseDSN string
-	CreateNew   bool
+	Port         int
+	RootPath     string
+	StoragePath  string
+	StaticPath   string
+	CORSOrigins  []string
+	DatabaseDSN  string
+	CreateNew    bool
+	StrataMode   string
+	StrataURL    string
+	StrataAPIKey string
 }
 
 // Validate validates and completes the configuration
@@ -37,6 +41,16 @@ func (c *Config) Validate() error {
 	}
 	if c.StaticPath == "" {
 		c.StaticPath = "embedded"
+	}
+	if c.StrataMode == "" {
+		c.StrataMode = "embedded"
+	}
+	c.StrataMode = strings.ToLower(c.StrataMode)
+	if c.StrataMode != "embedded" && c.StrataMode != "remote" {
+		return fmt.Errorf("invalid strata-mode: %s", c.StrataMode)
+	}
+	if c.StrataMode == "remote" && c.StrataURL == "" {
+		return fmt.Errorf("strata-url is required when strata-mode=remote")
 	}
 
 	// Validate port

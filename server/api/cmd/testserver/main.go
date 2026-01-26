@@ -13,9 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/colony-2/colony2/server/api/internal/engine"
-	"github.com/colony-2/colony2/server/api/internal/opssetup"
-	"github.com/colony-2/colony2/server/api/internal/recipes"
+	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
+	serverdepsops "github.com/colony-2/colony2/server/api/pkg/serverdeps/opssetup"
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
@@ -23,6 +22,7 @@ import (
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	rec "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
@@ -161,7 +161,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Register all ops globally (required before engine setup)
 	slog.Info("registering ops")
-	opssetup.RegisterOps()
+	serverdepsops.RegisterOps()
 	slog.Info("ops registered", "elapsed", time.Since(startTime))
 
 	// Create initial dependencies for engine setup
@@ -173,7 +173,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Create real workflow engine with PGWF and Strata
 	slog.Info("setting up workflow engine (PGWF + Strata)")
-	engineSetup, err := engine.NewSetup(engine.Config{
+	engineSetup, err := serverdeps.NewEngineSetup(serverdeps.EngineConfig{
 		PostgresDB:   pgDB,
 		PostgresDSN:  dsn,
 		StoragePath:  storagePath,
@@ -193,14 +193,17 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Create embedded provider for internal recipes
 	slog.Info("creating embedded recipe provider")
-	embeddedProvider, err := recipes.NewEmbeddedProvider()
+	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
 	if err != nil {
 		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
 	slog.Info("embedded recipe provider created", "elapsed", time.Since(startTime))
 
 	// Create RecipeProjectProvider with fallback to embedded recipes
-	recipeProviderWithFallback := recipes.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	ticketRecipeProvider := ticket.RecipeProjectProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
+		return recipeProviderWithFallback(projectID, recipeRef)
+	})
 
 	// Create ticket service with engine and recipe provider for workflow autostart
 	slog.Info("creating ticket service")
@@ -210,7 +213,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Projects:   projectSvc,
 		Cells:      cellSvc,
 		Engine:     engineSetup.Engine(),
-		Recipes:    recipeProviderWithFallback,
+		Recipes:    ticketRecipeProvider,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create ticket service: %w", err)
@@ -234,9 +237,13 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	}
 
 	slog.Info("creating workflow control")
+	workflowRecipeProvider := workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
+		return recipeProviderWithFallback(projectID, recipeRef)
+	})
+
 	wfc := workflow.SWFWorkflowControl{
 		Engine:   engineSetup.Engine(),
-		Registry: recipeProviderWithFallback,
+		Registry: workflowRecipeProvider,
 	}
 
 	slog.Info("creating strata client")
@@ -271,7 +278,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Build()
 
 	slog.Info("setting up ops (extension routes)")
-	extensionRoutes, _, err := opssetup.SetupOps(depContainer)
+	extensionRoutes, _, err := serverdepsops.SetupOps(depContainer)
 	if err != nil {
 		return fmt.Errorf("ops setup failed: %w", err)
 	}

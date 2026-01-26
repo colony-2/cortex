@@ -1,4 +1,4 @@
-package setup
+package serverdeps
 
 import (
 	"context"
@@ -14,6 +14,13 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
 	"gorm.io/gorm"
+)
+
+type StrataMode string
+
+const (
+	StrataEmbedded StrataMode = "embedded"
+	StrataRemote   StrataMode = "remote"
 )
 
 // EngineSetup encapsulates a fully configured workflow engine with PGWF and Strata.
@@ -34,9 +41,12 @@ type EngineConfig struct {
 	Logger                *slog.Logger
 	MaxActive             int
 	AwaitRecycleThreshold time.Duration
+	StrataMode            StrataMode
+	StrataURL             string
+	StrataAPIKey          string
 }
 
-// NewEngineSetup creates and starts a workflow engine with PGWF and persistent Strata.
+// NewEngineSetup creates and starts a workflow engine with PGWF and Strata.
 func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	if cfg.Context == nil {
 		cfg.Context = context.Background()
@@ -50,17 +60,29 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	if cfg.AwaitRecycleThreshold == 0 {
 		cfg.AwaitRecycleThreshold = 5 * time.Second
 	}
+	if cfg.StrataMode == "" {
+		cfg.StrataMode = StrataEmbedded
+	}
+	if cfg.StrataMode != StrataEmbedded && cfg.StrataMode != StrataRemote {
+		return nil, fmt.Errorf("invalid StrataMode %q", cfg.StrataMode)
+	}
+	if cfg.StrataAPIKey == "" {
+		cfg.StrataAPIKey = "local"
+	}
 	if cfg.PostgresDB == nil {
 		return nil, fmt.Errorf("PostgresDB is required")
 	}
 	if cfg.PostgresDSN == "" {
 		return nil, fmt.Errorf("PostgresDSN is required")
 	}
-	if cfg.StoragePath == "" {
-		return nil, fmt.Errorf("StoragePath is required")
-	}
 	if cfg.Dependencies == nil {
 		return nil, fmt.Errorf("Dependencies is required")
+	}
+	if cfg.StrataMode == StrataEmbedded && cfg.StoragePath == "" {
+		return nil, fmt.Errorf("StoragePath is required for embedded Strata")
+	}
+	if cfg.StrataMode == StrataRemote && cfg.StrataURL == "" {
+		return nil, fmt.Errorf("StrataURL is required for remote Strata")
 	}
 
 	ctx, cancel := context.WithCancel(cfg.Context)
@@ -77,53 +99,61 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 		return nil, fmt.Errorf("failed to install PGWF schema: %w", err)
 	}
 
-	absStoragePath, err := filepath.Abs(cfg.StoragePath)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to resolve storage path: %w", err)
-	}
-	strataRowsPath := filepath.Join(absStoragePath, "strata", "rows")
-	strataBlobsPath := filepath.Join(absStoragePath, "strata", "blobs")
+	strataBaseURL := cfg.StrataURL
+	var strata *daemon.Daemon
+	if cfg.StrataMode == StrataEmbedded {
+		absStoragePath, err := filepath.Abs(cfg.StoragePath)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to resolve storage path: %w", err)
+		}
+		strataRowsPath := filepath.Join(absStoragePath, "strata", "rows")
+		strataBlobsPath := filepath.Join(absStoragePath, "strata", "blobs")
 
-	cfg.Logger.Info("starting Strata daemon", "rows_path", strataRowsPath, "blobs_path", strataBlobsPath)
-	strataCfg := daemon.Config{
-		ListenAddr:             "127.0.0.1:0",
-		RowStoreURI:            fmt.Sprintf("pebble://%s", filepath.ToSlash(strataRowsPath)),
-		BlobStoreURI:           fmt.Sprintf("blobfs://%s", filepath.ToSlash(strataBlobsPath)),
-		MaxInlineArtifactBytes: daemon.DefaultMaxInlineArtifactBytes,
-		Logger:                 cfg.Logger,
-	}
-	strata, err := daemon.New(strataCfg)
-	if err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to create Strata daemon: %w", err)
-	}
-	if err := strata.Start(ctx); err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to start Strata daemon: %w", err)
-	}
+		cfg.Logger.Info("starting Strata daemon", "rows_path", strataRowsPath, "blobs_path", strataBlobsPath)
+		strataCfg := daemon.Config{
+			ListenAddr:             "127.0.0.1:0",
+			RowStoreURI:            fmt.Sprintf("pebble://%s", filepath.ToSlash(strataRowsPath)),
+			BlobStoreURI:           fmt.Sprintf("blobfs://%s", filepath.ToSlash(strataBlobsPath)),
+			MaxInlineArtifactBytes: daemon.DefaultMaxInlineArtifactBytes,
+			Logger:                 cfg.Logger,
+		}
+		strata, err = daemon.New(strataCfg)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to create Strata daemon: %w", err)
+		}
+		if err := strata.Start(ctx); err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to start Strata daemon: %w", err)
+		}
 
-	strataAddr, err := strata.Addr()
-	if err != nil {
-		cancel()
-		strata.Shutdown(context.Background())
-		return nil, fmt.Errorf("failed to get Strata address: %w", err)
+		strataAddr, err := strata.Addr()
+		if err != nil {
+			cancel()
+			strata.Shutdown(context.Background())
+			return nil, fmt.Errorf("failed to get Strata address: %w", err)
+		}
+		strataBaseURL = fmt.Sprintf("http://%s", strataAddr)
+		cfg.Logger.Info("Strata daemon started", "url", strataBaseURL)
+	} else {
+		cfg.Logger.Info("using remote Strata", "url", strataBaseURL)
 	}
-	strataBaseURL := fmt.Sprintf("http://%s", strataAddr)
-	cfg.Logger.Info("Strata daemon started", "url", strataBaseURL)
 
 	cfg.Logger.Info("building workflow engine")
 	engine, err := swf.NewEngineBuilder().
 		WithAwaitRecycleThreshold(cfg.AwaitRecycleThreshold).
 		WithPostgresDSN(cfg.PostgresDSN).
 		WithStrata(strataBaseURL).
-		WithStrataAPIKey("local").
+		WithStrataAPIKey(cfg.StrataAPIKey).
 		WithLogger(cfg.Logger).
 		WithMaxActive(cfg.MaxActive).
 		Build(impl.Builder)
 	if err != nil {
 		cancel()
-		strata.Shutdown(context.Background())
+		if strata != nil {
+			strata.Shutdown(context.Background())
+		}
 		return nil, fmt.Errorf("failed to build workflow engine: %w", err)
 	}
 
@@ -131,7 +161,9 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	activityRegistry, err := ops.NewActivityRegistry()
 	if err != nil {
 		cancel()
-		strata.Shutdown(context.Background())
+		if strata != nil {
+			strata.Shutdown(context.Background())
+		}
 		return nil, fmt.Errorf("failed to create activity registry: %w", err)
 	}
 	activityRegistry.SetDependencies(cfg.Dependencies)
@@ -140,7 +172,9 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	workset, err := compiler.NewRecipeWorker(cfg.Dependencies, activityRegistry)
 	if err != nil {
 		cancel()
-		strata.Shutdown(context.Background())
+		if strata != nil {
+			strata.Shutdown(context.Background())
+		}
 		return nil, fmt.Errorf("failed to create workset: %w", err)
 	}
 
@@ -163,7 +197,7 @@ func (s *EngineSetup) Engine() swf.SWFEngine {
 	return s.engine
 }
 
-// StrataBaseURL returns the base URL for the embedded Strata daemon.
+// StrataBaseURL returns the base URL for Strata.
 func (s *EngineSetup) StrataBaseURL() string {
 	return s.baseURL
 }

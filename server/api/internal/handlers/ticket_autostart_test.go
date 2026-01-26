@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/api/internal/recipes"
 	"github.com/colony-2/colony2/server/api/internal/testsupport"
+	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
@@ -106,7 +106,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	go engine.Run(ctx)
 
 	// Embedded recipe provider
-	provider, err := recipes.NewEmbeddedProvider()
+	provider, err := serverdeps.NewEmbeddedProvider()
 	require.NoError(t, err)
 
 	// Create a RecipeProjectProvider that uses the embedded provider
