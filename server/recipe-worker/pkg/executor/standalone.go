@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// StandaloneExecutor executes recipes without a Temporal server
 type StandaloneExecutor struct {
 	registry *ops.ActivityRegistry
 	logger   *zap.Logger

@@ -9,7 +9,7 @@ import (
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
 )
 
-// LLMActivity represents the input for the Temporal activity wrapper
+// LLMActivity represents the input for the  activity wrapper
 type LLMActivity struct {
 	// Core fields
 	Prompt       string `json:"prompt"`
@@ -30,7 +30,7 @@ type LLMActivity struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// LLMActivityOutput wraps the task output for Temporal
+// LLMActivityOutput wraps the task output
 type LLMActivityOutput struct {
 	Response     json.RawMessage `json:"response"`
 	Telemetry    LLMTelemetry    `json:"telemetry"`
@@ -92,7 +92,7 @@ func SetRegistry(registry llmadapters.Registry) {
 	globalRegistry = registry
 }
 
-// ExecuteLLMTask is the Temporal activity function
+// ExecuteLLMTask is the  activity function
 func ExecuteLLMTask(ctx context.Context, input LLMActivity) (*LLMActivityOutput, error) {
 	if globalRegistry == nil {
 		return nil, fmt.Errorf("LLM registry not initialized. Call InitializeRegistry() first")

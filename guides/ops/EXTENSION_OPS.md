@@ -7,7 +7,7 @@
 
 - Discovery: `server/ops/pkg/extensions` scans for `.colony2/ops/*/op.yaml` starting from the current working directory and walking up to find the project root. You can also set `VIBETHIS_PROJECT_ROOT` to pin the root.
 - Registration: `extensions.DiscoverAndRegister(startDir)` registers each discovered op as a `RegisterableOp`. The standard `export.GetAll()` now appends discovered ops automatically.
-- Execution: These ops run as Temporal activities (not inline). The op’s process receives the input as JSON over stdin and must write JSON to stdout as its result.
+- Execution: These ops run swf tasks. The op’s process receives the input as JSON over stdin and must write JSON to stdout as its result.
 
 **Directory Layout**
 

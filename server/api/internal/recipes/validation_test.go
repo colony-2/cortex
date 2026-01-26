@@ -83,7 +83,7 @@ sequence:
       run: "cat {{ context.environment.worktree_path }}/{{ context.workflow.cell_path }}/README.md"
   - op: codex.exec
     inputs:
-      prompt: update the readme to be more concise. avoid any reference to temporal
+      prompt: update the readme to be more concise
 `))
 		require.NoError(t, err)
 
@@ -123,7 +123,7 @@ sequence:
       run: "cat {{ context.environment.worktree_path }}/{{ context.workflow.cell_path }}/README.md"
   - op: codex.exec
     inputs:
-      prompt: update the readme to be more concise. avoid any reference to temporal
+      prompt: update the readme to be more concise
 `))
 		require.NoError(t, err)
 

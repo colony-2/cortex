@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-const temporalRangeConstraint = "tickets_valid_range_excl"
 
 type Store interface {
 	WithTx(ctx context.Context, fn func(ctx context.Context, store Store) error) error
@@ -58,7 +57,7 @@ func (s *store) Create(ctx context.Context, ticket *model.Ticket) error {
 		ticket.ValidFrom = time.Now().UTC()
 	}
 	if ticket.ValidUntil.IsZero() {
-		ticket.ValidUntil = temporalInfinity()
+		ticket.ValidUntil = swfInfinity()
 	}
 	return s.db.WithContext(ctx).Create(ticket).Error
 }
@@ -66,7 +65,7 @@ func (s *store) Create(ctx context.Context, ticket *model.Ticket) error {
 func (s *store) Get(ctx context.Context, id model.ID) (*model.Ticket, error) {
 	var ticket model.Ticket
 	err := s.db.WithContext(ctx).
-		Where("id = ? AND valid_until = ?", id, temporalInfinity()).
+		Where("id = ? AND valid_until = ?", id, swfInfinity()).
 		First(&ticket).Error
 	if err != nil {
 		return nil, err
@@ -132,7 +131,7 @@ func applyFilter(db *gorm.DB, filter model.SearchFilter) *gorm.DB {
 		at := *filter.At
 		db = db.Where("valid_from <= ? AND ? < valid_until", at, at)
 	} else {
-		db = db.Where("valid_until = ?", temporalInfinity())
+		db = db.Where("valid_until = ?", swfInfinity())
 	}
 	if len(filter.StageAny) > 0 {
 		db = db.Where("stage IN ?", filter.StageAny)
@@ -170,7 +169,7 @@ func applyFilter(db *gorm.DB, filter model.SearchFilter) *gorm.DB {
 	return db
 }
 
-func temporalInfinity() time.Time {
+func swfInfinity() time.Time {
 	return time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 }
 

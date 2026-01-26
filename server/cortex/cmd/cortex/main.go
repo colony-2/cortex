@@ -40,25 +40,12 @@ func Execute() error {
 	var createNew bool
 
 	rootCmd := &cobra.Command{
-		Use:   "cortex [path]",
-		Short: "Cortex - Recipe management and visualization tool",
-		Long: `Cortex provides tools for managing recipes, visualizing project dependencies,
-and working with development containers. It includes both a web interface and
-CLI commands for recipe validation and schema generation.`,
+		Use:     "cortex",
+		Short:   "Cortex - Recipe management and visualization tool",
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
-		Args:    cobra.MaximumNArgs(1),
+		Args:    cobra.MaximumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand is provided, run the server (default behavior)
-			// Set path from positional argument
-			if len(args) > 0 {
-				cfg.RootPath = args[0]
-			} else {
-				cfg.RootPath = "."
-			}
-
-			// Handle --new flag
-			cfg.CreateNew = createNew
-
 			return run(cfg)
 		},
 	}
@@ -66,26 +53,16 @@ CLI commands for recipe validation and schema generation.`,
 	// Define root flags (for default server behavior)
 	defaultPortInt, _ := strconv.Atoi(defaultPort)
 	rootCmd.Flags().IntVarP(&cfg.Port, "port", "p", defaultPortInt, "Port to listen on")
-	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist")
 
 	// Server command (explicit subcommand)
 	serverCmd := &cobra.Command{
-		Use:   "server [path]",
+		Use:   "server",
 		Short: "Start the web server for visualization",
 		Long: `Start a web server that provides an interactive graph interface for browsing files,
 managing dependencies, and working with development containers.`,
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.MaximumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Set path from positional argument
-			if len(args) > 0 {
-				cfg.RootPath = args[0]
-			} else {
-				cfg.RootPath = "."
-			}
-
-			// Handle --new flag
-			cfg.CreateNew = createNew
-
 			return run(cfg)
 		},
 	}
@@ -133,7 +110,6 @@ func run(cfg config.Config) error {
 	errChan := make(chan error, 1)
 	go func() {
 		fmt.Printf("Server starting on :%d\n", cfg.Port)
-		fmt.Printf("Scanning path: %s\n", cfg.RootPath)
 		errChan <- server.Start()
 	}()
 

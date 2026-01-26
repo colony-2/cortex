@@ -23,7 +23,7 @@ type GitShallowCloneOutput struct {
 }
 
 // GitShallowClone performs a shallow clone of a local git repository to another directory
-// This is a Temporal activity that can be invoked as part of recipe workflows
+// This is a  activity that can be invoked as part of recipe workflows
 func GitShallowClone(ctx context.Context, input GitShallowCloneInput) (*GitShallowCloneOutput, error) {
 	// Validate inputs
 	if input.SourceDir == "" {

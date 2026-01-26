@@ -105,11 +105,6 @@ LoadPlan -> StepPreparation -> FanOutTickets -> MonitorProgress -> OwnerCleanup 
 - Tests failing during fast-forward: treat as detection failure—open/remediate via child ticket and repeat flow.
 - Fast-forward repeatedly failing: after N cycles, mark recipe `blocked` with reason `main_out_of_date` and await manual intervention.
 
-## Observability
-- Temporal search attributes: `deprecation_ticket_id`, `current_step`, `status` (`waiting_children`, `cleanup`, `detection`, `merge_retry`).
-- Metrics: `deprecation_detection_attempts`, `deprecation_detection_failures`, `deprecation_ff_merge_retries`, `deprecation_child_tickets_spawned`.
-- Structured logs spanning child ticket IDs, detection outputs, thinpackrebase results, and fast-forward merges.
-
 ## Implementation Notes
 - Operate in discrete gitstate to avoid polluting developer workspaces; run thinpack after every successful child wave.
 - Ensure steps are idempotent (persist list of spawned child tickets, detection statuses) so recipe can resume on restart.
