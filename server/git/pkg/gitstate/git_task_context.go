@@ -10,30 +10,29 @@ type GlobalGitTaskContext struct {
 	ResolvedBaseHash string
 	PersistHash      string
 	ParentHash       string
-	TicketID   string
-	CellName   string
-	CellPath   string // Cell relative path from repo root
-	GitAuthor  string
-	NodePath   string
-	InvokeSeq  int64
-	InvokeHash string
+	TicketID         string
+	CellName         string
+	CellPath         string // Cell relative path from repo root
+	GitAuthor        string
+	NodePath         string
+	InvokeSeq        int64
+	InvokeHash       string
 }
 
 // NewGlobalGitTaskContext creates a GlobalGitTaskContext from TaskExecutionContext
 func NewGlobalGitTaskContext(tec contextual.TaskExecutionContext) *GlobalGitTaskContext {
 	return &GlobalGitTaskContext{
-		BaseRepo:         tec.GitBase.BaseRepo,
-		BaseRef:          tec.GitBase.BaseRef,
-		ResolvedBaseHash: tec.GitBase.ResolvedBaseHash,
-		GitAuthor:        tec.GitBase.GitAuthor,
-		PersistHash:      tec.GitCommit.PersistHash,
-		ParentHash:       tec.GitCommit.ParentHash,
+		BaseRepo:         tec.GitTask.BaseRepo,
+		BaseRef:          tec.GitTask.BaseRef,
+		ResolvedBaseHash: tec.GitTask.ResolvedBaseHash,
+		GitAuthor:        tec.GitTask.GitAuthor,
+		PersistHash:      tec.GitTask.PersistHash,
+		ParentHash:       tec.GitTask.ParentHash,
 		TicketID:         tec.Actor.TicketID,
 		CellName:         tec.Workflow.CellName,
 		CellPath:         tec.Workflow.CellPath,
 		NodePath:         tec.Invocation.NodePath,
 		InvokeSeq:        tec.Invocation.InvokeSeq,
-		InvokeHash:       tec.Invocation.Hash(),
 	}
 }
 

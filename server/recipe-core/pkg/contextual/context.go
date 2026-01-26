@@ -89,9 +89,20 @@ func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionCont
 		Ticket:      ctx.Ticket,
 		Environment: ctx.Environment,
 		Workflow:    ctx.Workflow,
-		GitBase:     ctx.GitBase,
-		GitCommit:   ctx2.GitCommit,
-		Invocation:  ctx2.Invocation,
+		GitTask: GitTask{
+			BaseRepo:         ctx.GitBase.BaseRepo,
+			BaseRef:          ctx.GitBase.BaseRef,
+			ResolvedBaseHash: ctx.GitBase.ResolvedBaseHash,
+			GitAuthor:        ctx.GitBase.GitAuthor,
+			PersistHash:      ctx2.GitCommit.PersistHash,
+			ParentHash:       ctx2.GitCommit.ParentHash,
+			ParentRef:        ctx2.GitCommit.ParentRef,
+		},
+		Invocation: InvocationCtx{
+			Hash:      GetInvocationHash(ctx2.Invocation),
+			InvokeSeq: ctx2.Invocation.InvokeSeq,
+			NodePath:  ctx2.Invocation.NodePath,
+		},
 	}
 }
 
@@ -101,16 +112,24 @@ type TaskExecutionContext struct {
 	Ticket      TicketContext      `json:"ticket,omitempty"`
 	Environment EnvironmentContext `json:"environment,omitempty"`
 	Workflow    WorkflowContext    `json:"workflow,omitempty"`
-	GitBase     GitBaseContext     `json:"git,omitempty"`
-	GitCommit   *GitCommitContext
-	Invocation  Invocation
+	GitTask     GitTask            `json:"git,omitempty"`
+	Invocation  InvocationCtx      `json:"invocation,omitempty"`
 }
 
-func (t TaskExecutionContext) TaskContext() TaskContext {
-	return TaskContext{
-		GitCommit:  t.GitCommit,
-		Invocation: t.Invocation,
-	}
+type GitTask struct {
+	BaseRepo         string `json:"repo,omitempty"`
+	BaseRef          string `json:"ref,omitempty"`
+	ResolvedBaseHash string `json:"resolved_hash,omitempty"`
+	GitAuthor        string `json:"author,omitempty"`
+	ParentRef        string `json:"parent_ref,omitempty"`  // ref carrying workspace state until a hash exists
+	PersistHash      string `json:"hash,omitempty"`        // materialized SHA after a commit is created
+	ParentHash       string `json:"parent_hash,omitempty"` // parent SHA once materialized
+}
+
+type InvocationCtx struct {
+	Hash      string `json:"hash"`
+	NodePath  string `json:"path"`
+	InvokeSeq int64  `json:"sequence"`
 }
 
 func (t TaskExecutionContext) JobContext() JobContext {
@@ -119,7 +138,12 @@ func (t TaskExecutionContext) JobContext() JobContext {
 		Ticket:      t.Ticket,
 		Environment: t.Environment,
 		Workflow:    t.Workflow,
-		GitBase:     t.GitBase,
+		GitBase: GitBaseContext{
+			BaseRepo:         t.GitTask.BaseRepo,
+			BaseRef:          t.GitTask.BaseRef,
+			ResolvedBaseHash: t.GitTask.ResolvedBaseHash,
+			GitAuthor:        t.GitTask.GitAuthor,
+		},
 	}
 }
 

@@ -45,14 +45,14 @@ func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 
 func TestInvocation_HashDeterministic(t *testing.T) {
 	inv := contextual.Invocation{NodePath: "node/a", InvokeSeq: 3}
-	hash := inv.Hash()
+	hash := contextual.GetInvocationHash(inv)
 
 	// Hash is stable for identical invocations and changes when fields differ.
-	assert.Equal(t, hash, inv.Hash())
+	assert.Equal(t, hash, contextual.GetInvocationHash(inv))
 
 	modified := inv
 	modified.InvokeSeq = 4
-	assert.NotEqual(t, inv.Hash(), modified.Hash())
+	assert.NotEqual(t, contextual.GetInvocationHash(inv), contextual.GetInvocationHash(modified))
 }
 
 func TestRegisterableOp_V2InlineAndActivityHandlers(t *testing.T) {

@@ -11,7 +11,7 @@ Gitstate is the recipe-visible git metadata that keeps steps aligned on the same
 - `base_hash` - resolved commit hash used for deterministic operations
 - `author` - commit author string for generated commits
 
-Defaults come from `context.git` (see `JOB_CONTEXT_REFERENCE.md`).
+Defaults come from `context.git` (see `TASK_EXECUTION_CONTEXT_REFERENCE.md`).
 
 ## How steps record changes
 

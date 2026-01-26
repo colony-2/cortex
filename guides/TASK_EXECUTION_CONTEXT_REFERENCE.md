@@ -1,15 +1,15 @@
-# Job Context Reference for Recipe Authors
+# Task Execution Context Reference for Recipe Authors
 
-Use the `context` object in templates to access job metadata (who/what/where is running, ticket info, and repo state). This is a user-facing map of every available field and how to reference it.
+Use the `context` object in templates to access task execution metadata (who/what/where is running, ticket info, repo state, and invocation details). This is a user-facing map of every available field and how to reference it.
 
 ## Fields You Can Use
 
-### Actor (who triggered the job)
-- `context.actor.ticket_id` - Ticket identifier associated with the actor/session.
+### Actor (who triggered the task)
+- `context.actor.ticket_id` - The ticket ID that triggered the job.
 - `context.actor.actor_name` - Display name of the actor.
 - `context.actor.actor_email` - Email of the actor.
 
-### Ticket (if the job is tied to a ticket)
+### Ticket (if the task is tied to a ticket)
 - `context.ticket.id` - Ticket ID.
 - `context.ticket.title` - Ticket title.
 - `context.ticket.description` - Ticket description/body.
@@ -34,11 +34,19 @@ Use the `context` object in templates to access job metadata (who/what/where is 
 - `context.workflow.job_id` - Job identifier.
 - `context.workflow.project_id` - Project identifier.
 
-### Git base (what repo/revision the job started from)
+### Git task (what repo/revision the task started from and what it produced)
 - `context.git.repo` - Base repo identifier or URL.
 - `context.git.ref` - Base ref (branch/tag/etc).
 - `context.git.resolved_hash` - Resolved base commit hash.
 - `context.git.author` - Git author string for generated commits.
+- `context.git.parent_ref` - Ref carrying workspace state until a hash exists.
+- `context.git.hash` - Persisted commit hash once materialized.
+- `context.git.parent_hash` - Parent commit hash once materialized.
+
+### Invocation (task-specific execution info)
+- `context.invocation.hash` - Invocation hash. (a deterministic hash of the node path and invocation sequence)
+- `context.invocation.path` - Node path within the recipe.
+- `context.invocation.sequence` - Invocation sequence number.
 
 ## Notes for Template Authors
 - All fields are optional; if a value is missing, the template resolves to empty.
@@ -57,4 +65,7 @@ run: "echo {{ context.workflow.cell_path }}"
 
 # Resolve the cell path for op defaults
 cell_relative_path: "{{ context.workflow.cell_path }}"
+
+# Use task invocation info for namespacing
+artifact_key: "{{ context.invocation.hash }}"
 ```
