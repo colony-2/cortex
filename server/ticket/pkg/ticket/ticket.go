@@ -70,6 +70,8 @@ type (
 	Iterator[T any]         = internalstore.Iterator[T]
 	Store                   = internalstore.Store
 	EventStore              = eventstore.Store
+	StoreOptions            = internalstore.Options
+	EventStoreOptions       = eventstore.Options
 	RecipeProjectProvider   = internalservice.RecipeProjectProvider
 )
 
@@ -158,8 +160,16 @@ func NewStore(db *gorm.DB) (Store, error) {
 	return internalstore.New(db)
 }
 
+func NewStoreWithOptions(db *gorm.DB, opts StoreOptions) (Store, error) {
+	return internalstore.NewWithOptions(db, opts)
+}
+
 func NewEventStore(db *gorm.DB) (EventStore, error) {
 	return eventstore.New(db)
+}
+
+func NewEventStoreWithOptions(db *gorm.DB, opts EventStoreOptions) (EventStore, error) {
+	return eventstore.NewWithOptions(db, opts)
 }
 
 func NewUserActor(email string) Actor {

@@ -25,12 +25,22 @@ type store struct {
 
 var ErrOptimisticLock = errors.New("projects store: optimistic lock conflict")
 
+type Options struct {
+	Migrate bool
+}
+
 func New(db *gorm.DB) (Store, error) {
+	return NewWithOptions(db, Options{Migrate: true})
+}
+
+func NewWithOptions(db *gorm.DB, opts Options) (Store, error) {
 	if db == nil {
 		return nil, errors.New("projects store: nil db")
 	}
-	if err := db.AutoMigrate(&model.Project{}); err != nil {
-		return nil, err
+	if opts.Migrate {
+		if err := db.AutoMigrate(&model.Project{}); err != nil {
+			return nil, err
+		}
 	}
 	return &store{db: db}, nil
 }

@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 type Store interface {
 	WithTx(ctx context.Context, fn func(ctx context.Context, store Store) error) error
 	Create(ctx context.Context, ticket *model.Ticket) error
@@ -28,12 +27,22 @@ type store struct {
 
 var ErrOptimisticLock = errors.New("tickets store: optimistic lock conflict")
 
+type Options struct {
+	Migrate bool
+}
+
 func New(db *gorm.DB) (Store, error) {
+	return NewWithOptions(db, Options{Migrate: true})
+}
+
+func NewWithOptions(db *gorm.DB, opts Options) (Store, error) {
 	if db == nil {
 		return nil, errors.New("tickets store: nil db")
 	}
-	if err := db.AutoMigrate(&model.Ticket{}); err != nil {
-		return nil, fmt.Errorf("tickets store: auto migrate: %w", err)
+	if opts.Migrate {
+		if err := db.AutoMigrate(&model.Ticket{}); err != nil {
+			return nil, fmt.Errorf("tickets store: auto migrate: %w", err)
+		}
 	}
 	return &store{db: db}, nil
 }

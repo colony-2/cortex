@@ -51,11 +51,12 @@ func main() {
 // Execute runs the test server CLI.
 func Execute() error {
 	var (
-		port        int
-		corsOrigins []string
-		staticPath  string
-		createNew   bool
-		storagePath string
+		port         int
+		corsOrigins  []string
+		staticPath   string
+		createNew    bool
+		storagePath  string
+		initializeDB bool
 	)
 
 	rootCmd := &cobra.Command{
@@ -68,12 +69,13 @@ func Execute() error {
 			// For testserver, -n always means use memory storage
 			useMemory := createNew || true
 
-			return runServer(port, corsOrigins, staticPath, useMemory, storagePath)
+			return runServer(port, corsOrigins, staticPath, useMemory, storagePath, initializeDB)
 		},
 	}
 
 	rootCmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to listen on")
 	rootCmd.Flags().BoolVarP(&createNew, "new", "n", false, "Create a new state database if one does not exist (always uses memory storage)")
+	rootCmd.Flags().BoolVar(&initializeDB, "initializedb", false, "Run database migrations and workflow schema setup")
 	rootCmd.Flags().StringSliceVar(&corsOrigins, "cors-origins", []string{"http://localhost:3000", "http://localhost:5173"}, "Allowed CORS origins")
 	rootCmd.Flags().StringVar(&staticPath, "static", "", "Path to static files (leave empty to disable)")
 	rootCmd.Flags().StringVar(&storagePath, "storage", ".colony2", "Path to storage directory (ignored if --memory is true)")
@@ -81,7 +83,7 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
-func runServer(port int, corsOrigins []string, staticPath string, useMemory bool, storagePath string) error {
+func runServer(port int, corsOrigins []string, staticPath string, useMemory bool, storagePath string, initializeDB bool) error {
 	startTime := time.Now()
 	setupLogger()
 	slog.Info("testserver startup initiated", "port", port)
@@ -103,7 +105,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Persistence-backed services (projects, cells, tickets)
 	slog.Info("creating project store")
-	projectStore, err := project.NewStore(pgDB)
+	projectStore, err := project.NewStoreWithOptions(pgDB, project.StoreOptions{Migrate: initializeDB})
 	if err != nil {
 		return fmt.Errorf("failed to create project store: %w", err)
 	}
@@ -114,7 +116,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	slog.Info("project service created", "elapsed", time.Since(startTime))
 
 	slog.Info("creating cell service")
-	cellStore, err := cell.NewStore(pgDB)
+	cellStore, err := cell.NewStoreWithOptions(pgDB, cell.StoreOptions{Migrate: initializeDB})
 	if err != nil {
 		return fmt.Errorf("failed to create cell store: %w", err)
 	}
@@ -126,7 +128,12 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Initialize recipe service
 	slog.Info("creating recipe service")
-	recipeSvc, err := recipesvc.NewServiceFromDB(pgDB, recipesvc.ServiceConfig{
+	recipeStore, err := recipesvc.NewStoreWithOptions(pgDB, recipesvc.StoreOptions{Migrate: initializeDB})
+	if err != nil {
+		return fmt.Errorf("failed to create recipe store: %w", err)
+	}
+	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
+		Store:        recipeStore,
 		GitRepo:      gitpkg.NewRepository(gitpkg.Config{}),
 		Projects:     projectSvc,
 		IDGen:        recipesvc.NewKSUIDGenerator(),
@@ -139,11 +146,11 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	slog.Info("recipe service created", "elapsed", time.Since(startTime))
 
 	slog.Info("creating ticket stores")
-	ticketStore, err := ticket.NewStore(pgDB)
+	ticketStore, err := ticket.NewStoreWithOptions(pgDB, ticket.StoreOptions{Migrate: initializeDB})
 	if err != nil {
 		return fmt.Errorf("failed to create ticket store: %w", err)
 	}
-	eventStore, err := ticket.NewEventStore(pgDB)
+	eventStore, err := ticket.NewEventStoreWithOptions(pgDB, ticket.EventStoreOptions{Migrate: initializeDB})
 	if err != nil {
 		return fmt.Errorf("failed to create ticket event store: %w", err)
 	}
@@ -178,6 +185,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		PostgresDSN:  dsn,
 		StoragePath:  storagePath,
 		Dependencies: tempDeps,
+		InitializeDB: initializeDB,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to setup workflow engine: %w", err)

@@ -21,6 +21,7 @@ type (
 	Clock            = service.Clock
 	Store            = store.Store
 	Iterator[T any]  = store.Iterator[T]
+	StoreOptions     = store.Options
 	Populator        = service.Populator
 	PopulatorCell    = service.PopulatorCell
 	SyncOptions      = service.SyncOptions
@@ -62,6 +63,10 @@ func NewServiceFromDB(db *gorm.DB) (Service, error) {
 
 func NewStore(db *gorm.DB) (Store, error) {
 	return store.New(db)
+}
+
+func NewStoreWithOptions(db *gorm.DB, opts StoreOptions) (Store, error) {
+	return store.NewWithOptions(db, opts)
 }
 
 func NewKSUIDGenerator() *idgen.KSUIDGenerator { return idgen.NewKSUIDGenerator() }

@@ -39,6 +39,7 @@ type (
 	// Store types
 	Store           = store.Store
 	Iterator[T any] = store.Iterator[T]
+	StoreOptions    = store.Options
 )
 
 // Constants
@@ -81,9 +82,24 @@ func NewServiceFromDB(db *gorm.DB, config ServiceConfig) (Service, error) {
 	return NewService(config)
 }
 
+// NewServiceFromDBWithOptions creates a new recipe service from a database connection with store options.
+func NewServiceFromDBWithOptions(db *gorm.DB, config ServiceConfig, opts StoreOptions) (Service, error) {
+	store, err := NewStoreWithOptions(db, opts)
+	if err != nil {
+		return nil, err
+	}
+	config.Store = store
+	return NewService(config)
+}
+
 // NewStore creates a new recipe store.
 func NewStore(db *gorm.DB) (Store, error) {
 	return store.New(db)
+}
+
+// NewStoreWithOptions creates a new recipe store with options.
+func NewStoreWithOptions(db *gorm.DB, opts StoreOptions) (Store, error) {
+	return store.NewWithOptions(db, opts)
 }
 
 // NewKSUIDGenerator creates a new KSUID generator for recipe IDs.

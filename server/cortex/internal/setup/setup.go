@@ -57,7 +57,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		})
 	}
 
-	projectStore, err := project.NewStore(pgDB)
+	projectStore, err := project.NewStoreWithOptions(pgDB, project.StoreOptions{Migrate: cfg.InitializeDB})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create project store: %w", err)
 	}
@@ -66,7 +66,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create project service: %w", err)
 	}
 
-	cellStore, err := cell.NewStore(pgDB)
+	cellStore, err := cell.NewStoreWithOptions(pgDB, cell.StoreOptions{Migrate: cfg.InitializeDB})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create cell store: %w", err)
 	}
@@ -75,7 +75,12 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create cell service: %w", err)
 	}
 
-	recipeSvc, err := recipesvc.NewServiceFromDB(pgDB, recipesvc.ServiceConfig{
+	recipeStore, err := recipesvc.NewStoreWithOptions(pgDB, recipesvc.StoreOptions{Migrate: cfg.InitializeDB})
+	if err != nil {
+		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe store: %w", err)
+	}
+	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
+		Store:        recipeStore,
 		GitRepo:      gitpkg.NewRepository(gitpkg.Config{}),
 		Projects:     projectSvc,
 		IDGen:        recipesvc.NewKSUIDGenerator(),
@@ -86,11 +91,11 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe service: %w", err)
 	}
 
-	ticketStore, err := ticket.NewStore(pgDB)
+	ticketStore, err := ticket.NewStoreWithOptions(pgDB, ticket.StoreOptions{Migrate: cfg.InitializeDB})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create ticket store: %w", err)
 	}
-	eventStore, err := ticket.NewEventStore(pgDB)
+	eventStore, err := ticket.NewEventStoreWithOptions(pgDB, ticket.EventStoreOptions{Migrate: cfg.InitializeDB})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create ticket event store: %w", err)
 	}
@@ -114,6 +119,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		StrataMode:   serverdeps.StrataMode(cfg.StrataMode),
 		StrataURL:    cfg.StrataURL,
 		StrataAPIKey: cfg.StrataAPIKey,
+		InitializeDB: cfg.InitializeDB,
 	})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to setup workflow engine: %w", err)

@@ -25,6 +25,8 @@ var (
 
 	// defaultPort is set at build time via ldflags
 	defaultPort = "8080"
+
+	cfg config.Config
 )
 
 func main() {
@@ -36,17 +38,12 @@ func main() {
 
 // Execute runs the CLI application.
 func Execute() error {
-	var cfg config.Config
-
 	rootCmd := &cobra.Command{
 		Use:     "cortex",
 		Short:   "Cortex - Recipe management and visualization tool",
 		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
-		Args:    cobra.MaximumNArgs(1),
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				cfg.RootPath = args[0]
-			}
 			// If no subcommand is provided, run the server (default behavior)
 			return run(cfg)
 		},
@@ -60,6 +57,7 @@ func Execute() error {
 	rootCmd.PersistentFlags().StringVar(&cfg.StoragePath, "storage", "", "Path to storage directory (default: <root>/.colony2)")
 	rootCmd.PersistentFlags().StringVar(&cfg.DatabaseDSN, "db-dsn", "", "PostgreSQL DSN for workflow engine (defaults to NEON_C2_DEV_DSN)")
 	rootCmd.PersistentFlags().BoolVarP(&cfg.CreateNew, "new", "n", false, "Create a new state database if one does not exist (currently no-op)")
+	rootCmd.PersistentFlags().BoolVar(&cfg.InitializeDB, "initializedb", false, "Run database migrations and workflow schema setup")
 	rootCmd.PersistentFlags().StringVar(&cfg.StrataMode, "strata-mode", "embedded", "Strata mode: embedded or remote")
 	rootCmd.PersistentFlags().StringVar(&cfg.StrataURL, "strata-url", "", "Remote Strata base URL (required when strata-mode=remote)")
 	rootCmd.PersistentFlags().StringVar(&cfg.StrataAPIKey, "strata-api-key", "", "Strata API key (default: local)")
@@ -70,12 +68,8 @@ func Execute() error {
 		Short: "Start the web server for visualization",
 		Long: `Start a web server that provides an interactive graph interface for browsing files,
 managing dependencies, and working with development containers.`,
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				cfg.RootPath = args[0]
-			}
-			// Set path from positional argument
 			return run(cfg)
 		},
 	}
@@ -85,6 +79,7 @@ managing dependencies, and working with development containers.`,
 	rootCmd.AddCommand(executeCmd)
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(schemaCmd)
+	rootCmd.AddCommand(strataCmd)
 
 	return rootCmd.Execute()
 }

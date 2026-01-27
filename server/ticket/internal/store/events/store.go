@@ -21,12 +21,22 @@ type store struct {
 	db *gorm.DB
 }
 
+type Options struct {
+	Migrate bool
+}
+
 func New(db *gorm.DB) (Store, error) {
+	return NewWithOptions(db, Options{Migrate: true})
+}
+
+func NewWithOptions(db *gorm.DB, opts Options) (Store, error) {
 	if db == nil {
 		return nil, errors.New("ticket events store: nil db")
 	}
-	if err := db.AutoMigrate(&model.TicketEvent{}, &model.TicketReset{}); err != nil {
-		return nil, fmt.Errorf("ticket events store: auto migrate: %w", err)
+	if opts.Migrate {
+		if err := db.AutoMigrate(&model.TicketEvent{}, &model.TicketReset{}); err != nil {
+			return nil, fmt.Errorf("ticket events store: auto migrate: %w", err)
+		}
 	}
 	return &store{db: db}, nil
 }
@@ -98,7 +108,6 @@ func (s *store) MarkReset(ctx context.Context, ticketID model.ID, reset *model.T
 		return result.Error
 	})
 }
-
 
 func normalizeEventTimes(event *model.TicketEvent) {
 	if event == nil {

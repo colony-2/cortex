@@ -10,12 +10,12 @@ import (
 // Config holds the application configuration
 type Config struct {
 	Port         int
-	RootPath     string
 	StoragePath  string
 	StaticPath   string
 	CORSOrigins  []string
 	DatabaseDSN  string
 	CreateNew    bool
+	InitializeDB bool
 	StrataMode   string
 	StrataURL    string
 	StrataAPIKey string
@@ -23,21 +23,16 @@ type Config struct {
 
 // Validate validates and completes the configuration
 func (c *Config) Validate() error {
-	if c.RootPath == "" {
+	if c.StoragePath == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return fmt.Errorf("resolve root path: %w", err)
+			return fmt.Errorf("resolve working directory: %w", err)
 		}
-		c.RootPath = wd
-	}
-	absRoot, err := filepath.Abs(c.RootPath)
-	if err != nil {
-		return fmt.Errorf("resolve root path: %w", err)
-	}
-	c.RootPath = absRoot
-
-	if c.StoragePath == "" {
-		c.StoragePath = filepath.Join(c.RootPath, ".colony2")
+		absWD, err := filepath.Abs(wd)
+		if err != nil {
+			return fmt.Errorf("resolve working directory: %w", err)
+		}
+		c.StoragePath = filepath.Join(absWD, ".colony2")
 	}
 	if c.StaticPath == "" {
 		c.StaticPath = "embedded"

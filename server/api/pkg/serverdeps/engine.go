@@ -44,6 +44,7 @@ type EngineConfig struct {
 	StrataMode            StrataMode
 	StrataURL             string
 	StrataAPIKey          string
+	InitializeDB          bool
 }
 
 // NewEngineSetup creates and starts a workflow engine with PGWF and Strata.
@@ -93,10 +94,14 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 		return nil, fmt.Errorf("failed to get sql.DB from gorm.DB: %w", err)
 	}
 
-	cfg.Logger.Info("installing PGWF schema")
-	if err := impl.InstallPGWF(ctx, sqlDB); err != nil {
-		cancel()
-		return nil, fmt.Errorf("failed to install PGWF schema: %w", err)
+	if cfg.InitializeDB {
+		cfg.Logger.Info("installing PGWF schema")
+		if err := impl.InstallPGWF(ctx, sqlDB); err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to install PGWF schema: %w", err)
+		}
+	} else {
+		cfg.Logger.Info("skipping PGWF schema install")
 	}
 
 	strataBaseURL := cfg.StrataURL
