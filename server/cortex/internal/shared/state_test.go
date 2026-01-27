@@ -3,17 +3,20 @@ package shared
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/cel"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	workerexec "github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"strings"
 )
 
 // TestStateTransitionLogic tests state machine transition evaluation
@@ -177,7 +180,7 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 			name: "retry within max attempts",
 			policy: &recipe.RetryPolicy{
 				MaximumAttempts:    3,
-				InitialInterval:    recipe.Duration(time.Second),
+				InitialInterval:    swf.Duration(time.Second),
 				BackoffCoefficient: 2.0,
 			},
 			attempt:     2,
@@ -188,7 +191,7 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 			name: "max attempts reached",
 			policy: &recipe.RetryPolicy{
 				MaximumAttempts: 3,
-				InitialInterval: recipe.Duration(time.Second),
+				InitialInterval: swf.Duration(time.Second),
 			},
 			attempt:     3,
 			lastError:   errors.New("error"),
@@ -205,7 +208,7 @@ func TestRetryPolicyEvaluation(t *testing.T) {
 			name: "first attempt failure",
 			policy: &recipe.RetryPolicy{
 				MaximumAttempts: 5,
-				InitialInterval: recipe.Duration(500 * time.Millisecond),
+				InitialInterval: swf.Duration(500 * time.Millisecond),
 			},
 			attempt:     1,
 			lastError:   errors.New("first failure"),
@@ -242,9 +245,9 @@ func TestBackoffCalculation(t *testing.T) {
 		{
 			name: "simple exponential backoff",
 			policy: &recipe.RetryPolicy{
-				InitialInterval:    recipe.Duration(time.Second),
+				InitialInterval:    swf.Duration(time.Second),
 				BackoffCoefficient: 2.0,
-				MaximumInterval:    recipe.Duration(30 * time.Second),
+				MaximumInterval:    swf.Duration(30 * time.Second),
 			},
 			attempt:          3,
 			expectedMinDelay: 4 * time.Second, // 1s * 2^2
@@ -253,9 +256,9 @@ func TestBackoffCalculation(t *testing.T) {
 		{
 			name: "backoff with max interval cap",
 			policy: &recipe.RetryPolicy{
-				InitialInterval:    recipe.Duration(time.Second),
+				InitialInterval:    swf.Duration(time.Second),
 				BackoffCoefficient: 2.0,
-				MaximumInterval:    recipe.Duration(5 * time.Second),
+				MaximumInterval:    swf.Duration(5 * time.Second),
 			},
 			attempt:          5,
 			expectedMinDelay: 5 * time.Second, // Would be 16s but capped at 5s
@@ -264,7 +267,7 @@ func TestBackoffCalculation(t *testing.T) {
 		{
 			name: "no backoff coefficient",
 			policy: &recipe.RetryPolicy{
-				InitialInterval: recipe.Duration(2 * time.Second),
+				InitialInterval: swf.Duration(2 * time.Second),
 			},
 			attempt:          3,
 			expectedMinDelay: 2 * time.Second,
@@ -309,33 +312,34 @@ func TestStateMachineExecution_SingleState(t *testing.T) {
 	// Build a minimal state machine with a single terminal state
 	r := recipe.Recipe{RecipeImpl: &recipe.RecipeState{
 		RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "sm-single"}},
-		StateData: recipe.StateData{States: &recipe.StateMap{
-			Initial: "start",
-			States: map[string]recipe.State{
-				"start": {
-					Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "start", Inputs: recipe.InputMap{"duration": "5ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
-					SingleStateMetadata: recipe.SingleStateMetadata{Transitions: []recipe.Transition{
-						mkTransition("finish", "true"),
-					}},
-				},
-				"finish": {
-					// Use NodeSequence with output templates so final outputs are resolved without executing a node
-					Node: recipe.Node{NodeImpl: &recipe.NodeSequence{NodeMetadata: recipe.NodeMetadata{ID: "finish"}, SequenceData: recipe.SequenceData{
-						Sequence: []recipe.Node{},
-						Outputs:  recipe.OutputMap{"status": "ok"},
-					}}},
-					// terminal (no transitions)
+		StateData: recipe.StateData{
+			States: &recipe.StateMap{
+				Initial: "start",
+				States: map[string]recipe.State{
+					"start": {
+						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "start", Inputs: recipe.InputMap{"duration": "5ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
+						SingleStateMetadata: recipe.SingleStateMetadata{Transitions: []recipe.Transition{
+							mkTransition("finish", "true"),
+						}},
+					},
+					"finish": {
+						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "finish", Inputs: recipe.InputMap{"duration": "1ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
+						// terminal (no transitions)
+					},
 				},
 			},
-		}},
+			Outputs: map[string]interface{}{"status": "ok"},
+		},
 	}}
 
+	deps := coreops.NewServiceDepsBuilder().Build()
 	reg, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
-	exec, err := workerexec.NewStandaloneExecutor(reg, zap.NewNop())
+	exec, err := workerexec.NewStandaloneExecutor(deps, reg, zap.NewNop())
 	require.NoError(t, err)
-	inputs := requiredWorkflowInputs(t)
-	out, err := exec.Execute(context.Background(), r, inputs)
+	inputs := map[string]interface{}{}
+	jobCtx := contextual.JobContext{}
+	out, err := exec.Execute(context.Background(), r, inputs, jobCtx, "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "ok", out["status"])

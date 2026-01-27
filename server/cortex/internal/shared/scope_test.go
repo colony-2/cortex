@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	workerexec "github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -255,7 +257,7 @@ func TestNestedCompositionExecution(t *testing.T) {
 					OpData:       recipe.OpData{Op: "command_execution"},
 				}},
 			},
-			Outputs: recipe.OutputMap{
+			Outputs: map[string]interface{}{
 				"a_stdout": "{{ sequence.a.outputs.stdout }}",
 				"b_stdout": "{{ sequence.b.outputs.stdout }}",
 			},
@@ -263,12 +265,28 @@ func TestNestedCompositionExecution(t *testing.T) {
 	}}
 
 	// Execute via worker executor
+	deps := coreops.NewServiceDepsBuilder().Build()
 	reg, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
-	exec, err := workerexec.NewStandaloneExecutor(reg, zap.NewNop())
+	exec, err := workerexec.NewStandaloneExecutor(deps, reg, zap.NewNop())
 	require.NoError(t, err)
-	inputs := requiredWorkflowInputs(t)
-	out, err := exec.Execute(context.Background(), r, inputs)
+	inputs := map[string]interface{}{}
+	workflowInputs := requiredWorkflowInputs(t)
+	baseRepo, _ := workflowInputs["basegitrepo"].(string)
+	baseHash, _ := workflowInputs["basegithash"].(string)
+	cellName, _ := workflowInputs["cellname"].(string)
+	jobCtx := contextual.JobContext{
+		GitBase: contextual.GitBaseContext{
+			BaseRepo:         baseRepo,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: cellName,
+			CellPath: "cells/" + cellName,
+		},
+	}
+	out, err := exec.Execute(context.Background(), r, inputs, jobCtx, baseHash)
 	require.NoError(t, err)
 
 	assert.Equal(t, "hello", out["a_stdout"])

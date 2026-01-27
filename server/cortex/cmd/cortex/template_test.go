@@ -4,23 +4,19 @@ import (
 	"context"
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTemplateExpansion(t *testing.T) {
-	// Create a workflow state with inputs
-	state := &compiler.WorkflowState{
-		Inputs: map[string]interface{}{
-			"message": "Hello World",
-			"count":   42,
-		},
-		Steps: make(map[string]compiler.StepResult),
+	recipeInputs := map[string]interface{}{
+		"message": "Hello World",
+		"count":   42,
 	}
-
-	// Create template resolver
-	resolver := compiler.NewTemplateResolver(state)
+	resolver, err := template.NewRecipeResolutionContext(&contextual.GitCommitContext{}, recipeInputs, contextual.JobContext{})
+	require.NoError(t, err)
 
 	tests := []struct {
 		name     string
@@ -29,12 +25,12 @@ func TestTemplateExpansion(t *testing.T) {
 	}{
 		{
 			name:     "simple string template",
-			template: "echo {{ .ContainerInputs.message }}",
+			template: "echo {{ inputs.message }}",
 			expected: "echo Hello World",
 		},
 		{
 			name:     "numeric template",
-			template: "count is {{ .ContainerInputs.count }}",
+			template: "count is {{ inputs.count }}",
 			expected: "count is 42",
 		},
 		{
@@ -46,7 +42,7 @@ func TestTemplateExpansion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := resolver.Resolve(tt.template)
+			result, err := resolver.ResolveTemplateWithMode(tt.template, template.ModeInterpolation)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
