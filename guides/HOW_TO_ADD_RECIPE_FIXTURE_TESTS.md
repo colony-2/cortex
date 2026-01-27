@@ -44,6 +44,8 @@ tests:
   - name: case_name
     description: Optional description
     inputs: {}
+    jobContext: {}           # optional overrides to the default job context
+    gitContext: {}           # optional overrides for parent/persist hash or ref
     want: {}
     wantErr: false
     wantErrContains: Optional substring
@@ -60,6 +62,8 @@ Notes:
 - Set `wantErr: true` to assert errors; use `wantErrContains` for substring matching.
 - Set `wantArtifacts` to assert artifact names; this switches execution to the toy engine so artifacts can be captured.
 - Set `wantJobArtifacts` to assert artifact names on the final job result (also uses the toy engine).
+- `jobContext` lets you override any subset of the default job context (ticket ID, actor, cell path/name, job ID, project ID, environment paths, git base fields, ticket metadata). Only fields you set are replaced; everything else keeps the defaults.
+- `gitContext` lets you override `parent_ref`, `parent_hash`, or `hash` (persist hash) used for the run.
 
 Example:
 ```yaml
@@ -89,6 +93,10 @@ go test ./test-fixtures -run TestAllRecipes
 The harness builds a temporary git repo with a few seeded cells (for recipes that need git or cell context). The job context uses:
 - `CellName: cells/test-cell`
 - `CellPath: cells/test-cell`
+- `TicketID: TEST-TICKET`
+- `ActorName: test-actor`
+- `ActorEmail: test-actor@colony2`
+- `JobID: test-job-id`
 
 If your recipe relies on git state or repo paths, leverage these defaults.
 

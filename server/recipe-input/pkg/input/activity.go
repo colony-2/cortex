@@ -25,7 +25,7 @@ type Config struct {
 	DefaultOnTimeout interface{} `json:"default_on_timeout,omitempty" jsonschema:"description=Default value to return if input times out"`
 
 	// Optional auto-fill response
-	Output *Output `json:"output,omitempty" jsonschema:"description=Optional auto-fill output response"`
+	Output *Output `json:"autofill,omitempty" jsonschema:"description=Optional auto-fill output response"`
 }
 
 // Input represents the inputs passed to the input activity

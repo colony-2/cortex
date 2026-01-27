@@ -5,6 +5,7 @@ use (
 	./server/cell
 	./server/core
 	./server/cortex
+        ./cli
 	./server/git
 	./server/graph
 	./server/llm

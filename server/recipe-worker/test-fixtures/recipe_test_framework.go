@@ -30,14 +30,16 @@ import (
 )
 
 type TestCase struct {
-	Name             string                 `yaml:"name"`
-	Description      string                 `yaml:"description,omitempty"`
-	Inputs           map[string]interface{} `yaml:"inputs"`
-	Want             map[string]interface{} `yaml:"want,omitempty"`
-	WantErr          bool                   `yaml:"wantErr"`
-	WantErrContains  string                 `yaml:"wantErrContains,omitempty"`
-	WantArtifacts    []string               `yaml:"wantArtifacts,omitempty"`
-	WantJobArtifacts []string               `yaml:"wantJobArtifacts,omitempty"`
+	Name             string                       `yaml:"name"`
+	Description      string                       `yaml:"description,omitempty"`
+	Inputs           map[string]interface{}       `yaml:"inputs"`
+	JobContext       *contextual.JobContext       `yaml:"jobContext,omitempty"`
+	GitContext       *contextual.GitCommitContext `yaml:"gitContext,omitempty"`
+	Want             map[string]interface{}       `yaml:"want,omitempty"`
+	WantErr          bool                         `yaml:"wantErr"`
+	WantErrContains  string                       `yaml:"wantErrContains,omitempty"`
+	WantArtifacts    []string                     `yaml:"wantArtifacts,omitempty"`
+	WantJobArtifacts []string                     `yaml:"wantJobArtifacts,omitempty"`
 }
 
 type TestCases struct {
@@ -111,7 +113,7 @@ func runGit(dir string, name string, args ...string) error {
 	return nil
 }
 
-func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) {
+func defaultTestContext() (contextual.JobContext, contextual.GitCommitContext) {
 	baseRepo, baseHash := ensureTestRepo()
 
 	job := contextual.JobContext{
@@ -141,6 +143,93 @@ func generateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 	}
 
 	return job, g
+}
+
+func mergeJobContext(base contextual.JobContext, override *contextual.JobContext) contextual.JobContext {
+	if override == nil {
+		return base
+	}
+
+	// Actor
+	if override.Actor.TicketID != "" {
+		base.Actor.TicketID = override.Actor.TicketID
+	}
+	if override.Actor.ActorName != "" {
+		base.Actor.ActorName = override.Actor.ActorName
+	}
+	if override.Actor.ActorEmail != "" {
+		base.Actor.ActorEmail = override.Actor.ActorEmail
+	}
+
+	// Ticket (replace if any field is set)
+	if !reflect.DeepEqual(override.Ticket, contextual.TicketContext{}) {
+		base.Ticket = override.Ticket
+	}
+
+	// Environment
+	if override.Environment.WorktreePath != "" {
+		base.Environment.WorktreePath = override.Environment.WorktreePath
+	}
+	if override.Environment.WorkdirPath != "" {
+		base.Environment.WorkdirPath = override.Environment.WorkdirPath
+	}
+	if override.Environment.ArtifactInbox != "" {
+		base.Environment.ArtifactInbox = override.Environment.ArtifactInbox
+	}
+	if override.Environment.ArtifactOutbox != "" {
+		base.Environment.ArtifactOutbox = override.Environment.ArtifactOutbox
+	}
+
+	// Workflow
+	if override.Workflow.CellName != "" {
+		base.Workflow.CellName = override.Workflow.CellName
+	}
+	if override.Workflow.CellPath != "" {
+		base.Workflow.CellPath = override.Workflow.CellPath
+	}
+	if override.Workflow.JobID != "" {
+		base.Workflow.JobID = override.Workflow.JobID
+	}
+	if override.Workflow.ProjectId != "" {
+		base.Workflow.ProjectId = override.Workflow.ProjectId
+	}
+
+	// Git base
+	if override.GitBase.BaseRepo != "" {
+		base.GitBase.BaseRepo = override.GitBase.BaseRepo
+	}
+	if override.GitBase.BaseRef != "" {
+		base.GitBase.BaseRef = override.GitBase.BaseRef
+	}
+	if override.GitBase.ResolvedBaseHash != "" {
+		base.GitBase.ResolvedBaseHash = override.GitBase.ResolvedBaseHash
+	}
+	if override.GitBase.GitAuthor != "" {
+		base.GitBase.GitAuthor = override.GitBase.GitAuthor
+	}
+
+	return base
+}
+
+func mergeGitContext(base contextual.GitCommitContext, override *contextual.GitCommitContext) contextual.GitCommitContext {
+	if override == nil {
+		return base
+	}
+	if override.ParentRef != "" {
+		base.ParentRef = override.ParentRef
+	}
+	if override.ParentHash != "" {
+		base.ParentHash = override.ParentHash
+	}
+	if override.PersistHash != "" {
+		base.PersistHash = override.PersistHash
+	}
+	return base
+}
+
+func generateTestContext(jobOverride *contextual.JobContext, gitOverride *contextual.GitCommitContext) (contextual.JobContext, contextual.GitCommitContext) {
+	baseJob, baseGit := defaultTestContext()
+	return mergeJobContext(baseJob, jobOverride), mergeGitContext(baseGit, gitOverride)
 }
 
 // equalWithTypeFlexibility compares two values with flexibility for numeric types.
@@ -422,7 +511,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 				tc := tc // capture range variable
 				t.Run(tc.Name, func(t *testing.T) {
 					// Execute recipe using standalone executor
-					jobCtx, gitCtx := generateTestContext()
+					jobCtx, gitCtx := generateTestContext(tc.JobContext, tc.GitContext)
 					var result map[string]interface{}
 					var artifacts []string
 					var jobArtifacts []string

@@ -12,7 +12,7 @@ sequence:
     inputs:
       form:
         question: "{{ inputs.prompt }}"
-        output:
+        autofill:
           response: "auto-answer"
           user_id: "fixture-user"
           metadata:

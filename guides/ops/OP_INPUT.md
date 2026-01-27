@@ -29,7 +29,18 @@ Collects user input either as a single question or as a multi-field form; return
     },
     "timeout": 300,
     "default_on_timeout": null
-  }
+  },
+  "autofill":
+	  {
+		"response": "single-answer",
+		"fields": {
+		  "priority": "high"
+		},
+		"user_id": "user-123",
+		"metadata": {
+		  "source": "ui"
+		}
+	  }
 }
 ```
 
