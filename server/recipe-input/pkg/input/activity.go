@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -76,8 +77,8 @@ func buildForm(deps ops.OpDependencies, ctx context.Context, in Input) (InputFor
 
 	// Add context
 	form.Context = config.Context
-	form.Output = config.Output
-	if config.Output != nil {
+	if hasAutoFillValue(config.Output) {
+		form.Output = config.Output
 		deps.SetNextTaskType(autoFillTaskType)
 	}
 
@@ -88,4 +89,41 @@ func buildForm(deps ops.OpDependencies, ctx context.Context, in Input) (InputFor
 	}
 
 	return form, nil
+}
+
+func hasAutoFillValue(out *Output) bool {
+	if out == nil {
+		return false
+	}
+
+	if !isZeroValue(out.Response) {
+		return true
+	}
+
+	if len(out.Fields) > 0 {
+		return true
+	}
+
+	if out.UserID != "" {
+		return true
+	}
+
+	if len(out.Metadata) > 0 {
+		return true
+	}
+
+	return false
+}
+
+func isZeroValue(val interface{}) bool {
+	if val == nil {
+		return true
+	}
+
+	rv := reflect.ValueOf(val)
+	if !rv.IsValid() {
+		return true
+	}
+
+	return rv.IsZero()
 }
