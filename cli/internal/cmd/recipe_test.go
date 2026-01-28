@@ -57,7 +57,7 @@ func TestRecipeCreatePublishFlag(t *testing.T) {
 	}
 
 	cmd := newRecipeCreateCmd()
-	cmd.SetArgs([]string{"--file", reqFile, "--publish"})
+	cmd.SetArgs([]string{"--name", "r1", "--content-file", reqFile, "--publish"})
 	cmd.SetContext(storeApp(context.Background(), app))
 
 	if err := cmd.Execute(); err != nil {
@@ -87,7 +87,7 @@ func TestRecipeUpdatePublishFlag(t *testing.T) {
 	}
 
 	cmd := newRecipeUpdateCmd()
-	cmd.SetArgs([]string{"r1", "--file", reqFile, "--publish"})
+	cmd.SetArgs([]string{"r1", "--content-file", reqFile, "--publish"})
 	cmd.SetContext(storeApp(context.Background(), app))
 
 	if err := cmd.Execute(); err != nil {

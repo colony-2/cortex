@@ -47,10 +47,11 @@ func newRecipeListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			list := resp.JSON200.Recipes
+			list := payload.Recipes
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(list)
 			}
@@ -72,8 +73,10 @@ func newRecipeListCmd() *cobra.Command {
 }
 
 func newRecipeCreateCmd() *cobra.Command {
-	var file string
 	var publish bool
+	var name string
+	var contentFile string
+	var contentLiteral string
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a recipe (payload via YAML/JSON)",
@@ -85,16 +88,29 @@ func newRecipeCreateCmd() *cobra.Command {
 			if err := requireProject(app.Config.Project); err != nil {
 				return err
 			}
-			if file == "" {
-				return fmt.Errorf("--file is required")
-			}
-			data, err := readData(file)
-			if err != nil {
-				return err
-			}
 			var req openapi.CreateRecipeRequest
-			if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-				return fmt.Errorf("parse request: %w", err)
+			if name == "" {
+				return fmt.Errorf("name is required")
+			}
+			req.Name = name
+			if contentLiteral == "" && contentFile == "" {
+				return fmt.Errorf("content is required (use --content or --content-file)")
+			}
+			if contentLiteral != "" {
+				req.Content = contentLiteral
+			}
+			if contentFile != "" {
+				data, err := readData(contentFile)
+				if err != nil {
+					return err
+				}
+				req.Content = string(data)
+			}
+			if req.Name == "" {
+				return fmt.Errorf("name is required (missing in payload)")
+			}
+			if req.Content == "" {
+				return fmt.Errorf("content is required (missing in payload)")
 			}
 			if publish {
 				req.AutoPublish = boolPtr(true)
@@ -106,23 +122,27 @@ func newRecipeCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON201 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON201, resp.HTTPResponse, resp.Body, 201)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON201)
+				return app.Printer.JSON(payload)
 			}
 			return app.Printer.Text("created")
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "CreateRecipeRequest payload file (YAML/JSON)")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish immediately after create")
+	cmd.Flags().StringVar(&name, "name", "", "Recipe name")
+	cmd.Flags().StringVar(&contentFile, "content-file", "", "Path to recipe content")
+	cmd.Flags().StringVar(&contentLiteral, "content", "", "Inline recipe content (YAML)")
 	return cmd
 }
 
 func newRecipeUpdateCmd() *cobra.Command {
-	var file string
 	var publish bool
+	var contentFile string
+	var contentLiteral string
 	cmd := &cobra.Command{
 		Use:   "update <recipe-name>",
 		Short: "Update a recipe",
@@ -135,16 +155,23 @@ func newRecipeUpdateCmd() *cobra.Command {
 			if err := requireProject(app.Config.Project); err != nil {
 				return err
 			}
-			if file == "" {
-				return fmt.Errorf("--file is required")
-			}
-			data, err := readData(file)
-			if err != nil {
-				return err
-			}
 			var req openapi.UpdateRecipeRequest
-			if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-				return fmt.Errorf("parse request: %w", err)
+			// Content is required for update.
+			if contentLiteral == "" && contentFile == "" {
+				return fmt.Errorf("content is required (use --content or --content-file)")
+			}
+			if contentLiteral != "" {
+				req.Content = contentLiteral
+			}
+			if contentFile != "" {
+				data, err := readData(contentFile)
+				if err != nil {
+					return err
+				}
+				req.Content = string(data)
+			}
+			if req.Content == "" {
+				return fmt.Errorf("content is required (missing in payload)")
 			}
 			if publish {
 				req.AutoPublish = boolPtr(true)
@@ -156,16 +183,18 @@ func newRecipeUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON200)
+				return app.Printer.JSON(payload)
 			}
 			return app.Printer.Text("updated")
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "UpdateRecipeRequest payload file (YAML/JSON)")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish immediately after update")
+	cmd.Flags().StringVar(&contentFile, "content-file", "", "Path to recipe content")
+	cmd.Flags().StringVar(&contentLiteral, "content", "", "Inline recipe content (YAML)")
 	return cmd
 }

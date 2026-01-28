@@ -39,10 +39,11 @@ func newInputListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			pending := *resp.JSON200
+			pending := *payload
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(pending)
 			}
@@ -58,7 +59,6 @@ func newInputListCmd() *cobra.Command {
 }
 
 func newInputRespondCmd() *cobra.Command {
-	var file string
 	var fields []string
 	var responseValue string
 
@@ -76,15 +76,6 @@ func newInputRespondCmd() *cobra.Command {
 			}
 
 			var req openapi.FormResponse
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			}
 			if len(fields) > 0 {
 				fieldMap, err := parseKeyValue(fields)
 				if err != nil {
@@ -102,7 +93,7 @@ func newInputRespondCmd() *cobra.Command {
 				req.Response = &any
 			}
 			if req.Fields == nil && req.Response == nil {
-				return fmt.Errorf("provide --file or --field/--response data")
+				return fmt.Errorf("provide --field and/or --response data")
 			}
 
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
@@ -111,17 +102,17 @@ func newInputRespondCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON200)
+				return app.Printer.JSON(payload)
 			}
 			return app.Printer.Text("ok")
 		},
 	}
 
-	cmd.Flags().StringVarP(&file, "file", "f", "", "FormResponse payload (YAML/JSON)")
 	cmd.Flags().StringSliceVar(&fields, "field", nil, "Set field value key=value (repeatable)")
 	cmd.Flags().StringVar(&responseValue, "response", "", "Set single response value")
 	return cmd

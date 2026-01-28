@@ -60,10 +60,11 @@ func newTicketListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			tickets := *resp.JSON200
+			tickets := *payload
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(tickets)
 			}
@@ -91,7 +92,6 @@ func newTicketListCmd() *cobra.Command {
 }
 
 func newTicketCreateCmd() *cobra.Command {
-	var file string
 	var title string
 	var cell string
 	var state string
@@ -113,29 +113,18 @@ func newTicketCreateCmd() *cobra.Command {
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
 
-			var req openapi.TicketCreateRequest
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			} else {
-				if title == "" || cell == "" || state == "" || stage == "" {
-					return fmt.Errorf("title, cell, state, and stage are required (use flags or --file)")
-				}
-				req = openapi.TicketCreateRequest{
-					Actor: openapi.Actor{Type: openapi.User},
-					Cell:  cell,
-					State: openapi.TicketState(state),
-					Stage: stage,
-					Title: title,
-				}
-				if description != "" {
-					req.Description = &description
-				}
+			if title == "" || cell == "" || state == "" || stage == "" {
+				return fmt.Errorf("title, cell, state, and stage are required")
+			}
+			req := openapi.TicketCreateRequest{
+				Actor: openapi.Actor{Type: openapi.User},
+				Cell:  cell,
+				State: openapi.TicketState(state),
+				Stage: stage,
+				Title: title,
+			}
+			if description != "" {
+				req.Description = &description
 			}
 
 			// Apply actor overrides if provided.
@@ -155,10 +144,10 @@ func newTicketCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON201 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			ticket, err := requirePayload(resp.JSON201, resp.HTTPResponse, resp.Body, 201)
+			if err != nil {
+				return err
 			}
-			ticket := resp.JSON201
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(ticket)
 			}
@@ -166,7 +155,6 @@ func newTicketCreateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&file, "file", "f", "", "Ticket create payload (YAML/JSON, use - for stdin)")
 	cmd.Flags().StringVar(&title, "title", "", "Ticket title")
 	cmd.Flags().StringVar(&cell, "cell", "", "Cell name")
 	cmd.Flags().StringVar(&state, "state", "", "Ticket state")

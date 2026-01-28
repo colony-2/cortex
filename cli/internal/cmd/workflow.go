@@ -86,10 +86,11 @@ func newWorkflowListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			workflows := *resp.JSON200
+			workflows := *payload
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(workflows)
 			}

@@ -12,12 +12,19 @@ import (
 func readData(path string) ([]byte, error) {
 	switch path {
 	case "":
-		return nil, fmt.Errorf("no input provided; use --file or - for stdin")
+		return nil, fmt.Errorf("no input provided")
 	case "-":
 		return io.ReadAll(os.Stdin)
 	default:
 		return os.ReadFile(path)
 	}
+}
+
+func readOptionalData(path string) ([]byte, error) {
+	if path == "" {
+		return nil, nil
+	}
+	return readData(path)
 }
 
 func unmarshalYAMLOrJSON(data []byte, dest any) error {

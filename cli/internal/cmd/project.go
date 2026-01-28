@@ -54,10 +54,11 @@ func newProjectListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			projects := *resp.JSON200
+			projects := *payload
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(projects)
 			}
@@ -83,7 +84,6 @@ func newProjectListCmd() *cobra.Command {
 }
 
 func newProjectCreateCmd() *cobra.Command {
-	var file string
 	var name string
 	var gitRepoPath string
 
@@ -95,23 +95,12 @@ func newProjectCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var req openapi.ProjectCreateRequest
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			} else {
-				if name == "" || gitRepoPath == "" {
-					return fmt.Errorf("name and git-repo-path are required (or provide --file)")
-				}
-				req = openapi.ProjectCreateRequest{
-					Name:        name,
-					GitRepoPath: gitRepoPath,
-				}
+			if name == "" || gitRepoPath == "" {
+				return fmt.Errorf("name and git-repo-path are required")
+			}
+			req := openapi.ProjectCreateRequest{
+				Name:        name,
+				GitRepoPath: gitRepoPath,
 			}
 
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
@@ -120,10 +109,10 @@ func newProjectCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON201 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			project, err := requirePayload(resp.JSON201, resp.HTTPResponse, resp.Body, 201)
+			if err != nil {
+				return err
 			}
-			project := resp.JSON201
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(project)
 			}
@@ -131,7 +120,6 @@ func newProjectCreateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&file, "file", "f", "", "ProjectCreateRequest payload (YAML/JSON)")
 	cmd.Flags().StringVar(&name, "name", "", "Project name")
 	cmd.Flags().StringVar(&gitRepoPath, "git-repo-path", "", "Git repo path")
 	return cmd
@@ -153,8 +141,8 @@ func newProjectDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.StatusCode() >= 300 {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			if err := expectStatus(resp.HTTPResponse, resp.Body, 200, 202, 204); err != nil {
+				return err
 			}
 			return app.Printer.Text("deleted")
 		},
@@ -163,7 +151,6 @@ func newProjectDeleteCmd() *cobra.Command {
 }
 
 func newProjectUpdateCmd() *cobra.Command {
-	var file string
 	var name string
 	var gitRepoPath string
 	var gitRepoBranch string
@@ -181,15 +168,6 @@ func newProjectUpdateCmd() *cobra.Command {
 			}
 
 			var req openapi.ProjectUpdateRequest
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			}
 			if name != "" {
 				req.Name = &name
 			}
@@ -207,7 +185,7 @@ func newProjectUpdateCmd() *cobra.Command {
 				req.DefaultTicketRecipe = &empty
 			}
 			if req == (openapi.ProjectUpdateRequest{}) {
-				return fmt.Errorf("no update fields provided; use flags or --file")
+				return fmt.Errorf("no update fields provided; use flags")
 			}
 
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
@@ -216,17 +194,17 @@ func newProjectUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			project, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON200)
+				return app.Printer.JSON(project)
 			}
 			return app.Printer.Text("updated")
 		},
 	}
 
-	cmd.Flags().StringVarP(&file, "file", "f", "", "ProjectUpdateRequest payload (YAML/JSON)")
 	cmd.Flags().StringVar(&name, "name", "", "New project name")
 	cmd.Flags().StringVar(&gitRepoPath, "git-repo-path", "", "New git repo path")
 	cmd.Flags().StringVar(&gitRepoBranch, "git-repo-branch", "", "Git branch")

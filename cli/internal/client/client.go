@@ -7,30 +7,36 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-resty/resty/v2"
+
 	"github.com/colony-2/colony2/cli/internal/config"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 )
 
-// New returns an OpenAPI client configured with auth and timeout.
+// New returns an OpenAPI client configured with auth, timeout, and resty middleware.
 func New(cfg config.Config) (openapi.ClientWithResponsesInterface, error) {
 	if cfg.APIURL == "" {
 		return nil, fmt.Errorf("api url is required")
 	}
-	httpClient := &http.Client{
-		Timeout: cfg.Timeout,
+
+	restyClient := resty.New().
+		SetBaseURL(cfg.APIURL).
+		SetTimeout(cfg.Timeout)
+
+	restyClient.SetHeader("User-Agent", "colony2-cli")
+	if cfg.Token != "" {
+		restyClient.SetAuthToken(cfg.Token)
 	}
 	if cfg.Trace {
-		httpClient.Transport = traceTransport{next: http.DefaultTransport}
+		restyClient.OnAfterResponse(func(c *resty.Client, r *resty.Response) error {
+			fmt.Fprintf(os.Stderr, "[trace] %s %s -> %d (%s)\n",
+				r.Request.Method, r.Request.URL, r.StatusCode(), r.Time().Truncate(time.Millisecond))
+			return nil
+		})
 	}
 
 	opts := []openapi.ClientOption{
-		openapi.WithHTTPClient(httpClient),
-		openapi.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
-			if cfg.Token != "" {
-				req.Header.Set("Authorization", "Bearer "+cfg.Token)
-			}
-			return nil
-		}),
+		openapi.WithHTTPClient(restyClient.GetClient()),
 	}
 
 	cl, err := openapi.NewClientWithResponses(cfg.APIURL, opts...)
@@ -48,6 +54,7 @@ func Context(parent context.Context, timeout time.Duration) (context.Context, co
 	return context.WithTimeout(parent, timeout)
 }
 
+// traceTransport kept for future use; currently unused.
 type traceTransport struct {
 	next http.RoundTripper
 }

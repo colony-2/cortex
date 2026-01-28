@@ -46,10 +46,11 @@ func newCellListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
-			cells := *resp.JSON200
+			cells := *payload
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(cells)
 			}
@@ -76,7 +77,6 @@ func newCellListCmd() *cobra.Command {
 }
 
 func newCellCreateCmd() *cobra.Command {
-	var file string
 	var name string
 	var workingPath string
 	var description string
@@ -94,30 +94,21 @@ func newCellCreateCmd() *cobra.Command {
 			if err := requireProject(app.Config.Project); err != nil {
 				return err
 			}
-			var req openapi.CellCreateRequest
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			} else {
-				if name == "" || workingPath == "" {
-					return fmt.Errorf("name and working-path are required (or provide --file)")
-				}
-				req.Name = name
-				req.WorkingPath = workingPath
-				if description != "" {
-					req.Description = &description
-				}
-				if populator != "" {
-					req.Populator = &populator
-				}
-				if populatorId != "" {
-					req.PopulatorId = &populatorId
-				}
+			if name == "" || workingPath == "" {
+				return fmt.Errorf("name and working-path are required")
+			}
+			req := openapi.CellCreateRequest{
+				Name:        name,
+				WorkingPath: workingPath,
+			}
+			if description != "" {
+				req.Description = &description
+			}
+			if populator != "" {
+				req.Populator = &populator
+			}
+			if populatorId != "" {
+				req.PopulatorId = &populatorId
 			}
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
@@ -125,16 +116,16 @@ func newCellCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON201 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON201, resp.HTTPResponse, resp.Body, 201)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON201)
+				return app.Printer.JSON(payload)
 			}
-			return app.Printer.Text(resp.JSON201.Id)
+			return app.Printer.Text(payload.Id)
 		},
 	}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "CellCreateRequest payload (YAML/JSON)")
 	cmd.Flags().StringVar(&name, "name", "", "Cell name")
 	cmd.Flags().StringVar(&workingPath, "working-path", "", "Working path for the cell")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
@@ -144,7 +135,6 @@ func newCellCreateCmd() *cobra.Command {
 }
 
 func newCellUpdateCmd() *cobra.Command {
-	var file string
 	var name string
 	var workingPath string
 	var description string
@@ -162,15 +152,6 @@ func newCellUpdateCmd() *cobra.Command {
 				return err
 			}
 			var req openapi.CellUpdateRequest
-			if file != "" {
-				data, err := readData(file)
-				if err != nil {
-					return err
-				}
-				if err := unmarshalYAMLOrJSON(data, &req); err != nil {
-					return fmt.Errorf("parse request: %w", err)
-				}
-			}
 			if name != "" {
 				req.Name = &name
 			}
@@ -181,7 +162,7 @@ func newCellUpdateCmd() *cobra.Command {
 				req.Description = &description
 			}
 			if req == (openapi.CellUpdateRequest{}) {
-				return fmt.Errorf("no update fields provided; use flags or --file")
+				return fmt.Errorf("no update fields provided; use flags")
 			}
 
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
@@ -190,17 +171,17 @@ func newCellUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if resp.JSON200 == nil {
-				return fmt.Errorf("unexpected response status %d", resp.StatusCode())
+			payload, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
 			}
 			if app.Config.Output == "json" {
-				return app.Printer.JSON(resp.JSON200)
+				return app.Printer.JSON(payload)
 			}
 			return app.Printer.Text("updated")
 		},
 	}
 
-	cmd.Flags().StringVarP(&file, "file", "f", "", "CellUpdateRequest payload (YAML/JSON)")
 	cmd.Flags().StringVar(&name, "name", "", "New name")
 	cmd.Flags().StringVar(&workingPath, "working-path", "", "New working path")
 	cmd.Flags().StringVar(&description, "description", "", "New description")
