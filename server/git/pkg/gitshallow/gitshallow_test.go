@@ -170,6 +170,35 @@ func TestClone(t *testing.T) {
 		}
 	})
 
+	t.Run("remote source file URL clone", func(t *testing.T) {
+		targetDir := filepath.Join(tempDir, "target-remote-file-url")
+		input := GitShallowCloneInput{
+			SourceDir:  "file://" + sourceDir,
+			TargetDir:  targetDir,
+			CommitHash: commitHash,
+		}
+
+		output, err := GitShallowClone(ctx, input)
+		if err != nil {
+			t.Fatalf("Remote file URL clone failed: %v", err)
+		}
+
+		if output.ClonedPath != targetDir {
+			t.Fatalf("remote clone: expected cloned path %s, got %s", targetDir, output.ClonedPath)
+		}
+
+		cmd := exec.Command("git", "rev-parse", "HEAD")
+		cmd.Dir = targetDir
+		clonedHashBytes, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Failed to get cloned commit hash for remote clone: %v", err)
+		}
+		clonedHash := string(clonedHashBytes[:len(clonedHashBytes)-1])
+		if clonedHash != commitHash {
+			t.Fatalf("remote clone: expected commit hash %s, got %s", commitHash, clonedHash)
+		}
+	})
+
 	t.Run("empty source directory", func(t *testing.T) {
 		targetDir := filepath.Join(tempDir, "target-empty-source")
 		input := GitShallowCloneInput{

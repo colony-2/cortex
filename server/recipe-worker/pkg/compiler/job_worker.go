@@ -74,6 +74,10 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	if err != nil {
 		return nil, err
 	}
+	err = ensureSentinel(&runContext.Workflow.JobID, contextual.JobIdSentinel, "job id")
+	if err != nil {
+		return nil, err
+	}
 
 	wCtx := workflow.Context{JobContext: ctx}
 	out, artifacts, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})

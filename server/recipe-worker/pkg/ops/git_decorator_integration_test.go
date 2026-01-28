@@ -57,7 +57,6 @@ outputs:
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
 			CellPath: "cells/test-cell",
-			JobID:    "git-decorator-test",
 		},
 		GitBase: contextual.GitBaseContext{
 			BaseRepo:         repoPath,

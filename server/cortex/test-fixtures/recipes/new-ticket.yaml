@@ -68,6 +68,7 @@ sequence:
         - type: update_ticket
           ticket_id: "{{ context.actor.ticket_id }}"
           stage: completed
+
 #outputs:
 #  requirements_artifact: '{{ sequence.triage.outputs.outputs.requirements_artifact }}'
 #  spec_artifact: '{{ sequence.plan.outputs.outputs.spec_artifact }}'

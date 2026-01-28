@@ -9,6 +9,7 @@ const WorktreePathSentinel = "__C2_SENTINEL_WORKTREE__"
 const WorkdirPathSentinel = "__C2_SENTINEL_WORKDIR__"
 const ArtifactInboxSentinel = "__C2_SENTINEL_ARTIFACT_INBOX__"
 const ArtifactOutboxSentinel = "__C2_SENTINEL_ARTIFACT_OUTBOX__"
+const JobIdSentinel = "__C2_SENTINEL_JOB_ID__"
 
 // ActorContext represents the user/cell identity associated with an invocation.
 type ActorContext struct {

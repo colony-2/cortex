@@ -36,9 +36,11 @@ func GitShallowClone(ctx context.Context, input GitShallowCloneInput) (*GitShall
 		return nil, fmt.Errorf("commit hash cannot be empty")
 	}
 
-	// Check if source directory exists and is a git repository
-	if err := common.ValidateRepository(input.SourceDir); err != nil {
-		return nil, fmt.Errorf("source directory validation failed: %w", err)
+	// For local paths ensure the source is a git repository; remote URLs are validated by git clone itself.
+	if !common.IsRemoteRepository(input.SourceDir) {
+		if err := common.ValidateRepository(input.SourceDir); err != nil {
+			return nil, fmt.Errorf("source directory validation failed: %w", err)
+		}
 	}
 
 	if info, err := os.Stat(input.TargetDir); err == nil {

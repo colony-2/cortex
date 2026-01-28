@@ -32,13 +32,13 @@ func ValidateRepository(repoPath string) error {
 	if err != nil {
 		return fmt.Errorf("not a git repository (or any of the parent directories): %s", repoPath)
 	}
-	
+
 	// Verify we got a valid response
 	gitDir := strings.TrimSpace(string(output))
 	if gitDir == "" {
 		return fmt.Errorf("could not determine git directory for: %s", repoPath)
 	}
-	
+
 	return nil
 }
 
@@ -58,11 +58,11 @@ func ParseThinPackName(filename string) (*ThinPackMetadata, error) {
 	// Parse format: {commit_hash}-{parent_hash}-{root_hash}.pack
 	base := strings.TrimSuffix(filepath.Base(filename), ".pack")
 	parts := strings.Split(base, "-")
-	
+
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid thin pack filename format: %s", filename)
 	}
-	
+
 	return &ThinPackMetadata{
 		CommitHash: parts[0],
 		ParentHash: parts[1],
@@ -84,4 +84,13 @@ func GetCommitHash(ctx context.Context, repoPath, ref string) (string, error) {
 func CommitExists(ctx context.Context, repoPath, commitHash string) bool {
 	_, err := ExecuteGitCommand(ctx, repoPath, "cat-file", "-e", commitHash)
 	return err == nil
+}
+
+// IsRemoteRepository reports whether the provided source string looks like a git remote
+// (e.g. ssh/https/file URLs or the SCP-like "git@host:org/repo.git" syntax).
+func IsRemoteRepository(source string) bool {
+	if strings.Contains(source, "://") {
+		return true
+	}
+	return strings.HasPrefix(source, "git@")
 }

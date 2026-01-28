@@ -143,9 +143,7 @@ type jt struct {
 }
 
 func (j *jt) GetJobKey() swf.JobKey {
-	j.JobKey.JobId = "test-job-id"
-	//TODO implement me
-	panic("implement me")
+	return j.JobKey
 }
 
 func (j *jt) AwaitJobs(jobIds ...string) error {

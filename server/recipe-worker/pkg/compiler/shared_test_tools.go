@@ -76,7 +76,6 @@ func GenerateTestContext() (contextual.JobContext, contextual.GitCommitContext) 
 		Workflow: contextual.WorkflowContext{
 			CellName: "cells/test-cell",
 			CellPath: "cells/test-cell",
-			JobID:    "test-job-id",
 		},
 		GitBase: contextual.GitBaseContext{
 			BaseRepo:         baseRepo,

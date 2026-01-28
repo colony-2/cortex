@@ -49,11 +49,16 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 	if err != nil {
 		return zero, nil, err
 	}
+
+	if jobTool == nil {
+		return zero, nil, fmt.Errorf("job tool is required")
+	}
 	replacements := map[string]string{
 		contextual.WorktreePathSentinel:   worktreePath,
 		contextual.WorkdirPathSentinel:    workDir,
 		contextual.ArtifactInboxSentinel:  inbox,
 		contextual.ArtifactOutboxSentinel: outbox,
+		contextual.JobIdSentinel:          jobTool.GetJobKey().JobId,
 	}
 
 	defer removeWorkDir(worktreePath)
