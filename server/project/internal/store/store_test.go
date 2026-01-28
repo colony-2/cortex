@@ -7,13 +7,13 @@ import (
 
 	"github.com/colony-2/colony2/server/project/internal/model"
 	"github.com/colony-2/colony2/server/project/internal/store"
-	"github.com/colony-2/colony2/server/project/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 func TestStoreCRUD(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	s, err := store.New(pg.DB)
@@ -47,7 +47,7 @@ func TestStoreCRUD(t *testing.T) {
 
 	iter, err := s.Search(ctx, model.SearchFilter{Names: []string{"Alpha"}})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 	first, err := iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, project.ID, first.ID)
@@ -77,7 +77,7 @@ func TestStoreCRUD(t *testing.T) {
 }
 
 func TestSearchFilters(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	s, err := store.New(pg.DB)
@@ -97,7 +97,7 @@ func TestSearchFilters(t *testing.T) {
 
 	iter, err := s.Search(ctx, model.SearchFilter{NameContains: "a"})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 
 	collected := collectAll(t, ctx, iter)
 	require.Len(t, collected, 3)
@@ -121,3 +121,6 @@ func collectAll(t *testing.T, ctx context.Context, iter store.Iterator[*model.Pr
 }
 
 func ptr[T any](v T) *T { return &v }
+
+
+

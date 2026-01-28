@@ -112,6 +112,8 @@ func (s *stubService) ResetTicket(ctx context.Context, id ticket.ID, in ticket.T
 	return nil, errors.New("unexpected ResetTicket call")
 }
 
+var _ ops.OpDependencies = (*stubDeps)(nil)
+
 type stubDeps struct {
 	db             *gorm.DB
 	inputArtifacts []swf.Artifact
@@ -119,6 +121,9 @@ type stubDeps struct {
 	workflow       workflowctl.WorkflowControl
 	worktreePath   string
 	jobTool        ops.JobTool
+}
+
+func (d *stubDeps) SetNextTaskType(taskType string) {
 }
 
 func (d *stubDeps) Database() *gorm.DB { return d.db }

@@ -1,0 +1,30 @@
+id: new-ticket-execute
+version: 0.1.0
+desc: Execute plan to produce commit artifact
+input_schema:
+  ticket_id:
+    type: string
+    required: true
+  cell:
+    type: string
+    required: true
+  spec_artifact:
+    type: string
+    required: true
+  plan_artifact:
+    type: string
+    required: true
+sequence:
+  - id: synthesize_commit
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        # simulate applying plan and spec to create a commit description
+        cat <<'EOF' > "{{ context.environment.outbox }}/commit.txt"
+        Commit for execution
+        Applied spec and plan.
+        EOF
+outputs:
+  commit_artifact: 'commit.txt'

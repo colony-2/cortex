@@ -1,0 +1,28 @@
+id: new-ticket-validate
+version: 0.1.0
+desc: Validate execution output and produce report
+input_schema:
+  ticket_id:
+    type: string
+    required: true
+  cell:
+    type: string
+    required: true
+  commit_artifact:
+    type: string
+    required: true
+sequence:
+  - id: validate_commit
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        cat <<'EOF' > "{{ context.environment.outbox }}/validation.md"
+        # Validation Report
+        - Tests: PASS
+        - Review: PASS
+        EOF
+outputs:
+  validation_artifact: 'validation.md'
+  status: validated

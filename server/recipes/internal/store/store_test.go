@@ -8,12 +8,12 @@ import (
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
-	"github.com/colony-2/colony2/server/recipes/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"gorm.io/gorm"
 )
 
 func TestStore_CreateAndGet(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -65,7 +65,7 @@ func TestStore_CreateAndGet(t *testing.T) {
 }
 
 func TestStore_UniqueName(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -119,7 +119,7 @@ func TestStore_UniqueName(t *testing.T) {
 }
 
 func TestStore_Update(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -171,7 +171,7 @@ func TestStore_Update(t *testing.T) {
 }
 
 func TestStore_OptimisticLocking(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -215,7 +215,7 @@ func TestStore_OptimisticLocking(t *testing.T) {
 }
 
 func TestStore_Delete(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -256,7 +256,7 @@ func TestStore_Delete(t *testing.T) {
 }
 
 func TestStore_Search(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -351,7 +351,7 @@ func TestStore_Search(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Search failed: %v", err)
 			}
-			defer testutil.MustCloseIterator(t, iter)
+			defer pgembed.MustCloseIterator(t, iter)
 
 			count := 0
 			for {
@@ -373,7 +373,7 @@ func TestStore_Search(t *testing.T) {
 }
 
 func TestStore_Transaction(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	store, err := New(pg.DB)
@@ -435,3 +435,6 @@ func TestStore_Transaction(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+
+

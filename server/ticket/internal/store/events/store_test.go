@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"github.com/colony-2/colony2/server/ticket/internal/store/events"
 	store "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
-	"github.com/colony-2/colony2/server/ticket/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 func TestStoreAppendListReset(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	evtStore, err := events.New(pg.DB)
@@ -55,7 +55,7 @@ func TestStoreAppendListReset(t *testing.T) {
 
 	iter, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 
 	eventsByTicket := collectEvents(t, ctx, iter)
 	require.Len(t, eventsByTicket, 2)
@@ -74,7 +74,7 @@ func TestStoreAppendListReset(t *testing.T) {
 		Types:        []string{string(model.WorkflowEventRunning)},
 	})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, wfIter)
+	defer pgembed.MustCloseIterator(t, wfIter)
 
 	workflowEvents := collectEvents(t, ctx, wfIter)
 	require.Len(t, workflowEvents, 1)
@@ -95,14 +95,14 @@ func TestStoreAppendListReset(t *testing.T) {
 
 	activeIter, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, activeIter)
+	defer pgembed.MustCloseIterator(t, activeIter)
 	active := collectEvents(t, ctx, activeIter)
 	require.Len(t, active, 1)
 	require.Equal(t, first.ID, active[0].ID)
 
 	withResetIter, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, withResetIter)
+	defer pgembed.MustCloseIterator(t, withResetIter)
 	withReset := collectEvents(t, ctx, withResetIter)
 	require.Len(t, withReset, 2)
 	require.NotNil(t, withReset[1].ResetID)
@@ -111,7 +111,7 @@ func TestStoreAppendListReset(t *testing.T) {
 	atBefore := now.Add(90 * time.Second)
 	iterAtBefore, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{At: &atBefore})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iterAtBefore)
+	defer pgembed.MustCloseIterator(t, iterAtBefore)
 	snapshotBefore := collectEvents(t, ctx, iterAtBefore)
 	require.Len(t, snapshotBefore, 2)
 	require.Equal(t, second.ID, snapshotBefore[1].ID)
@@ -119,7 +119,7 @@ func TestStoreAppendListReset(t *testing.T) {
 	atAfter := now.Add(3 * time.Minute)
 	iterAtAfter, err := evtStore.ListByTicket(ctx, ticketID, model.TicketEventFilter{At: &atAfter})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iterAtAfter)
+	defer pgembed.MustCloseIterator(t, iterAtAfter)
 	snapshotAfter := collectEvents(t, ctx, iterAtAfter)
 	require.Len(t, snapshotAfter, 1)
 	require.Equal(t, first.ID, snapshotAfter[0].ID)

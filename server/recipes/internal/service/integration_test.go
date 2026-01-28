@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
@@ -19,7 +20,7 @@ import (
 
 func TestService_FullLifecycle(t *testing.T) {
 	// Setup
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)
@@ -268,7 +269,7 @@ inputs:
 
 func TestService_UnpublishedRecipeEditing(t *testing.T) {
 	// This test specifically addresses the bug where unpublished recipes couldn't be edited
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)
@@ -334,7 +335,7 @@ inputs:
 }
 
 func TestService_HierarchicalRecipes(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)
@@ -396,7 +397,7 @@ func TestService_HierarchicalRecipes(t *testing.T) {
 }
 
 func TestService_ConcurrentPublish(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)
@@ -455,7 +456,7 @@ inputs:
 }
 
 func TestService_RecipeValidation(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)
@@ -526,7 +527,7 @@ inputs:
 }
 
 func TestService_UpdateOptimisticLocking(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	svc := setupTestService(t, pg.DB)

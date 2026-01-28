@@ -24,6 +24,9 @@ type fakeOpDependencies struct {
 	artifacts []swf.Artifact
 }
 
+func (f *fakeOpDependencies) SetNextTaskType(taskType string) {
+}
+
 func (f *fakeOpDependencies) JobTool() ops.JobTool {
 	return nil
 }

@@ -1,0 +1,42 @@
+id: new-ticket-plan
+version: 0.1.0
+desc: Plan phase builds specs and execution plan artifacts
+input_schema:
+  ticket_id:
+    type: string
+    required: true
+  cell:
+    type: string
+    required: true
+  requirements_artifact:
+    type: string
+    required: true
+sequence:
+  - id: write_spec
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        cat <<'EOF' > "{{ context.environment.outbox }}/spec.md"
+        # Spec
+        Based on requirements artifact
+        EOF
+  - id: write_plan
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        cat <<'EOF' > "{{ context.environment.outbox }}/plan.yaml"
+        stages:
+          - name: execute
+            steps:
+              - recipe: new-ticket-execute
+                cell: cells/test-cell
+                spec_doc: "spec.md"
+        EOF
+outputs:
+  spec_artifact: 'spec.md'
+  plan_artifact: 'plan.yaml'
+  fanout_tickets: []

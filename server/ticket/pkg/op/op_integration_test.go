@@ -7,13 +7,13 @@ import (
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/ticket/internal/model"
-	"github.com/colony-2/colony2/server/ticket/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExecuteIntegration_BatchLifecycle(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	inv := newOpDepsWithDB(pg.DB)

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipes/internal/testutil"
 )
@@ -15,11 +16,11 @@ import (
 // TestPushToOrigin verifies that changes are pushed to origin
 func TestPushToOrigin(t *testing.T) {
 	ctx := context.Background()
-	gitRepo := testutil.NewRealGitRepository()
+	gitRepo := pgembed.NewRealGitRepository()
 
 	// Create bare origin repo (can receive pushes)
 	originPath := t.TempDir()
-	cmd := testutil.GitCommand(ctx, filepath.Dir(originPath), "init", "--bare", filepath.Base(originPath))
+	cmd := pgembed.GitCommand(ctx, filepath.Dir(originPath), "init", "--bare", filepath.Base(originPath))
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to create bare repo: %v", err)
 	}
@@ -31,7 +32,7 @@ func TestPushToOrigin(t *testing.T) {
 	}
 
 	// Configure git user for commits
-	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+	if err := pgembed.ConfigureGitUser(ctx, workspacePath); err != nil {
 		t.Fatalf("Failed to configure git user: %v", err)
 	}
 
@@ -75,11 +76,11 @@ func TestPushToOrigin(t *testing.T) {
 // TestPushToOrigin_NonBareRepo_SameBranch verifies pushing to non-bare repo on same branch
 func TestPushToOrigin_NonBareRepo_SameBranch(t *testing.T) {
 	ctx := context.Background()
-	gitRepo := testutil.NewRealGitRepository()
+	gitRepo := pgembed.NewRealGitRepository()
 
 	// Create a non-bare origin repo (regular working directory)
 	originPath := t.TempDir()
-	if err := testutil.CreateGitRepo(ctx, originPath); err != nil {
+	if err := pgembed.CreateGitRepo(ctx, originPath); err != nil {
 		t.Fatalf("Failed to create origin repo: %v", err)
 	}
 
@@ -102,7 +103,7 @@ func TestPushToOrigin_NonBareRepo_SameBranch(t *testing.T) {
 	}
 
 	// Configure git user for commits
-	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+	if err := pgembed.ConfigureGitUser(ctx, workspacePath); err != nil {
 		t.Fatalf("Failed to configure git user: %v", err)
 	}
 
@@ -138,7 +139,7 @@ func TestPushToOrigin_NonBareRepo_SameBranch(t *testing.T) {
 	}
 
 	// Verify receive.denyCurrentBranch is set to updateInstead
-	cmd := testutil.GitCommand(ctx, originPath, "config", "receive.denyCurrentBranch")
+	cmd := pgembed.GitCommand(ctx, originPath, "config", "receive.denyCurrentBranch")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Errorf("Failed to read receive.denyCurrentBranch config: %v", err)
@@ -151,11 +152,11 @@ func TestPushToOrigin_NonBareRepo_SameBranch(t *testing.T) {
 // TestPushToOrigin_NonBareRepo_DifferentBranch verifies pushing to non-bare repo on different branch
 func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
 	ctx := context.Background()
-	gitRepo := testutil.NewRealGitRepository()
+	gitRepo := pgembed.NewRealGitRepository()
 
 	// Create a non-bare origin repo (will be on default branch)
 	originPath := t.TempDir()
-	if err := testutil.CreateGitRepo(ctx, originPath); err != nil {
+	if err := pgembed.CreateGitRepo(ctx, originPath); err != nil {
 		t.Fatalf("Failed to create origin repo: %v", err)
 	}
 
@@ -178,12 +179,12 @@ func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
 	}
 
 	// Configure git user for commits
-	if err := testutil.ConfigureGitUser(ctx, workspacePath); err != nil {
+	if err := pgembed.ConfigureGitUser(ctx, workspacePath); err != nil {
 		t.Fatalf("Failed to configure git user: %v", err)
 	}
 
 	// Create and checkout a feature branch in workspace
-	cmd := testutil.GitCommand(ctx, workspacePath, "checkout", "-b", "feature")
+	cmd := pgembed.GitCommand(ctx, workspacePath, "checkout", "-b", "feature")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to create feature branch: %v", err)
 	}
@@ -210,13 +211,13 @@ func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
 	}
 
 	// Verify feature branch exists in origin
-	cmd = testutil.GitCommand(ctx, originPath, "rev-parse", "feature")
+	cmd = pgembed.GitCommand(ctx, originPath, "rev-parse", "feature")
 	if err := cmd.Run(); err != nil {
 		t.Errorf("feature branch not found in origin: %v", err)
 	}
 
 	// Verify origin is still on its original branch (not feature)
-	cmd = testutil.GitCommand(ctx, originPath, "rev-parse", "--abbrev-ref", "HEAD")
+	cmd = pgembed.GitCommand(ctx, originPath, "rev-parse", "--abbrev-ref", "HEAD")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to get origin branch: %v", err)
@@ -233,7 +234,7 @@ func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
 	}
 
 	// Checkout feature branch in origin to verify the content was pushed
-	cmd = testutil.GitCommand(ctx, originPath, "checkout", "feature")
+	cmd = pgembed.GitCommand(ctx, originPath, "checkout", "feature")
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("Failed to checkout feature branch in origin: %v", err)
 	}
@@ -251,11 +252,11 @@ func TestPushToOrigin_NonBareRepo_DifferentBranch(t *testing.T) {
 // TestCreateEphemeralWorkspace_SparseCheckout verifies ephemeral workspaces use sparse checkout
 func TestCreateEphemeralWorkspace_SparseCheckout(t *testing.T) {
 	ctx := context.Background()
-	gitRepo := testutil.NewRealGitRepository()
+	gitRepo := pgembed.NewRealGitRepository()
 
 	// Create a non-bare origin repo with initial content
 	projectRepoPath := t.TempDir()
-	if err := testutil.CreateGitRepo(ctx, projectRepoPath); err != nil {
+	if err := pgembed.CreateGitRepo(ctx, projectRepoPath); err != nil {
 		t.Fatalf("Failed to create project repo: %v", err)
 	}
 

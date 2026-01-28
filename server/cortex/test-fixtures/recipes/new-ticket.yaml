@@ -1,0 +1,78 @@
+id: new-ticket
+version: 0.1.0
+desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval
+input_schema:
+  approval_decision:
+    type: string
+    default_value: ""
+    enum:
+      - approved
+      - rejected
+    description: Optional pre-approval to auto-fill completion; omit to require live user input
+sequence:
+#  - id: triage
+#    op: recipe.run_and_get_result
+#    inputs:
+#      name: new-ticket-triage
+#      inputs:
+#        ticket_id: '{{ context.actor.ticket_id }}'
+#        cell: '{{ context.workflow.cell }}'
+#  - id: plan
+#    op: recipe.run_and_get_result
+#    inputs:
+#      name: new-ticket-plan
+#      inputs:
+#        ticket_id: '{{ context.actor.ticket_id }}'
+#        cell: '{{ context.workflow.cell }}'
+#        requirements_artifact: '{{ sequence.triage.outputs.outputs.requirements_artifact }}'
+#  - id: execute
+#    op: recipe.run_and_get_result
+#    inputs:
+#      name: new-ticket-execute
+#      inputs:
+#        ticket_id: '{{ context.actor.ticket_id }}'
+#        cell: '{{ context.workflow.cell }}'
+#        spec_artifact: '{{ sequence.plan.outputs.outputs.spec_artifact }}'
+#        plan_artifact: '{{ sequence.plan.outputs.outputs.plan_artifact }}'
+#  - id: validate
+#    op: recipe.run_and_get_result
+#    inputs:
+#      name: new-ticket-validate
+#      inputs:
+#        ticket_id: '{{ context.actor.ticket_id }}'
+#        cell: '{{ context.workflow.cell }}'
+#        commit_artifact: '{{ sequence.execute.outputs.outputs.commit_artifact }}'
+  - id: approval
+    op: input
+    inputs:
+      form:
+        title: 'Complete ticket?'
+        question: 'Approve completion after validation?'
+        type: short_answer
+        timeout: 1
+        default_on_timeout: null
+        autofill:
+          response: '{{ has(inputs.approval_decision) ? inputs.approval_decision : "" }}'
+#  - id: merge
+#    op: command_execution
+#    inputs:
+#      working_directory: "{{ context.environment.outbox }}"
+#      run: |
+#        set -euo pipefail
+#        cat <<'EOF' > merge.txt
+#        Merge completed
+#        EOF
+  - op: ticket.manage
+    inputs:
+      actions:
+        - type: update_ticket
+          ticket_id: "{{ context.actor.ticket_id }}"
+          stage: completed
+#outputs:
+#  requirements_artifact: '{{ sequence.triage.outputs.outputs.requirements_artifact }}'
+#  spec_artifact: '{{ sequence.plan.outputs.outputs.spec_artifact }}'
+#  plan_artifact: '{{ sequence.plan.outputs.outputs.plan_artifact }}'
+#  commit_artifact: '{{ sequence.execute.outputs.outputs.commit_artifact }}'
+#  validation_artifact: '{{ sequence.validate.outputs.outputs.validation_artifact }}'
+#  approval_response: '{{ (has(inputs.approval_decision) && inputs.approval_decision != "") ? inputs.approval_decision : sequence.approval.outputs.response }}'
+#  final_status: completed

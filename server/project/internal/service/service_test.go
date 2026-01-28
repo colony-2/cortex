@@ -8,12 +8,12 @@ import (
 	"github.com/colony-2/colony2/server/project/internal/model"
 	"github.com/colony-2/colony2/server/project/internal/service"
 	"github.com/colony-2/colony2/server/project/internal/store"
-	"github.com/colony-2/colony2/server/project/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/stretchr/testify/require"
 )
 
 func TestServiceCRUD(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projectStore, err := store.New(pg.DB)
@@ -45,7 +45,7 @@ func TestServiceCRUD(t *testing.T) {
 
 	iter, err := svc.ListProjects(ctx, model.SearchFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 	first, err := iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "Alpha", first.Name)
@@ -82,7 +82,7 @@ func TestServiceCRUD(t *testing.T) {
 }
 
 func TestServiceValidation(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projectStore, err := store.New(pg.DB)

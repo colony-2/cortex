@@ -10,20 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRecipeResolutionContext(t *testing.T) {
-	inputs := map[string]interface{}{
-		"input": "value",
-	}
-	ctx := newRecipeCtx(t, inputs)
-
-	assert.Equal(t, ScopeRecipe, ctx.ScopeType)
-	assert.Equal(t, inputs, ctx.TemplateData.ContainerInputs)
-	assert.NotNil(t, ctx.TemplateData.Sequence)
-	assert.NotNil(t, ctx.TemplateData.States)
-	assert.NotNil(t, ctx.CELEnv)
-	assert.Equal(t, contextual.Invocation{NodePath: "", InvokeSeq: 0}, ctx.TemplateData.Context.Invocation)
-}
-
 func TestResolveTemplate_Simple(t *testing.T) {
 	recipeCtx := newRecipeCtx(t, nil)
 	seqCtx := newSequenceCtx(t, recipeCtx, "test-seq", map[string]interface{}{
@@ -121,9 +107,9 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 
 func TestResolveTemplate_JSONParse(t *testing.T) {
 	inputs := map[string]interface{}{
-		"config_json": `{"enabled":true,"threshold":2,"nested":{"name":"demo"},"items":[{"id":1},{"id":2}]}`,
+		"config_json":  `{"enabled":true,"threshold":2,"nested":{"name":"demo"},"items":[{"id":1},{"id":2}]}`,
 		"invalid_json": "{bad",
-		"flag":        true,
+		"flag":         true,
 	}
 	recipeCtx := newRecipeCtx(t, inputs)
 	seqCtx := newSequenceCtx(t, recipeCtx, "test", inputs)

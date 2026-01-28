@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/api/internal/testsupport"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
@@ -29,7 +29,7 @@ import (
 
 func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	ctx := context.Background()
-	pg := testsupport.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 	db := pg.DB
 	repoRoot := t.TempDir()

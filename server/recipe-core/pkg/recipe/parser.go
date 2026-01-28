@@ -14,7 +14,9 @@ func LoadRecipeFromString(data []byte) (*Recipe, error) {
 
 func LoadRecipeFromReader(r io.Reader) (*Recipe, error) {
 	recipe := &Recipe{}
-	return resolve(recipe, yaml.NewDecoder(r).Decode(&recipe))
+	d := yaml.NewDecoder(r)
+	d.KnownFields(true)
+	return resolve(recipe, d.Decode(&recipe))
 }
 
 func resolve(recipe *Recipe, err error) (*Recipe, error) {

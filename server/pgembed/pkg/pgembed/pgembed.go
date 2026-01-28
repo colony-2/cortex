@@ -1,16 +1,17 @@
-package testutil
+package pgembed
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/colony-2/colony2/server/git/pkg/git"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -71,8 +72,7 @@ func (e *EmbeddedPostgres) Close(t testing.TB) {
 		return
 	}
 	if e.DB != nil {
-		sqlDB, err := e.DB.DB()
-		if err == nil && sqlDB != nil {
+		if sqlDB, err := e.DB.DB(); err == nil && sqlDB != nil {
 			_ = sqlDB.Close()
 		}
 	}
@@ -113,7 +113,35 @@ func MustCloseIterator(t testing.TB, it interface{ Close(context.Context) error 
 	}
 }
 
-func SQLDB(db *gorm.DB) *sql.DB {
-	sqlDB, _ := db.DB()
-	return sqlDB
+func NewRealGitRepository() git.Repository {
+	return git.NewRepository(git.Config{
+		DefaultAuthor: "Test User",
+		DefaultEmail:  "test@example.com",
+	})
 }
+
+func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	return cmd
+}
+
+func ConfigureGitUser(ctx context.Context, dir string) error {
+	cmd := GitCommand(ctx, dir, "config", "user.email", "test@example.com")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	cmd = GitCommand(ctx, dir, "config", "user.name", "Test User")
+	return cmd.Run()
+}
+
+func CreateGitRepo(ctx context.Context, dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	if err := GitCommand(ctx, dir, "init").Run(); err != nil {
+		return err
+	}
+	return ConfigureGitUser(ctx, dir)
+}
+

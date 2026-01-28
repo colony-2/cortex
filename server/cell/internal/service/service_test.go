@@ -7,7 +7,7 @@ import (
 
 	"github.com/colony-2/colony2/server/cell/internal/model"
 	"github.com/colony-2/colony2/server/cell/internal/store"
-	"github.com/colony-2/colony2/server/cell/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
@@ -42,7 +42,7 @@ func (s stubPopulator) Populate(ctx context.Context, projectID project.ID) ([]Po
 
 func setupService(t *testing.T) (Service, *project.Project, func()) {
 	t.Helper()
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	closeFn := func() { pg.Close(t) }
 
 	projectStore, err := project.NewStore(pg.DB)

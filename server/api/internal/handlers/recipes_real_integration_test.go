@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/colony-2/colony2/server/api/internal/testsupport"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/project/pkg/project"
@@ -25,7 +25,7 @@ func TestRecipeHandlers_RealIntegration(t *testing.T) {
 	registerTestOpsForHandlers()
 
 	// Start embedded postgres
-	pg := testsupport.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
 	// Setup git repository

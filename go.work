@@ -1,19 +1,20 @@
 go 1.25.5
 
 use (
+	./cli
 	./server/api
 	./server/cell
+        ./server/pgembed
 	./server/core
 	./server/cortex
-        ./cli
 	./server/git
 	./server/graph
 	./server/llm
 	./server/openapi
 	./server/ops
 	./server/project
+	./server/recipe-child
 	./server/recipe-core
-        ./server/recipe-child
 	./server/recipe-input
 	./server/recipe-template
 	./server/recipe-worker

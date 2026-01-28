@@ -1,0 +1,23 @@
+recipes:
+  - new-ticket-triage.yaml
+  - new-ticket-plan.yaml
+  - new-ticket-execute.yaml
+  - new-ticket-validate.yaml
+
+tests:
+  - name: happy_path
+    inputs:
+      approval_decision: approved
+    job_context:
+      ticket:
+        id: 1
+    want:
+      final_status: completed
+      approval_response: approved
+      requirements_artifact: requirements.md
+      spec_artifact: spec.md
+      plan_artifact: plan.yaml
+      commit_artifact: commit.txt
+      validation_artifact: validation.md
+    wantArtifacts:
+      - merge.txt

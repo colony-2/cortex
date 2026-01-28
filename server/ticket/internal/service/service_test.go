@@ -11,7 +11,7 @@ import (
 	"github.com/colony-2/colony2/server/ticket/internal/model"
 	eventstore "github.com/colony-2/colony2/server/ticket/internal/store/events"
 	store "github.com/colony-2/colony2/server/ticket/internal/store/tickets"
-	"github.com/colony-2/colony2/server/ticket/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
@@ -643,7 +643,7 @@ func TestAppendTicketEventEmptyNotes(t *testing.T) {
 }
 
 func TestResetTicketMissingAnchor(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	ticketStore, err := store.New(pg.DB)

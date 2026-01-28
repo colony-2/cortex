@@ -465,12 +465,17 @@ func buildRecipeRegistry(primaryPath string, primary recipe.Recipe, secondaryPat
 }
 
 func RunTestOnAllRecipes(path string, t *testing.T) {
+	RunTestOnAllRecipesWithDeps(coreops.NewServiceDepsBuilder().Build(), path, t)
+}
+
+func RunTestOnAllRecipesWithDeps(deps coreops.ServiceDependencies2, path string, t *testing.T) {
+
 	// Create standalone executor once for all tests
 	logger := zaptest.NewLogger(t)
 	a, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 
-	exec, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
+	exec, err := executor.NewStandaloneExecutor(deps, a, logger)
 	require.NoError(t, err, "Failed to create standalone executor")
 
 	// Find all .test.yaml files
@@ -496,12 +501,11 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 			require.NoError(t, err, "Failed to parse test file: %s", testFile)
 
 			// Load recipe
-			recipeData, err := os.ReadFile(recipePath)
+			reader, err := os.Open(recipePath)
 			require.NoError(t, err, "Failed to read recipe file: %s", recipePath)
-
-			var recipeDef recipe.Recipe
-			err = yaml.Unmarshal(recipeData, &recipeDef)
-			require.NoError(t, err, "Failed to parse recipe file: %s", recipePath)
+			defer reader.Close()
+			recipeDefP, err := recipe.LoadRecipeFromReader(reader)
+			recipeDef := *recipeDefP
 
 			registry, err := buildRecipeRegistry(recipePath, recipeDef, testCases.Recipes)
 			require.NoError(t, err, "Failed to build recipe registry")
@@ -516,7 +520,7 @@ func RunTestOnAllRecipes(path string, t *testing.T) {
 					var artifacts []string
 					var jobArtifacts []string
 					if len(tc.WantArtifacts) > 0 || len(tc.WantJobArtifacts) > 0 {
-						result, artifacts, jobArtifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
+						result, artifacts, jobArtifacts, err = executeRecipeWithArtifacts(context.Background(), a, recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry, deps)
 					} else {
 						result, err = exec.ExecuteWithRegistry(context.Background(), recipeDef, tc.Inputs, jobCtx, gitCtx.ParentRef, registry)
 					}
@@ -623,12 +627,13 @@ func executeRecipeWithArtifacts(
 	jobCtx contextual.JobContext,
 	gitRef string,
 	recipeRegistry workflow.RecipeProjectProvider,
+	deps coreops.ServiceDependencies2,
 ) (map[string]interface{}, []string, []string, error) {
 	control := &workflow.SWFWorkflowControl{
 		Registry: recipeRegistry,
 	}
 
-	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(control).Build()
+	deps = coreops.NewServiceDepsBuilder().WithWorkflowControl(control).WithDatabase(deps.Database()).WithSSEManager(deps.SSEManager()).Build()
 	workset, err := compiler.NewRecipeWorker(deps, registry)
 	if err != nil {
 		return nil, nil, nil, err

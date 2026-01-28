@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/ticket/internal/testutil"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -75,7 +75,7 @@ func (g *blockingEventIDGen) NewID() (string, error) {
 }
 
 func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projSvc, projectID := createProject(t, pg.DB, "svc-create")
@@ -124,7 +124,7 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 
 	iter, err := svc.SearchTickets(ctx, ticket.SearchFilter{StageAny: []ticket.Stage{ticket.Stage("open")}})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 
 	var tickets []*ticket.Ticket
 	for {
@@ -150,7 +150,7 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 
 	stagesIter, err := svc.SearchStages(ctx, ticket.SearchFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, stagesIter)
+	defer pgembed.MustCloseIterator(t, stagesIter)
 
 	var stages []ticket.Stage
 	for {
@@ -165,7 +165,7 @@ func TestServiceIntegration_CreateSearchUpdate(t *testing.T) {
 }
 
 func TestServiceIntegration_EventLifecycle(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projSvc, projectID := createProject(t, pg.DB, "svc-events")
@@ -229,7 +229,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 
 	iter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 
 	var listed []*ticket.TicketEvent
 	for {
@@ -260,7 +260,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 
 	preResetIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, preResetIter)
+	defer pgembed.MustCloseIterator(t, preResetIter)
 
 	var beforeReset []*ticket.TicketEvent
 	for {
@@ -300,7 +300,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 
 	activeIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, activeIter)
+	defer pgembed.MustCloseIterator(t, activeIter)
 
 	var active []*ticket.TicketEvent
 	for {
@@ -325,7 +325,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 
 	allIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, allIter)
+	defer pgembed.MustCloseIterator(t, allIter)
 
 	var all []*ticket.TicketEvent
 	for {
@@ -349,7 +349,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 	at := now.Add(30 * time.Second)
 	snapshotIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{At: &at})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, snapshotIter)
+	defer pgembed.MustCloseIterator(t, snapshotIter)
 
 	var snapshot []*ticket.TicketEvent
 	for {
@@ -366,7 +366,7 @@ func TestServiceIntegration_EventLifecycle(t *testing.T) {
 }
 
 func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projSvc, projectID := createProject(t, pg.DB, "svc-reset")
@@ -481,7 +481,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 
 	activeIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, activeIter)
+	defer pgembed.MustCloseIterator(t, activeIter)
 
 	var active []*ticket.TicketEvent
 	for {
@@ -497,7 +497,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 
 	allIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, allIter)
+	defer pgembed.MustCloseIterator(t, allIter)
 
 	var all []*ticket.TicketEvent
 	for {
@@ -525,7 +525,7 @@ func TestServiceIntegration_AppendDuringResetTagged(t *testing.T) {
 }
 
 func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	projSvc, projectID := createProject(t, pg.DB, "svc-reset-slice")
@@ -583,7 +583,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 
 	iter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iter)
+	defer pgembed.MustCloseIterator(t, iter)
 
 	var initialEvents []*ticket.TicketEvent
 	for {
@@ -607,7 +607,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 
 	iterBeforeReset, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iterBeforeReset)
+	defer pgembed.MustCloseIterator(t, iterBeforeReset)
 
 	var preResetEvents []*ticket.TicketEvent
 	for {
@@ -633,7 +633,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 
 	postIter, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, postIter)
+	defer pgembed.MustCloseIterator(t, postIter)
 
 	var postEvents []*ticket.TicketEvent
 	for {
@@ -652,7 +652,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 
 	iterWithReset, err := svc.ListEvents(ctx, created.ID, ticket.TicketEventFilter{IncludeReset: true})
 	require.NoError(t, err)
-	defer testutil.MustCloseIterator(t, iterWithReset)
+	defer pgembed.MustCloseIterator(t, iterWithReset)
 
 	var (
 		withReset   []*ticket.TicketEvent
@@ -697,7 +697,7 @@ func TestServiceIntegration_ResetTicketRestoresSlice(t *testing.T) {
 }
 
 func TestStoreWithTransaction(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	store, err := ticket.NewStore(pg.DB)

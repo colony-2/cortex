@@ -3,13 +3,13 @@ package ticket_test
 import (
 	"testing"
 
-	"github.com/colony-2/colony2/server/ticket/internal/testutil"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewServiceFromDB(t *testing.T) {
-	pg := testutil.StartEmbeddedPostgres(t)
+	pg := pgembed.StartEmbeddedPostgres(t)
 	t.Cleanup(func() { pg.Close(t) })
 
 	svc, err := ticket.NewServiceFromDB(pg.DB)
