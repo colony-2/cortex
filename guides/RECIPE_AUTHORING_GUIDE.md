@@ -44,6 +44,8 @@ Use the templating features summarised in `TEMPLATE_REFERENCE_CHEATSHEET.md` to 
 
 - Operation reference: `server/cortex/docs/RECIPE_OPS_REFERENCE.md`
 - Node scope rules: `server/recipe-worker/docs/NODE_SCOPE_SPEC.md`
+- State machines: `STATE_MACHINE_GUIDE.md`
+- Sequences: `SEQUENCE_GUIDE.md`
 - Template syntax/examples: `server/recipe-worker/test-fixtures/TEMPLATE_REFERENCE_CHEATSHEET.md`
 
 Keep these resources handy while authoring recipes to ensure consistent, valid workflows.

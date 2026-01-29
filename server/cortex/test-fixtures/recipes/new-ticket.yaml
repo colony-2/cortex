@@ -9,39 +9,20 @@ input_schema:
       - approved
       - rejected
     description: Optional pre-approval to auto-fill completion; omit to require live user input
-sequence:
-  - id: triage
+state:
+  initial: triage
+  triage:
+    transitions:
+      - to: plan
+    id: triage
     op: recipe.run_and_get_result
     inputs:
       name: new-ticket-triage
       inputs:
-        ticket_id: '{{ context.actor.ticket_id }}'
-        cell: '{{ context.workflow.cell }}'
-#  - id: plan
-#    op: recipe.run_and_get_result
-#    inputs:
-#      name: new-ticket-plan
-#      inputs:
-#        ticket_id: '{{ context.actor.ticket_id }}'
-#        cell: '{{ context.workflow.cell }}'
-#        requirements_artifact: '{{ sequence.triage.outputs.outputs.requirements_artifact }}'
-#  - id: execute
-#    op: recipe.run_and_get_result
-#    inputs:
-#      name: new-ticket-execute
-#      inputs:
-#        ticket_id: '{{ context.actor.ticket_id }}'
-#        cell: '{{ context.workflow.cell }}'
-#        spec_artifact: '{{ sequence.plan.outputs.outputs.spec_artifact }}'
-#        plan_artifact: '{{ sequence.plan.outputs.outputs.plan_artifact }}'
-#  - id: validate
-#    op: recipe.run_and_get_result
-#    inputs:
-#      name: new-ticket-validate
-#      inputs:
-#        ticket_id: '{{ context.actor.ticket_id }}'
-#        cell: '{{ context.workflow.cell }}'
-#        commit_artifact: '{{ sequence.execute.outputs.outputs.commit_artifact }}'
+        title: '{{ context.ticket.title }}'
+        description: '{{ context.ticket.description }}'
+
+
   - id: approval
     op: input
     inputs:

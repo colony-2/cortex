@@ -3,7 +3,6 @@ package input
 import (
 	"context"
 	"reflect"
-	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
@@ -20,10 +19,6 @@ type Config struct {
 	Title   string      `json:"title,omitempty" jsonschema:"description=Form title"`
 	Fields  []FormField `json:"fields,omitempty" validate:"omitempty,min=1,dive" jsonschema:"description=Form fields"`
 	Context FormContext `json:"context,omitempty" jsonschema:"description=Form context and artifacts"`
-	Timeout int         `json:"timeout,omitempty" validate:"omitempty,gte=1,lte=3600" jsonschema:"default=300,minimum=1,maximum=3600,description=Timeout in seconds"`
-
-	// Default value on timeout
-	DefaultOnTimeout interface{} `json:"default_on_timeout,omitempty" jsonschema:"description=Default value to return if input times out"`
 
 	// Optional auto-fill response
 	Output *Output `json:"autofill,omitempty" jsonschema:"description=Optional auto-fill output response"`
@@ -58,9 +53,7 @@ func GetOp() ops.RegisterableOp {
 // buildForm constructs the InputForm from config and input
 func buildForm(deps ops.OpDependencies, ctx context.Context, in Input) (InputForm, error) {
 	config := in.Form
-	form := InputForm{
-		Timeout: time.Duration(config.Timeout) * time.Second,
-	}
+	form := InputForm{}
 
 	// Check if it's a single question or multi-field form
 	if config.Question != "" {

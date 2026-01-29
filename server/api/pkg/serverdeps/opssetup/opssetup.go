@@ -7,6 +7,7 @@ import (
 	"github.com/colony-2/colony2/server/api/pkg/web"
 	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
+	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
@@ -25,6 +26,7 @@ func RegisterOps() []ops.RegisterableOp {
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, input.GetOp())
 	impls = append(impls, input.GetAutoFillOp())
+	impls = append(impls, recipe.GetOps()...)
 	impls = append(impls, gitexport.GetAll()...)
 	impls = append(impls, ticketop.GetOp())
 	ops.Register(impls...)
