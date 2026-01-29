@@ -8,8 +8,8 @@ import (
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 )
 
-// ExecuteStateMap runs the state machine with the new StateMap format
-func executeStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error {
+// ExecuteStateMachine runs the state machine with the new StateMap format
+func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error {
 	// Create resolution context for the state machine
 	resolvedInputs, err := parentContext.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -40,7 +40,7 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 		lastStateDef := recipe.State{}
 		for _, stateName := range stateNames {
 			stateDef := stateMap.States[stateName]
-			if err := runState(ctx, resCtx, stateName, stateDef); err != nil {
+			if err := d.runState(ctx, resCtx, stateName, stateDef); err != nil {
 				return fmt.Errorf("state '%s' execution failed: %w", stateName, err)
 			}
 			lastStateName = stateName
@@ -67,7 +67,7 @@ func executeStateMachine(ctx workflow.Context, parentContext *template.Resolutio
 			return fmt.Errorf("state '%s' not found", currentState)
 		}
 
-		err := runState(ctx, resCtx, currentState, stateDef)
+		err := d.runState(ctx, resCtx, currentState, stateDef)
 
 		if err != nil {
 			// Handle retry if configured
@@ -135,11 +135,11 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, resCtx *tem
 	return "", nil
 }
 
-func runState(ctx workflow.Context, resCtx *template.ResolutionContext, stateName string, node recipe.State) error {
+func (d DefaultRecipeExecutor) runState(ctx workflow.Context, resCtx *template.ResolutionContext, stateName string, node recipe.State) error {
 	stateResCtx, err := resCtx.NewChildContext(template.ScopeState, node.GetMetadata(), stateName, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create state context: %w", err)
 	}
 
-	return executeNode(ctx, stateResCtx, &node.Node)
+	return d.ExecuteNode(ctx, stateResCtx, &node.Node)
 }

@@ -18,7 +18,33 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 )
 
+// RecipeExecutor defines the surface area for executing recipes, states, and ops.
+// This enables decorator implementations (e.g., analysis) without changing call sites.
+type RecipeExecutor interface {
+	ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error)
+	ExecuteNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, n *recipe.Node) error
+	ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error
+	ExecuteOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error
+	ExecuteSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error
+}
+
+// DefaultRecipeExecutor preserves the existing execution behavior.
+type DefaultRecipeExecutor struct{}
+
+// ExecuteRecipe keeps the existing public entry point, delegating to the default executor.
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error) {
+	return DefaultRecipeExecutor{}.ExecuteRecipe(ctx, r, rawRecipeInputs, execCtx, commitContext, opts...)
+}
+
+// ExecuteRecipeWithExecutor allows callers to run with a custom executor (e.g., decorator).
+func ExecuteRecipeWithExecutor(exec RecipeExecutor, ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error) {
+	if exec == nil {
+		exec = DefaultRecipeExecutor{}
+	}
+	return exec.ExecuteRecipe(ctx, r, rawRecipeInputs, execCtx, commitContext, opts...)
+}
+
+func (d DefaultRecipeExecutor) ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error) {
 
 	jobKey := ctx.GetJobKey()
 	execCtx.Workflow.JobID = jobKey.JobId
@@ -46,11 +72,11 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		err = executeStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
+		err = d.ExecuteStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.RecipeOp:
-		err = executeOp(ctx, rCtx, metadata, t.OpData.Op)
+		err = d.ExecuteOp(ctx, rCtx, metadata, t.OpData.Op)
 	case *recipe.RecipeSequence:
-		err = executeSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
+		err = d.ExecuteSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return nil, nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -62,15 +88,15 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 }
 
 // ExecuteWorkflow implements the WorkflowExecutor interface for unified recipes
-func executeNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, n *recipe.Node) error {
+func (d DefaultRecipeExecutor) ExecuteNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, n *recipe.Node) error {
 	metadata := n.GetMetadata()
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return executeStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateMachineData.States)
+		return d.ExecuteStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.NodeOp:
-		return executeOp(ctx, parentResCtx, metadata, t.OpData.Op)
+		return d.ExecuteOp(ctx, parentResCtx, metadata, t.OpData.Op)
 	case *recipe.NodeSequence:
-		return executeSequence(ctx, parentResCtx, metadata, t.Outputs, t.SequenceData.Sequence)
+		return d.ExecuteSequence(ctx, parentResCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -81,10 +107,10 @@ type StepResult struct {
 	Outputs map[string]interface{}
 }
 
-func executeOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
+func (d DefaultRecipeExecutor) ExecuteOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
 	l := slog.Default()
 	l.Info("executing op", "op", op)
-	err := executeOp2(ctx, parentResolutionContext, metadata, op)
+	err := d.executeOp2(ctx, parentResolutionContext, metadata, op)
 	if err != nil {
 		l.Error("failed to execute op", "op", op, "err", err)
 		return err
@@ -95,7 +121,7 @@ func executeOp(ctx workflow.Context, parentResolutionContext *template.Resolutio
 }
 
 // executeOperation executes a single operation node
-func executeOp2(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
+func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error {
 
 	if metadata.Inputs == nil {
 		metadata.Inputs = map[string]interface{}{}
@@ -223,7 +249,7 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	return nil
 }
 
-func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
+func (d DefaultRecipeExecutor) innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
 	// Create resolution context for this sequence
 	resolvedInputs, err := parentCtx.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -240,7 +266,7 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 
 	for i, node := range sequence {
 		// Execute the node
-		err := executeNode(ctx, resCtx, &node)
+		err := d.ExecuteNode(ctx, resCtx, &node)
 		if err != nil {
 			return fmt.Errorf("sequence node %d failed: %w", i, err)
 		}
@@ -256,13 +282,13 @@ func innerSequence(ctx workflow.Context, parentCtx *template.ResolutionContext, 
 	return nil
 }
 
-func executeSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
+func (d DefaultRecipeExecutor) ExecuteSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error {
 	timeout := time.Duration(metadata.Timeout)
 	if timeout == 0 {
 		timeout = 30 * time.Second // Default timeout
 	}
 	fn := func(inner workflow.Context) error {
-		e := innerSequence(inner, rCtx, metadata, outputTemplate, sequence)
+		e := d.innerSequence(inner, rCtx, metadata, outputTemplate, sequence)
 		return e
 	}
 	err := executeCompositeInEnvelope(ctx, metadata.Retry, timeout, fn)
