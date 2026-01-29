@@ -161,8 +161,8 @@ func (n *NodeSequence) GetMetadata() NodeMetadata {
 func (n *NodeSequence) isNode() {}
 
 type NodeState struct {
-	NodeMetadata `yaml:",inline"`
-	StateData    `yaml:",inline"`
+	NodeMetadata     `yaml:",inline"`
+	StateMachineData `yaml:",inline"`
 }
 
 func (n *NodeState) GetMetadata() NodeMetadata {

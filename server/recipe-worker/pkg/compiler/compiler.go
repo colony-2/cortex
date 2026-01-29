@@ -46,7 +46,7 @@ func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[st
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		err = executeStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateData.States)
+		err = executeStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.RecipeOp:
 		err = executeOp(ctx, rCtx, metadata, t.OpData.Op)
 	case *recipe.RecipeSequence:
@@ -66,7 +66,7 @@ func executeNode(ctx workflow.Context, parentResCtx *template.ResolutionContext,
 	metadata := n.GetMetadata()
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return executeStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateData.States)
+		return executeStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.NodeOp:
 		return executeOp(ctx, parentResCtx, metadata, t.OpData.Op)
 	case *recipe.NodeSequence:

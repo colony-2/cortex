@@ -16,7 +16,6 @@ type State struct {
 }
 
 type SingleStateMetadata struct {
-	Error       *string      `json:"error,omitempty"`
 	Transitions []Transition `json:"transitions,omitempty"`
 }
 
@@ -26,7 +25,7 @@ type Transition struct {
 	When cel.CELExpr `yaml:"when,omitempty"` // CEL expression
 }
 
-type StateData struct {
+type StateMachineData struct {
 	States  *StateMap              `yaml:"state,omitempty"`
 	Outputs map[string]interface{} `yaml:"outputs,omitempty"`
 }

@@ -92,7 +92,7 @@ func (b *BaseVisitor) VisitNodeState(node *NodeState, path []string) (Node, erro
 	if b.ShouldTraverseStateChildren(node, path) {
 		newState := &NodeState{
 			NodeMetadata: node.NodeMetadata,
-			StateData: StateData{
+			StateMachineData: StateMachineData{
 				Outputs: node.Outputs,
 				States: &StateMap{
 					Initial: node.States.Initial,
@@ -146,8 +146,8 @@ func (b *BaseVisitor) VisitRecipeSequence(node *RecipeSequence, path []string) (
 func (b *BaseVisitor) VisitRecipeState(node *RecipeState, path []string) (*RecipeState, error) {
 	// Must traverse the embedded NodeState
 	innerNode := NodeState{
-		NodeMetadata: node.NodeMetadata,
-		StateData:    node.StateData,
+		NodeMetadata:     node.NodeMetadata,
+		StateMachineData: node.StateMachineData,
 	}
 	result, err := b.VisitNodeState(&innerNode, path)
 	if err != nil {
@@ -156,8 +156,8 @@ func (b *BaseVisitor) VisitRecipeState(node *RecipeState, path []string) (*Recip
 
 	if state, ok := result.NodeImpl.(*NodeState); ok {
 		return &RecipeState{
-			RecipeMetadata: node.RecipeMetadata,
-			StateData:      state.StateData,
+			RecipeMetadata:   node.RecipeMetadata,
+			StateMachineData: state.StateMachineData,
 		}, nil
 	}
 	return node, nil
@@ -328,7 +328,7 @@ func (r *SharedNodeResolver) walkAndResolveNode(node Node, path []string) (Node,
 	case *NodeState:
 		newState := &NodeState{
 			NodeMetadata: n.NodeMetadata,
-			StateData: StateData{
+			StateMachineData: StateMachineData{
 				Outputs: n.Outputs,
 				States: &StateMap{
 					Initial: n.States.Initial,

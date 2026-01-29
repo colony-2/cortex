@@ -172,7 +172,7 @@ func TestNodeStateTraversal(t *testing.T) {
 	recipe := Recipe{
 		RecipeImpl: &RecipeState{
 			RecipeMetadata: RecipeMetadata{Version: "1.0"},
-			StateData: StateData{
+			StateMachineData: StateMachineData{
 				States: &StateMap{
 					Initial: "state1",
 					States: map[string]State{
@@ -384,7 +384,7 @@ func TestComplexNestedStructure(t *testing.T) {
 				Version: "1.0",
 				Defs:    defs,
 			},
-			StateData: StateData{
+			StateMachineData: StateMachineData{
 				States: &StateMap{
 					Initial: "state1",
 					States: map[string]State{
@@ -394,7 +394,7 @@ func TestComplexNestedStructure(t *testing.T) {
 									Sequence: []Node{
 										{NodeImpl: &NodeShared{Shared: "shared-seq"}},
 										{NodeImpl: &NodeState{
-											StateData: StateData{
+											StateMachineData: StateMachineData{
 												States: &StateMap{
 													Initial: "nested1",
 													States: map[string]State{

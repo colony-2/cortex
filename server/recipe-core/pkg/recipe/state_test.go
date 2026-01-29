@@ -12,7 +12,7 @@ import (
 func TestStateMachine_Construct_And_YAML(t *testing.T) {
 	registerTestOp()
 	// State machines define initial state correctly [pkg/recipe/state.go]
-	sm := &RecipeState{StateData: StateData{States: &StateMap{Initial: "start", States: map[string]State{
+	sm := &RecipeState{StateMachineData: StateMachineData{States: &StateMap{Initial: "start", States: map[string]State{
 		"start": {Node: Node{NodeImpl: &NodeOp{OpData: OpData{Op: "echo"}}}, SingleStateMetadata: SingleStateMetadata{}},
 	}}}}
 	assert.Equal(t, "start", sm.States.Initial)

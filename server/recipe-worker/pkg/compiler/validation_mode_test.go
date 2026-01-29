@@ -151,7 +151,7 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 			RecipeMetadata: recipe.RecipeMetadata{
 				NodeMetadata: recipe.NodeMetadata{Inputs: map[string]interface{}{}},
 			},
-			StateData: recipe.StateData{
+			StateMachineData: recipe.StateMachineData{
 				Outputs: map[string]interface{}{
 					"result":  "{{ states.b.outputs.value }}",
 					"attempt": "{{ states.a.runs[2].outputs.value }}",
@@ -196,7 +196,7 @@ func TestValidateAllCatchesLaterStateErrors(t *testing.T) {
 			RecipeMetadata: recipe.RecipeMetadata{
 				NodeMetadata: recipe.NodeMetadata{Inputs: map[string]interface{}{}},
 			},
-			StateData: recipe.StateData{
+			StateMachineData: recipe.StateMachineData{
 				Outputs: map[string]interface{}{
 					"result": "{{ states.a.outputs.value }}",
 				},

@@ -312,7 +312,7 @@ func TestStateMachineExecution_SingleState(t *testing.T) {
 	// Build a minimal state machine with a single terminal state
 	r := recipe.Recipe{RecipeImpl: &recipe.RecipeState{
 		RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "sm-single"}},
-		StateData: recipe.StateData{
+		StateMachineData: recipe.StateMachineData{
 			States: &recipe.StateMap{
 				Initial: "start",
 				States: map[string]recipe.State{

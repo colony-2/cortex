@@ -1,10 +1,10 @@
 # State Machine Recipes
 
-Use the `state` node to model branching workflows that react to runtime data. This guide focuses on what recipe authors need to define, transition, and export data from state machines.
+Use the `state` node to model a state machine--branching workflows that react to runtime data. This guide focuses on what recipe authors need to define, transition, and export data from state machines.
 
 ## Building Blocks
 - **Entry point**: `initial` names the state that runs first.
-- **States map**: `states` contains named states. Each state is just a regular node (`op`, `sequence`, or nested `state`) plus optional `transitions` and `outputs`.
+- **States map**: `states` contains named states. Each state is just a regular node (`op`, `sequence`, or nested `state`) plus optional `transitions`.
 - **Inputs**: Passed in via the enclosing node’s `inputs:` block, available inside every state as `inputs.*`.
 - **Outputs**: Declare under the state machine’s top-level `outputs:` block to expose results to the parent scope.
 
@@ -40,12 +40,12 @@ outputs:
   - `inputs.*` passed to the state machine.
   - Completed states via `states.<state-id>.outputs.*`.
 - Inside a state that is a `sequence`, you can also use `sequence.<step-id>.outputs.*` for that state’s internal steps.
-- To make data visible outside the state machine, map it in the state machine’s top-level `outputs:`. Think “export at each boundary.”
+- To make data visible outside the state machine, map it with the state machine’s top-level `outputs:`. Think “export at each boundary.”
 
 ## Design Patterns
 - **Guard/Process/Finalize**: validate inputs → branch to handlers → finalize. Transitions pick the handler based on validation outputs.
 - **Retry with branch**: add a counter and route to `retry` or `give_up` states depending on the count.
-- **Nested control**: states themselves can be `sequence` or another `state` to encapsulate rich logic while keeping transitions readable.
+- **Nested control**: states themselves can be sequence or another state machine to encapsulate rich logic while keeping transitions readable.
 
 ## Authoring Tips
 - Keep state names verbs or stages (`validate`, `process`, `finalize`) to make transitions self-explanatory.

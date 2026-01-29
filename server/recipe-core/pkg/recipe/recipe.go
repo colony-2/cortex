@@ -132,8 +132,8 @@ func (r *RecipeSequence) GetMetadata() RecipeMetadata {
 func (r *RecipeSequence) isRecipe() {}
 
 type RecipeState struct {
-	RecipeMetadata `yaml:",inline" refer:"true"`
-	StateData      `yaml:",inline" refer:"true"`
+	RecipeMetadata   `yaml:",inline" refer:"true"`
+	StateMachineData `yaml:",inline" refer:"true"`
 }
 
 func (r *RecipeState) GetMetadata() RecipeMetadata {
