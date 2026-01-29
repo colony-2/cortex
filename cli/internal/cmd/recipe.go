@@ -17,6 +17,8 @@ func newRecipeCmd() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newRecipeListCmd(),
+		newRecipeGetCmd(),
+		newRecipeInfoCmd(),
 		newRecipeCreateCmd(),
 		newRecipeUpdateCmd(),
 		newRecipeValidateCmd(),
@@ -197,6 +199,125 @@ func newRecipeUpdateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish immediately after update")
 	cmd.Flags().StringVar(&contentFile, "content-file", "", "Path to recipe content")
 	cmd.Flags().StringVar(&contentLiteral, "content", "", "Inline recipe content (YAML)")
+	return cmd
+}
+
+func newRecipeGetCmd() *cobra.Command {
+	var ref string
+	cmd := &cobra.Command{
+		Use:   "get <name>",
+		Short: "Get recipe content (optionally at a specific ref)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+
+			params := &openapi.GetRecipeParams{}
+			if ref != "" {
+				params.Ref = &ref
+			}
+			currentResp, err := app.Client.GetRecipeWithResponse(ctx, app.Config.Project, args[0], params)
+			if err != nil {
+				return err
+			}
+			current, err := requirePayload(currentResp.JSON200, currentResp.HTTPResponse, currentResp.Body, 200)
+			if err != nil {
+				return err
+			}
+
+			if app.Config.Output == "json" {
+				return app.Printer.JSON(current)
+			}
+			// Table mode: just print raw YAML content if available; otherwise print commit hash + content map.
+			if current.RawYaml != "" {
+				return app.Printer.Text(current.RawYaml)
+			}
+			if current.Content != nil {
+				return app.Printer.JSON(current.Content)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&ref, "ref", "", "Git ref/commit for the recipe (defaults to published)")
+	return cmd
+}
+
+func newRecipeInfoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "info <name>",
+		Short: "Show recipe history and published revision",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+
+			currentResp, err := app.Client.GetRecipeWithResponse(ctx, app.Config.Project, args[0], nil)
+			if err != nil {
+				return err
+			}
+			current, err := requirePayload(currentResp.JSON200, currentResp.HTTPResponse, currentResp.Body, 200)
+			if err != nil {
+				return err
+			}
+			historyResp, err := app.Client.GetRecipeHistoryWithResponse(ctx, app.Config.Project, args[0])
+			if err != nil {
+				return err
+			}
+			history, err := requirePayload(historyResp.JSON200, historyResp.HTTPResponse, historyResp.Body, 200)
+			if err != nil {
+				return err
+			}
+
+			publishedCommit := ""
+			if current.IsPublished {
+				publishedCommit = current.CommitHash
+			}
+
+			if app.Config.Output == "json" {
+				out := struct {
+					Current         *openapi.RecipeWithContent `json:"current"`
+					History         []openapi.RecipeVersion    `json:"history"`
+					PublishedCommit string                     `json:"publishedCommit"`
+				}{
+					Current:         current,
+					History:         history.Versions,
+					PublishedCommit: publishedCommit,
+				}
+				return app.Printer.JSON(out)
+			}
+
+			headers := []string{"Commit", "Created At", "Author", "Message", "Published?"}
+			rows := make([][]string, 0, len(history.Versions))
+			for _, v := range history.Versions {
+				published := ""
+				if publishedCommit != "" && v.CommitHash == publishedCommit {
+					published = "yes"
+				}
+				rows = append(rows, []string{
+					v.ShortHash,
+					v.CreatedAt.Format(time.RFC3339),
+					v.Author,
+					v.Message,
+					published,
+				})
+			}
+			return app.Printer.Table(headers, rows)
+		},
+	}
 	return cmd
 }
 
