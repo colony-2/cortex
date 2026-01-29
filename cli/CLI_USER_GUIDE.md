@@ -41,6 +41,7 @@ Run `c2 --help` for the command tree.
 
 ### Workflows
 - List: `c2 workflow list [--status running --ticket-id TID --cell-id CID --since RFC3339 --until RFC3339 --limit N --offset N]`
+- Run: `c2 workflow run --recipe NAME --cell-id CELL [--ticket-id TID --git-ref REF --actor-email EMAIL --idempotency-key KEY --input k=v ...]`
 
 ### Input Requests
 - List pending: `c2 input-request list`
