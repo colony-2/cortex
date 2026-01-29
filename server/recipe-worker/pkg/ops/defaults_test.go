@@ -339,3 +339,342 @@ func TestInjectDefaults_PtrToStruct(t *testing.T) {
 		t.Errorf("expected name to be 'test', got %v", inputMap["name"])
 	}
 }
+
+// Regression coverage for recipe-child SingleRecipeWithRef input shapes.
+// The embedded struct uses json:",squash", and its defaults should propagate.
+func TestInjectDefaults_SquashedEmbeddedRecipe(t *testing.T) {
+	type SingleRecipeGit struct {
+		BaseRef string `json:"base_ref" default:"{{ context.git.base_ref }}"`
+	}
+
+	type SingleRecipe struct {
+		Name     string          `json:"name" default:"demo-recipe"`
+		CellPath string          `json:"cell_path" default:"{{ context.workflow.cell_path }}"`
+		Git      SingleRecipeGit `json:"git"`
+	}
+
+	type SingleRecipeWithRef struct {
+		SingleRecipe `json:",squash"`
+		GitRef       string `json:"git_ref" default:"{{ context.git.ref }}"`
+	}
+
+	inputMap := map[string]interface{}{}
+
+	err := InjectDefaults(reflect.TypeOf(SingleRecipeWithRef{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Top-level default from the wrapper is injected.
+	if inputMap["git_ref"] != "{{ context.git.ref }}" {
+		t.Errorf("expected git_ref default to be injected, got %v", inputMap["git_ref"])
+	}
+
+	// Defaults from the squashed embedded struct are currently not injected.
+	if _, ok := inputMap["name"]; !ok {
+		t.Errorf("expected name default from embedded struct to be injected, but it is missing")
+	}
+
+	if _, ok := inputMap["cell_path"]; !ok {
+		t.Errorf("expected cell_path default from embedded struct to be injected, but it is missing")
+	}
+
+	gitValue, ok := inputMap["git"]
+	if !ok {
+		t.Errorf("expected git defaults to be injected, but git map is missing")
+	} else if gitMap, ok := gitValue.(map[string]interface{}); ok {
+		if gitMap["base_ref"] != "{{ context.git.base_ref }}" {
+			t.Errorf("expected base_ref default to be injected, got %v", gitMap["base_ref"])
+		}
+	}
+}
+
+// Regression coverage for recipe-child MultipleRecipes input shapes.
+// Defaults inside slice elements should be injected for each recipe entry.
+func TestInjectDefaults_SliceOfRecipes(t *testing.T) {
+	type Recipe struct {
+		CellName string `json:"cell_name" default:"{{ context.workflow.cell }}"`
+		Git      struct {
+			BaseRef string `json:"base_ref" default:"{{ context.git.base_ref }}"`
+		} `json:"git"`
+	}
+
+	type MultipleRecipes struct {
+		GitRef  string   `json:"git_ref" default:"{{ context.git.ref }}"`
+		Recipes []Recipe `json:"recipes"`
+	}
+
+	inputMap := map[string]interface{}{
+		"recipes": []interface{}{
+			map[string]interface{}{},
+		},
+	}
+
+	err := InjectDefaults(reflect.TypeOf(MultipleRecipes{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if inputMap["git_ref"] != "{{ context.git.ref }}" {
+		t.Errorf("expected git_ref default to be injected, got %v", inputMap["git_ref"])
+	}
+
+	recipes, ok := inputMap["recipes"].([]interface{})
+	if !ok || len(recipes) == 0 {
+		t.Fatalf("expected recipes slice to be present with one entry, got %v", inputMap["recipes"])
+	}
+
+	firstRecipe, ok := recipes[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected first recipe to be a map, got %T", recipes[0])
+	}
+
+	if _, ok := firstRecipe["cell_name"]; !ok {
+		t.Errorf("expected cell_name default to be injected into recipe entry, but it is missing")
+	}
+
+	git, ok := firstRecipe["git"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected git map to be injected into recipe entry, got %T", firstRecipe["git"])
+	}
+
+	if git["base_ref"] != "{{ context.git.base_ref }}" {
+		t.Errorf("expected git.base_ref default to be injected, got %v", git["base_ref"])
+	}
+}
+
+// Ensure defaults are injected when recipes slice is typed as []map[string]interface{}.
+func TestInjectDefaults_SliceOfMapsRecipes(t *testing.T) {
+	type Recipe struct {
+		CellPath string `json:"cell_path" default:"{{ context.workflow.cell_path }}"`
+	}
+
+	type MultipleRecipes struct {
+		GitRef  string   `json:"git_ref" default:"{{ context.git.ref }}"`
+		Recipes []Recipe `json:"recipes"`
+	}
+
+	inputMap := map[string]interface{}{
+		"recipes": []map[string]interface{}{
+			{},
+		},
+	}
+
+	err := InjectDefaults(reflect.TypeOf(MultipleRecipes{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recipesTyped, ok := inputMap["recipes"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("expected recipes to remain []map[string]interface{}, got %T", inputMap["recipes"])
+	}
+
+	if len(recipesTyped) != 1 {
+		t.Fatalf("expected one recipe, got %d", len(recipesTyped))
+	}
+
+	if recipesTyped[0]["cell_path"] != "{{ context.workflow.cell_path }}" {
+		t.Errorf("expected cell_path default injected, got %v", recipesTyped[0]["cell_path"])
+	}
+}
+
+// Embedded defaults inside slice elements (json:",squash") should be inlined.
+func TestInjectDefaults_SliceElementsWithSquash(t *testing.T) {
+	type Embedded struct {
+		Env string `json:"env" default:"dev"`
+	}
+
+	type Item struct {
+		Embedded `json:",squash"`
+		Name     string `json:"name" default:"item"`
+	}
+
+	type Wrapper struct {
+		Items []Item `json:"items"`
+	}
+
+	inputMap := map[string]interface{}{
+		"items": []interface{}{
+			map[string]interface{}{},
+		},
+	}
+
+	err := InjectDefaults(reflect.TypeOf(Wrapper{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	items, ok := inputMap["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one item, got %v", inputMap["items"])
+	}
+
+	itemMap, ok := items[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected item to be a map, got %T", items[0])
+	}
+
+	if itemMap["env"] != "dev" {
+		t.Errorf("expected embedded env default 'dev', got %v", itemMap["env"])
+	}
+	if itemMap["name"] != "item" {
+		t.Errorf("expected name default 'item', got %v", itemMap["name"])
+	}
+}
+
+// Full shape copied from recipe-child/pkg/recipe/op.go to mirror production inputs.
+func TestInjectDefaults_MultipleRecipes_ExactShape(t *testing.T) {
+	type SingleRecipeGit struct {
+		BaseRepo string `json:"base_repo,omitempty" default:"{{ context.git.repo }}"`
+		BaseRef  string `json:"base_ref,omitempty" default:"{{ context.git.base_ref }}"`
+		BaseHash string `json:"base_hash,omitempty" default:"{{ context.git.base_hash }}"`
+		Author   string `json:"author,omitempty" default:"{{ context.git.author }}"`
+	}
+
+	type SingleRecipe struct {
+		Name      string                 `json:"name" validate:"required"`
+		CellName  string                 `json:"cell_name,omitempty" default:"{{ context.workflow.cell }}"`
+		CellPath  string                 `json:"cell_path,omitempty" default:"{{ context.workflow.cell_path }}"`
+		Inputs    map[string]interface{} `json:"inputs"`
+		Artifacts []interface{}          `json:"artifacts"` // swf.ArtifactKey omitted for brevity
+		Git       SingleRecipeGit        `json:"git"`
+	}
+
+	type MultipleRecipes struct {
+		GitRef  string         `json:"git_ref" default:"{{ context.git.ref }}" validate:"required"`
+		Recipes []SingleRecipe `json:"recipes"`
+	}
+
+	inputMap := map[string]interface{}{
+		// Two recipes to ensure each element is processed
+		"recipes": []interface{}{
+			map[string]interface{}{}, // all defaults
+			map[string]interface{}{
+				"name": "explicit-name", // should be preserved
+				"git": map[string]interface{}{
+					"author": "provided-author", // should be preserved
+				},
+			},
+		},
+	}
+
+	err := InjectDefaults(reflect.TypeOf(MultipleRecipes{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Top-level default
+	if inputMap["git_ref"] != "{{ context.git.ref }}" {
+		t.Errorf("expected git_ref default to be injected, got %v", inputMap["git_ref"])
+	}
+
+	recipes, ok := inputMap["recipes"].([]interface{})
+	if !ok || len(recipes) != 2 {
+		t.Fatalf("expected two recipes slice, got %v", inputMap["recipes"])
+	}
+
+	// First recipe: all defaults
+	first := recipes[0].(map[string]interface{})
+	if first["cell_name"] != "{{ context.workflow.cell }}" {
+		t.Errorf("expected cell_name default, got %v", first["cell_name"])
+	}
+	if first["cell_path"] != "{{ context.workflow.cell_path }}" {
+		t.Errorf("expected cell_path default, got %v", first["cell_path"])
+	}
+	git0 := first["git"].(map[string]interface{})
+	if git0["base_repo"] != "{{ context.git.repo }}" ||
+		git0["base_ref"] != "{{ context.git.base_ref }}" ||
+		git0["base_hash"] != "{{ context.git.base_hash }}" ||
+		git0["author"] != "{{ context.git.author }}" {
+		t.Errorf("expected git defaults injected for first recipe, got %v", git0)
+	}
+
+	// Second recipe: preserves provided values, injects missing ones
+	second := recipes[1].(map[string]interface{})
+	if second["name"] != "explicit-name" {
+		t.Errorf("expected provided name to remain, got %v", second["name"])
+	}
+	if second["cell_name"] != "{{ context.workflow.cell }}" {
+		t.Errorf("expected cell_name default on second recipe, got %v", second["cell_name"])
+	}
+	if second["cell_path"] != "{{ context.workflow.cell_path }}" {
+		t.Errorf("expected cell_path default on second recipe, got %v", second["cell_path"])
+	}
+	git1 := second["git"].(map[string]interface{})
+	if git1["author"] != "provided-author" {
+		t.Errorf("expected provided author to remain, got %v", git1["author"])
+	}
+	if git1["base_repo"] != "{{ context.git.repo }}" ||
+		git1["base_ref"] != "{{ context.git.base_ref }}" ||
+		git1["base_hash"] != "{{ context.git.base_hash }}" {
+		t.Errorf("expected missing git defaults injected on second recipe, got %v", git1)
+	}
+}
+
+// Mirror live payload: artifacts slice present, inputs map present, defaults missing.
+func TestInjectDefaults_MultipleRecipes_WithArtifactsAndInputs(t *testing.T) {
+	type SingleRecipeGit struct {
+		BaseRepo string `json:"base_repo,omitempty" default:"{{ context.git.repo }}"`
+		BaseRef  string `json:"base_ref,omitempty" default:"{{ context.git.base_ref }}"`
+		BaseHash string `json:"base_hash,omitempty" default:"{{ context.git.base_hash }}"`
+		Author   string `json:"author,omitempty" default:"{{ context.git.author }}"`
+	}
+
+	type SingleRecipe struct {
+		Name      string                 `json:"name" validate:"required"`
+		CellName  string                 `json:"cell_name,omitempty" default:"{{ context.workflow.cell }}"`
+		CellPath  string                 `json:"cell_path,omitempty" default:"{{ context.workflow.cell_path }}"`
+		Inputs    map[string]interface{} `json:"inputs"`
+		Artifacts []interface{}          `json:"artifacts"`
+		Git       SingleRecipeGit        `json:"git"`
+	}
+
+	type MultipleRecipes struct {
+		GitRef  string         `json:"git_ref" default:"{{ context.git.ref }}" validate:"required"`
+		Recipes []SingleRecipe `json:"recipes"`
+	}
+
+	inputMap := map[string]interface{}{
+		"git_ref": "{{ inputs.git_ref }}",
+		"recipes": []interface{}{
+			map[string]interface{}{
+				"name":      "child-simple",
+				"inputs":    map[string]interface{}{"value": "one"},
+				"artifacts": []interface{}{},
+			},
+			map[string]interface{}{
+				"name":      "child-simple",
+				"inputs":    map[string]interface{}{"value": "two"},
+				"artifacts": []interface{}{},
+			},
+		},
+	}
+
+	err := InjectDefaults(reflect.TypeOf(MultipleRecipes{}), inputMap)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recipes, ok := inputMap["recipes"].([]interface{})
+	if !ok || len(recipes) != 2 {
+		t.Fatalf("expected two recipes, got %v", inputMap["recipes"])
+	}
+
+	for i, raw := range recipes {
+		rec := raw.(map[string]interface{})
+		if rec["cell_name"] != "{{ context.workflow.cell }}" {
+			t.Errorf("recipe %d missing cell_name default, got %v", i, rec["cell_name"])
+		}
+		if rec["cell_path"] != "{{ context.workflow.cell_path }}" {
+			t.Errorf("recipe %d missing cell_path default, got %v", i, rec["cell_path"])
+		}
+		if rec["git"] == nil {
+			t.Fatalf("recipe %d missing git map", i)
+		}
+		git := rec["git"].(map[string]interface{})
+		if git["base_ref"] != "{{ context.git.base_ref }}" {
+			t.Errorf("recipe %d missing git.base_ref default, got %v", i, git["base_ref"])
+		}
+	}
+}

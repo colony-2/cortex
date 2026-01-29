@@ -19,6 +19,7 @@ func newRecipeCmd() *cobra.Command {
 		newRecipeListCmd(),
 		newRecipeCreateCmd(),
 		newRecipeUpdateCmd(),
+		newRecipeValidateCmd(),
 	)
 	return cmd
 }
@@ -194,6 +195,76 @@ func newRecipeUpdateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish immediately after update")
+	cmd.Flags().StringVar(&contentFile, "content-file", "", "Path to recipe content")
+	cmd.Flags().StringVar(&contentLiteral, "content", "", "Inline recipe content (YAML)")
+	return cmd
+}
+
+func newRecipeValidateCmd() *cobra.Command {
+	var name string
+	var contentFile string
+	var contentLiteral string
+	cmd := &cobra.Command{
+		Use:   "validate",
+		Short: "Validate a recipe definition without saving",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			if name == "" {
+				return fmt.Errorf("name is required")
+			}
+			if contentLiteral == "" && contentFile == "" {
+				return fmt.Errorf("content is required (use --content or --content-file)")
+			}
+			req := openapi.ValidateRecipeRequest{Name: name}
+			if contentLiteral != "" {
+				req.Content = contentLiteral
+			}
+			if contentFile != "" {
+				data, err := readData(contentFile)
+				if err != nil {
+					return err
+				}
+				req.Content = string(data)
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.ValidateRecipeWithResponse(ctx, app.Config.Project, req)
+			if err != nil {
+				return err
+			}
+			payload := resp.JSON200
+			if payload == nil {
+				payload = resp.JSON400
+			}
+			result, err := requirePayload(payload, resp.HTTPResponse, resp.Body, 200, 400)
+			if err != nil {
+				return err
+			}
+			if app.Config.Output == "json" {
+				return app.Printer.JSON(result)
+			}
+			if result.Valid {
+				return app.Printer.Text("valid")
+			}
+			headers := []string{"Path", "Message"}
+			rows := make([][]string, 0, len(result.Errors))
+			for _, e := range result.Errors {
+				path := ""
+				if e.Path != nil {
+					path = *e.Path
+				}
+				rows = append(rows, []string{path, e.Message})
+			}
+			return app.Printer.Table(headers, rows)
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Recipe name")
 	cmd.Flags().StringVar(&contentFile, "content-file", "", "Path to recipe content")
 	cmd.Flags().StringVar(&contentLiteral, "content", "", "Inline recipe content (YAML)")
 	return cmd

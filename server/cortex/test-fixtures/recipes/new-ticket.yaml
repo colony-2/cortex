@@ -10,13 +10,13 @@ input_schema:
       - rejected
     description: Optional pre-approval to auto-fill completion; omit to require live user input
 sequence:
-#  - id: triage
-#    op: recipe.run_and_get_result
-#    inputs:
-#      name: new-ticket-triage
-#      inputs:
-#        ticket_id: '{{ context.actor.ticket_id }}'
-#        cell: '{{ context.workflow.cell }}'
+  - id: triage
+    op: recipe.run_and_get_result
+    inputs:
+      name: new-ticket-triage
+      inputs:
+        ticket_id: '{{ context.actor.ticket_id }}'
+        cell: '{{ context.workflow.cell }}'
 #  - id: plan
 #    op: recipe.run_and_get_result
 #    inputs:
@@ -53,27 +53,9 @@ sequence:
         default_on_timeout: null
         autofill:
           response: '{{ has(inputs.approval_decision) ? inputs.approval_decision : "" }}'
-#  - id: merge
-#    op: command_execution
-#    inputs:
-#      working_directory: "{{ context.environment.outbox }}"
-#      run: |
-#        set -euo pipefail
-#        cat <<'EOF' > merge.txt
-#        Merge completed
-#        EOF
   - op: ticket.manage
     inputs:
       actions:
         - type: update_ticket
           ticket_id: "{{ context.actor.ticket_id }}"
           stage: completed
-
-#outputs:
-#  requirements_artifact: '{{ sequence.triage.outputs.outputs.requirements_artifact }}'
-#  spec_artifact: '{{ sequence.plan.outputs.outputs.spec_artifact }}'
-#  plan_artifact: '{{ sequence.plan.outputs.outputs.plan_artifact }}'
-#  commit_artifact: '{{ sequence.execute.outputs.outputs.commit_artifact }}'
-#  validation_artifact: '{{ sequence.validate.outputs.outputs.validation_artifact }}'
-#  approval_response: '{{ (has(inputs.approval_decision) && inputs.approval_decision != "") ? inputs.approval_decision : sequence.approval.outputs.response }}'
-#  final_status: completed

@@ -95,3 +95,34 @@ func TestRecipeUpdatePublishFlag(t *testing.T) {
 	}
 	_ = buf.String()
 }
+
+func TestRecipeValidate(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "bad method", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"valid":true,"errors":[]}`))
+	})
+	app, buf, cleanup := setupTestAppWithProject(t, handler, "proj")
+	defer cleanup()
+
+	tmp := t.TempDir()
+	reqFile := tmp + "/req.yaml"
+	if err := os.WriteFile(reqFile, []byte("steps: []"), 0o644); err != nil {
+		t.Fatalf("write temp: %v", err)
+	}
+
+	cmd := newRecipeValidateCmd()
+	cmd.SetArgs([]string{"--name", "r1", "--content-file", reqFile})
+	cmd.SetContext(storeApp(context.Background(), app))
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if got := buf.String(); !bytes.Contains([]byte(got), []byte(`"valid": true`)) {
+		t.Fatalf("unexpected output: %q", got)
+	}
+}

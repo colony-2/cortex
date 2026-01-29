@@ -13,7 +13,6 @@ sequence:
       git_ref: "{{ inputs.git_ref }}"
       recipes:
         - name: child-artifact
-          cell: ""
           inputs: {}
           artifacts: []
   - id: wait

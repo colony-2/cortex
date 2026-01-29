@@ -15,7 +15,6 @@ sequence:
     op: recipe.run_and_get_result
     inputs:
       name: child-simple
-      cell: ""
       inputs:
         value: "{{ inputs.value }}"
       artifacts: []

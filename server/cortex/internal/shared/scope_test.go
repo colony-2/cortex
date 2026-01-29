@@ -249,11 +249,11 @@ func TestNestedCompositionExecution(t *testing.T) {
 		SequenceData: recipe.SequenceData{
 			Sequence: []recipe.Node{
 				{NodeImpl: &recipe.NodeOp{
-					NodeMetadata: recipe.NodeMetadata{ID: "a", Inputs: recipe.InputMap{"run": "echo hello"}},
+					NodeMetadata: recipe.NodeMetadata{ID: "a", Inputs: map[string]interface{}{"run": "echo hello"}},
 					OpData:       recipe.OpData{Op: "command_execution"},
 				}},
 				{NodeImpl: &recipe.NodeOp{
-					NodeMetadata: recipe.NodeMetadata{ID: "b", Inputs: recipe.InputMap{"run": "echo world"}},
+					NodeMetadata: recipe.NodeMetadata{ID: "b", Inputs: map[string]interface{}{"run": "echo world"}},
 					OpData:       recipe.OpData{Op: "command_execution"},
 				}},
 			},

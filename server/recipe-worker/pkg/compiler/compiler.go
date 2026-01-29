@@ -102,7 +102,7 @@ func executeOp2(ctx workflow.Context, parentResolutionContext *template.Resoluti
 	}
 	artifactsDefined := metadata.Artifacts != nil
 	if metadata.Artifacts == nil {
-		metadata.Artifacts = recipe.InputMap{}
+		metadata.Artifacts = map[string]interface{}{}
 	}
 
 	resCtx, err := parentResolutionContext.NewChildContext(template.ScopeOp, metadata, op, nil)

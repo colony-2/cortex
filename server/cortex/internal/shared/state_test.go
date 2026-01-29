@@ -317,13 +317,13 @@ func TestStateMachineExecution_SingleState(t *testing.T) {
 				Initial: "start",
 				States: map[string]recipe.State{
 					"start": {
-						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "start", Inputs: recipe.InputMap{"duration": "5ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
+						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "start", Inputs: map[string]interface{}{"duration": "5ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
 						SingleStateMetadata: recipe.SingleStateMetadata{Transitions: []recipe.Transition{
 							mkTransition("finish", "true"),
 						}},
 					},
 					"finish": {
-						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "finish", Inputs: recipe.InputMap{"duration": "1ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
+						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "finish", Inputs: map[string]interface{}{"duration": "1ms"}}, OpData: recipe.OpData{Op: "sleep"}}},
 						// terminal (no transitions)
 					},
 				},

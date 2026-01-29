@@ -13,12 +13,10 @@ sequence:
       git_ref: "{{ inputs.git_ref }}"
       recipes:
         - name: child-simple
-          cell: ""
           inputs:
             value: "one"
           artifacts: []
         - name: child-simple
-          cell: ""
           inputs:
             value: "two"
           artifacts: []

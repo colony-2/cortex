@@ -24,7 +24,7 @@ func TestBaseVisitor(t *testing.T) {
 			SequenceData: SequenceData{
 				Sequence: []Node{
 					{NodeImpl: &NodeOp{
-						NodeMetadata: NodeMetadata{ID: "op1", Inputs: InputMap{"input1": "value1"}},
+						NodeMetadata: NodeMetadata{ID: "op1", Inputs: map[string]interface{}{"input1": "value1"}},
 						OpData:       OpData{Op: "echo"},
 					}},
 					{NodeImpl: &NodeShared{

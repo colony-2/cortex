@@ -105,12 +105,6 @@ func containsTemplateValue(value interface{}) bool {
 	switch v := value.(type) {
 	case string:
 		return isTemplateString(v)
-	case InputMap:
-		for _, item := range v {
-			if containsTemplateValue(item) {
-				return true
-			}
-		}
 	case map[string]interface{}:
 		for _, item := range v {
 			if containsTemplateValue(item) {
@@ -209,11 +203,11 @@ func (NodeOp) JSONSchema() *jsonschema.Schema {
 func (n *NodeOp) isNode() {}
 
 type NodeMetadata struct {
-	ID        string       `yaml:"id,omitempty"`
-	Desc      string       `yaml:"desc,omitempty"`
-	Timeout   Duration     `yaml:"timeout,omitempty"`
-	Retry     *RetryPolicy `yaml:"retry,omitempty"`
-	Inputs    InputMap     `yaml:"inputs,omitempty"`
-	Artifacts InputMap     `yaml:"artifacts,omitempty"`
-	When      cel.CELExpr  `yaml:"when,omitempty"` // Conditional execution
+	ID        string                 `yaml:"id,omitempty"`
+	Desc      string                 `yaml:"desc,omitempty"`
+	Timeout   Duration               `yaml:"timeout,omitempty"`
+	Retry     *RetryPolicy           `yaml:"retry,omitempty"`
+	Inputs    map[string]interface{} `yaml:"inputs,omitempty"`
+	Artifacts map[string]interface{} `yaml:"artifacts,omitempty"`
+	When      cel.CELExpr            `yaml:"when,omitempty"` // Conditional execution
 }

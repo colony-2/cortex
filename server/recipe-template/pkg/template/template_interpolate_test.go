@@ -3,7 +3,6 @@ package template
 import (
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -602,7 +601,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 		// This simulates the exact scenario: map[string]interface{} with "form" => recipe.InputMap
 
 		// Create an InputMap (custom type) with a template inside
-		inputMap := recipe.InputMap{
+		inputMap := map[string]interface{}{
 			"question": "{{ inputs.prompt }}",
 		}
 
@@ -616,7 +615,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 		resolvedMap, ok := resolved.(map[string]interface{})
 		if !ok {
 			// Might still be recipe.InputMap type
-			if inputMapType, ok := resolved.(recipe.InputMap); ok {
+			if inputMapType, ok := resolved.(map[string]interface{}); ok {
 				resolvedMap = map[string]interface{}(inputMapType)
 			}
 		}
@@ -634,7 +633,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 	t.Run("nested structure with recipe.InputMap", func(t *testing.T) {
 		// This is the exact scenario from the user's report
 		rawInputs := map[string]interface{}{
-			"form": recipe.InputMap{
+			"form": map[string]interface{}{
 				"question": "{{ inputs.prompt }}",
 			},
 		}
@@ -653,7 +652,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 		var formMap map[string]interface{}
 		if m, ok := form.(map[string]interface{}); ok {
 			formMap = m
-		} else if im, ok := form.(recipe.InputMap); ok {
+		} else if im, ok := form.(map[string]interface{}); ok {
 			formMap = map[string]interface{}(im)
 		} else {
 			t.Fatalf("form is unexpected type: %T", form)

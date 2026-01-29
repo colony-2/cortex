@@ -42,7 +42,7 @@ func TestRetryPolicy_YAML_Omit_Empty(t *testing.T) {
 
 func TestDataMaps_Handle_Nil_And_Nested(t *testing.T) {
     // Input maps accept heterogeneous parameter types [pkg/recipe/shared.go]
-    in := InputMap{"a": 1, "b": "x", "c": true}
+    in := map[string]interface{}{"a": 1, "b": "x", "c": true}
     // Output maps capture varied result types [pkg/recipe/shared.go]
     out := map[string]interface{}{"n": 2, "s": "y", "ok": false}
     assert.Equal(t, 3, len(in))

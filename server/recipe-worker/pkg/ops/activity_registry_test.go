@@ -17,7 +17,6 @@ import (
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/activity"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -1485,16 +1484,16 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 	})
 
 	t.Run("recipe.InputMap with sentinel", func(t *testing.T) {
-		input := recipe.InputMap{
+		input := map[string]interface{}{
 			"path":   contextual.WorktreePathSentinel,
 			"other":  "value",
-			"nested": recipe.InputMap{"inner": contextual.WorktreePathSentinel},
+			"nested": map[string]interface{}{"inner": contextual.WorktreePathSentinel},
 		}
 		result := replaceSentinelValue(input, replacements)
-		resultMap := result.(recipe.InputMap)
+		resultMap := result.(map[string]interface{})
 		assert.Equal(t, testPath, resultMap["path"])
 		assert.Equal(t, "value", resultMap["other"])
-		nested := resultMap["nested"].(recipe.InputMap)
+		nested := resultMap["nested"].(map[string]interface{})
 		assert.Equal(t, testPath, nested["inner"])
 	})
 
@@ -1503,14 +1502,14 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 			contextual.WorktreePathSentinel,
 			"normal",
 			map[string]interface{}{"key": contextual.WorktreePathSentinel},
-			recipe.InputMap{"key": contextual.WorktreePathSentinel},
+			map[string]interface{}{"key": contextual.WorktreePathSentinel},
 		}
 		result := replaceSentinelValue(input, replacements)
 		resultArr := result.([]interface{})
 		assert.Equal(t, testPath, resultArr[0])
 		assert.Equal(t, "normal", resultArr[1])
 		assert.Equal(t, testPath, resultArr[2].(map[string]interface{})["key"])
-		assert.Equal(t, testPath, resultArr[3].(recipe.InputMap)["key"])
+		assert.Equal(t, testPath, resultArr[3].(map[string]interface{})["key"])
 	})
 
 	t.Run("non-sentinel values unchanged", func(t *testing.T) {

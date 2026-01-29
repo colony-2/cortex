@@ -11,7 +11,6 @@ import (
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -222,9 +221,6 @@ func replaceSentinelValue(value interface{}, replacements map[string]string) int
 		return replaceValue(v, replacements)
 	case map[string]interface{}:
 		return replaceSentinels(v, replacements)
-	case recipe.InputMap:
-		// Convert to map[string]interface{} and process
-		return recipe.InputMap(replaceSentinels(v, replacements))
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, item := range v {
