@@ -2,14 +2,20 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
@@ -22,6 +28,10 @@ import (
 var (
 	ErrNotFound             = errors.New("workflow: not found")
 	ErrWorkflowNotInProject = errors.New("workflow: not in project")
+	ErrInvalidProject       = errors.New("workflow: invalid project")
+	ErrInvalidCell          = errors.New("workflow: invalid cell")
+	ErrRecipeNotFound       = errors.New("workflow: recipe not found")
+	ErrEngineUnavailable    = errors.New("workflow: engine unavailable")
 )
 
 type Config struct {
@@ -30,6 +40,7 @@ type Config struct {
 	Tickets  ticket.Service
 	Cells    cell.Service
 	Projects project.Service
+	Recipes  RecipeProvider
 	Logger   *slog.Logger
 }
 
@@ -39,8 +50,11 @@ type Service struct {
 	tickets  ticket.Service
 	cells    cell.Service
 	projects project.Service
+	recipes  RecipeProvider
 	logger   *slog.Logger
 }
+
+type RecipeProvider func(projectID string, recipeRef string) (*recipe.Recipe, error)
 
 func New(cfg Config) (*Service, error) {
 	if cfg.Engine == nil {
@@ -56,6 +70,7 @@ func New(cfg Config) (*Service, error) {
 		tickets:  cfg.Tickets,
 		cells:    cfg.Cells,
 		projects: cfg.Projects,
+		recipes:  cfg.Recipes,
 		logger:   logger,
 	}, nil
 }
@@ -187,6 +202,125 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 		"result_count", len(result),
 		"total_summaries", len(summaries))
 	return result, nil
+}
+
+func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequest) (*model.WorkflowSummary, error) {
+	if s.engine == nil {
+		return nil, ErrEngineUnavailable
+	}
+
+	projectID := strings.TrimSpace(req.ProjectID)
+	if projectID == "" {
+		return nil, ErrInvalidProject
+	}
+	recipeName := strings.TrimSpace(req.RecipeName)
+	if recipeName == "" {
+		return nil, ErrRecipeNotFound
+	}
+	cellID := strings.TrimSpace(req.CellID)
+	if cellID == "" {
+		return nil, ErrInvalidCell
+	}
+
+	if s.projects == nil {
+		return nil, ErrInvalidProject
+	}
+	projectRecord, err := s.projects.GetProject(ctx, project.ID(projectID))
+	if err != nil {
+		if errors.Is(err, project.ErrNotFound) {
+			return nil, ErrInvalidProject
+		}
+		return nil, err
+	}
+
+	if s.cells == nil {
+		return nil, ErrInvalidCell
+	}
+	cellRecord, err := s.cells.GetCell(ctx, cell.ID(cellID))
+	if err != nil {
+		if errors.Is(err, cell.ErrNotFound) {
+			return nil, ErrInvalidCell
+		}
+		return nil, err
+	}
+	if cellRecord.ProjectID != project.ID(projectID) {
+		return nil, ErrInvalidCell
+	}
+
+	if s.recipes == nil {
+		return nil, ErrRecipeNotFound
+	}
+	rec, err := s.recipes(projectID, recipeName)
+	if err != nil {
+		return nil, err
+	}
+	if rec == nil {
+		return nil, ErrRecipeNotFound
+	}
+
+	repo := strings.TrimSpace(projectRecord.GitRepoPath)
+	if repo == "" {
+		return nil, ErrInvalidProject
+	}
+	if cellRecord.GitRepoName != nil && strings.TrimSpace(*cellRecord.GitRepoName) != "" {
+		repo = strings.TrimSpace(*cellRecord.GitRepoName)
+	}
+
+	gitRef := resolveGitRef(req.GitRef, cellRecord, projectRecord)
+	submittedAt := time.Now().UTC()
+	inputHash := hashInputs(req.Inputs)
+
+	start := workflowctl.StartJob{
+		TenantId:   projectID,
+		RecipeName: recipeName,
+		Inputs:     req.Inputs,
+		JobContext: contextual.JobContext{
+			Actor: contextual.ActorContext{
+				TicketID:   derefString(req.TicketID),
+				ActorEmail: derefString(req.ActorEmail),
+			},
+			Workflow: contextual.WorkflowContext{
+				CellName:  cellRecord.Name,
+				CellPath:  cellRecord.WorkingPath,
+				ProjectId: projectID,
+			},
+			GitBase: contextual.GitBaseContext{
+				BaseRepo: repo,
+				BaseRef:  gitRef,
+			},
+		},
+		GitRef:       gitRef,
+		SingletonKey: derefString(req.IdempotencyKey),
+		SubmittedAt:  &submittedAt,
+		InputHash:    inputHash,
+	}
+
+	jobKey, err := starter.StartRecipeJob(ctx, start, s.engine, *rec)
+	if err != nil {
+		return nil, err
+	}
+
+	cellIDCopy := string(cellRecord.ID)
+	cellName := cellRecord.Name
+	summary := &model.WorkflowSummary{
+		WorkflowID:  jobKey.JobId,
+		RunID:       jobKey.JobId,
+		Status:      model.WorkflowStatusRunning,
+		RecipeName:  recipeName,
+		InputHash:   stringPtr(inputHash),
+		SubmittedAt: &submittedAt,
+		TicketID:    req.TicketID,
+		CellID:      &cellIDCopy,
+		CellName:    &cellName,
+		StartTime:   &submittedAt,
+		CreatedAt:   submittedAt,
+		Actor:       model.Actor{Type: model.ActorTypeUser},
+	}
+	if email := strings.TrimSpace(derefString(req.ActorEmail)); email != "" {
+		summary.Actor.User = &model.ActorUser{Email: email}
+	}
+
+	return summary, nil
 }
 
 func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest) (*model.WorkflowDetail, error) {
@@ -336,6 +470,12 @@ func (s *Service) buildSummary(ctx context.Context, projectID string, job swf.Jo
 		CloseTime:  closeTime,
 		Actor:      actorFromStartJob(startJob),
 		CreatedAt:  createdAt,
+	}
+	if startJob.SubmittedAt != nil {
+		summary.SubmittedAt = startJob.SubmittedAt
+	}
+	if startJob.InputHash != "" {
+		summary.InputHash = stringPtr(startJob.InputHash)
 	}
 
 	if startJob.JobContext.Actor.TicketID != "" {
@@ -585,6 +725,45 @@ func mapFromRaw(payload json.RawMessage) *map[string]interface{} {
 		return nil
 	}
 	return &m
+}
+
+func resolveGitRef(requested *string, cellRecord *cell.Cell, projectRecord *project.Project) string {
+	if requested != nil && strings.TrimSpace(*requested) != "" {
+		return strings.TrimSpace(*requested)
+	}
+	if cellRecord != nil && cellRecord.GitBranch != nil && strings.TrimSpace(*cellRecord.GitBranch) != "" {
+		return strings.TrimSpace(*cellRecord.GitBranch)
+	}
+	if projectRecord != nil && projectRecord.GitRepoBranch != nil && strings.TrimSpace(*projectRecord.GitRepoBranch) != "" {
+		return strings.TrimSpace(*projectRecord.GitRepoBranch)
+	}
+	return "main"
+}
+
+func derefString(ptr *string) string {
+	if ptr == nil {
+		return ""
+	}
+	return *ptr
+}
+
+func stringPtr(val string) *string {
+	if val == "" {
+		return nil
+	}
+	return &val
+}
+
+func hashInputs(inputs map[string]interface{}) string {
+	if len(inputs) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(inputs)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func actorFromStartJob(startJob *workflowctl.StartJob) model.Actor {

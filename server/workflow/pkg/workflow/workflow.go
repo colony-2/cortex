@@ -14,21 +14,23 @@ import (
 )
 
 type (
-	WorkflowStatus              = model.WorkflowStatus
-	ChapterStatus               = model.ChapterStatus
-	Actor                       = model.Actor
-	ActorType                   = model.ActorType
-	ActorUser                   = model.ActorUser
-	ActorAgent                  = model.ActorAgent
-	ArtifactReference           = model.ArtifactReference
-	ChapterDetail               = model.ChapterDetail
-	WorkflowSummary             = model.WorkflowSummary
-	WorkflowDetail              = model.WorkflowDetail
-	Ticket                      = ticket.Ticket
-	ListWorkflowsRequest        = model.ListWorkflowsRequest
-	GetWorkflowRequest          = model.GetWorkflowRequest
-	GetWorkflowArtifactRequest  = model.GetWorkflowArtifactRequest
-	ArtifactData                = model.ArtifactData
+	WorkflowStatus             = model.WorkflowStatus
+	ChapterStatus              = model.ChapterStatus
+	Actor                      = model.Actor
+	ActorType                  = model.ActorType
+	ActorUser                  = model.ActorUser
+	ActorAgent                 = model.ActorAgent
+	ArtifactReference          = model.ArtifactReference
+	ChapterDetail              = model.ChapterDetail
+	WorkflowSummary            = model.WorkflowSummary
+	WorkflowDetail             = model.WorkflowDetail
+	Ticket                     = ticket.Ticket
+	ListWorkflowsRequest       = model.ListWorkflowsRequest
+	GetWorkflowRequest         = model.GetWorkflowRequest
+	GetWorkflowArtifactRequest = model.GetWorkflowArtifactRequest
+	StartWorkflowRequest       = model.StartWorkflowRequest
+	ArtifactData               = model.ArtifactData
+	RecipeProvider             = service.RecipeProvider
 )
 
 const (
@@ -53,12 +55,17 @@ const (
 var (
 	ErrNotFound             = service.ErrNotFound
 	ErrWorkflowNotInProject = service.ErrWorkflowNotInProject
+	ErrInvalidProject       = service.ErrInvalidProject
+	ErrInvalidCell          = service.ErrInvalidCell
+	ErrRecipeNotFound       = service.ErrRecipeNotFound
+	ErrEngineUnavailable    = service.ErrEngineUnavailable
 )
 
 type Service interface {
 	ListWorkflows(ctx context.Context, req ListWorkflowsRequest) ([]WorkflowSummary, error)
 	GetWorkflow(ctx context.Context, req GetWorkflowRequest) (*WorkflowDetail, error)
 	GetWorkflowArtifact(ctx context.Context, req GetWorkflowArtifactRequest) (*ArtifactData, error)
+	StartWorkflow(ctx context.Context, req StartWorkflowRequest) (*WorkflowSummary, error)
 }
 
 type ServiceConfig struct {
@@ -67,6 +74,7 @@ type ServiceConfig struct {
 	Tickets  ticket.Service
 	Cells    cell.Service
 	Projects project.Service
+	Recipes  RecipeProvider
 }
 
 func New(config ServiceConfig) (Service, error) {
@@ -76,6 +84,7 @@ func New(config ServiceConfig) (Service, error) {
 		Tickets:  config.Tickets,
 		Cells:    config.Cells,
 		Projects: config.Projects,
+		Recipes:  config.Recipes,
 	})
 }
 

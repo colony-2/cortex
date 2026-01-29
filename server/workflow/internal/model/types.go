@@ -79,6 +79,8 @@ type WorkflowSummary struct {
 	RunID       string         `json:"run_id"`
 	Status      WorkflowStatus `json:"status"`
 	RecipeName  string         `json:"recipe_name"`
+	InputHash   *string        `json:"input_hash,omitempty"`
+	SubmittedAt *time.Time     `json:"submitted_at,omitempty"`
 	TicketID    *string        `json:"ticket_id,omitempty"`
 	TicketTitle *string        `json:"ticket_title,omitempty"`
 	CellID      *string        `json:"cell_id,omitempty"`
@@ -137,4 +139,15 @@ type ArtifactData struct {
 	Filename  string
 	SizeBytes int64
 	Metadata  map[string]string
+}
+
+type StartWorkflowRequest struct {
+	ProjectID      string
+	RecipeName     string
+	CellID         string
+	Inputs         map[string]interface{}
+	GitRef         *string
+	TicketID       *string
+	ActorEmail     *string
+	IdempotencyKey *string
 }

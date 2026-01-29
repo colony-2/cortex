@@ -37,10 +37,11 @@ func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine s
 	}
 
 	job := swf.StartJob{
-		TenantId:  startJob.TenantId,
-		JobType:   RecipeJobType,
-		Data:      inputData,
-		RunPolicy: swf.DefaultRunPolicy(),
+		TenantId:     startJob.TenantId,
+		JobType:      RecipeJobType,
+		SingletonKey: startJob.SingletonKey,
+		Data:         inputData,
+		RunPolicy:    swf.DefaultRunPolicy(),
 	}
 	return engine.StartJob(ctx, job)
 }

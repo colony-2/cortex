@@ -272,6 +272,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Tickets:  ticketSvc,
 		Cells:    cellSvc,
 		Projects: projectSvc,
+		Recipes:  workflowRecipeProvider,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create workflow service: %w", err)

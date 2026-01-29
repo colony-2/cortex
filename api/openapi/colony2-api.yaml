@@ -927,6 +927,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [Workflows]
+      summary: Start a workflow run for a recipe in the project
+      description: Launches a workflow job using the specified recipe, inputs, and target cell within the project.
+      operationId: postApiProjectsWorkflows
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartWorkflowRequest'
+      responses:
+        '201':
+          description: Workflow job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowSummary'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Project, cell, or recipe not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Workflow engine unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/projects/{projectId}/workflows/{workflowId}:
     get:
@@ -2262,6 +2304,13 @@ components:
           $ref: '#/components/schemas/WorkflowStatus'
         recipe_name:
           type: string
+        input_hash:
+          type: string
+          nullable: true
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
         ticket_id:
           type: string
           nullable: true
@@ -2345,6 +2394,44 @@ components:
         created_at:
           type: string
           format: date-time
+
+    StartWorkflowRequest:
+      type: object
+      required:
+        - recipe_name
+        - cell_id
+      properties:
+        recipe_name:
+          type: string
+          description: Name of the recipe to execute
+          example: "workflows/ci/build"
+        cell_id:
+          type: string
+          description: Target cell ID where the workflow context originates
+          example: "cell_123"
+        inputs:
+          type: object
+          description: Key/value inputs passed to the recipe
+          additionalProperties: true
+          example:
+            branch: main
+            deploy: true
+        git_ref:
+          type: string
+          description: Optional git ref override (defaults to cell or project branch)
+          example: "feature/login"
+        ticket_id:
+          type: string
+          description: Optional ticket to associate with the workflow
+          example: "tkt_123"
+        idempotency_key:
+          type: string
+          description: Optional key to de-duplicate repeated start requests
+          example: "proj_123:cell_123:workflows/ci/build:abc123"
+        actor_email:
+          type: string
+          format: email
+          description: Email address of the user starting the workflow
 
     FieldType:
       type: string

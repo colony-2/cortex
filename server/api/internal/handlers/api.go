@@ -95,6 +95,7 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/recipes/{recipeName:.*}", withHandlerLog("recipes:delete", h.handleDeleteRecipe)).Methods(http.MethodDelete)
 
 	api.HandleFunc("/projects/{projectId}/workflows", withHandlerLog("workflows:list", h.handleListWorkflows)).Methods(http.MethodGet)
+	api.HandleFunc("/projects/{projectId}/workflows", withHandlerLog("workflows:start", h.handleStartWorkflow)).Methods(http.MethodPost)
 	api.HandleFunc("/projects/{projectId}/workflows/{workflowId}", withHandlerLog("workflows:get", h.handleGetWorkflow)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}", withHandlerLog("workflows:artifact:get", h.handleGetWorkflowArtifact)).Methods(http.MethodGet)
 }
@@ -949,7 +950,10 @@ func toTicketActorPatch(actor openapi.ActorPatch) ticket.ActorPatch {
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("writeJSON encode error: %v", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
 }
 
 func writeError(w http.ResponseWriter, err error, status int) {

@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
@@ -86,6 +88,66 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 		response = append(response, toOpenAPIWorkflowSummary(item))
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *Handlers) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+	projectID := mux.Vars(r)["projectId"]
+
+	var body openapi.StartWorkflowRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, err, http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.RecipeName) == "" || strings.TrimSpace(body.CellId) == "" {
+		writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "recipe_name and cell_id are required"})
+		return
+	}
+
+	inputs := map[string]interface{}{}
+	if body.Inputs != nil {
+		inputs = *body.Inputs
+	}
+
+	var actorEmail *string
+	if body.ActorEmail != nil {
+		email := string(*body.ActorEmail)
+		actorEmail = &email
+	}
+
+	summary, err := h.workflows.StartWorkflow(r.Context(), workflow.StartWorkflowRequest{
+		ProjectID:      projectID,
+		RecipeName:     body.RecipeName,
+		CellID:         body.CellId,
+		Inputs:         inputs,
+		GitRef:         body.GitRef,
+		TicketID:       body.TicketId,
+		ActorEmail:     actorEmail,
+		IdempotencyKey: body.IdempotencyKey,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, workflow.ErrInvalidProject),
+			errors.Is(err, workflow.ErrInvalidCell),
+			errors.Is(err, workflow.ErrRecipeNotFound):
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrEngineUnavailable):
+			writeJSON(w, http.StatusBadGateway, openapi.ErrorResponse{Message: err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: err.Error()})
+		}
+		return
+	}
+
+	if summary == nil {
+		writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: "workflow start returned empty response"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, toOpenAPIWorkflowSummary(*summary))
 }
 
 func (h *Handlers) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
@@ -218,9 +280,11 @@ func toOpenAPIWorkflowSummary(summary workflow.WorkflowSummary) openapi.Workflow
 		CellName:    summary.CellName,
 		CloseTime:   summary.CloseTime,
 		CreatedAt:   summary.CreatedAt,
+		InputHash:   summary.InputHash,
 		RecipeName:  summary.RecipeName,
 		RunId:       summary.RunID,
 		StartTime:   summary.StartTime,
+		SubmittedAt: summary.SubmittedAt,
 		Status:      openapi.WorkflowStatus(summary.Status),
 		TicketId:    summary.TicketID,
 		TicketTitle: summary.TicketTitle,
@@ -276,11 +340,10 @@ func toOpenAPIWorkflowActor(actor workflow.Actor) *openapi.Actor {
 			},
 		}
 	default:
-		email := ""
-		if actor.User != nil {
-			email = actor.User.Email
+		if actor.User != nil && actor.User.Email != "" {
+			return &openapi.Actor{Type: openapi.User, User: &openapi.ActorUser{Email: openapi_types.Email(actor.User.Email)}}
 		}
-		return &openapi.Actor{Type: openapi.User, User: &openapi.ActorUser{Email: openapi_types.Email(email)}}
+		return &openapi.Actor{Type: openapi.User}
 	}
 }
 
