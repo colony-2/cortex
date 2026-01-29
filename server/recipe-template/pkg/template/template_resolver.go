@@ -14,6 +14,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ScopeType defines resolver scope kinds.
@@ -171,6 +172,14 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	env, err = env.Extend(jsonParseEnvOption(env.CELTypeAdapter()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure CEL json_parse: %w", err)
+	}
+	env, err = env.Extend(
+		jqEnvOption(env.CELTypeAdapter()),
+		jsonStringifyEnvOption(env.CELTypeAdapter()),
+		stringJSONEnvOption(env.CELTypeAdapter()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure CEL jq/json_stringify: %w", err)
 	}
 	rc.CELEnv = env
 	rc.ensureContextBackfill()
@@ -374,6 +383,9 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 	}
 
 	value := result.Value()
+	if _, ok := value.(structpb.NullValue); ok {
+		return nil, nil
+	}
 	if keyer, ok := value.(interface {
 		ArtifactKey() (swf.ArtifactKey, error)
 	}); ok {

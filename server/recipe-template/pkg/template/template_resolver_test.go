@@ -1,6 +1,9 @@
 package template
 
 import (
+	"encoding/json"
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,6 +148,92 @@ func TestResolveTemplate_JSONParse(t *testing.T) {
 	_, err = seqCtx.resolveTemplate("{{ json_parse(inputs.flag) }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json_parse: expected string")
+}
+
+func TestCELJQFunctions(t *testing.T) {
+	payload := map[string]interface{}{
+		"user": map[string]interface{}{
+			"id":   123,
+			"name": "Ada",
+		},
+		"tags": []interface{}{"alpha", "beta"},
+	}
+	recipeCtx := newRecipeCtx(t, map[string]interface{}{
+		"payload": payload,
+		"raw":     "hello",
+		"bad":     math.Inf(1),
+	})
+	seqCtx := newSequenceCtx(t, recipeCtx, "test", recipeCtx.TemplateData.ContainerInputs)
+
+	t.Run("happy path selects nested field", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".user.name\") }}")
+		require.NoError(t, err)
+		assert.Equal(t, "Ada", val)
+	})
+
+	t.Run("multiple results returns list", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".tags[]\") }}")
+		require.NoError(t, err)
+
+		list, ok := val.([]interface{})
+		require.True(t, ok)
+		assert.ElementsMatch(t, []interface{}{"alpha", "beta"}, list)
+	})
+
+	t.Run("empty result yields nil", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \"empty\") }}")
+		require.NoError(t, err)
+		t.Logf("empty result type=%T value=%v", val, val)
+		assert.Nil(t, val)
+	})
+
+	t.Run("invalid expression surfaces error", func(t *testing.T) {
+		_, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".user | \") }}")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "jq: invalid expression")
+	})
+
+	t.Run("non-map input still works", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ jq(inputs.raw, \".\") }}")
+		require.NoError(t, err)
+		assert.Equal(t, "hello", val)
+	})
+
+	t.Run("json_stringify encodes map", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ json_stringify(inputs.payload) }}")
+		require.NoError(t, err)
+
+		var decoded map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(val.(string)), &decoded))
+		assert.Equal(t, float64(123), decoded["user"].(map[string]interface{})["id"])
+	})
+
+	t.Run("json_stringify errors on unsupported", func(t *testing.T) {
+		_, err := seqCtx.resolveTemplate("{{ json_stringify(inputs.bad) }}")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "json_stringify: failed to encode JSON")
+	})
+
+	t.Run("string overload encodes map", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("{{ string(inputs.payload) }}")
+		require.NoError(t, err)
+
+		var decoded map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(val.(string)), &decoded))
+		assert.Equal(t, "Ada", decoded["user"].(map[string]interface{})["name"])
+	})
+
+	t.Run("interpolation converts map to json", func(t *testing.T) {
+		val, err := seqCtx.resolveTemplate("Payload: {{ inputs.payload }}")
+		require.NoError(t, err)
+
+		s := val.(string)
+		assert.Contains(t, s, "Payload: ")
+
+		jsonPart := strings.TrimPrefix(s, "Payload: ")
+		var decoded map[string]interface{}
+		require.NoError(t, json.Unmarshal([]byte(jsonPart), &decoded))
+	})
 }
 
 func TestResolveTemplate_TicketContext(t *testing.T) {

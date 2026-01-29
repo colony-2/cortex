@@ -313,12 +313,12 @@ func TestConvertToString(t *testing.T) {
 		{
 			name:     "map",
 			input:    map[string]interface{}{"key": "value"},
-			expected: "map[key:value]",
+			expected: `{"key":"value"}`,
 		},
 		{
 			name:     "slice",
 			input:    []interface{}{"a", "b"},
-			expected: "[a b]",
+			expected: `["a","b"]`,
 		},
 	}
 

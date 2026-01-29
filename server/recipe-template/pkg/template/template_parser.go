@@ -1,6 +1,7 @@
 package template
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -33,9 +34,9 @@ type ExpressionSegment struct {
 	Pos        int    // Start position in original input
 }
 
-func (TextSegment) isSegment()           {}
-func (ExpressionSegment) isSegment()     {}
-func (t TextSegment) Position() int      { return t.Pos }
+func (TextSegment) isSegment()            {}
+func (ExpressionSegment) isSegment()      {}
+func (t TextSegment) Position() int       { return t.Pos }
 func (e ExpressionSegment) Position() int { return e.Pos }
 
 // parseTemplate parses a template string into segments
@@ -191,7 +192,9 @@ func convertToString(value interface{}) string {
 	case int:
 		return fmt.Sprintf("%d", v)
 	default:
-		// For complex types, use %v formatting
+		if marshaled, err := json.Marshal(value); err == nil {
+			return string(marshaled)
+		}
 		return fmt.Sprintf("%v", value)
 	}
 }

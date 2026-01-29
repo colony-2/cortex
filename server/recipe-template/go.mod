@@ -6,6 +6,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
 	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
 	github.com/google/cel-go v0.26.0
+	github.com/itchyny/gojq v0.12.16
 	github.com/stretchr/testify v1.11.1
 )
 

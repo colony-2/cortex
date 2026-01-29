@@ -16,6 +16,10 @@ Authoring templates follows the current resolver behavior (hybrid CEL + interpol
   - An op sees the surrounding sequence/state-machine/state data.
   - A state sees completed states in the same state machine via `states.<id>.outputs`.
   - Root/recipe cannot see inside sequences/states unless outputs are bubbled up. Sibling sequences in different states cannot see each other. Child sequences cannot see parent-sequence nodes.
+- JSON helpers:
+  - `jq(value, expr)` / `value.jq(expr)` for jq queries (empty→null, multi→list).
+  - `json_stringify(value)` and `string(map|list)` for JSON strings in interpolated text.
+  - See [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md) for details and examples.
 
 ## Examples
 ### Sequence inputs from prior nodes

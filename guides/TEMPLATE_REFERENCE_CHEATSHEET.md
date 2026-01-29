@@ -148,18 +148,26 @@ states:
 - `string()` - Convert to string
 - `bool()` - Convert to boolean
 
-## JSON Parsing
-Use `json_parse()` to turn a JSON string into a structured value (map/list) for op inputs.
+## JSON Helpers
+- `json_parse(str)` → map/list from a JSON string.
+- `jq(value, expr)` → evaluate jq against any value (empty → null, multiple → list).
+- `json_stringify(value)` → JSON string; `string(map|list)` also JSON-encodes for interpolation.
 
 ```yaml
-inputs:
-  config_json: '{"enabled":true,"threshold":2}'
-sequence:
-  - id: run
-    op: some_op
-    inputs:
-      config: "{{ json_parse(inputs.config_json) }}"  # map/object
+# Parse JSON string
+config: "{{ json_parse(inputs.config_json) }}"
+
+# Select fields with jq
+user_id: "{{ jq(inputs.payload, '.user.id') }}"
+tags: "{{ jq(inputs.payload, '.tags[]') }}"      # list when multiple
+maybe_email: "{{ jq(inputs.payload, 'empty') }}" # null when empty
+
+# Emit JSON
+payload_json: "{{ json_stringify(inputs.payload) }}"
+log_line: "Snapshot: {{ inputs.payload }}"         # string(map) uses JSON
 ```
+
+See the deeper guide: [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md).
 
 ## Important Notes
 1. **String Interpolation**: `"Text {{ expr1 }} more {{ expr2 }}"` → interpolated string
