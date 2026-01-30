@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/cli
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260130203941-578cf6e15e39
 	github.com/go-resty/resty/v2 v2.12.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/jedib0t/go-pretty/v6 v6.4.8
