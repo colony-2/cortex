@@ -28,6 +28,8 @@
 ### Workflows
 - List: `c2 workflow list [--status running --ticket-id TID --cell-id CID --since RFC3339 --until RFC3339 --limit N --offset N]`
 - Run: `c2 workflow run --recipe NAME --cell-id CELL [--ticket-id TID --git-ref REF --actor-email EMAIL --idempotency-key KEY --input k=v ...]`
+- Output: `c2 workflow output get <workflow-id> [--chapter N]` (defaults to last chapter with output)
+- Artifacts: `c2 workflow artifact list <workflow-id>`; download: `c2 workflow artifact get <workflow-id> --chapter N --name NAME [--output-file PATH]`
 
 ### Input Requests
 - List pending: `c2 input-request list`

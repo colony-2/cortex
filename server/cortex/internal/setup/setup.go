@@ -193,6 +193,9 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		Tickets:  ticketSvc,
 		Cells:    cellSvc,
 		Projects: projectSvc,
+		Recipes: workflowsvc.RecipeProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
+			return recipeProviderWithFallback(projectID, recipeRef)
+		}),
 	})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create workflow service: %w", err)

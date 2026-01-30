@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -19,6 +20,8 @@ func newWorkflowCmd() *cobra.Command {
 	cmd.AddCommand(
 		newWorkflowListCmd(),
 		newWorkflowRunCmd(),
+		newWorkflowOutputCmd(),
+		newWorkflowArtifactCmd(),
 	)
 	return cmd
 }
@@ -197,6 +200,197 @@ func newWorkflowRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&actorEmail, "actor-email", "", "Actor email")
 	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key")
 	cmd.Flags().StringSliceVar(&inputs, "input", nil, "Input key=value (repeatable)")
+	return cmd
+}
+
+func newWorkflowOutputCmd() *cobra.Command {
+	var chapter int
+	cmd := &cobra.Command{
+		Use:   "output get <workflow-id>",
+		Short: "Get workflow output (chapter output)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.GetApiProjectsWorkflows1WithResponse(ctx, app.Config.Project, args[0], nil)
+			if err != nil {
+				return err
+			}
+			detail, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
+			}
+			var picked *openapi.ChapterDetail
+			if chapter > 0 {
+				for i := range detail.Chapters {
+					if detail.Chapters[i].ChapterNumber == chapter {
+						picked = &detail.Chapters[i]
+						break
+					}
+				}
+				if picked == nil {
+					return fmt.Errorf("chapter %d not found", chapter)
+				}
+			} else {
+				for i := len(detail.Chapters) - 1; i >= 0; i-- {
+					if detail.Chapters[i].Output != nil {
+						picked = &detail.Chapters[i]
+						break
+					}
+				}
+				if picked == nil {
+					return fmt.Errorf("no chapter has output")
+				}
+			}
+			if picked.Output == nil {
+				return fmt.Errorf("chapter %d has no output", picked.ChapterNumber)
+			}
+			if app.Config.Output == "json" {
+				return app.Printer.JSON(picked.Output)
+			}
+			return app.Printer.JSON(picked.Output) // pretty-print even in table mode for readability
+		},
+	}
+	cmd.Flags().IntVar(&chapter, "chapter", 0, "Chapter number (default: last with output)")
+	return cmd
+}
+
+func newWorkflowArtifactListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list <workflow-id>",
+		Short: "List workflow artifacts across chapters",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.GetApiProjectsWorkflows1WithResponse(ctx, app.Config.Project, args[0], nil)
+			if err != nil {
+				return err
+			}
+			detail, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
+			}
+
+			type row struct {
+				Chapter int                       `json:"chapter"`
+				Name    string                    `json:"name"`
+				Type    string                    `json:"type"`
+				Size    *int64                    `json:"size_bytes,omitempty"`
+				Created time.Time                 `json:"created_at"`
+				Raw     openapi.ArtifactReference `json:"-"`
+			}
+			var rowsData []row
+			for _, ch := range detail.Chapters {
+				if ch.Artifacts == nil {
+					continue
+				}
+				for _, a := range *ch.Artifacts {
+					rowsData = append(rowsData, row{
+						Chapter: ch.ChapterNumber,
+						Name:    a.Name,
+						Type:    a.ArtifactType,
+						Size:    a.SizeBytes,
+						Created: a.CreatedAt,
+						Raw:     a,
+					})
+				}
+			}
+
+			if app.Config.Output == "json" {
+				return app.Printer.JSON(rowsData)
+			}
+			headers := []string{"Chapter", "Name", "Type", "Size", "Created"}
+			rows := make([][]string, 0, len(rowsData))
+			for _, r := range rowsData {
+				size := ""
+				if r.Size != nil {
+					size = fmt.Sprintf("%d", *r.Size)
+				}
+				rows = append(rows, []string{
+					fmt.Sprintf("%d", r.Chapter),
+					r.Name,
+					r.Type,
+					size,
+					r.Created.Format(time.RFC3339),
+				})
+			}
+			return app.Printer.Table(headers, rows)
+		},
+	}
+	return cmd
+}
+
+func newWorkflowArtifactGetCmd() *cobra.Command {
+	var chapter int
+	var name string
+	var outputFile string
+
+	cmd := &cobra.Command{
+		Use:   "get <workflow-id>",
+		Short: "Download a workflow artifact",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			if chapter <= 0 {
+				return fmt.Errorf("--chapter is required")
+			}
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.GetWorkflowArtifactWithResponse(ctx, app.Config.Project, args[0], chapter, name)
+			if err != nil {
+				return err
+			}
+			if err := expectStatus(resp.HTTPResponse, resp.Body, 200); err != nil {
+				return err
+			}
+			data := resp.Body
+			if outputFile != "" {
+				return os.WriteFile(outputFile, data, 0o644)
+			}
+			_, err = os.Stdout.Write(data)
+			return err
+		},
+	}
+
+	cmd.Flags().IntVar(&chapter, "chapter", 0, "Chapter number (required)")
+	cmd.Flags().StringVar(&name, "name", "", "Artifact name (required)")
+	cmd.Flags().StringVar(&outputFile, "output-file", "", "Path to write artifact (stdout if omitted)")
+	return cmd
+}
+
+func newWorkflowArtifactCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "artifact",
+		Short: "Workflow artifacts",
+	}
+	cmd.AddCommand(
+		newWorkflowArtifactListCmd(),
+		newWorkflowArtifactGetCmd(),
+	)
 	return cmd
 }
 
