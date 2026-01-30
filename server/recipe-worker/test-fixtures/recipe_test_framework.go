@@ -505,6 +505,7 @@ func RunTestOnAllRecipesWithDeps(deps coreops.ServiceDependencies2, path string,
 			require.NoError(t, err, "Failed to read recipe file: %s", recipePath)
 			defer reader.Close()
 			recipeDefP, err := recipe.LoadRecipeFromReader(reader)
+			require.NoError(t, err, "Failed to load recipe file: %s", recipePath)
 			recipeDef := *recipeDefP
 
 			registry, err := buildRecipeRegistry(recipePath, recipeDef, testCases.Recipes)

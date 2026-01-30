@@ -1,19 +1,5 @@
 # c2 CLI – Quick User Guide
 
-## Install / Run
-```bash
-cd /src/cli
-go install ./cmd/c2   # builds and places `c2` in $GOBIN
-```
-Run `c2 --help` for the command tree.
-
-## Configuration
-- Default API URL: `http://localhost:8080`
-- Default output: `table` (use `--output json` for raw JSON)
-- Config file (optional): `~/.config/colony2/config.yaml`
-- Env vars: `COLONY2_API_URL`, `COLONY2_TOKEN`, `COLONY2_PROJECT`, `COLONY2_OUTPUT`, `COLONY2_TIMEOUT`, `COLONY2_TRACE`
-- Global flags: `--api-url`, `--token`, `--project`, `--output table|json`, `--timeout`, `--trace`
-
 ## Common Patterns
 - Tables by default; JSON with `--output json`.
 - IDs printed on create when not using JSON.

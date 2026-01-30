@@ -6,10 +6,13 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	"github.com/google/cel-go/ext"
 	"github.com/invopop/jsonschema"
 	jsg "github.com/swaggest/jsonschema-go"
 )
@@ -44,15 +47,15 @@ func (e CELExpr) AlwaysTrue() bool {
 }
 
 func NewCELExpr(expr string) (*CELExpr, error) {
-    // Treat empty expressions as always-true conditions
-    if strings.TrimSpace(expr) == "" {
-        return &CELExpr{expr: "", program: nil}, nil
-    }
-    program, err := compile(expr)
-    if err != nil {
-        return nil, err
-    }
-    return &CELExpr{expr: expr, program: program}, nil
+	// Treat empty expressions as always-true conditions
+	if strings.TrimSpace(expr) == "" {
+		return &CELExpr{expr: "", program: nil}, nil
+	}
+	program, err := compile(expr)
+	if err != nil {
+		return nil, err
+	}
+	return &CELExpr{expr: expr, program: program}, nil
 }
 
 func (e CELExpr) AsBool(inputsMap map[string]interface{}) (bool, error) {
@@ -72,12 +75,12 @@ func (e CELExpr) AsBool(inputsMap map[string]interface{}) (bool, error) {
 }
 
 func (e CELExpr) Evaluate(inputsMap map[string]interface{}) (interface{}, error) {
-    if e.AlwaysTrue() {
-        return true, nil
-    }
-    if e.program == nil {
-        return nil, fmt.Errorf("expression not compiled")
-    }
+	if e.AlwaysTrue() {
+		return true, nil
+	}
+	if e.program == nil {
+		return nil, fmt.Errorf("expression not compiled")
+	}
 	val, _, err := e.program.Eval(map[string]interface{}{
 		"inputs": &DynamicMapValue{data: inputsMap},
 	})
@@ -93,31 +96,55 @@ func (e CELExpr) MarshalYAML() (interface{}, error) {
 }
 
 func (e *CELExpr) UnmarshalYAML(unmarshal func(interface{}) error) error {
-    var s string
-    if err := unmarshal(&s); err != nil {
-        return err
-    }
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
 
-    // Empty expression is allowed and treated as true
-    if strings.TrimSpace(s) == "" {
-        e.expr = ""
-        e.program = nil
-        return nil
-    }
+	// Empty expression is allowed and treated as true
+	if strings.TrimSpace(s) == "" {
+		e.expr = ""
+		e.program = nil
+		return nil
+	}
 
-    program, err := compile(s)
-    if err != nil {
-        return err
-    }
-    e.expr = s
-    e.program = program
-    return nil
+	program, err := compile(s)
+	if err != nil {
+		return err
+	}
+	e.expr = s
+	e.program = program
+	return nil
 }
 
 // Evaluate evaluates a CEL expression with the given data
 func compile(expression string) (cel.Program, error) {
 	env, err := cel.NewEnv(
-		cel.Variable("inputs", cel.DynType),
+		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("sequence", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
+		cel.Variable("states", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
+		cel.Variable("scope", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("context", cel.ObjectType("contextual.TaskExecutionContext")),
+		ext.NativeTypes(
+			reflect.TypeOf(contextual.StepOutput{}),
+			reflect.TypeOf(contextual.RunOutput{}),
+			reflect.TypeOf(contextual.TaskExecutionContext{}),
+			reflect.TypeOf(contextual.JobContext{}),
+			reflect.TypeOf(contextual.TaskContext{}),
+			reflect.TypeOf(contextual.ActorContext{}),
+			reflect.TypeOf(contextual.TicketContext{}),
+			reflect.TypeOf(contextual.EnvironmentContext{}),
+			reflect.TypeOf(contextual.WorkflowContext{}),
+			reflect.TypeOf(contextual.GitBaseContext{}),
+			reflect.TypeOf(contextual.GitCommitContext{}),
+			reflect.TypeOf(contextual.TicketCreatorContext{}),
+			reflect.TypeOf(contextual.TicketCreatorUserContext{}),
+			reflect.TypeOf(contextual.TicketCreatorAgentContext{}),
+			reflect.TypeOf(contextual.TicketContext{}),
+			reflect.TypeOf(contextual.Invocation{}),
+			reflect.TypeOf(swf.ArtifactKey{}),
+			ext.ParseStructTag("json"),
+		),
 	)
 
 	if err != nil {
@@ -294,10 +321,10 @@ func convertToCELValue(val interface{}, path []string) ref.Val {
 	case []byte:
 		return types.Bytes(v)
 
-    default:
-        // Fail fast with a clear error rather than panic
-        return types.NewErr("unsupported type: %T", val)
-    }
+	default:
+		// Fail fast with a clear error rather than panic
+		return types.NewErr("unsupported type: %T", val)
+	}
 }
 
 type mapIterator struct {

@@ -38,19 +38,10 @@ type templateData struct {
 	// Note: No unqualified "outputs" field - outputs always qualified by context
 }
 
-type StepOutput struct {
-	Outputs   map[string]interface{}  `json:"outputs"`
-	Artifacts map[string]swf.Artifact `json:"artifacts"`
-	Runs      []RunOutput             `json:"runs"` // Previous runs (state loops)
-}
+type StepOutput = contextual.StepOutput
 
 // RunOutput represents a single execution run
-type RunOutput struct {
-	Outputs   map[string]interface{}  `json:"outputs"`
-	Artifacts map[string]swf.Artifact `json:"artifacts"`
-	RunID     string                  `json:"run_id"`
-	Timestamp time.Time               `json:"timestamp"`
-}
+type RunOutput = contextual.RunOutput
 
 // ScopeMetadata contains execution context metadata
 type ScopeMetadata struct {

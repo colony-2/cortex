@@ -1,25 +1,23 @@
 id: new-ticket-triage
-version: 0.1.0
-desc: Triage ticket to produce requirements and optional child tickets
 input_schema:
-  ticket_id:
+  title:
     type: string
     required: true
-  cell:
+  description:
     type: string
     required: true
+inputs:
+  ititle: '{{ inputs.title }}'
+  idescription: '{{ inputs.description }}'
 sequence:
-  - id: draft_requirements
+  - id: stub_draft_requirements
     op: command_execution
     inputs:
       run: |
         set -euo pipefail
         mkdir -p "{{ context.environment.outbox }}"
         cat <<'EOF' > "{{ context.environment.outbox }}/requirements.md"
-        # Requirements
-        - stub requirement A
-        - stub requirement B
+        ## {{ inputs.ititle }}
+        
+        {{ inputs.idescription }}
         EOF
-outputs:
-  requirements_artifact: 'requirements.md'
-  child_tickets: []

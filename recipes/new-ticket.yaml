@@ -1,0 +1,32 @@
+id: new-ticket
+version: 0.1.0
+desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval
+state:
+  initial: triage
+  states:
+    triage:
+      transitions:
+        - to: approve
+      op: recipe.run_and_get_result
+      inputs:
+        name: new-ticket-triage
+        inputs:
+          title: '{{ context.ticket.title }}'
+          description: '{{ context.ticket.description }}'
+    approve:
+      op: input
+      transitions:
+        - to: complete
+      inputs:
+        form:
+          title: 'Complete ticket?'
+          question: 'Approve completion after validation?'
+          type: short_answer
+    complete:
+      op: ticket.manage
+      when: 'has(context.actor.ticket_id) && context.actor.ticket_id != ""'
+      inputs:
+        actions:
+          - type: update_ticket
+            ticket_id: "{{ context.actor.ticket_id }}"
+            stage: completed

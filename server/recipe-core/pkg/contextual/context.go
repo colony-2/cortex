@@ -1,6 +1,10 @@
 package contextual
 
-import "time"
+import (
+	"time"
+
+	"github.com/colony-2/swf-go/pkg/swf"
+)
 
 // WorktreePathSentinel is a placeholder value used during template resolution
 // Templates that reference {{ environment.worktree_path }} will resolve to this sentinel
@@ -153,4 +157,18 @@ type GitCommitContext struct {
 	ParentRef   string `json:"parent_ref,omitempty"`  // ref carrying workspace state until a hash exists
 	PersistHash string `json:"hash,omitempty"`        // materialized SHA after a commit is created
 	ParentHash  string `json:"parent_hash,omitempty"` // parent SHA once materialized
+}
+
+type StepOutput struct {
+	Outputs   map[string]interface{}  `json:"outputs"`
+	Artifacts map[string]swf.Artifact `json:"artifacts"`
+	Runs      []RunOutput             `json:"runs"` // Previous runs (state loops)
+}
+
+// RunOutput represents a single execution run
+type RunOutput struct {
+	Outputs   map[string]interface{}  `json:"outputs"`
+	Artifacts map[string]swf.Artifact `json:"artifacts"`
+	RunID     string                  `json:"run_id"`
+	Timestamp time.Time               `json:"timestamp"`
 }
