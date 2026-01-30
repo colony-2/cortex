@@ -3,29 +3,29 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/graph v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/openapi v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/ops v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipes v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/registry v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/ticket v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/workflow v0.0.0-20251230211852-eede878b4009
+	github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/ops v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260128195911-f9fcb108644b
+	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipes v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/registry v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/workflow v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
-	github.com/fergusstrange/embedded-postgres v1.32.0
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/optimisticlock v1.1.3
@@ -56,10 +56,10 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20251230211852-eede878b4009 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009 // indirect
-	github.com/colony-2/pgwf v0.0.0-20251228001410-9e4b3d6883e7 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/pgwf v0.0.0-20260129015659-c3b26410e213 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -70,6 +70,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
@@ -95,6 +96,8 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/itchyny/gojq v0.12.16 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -161,4 +164,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/grpc v1.75.1 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
+	gorm.io/driver/postgres v1.5.11 // indirect
 )

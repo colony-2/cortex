@@ -3,11 +3,12 @@ module github.com/colony-2/colony2/server/recipe-template
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/google/cel-go v0.26.0
 	github.com/itchyny/gojq v0.12.16
 	github.com/stretchr/testify v1.11.1
+	google.golang.org/protobuf v1.36.10
 )
 
 require (
@@ -17,7 +18,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -25,6 +26,7 @@ require (
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -51,7 +53,6 @@ require (
 	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect

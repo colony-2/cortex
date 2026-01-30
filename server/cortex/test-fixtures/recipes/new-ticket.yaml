@@ -35,6 +35,7 @@ state:
         autofill:
           response: '{{ has(inputs.approval_decision) ? inputs.approval_decision : "" }}'
   - op: ticket.manage
+    when: '{{ context.workflow.ticket_id != "" }}'
     inputs:
       actions:
         - type: update_ticket

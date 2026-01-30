@@ -3,10 +3,10 @@ module github.com/colony-2/colony2/server/recipe-worker
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
+	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mitchellh/mapstructure v1.5.0
@@ -24,8 +24,8 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -36,6 +36,8 @@ require (
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/itchyny/gojq v0.12.16 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect

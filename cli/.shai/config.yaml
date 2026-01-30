@@ -2,15 +2,17 @@ type: shai-sandbox
 version: 1
 image: ghcr.io/colony-2/shai-mega
 resources:
-  default:
+  shai-default-allow:
     vars:
       - source: GOPRIVATE
       - source: MOON_TOOLCHAIN_FORCE_GLOBALS
       - source: ANTHROPIC_API_KEY
       - source: GEMINI_API_KEY
     calls:
-      - name: uname
-        command: uname -a
+      - name: c2
+        description: run c2 command
+        command: c2
+        allowed-args: '.*'
     mounts:
       - source: ${{ env.HOME }}/shaihome
         target: /home/shai/
@@ -24,9 +26,6 @@ resources:
       - source: /src/colony2/.moon/lcache
         target: /src/.moon/cache
         mode: rw
-    root-commands:
-      - "go install github.com/colony-2/colony2/cli@latest"
-      - "mv ~/go/bin/tool /usr/local/bin/"
     http:
       - openai.com
       - api.openai.com
@@ -100,11 +99,11 @@ resources:
     ports:
       - host: github.com
         port: 22
+      - host: 127.0.0.1
+        port: 8080
+
+    
 apply:
   - path: ./
     resources:
-      - default
-  - path: server/ops
-    resources:
-      - default
-    image: ghcr.io/colony-2/shai-mega:dind-latest
+      - shai-default-allow

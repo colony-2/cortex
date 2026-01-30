@@ -3,12 +3,12 @@ module github.com/colony-2/colony2/server/ticket
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
-	github.com/fergusstrange/embedded-postgres v1.32.0
+	github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260128195911-f9fcb108644b
+	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
 	github.com/segmentio/ksuid v1.0.4
@@ -26,12 +26,13 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20251230211852-eede878b4009 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260128195911-f9fcb108644b // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
+	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -51,12 +52,10 @@ require (
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.62.0 // indirect
-	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect

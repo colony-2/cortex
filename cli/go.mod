@@ -3,9 +3,11 @@ module github.com/colony-2/colony2/cli
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260127182324-1dad9b28fa37
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260129221415-4d1ad05d9208
+	github.com/go-resty/resty/v2 v2.12.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/jedib0t/go-pretty/v6 v6.4.8
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
 )
 
@@ -16,7 +18,6 @@ require (
 	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
-	github.com/go-resty/resty/v2 v2.12.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -25,7 +26,6 @@ require (
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/oapi-codegen/oapi-codegen/v2 v2.5.1 // indirect
-	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect

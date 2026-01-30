@@ -3,17 +3,29 @@ module github.com/colony-2/colony2/server/recipes
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/project v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20251230211852-eede878b4009
-	github.com/fergusstrange/embedded-postgres v1.32.0
+	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
 	github.com/segmentio/ksuid v1.0.4
-	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/optimisticlock v1.1.3
 )
 
-require github.com/colony-2/colony2/server/recipe-template v0.0.0-20251225022150-97f04a11c9ec // indirect
+require (
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-playground/validator/v10 v10.19.0 // indirect
+	github.com/itchyny/gojq v0.12.16 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/leodido/go-urn v1.4.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	gorm.io/driver/postgres v1.5.11 // indirect
+)
 
 require (
 	cel.dev/expr v0.24.0 // indirect
@@ -21,10 +33,10 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20251230211852-eede878b4009
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

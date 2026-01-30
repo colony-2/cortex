@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/recipe-core
 go 1.25.5
 
 require (
-	github.com/colony-2/swf-go v0.0.0-20260122212223-73dc49d51a97
+	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
 	github.com/fatih/structs v1.1.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/google/cel-go v0.26.0
@@ -22,7 +22,7 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20251229214321-85af9695067d // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
