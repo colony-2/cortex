@@ -14,23 +14,26 @@ import (
 )
 
 type (
-	WorkflowStatus             = model.WorkflowStatus
-	ChapterStatus              = model.ChapterStatus
-	Actor                      = model.Actor
-	ActorType                  = model.ActorType
-	ActorUser                  = model.ActorUser
-	ActorAgent                 = model.ActorAgent
-	ArtifactReference          = model.ArtifactReference
-	ChapterDetail              = model.ChapterDetail
-	WorkflowSummary            = model.WorkflowSummary
-	WorkflowDetail             = model.WorkflowDetail
-	Ticket                     = ticket.Ticket
-	ListWorkflowsRequest       = model.ListWorkflowsRequest
-	GetWorkflowRequest         = model.GetWorkflowRequest
-	GetWorkflowArtifactRequest = model.GetWorkflowArtifactRequest
-	StartWorkflowRequest       = model.StartWorkflowRequest
-	ArtifactData               = model.ArtifactData
-	RecipeProvider             = service.RecipeProvider
+	WorkflowStatus              = model.WorkflowStatus
+	ChapterStatus               = model.ChapterStatus
+	Actor                       = model.Actor
+	ActorType                   = model.ActorType
+	ActorUser                   = model.ActorUser
+	ActorAgent                  = model.ActorAgent
+	ArtifactReference           = model.ArtifactReference
+	ChapterDetail               = model.ChapterDetail
+	WorkflowSummary             = model.WorkflowSummary
+	WorkflowDetail              = model.WorkflowDetail
+	WorkflowOutcome             = model.WorkflowOutcome
+	Ticket                      = ticket.Ticket
+	ListWorkflowsRequest        = model.ListWorkflowsRequest
+	GetWorkflowRequest          = model.GetWorkflowRequest
+	GetWorkflowOutcomeRequest   = model.GetWorkflowOutcomeRequest
+	GetArtifactByOrdinalRequest = model.GetArtifactByOrdinalRequest
+	GetWorkflowArtifactRequest  = model.GetWorkflowArtifactRequest
+	StartWorkflowRequest        = model.StartWorkflowRequest
+	ArtifactData                = model.ArtifactData
+	RecipeProvider              = service.RecipeProvider
 )
 
 const (
@@ -59,11 +62,14 @@ var (
 	ErrInvalidCell          = service.ErrInvalidCell
 	ErrRecipeNotFound       = service.ErrRecipeNotFound
 	ErrEngineUnavailable    = service.ErrEngineUnavailable
+	ErrOutcomePending       = service.ErrOutcomePending
 )
 
 type Service interface {
 	ListWorkflows(ctx context.Context, req ListWorkflowsRequest) ([]WorkflowSummary, error)
 	GetWorkflow(ctx context.Context, req GetWorkflowRequest) (*WorkflowDetail, error)
+	GetWorkflowOutcome(ctx context.Context, req GetWorkflowOutcomeRequest) (*WorkflowOutcome, error)
+	GetArtifactByOrdinal(ctx context.Context, req GetArtifactByOrdinalRequest) (*ArtifactData, error)
 	GetWorkflowArtifact(ctx context.Context, req GetWorkflowArtifactRequest) (*ArtifactData, error)
 	StartWorkflow(ctx context.Context, req StartWorkflowRequest) (*WorkflowSummary, error)
 }

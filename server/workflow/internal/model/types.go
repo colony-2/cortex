@@ -61,6 +61,15 @@ type ArtifactReference struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type WorkflowOutcome struct {
+	JobID          string                 `json:"job_id"`
+	Status         WorkflowStatus         `json:"status"`
+	AttemptOrdinal *int64                 `json:"attempt_ordinal,omitempty"`
+	Output         map[string]interface{} `json:"output,omitempty"`
+	Error          *string                `json:"error,omitempty"`
+	Artifacts      []ArtifactReference    `json:"artifacts"`
+}
+
 type ChapterDetail struct {
 	ChapterNumber int                     `json:"chapter_number"`
 	ChapterType   string                  `json:"chapter_type"`
@@ -125,6 +134,18 @@ type GetWorkflowRequest struct {
 	ProjectID         string
 	WorkflowID        string
 	IncludeRawJobData bool
+}
+
+type GetWorkflowOutcomeRequest struct {
+	ProjectID string
+	JobID     string
+}
+
+type GetArtifactByOrdinalRequest struct {
+	ProjectID    string
+	JobID        string
+	TaskOrdinal  int64
+	ArtifactName string
 }
 
 type GetWorkflowArtifactRequest struct {

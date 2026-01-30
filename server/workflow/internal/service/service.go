@@ -32,6 +32,7 @@ var (
 	ErrInvalidCell          = errors.New("workflow: invalid cell")
 	ErrRecipeNotFound       = errors.New("workflow: recipe not found")
 	ErrEngineUnavailable    = errors.New("workflow: engine unavailable")
+	ErrOutcomePending       = errors.New("workflow: outcome not available yet")
 )
 
 type Config struct {
@@ -439,6 +440,163 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 	return &detail, nil
 }
 
+func (s *Service) GetWorkflowOutcome(ctx context.Context, req model.GetWorkflowOutcomeRequest) (*model.WorkflowOutcome, error) {
+	if s.engine == nil {
+		return nil, ErrEngineUnavailable
+	}
+
+	projectID := strings.TrimSpace(req.ProjectID)
+	jobID := strings.TrimSpace(req.JobID)
+	if projectID == "" {
+		return nil, ErrInvalidProject
+	}
+	if jobID == "" {
+		return nil, ErrNotFound
+	}
+
+	jobKey := swf.JobKey{TenantId: projectID, JobId: jobID}
+	run, err := s.engine.GetJobRun(ctx, swf.GetJobRunRequest{
+		JobKey:           jobKey,
+		IncludeOutputs:   true,
+		IncludeArtifacts: true,
+	})
+	if err != nil {
+		if errors.Is(err, swf.ErrJobNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	status := mapWorkflowStatus(run.Job.Status)
+	selected := selectLatestAttemptWithOutcome(run.Tasks)
+
+	if selected == nil && status == model.WorkflowStatusRunning {
+		return nil, ErrOutcomePending
+	}
+
+	var attemptOrdinal *int64
+	var output map[string]interface{}
+	var errMsg *string
+
+	if selected != nil {
+		attemptOrdinal = &selected.Ordinal
+		if selected.Output != nil && len(selected.Output.Data) > 0 {
+			if m := mapFromRaw(selected.Output.Data); m != nil {
+				output = *m
+			}
+		}
+		if selected.Outcome.Error != nil && selected.Outcome.Error.Message != "" {
+			msg := selected.Outcome.Error.Message
+			errMsg = &msg
+		} else if selected.Outcome.Status == swf.TaskOutcomeStatusFailed {
+			msg := "task failed"
+			errMsg = &msg
+		}
+	}
+
+	artifacts := aggregateArtifacts(run.Tasks, run.JobAttempts, projectID, jobID)
+
+	return &model.WorkflowOutcome{
+		JobID:          jobID,
+		Status:         status,
+		AttemptOrdinal: attemptOrdinal,
+		Output:         output,
+		Error:          errMsg,
+		Artifacts:      artifacts,
+	}, nil
+}
+
+func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifactByOrdinalRequest) (*model.ArtifactData, error) {
+	if s.engine == nil {
+		return nil, ErrEngineUnavailable
+	}
+	projectID := strings.TrimSpace(req.ProjectID)
+	jobID := strings.TrimSpace(req.JobID)
+	if projectID == "" || jobID == "" {
+		return nil, ErrInvalidProject
+	}
+	if req.ArtifactName == "" || req.TaskOrdinal < 0 {
+		return nil, fmt.Errorf("invalid artifact request")
+	}
+
+	// Load job run to validate and get artifact size/type
+	run, err := s.engine.GetJobRun(ctx, swf.GetJobRunRequest{
+		JobKey:           swf.JobKey{TenantId: projectID, JobId: jobID},
+		IncludeArtifacts: true,
+	})
+	if err != nil {
+		if errors.Is(err, swf.ErrJobNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	var meta *swf.ArtifactInfo
+	find := func(arts []swf.ArtifactInfo) {
+		for i := range arts {
+			if arts[i].Name == req.ArtifactName {
+				meta = &arts[i]
+				return
+			}
+		}
+	}
+	for _, task := range run.Tasks {
+		for _, att := range task.Attempts {
+			if att.Ordinal == req.TaskOrdinal && att.Output != nil {
+				find(att.Output.Artifacts)
+				if meta != nil {
+					break
+				}
+			}
+		}
+		if meta != nil {
+			break
+		}
+	}
+	if meta == nil {
+		for _, attempt := range run.JobAttempts {
+			if attempt.Ordinal == req.TaskOrdinal && attempt.Output != nil {
+				find(attempt.Output.Artifacts)
+				if meta != nil {
+					break
+				}
+			}
+		}
+	}
+	if meta == nil {
+		return nil, ErrNotFound
+	}
+
+	key := swf.ArtifactKey{
+		JobId:       jobID,
+		TaskOrdinal: req.TaskOrdinal,
+		Name:        meta.Name,
+		SizeBytes:   meta.SizeBytes,
+	}
+	artifact, err := s.engine.GetArtifact(projectID, key)
+	if err != nil {
+		if errors.Is(err, swf.ErrArtifactKeyUnavailable) || errors.Is(err, swf.ErrJobNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	bytes, err := artifact.Bytes(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	contentType := meta.ContentType
+	return &model.ArtifactData{
+		Content:   bytes,
+		Filename:  meta.Name,
+		SizeBytes: int64(len(bytes)),
+		Metadata: map[string]string{
+			"artifactType": contentType,
+			"taskOrdinal":  fmt.Sprintf("%d", req.TaskOrdinal),
+		},
+	}, nil
+}
+
 func (s *Service) buildSummary(ctx context.Context, projectID string, job swf.JobSummary) (model.WorkflowSummary, bool, error) {
 	startJob, err := s.loadStartJob(ctx, job.JobKey)
 	if err != nil {
@@ -752,6 +910,70 @@ func stringPtr(val string) *string {
 		return nil
 	}
 	return &val
+}
+
+func selectLatestAttemptWithOutcome(tasks []swf.TaskRun) *swf.TaskAttempt {
+	var chosen *swf.TaskAttempt
+	for i := range tasks {
+		for j := range tasks[i].Attempts {
+			att := tasks[i].Attempts[j]
+			hasOutput := att.Output != nil && len(att.Output.Data) > 0
+			hasError := att.Outcome.Error != nil || att.Outcome.Status == swf.TaskOutcomeStatusFailed
+			if !hasOutput && !hasError {
+				continue
+			}
+			if chosen == nil || att.Ordinal > chosen.Ordinal || (att.Ordinal == chosen.Ordinal && att.Attempt > chosen.Attempt) {
+				copy := att
+				chosen = &copy
+			}
+		}
+	}
+	return chosen
+}
+
+func aggregateArtifacts(tasks []swf.TaskRun, jobAttempts []swf.JobAttempt, projectID, jobID string) []model.ArtifactReference {
+	type artifactKey struct {
+		id   string
+		name string
+	}
+	seen := map[artifactKey]bool{}
+	refs := make([]model.ArtifactReference, 0)
+
+	addArtifacts := func(arts []swf.ArtifactInfo, createdAt time.Time, ordinal int64) {
+		for _, art := range arts {
+			key := artifactKey{id: art.ID, name: art.Name}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			size := art.SizeBytes
+			url := fmt.Sprintf("/api/projects/%s/jobs/%s/tasks/%d/artifacts/%s", projectID, jobID, ordinal, art.Name)
+			refs = append(refs, model.ArtifactReference{
+				ArtifactID:   art.ID,
+				ArtifactType: art.ContentType,
+				Name:         art.Name,
+				SizeBytes:    &size,
+				URL:          &url,
+				CreatedAt:    createdAt,
+			})
+		}
+	}
+
+	for _, task := range tasks {
+		for _, att := range task.Attempts {
+			if att.Output != nil {
+				addArtifacts(att.Output.Artifacts, att.CreatedAt, att.Ordinal)
+			}
+		}
+	}
+
+	for _, attempt := range jobAttempts {
+		if attempt.Output != nil {
+			addArtifacts(attempt.Output.Artifacts, attempt.CreatedAt, attempt.Ordinal)
+		}
+	}
+
+	return refs
 }
 
 func hashInputs(inputs map[string]interface{}) string {

@@ -22,6 +22,7 @@ func newWorkflowCmd() *cobra.Command {
 		newWorkflowRunCmd(),
 		newWorkflowOutputCmd(),
 		newWorkflowArtifactCmd(),
+		newWorkflowOutcomeCmd(),
 	)
 	return cmd
 }
@@ -206,9 +207,9 @@ func newWorkflowRunCmd() *cobra.Command {
 func newWorkflowOutputCmd() *cobra.Command {
 	var chapter int
 	cmd := &cobra.Command{
-		Use:   "output get <workflow-id>",
+		Use:   "output [get] <workflow-id>",
 		Short: "Get workflow output (chapter output)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := fetchApp(cmd.Context())
 			if err != nil {
@@ -217,9 +218,20 @@ func newWorkflowOutputCmd() *cobra.Command {
 			if err := requireProject(app.Config.Project); err != nil {
 				return err
 			}
+
+			workflowID := ""
+			if len(args) == 2 {
+				if args[0] != "get" {
+					return fmt.Errorf("first arg must be 'get' when two args are provided")
+				}
+				workflowID = args[1]
+			} else {
+				workflowID = args[0]
+			}
+
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
-			resp, err := app.Client.GetApiProjectsWorkflows1WithResponse(ctx, app.Config.Project, args[0], nil)
+			resp, err := app.Client.GetApiProjectsWorkflows1WithResponse(ctx, app.Config.Project, workflowID, nil)
 			if err != nil {
 				return err
 			}
@@ -227,6 +239,7 @@ func newWorkflowOutputCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			var picked *openapi.ChapterDetail
 			if chapter > 0 {
 				for i := range detail.Chapters {
@@ -252,10 +265,7 @@ func newWorkflowOutputCmd() *cobra.Command {
 			if picked.Output == nil {
 				return fmt.Errorf("chapter %d has no output", picked.ChapterNumber)
 			}
-			if app.Config.Output == "json" {
-				return app.Printer.JSON(picked.Output)
-			}
-			return app.Printer.JSON(picked.Output) // pretty-print even in table mode for readability
+			return app.Printer.JSON(picked.Output)
 		},
 	}
 	cmd.Flags().IntVar(&chapter, "chapter", 0, "Chapter number (default: last with output)")
@@ -277,44 +287,33 @@ func newWorkflowArtifactListCmd() *cobra.Command {
 			}
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
-			resp, err := app.Client.GetApiProjectsWorkflows1WithResponse(ctx, app.Config.Project, args[0], nil)
+			resp, err := app.Client.GetWorkflowOutcomeWithResponse(ctx, app.Config.Project, args[0])
 			if err != nil {
 				return err
 			}
-			detail, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			outcome, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
 			if err != nil {
 				return err
 			}
 
 			type row struct {
-				Chapter int                       `json:"chapter"`
-				Name    string                    `json:"name"`
-				Type    string                    `json:"type"`
-				Size    *int64                    `json:"size_bytes,omitempty"`
-				Created time.Time                 `json:"created_at"`
-				Raw     openapi.ArtifactReference `json:"-"`
+				Name string `json:"name"`
+				Type string `json:"type"`
+				Size *int64 `json:"size_bytes,omitempty"`
 			}
-			var rowsData []row
-			for _, ch := range detail.Chapters {
-				if ch.Artifacts == nil {
-					continue
-				}
-				for _, a := range *ch.Artifacts {
-					rowsData = append(rowsData, row{
-						Chapter: ch.ChapterNumber,
-						Name:    a.Name,
-						Type:    a.ArtifactType,
-						Size:    a.SizeBytes,
-						Created: a.CreatedAt,
-						Raw:     a,
-					})
-				}
+			rowsData := make([]row, 0, len(outcome.Artifacts))
+			for _, a := range outcome.Artifacts {
+				rowsData = append(rowsData, row{
+					Name: a.Name,
+					Type: a.ArtifactType,
+					Size: a.SizeBytes,
+				})
 			}
 
 			if app.Config.Output == "json" {
 				return app.Printer.JSON(rowsData)
 			}
-			headers := []string{"Chapter", "Name", "Type", "Size", "Created"}
+			headers := []string{"Name", "Type", "Size"}
 			rows := make([][]string, 0, len(rowsData))
 			for _, r := range rowsData {
 				size := ""
@@ -322,11 +321,9 @@ func newWorkflowArtifactListCmd() *cobra.Command {
 					size = fmt.Sprintf("%d", *r.Size)
 				}
 				rows = append(rows, []string{
-					fmt.Sprintf("%d", r.Chapter),
 					r.Name,
 					r.Type,
 					size,
-					r.Created.Format(time.RFC3339),
 				})
 			}
 			return app.Printer.Table(headers, rows)
@@ -360,7 +357,7 @@ func newWorkflowArtifactGetCmd() *cobra.Command {
 			}
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
-			resp, err := app.Client.GetWorkflowArtifactWithResponse(ctx, app.Config.Project, args[0], chapter, name)
+			resp, err := app.Client.GetJobArtifactWithResponse(ctx, app.Config.Project, args[0], int64(chapter), name)
 			if err != nil {
 				return err
 			}
@@ -391,6 +388,54 @@ func newWorkflowArtifactCmd() *cobra.Command {
 		newWorkflowArtifactListCmd(),
 		newWorkflowArtifactGetCmd(),
 	)
+	return cmd
+}
+
+func isWorkflowFailed(status openapi.WorkflowStatus) bool {
+	switch status {
+	case openapi.Failed, openapi.Terminated, openapi.Canceled, openapi.TimedOut, openapi.Unknown:
+		return true
+	default:
+		return false
+	}
+}
+
+func firstChapterError(chapters []openapi.ChapterDetail) string {
+	for _, ch := range chapters {
+		if ch.Error != nil && *ch.Error != "" {
+			return *ch.Error
+		}
+	}
+	return ""
+}
+
+// Workflow outcome via dedicated API (single call returns status/output/error/artifacts).
+func newWorkflowOutcomeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "outcome <workflow-id>",
+		Short: "Show workflow outcome (status, output/error, artifacts) using the server outcome API",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.GetWorkflowOutcomeWithResponse(ctx, app.Config.Project, args[0])
+			if err != nil {
+				return err
+			}
+			outcome, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
+			}
+			return app.Printer.JSON(outcome)
+		},
+	}
 	return cmd
 }
 

@@ -15,18 +15,24 @@ import (
 )
 
 type fakeWorkflowService struct {
-	listReq      *workflow.ListWorkflowsRequest
-	getReq       *workflow.GetWorkflowRequest
-	startReq     *workflow.StartWorkflowRequest
-	artifactReq  *workflow.GetWorkflowArtifactRequest
-	listResp     []workflow.WorkflowSummary
-	getResp      *workflow.WorkflowDetail
-	startResp    *workflow.WorkflowSummary
-	artifactResp *workflow.ArtifactData
-	listErr      error
-	getErr       error
-	startErr     error
-	artifactErr  error
+	listReq       *workflow.ListWorkflowsRequest
+	getReq        *workflow.GetWorkflowRequest
+	startReq      *workflow.StartWorkflowRequest
+	artifactReq   *workflow.GetWorkflowArtifactRequest
+	engineArtReq  *workflow.GetArtifactByOrdinalRequest
+	outcomeReq    *workflow.GetWorkflowOutcomeRequest
+	listResp      []workflow.WorkflowSummary
+	getResp       *workflow.WorkflowDetail
+	startResp     *workflow.WorkflowSummary
+	artifactResp  *workflow.ArtifactData
+	engineArtResp *workflow.ArtifactData
+	outcomeResp   *workflow.WorkflowOutcome
+	listErr       error
+	getErr        error
+	startErr      error
+	artifactErr   error
+	engineArtErr  error
+	outcomeErr    error
 }
 
 func (f *fakeWorkflowService) ListWorkflows(ctx context.Context, req workflow.ListWorkflowsRequest) ([]workflow.WorkflowSummary, error) {
@@ -47,6 +53,16 @@ func (f *fakeWorkflowService) StartWorkflow(ctx context.Context, req workflow.St
 func (f *fakeWorkflowService) GetWorkflowArtifact(ctx context.Context, req workflow.GetWorkflowArtifactRequest) (*workflow.ArtifactData, error) {
 	f.artifactReq = &req
 	return f.artifactResp, f.artifactErr
+}
+
+func (f *fakeWorkflowService) GetArtifactByOrdinal(ctx context.Context, req workflow.GetArtifactByOrdinalRequest) (*workflow.ArtifactData, error) {
+	f.engineArtReq = &req
+	return f.engineArtResp, f.engineArtErr
+}
+
+func (f *fakeWorkflowService) GetWorkflowOutcome(ctx context.Context, req workflow.GetWorkflowOutcomeRequest) (*workflow.WorkflowOutcome, error) {
+	f.outcomeReq = &req
+	return f.outcomeResp, f.outcomeErr
 }
 
 func TestHandleListWorkflows_OK(t *testing.T) {
@@ -232,4 +248,97 @@ func TestHandleGetWorkflow_IncludeRawJobData(t *testing.T) {
 	if fake.getReq == nil || !fake.getReq.IncludeRawJobData {
 		t.Fatalf("expected includeRawJobData=true, got %#v", fake.getReq)
 	}
+}
+
+func TestHandleGetWorkflowOutcome_OK(t *testing.T) {
+	projectID := "proj_123"
+	jobID := "job_1"
+	now := time.Now().UTC()
+
+	fake := &fakeWorkflowService{
+		outcomeResp: &workflow.WorkflowOutcome{
+			JobID:          jobID,
+			Status:         workflow.WorkflowStatusCompleted,
+			AttemptOrdinal: ptrInt64(3),
+			Output:         map[string]interface{}{"foo": "bar"},
+			Artifacts: []workflow.ArtifactReference{{
+				ArtifactID:   "a1",
+				ArtifactType: "text/plain",
+				Name:         "log.txt",
+				SizeBytes:    ptrInt64(12),
+				CreatedAt:    now,
+			}},
+		},
+	}
+
+	h := &Handlers{workflows: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/projects/"+projectID+"/jobs/"+jobID+"/outcome", nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if fake.outcomeReq == nil || fake.outcomeReq.ProjectID != projectID || fake.outcomeReq.JobID != jobID {
+		t.Fatalf("expected outcome request captured, got %#v", fake.outcomeReq)
+	}
+	var body openapi.WorkflowOutcome
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.JobId != jobID || body.AttemptOrdinal == nil || *body.AttemptOrdinal != 3 {
+		t.Fatalf("unexpected outcome body: %#v", body)
+	}
+}
+
+func TestHandleGetJobArtifact_OK(t *testing.T) {
+	projectID := "proj_123"
+	jobID := "job_1"
+	content := []byte("hello")
+
+	fake := &fakeWorkflowService{
+		engineArtResp: &workflow.ArtifactData{
+			Content:   content,
+			Filename:  "log.txt",
+			SizeBytes: int64(len(content)),
+		},
+	}
+
+	h := &Handlers{workflows: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/projects/"+projectID+"/jobs/"+jobID+"/tasks/5/artifacts/log.txt", nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if fake.engineArtReq == nil || fake.engineArtReq.TaskOrdinal != 5 || fake.engineArtReq.ArtifactName != "log.txt" {
+		t.Fatalf("unexpected request capture: %#v", fake.engineArtReq)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "hello" {
+		t.Fatalf("unexpected body: %s", string(body))
+	}
+}
+
+func ptrInt64(v int64) *int64 {
+	return &v
 }

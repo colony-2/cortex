@@ -28,7 +28,8 @@
 ### Workflows
 - List: `c2 workflow list [--status running --ticket-id TID --cell-id CID --since RFC3339 --until RFC3339 --limit N --offset N]`
 - Run: `c2 workflow run --recipe NAME --cell-id CELL [--ticket-id TID --git-ref REF --actor-email EMAIL --idempotency-key KEY --input k=v ...]`
-- Output: `c2 workflow output get <workflow-id> [--chapter N]` (defaults to last chapter with output)
+- Output: `c2 workflow output [get] <workflow-id> [--chapter N]` (defaults to last chapter with output; fails fast if workflow status is failed/terminated/timed_out/canceled/unknown)
+- Outcome (single API call): `c2 workflow outcome <workflow-id>`
 - Artifacts: `c2 workflow artifact list <workflow-id>`; download: `c2 workflow artifact get <workflow-id> --chapter N --name NAME [--output-file PATH]`
 
 ### Input Requests

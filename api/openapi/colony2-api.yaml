@@ -1072,6 +1072,103 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/projects/{projectId}/jobs/{jobId}/outcome:
+    get:
+      tags: [Workflows]
+      summary: Get consolidated workflow outcome for a job
+      description: |
+        Returns the latest known outcome for a workflow job using engine `GetJobRun` data only
+        (no Strata reads). Aggregates the final status, the last attempt output or error, and all
+        produced artifacts across attempts.
+      operationId: getWorkflowOutcome
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Consolidated workflow outcome
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowOutcome'
+        '404':
+          description: Job not found in project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '425':
+          description: Job still running; no terminal outcome yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName}:
+    get:
+      tags: [Workflows]
+      summary: Download an artifact via engine by task ordinal and name
+      description: |
+        Streams artifact bytes directly from the workflow engine using `GetArtifact`. Uses the
+        task ordinal and artifact name to build the `ArtifactKey`; does not rely on Strata.
+      operationId: getJobArtifact
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskOrdinal
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: artifactName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifact content (binary)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Artifact not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/projects/{projectId}/recipes:
     get:
       summary: List recipes
@@ -2210,6 +2307,39 @@ components:
         - timed_out
         - unknown
       description: Normalized workflow execution status
+
+    WorkflowOutcome:
+      type: object
+      description: Consolidated workflow outcome derived from engine GetJobRun data
+      required:
+        - job_id
+        - status
+        - artifacts
+      properties:
+        job_id:
+          type: string
+          description: Job identifier (same as workflow ID)
+        status:
+          $ref: '#/components/schemas/WorkflowStatus'
+        attempt_ordinal:
+          type: integer
+          format: int64
+          nullable: true
+          description: Ordinal of the last task attempt that produced output or error
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Latest available output payload from the selected attempt
+        error:
+          type: string
+          nullable: true
+          description: Human-readable error from the selected attempt or job outcome
+        artifacts:
+          type: array
+          description: Aggregated artifact metadata across all attempts
+          items:
+            $ref: '#/components/schemas/ArtifactReference'
 
     ChapterStatus:
       type: string

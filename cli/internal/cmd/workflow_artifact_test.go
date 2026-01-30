@@ -73,20 +73,13 @@ func TestWorkflowOutputGet(t *testing.T) {
 
 func TestWorkflowArtifactList(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/api/projects/proj/workflows/w1" {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/projects/proj/jobs/w1/outcome" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
-				"workflow_id":"w1",
-				"run_id":"w1",
-				"recipe_name":"r",
-				"chapters":[
-					{"chapter_number":1,"status":"completed",
-					 "artifacts":[{"artifact_id":"a1","artifact_type":"text","name":"log.txt","created_at":"2025-01-01T00:00:00Z"}]
-					}
-				],
+				"job_id":"w1",
 				"status":"completed",
-				"created_at":"2025-01-01T00:00:00Z"
+				"artifacts":[{"artifact_id":"a1","artifact_type":"text","name":"log.txt","created_at":"2025-01-01T00:00:00Z"}]
 			}`))
 			return
 		}
@@ -108,7 +101,7 @@ func TestWorkflowArtifactList(t *testing.T) {
 
 func TestWorkflowArtifactGet(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/api/projects/proj/workflows/w1/chapters/1/artifacts/log.txt" {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/projects/proj/jobs/w1/tasks/1/artifacts/log.txt" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("hello"))
 			return

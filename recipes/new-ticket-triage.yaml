@@ -7,46 +7,73 @@ input_schema:
     type: string
     required: true
 inputs:
-  ititle: '{{ inputs.title }}'
-  idescription: '{{ inputs.description }}'
-sequence:
-  - id: assess_cell
-    op: llm_inference2
-    inputs:
-      default_provider: openai
-      default_model: gpt-4.1
-      temperature: 0
-      tools:
-        - name: respond
-          description: "Return the final JSON verdict; no tool execution needed."
-      enable_tool_execution: false
-      execute_tools: false
-      system_prompt: >
-        You are triaging a software ticket to decide if the current execution cell is the right
-        place to do the work. Always respond with a JSON object:
-        {"cell_is_appropriate": boolean, "recommended_cell": string, "rationale": string}.
-      prompt: |
-        Ticket Title: {{ inputs.ititle }}
-        Ticket Description:
-        {{ inputs.idescription }}
+  triage_title: '{{ inputs.title }}'
+  triage_description: '{{ inputs.description }}'
 
-        Current Cell: {{ context.workflow.cell }}
+state:
+  initial: triage
+  states:
+    triage:
+      inputs:
+        title: '{{ inputs.triage_title }}'
+        description: '{{ inputs.triage_description }}'
+      sequence:
+        - id: assess_cell
+          op: llm_inference2
+          inputs:
+            default_provider: openai
+            default_model: gpt-4.1
+            temperature: 0
+            tools:
+              - name: respond
+                description: "Return the final JSON verdict; no tool execution needed."
+            enable_tool_execution: false
+            execute_tools: false
+            system_prompt: >
+              You are triaging a software ticket to decide if the current execution cell is the right
+              place to do the work. Always respond with a JSON object:
+              {"cell_is_appropriate": boolean, "recommended_cell": string, "rationale": string}.
+            prompt: |
+              Ticket Title: {{ inputs.title }}
+              Ticket Description:
+              {{ inputs.description }}
 
-        Decide if the current cell is appropriate to run the work. If it is not, propose the best
-        cell name to use instead (keep it short, e.g., "frontend", "backend", "infra", or a
-        specific cell name if known). Provide a concise rationale.
-  - id: stub_draft_requirements
-    op: command_execution
-    inputs:
-      run: |
-        set -euo pipefail
-        mkdir -p "{{ context.environment.outbox }}"
-        cat <<'EOF' > "{{ context.environment.outbox }}/requirements.md"
-        ## {{ inputs.ititle }}
-        
-        {{ inputs.idescription }}
-        EOF
+              Current Cell: {{ context.workflow.cell }}
+
+              Decide if the current cell is appropriate to run the work. If it is not, propose the best
+              cell name to use instead (keep it short, e.g., "frontend", "backend", "infra", or a
+              specific cell name if known). Provide a concise rationale.
+        - id: stub_draft_requirements
+          op: command_execution
+          inputs:
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.outbox }}"
+              cat <<'EOF' > "{{ context.environment.outbox }}/requirements.md"
+              ## {{ inputs.title }}
+              
+              {{ inputs.description }}
+              EOF
+        - id: persist_triage_json
+          op: command_execution
+          inputs:
+            run: |
+              set -euo pipefail
+              mkdir -p "{{ context.environment.outbox }}"
+              echo "{{ sequence.assess_cell.outputs.response }}" > "{{ context.environment.outbox }}/llm_raw.txt"
+              cat > "{{ context.environment.outbox }}/triage.json" <<'EOF'
+              {
+                "cell_is_appropriate": {{ jq(sequence.assess_cell.outputs.response, 'if type=="array" then .[0].cell_is_appropriate else .cell_is_appropriate end') }},
+                "recommended_cell": "{{ jq(sequence.assess_cell.outputs.response, 'if type=="array" then .[0].recommended_cell else .recommended_cell end') != null ? jq(sequence.assess_cell.outputs.response, 'if type=="array" then .[0].recommended_cell else .recommended_cell end') : context.workflow.cell }}",
+                "rationale": "{{ jq(sequence.assess_cell.outputs.response, 'if type=="array" then .[0].rationale else .rationale end') != null ? jq(sequence.assess_cell.outputs.response, 'if type=="array" then .[0].rationale else .rationale end') : 'No model response available.' }}"
+              }
+              EOF
+      outputs:
+        cell_is_appropriate: "{{ jq(sequence.assess_cell.outputs.response, 'if type==\"array\" then .[0].cell_is_appropriate else .cell_is_appropriate end') }}"
+        recommended_cell: "{{ jq(sequence.assess_cell.outputs.response, 'if type==\"array\" then .[0].recommended_cell else .recommended_cell end') != null ? jq(sequence.assess_cell.outputs.response, 'if type==\"array\" then .[0].recommended_cell else .recommended_cell end') : context.workflow.cell }}"
+        rationale: "{{ jq(sequence.assess_cell.outputs.response, 'if type==\"array\" then .[0].rationale else .rationale end') != null ? jq(sequence.assess_cell.outputs.response, 'if type==\"array\" then .[0].rationale else .rationale end') : 'No model response available.' }}"
+
 outputs:
-  cell_is_appropriate: "{{ size(sequence.assess_cell.outputs.response) > 0 ? sequence.assess_cell.outputs.response[0].cell_is_appropriate : false }}"
-  recommended_cell: "{{ size(sequence.assess_cell.outputs.response) > 0 ? sequence.assess_cell.outputs.response[0].recommended_cell : context.workflow.cell }}"
-  rationale: "{{ size(sequence.assess_cell.outputs.response) > 0 ? sequence.assess_cell.outputs.response[0].rationale : \"No model response available.\" }}"
+  cell_is_appropriate: "{{ states.triage.outputs.cell_is_appropriate }}"
+  recommended_cell: "{{ states.triage.outputs.recommended_cell }}"
+  rationale: "{{ states.triage.outputs.rationale }}"

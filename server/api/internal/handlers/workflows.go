@@ -189,6 +189,36 @@ func (h *Handlers) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toOpenAPIWorkflowDetail(*detail))
 }
 
+func (h *Handlers) handleGetWorkflowOutcome(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := vars["projectId"]
+	jobID := vars["jobId"]
+
+	outcome, err := h.workflows.GetWorkflowOutcome(r.Context(), workflow.GetWorkflowOutcomeRequest{
+		ProjectID: projectID,
+		JobID:     jobID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, workflow.ErrInvalidProject):
+			writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrOutcomePending):
+			writeJSON(w, http.StatusTooEarly, openapi.ErrorResponse{Message: err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: "Internal server error"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toOpenAPIWorkflowOutcome(*outcome))
+}
+
 func (h *Handlers) handleGetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
 	if h.workflows == nil {
 		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
@@ -235,6 +265,50 @@ func (h *Handlers) handleGetWorkflowArtifact(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(artifactData.Content); err != nil {
 		// Can't write error response after starting to write the body
+		fmt.Fprintf(w, "error writing artifact content: %v", err)
+	}
+}
+
+func (h *Handlers) handleGetJobArtifact(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := vars["projectId"]
+	jobID := vars["jobId"]
+	taskOrdinalStr := vars["taskOrdinal"]
+	artifactName := vars["artifactName"]
+
+	ordinal, err := strconv.ParseInt(taskOrdinalStr, 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "invalid task ordinal"})
+		return
+	}
+
+	data, err := h.workflows.GetArtifactByOrdinal(r.Context(), workflow.GetArtifactByOrdinalRequest{
+		ProjectID:    projectID,
+		JobID:        jobID,
+		TaskOrdinal:  ordinal,
+		ArtifactName: artifactName,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, workflow.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrInvalidProject):
+			writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: "failed to retrieve artifact"})
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", data.Filename))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", data.SizeBytes))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(data.Content); err != nil {
 		fmt.Fprintf(w, "error writing artifact content: %v", err)
 	}
 }
@@ -322,6 +396,34 @@ func toOpenAPIWorkflowDetail(detail workflow.WorkflowDetail) openapi.WorkflowDet
 	}
 
 	return out
+}
+
+func toOpenAPIWorkflowOutcome(out workflow.WorkflowOutcome) openapi.WorkflowOutcome {
+	artifacts := make([]openapi.ArtifactReference, 0, len(out.Artifacts))
+	for _, art := range out.Artifacts {
+		artifacts = append(artifacts, openapi.ArtifactReference{
+			ArtifactId:   art.ArtifactID,
+			ArtifactType: art.ArtifactType,
+			CreatedAt:    art.CreatedAt,
+			Name:         art.Name,
+			SizeBytes:    art.SizeBytes,
+			Url:          art.URL,
+		})
+	}
+
+	var output *map[string]interface{}
+	if out.Output != nil {
+		output = &out.Output
+	}
+
+	return openapi.WorkflowOutcome{
+		Artifacts:      artifacts,
+		AttemptOrdinal: out.AttemptOrdinal,
+		Error:          out.Error,
+		JobId:          out.JobID,
+		Output:         output,
+		Status:         openapi.WorkflowStatus(out.Status),
+	}
 }
 
 func toOpenAPIWorkflowActor(actor workflow.Actor) *openapi.Actor {
