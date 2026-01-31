@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/cli
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260130203941-578cf6e15e39
+	github.com/getkin/kin-openapi v0.133.0
 	github.com/go-resty/resty/v2 v2.12.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/jedib0t/go-pretty/v6 v6.4.8
@@ -15,7 +15,6 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect

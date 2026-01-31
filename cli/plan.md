@@ -11,7 +11,7 @@
 - **Package layout**
   - `cmd/colony2/main.go` – bootstrap, bind root flags, wire dependencies.
   - `internal/config` – load/merge config file (`~/.config/colony2/config.yaml`), env vars (`COLONY2_*`), flags. Fields: `api_url`, `token`, `output` (table|json), `pager` (bool), `timeout`.
-  - `internal/client` – wraps `server/openapi/pkg/openapi` client creation; injects auth header via request editor; adds retry/backoff and per-command timeout context.
+- `internal/client` – wraps generated OpenAPI client creation; injects auth header via request editor; adds retry/backoff and per-command timeout context.
   - `internal/output`
     - `printer` interface with implementations: `tablePrinter`, `jsonPrinter`.
     - Column definitions per resource (`ticket`, `recipe`, `workflow`, `inputRequest`, `cell`) with sensible defaults and overridable via `--columns`.

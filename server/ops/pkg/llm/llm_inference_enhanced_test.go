@@ -9,6 +9,8 @@ import (
 
 	f2 "github.com/colony-2/colony2/server/core/pkg/file"
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
+	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,6 +93,68 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 
 		assert.NotEmpty(t, output.Response)
 		assert.Equal(t, "gpt-3.5-turbo", output.Model)
+	})
+}
+
+func TestLLMInferenceInputValidation_EmptyToolsAndNoTools(t *testing.T) {
+	activity := NewEnhancedLLMInferenceActivity()
+	makeInput := func() map[string]interface{} {
+		return map[string]interface{}{
+			"default_provider": "openai",
+			"default_model":    "gpt-4.1",
+			"temperature":      0,
+			"system_prompt":    `Return {"ok": true}`,
+			"prompt":           "hi",
+		}
+	}
+
+	t.Run("no tools accepted", func(t *testing.T) {
+		raw := makeInput()
+
+		var decoded LLMInferenceInput
+		err := recipeops.DecodeWithJsonTags(raw, &decoded)
+		require.NoError(t, err)
+
+		v := validator.New()
+		require.NoError(t, v.Struct(decoded))
+	})
+
+	t.Run("empty tool parameters accepted", func(t *testing.T) {
+		raw := makeInput()
+		raw["execute_tools"] = true
+		raw["tools"] = []interface{}{
+			map[string]interface{}{
+				"name":        "respond",
+				"description": "Return JSON verdict",
+				"parameters":  map[string]interface{}{},
+			},
+		}
+
+		var decoded LLMInferenceInput
+		err := recipeops.DecodeWithJsonTags(raw, &decoded)
+		require.NoError(t, err)
+
+		v := validator.New()
+		require.NoError(t, v.Struct(decoded))
+		assert.Equal(t, []byte("{}"), []byte(decoded.Tools[0].Parameters))
+	})
+
+	t.Run("execute_tools_without_tools_rejected", func(t *testing.T) {
+		raw := makeInput()
+		raw["execute_tools"] = true
+		raw["enable_tool_execution"] = true
+
+		var decoded LLMInferenceInput
+		err := recipeops.DecodeWithJsonTags(raw, &decoded)
+		require.NoError(t, err)
+
+		v := validator.New()
+		err = v.Struct(decoded)
+		require.NoError(t, err)
+
+		err = activity.validateInput(decoded)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "tools are required")
 	})
 }
 

@@ -468,7 +468,7 @@ func (s *Service) GetWorkflowOutcome(ctx context.Context, req model.GetWorkflowO
 	}
 
 	status := mapWorkflowStatus(run.Job.Status)
-	selected := selectLatestAttemptWithOutcome(run.Tasks)
+	selected := selectLatestAttemptWithOutcome(run.Tasks, run.JobAttempts)
 
 	if selected == nil && status == model.WorkflowStatusRunning {
 		return nil, ErrOutcomePending
@@ -491,6 +491,10 @@ func (s *Service) GetWorkflowOutcome(ctx context.Context, req model.GetWorkflowO
 		} else if selected.Outcome.Status == swf.TaskOutcomeStatusFailed {
 			msg := "task failed"
 			errMsg = &msg
+		}
+		// If job status is still running but latest attempt failed, surface failed status.
+		if status == model.WorkflowStatusRunning && selected.Outcome.Status == swf.TaskOutcomeStatusFailed {
+			status = model.WorkflowStatusFailed
 		}
 	}
 
@@ -912,22 +916,44 @@ func stringPtr(val string) *string {
 	return &val
 }
 
-func selectLatestAttemptWithOutcome(tasks []swf.TaskRun) *swf.TaskAttempt {
-	var chosen *swf.TaskAttempt
-	for i := range tasks {
-		for j := range tasks[i].Attempts {
-			att := tasks[i].Attempts[j]
-			hasOutput := att.Output != nil && len(att.Output.Data) > 0
-			hasError := att.Outcome.Error != nil || att.Outcome.Status == swf.TaskOutcomeStatusFailed
-			if !hasOutput && !hasError {
-				continue
-			}
-			if chosen == nil || att.Ordinal > chosen.Ordinal || (att.Ordinal == chosen.Ordinal && att.Attempt > chosen.Attempt) {
-				copy := att
-				chosen = &copy
+type outcomeAttempt struct {
+	Ordinal int64
+	Attempt int
+	Output  *swf.TaskIO
+	Outcome swf.TaskOutcome
+}
+
+func selectLatestAttemptWithOutcome(tasks []swf.TaskRun, jobAttempts []swf.JobAttempt) *outcomeAttempt {
+	var chosen *outcomeAttempt
+
+	consider := func(ord int64, attempt int, out *swf.TaskIO, outcome swf.TaskOutcome) {
+		hasOutput := out != nil && len(out.Data) > 0
+		hasError := outcome.Error != nil || outcome.Status == swf.TaskOutcomeStatusFailed
+		if !hasOutput && !hasError {
+			return
+		}
+		if chosen == nil || ord > chosen.Ordinal || (ord == chosen.Ordinal && attempt > chosen.Attempt) {
+			chosen = &outcomeAttempt{
+				Ordinal: ord,
+				Attempt: attempt,
+				Output:  out,
+				Outcome: outcome,
 			}
 		}
 	}
+
+	for i := range tasks {
+		for j := range tasks[i].Attempts {
+			att := tasks[i].Attempts[j]
+			consider(att.Ordinal, att.Attempt, att.Output, att.Outcome)
+		}
+	}
+
+	for i := range jobAttempts {
+		ja := jobAttempts[i]
+		consider(ja.Ordinal, ja.Attempt, ja.Output, ja.Outcome)
+	}
+
 	return chosen
 }
 

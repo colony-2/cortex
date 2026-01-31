@@ -10,7 +10,7 @@ import (
 	"github.com/go-resty/resty/v2"
 
 	"github.com/colony-2/colony2/cli/internal/config"
-	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	"github.com/colony-2/colony2/cli/internal/openapi"
 )
 
 // New returns an OpenAPI client configured with auth, timeout, and resty middleware.

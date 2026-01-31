@@ -7,6 +7,7 @@ import (
 
 	f2 "github.com/colony-2/colony2/server/core/pkg/file"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/mitchellh/mapstructure"
 
 	"time"
 
@@ -40,7 +41,7 @@ type LLMInferenceInput struct {
 	// Enhanced fields (new)
 	Files               []f2.File              `json:"files,omitempty" validate:"required_without=Prompt"`
 	FileHandling        string                 `json:"file_handling,omitempty" validate:"omitempty,oneof=native text_fallback hybrid"` // native, text_fallback, hybrid
-	Tools               []ToolDefinition       `json:"tools,omitempty" validate:"required_if=ExecuteTools true,min=1,dive"`
+	Tools               []ToolDefinition       `json:"tools,omitempty" validate:"omitempty,dive"`
 	ExecuteTools        bool                   `json:"execute_tools,omitempty"`
 	DefaultWorkingDir   string                 `yaml:"default_working_dir" json:"default_working_dir,omitempty" default:"{{ context.environment.worktree_path }}"`
 	ToolWorkingDir      string                 `json:"tool_working_dir,omitempty" default:"{{ context.environment.worktree_path }}"`
@@ -56,6 +57,52 @@ type ToolDefinition struct {
 	Name        string          `json:"name" validate:"required"`
 	Description string          `json:"description" validate:"required"`
 	Parameters  json.RawMessage `json:"parameters" validate:"required"`
+}
+
+// DecodeFromMap ensures parameters are preserved as JSON, even when empty objects are provided.
+func (t *ToolDefinition) DecodeFromMap(input any) error {
+	rawMap, ok := input.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("tool definition must be an object")
+	}
+
+	if raw, exists := rawMap["parameters"]; exists {
+		switch v := raw.(type) {
+		case json.RawMessage:
+			rawMap["parameters"] = v
+		case []byte:
+			rawMap["parameters"] = json.RawMessage(v)
+		case string:
+			if !json.Valid([]byte(v)) {
+				return fmt.Errorf("tool parameters string is not valid JSON")
+			}
+			rawMap["parameters"] = json.RawMessage(v)
+		default:
+			encoded, err := json.Marshal(v)
+			if err != nil {
+				return fmt.Errorf("encode tool parameters: %w", err)
+			}
+			rawMap["parameters"] = json.RawMessage(encoded)
+		}
+	}
+
+	type toolAlias ToolDefinition
+	var decoded toolAlias
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName:     "json",
+		Result:      &decoded,
+		ErrorUnused: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := decoder.Decode(rawMap); err != nil {
+		return err
+	}
+
+	*t = ToolDefinition(decoded)
+	return nil
 }
 
 // LLMInferenceOutput defines enhanced output (backward compatible)
@@ -222,6 +269,10 @@ func (a *EnhancedLLMInferenceActivity) validateInput(input LLMInferenceInput) er
 
 		if !input.EnableToolExecution {
 			return fmt.Errorf("tool execution is disabled in configuration")
+		}
+
+		if len(input.Tools) == 0 {
+			return fmt.Errorf("tools are required when execute_tools is true")
 		}
 
 		for _, tool := range input.Tools {

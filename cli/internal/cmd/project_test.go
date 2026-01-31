@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/cli/internal/config"
+	"github.com/colony-2/colony2/cli/internal/openapi"
 	"github.com/colony-2/colony2/cli/internal/output"
-	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 )
 
 // helper to build an App wired to a test server and buffer.

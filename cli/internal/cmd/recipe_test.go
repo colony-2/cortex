@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/cli/internal/config"
+	"github.com/colony-2/colony2/cli/internal/openapi"
 	"github.com/colony-2/colony2/cli/internal/output"
-	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 )
 
 func setupTestAppWithProject(t *testing.T, handler http.Handler, project string) (*App, *bytes.Buffer, func()) {

@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/colony-2/colony2/cli/internal/client"
-	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	"github.com/colony-2/colony2/cli/internal/openapi"
 )
 
 func newRecipeCmd() *cobra.Command {
