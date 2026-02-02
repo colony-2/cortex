@@ -9,6 +9,7 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -95,6 +96,11 @@ func NewRecipeResolutionContext(commitContext *contextual.GitCommitContext, reci
 	if len(opts) > 0 {
 		options = opts[0]
 	}
+	// Default builtin set if caller did not supply CEL options.
+	if options.CELOptionsProvider == nil {
+		builder := funcregistry.NewBuilder().WithDefaults()
+		options.CELOptionsProvider = builder
+	}
 
 	return newResolutionContext(commitContext, tracker, ScopeRecipe, "", recipeInputs, execCtx, options)
 }
@@ -126,7 +132,7 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	// Note: We use a custom type adapter to properly handle Go struct embedding
 	// CEL doesn't natively understand Go's anonymous struct fields, so we need to
 	// provide a flattened view that matches JSON serialization behavior
-	env, err := cel.NewEnv(
+	baseOpts := []cel.EnvOption{
 		cel.Variable("inputs", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("sequence", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
 		cel.Variable("states", cel.MapType(cel.StringType, cel.MapType(cel.StringType, cel.DynType))),
@@ -152,25 +158,38 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 			reflect.TypeOf(swf.ArtifactKey{}),
 			ext.ParseStructTag("json"),
 		),
-	)
+	}
+
+	// Allow provider to contribute type options before env creation.
+	if options.CELOptionsProvider != nil {
+		if typeOpts := options.CELOptionsProvider.TypeOptions(); len(typeOpts) > 0 {
+			baseOpts = append(baseOpts, typeOpts...)
+		}
+	}
+
+	env, err := cel.NewEnv(baseOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
-	env, err = cel.CustomTypeAdapter(newResolutionTypeAdapter(env.CELTypeAdapter(), options))(env)
+	adapter := newResolutionTypeAdapter(env.CELTypeAdapter(), options)
+	env, err = cel.CustomTypeAdapter(adapter)(env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure CEL adapter: %w", err)
 	}
-	env, err = env.Extend(jsonParseEnvOption(env.CELTypeAdapter()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to configure CEL json_parse: %w", err)
+
+	// Inject registry-provided options (default or caller supplied)
+	var extraOpts []cel.EnvOption
+	if options.CELOptionsProvider != nil {
+		extraOpts, err = options.CELOptionsProvider.FunctionOptions(adapter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get CEL options: %w", err)
+		}
 	}
-	env, err = env.Extend(
-		jqEnvOption(env.CELTypeAdapter()),
-		jsonStringifyEnvOption(env.CELTypeAdapter()),
-		stringJSONEnvOption(env.CELTypeAdapter()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to configure CEL jq/json_stringify: %w", err)
+	if len(extraOpts) > 0 {
+		env, err = env.Extend(extraOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to extend CEL env: %w", err)
+		}
 	}
 	rc.CELEnv = env
 	rc.ensureContextBackfill()

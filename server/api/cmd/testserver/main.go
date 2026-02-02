@@ -24,6 +24,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	rec "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
@@ -132,13 +133,15 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	if err != nil {
 		return fmt.Errorf("failed to create recipe store: %w", err)
 	}
+	celFns := funcregistry.NewBuilder().WithDefaults()
+
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
 		Store:        recipeStore,
 		GitRepo:      gitpkg.NewRepository(gitpkg.Config{}),
 		Projects:     projectSvc,
 		IDGen:        recipesvc.NewKSUIDGenerator(),
 		Clock:        recipesvc.NewSystemClock(),
-		CELValidator: recipesvc.NewRecipeWorkerCELValidator(ops.NewServiceDepsBuilder().Build()),
+		CELValidator: recipesvc.NewRecipeWorkerCELValidatorWithProvider(ops.NewServiceDepsBuilder().Build(), celFns),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create recipe service: %w", err)

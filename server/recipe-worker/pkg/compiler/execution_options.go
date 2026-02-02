@@ -24,6 +24,8 @@ type ValidationOptions struct {
 type ExecutionOptions struct {
 	Mode       ExecutionMode
 	Validation ValidationOptions
+	// Optional CEL options provider to inject extra functions/types.
+	CELOptionsProvider template.CELOptionsProvider
 }
 
 func normalizeExecutionOptions(opts []ExecutionOptions) ExecutionOptions {
@@ -43,6 +45,7 @@ func normalizeExecutionOptions(opts []ExecutionOptions) ExecutionOptions {
 
 func resolutionOptionsFromExecution(opts ExecutionOptions) template.ResolutionOptions {
 	resolution := template.DefaultResolutionOptions()
+	resolution.CELOptionsProvider = opts.CELOptionsProvider
 	if opts.Mode == ExecutionModeValidate {
 		resolution.Mode = string(ExecutionModeValidate)
 		resolution.ClampSliceIndex = true

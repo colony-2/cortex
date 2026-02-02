@@ -28,8 +28,15 @@ type RecipeExecutor interface {
 	ExecuteSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error
 }
 
-// DefaultRecipeExecutor preserves the existing execution behavior.
-type DefaultRecipeExecutor struct{}
+// DefaultRecipeExecutor preserves the existing execution behavior, with optional CEL provider injection.
+type DefaultRecipeExecutor struct {
+	celProvider template.CELOptionsProvider
+}
+
+// NewDefaultRecipeExecutor builds an executor with a default CEL provider.
+func NewDefaultRecipeExecutor(provider template.CELOptionsProvider) DefaultRecipeExecutor {
+	return DefaultRecipeExecutor{celProvider: provider}
+}
 
 // ExecuteRecipe keeps the existing public entry point, delegating to the default executor.
 func ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error) {
@@ -54,6 +61,9 @@ func (d DefaultRecipeExecutor) ExecuteRecipe(ctx workflow.Context, r recipe.Reci
 	ctx.JobContext = newThinPackForwardingJobContext(ctx.JobContext)
 
 	execOpts := normalizeExecutionOptions(opts)
+	if execOpts.CELOptionsProvider == nil && d.celProvider != nil {
+		execOpts.CELOptionsProvider = d.celProvider
+	}
 	recipeInputs, err := prepareRecipeInputs(r.GetMetdata(), rawRecipeInputs, execOpts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("recipe inputs do not match schema. %w", err)

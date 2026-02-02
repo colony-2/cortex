@@ -23,6 +23,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
@@ -79,13 +80,38 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe store: %w", err)
 	}
+	celFns := funcregistry.NewBuilder().WithDefaults()
+	funcregistry.AddZeroFunc(celFns, "cells", func(ctx context.Context) ([]map[string]interface{}, error) {
+		it, err := cellSvc.ListCells(ctx, cell.SearchFilter{})
+		if err != nil {
+			return nil, err
+		}
+		defer it.Close(ctx)
+		var cells []map[string]interface{}
+		for {
+			c, err := it.Next(ctx)
+			if err != nil {
+				if err.Error() == "iterator: done" {
+					break
+				}
+				return nil, err
+			}
+			cells = append(cells, map[string]interface{}{
+				"name": c.Name,
+				"id":   string(c.ID),
+				"path": c.WorkingPath,
+			})
+		}
+		return cells, nil
+	})
+
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
 		Store:        recipeStore,
 		GitRepo:      gitpkg.NewRepository(gitpkg.Config{}),
 		Projects:     projectSvc,
 		IDGen:        recipesvc.NewKSUIDGenerator(),
 		Clock:        recipesvc.NewSystemClock(),
-		CELValidator: recipesvc.NewRecipeWorkerCELValidator(ops.NewServiceDepsBuilder().Build()),
+		CELValidator: recipesvc.NewRecipeWorkerCELValidatorWithProvider(ops.NewServiceDepsBuilder().Build(), celFns),
 	})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe service: %w", err)
