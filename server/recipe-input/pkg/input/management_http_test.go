@@ -55,7 +55,7 @@ inputs:
 		Build()
 	require.NoError(t, mgmtService.Initialize(deps))
 
-	workSet, err := compiler.NewRecipeWorker(deps, registry)
+	workSet, err := compiler.NewRecipeWorker(deps, registry, nil)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 	jobCtx, gitCtx := compiler.GenerateTestContext()
 

@@ -10,6 +10,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -17,11 +18,15 @@ import (
 type recipeWorkerImpl struct {
 	activityRegistry *workerops.ActivityRegistry
 	recipes          *recipeRetriever
+	celProvider      template.CELOptionsProvider
 }
 
-func NewRecipeWorker(dependencies ops.ServiceDependencies2, activityRegistry *workerops.ActivityRegistry) (*swf.WorkSet, error) {
+func NewRecipeWorker(dependencies ops.ServiceDependencies2, activityRegistry *workerops.ActivityRegistry, provider ...template.CELOptionsProvider) (*swf.WorkSet, error) {
 	job := &recipeWorkerImpl{
 		activityRegistry: activityRegistry,
+	}
+	if len(provider) > 0 {
+		job.celProvider = provider[0]
 	}
 	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers(dependencies)...)
 }
@@ -80,7 +85,12 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 
 	wCtx := workflow.Context{JobContext: ctx}
-	out, artifacts, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef})
+	opts := ExecutionOptions{}
+	if j.celProvider != nil {
+		opts.CELOptionsProvider = j.celProvider
+	}
+
+	out, artifacts, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef}, opts)
 
 	if err != nil {
 		logger.Error("recipe execution failed", "error", err)

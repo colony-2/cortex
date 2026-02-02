@@ -53,7 +53,7 @@ func TestInterpolateString(t *testing.T) {
 	tests := []struct {
 		name     string
 		template string
-		mode     ResolutionMode
+		mode     RenderMode
 		expected interface{}
 		isString bool // Whether result should be a string
 	}{
@@ -235,7 +235,7 @@ func TestInterpolateString_Errors(t *testing.T) {
 	tests := []struct {
 		name      string
 		template  string
-		mode      ResolutionMode
+		mode      RenderMode
 		expectErr string
 	}{
 		{
@@ -289,7 +289,7 @@ func TestResolveValueWithMode(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    interface{}
-		mode     ResolutionMode
+		mode     RenderMode
 		expected interface{}
 	}{
 		{

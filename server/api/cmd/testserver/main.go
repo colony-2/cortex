@@ -134,6 +134,29 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		return fmt.Errorf("failed to create recipe store: %w", err)
 	}
 	celFns := funcregistry.NewBuilder().WithDefaults()
+	funcregistry.AddZeroFunc(celFns, "cells", func(ctx context.Context) ([]map[string]interface{}, error) {
+		it, err := cellSvc.ListCells(ctx, cell.SearchFilter{})
+		if err != nil {
+			return nil, err
+		}
+		defer it.Close(ctx)
+		var cells []map[string]interface{}
+		for {
+			c, err := it.Next(ctx)
+			if err != nil {
+				if err.Error() == "iterator: done" {
+					break
+				}
+				return nil, err
+			}
+			cells = append(cells, map[string]interface{}{
+				"name": c.Name,
+				"id":   string(c.ID),
+				"path": c.WorkingPath,
+			})
+		}
+		return cells, nil
+	})
 
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
 		Store:        recipeStore,

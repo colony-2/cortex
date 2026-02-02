@@ -8,7 +8,7 @@ import (
 )
 
 // interpolateString performs string interpolation with embedded CEL expressions
-func (rc *ResolutionContext) interpolateString(template string, mode ResolutionMode) (interface{}, error) {
+func (rc *ResolutionContext) interpolateString(template string, mode RenderMode) (interface{}, error) {
 	// For pure CEL mode (when conditions), don't do interpolation
 	if mode == ModePureCEL {
 		// This should be a pure CEL expression, no {{ }} markers
@@ -88,7 +88,7 @@ func isArtifactInterpolationValue(value interface{}) bool {
 }
 
 // ResolveTemplateWithMode handles expression evaluation with a specific mode
-func (rc *ResolutionContext) ResolveTemplateWithMode(expr string, mode ResolutionMode) (interface{}, error) {
+func (rc *ResolutionContext) ResolveTemplateWithMode(expr string, mode RenderMode) (interface{}, error) {
 	// For pure CEL mode, this is a when condition - no {{ }} expected
 	if mode == ModePureCEL {
 		return rc.EvaluateCEL(expr)
@@ -107,7 +107,7 @@ func (rc *ResolutionContext) ResolveTemplateWithMode(expr string, mode Resolutio
 }
 
 // ResolveValueWithMode recursively resolves templates in a value with a specific mode
-func (rc *ResolutionContext) ResolveValueWithMode(value interface{}, mode ResolutionMode) (interface{}, error) {
+func (rc *ResolutionContext) ResolveValueWithMode(value interface{}, mode RenderMode) (interface{}, error) {
 	switch v := value.(type) {
 	case string:
 		// Resolve string templates with the given mode

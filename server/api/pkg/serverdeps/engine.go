@@ -8,6 +8,7 @@ import (
 	"time"
 
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/strata-go/pkg/daemon"
@@ -45,6 +46,7 @@ type EngineConfig struct {
 	StrataURL             string
 	StrataAPIKey          string
 	InitializeDB          bool
+	CELOptionsProvider    template.CELOptionsProvider
 }
 
 // NewEngineSetup creates and starts a workflow engine with PGWF and Strata.
@@ -174,7 +176,7 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	activityRegistry.SetDependencies(cfg.Dependencies)
 
 	cfg.Logger.Info("creating recipe worker")
-	workset, err := compiler.NewRecipeWorker(cfg.Dependencies, activityRegistry)
+	workset, err := compiler.NewRecipeWorker(cfg.Dependencies, activityRegistry, cfg.CELOptionsProvider)
 	if err != nil {
 		cancel()
 		if strata != nil {

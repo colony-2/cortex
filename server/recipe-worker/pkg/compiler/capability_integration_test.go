@@ -64,7 +64,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 
 	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
-	ws, err := NewRecipeWorker(coreops.NewServiceDepsBuilder().Build(), registry)
+	ws, err := NewRecipeWorker(coreops.NewServiceDepsBuilder().Build(), registry, nil)
 	require.NoError(t, err)
 	var (
 		jobRunsMu sync.Mutex

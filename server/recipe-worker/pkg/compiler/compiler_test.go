@@ -69,7 +69,7 @@ func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]inter
 	require.NoError(s.T(), err)
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(s.T(), err)
-	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry)
+	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry, nil)
 	require.NoError(s.T(), err)
 	err = s.eng.RegisterWorkers(workSet)
 	require.NoError(s.T(), err)
@@ -184,7 +184,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 		},
 	}
 
-	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry)
+	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry, nil)
 	err = s.eng.RegisterWorkers(workSet)
 	stop := context.Background()
 	s.eng.Run(stop) // we start after worker registration.

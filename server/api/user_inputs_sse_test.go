@@ -105,7 +105,7 @@ func setupSSETestEnv(t *testing.T) sseTestEnv {
 		}
 	}
 
-	workSet, err := compiler.NewRecipeWorker(depContainer, registry)
+	workSet, err := compiler.NewRecipeWorker(depContainer, registry, nil)
 	require.NoError(t, err)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 

@@ -12,8 +12,10 @@ type CELOptionsProvider interface {
 	FunctionOptions(adapter types.Adapter) ([]cel.EnvOption, error)
 }
 
+type ResolutionMode string
+
 type ResolutionOptions struct {
-	Mode                string
+	Mode                ResolutionMode
 	ValidationMode      string
 	ClampSliceIndex     bool
 	AllowFutureStepRefs bool
@@ -22,6 +24,11 @@ type ResolutionOptions struct {
 	CELOptionsProvider CELOptionsProvider
 }
 
+const (
+	ModeRun      ResolutionMode = "run"
+	ModeValidate ResolutionMode = "validate"
+)
+
 func DefaultResolutionOptions() ResolutionOptions {
-	return ResolutionOptions{Mode: "run"}
+	return ResolutionOptions{Mode: ModeRun}
 }

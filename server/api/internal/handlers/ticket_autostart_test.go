@@ -70,7 +70,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	}
 	deps := ops.NewServiceDepsBuilder().WithDatabase(db).Build()
 	registry.SetDependencies(deps)
-	workset, err := compiler.NewRecipeWorker(deps, registry)
+	workset, err := compiler.NewRecipeWorker(deps, registry, nil)
 	require.NoError(t, err)
 	if _, ok := workset.TaskWorkers["ticket.manage:ticket.manage"]; !ok {
 		t.Fatalf("workset missing ticket.manage:ticket.manage task, keys=%v", worksetTaskKeys(workset.TaskWorkers))

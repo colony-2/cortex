@@ -47,12 +47,12 @@ func resolutionOptionsFromExecution(opts ExecutionOptions) template.ResolutionOp
 	resolution := template.DefaultResolutionOptions()
 	resolution.CELOptionsProvider = opts.CELOptionsProvider
 	if opts.Mode == ExecutionModeValidate {
-		resolution.Mode = string(ExecutionModeValidate)
+		resolution.Mode = template.ModeValidate
 		resolution.ClampSliceIndex = true
 		resolution.AllowFutureStepRefs = true
 		resolution.ValidationMode = string(opts.Validation.Mode)
 	} else {
-		resolution.Mode = string(ExecutionModeRun)
+		resolution.Mode = template.ModeRun
 	}
 	return resolution
 }

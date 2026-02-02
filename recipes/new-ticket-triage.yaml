@@ -70,6 +70,6 @@ sequence:
         EOF
 
 outputs:
-  cell_is_appropriate: "{{ json_parse(string(sequence.assess_cell.outputs.response)).cell_is_appropriate }}"
-  recommended_cell: "{{ json_parse(string(sequence.assess_cell.outputs.response)).recommended_cell }}"
-  rationale: "{{ json_parse(string(sequence.assess_cell.outputs.response)).rationale }}"
+  cell_is_appropriate: "{{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate }}"
+  recommended_cell: "{{ json_parse(sequence.assess_cell.outputs.response).recommended_cell }}"
+  rationale: "{{ json_parse(sequence.assess_cell.outputs.response).rationale }}"

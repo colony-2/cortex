@@ -86,7 +86,7 @@ outputs:
 
 	wf := workflow.SWFWorkflowControl{Engine: engine}
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(&wf).Build()
-	workSet, err := compiler.NewRecipeWorker(deps, registry)
+	workSet, err := compiler.NewRecipeWorker(deps, registry, nil)
 	require.NoError(t, err)
 	workSet.JobWorker = &artifactValidatingJobWorker{inner: workSet.JobWorker, t: t}
 	require.NoError(t, engine.RegisterWorkers(workSet))

@@ -98,7 +98,7 @@ outputs:
 		Build()
 	require.NoError(t, op.GetManagementService().Initialize(deps))
 
-	workSet, err := compiler.NewRecipeWorker(deps, registry)
+	workSet, err := compiler.NewRecipeWorker(deps, registry, nil)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 	jobCtx, gitCtx := compiler.GenerateTestContext()
 	in := map[string]interface{}{
@@ -188,7 +188,7 @@ inputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 	workerDeps := coreops.NewServiceDepsBuilder().Build()
-	workSet, err := compiler.NewRecipeWorker(workerDeps, registry)
+	workSet, err := compiler.NewRecipeWorker(workerDeps, registry, nil)
 	require.NoError(t, err)
 
 	dsn, stopPG, err := impl.StartEmbeddedPostgres()

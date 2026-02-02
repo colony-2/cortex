@@ -34,7 +34,7 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 	}
 	stateInvocationCount := make(map[string]int)
 
-	if resCtx.Options.Mode == string(ExecutionModeValidate) && resCtx.Options.ValidationMode == string(ValidateAll) {
+	if resCtx.Options.Mode == template.ModeValidate && resCtx.Options.ValidationMode == string(ValidateAll) {
 		stateNames := sortedStateNames(stateMap.States)
 		lastStateName := ""
 		lastStateDef := recipe.State{}

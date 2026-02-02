@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// ResolutionMode defines how templates should be resolved
-type ResolutionMode int
+// RenderMode defines how templates should be resolved (interpolation vs pure CEL).
+type RenderMode int
 
 const (
 	// ModeInterpolation supports string interpolation with embedded expressions
-	ModeInterpolation ResolutionMode = iota
+	ModeInterpolation RenderMode = iota
 	// ModePureCEL requires pure CEL expression only (for when conditions)
 	ModePureCEL
 )

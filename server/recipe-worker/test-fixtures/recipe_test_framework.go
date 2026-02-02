@@ -635,7 +635,7 @@ func executeRecipeWithArtifacts(
 	}
 
 	deps = coreops.NewServiceDepsBuilder().WithWorkflowControl(control).WithDatabase(deps.Database()).WithSSEManager(deps.SSEManager()).Build()
-	workset, err := compiler.NewRecipeWorker(deps, registry)
+	workset, err := compiler.NewRecipeWorker(deps, registry, nil)
 	if err != nil {
 		return nil, nil, nil, err
 	}

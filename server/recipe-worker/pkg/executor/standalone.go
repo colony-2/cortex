@@ -67,7 +67,7 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 		WithSSEManager(e.deps.SSEManager()).
 		Build()
 
-	workset, err := compiler.NewRecipeWorker(deps, e.registry)
+	workset, err := compiler.NewRecipeWorker(deps, e.registry, nil)
 	if err != nil {
 		return nil, err
 	}

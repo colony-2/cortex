@@ -15,6 +15,7 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/ext"
+	exprpb "google.golang.org/genproto/googleapis/api/expr/v1alpha1"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -375,6 +376,11 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 		return nil, fmt.Errorf("failed to compile CEL expression: %w", issues.Err())
 	}
 
+	// In validate mode avoid executing user functions; if any are present, return a placeholder.
+	if rc.Options.Mode == ModeValidate && hasForbiddenCalls(ast.Expr()) {
+		return placeholderFromCELType(ast.OutputType()), nil
+	}
+
 	program, err := rc.CELEnv.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CEL program: %w", err)
@@ -547,4 +553,83 @@ func generateExecutionID() string {
 
 func generateRunID() string {
 	return fmt.Sprintf("run-%d", time.Now().UnixNano())
+}
+
+// placeholderFromCELType returns a benign placeholder value for the given CEL type.
+// It is used during validation to avoid executing CEL functions on synthetic data.
+func placeholderFromCELType(t *types.Type) interface{} {
+	if t == nil {
+		return nil
+	}
+
+	switch t.Kind() {
+	case types.NullTypeKind, types.DynKind:
+		return nil
+	case types.BoolKind:
+		return false
+	case types.IntKind, types.UintKind, types.DoubleKind:
+		return 0
+	case types.StringKind, types.BytesKind:
+		return ""
+	case types.ListKind:
+		return []interface{}{}
+	case types.MapKind:
+		return map[string]interface{}{}
+	case types.TypeKind, types.StructKind, types.AnyKind:
+		return map[string]interface{}{}
+	default:
+		return nil
+	}
+}
+
+// hasForbiddenCalls detects whether the expression contains function calls that should not
+// be executed during validation (non-operator function calls).
+func hasForbiddenCalls(expr *exprpb.Expr) bool {
+	if expr == nil {
+		return false
+	}
+
+	switch e := expr.ExprKind.(type) {
+	case *exprpb.Expr_CallExpr:
+		fn := e.CallExpr.Function
+		// Operators are represented with names like _&&_, _?_:_, etc. Allow those.
+		if !strings.HasPrefix(fn, "_") {
+			return true
+		}
+		if hasForbiddenCalls(e.CallExpr.Target) {
+			return true
+		}
+		for _, arg := range e.CallExpr.Args {
+			if hasForbiddenCalls(arg) {
+				return true
+			}
+		}
+	case *exprpb.Expr_SelectExpr:
+		return hasForbiddenCalls(e.SelectExpr.Operand)
+	case *exprpb.Expr_ListExpr:
+		for _, el := range e.ListExpr.Elements {
+			if hasForbiddenCalls(el) {
+				return true
+			}
+		}
+	case *exprpb.Expr_StructExpr:
+		for _, entry := range e.StructExpr.Entries {
+			if hasForbiddenCalls(entry.GetValue()) {
+				return true
+			}
+			switch k := entry.KeyKind.(type) {
+			case *exprpb.Expr_CreateStruct_Entry_FieldKey:
+				// field keys are plain strings; nothing to check
+				_ = k
+			case *exprpb.Expr_CreateStruct_Entry_MapKey:
+				if hasForbiddenCalls(k.MapKey) {
+					return true
+				}
+			}
+		}
+	case *exprpb.Expr_ComprehensionExpr:
+		// Comprehensions may execute user functions; conservatively forbid.
+		return true
+	}
+	return false
 }

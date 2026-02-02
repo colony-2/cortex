@@ -173,7 +173,7 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 	}
 
 	if len(chain) > 0 {
-		allowNulls := resCtx.Options.Mode == string(ExecutionModeValidate)
+		allowNulls := resCtx.Options.Mode == template.ModeValidate
 		if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
 			return fmt.Errorf("op input validation failed: %w", err)
 		}

@@ -136,16 +136,17 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		Build()
 
 	engineSetup, err := serverdeps.NewEngineSetup(serverdeps.EngineConfig{
-		Context:      ctx,
-		PostgresDB:   pgDB,
-		PostgresDSN:  dsn,
-		StoragePath:  cfg.StoragePath,
-		Dependencies: tempDeps,
-		Logger:       logger,
-		StrataMode:   serverdeps.StrataMode(cfg.StrataMode),
-		StrataURL:    cfg.StrataURL,
-		StrataAPIKey: cfg.StrataAPIKey,
-		InitializeDB: cfg.InitializeDB,
+		Context:            ctx,
+		PostgresDB:         pgDB,
+		PostgresDSN:        dsn,
+		StoragePath:        cfg.StoragePath,
+		Dependencies:       tempDeps,
+		Logger:             logger,
+		StrataMode:         serverdeps.StrataMode(cfg.StrataMode),
+		StrataURL:          cfg.StrataURL,
+		StrataAPIKey:       cfg.StrataAPIKey,
+		InitializeDB:       cfg.InitializeDB,
+		CELOptionsProvider: celFns,
 	})
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to setup workflow engine: %w", err)
