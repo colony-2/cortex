@@ -27,8 +27,14 @@ func clampStepOutputs(stepOutputs map[string]StepOutput, adapter types.Adapter) 
 		if artifacts == nil {
 			artifacts = map[string]swf.Artifact{}
 		}
+		outputs := step.Outputs
+		if outputs == nil {
+			outputs = map[string]interface{}{}
+		}
+		// In validation mode we want missing keys to yield null instead of failing.
+		outputsVal := newPermissiveMap(outputs, adapter)
 		out[key] = map[string]interface{}{
-			"outputs":   step.Outputs,
+			"outputs":   outputsVal,
 			"artifacts": artifacts,
 			"runs":      clampRuns(step.Runs, adapter),
 		}
@@ -46,8 +52,12 @@ func clampRuns(runs []RunOutput, adapter types.Adapter) traits.Lister {
 		if artifacts == nil {
 			artifacts = map[string]swf.Artifact{}
 		}
+		outputs := run.Outputs
+		if outputs == nil {
+			outputs = map[string]interface{}{}
+		}
 		runMaps = append(runMaps, map[string]interface{}{
-			"outputs":   run.Outputs,
+			"outputs":   newPermissiveMap(outputs, adapter),
 			"artifacts": artifacts,
 			"run_id":    run.RunID,
 			"timestamp": run.Timestamp,

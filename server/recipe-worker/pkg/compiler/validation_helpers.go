@@ -152,12 +152,18 @@ func zeroValueForType(t reflect.Type) interface{} {
 }
 
 func placeholderStepOutput(outputs map[string]interface{}) template.StepOutput {
+	// Wrap dynamic outputs so CEL validation tolerates unknown keys (e.g., child recipe outputs).
+	wrapped := make(map[string]interface{}, len(outputs))
+	for k, v := range outputs {
+		wrapped[k] = v
+	}
+	dyn := template.DynamicOutputs(wrapped)
 	return template.StepOutput{
-		Outputs:   outputs,
+		Outputs:   dyn,
 		Artifacts: map[string]swf.Artifact{},
 		Runs: []template.RunOutput{
 			{
-				Outputs:   outputs,
+				Outputs:   dyn,
 				Artifacts: map[string]swf.Artifact{},
 			},
 		},

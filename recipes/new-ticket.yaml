@@ -1,18 +1,30 @@
 id: new-ticket
 version: 0.1.0
-desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval
+desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval (v2)
 state:
   initial: triage
   states:
     triage:
-      transitions:
-        - to: approve
       op: recipe.run_and_get_result
+      transitions:
+        - to: reassign
+          when: "!states.triage.outputs.outputs.cell_is_appropriate"
+        - to: approve
+          when: "states.triage.outputs.outputs.cell_is_appropriate"
       inputs:
         name: new-ticket-triage
         inputs:
           title: '{{ context.ticket.title }}'
           description: '{{ context.ticket.description }}'
+    reassign:
+      op: ticket.manage
+      when: 'has(context.ticket.id) && context.ticket.id != ""'
+      inputs:
+        actions:
+          - type: update_ticket
+            ticket_id: "{{ context.ticket.id }}"
+            cell: "{{ has(states.triage.outputs.outputs.recommended_cell) ? states.triage.outputs.outputs.recommended_cell : context.workflow.cell }}"
+            stage: open
     approve:
       op: input
       transitions:
@@ -30,3 +42,8 @@ state:
           - type: update_ticket
             ticket_id: "{{ context.actor.ticket_id }}"
             stage: completed
+outputs:
+  cell_is_appropriate: "{{ 'triage' in states && has(states['triage'].outputs.outputs.cell_is_appropriate) ? states['triage'].outputs.outputs.cell_is_appropriate : false }}"
+  recommended_cell: "{{ 'triage' in states && has(states['triage'].outputs.outputs.recommended_cell) ? states['triage'].outputs.outputs.recommended_cell : \"\" }}"
+  rationale: "{{ 'triage' in states && has(states['triage'].outputs.outputs.rationale) ? states['triage'].outputs.outputs.rationale : \"\" }}"
+  reassign_performed: "{{ 'triage' in states && has(states['triage'].outputs.outputs.cell_is_appropriate) ? !states['triage'].outputs.outputs.cell_is_appropriate : false }}"

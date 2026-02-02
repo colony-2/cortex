@@ -1,0 +1,21 @@
+id: repro-triage-missing-state
+state:
+  initial: triage
+  states:
+    triage:
+      op: recipe.run_and_get_result
+      inputs:
+        name: new-ticket-triage
+        inputs:
+          title: "Repro title"
+          description: "Repro description"
+      transitions:
+        - to: done
+          when: "true"
+    done:
+      op: command_execution
+      inputs:
+        run: "echo done"
+outputs:
+  triage_cell_ok: "{{ states.triage.outputs.outputs.cell_is_appropriate }}"
+  triage_rec_cell: "{{ states.triage.outputs.outputs.recommended_cell }}"

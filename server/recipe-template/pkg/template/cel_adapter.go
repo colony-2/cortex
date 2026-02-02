@@ -24,6 +24,12 @@ func newResolutionTypeAdapter(base types.Adapter, options ResolutionOptions) typ
 }
 
 func (a *resolutionTypeAdapter) NativeToValue(value interface{}) ref.Val {
+	// When validation placeholders mark dynamic outputs, wrap them so missing
+	// keys resolve to null instead of throwing "no such key" at compile time.
+	if dyn, ok := value.(DynamicOutputs); ok {
+		return newPermissiveMap(dyn, a)
+	}
+
 	if keyer, ok := value.(interface {
 		ArtifactKey() (swf.ArtifactKey, error)
 	}); ok {
