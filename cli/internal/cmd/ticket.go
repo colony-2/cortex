@@ -115,8 +115,8 @@ func newTicketCreateCmd() *cobra.Command {
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
 
-			if title == "" || cell == "" || state == "" || stage == "" {
-				return fmt.Errorf("title, cell, state, and stage are required")
+			if title == "" || cell == "" {
+				return fmt.Errorf("title and cell are required")
 			}
 			req := openapi.TicketCreateRequest{
 				Actor: openapi.Actor{Type: openapi.ActorType(actorType)},
