@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/mitchellh/mapstructure"
-
+	"strings"
 	"time"
 
+	f2 "github.com/colony-2/colony2/server/core/pkg/file"
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/mitchellh/mapstructure"
+	jsonschemav6 "github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // Note: All configuration is provided via LLMInferenceInput.
@@ -199,6 +199,23 @@ type EnhancedLLMInferenceActivity struct {
 	sandbox      *SecuritySandbox
 }
 
+type responseSchemaInfo struct {
+	raw          json.RawMessage
+	compiled     *jsonschemav6.Schema
+	expectedType string
+}
+
+func (i responseSchemaInfo) hasSchema() bool {
+	return len(i.raw) > 0
+}
+
+func (i responseSchemaInfo) expectedOrDefault() string {
+	if strings.TrimSpace(i.expectedType) == "" {
+		return "structured JSON value"
+	}
+	return i.expectedType
+}
+
 // NewEnhancedLLMInferenceActivity constructs a new activity instance for tests and registration.
 func NewEnhancedLLMInferenceActivity() *EnhancedLLMInferenceActivity {
 	return &EnhancedLLMInferenceActivity{}
@@ -239,6 +256,15 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 		return LLMInferenceOutput{}, fmt.Errorf("validation failed: %w", err)
 	}
 
+	// Normalize and compile response schema (if provided) for both provider hints and runtime validation
+	schemaInfo, err := a.normalizeResponseSchema(input.ResponseSchema)
+	if err != nil {
+		return LLMInferenceOutput{}, err
+	}
+	if schemaInfo.hasSchema() {
+		input.ResponseSchema = JSONRawMessage(schemaInfo.raw)
+	}
+
 	// Initialize components
 	if err := a.initializeComponents(input); err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
@@ -254,13 +280,13 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 	var output LLMInferenceOutput
 
 	if len(input.Files) > 0 && len(input.Tools) > 0 {
-		output, err = a.executeWithFilesAndTools(ctx, adapter, input)
+		output, err = a.executeWithFilesAndTools(ctx, adapter, input, schemaInfo)
 	} else if len(input.Files) > 0 {
-		output, err = a.executeWithFiles(ctx, adapter, input)
+		output, err = a.executeWithFiles(ctx, adapter, input, schemaInfo)
 	} else if len(input.Tools) > 0 {
-		output, err = a.executeWithTools(ctx, adapter, input)
+		output, err = a.executeWithTools(ctx, adapter, input, schemaInfo)
 	} else {
-		output, err = a.executeBasic(ctx, adapter, input)
+		output, err = a.executeBasic(ctx, adapter, input, schemaInfo)
 	}
 
 	if err != nil {
@@ -401,4 +427,72 @@ func (a *EnhancedLLMInferenceActivity) getAdapter(input LLMInferenceInput) (llma
 	}
 
 	return adapter, err
+}
+
+func (a *EnhancedLLMInferenceActivity) normalizeResponseSchema(raw JSONRawMessage) (responseSchemaInfo, error) {
+	if len(raw) == 0 {
+		return responseSchemaInfo{}, nil
+	}
+
+	var schemaValue interface{}
+	if err := json.Unmarshal(raw.Raw(), &schemaValue); err != nil {
+		return responseSchemaInfo{}, fmt.Errorf("response_schema is not valid JSON: %w", err)
+	}
+
+	if arr, ok := schemaValue.([]interface{}); ok && len(arr) == 1 {
+		schemaValue = arr[0]
+	}
+
+	normalized, err := json.Marshal(schemaValue)
+	if err != nil {
+		return responseSchemaInfo{}, fmt.Errorf("failed to normalize response_schema: %w", err)
+	}
+
+	compiled, err := compileSchema(schemaValue)
+	if err != nil {
+		return responseSchemaInfo{}, fmt.Errorf("response_schema failed to compile: %w", err)
+	}
+
+	return responseSchemaInfo{
+		raw:          normalized,
+		compiled:     compiled,
+		expectedType: describeSchemaType(schemaValue),
+	}, nil
+}
+
+func compileSchema(doc interface{}) (*jsonschemav6.Schema, error) {
+	comp := jsonschemav6.NewCompiler()
+	comp.DefaultDraft(jsonschemav6.Draft2020)
+	if err := comp.AddResource("inmem://response-schema.json", doc); err != nil {
+		return nil, fmt.Errorf("add schema resource: %w", err)
+	}
+
+	compiled, err := comp.Compile("inmem://response-schema.json")
+	if err != nil {
+		return nil, fmt.Errorf("compile schema: %w", err)
+	}
+
+	return compiled, nil
+}
+
+func describeSchemaType(v interface{}) string {
+	if m, ok := v.(map[string]interface{}); ok {
+		if t, ok := m["type"]; ok {
+			switch tt := t.(type) {
+			case string:
+				return tt
+			case []interface{}:
+				var parts []string
+				for _, el := range tt {
+					if s, ok := el.(string); ok {
+						parts = append(parts, s)
+					}
+				}
+				if len(parts) > 0 {
+					return strings.Join(parts, "|")
+				}
+			}
+		}
+	}
+	return ""
 }

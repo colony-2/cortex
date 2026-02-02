@@ -80,3 +80,7 @@ Runs LLM inference with optional file context and tool execution; returns the mo
   }
 }
 ```
+
+### Structured responses
+
+When `response_schema` is provided, the op now enforces the schema and always returns `response` as a **stringified JSON object**. Recipe authors should wrap access with `json_parse`, e.g. `json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate`. The raw model output is validated against the supplied schema (single-element schema arrays are unwrapped) and the op fails with a descriptive error if the shape does not match.

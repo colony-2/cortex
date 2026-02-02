@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	f2 "github.com/colony-2/colony2/server/core/pkg/file"
@@ -15,6 +17,7 @@ func (a *EnhancedLLMInferenceActivity) executeBasic(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	config := llmadapters.Config{
 		Model:         input.Model,
@@ -38,10 +41,9 @@ func (a *EnhancedLLMInferenceActivity) executeBasic(
 		return LLMInferenceOutput{}, fmt.Errorf("generation failed: %w", err)
 	}
 
-	// Convert response
-	responseJSON, err := json.Marshal(response.Content)
+	responseJSON, err := a.normalizeResponseContent(response.Content, schema)
 	if err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
@@ -61,12 +63,13 @@ func (a *EnhancedLLMInferenceActivity) executeWithFiles(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	// Check if adapter supports file handling
 	fileAdapter, ok := adapter.(llmadapters.FileAdapter)
 	if !ok {
 		// Fall back to text inclusion
-		return a.executeWithFilesFallback(ctx, adapter, input)
+		return a.executeWithFilesFallback(ctx, adapter, input, schema)
 	}
 
 	config := llmadapters.Config{
@@ -91,10 +94,9 @@ func (a *EnhancedLLMInferenceActivity) executeWithFiles(
 		return LLMInferenceOutput{}, fmt.Errorf("generation with files failed: %w", err)
 	}
 
-	// Convert response
-	responseJSON, err := json.Marshal(response.Content)
+	responseJSON, err := a.normalizeResponseContent(response.Content, schema)
 	if err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
@@ -114,6 +116,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesFallback(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	// Build file context as text
 	fileContext := a.buildFileContext(input.Files)
@@ -123,7 +126,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesFallback(
 	input.Prompt = enhancedPrompt
 	input.Files = nil
 
-	return a.executeBasic(ctx, adapter, input)
+	return a.executeBasic(ctx, adapter, input, schema)
 }
 
 // executeWithTools handles LLM generation with tool support
@@ -131,6 +134,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	// Convert tool definitions to adapter format
 	tools := a.convertTools(input.Tools)
@@ -190,9 +194,9 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 		return LLMInferenceOutput{}, fmt.Errorf("final generation failed: %w", err)
 	}
 
-	responseJSON, err := json.Marshal(finalResponse.Content)
+	responseJSON, err := a.normalizeResponseContent(finalResponse.Content, schema)
 	if err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
@@ -214,6 +218,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	// Check if adapter supports unified operations
 	unifiedAdapter, ok := adapter.(llmadapters.UnifiedAdapter)
@@ -226,7 +231,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 			unifiedAdapter = llmadapters.NewUnifiedAdapter(fileAdapter, execAdapter)
 		} else {
 			// Fall back to sequential execution
-			return a.executeSequential(ctx, adapter, input)
+			return a.executeSequential(ctx, adapter, input, schema)
 		}
 	}
 
@@ -278,10 +283,9 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 		return LLMInferenceOutput{}, fmt.Errorf("unified generation failed: %w", err)
 	}
 
-	// Convert response
-	responseJSON, err := json.Marshal(response.Response.Content)
+	responseJSON, err := a.normalizeResponseContent(response.Response.Content, schema)
 	if err != nil {
-		return LLMInferenceOutput{}, fmt.Errorf("failed to marshal response: %w", err)
+		return LLMInferenceOutput{}, err
 	}
 
 	// Convert tool results
@@ -318,9 +322,10 @@ func (a *EnhancedLLMInferenceActivity) executeSequential(
 	ctx context.Context,
 	adapter llmadapters.Adapter,
 	input LLMInferenceInput,
+	schema responseSchemaInfo,
 ) (LLMInferenceOutput, error) {
 	// First handle files
-	fileOutput, err := a.executeWithFiles(ctx, adapter, input)
+	fileOutput, err := a.executeWithFiles(ctx, adapter, input, schema)
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
@@ -329,7 +334,7 @@ func (a *EnhancedLLMInferenceActivity) executeSequential(
 	input.Prompt = string(fileOutput.Response)
 	input.Files = nil // Clear files since they've been processed
 
-	return a.executeWithTools(ctx, adapter, input)
+	return a.executeWithTools(ctx, adapter, input, schema)
 }
 
 // executeToolCalls executes a list of tool calls
@@ -440,4 +445,87 @@ func (a *EnhancedLLMInferenceActivity) errorString(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+func (a *EnhancedLLMInferenceActivity) normalizeResponseContent(content string, schema responseSchemaInfo) (json.RawMessage, error) {
+	if !schema.hasSchema() {
+		responseJSON, err := json.Marshal(content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response: %w", err)
+		}
+		return responseJSON, nil
+	}
+
+	parsed, err := parseStructuredJSON(content)
+	if err != nil {
+		return nil, fmt.Errorf("response is not valid JSON for response_schema (expected %s): %w", schema.expectedOrDefault(), err)
+	}
+
+	if err := schema.compiled.Validate(parsed); err != nil {
+		return nil, fmt.Errorf(
+			"response does not match response_schema (expected %s, got %s): %w",
+			schema.expectedOrDefault(),
+			describeValueType(parsed),
+			err,
+		)
+	}
+
+	normalized, err := json.Marshal(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize structured response: %w", err)
+	}
+
+	return json.RawMessage([]byte(strconv.Quote(string(normalized)))), nil
+}
+
+func parseStructuredJSON(raw string) (interface{}, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, fmt.Errorf("response was empty")
+	}
+
+	var parsed interface{}
+	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {
+		return nil, err
+	}
+
+	parsed = unwrapSingleElementArray(parsed)
+
+	if s, ok := parsed.(string); ok {
+		inner := strings.TrimSpace(s)
+		if inner != "" && (strings.HasPrefix(inner, "{") || strings.HasPrefix(inner, "[")) {
+			var innerParsed interface{}
+			if err := json.Unmarshal([]byte(inner), &innerParsed); err == nil {
+				parsed = unwrapSingleElementArray(innerParsed)
+			}
+		}
+	}
+
+	return parsed, nil
+}
+
+func unwrapSingleElementArray(v interface{}) interface{} {
+	if arr, ok := v.([]interface{}); ok && len(arr) == 1 {
+		return arr[0]
+	}
+	return v
+}
+
+func describeValueType(v interface{}) string {
+	switch v.(type) {
+	case map[string]interface{}:
+		return "object"
+	case []interface{}:
+		return "array"
+	case string:
+		return "string"
+	case float64, int, int64, uint64:
+		return "number"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	default:
+		return "unknown"
+	}
 }

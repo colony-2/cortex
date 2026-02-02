@@ -568,3 +568,72 @@ func TestBuiltinTools(t *testing.T) {
 		assert.True(t, names["tool3"])
 	})
 }
+
+func TestStructuredResponseNormalizationAndValidation(t *testing.T) {
+	activity := NewEnhancedLLMInferenceActivity()
+
+	mockRegistry := llmadapters.NewRegistry()
+	mockAdapter := llmadapters.NewMockAdapter()
+	mockAdapter.SetResponse(llmadapters.Response{
+		Content:      `{"cell_is_appropriate":false}`,
+		Model:        "gpt-4.1",
+		FinishReason: "stop",
+	})
+	mockRegistry.Register("openai", mockAdapter)
+	activity.registry = mockRegistry
+
+	input := LLMInferenceInput{
+		Prompt:   "classify",
+		Model:    "gpt-4.1",
+		Provider: "openai",
+		ResponseSchema: JSONRawMessage(`[
+			{
+				"type": "object",
+				"properties": {
+					"cell_is_appropriate": { "type": "boolean" }
+				},
+				"required": ["cell_is_appropriate"]
+			}
+		]`),
+	}
+
+	output, err := activity.Execute(nil, context.Background(), input)
+	require.NoError(t, err)
+
+	var responseString string
+	require.NoError(t, json.Unmarshal(output.Response, &responseString))
+	assert.Equal(t, `{"cell_is_appropriate":false}`, responseString)
+}
+
+func TestStructuredResponseValidationFailureIncludesType(t *testing.T) {
+	activity := NewEnhancedLLMInferenceActivity()
+
+	mockRegistry := llmadapters.NewRegistry()
+	mockAdapter := llmadapters.NewMockAdapter()
+	mockAdapter.SetResponse(llmadapters.Response{
+		Content:      `[]`,
+		Model:        "gpt-4.1",
+		FinishReason: "stop",
+	})
+	mockRegistry.Register("openai", mockAdapter)
+	activity.registry = mockRegistry
+
+	input := LLMInferenceInput{
+		Prompt:   "classify",
+		Model:    "gpt-4.1",
+		Provider: "openai",
+		ResponseSchema: JSONRawMessage(`{
+			"type": "object",
+			"properties": {
+				"cell_is_appropriate": { "type": "boolean" }
+			},
+			"required": ["cell_is_appropriate"]
+		}`),
+	}
+
+	_, err := activity.Execute(nil, context.Background(), input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "response does not match response_schema")
+	assert.Contains(t, err.Error(), "expected object")
+	assert.Contains(t, err.Error(), "got array")
+}
