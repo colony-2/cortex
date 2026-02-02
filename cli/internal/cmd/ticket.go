@@ -8,6 +8,7 @@ import (
 
 	"github.com/colony-2/colony2/cli/internal/client"
 	"github.com/colony-2/colony2/cli/internal/openapi"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 func newTicketCmd() *cobra.Command {
@@ -98,6 +99,7 @@ func newTicketCreateCmd() *cobra.Command {
 	var stage string
 	var description string
 	var actorType string
+	var actorEmail string
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -117,7 +119,7 @@ func newTicketCreateCmd() *cobra.Command {
 				return fmt.Errorf("title, cell, state, and stage are required")
 			}
 			req := openapi.TicketCreateRequest{
-				Actor: openapi.Actor{Type: openapi.User},
+				Actor: openapi.Actor{Type: openapi.ActorType(actorType)},
 				Cell:  cell,
 				State: openapi.TicketState(state),
 				Stage: stage,
@@ -130,14 +132,14 @@ func newTicketCreateCmd() *cobra.Command {
 			// Apply actor overrides if provided.
 			switch actorType {
 			case "":
-				// leave as-is
+				req.Actor.Type = openapi.User
 			case string(openapi.Agent), string(openapi.User):
 				req.Actor.Type = openapi.ActorType(actorType)
 			default:
 				return fmt.Errorf("invalid --actor-type %q", actorType)
 			}
-			if req.Actor.Type == "" {
-				req.Actor.Type = openapi.User
+			if req.Actor.Type == openapi.User {
+				req.Actor.User = &openapi.ActorUser{Email: openapi_types.Email(actorEmail)}
 			}
 
 			resp, err := app.Client.PostApiProjectsProjectIdTicketsWithResponse(ctx, app.Config.Project, req)
@@ -157,9 +159,10 @@ func newTicketCreateCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&title, "title", "", "Ticket title")
 	cmd.Flags().StringVar(&cell, "cell", "", "Cell name")
-	cmd.Flags().StringVar(&state, "state", "", "Ticket state")
-	cmd.Flags().StringVar(&stage, "stage", "", "Ticket stage")
+	cmd.Flags().StringVar(&state, "state", "working", "Ticket state")
+	cmd.Flags().StringVar(&stage, "stage", "open", "Ticket stage")
 	cmd.Flags().StringVar(&description, "description", "", "Ticket description")
-	cmd.Flags().StringVar(&actorType, "actor-type", "", "Actor type user|agent")
+	cmd.Flags().StringVar(&actorType, "actor-type", "user", "Actor type user|agent")
+	cmd.Flags().StringVar(&actorEmail, "actor-email", "j@j.com", "Actor email when actor-type=user")
 	return cmd
 }
