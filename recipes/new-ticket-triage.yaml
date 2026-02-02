@@ -42,10 +42,11 @@ sequence:
         {{ inputs.description }}
 
         Current Cell: {{ context.workflow.cell }}
-        Available Cells: {{ cells() }}
+        Available Cells (name, path, description): {{ cells() }}
 
-        Decide if the current cell is appropriate to run the work. If it is not, propose the best
-        cell name to use instead, choosing exactly from Available Cells. Provide a concise rationale.
+        Decide if the current cell is appropriate to run the work. If it is not, choose the single
+        best cell name from the Available Cells list (use the cell \"name\" value). Use the cell
+        descriptions to guide your choice. Provide a concise rationale.
 
   - id: persist_triage_json
     op: command_execution

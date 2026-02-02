@@ -13,7 +13,7 @@ import (
 // template configuration (json_parse, json_stringify, string overloads, jq).
 func defaultBuiltins() map[string]BuiltinFactory {
 	return map[string]BuiltinFactory{
-		"json_parse": func(adapter types.Adapter) cel.EnvOption {
+		"json_parse": func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 			return cel.Function(
 				"json_parse",
 				cel.Overload(
@@ -24,7 +24,7 @@ func defaultBuiltins() map[string]BuiltinFactory {
 				),
 			)
 		},
-		"json_stringify": func(adapter types.Adapter) cel.EnvOption {
+		"json_stringify": func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 			return cel.Function(
 				"json_stringify",
 				cel.Overload(
@@ -35,7 +35,7 @@ func defaultBuiltins() map[string]BuiltinFactory {
 				),
 			)
 		},
-		"string_json_overloads": func(adapter types.Adapter) cel.EnvOption {
+		"string_json_overloads": func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 			return cel.Function(
 				"string",
 				cel.Overload(
@@ -56,7 +56,7 @@ func defaultBuiltins() map[string]BuiltinFactory {
 				),
 			)
 		},
-		"jq": func(adapter types.Adapter) cel.EnvOption {
+		"jq": func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 			return cel.Function(
 				"jq",
 				cel.Overload(

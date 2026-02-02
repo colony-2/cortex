@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -34,6 +35,10 @@ func (s spyProvider) FunctionOptions(adapter types.Adapter) ([]cel.EnvOption, er
 			),
 		),
 	}, nil
+}
+
+func (s spyProvider) FunctionOptionsWithContext(adapter types.Adapter, _ funcregistry.ContextProvider) ([]cel.EnvOption, error) {
+	return s.FunctionOptions(adapter)
 }
 
 func TestValidateModeDoesNotExecuteFunctions(t *testing.T) {

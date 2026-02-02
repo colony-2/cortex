@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	gitpkg "github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
@@ -81,28 +83,51 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe store: %w", err)
 	}
 	celFns := funcregistry.NewBuilder().WithDefaults()
-	funcregistry.AddZeroFunc(celFns, "cells", func(ctx context.Context) ([]map[string]interface{}, error) {
-		it, err := cellSvc.ListCells(ctx, cell.SearchFilter{})
-		if err != nil {
-			return nil, err
+	funcregistry.AddZeroFuncWithContext(celFns, "cells", func(ctx context.Context, taskCtx contextual.TaskExecutionContext) ([]funcregistry.CELCell, error) {
+		projectID := strings.TrimSpace(taskCtx.Workflow.ProjectId)
+		if projectID == "" {
+			return nil, fmt.Errorf("cells: project_id is required in context.workflow.project_id")
 		}
-		defer it.Close(ctx)
-		var cells []map[string]interface{}
-		for {
-			c, err := it.Next(ctx)
+
+		var (
+			cached    []funcregistry.CELCell
+			cachedErr error
+			fetched   bool
+		)
+
+		fetch := func() ([]funcregistry.CELCell, error) {
+			if fetched {
+				return cached, cachedErr
+			}
+			fetched = true
+
+			it, err := cellSvc.ListCells(ctx, cell.SearchFilter{ProjectIDs: []project.ID{project.ID(projectID)}})
 			if err != nil {
-				if err.Error() == "iterator: done" {
+				cachedErr = fmt.Errorf("cells: failed to list cells: %w", err)
+				return nil, cachedErr
+			}
+			defer it.Close(ctx)
+
+			for {
+				c, err := it.Next(ctx)
+				if errors.Is(err, cell.ErrIteratorDone) {
 					break
 				}
-				return nil, err
+				if err != nil {
+					cachedErr = fmt.Errorf("cells: failed to list cells: %w", err)
+					return nil, cachedErr
+				}
+				cached = append(cached, funcregistry.CELCell{
+					Name: c.Name,
+					ID:   string(c.ID),
+					Path: c.WorkingPath,
+					Description: c.Description,
+				})
 			}
-			cells = append(cells, map[string]interface{}{
-				"name": c.Name,
-				"id":   string(c.ID),
-				"path": c.WorkingPath,
-			})
+			return cached, nil
 		}
-		return cells, nil
+
+		return fetch()
 	})
 
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{

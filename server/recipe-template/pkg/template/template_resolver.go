@@ -181,7 +181,17 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 	// Inject registry-provided options (default or caller supplied)
 	var extraOpts []cel.EnvOption
 	if options.CELOptionsProvider != nil {
-		extraOpts, err = options.CELOptionsProvider.FunctionOptions(adapter)
+		type contextualProvider interface {
+			FunctionOptionsWithContext(types.Adapter, funcregistry.ContextProvider) ([]cel.EnvOption, error)
+		}
+		ctxProvider := func() contextual.TaskExecutionContext {
+			return rc.TemplateData.Context
+		}
+		if cp, ok := options.CELOptionsProvider.(contextualProvider); ok {
+			extraOpts, err = cp.FunctionOptionsWithContext(adapter, ctxProvider)
+		} else {
+			extraOpts, err = options.CELOptionsProvider.FunctionOptions(adapter)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to get CEL options: %w", err)
 		}

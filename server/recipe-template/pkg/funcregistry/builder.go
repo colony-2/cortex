@@ -6,13 +6,19 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 )
 
-// BuiltinFactory produces a cel.EnvOption given the adapter (needed for native conversions).
-type BuiltinFactory func(adapter types.Adapter) cel.EnvOption
+// ContextProvider returns the TaskExecutionContext in scope for the current CEL evaluation.
+// It may be nil when functions are evaluated without a task context (e.g., validation).
+type ContextProvider func() contextual.TaskExecutionContext
+
+// BuiltinFactory produces a cel.EnvOption given the adapter (needed for native conversions)
+// and, optionally, a TaskExecutionContext provider for context-aware functions.
+type BuiltinFactory func(adapter types.Adapter, ctxProvider ContextProvider) cel.EnvOption
 
 // Builder holds a non-global set of builtin function factories and type declarations.
 type Builder struct {
@@ -46,7 +52,7 @@ func AddUnaryFunc[In any, Out any](b *Builder, name string, impl func(context.Co
 	b.registerType(inT)
 	b.registerType(outT)
 
-	b.factories[name] = func(adapter types.Adapter) cel.EnvOption {
+	b.factories[name] = func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 		return cel.Function(
 			name,
 			cel.Overload(
@@ -79,7 +85,7 @@ func AddBinaryFunc[A any, B any, Out any](b *Builder, name string, impl func(con
 	b.registerType(bT)
 	b.registerType(outT)
 
-	b.factories[name] = func(adapter types.Adapter) cel.EnvOption {
+	b.factories[name] = func(adapter types.Adapter, _ ContextProvider) cel.EnvOption {
 		return cel.Function(
 			name,
 			cel.Overload(
@@ -107,31 +113,6 @@ func AddBinaryFunc[A any, B any, Out any](b *Builder, name string, impl func(con
 	return b
 }
 
-// AddZeroFunc registers a zero-argument function.
-func AddZeroFunc[Out any](b *Builder, name string, impl func(context.Context) (Out, error)) *Builder {
-	outT := reflect.TypeOf((*Out)(nil)).Elem()
-	b.registerType(outT)
-
-	b.factories[name] = func(adapter types.Adapter) cel.EnvOption {
-		return cel.Function(
-			name,
-			cel.Overload(
-				name+"_zero",
-				[]*cel.Type{},
-				celTypeFor(outT),
-				cel.FunctionBinding(func(values ...ref.Val) ref.Val {
-					out, err := impl(context.Background())
-					if err != nil {
-						return types.NewErr("%s: %v", name, err)
-					}
-					return adapter.NativeToValue(out)
-				}),
-			),
-		)
-	}
-	return b
-}
-
 // TypeOptions returns EnvOptions that must be supplied at env construction time.
 func (b *Builder) TypeOptions() []cel.EnvOption {
 	if len(b.typeDecls) == 0 {
@@ -146,12 +127,17 @@ func (b *Builder) TypeOptions() []cel.EnvOption {
 
 // FunctionOptions materializes cel.EnvOptions using the provided adapter.
 func (b *Builder) FunctionOptions(adapter types.Adapter) ([]cel.EnvOption, error) {
+	return b.FunctionOptionsWithContext(adapter, nil)
+}
+
+// FunctionOptionsWithContext materializes cel.EnvOptions using the provided adapter and task context provider.
+func (b *Builder) FunctionOptionsWithContext(adapter types.Adapter, ctxProvider ContextProvider) ([]cel.EnvOption, error) {
 	opts := make([]cel.EnvOption, 0, len(b.factories))
 	for name, factory := range b.factories {
 		if factory == nil {
 			return nil, fmt.Errorf("builtin %q has nil factory", name)
 		}
-		opts = append(opts, factory(adapter))
+		opts = append(opts, factory(adapter, ctxProvider))
 	}
 	return opts, nil
 }
@@ -196,5 +182,55 @@ func celTypeFor(rt reflect.Type) *cel.Type {
 }
 
 func (b *Builder) registerType(rt reflect.Type) {
-	// currently no-op; types are treated as dyn to avoid CEL proto registration requirements
+	// intentionally no-op: we avoid cel.Types registration to keep builtins simple/dyn.
+}
+
+// AddZeroFuncWithContext registers a zero-argument function that can access the TaskExecutionContext.
+func AddZeroFuncWithContext[Out any](b *Builder, name string, impl func(context.Context, contextual.TaskExecutionContext) (Out, error)) *Builder {
+	outT := reflect.TypeOf((*Out)(nil)).Elem()
+	b.registerType(outT)
+
+	b.factories[name] = func(adapter types.Adapter, ctxProvider ContextProvider) cel.EnvOption {
+		return cel.Function(
+			name,
+			cel.Overload(
+				name+"_zero",
+				[]*cel.Type{},
+				celTypeFor(outT),
+				cel.FunctionBinding(func(values ...ref.Val) ref.Val {
+					var taskCtx contextual.TaskExecutionContext
+					if ctxProvider != nil {
+						taskCtx = ctxProvider()
+					}
+					out, err := impl(context.Background(), taskCtx)
+					if err != nil {
+						return types.NewErr("%s: %v", name, err)
+					}
+					return toAdapterValue(adapter, out)
+				}),
+			),
+		)
+	}
+	return b
+}
+
+// AddZeroFunc preserves the legacy zero-arg function registration without task context.
+func AddZeroFunc[Out any](b *Builder, name string, impl func(context.Context) (Out, error)) *Builder {
+	return AddZeroFuncWithContext(b, name, func(ctx context.Context, _ contextual.TaskExecutionContext) (Out, error) {
+		return impl(ctx)
+	})
+}
+
+// toAdapterValue converts Go values into CEL values via JSON round-trip to
+// avoid type-registration requirements while keeping field names intact.
+func toAdapterValue(adapter types.Adapter, v any) ref.Val {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return types.NewErr("convert value: %v", err)
+	}
+	var decoded interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return types.NewErr("convert value: %v", err)
+	}
+	return adapter.NativeToValue(decoded)
 }
