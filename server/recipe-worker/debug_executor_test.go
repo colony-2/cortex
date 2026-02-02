@@ -142,3 +142,62 @@ inputs:
 
 	t.Logf("Result: %v", result)
 }
+
+// Reproduces the minimal executor path when the cell working path is set to ".".
+// A nil-pointer panic was reported in production; this test guards against it.
+func TestDebugExecutorRootCellPath(t *testing.T) {
+	yamlStr := `id: hello_world
+desc: A minimal recipe that demonstrates basic structure  
+version: "1.0"
+op: echo_activity
+inputs:
+  message: "Hello, World!"`
+
+	var r recipe.Recipe
+	err := yaml.Unmarshal([]byte(yamlStr), &r)
+	if err != nil {
+		t.Fatalf("Parse Error: %v", err)
+	}
+
+	logger := zaptest.NewLogger(t)
+	a, err := ops.NewActivityRegistry()
+	if err != nil {
+		t.Fatalf("Registry Error: %v", err)
+	}
+
+	standaloneExecutor, err := executor.NewStandaloneExecutor(coreops.NewServiceDepsBuilder().Build(), a, logger)
+	if err != nil {
+		t.Fatalf("Executor Error: %v", err)
+	}
+
+	repo, hash := ensureDebugRepo()
+	jobCtx := contextual.JobContext{
+		Actor: contextual.ActorContext{
+			TicketID:   "TEST-TICKET",
+			ActorName:  "test-user",
+			ActorEmail: "test-user@colony2",
+		},
+		Environment: contextual.EnvironmentContext{},
+		Workflow: contextual.WorkflowContext{
+			CellName: "root-cell",
+			CellPath: ".",
+		},
+		GitBase: contextual.GitBaseContext{
+			BaseRepo:         repo,
+			BaseRef:          hash,
+			ResolvedBaseHash: hash,
+		},
+	}
+
+	_, err = standaloneExecutor.Execute(
+		context.Background(),
+		r,
+		map[string]interface{}{},
+		jobCtx,
+		hash,
+	)
+
+	if err != nil {
+		t.Fatalf("Execution Error: %v", err)
+	}
+}

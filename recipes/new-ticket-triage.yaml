@@ -10,6 +10,52 @@ inputs:
   title: '{{ inputs.title }}'
   description: '{{ inputs.description }}'
 sequence:
+  - id: assess_cell
+    op: llm_inference2
+    inputs:
+      default_provider: openai
+      default_model: gpt-4.1
+      temperature: 0
+      tools: []
+      response_schema:
+        type: object
+        properties:
+          cell_is_appropriate:
+            type: boolean
+          recommended_cell:
+            type: string
+          rationale:
+            type: string
+        required:
+          - cell_is_appropriate
+          - recommended_cell
+          - rationale
+        additionalProperties: false
+      system_prompt: >
+        You are triaging a software ticket to decide if the current execution cell is the right
+        place to do the work. Respond ONLY with a JSON object:
+        {"cell_is_appropriate": boolean, "recommended_cell": string, "rationale": string}.
+      prompt: |
+        Ticket Title: {{ inputs.title }}
+        Ticket Description:
+        {{ inputs.description }}
+
+        Current Cell: {{ context.workflow.cell }}
+
+        Decide if the current cell is appropriate to run the work. If it is not, propose the best
+        cell name to use instead (keep it short, e.g., "frontend", "backend", "infra", or a
+        specific cell name if known). Provide a concise rationale.
+
+  - id: persist_triage_json
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        cat > "{{ context.environment.outbox }}/triage.json" <<'EOF'
+        {{ sequence.assess_cell.outputs.response }}
+        EOF
+
   - id: stub_draft_requirements
     op: command_execution
     inputs:
@@ -23,6 +69,6 @@ sequence:
         EOF
 
 outputs:
-  recommended_cell: "{{ matches(inputs.title + \" \" + inputs.description, '(?i)(frontend|ui|react|css|javascript|typescript|browser)') ? 'frontend' : matches(inputs.title + \" \" + inputs.description, '(?i)(backend|api|service|database|postgres|mysql|db)') ? 'backend' : matches(inputs.title + \" \" + inputs.description, '(?i)(infra|infrastructure|devops|k8s|kubernetes|terraform|helm|aws|gcp)') ? 'infra' : context.workflow.cell }}"
-  cell_is_appropriate: "{{ ((matches(inputs.title + \" \" + inputs.description, '(?i)(frontend|ui|react|css|javascript|typescript|browser)') ? 'frontend' : matches(inputs.title + \" \" + inputs.description, '(?i)(backend|api|service|database|postgres|mysql|db)') ? 'backend' : matches(inputs.title + \" \" + inputs.description, '(?i)(infra|infrastructure|devops|k8s|kubernetes|terraform|helm|aws|gcp)') ? 'infra' : context.workflow.cell)) == context.workflow.cell }}"
-  rationale: "Heuristic keyword match based on ticket title and description."
+  cell_is_appropriate: "{{ jq(sequence.assess_cell.outputs.response, ' (if type==\"string\" then fromjson else . end) | if type==\"array\" and length==0 then false elif type==\"array\" then .[0].cell_is_appropriate else .cell_is_appropriate end') }}"
+  recommended_cell: "{{ jq(sequence.assess_cell.outputs.response, ' (if type==\"string\" then fromjson else . end) | if type==\"array\" and length==0 then null elif type==\"array\" then .[0].recommended_cell else .recommended_cell end') != null ? jq(sequence.assess_cell.outputs.response, ' (if type==\"string\" then fromjson else . end) | if type==\"array\" and length==0 then null elif type==\"array\" then .[0].recommended_cell else .recommended_cell end') : context.workflow.cell }}"
+  rationale: "{{ jq(sequence.assess_cell.outputs.response, ' (if type==\"string\" then fromjson else . end) | if type==\"array\" and length==0 then null elif type==\"array\" then .[0].rationale else .rationale end') != null ? jq(sequence.assess_cell.outputs.response, ' (if type==\"string\" then fromjson else . end) | if type==\"array\" and length==0 then null elif type==\"array\" then .[0].rationale else .rationale end') : 'No model response available.' }}"

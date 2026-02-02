@@ -96,6 +96,21 @@ func TestEnhancedLLMInferenceActivity_BackwardCompatibility(t *testing.T) {
 	})
 }
 
+func TestEnhancedLLMInferenceActivity_ConstructsAdapterLocally(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "") // force constructor to rely on provided key
+
+	activity := NewEnhancedLLMInferenceActivity()
+	input := LLMInferenceInput{
+		Prompt:   "Hello",
+		Model:    "gpt-4.1",
+		Provider: "openai",
+	}
+
+	_, err := activity.Execute(nil, context.Background(), input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "API key is missing")
+}
+
 func TestLLMInferenceInputValidation_EmptyToolsAndNoTools(t *testing.T) {
 	activity := NewEnhancedLLMInferenceActivity()
 	makeInput := func() map[string]interface{} {
@@ -155,6 +170,32 @@ func TestLLMInferenceInputValidation_EmptyToolsAndNoTools(t *testing.T) {
 		err = activity.validateInput(decoded)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "tools are required")
+	})
+
+	t.Run("response_schema_accepts_object", func(t *testing.T) {
+		raw := makeInput()
+		raw["response_schema"] = []interface{}{
+			map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"foo": map[string]interface{}{
+						"type": "string",
+					},
+				},
+				"required": []interface{}{"foo"},
+			},
+		}
+
+		var decoded LLMInferenceInput
+		err := recipeops.DecodeWithJsonTags(raw, &decoded)
+		require.NoError(t, err)
+
+		require.True(t, json.Valid(decoded.ResponseSchema.Raw()))
+
+		var schema []map[string]interface{}
+		require.NoError(t, json.Unmarshal(decoded.ResponseSchema.Raw(), &schema))
+		require.Len(t, schema, 1)
+		assert.Equal(t, "object", schema[0]["type"])
 	})
 }
 

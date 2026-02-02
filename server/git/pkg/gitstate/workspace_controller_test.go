@@ -327,6 +327,7 @@ func TestResolveScopePath_RequiresCellPath(t *testing.T) {
 	ctrl := &Controller{}
 	ctx := context.Background()
 
+
 	t.Run("empty CellPath returns error", func(t *testing.T) {
 		task := &GitTaskContext{GlobalGitTaskContext: &GlobalGitTaskContext{CellPath: ""}}
 		_, err := ctrl.resolveScopePath(ctx, task)

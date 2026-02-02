@@ -67,6 +67,9 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		GlobalGitTaskContext: &req.GitTaskContext,
 		WorktreePath:         worktreePath,
 	}
+	if fullContext.GlobalGitTaskContext == nil {
+		return zero, nil, fmt.Errorf("git task context is required")
+	}
 
 	// Rehydrate referenced artifacts from keys.
 	if len(req.ArtifactKeys) > 0 {

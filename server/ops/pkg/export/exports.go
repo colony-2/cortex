@@ -1,6 +1,7 @@
 package export
 
 import (
+	"github.com/colony-2/colony2/server/ops/pkg/cells"
 	"github.com/colony-2/colony2/server/ops/pkg/codex"
 	"github.com/colony-2/colony2/server/ops/pkg/extensions"
 	"github.com/colony-2/colony2/server/ops/pkg/llm"
@@ -12,6 +13,7 @@ import (
 func GetAll() []ops.RegisterableOp {
 	base := []ops.RegisterableOp{
 		codex.GetOp(),
+		cells.GetListOp(),
 		llm.GetOp(),
 		llm.GetEnhancedOp(),
 	}

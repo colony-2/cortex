@@ -34,9 +34,9 @@ type LLMInferenceInput struct {
 	DefaultFileHandling string `yaml:"default_file_handling" json:"default_file_handling,omitempty"`
 	MaxFileContextSize  int    `yaml:"max_file_context_size" json:"max_file_context_size,omitempty" validate:"omitempty,gte=0"`
 
-	Prompt         string          `json:"prompt,omitempty" validate:"required_without=Files"`
-	SystemPrompt   string          `json:"system_prompt,omitempty"`
-	ResponseSchema json.RawMessage `json:"response_schema,omitempty"`
+	Prompt         string         `json:"prompt,omitempty" validate:"required_without=Files"`
+	SystemPrompt   string         `json:"system_prompt,omitempty"`
+	ResponseSchema JSONRawMessage `json:"response_schema,omitempty"`
 
 	// Enhanced fields (new)
 	Files               []f2.File              `json:"files,omitempty" validate:"required_without=Prompt"`
@@ -57,6 +57,41 @@ type ToolDefinition struct {
 	Name        string          `json:"name" validate:"required"`
 	Description string          `json:"description" validate:"required"`
 	Parameters  json.RawMessage `json:"parameters" validate:"required"`
+}
+
+// JSONRawMessage behaves like json.RawMessage but accepts arbitrary JSON/YAML objects during mapstructure decode.
+type JSONRawMessage json.RawMessage
+
+func (m *JSONRawMessage) DecodeFromMap(input any) error {
+	switch v := input.(type) {
+	case nil:
+		*m = nil
+		return nil
+	case json.RawMessage:
+		*m = JSONRawMessage(v)
+		return nil
+	case []byte:
+		*m = JSONRawMessage(v)
+		return nil
+	case string:
+		if !json.Valid([]byte(v)) {
+			return fmt.Errorf("response_schema string is not valid JSON")
+		}
+		*m = JSONRawMessage([]byte(v))
+		return nil
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("encode response_schema: %w", err)
+		}
+		*m = JSONRawMessage(encoded)
+		return nil
+	}
+}
+
+// Raw converts to standard json.RawMessage
+func (m JSONRawMessage) Raw() json.RawMessage {
+	return json.RawMessage(m)
 }
 
 // DecodeFromMap ensures parameters are preserved as JSON, even when empty objects are provided.
@@ -209,8 +244,8 @@ func (a *EnhancedLLMInferenceActivity) Execute(
 		return LLMInferenceOutput{}, fmt.Errorf("initialization failed: %w", err)
 	}
 
-	// Get adapter from registry
-	adapter, err := a.registry.Get(input.Provider)
+	// Acquire adapter for provider (use injected registry when present, otherwise construct locally)
+	adapter, err := a.getAdapter(input)
 	if err != nil {
 		return LLMInferenceOutput{}, fmt.Errorf("failed to get adapter: %w", err)
 	}
@@ -334,4 +369,36 @@ func (a *EnhancedLLMInferenceActivity) initializeComponents(input LLMInferenceIn
 	}
 
 	return nil
+}
+
+// getAdapter returns an adapter for the requested provider.
+// If a registry is injected (tests), it is used; otherwise we construct locally.
+func (a *EnhancedLLMInferenceActivity) getAdapter(input LLMInferenceInput) (llmadapters.Adapter, error) {
+	if a.registry != nil {
+		return a.registry.Get(input.Provider)
+	}
+
+	// Build an adapter directly using input-provided API keys (falling back to env inside constructors).
+	apiKey := ""
+	if input.APIKeys != nil {
+		apiKey = input.APIKeys[input.Provider]
+	}
+
+	var (
+		adapter llmadapters.Adapter
+		err     error
+	)
+
+	switch input.Provider {
+	case "openai":
+		adapter, err = llmadapters.NewOpenAIAdapter(apiKey)
+	case "anthropic":
+		adapter, err = llmadapters.NewAnthropicAdapter(apiKey)
+	case "gemini":
+		adapter, err = llmadapters.NewGeminiAdapter(apiKey)
+	default:
+		err = fmt.Errorf("unsupported provider: %s", input.Provider)
+	}
+
+	return adapter, err
 }

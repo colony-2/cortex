@@ -29,7 +29,7 @@ func (a *EnhancedLLMInferenceActivity) executeBasic(
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		config.ResponseFormat = "json"
-		config.ResponseSchema = input.ResponseSchema
+		config.ResponseSchema = input.ResponseSchema.Raw()
 	}
 
 	// Generate response
@@ -82,7 +82,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFiles(
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		config.ResponseFormat = "json"
-		config.ResponseSchema = input.ResponseSchema
+		config.ResponseSchema = input.ResponseSchema.Raw()
 	}
 
 	// Generate with files
@@ -256,7 +256,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 	// Handle structured response
 	if len(input.ResponseSchema) > 0 {
 		unifiedConfig.ExecutableToolConfig.Config.ResponseFormat = "json"
-		unifiedConfig.ExecutableToolConfig.Config.ResponseSchema = input.ResponseSchema
+		unifiedConfig.ExecutableToolConfig.Config.ResponseSchema = input.ResponseSchema.Raw()
 	}
 
 	// Parse tool timeout

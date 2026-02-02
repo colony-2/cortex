@@ -37,6 +37,9 @@ func NewController(adapters map[string]StorageAdapter) *Controller {
 
 // PrepareWorkspace ensures the worktree exists.
 func (c *Controller) prepareWorkspace(ctx context.Context, task *GitTaskContext) error {
+	if task == nil || task.GlobalGitTaskContext == nil {
+		return fmt.Errorf("git workspace requires task context")
+	}
 	if task.GetWorktreePath() == "" {
 		return fmt.Errorf("git workspace requires worktree path")
 	}
