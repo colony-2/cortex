@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
+	"github.com/stretchr/testify/require"
 )
 
 // mockAdapter implements llmadapters.Adapter for testing
@@ -145,10 +146,8 @@ func TestLLMTask_StructuredResponse(t *testing.T) {
 	}
 
 	// Verify structured response
-	resp, ok := output.Response.(*TestResponse)
-	if !ok {
-		t.Fatalf("Response is not of type *TestResponse")
-	}
+	var resp TestResponse
+	require.NoError(t, json.Unmarshal([]byte(output.Response), &resp))
 	if resp.Name != "John Doe" {
 		t.Errorf("Expected name 'John Doe', got %s", resp.Name)
 	}
@@ -210,15 +209,8 @@ func TestLLMTask_JSONSchemaResponse(t *testing.T) {
 	}
 
 	// Verify generic JSON response
-	resp, ok := output.Response.(interface{})
-	if !ok {
-		t.Fatal("Response is not an interface{}")
-	}
-
-	// Convert to map for verification
-	respJSON, _ := json.Marshal(resp)
 	var respMap map[string]interface{}
-	json.Unmarshal(respJSON, &respMap)
+	require.NoError(t, json.Unmarshal([]byte(output.Response), &respMap))
 
 	items, ok := respMap["items"].([]interface{})
 	if !ok || len(items) != 2 {

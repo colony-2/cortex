@@ -143,10 +143,10 @@ func (t *ToolDefinition) DecodeFromMap(input any) error {
 // LLMInferenceOutput defines enhanced output (backward compatible)
 type LLMInferenceOutput struct {
 	// Standard fields (existing)
-	Response     json.RawMessage `json:"response"`
-	Model        string          `json:"model"`
-	FinishReason string          `json:"finish_reason"`
-	Usage        Usage           `json:"usage"`
+	Response     string `json:"response"`
+	Model        string `json:"model"`
+	FinishReason string `json:"finish_reason"`
+	Usage        Usage  `json:"usage"`
 
 	// Tool execution fields (new)
 	ToolCalls           []ToolCallInfo `json:"tool_calls,omitempty"`

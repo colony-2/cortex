@@ -1,0 +1,24 @@
+id: repro-llm-schema
+sequence:
+  - id: call
+    op: llm_inference2
+    inputs:
+      default_provider: openai
+      default_model: gpt-4.1
+      temperature: 0
+      tools: []
+      response_schema:
+        type: object
+        properties:
+          ok:
+            type: boolean
+          note:
+            type: string
+        required:
+          - ok
+          - note
+        additionalProperties: false
+      system_prompt: "Return ONLY JSON matching the schema."
+      prompt: "Say ok=true with a short note."
+outputs:
+  raw_response: "{{ sequence.call.outputs.response }}"

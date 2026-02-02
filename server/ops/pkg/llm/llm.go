@@ -34,8 +34,8 @@ type LLMTaskInput struct {
 
 // LLMTaskOutput represents the output of the LLMTask activity
 type LLMTaskOutput struct {
-	// Response content - either structured data or plain text
-	Response interface{} `json:"response"`
+	// Response content - always string (plain text or stringified JSON)
+	Response string `json:"response"`
 
 	// Telemetry information
 	Telemetry LLMTelemetry `json:"telemetry"`
@@ -130,21 +130,29 @@ func LLMTask(ctx context.Context, input LLMTaskInput, registry llmadapters.Regis
 		return nil, fmt.Errorf("generation failed: %w", err)
 	}
 
-	// Process response
-	var finalResponse interface{}
+	// Process response (always return a string)
+	var finalResponse string
 	if config.ResponseFormat == "json" && responseStruct != nil {
-		// Parse JSON into the provided structure
+		// Parse JSON into the provided structure for validation, then re-marshal to canonical string
 		if err := json.Unmarshal([]byte(response.Content), responseStruct); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
-		finalResponse = responseStruct
+		b, err := json.Marshal(responseStruct)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize JSON response: %w", err)
+		}
+		finalResponse = string(b)
 	} else if config.ResponseFormat == "json" {
-		// Parse as generic JSON
+		// Parse as generic JSON to validate, then re-marshal to string
 		var jsonResponse interface{}
 		if err := json.Unmarshal([]byte(response.Content), &jsonResponse); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
-		finalResponse = jsonResponse
+		b, err := json.Marshal(jsonResponse)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize JSON response: %w", err)
+		}
+		finalResponse = string(b)
 	} else {
 		// Plain text response
 		finalResponse = response.Content

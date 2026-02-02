@@ -56,7 +56,7 @@ Runs LLM inference with optional file context and tool execution; returns the mo
 
 ```json
 {
-  "response": {},
+  "response": "text or JSON string",
   "model": "gpt-4.1",
   "finish_reason": "stop",
   "usage": {

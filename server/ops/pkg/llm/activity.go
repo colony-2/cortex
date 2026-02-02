@@ -122,10 +122,16 @@ func ExecuteLLMTask(ctx context.Context, input LLMActivity) (*LLMActivityOutput,
 		return nil, err
 	}
 
-	// Marshal the response to JSON
-	responseJSON, err := json.Marshal(output.Response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal response: %w", err)
+	// Marshal the response to JSON, preserving structured JSON when present
+	var responseJSON []byte
+	if json.Valid([]byte(output.Response)) {
+		responseJSON = []byte(output.Response)
+	} else {
+		var err error
+		responseJSON, err = json.Marshal(output.Response)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal response: %w", err)
+		}
 	}
 
 	return &LLMActivityOutput{

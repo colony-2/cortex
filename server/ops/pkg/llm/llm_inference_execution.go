@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -41,13 +40,13 @@ func (a *EnhancedLLMInferenceActivity) executeBasic(
 		return LLMInferenceOutput{}, fmt.Errorf("generation failed: %w", err)
 	}
 
-	responseJSON, err := a.normalizeResponseContent(response.Content, schema)
+	normalized, err := a.normalizeResponseContent(response.Content, schema)
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
-		Response:     responseJSON,
+		Response:     normalized,
 		Model:        response.Model,
 		FinishReason: response.FinishReason,
 		Usage: Usage{
@@ -94,13 +93,13 @@ func (a *EnhancedLLMInferenceActivity) executeWithFiles(
 		return LLMInferenceOutput{}, fmt.Errorf("generation with files failed: %w", err)
 	}
 
-	responseJSON, err := a.normalizeResponseContent(response.Content, schema)
+	normalized, err := a.normalizeResponseContent(response.Content, schema)
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
-		Response:     responseJSON,
+		Response:     normalized,
 		Model:        response.Model,
 		FinishReason: response.FinishReason,
 		Usage: Usage{
@@ -194,13 +193,13 @@ func (a *EnhancedLLMInferenceActivity) executeWithTools(
 		return LLMInferenceOutput{}, fmt.Errorf("final generation failed: %w", err)
 	}
 
-	responseJSON, err := a.normalizeResponseContent(finalResponse.Content, schema)
+	normalized, err := a.normalizeResponseContent(finalResponse.Content, schema)
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
 
 	return LLMInferenceOutput{
-		Response:     responseJSON,
+		Response:     normalized,
 		Model:        finalResponse.Model,
 		FinishReason: finalResponse.FinishReason,
 		Usage: Usage{
@@ -283,7 +282,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 		return LLMInferenceOutput{}, fmt.Errorf("unified generation failed: %w", err)
 	}
 
-	responseJSON, err := a.normalizeResponseContent(response.Response.Content, schema)
+	normalized, err := a.normalizeResponseContent(response.Response.Content, schema)
 	if err != nil {
 		return LLMInferenceOutput{}, err
 	}
@@ -301,7 +300,7 @@ func (a *EnhancedLLMInferenceActivity) executeWithFilesAndTools(
 	}
 
 	return LLMInferenceOutput{
-		Response:     responseJSON,
+		Response:     normalized,
 		Model:        response.Response.Model,
 		FinishReason: response.Response.FinishReason,
 		Usage: Usage{
@@ -331,7 +330,7 @@ func (a *EnhancedLLMInferenceActivity) executeSequential(
 	}
 
 	// Then handle tools with the file-enriched context
-	input.Prompt = string(fileOutput.Response)
+	input.Prompt = fileOutput.Response
 	input.Files = nil // Clear files since they've been processed
 
 	return a.executeWithTools(ctx, adapter, input, schema)
@@ -447,22 +446,18 @@ func (a *EnhancedLLMInferenceActivity) errorString(err error) string {
 	return err.Error()
 }
 
-func (a *EnhancedLLMInferenceActivity) normalizeResponseContent(content string, schema responseSchemaInfo) (json.RawMessage, error) {
+func (a *EnhancedLLMInferenceActivity) normalizeResponseContent(content string, schema responseSchemaInfo) (string, error) {
 	if !schema.hasSchema() {
-		responseJSON, err := json.Marshal(content)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal response: %w", err)
-		}
-		return responseJSON, nil
+		return content, nil
 	}
 
 	parsed, err := parseStructuredJSON(content)
 	if err != nil {
-		return nil, fmt.Errorf("response is not valid JSON for response_schema (expected %s): %w", schema.expectedOrDefault(), err)
+		return "", fmt.Errorf("response is not valid JSON for response_schema (expected %s): %w", schema.expectedOrDefault(), err)
 	}
 
 	if err := schema.compiled.Validate(parsed); err != nil {
-		return nil, fmt.Errorf(
+		return "", fmt.Errorf(
 			"response does not match response_schema (expected %s, got %s): %w",
 			schema.expectedOrDefault(),
 			describeValueType(parsed),
@@ -472,10 +467,10 @@ func (a *EnhancedLLMInferenceActivity) normalizeResponseContent(content string, 
 
 	normalized, err := json.Marshal(parsed)
 	if err != nil {
-		return nil, fmt.Errorf("failed to normalize structured response: %w", err)
+		return "", fmt.Errorf("failed to normalize structured response: %w", err)
 	}
 
-	return json.RawMessage([]byte(strconv.Quote(string(normalized)))), nil
+	return string(normalized), nil
 }
 
 func parseStructuredJSON(raw string) (interface{}, error) {

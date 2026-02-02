@@ -600,9 +600,7 @@ func TestStructuredResponseNormalizationAndValidation(t *testing.T) {
 	output, err := activity.Execute(nil, context.Background(), input)
 	require.NoError(t, err)
 
-	var responseString string
-	require.NoError(t, json.Unmarshal(output.Response, &responseString))
-	assert.Equal(t, `{"cell_is_appropriate":false}`, responseString)
+	assert.Equal(t, `{"cell_is_appropriate":false}`, output.Response)
 }
 
 func TestStructuredResponseValidationFailureIncludesType(t *testing.T) {

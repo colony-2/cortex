@@ -218,11 +218,7 @@ func TestEnhancedLLMTask_TechnicalWriterPersona(t *testing.T) {
 	}
 
 	// Verify output contains documentation
-	responseStr, ok := output.Response.(string)
-	if !ok {
-		t.Fatal("Expected string response")
-	}
-	if !contains(responseStr, "API Documentation") {
+	if !contains(output.Response, "API Documentation") {
 		t.Error("Response should contain 'API Documentation'")
 	}
 }
@@ -300,11 +296,7 @@ func TestEnhancedLLMTask_CustomerSupportPersona(t *testing.T) {
 	}
 
 	// Verify output has empathetic tone
-	responseStr, ok := output.Response.(string)
-	if !ok {
-		t.Fatal("Expected string response")
-	}
-	if !contains(responseStr, "understand") || !contains(responseStr, "help") {
+	if !contains(output.Response, "understand") || !contains(output.Response, "help") {
 		t.Error("Response should have empathetic tone with 'understand' and 'help'")
 	}
 }
@@ -394,8 +386,8 @@ func TestEnhancedLLMTask_WithFileContext(t *testing.T) {
 
 	// If we get here, verify JSON response was parsed
 	if output != nil {
-		_, ok := output.Response.(interface{})
-		if !ok {
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(output.Response), &parsed); err != nil {
 			t.Error("Expected parsed JSON response")
 		}
 	}

@@ -127,7 +127,7 @@ func TestExecuteLLMTask_WithResponseSchema(t *testing.T) {
 
 	// Verify response is valid JSON
 	var responseMap map[string]interface{}
-	err = json.Unmarshal(output.Response, &responseMap)
+	err = json.Unmarshal([]byte(output.Response), &responseMap)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}

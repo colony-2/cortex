@@ -129,21 +129,29 @@ func EnhancedLLMTask(ctx context.Context, input EnhancedLLMTaskInput, registry l
 		}
 	}
 
-	// Process response
-	var finalResponse interface{}
+	// Process response (always return a string)
+	var finalResponse string
 	if config.ResponseFormat == "json" && input.ResponseStructure != nil {
-		// Parse JSON into the provided structure
+		// Parse JSON into the provided structure for validation, then re-marshal to canonical string
 		if err := json.Unmarshal([]byte(response.Content), input.ResponseStructure); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
-		finalResponse = input.ResponseStructure
+		b, err := json.Marshal(input.ResponseStructure)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize JSON response: %w", err)
+		}
+		finalResponse = string(b)
 	} else if config.ResponseFormat == "json" {
-		// Parse as generic JSON
+		// Parse as generic JSON to validate, then re-marshal to string
 		var jsonResponse interface{}
 		if err := json.Unmarshal([]byte(response.Content), &jsonResponse); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 		}
-		finalResponse = jsonResponse
+		b, err := json.Marshal(jsonResponse)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize JSON response: %w", err)
+		}
+		finalResponse = string(b)
 	} else {
 		// Plain text response
 		finalResponse = response.Content
