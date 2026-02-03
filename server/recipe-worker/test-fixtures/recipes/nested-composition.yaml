@@ -11,10 +11,14 @@ outputs:
   final_result: Executed state_machine
 sequence:
 - id: processor
+  inputs:
+    data: '{{ inputs.data }}'
   state:
     initial: validate
     states:
       validate:
+        inputs:
+          data: '{{ inputs.data }}'
         sequence:
         - id: clean
           op: data_cleaner
@@ -24,49 +28,56 @@ sequence:
           op: data_validator
           inputs:
             data: '{{ inputs.data }}'
+        outputs:
+          data: '{{ inputs.data }}'
         transitions:
         - to: process
       process:
+        inputs:
+          validated_data: '{{ states.validate.outputs.data }}'
         sequence:
         - id: transform
           op: data_transformer
           inputs:
-            data: '{{ states.validate.outputs.data }}'
+            data: '{{ inputs.validated_data }}'
         - id: aggregate
           op: result_aggregator
           inputs:
             data: '{{ sequence.transform.outputs.data }}'
+        outputs:
+          aggregate: '{{ sequence.aggregate.outputs.result }}'
         transitions:
         - to: finalize
       finalize:
+        inputs:
+          aggregate: '{{ states.process.outputs.aggregate }}'
         sequence:
         - id: format_output
           op: output_formatter
           inputs:
-            data: '{{ states.process.outputs.aggregate }}'
+            data: '{{ inputs.aggregate }}'
         - id: create_summary
           op: summary_generator
           inputs:
-            data: '{{ states.process.outputs.aggregate }}'
+            data: '{{ inputs.aggregate }}'
         - id: add_charts
           op: chart_generator
           inputs:
             data:
-              summary: '{{ sequence.create_summary.outputs.outputs }}'
-              report: '{{ states.process.outputs.aggregate }}'
+              summary: '{{ sequence.create_summary.outputs.result }}'
+              report: '{{ inputs.aggregate }}'
         - id: store_results
           op: result_storage
           inputs:
-            data: '{{ states.process.outputs.aggregate }}'
+            data: '{{ inputs.aggregate }}'
+        outputs:
+          format_output: '{{ sequence.format_output.outputs.result }}'
+          create_summary: '{{ sequence.create_summary.outputs.result }}'
+          store_results:
+            id: '{{ sequence.store_results.outputs.result }}'
         transitions:
         - to: success
       success:
-        terminal: true
         op: echo_activity
         inputs:
           message: completed
-        outputs:
-          final_result: '{{ states.finalize.outputs.format_output }}'
-          report: '{{ states.finalize.outputs.create_summary }}'
-          storage_id: '{{ states.finalize.outputs.store_results.id }}'
-          status: .completed

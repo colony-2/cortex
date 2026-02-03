@@ -32,3 +32,20 @@ func TestState_Transitions_With_CEL(t *testing.T) {
 	st := State{SingleStateMetadata: SingleStateMetadata{Transitions: []Transition{{To: "next", When: *expr}}}}
 	assert.Equal(t, "next", st.Transitions[0].To)
 }
+
+func TestState_UnmarshalYAML_DecodesTransitions(t *testing.T) {
+	registerTestOp()
+	var st State
+	err := yamlUnmarshalStrict(`
+op: echo
+inputs:
+  message: hi
+transitions:
+  - to: done
+    when: "true"
+`, &st)
+	require.NoError(t, err)
+	require.Len(t, st.Transitions, 1)
+	assert.Equal(t, "done", st.Transitions[0].To)
+	assert.Equal(t, "true", st.Transitions[0].When.String())
+}

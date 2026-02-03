@@ -14,13 +14,14 @@ require (
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260202220646-d309ccfaeb4e
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipes v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/registry v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
+	github.com/colony-2/swf-go v0.0.0-20260203025253-bcc35d34ce6e
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
@@ -57,7 +58,6 @@ require (
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260129015659-c3b26410e213 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
 	github.com/colony-2/shai v0.0.7 // indirect

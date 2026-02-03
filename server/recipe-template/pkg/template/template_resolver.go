@@ -302,7 +302,10 @@ func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recip
 
 	// copy items from parents based on scope.
 	switch scopeType {
-	case ScopeSequence, ScopeRecipe, ScopeStateMachine:
+	case ScopeRecipe, ScopeStateMachine:
+		// new scope, copy nothing down.
+
+	case ScopeSequence:
 		// new scope, copy nothing down.
 
 	case ScopeState:
@@ -446,6 +449,7 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 	rc.lastArtifacts = artList
 
 	var container map[string]StepOutput
+	key := rc.scopeId
 
 	switch rc.ScopeType {
 	case ScopeSequence:
@@ -461,6 +465,11 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 			container = rc.TemplateData.Sequence
 		case ScopeStateMachine, ScopeState:
 			container = rc.TemplateData.States
+			// States are addressed by their state name (not the inner op type). When an op runs
+			// inside a state, attach its output to the owning state key so `states.<state>` works.
+			if rc.Parent.ScopeType == ScopeState {
+				key = rc.Parent.scopeId
+			}
 		case ScopeRecipe:
 			rc.Parent.lastExecution = output
 			return
@@ -471,7 +480,7 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 		panic(fmt.Sprintf("invalid parent scope type: %s", rc.Parent.ScopeType))
 	}
 
-	if existing, ok := container[rc.scopeId]; ok {
+	if existing, ok := container[key]; ok {
 		existing.Runs = append(existing.Runs, RunOutput{
 			Outputs:   existing.Outputs,
 			Artifacts: existing.Artifacts,
@@ -480,9 +489,9 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 		})
 		existing.Outputs = output
 		existing.Artifacts = artifacts
-		container[rc.scopeId] = existing
+		container[key] = existing
 	} else {
-		container[rc.scopeId] = StepOutput{
+		container[key] = StepOutput{
 			Outputs:   output,
 			Artifacts: artifacts,
 			Runs:      []RunOutput{},

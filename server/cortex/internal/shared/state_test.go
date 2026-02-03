@@ -338,8 +338,25 @@ func TestStateMachineExecution_SingleState(t *testing.T) {
 	exec, err := workerexec.NewStandaloneExecutor(deps, reg, zap.NewNop())
 	require.NoError(t, err)
 	inputs := map[string]interface{}{}
-	jobCtx := contextual.JobContext{}
-	out, err := exec.Execute(context.Background(), r, inputs, jobCtx, "")
+
+	workflowInputs := requiredWorkflowInputs(t)
+	baseRepo, _ := workflowInputs["basegitrepo"].(string)
+	baseHash, _ := workflowInputs["basegithash"].(string)
+	cellName, _ := workflowInputs["cellname"].(string)
+
+	jobCtx := contextual.JobContext{
+		GitBase: contextual.GitBaseContext{
+			BaseRepo:         baseRepo,
+			BaseRef:          baseHash,
+			ResolvedBaseHash: baseHash,
+		},
+		Workflow: contextual.WorkflowContext{
+			CellName: cellName,
+			CellPath: "cells/" + cellName,
+		},
+	}
+
+	out, err := exec.Execute(context.Background(), r, inputs, jobCtx, baseHash)
 	require.NoError(t, err)
 
 	assert.Equal(t, "ok", out["status"])

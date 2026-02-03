@@ -3,9 +3,10 @@ module github.com/colony-2/colony2/server/recipe-input
 go 1.25.5
 
 require (
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260202220646-d309ccfaeb4e
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
+	github.com/colony-2/swf-go v0.0.0-20260203025253-bcc35d34ce6e
 	github.com/fatih/structs v1.1.0
 	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.10.9

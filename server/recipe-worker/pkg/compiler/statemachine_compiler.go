@@ -59,19 +59,22 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		return nil
 	}
 
-	// Execute state machine
-	for !isTerminalState(currentState, stateMap.States) {
+	// Execute state machine. Always run the current state at least once, even if it is terminal.
+	for {
 		// Get current state definition
 		stateDef, exists := stateMap.States[currentState]
 		if !exists {
 			return fmt.Errorf("state '%s' not found", currentState)
 		}
 
-		err := d.runState(ctx, resCtx, currentState, stateDef)
-
-		if err != nil {
+		if err := d.runState(ctx, resCtx, currentState, stateDef); err != nil {
 			// Handle retry if configured
 			return fmt.Errorf("state '%s' execution failed: %w", currentState, err)
+		}
+
+		// Terminal states end the machine after they run.
+		if isTerminalState(currentState, stateMap.States) {
+			break
 		}
 
 		// Evaluate transitions using resolution context

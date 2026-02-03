@@ -9,9 +9,7 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/ops v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260128195911-f9fcb108644b
 	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208
@@ -20,7 +18,8 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
+	github.com/colony-2/swf-go v0.0.0-20260203025253-bcc35d34ce6e
+	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/spf13/cobra v1.9.1
@@ -56,6 +55,7 @@ require (
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20260129221415-4d1ad05d9208 // indirect
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260129221415-4d1ad05d9208 // indirect
 	github.com/colony-2/colony2/server/registry v0.0.0-20260129221415-4d1ad05d9208 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260129015659-c3b26410e213 // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20260129022805-3144e7d85fce // indirect
@@ -85,7 +85,6 @@ require (
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
-	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.5 // indirect

@@ -4,7 +4,6 @@ use (
 	./cli
 	./server/api
 	./server/cell
-        ./server/pgembed
 	./server/core
 	./server/cortex
 	./server/git
@@ -12,6 +11,7 @@ use (
 	./server/llm
 	./server/openapi
 	./server/ops
+	./server/pgembed
 	./server/project
 	./server/recipe-child
 	./server/recipe-core

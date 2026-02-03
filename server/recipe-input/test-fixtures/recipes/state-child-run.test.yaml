@@ -1,0 +1,19 @@
+recipes:
+  - child-triage-ok.yaml
+  - child-triage-fail.yaml
+
+tests:
+  - name: child_success_outputs_available
+    inputs:
+      child_recipe: child-triage-ok
+    want:
+      ok: true
+      recommended: cells/foo
+    wantErr: false
+
+  - name: child_failure_propagates_error
+    inputs:
+      child_recipe: child-triage-fail
+    wantErr: true
+    wantErrContains: "exit status 127"
+

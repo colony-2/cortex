@@ -49,7 +49,17 @@ func (s *SWFWorkflowControl) ListJobs(ctx context.Context, request swf.ListJobsR
 }
 
 func (s *SWFWorkflowControl) JobResult(ctx context.Context, key swf.JobKey) (swf.JobData, error) {
-	return s.Engine.GetJobResult(ctx, key)
+	// Use the SWF helper to return standardized errors (not finished / cancelled / failed)
+	// and to construct a JobData with lazy artifacts.
+	run, err := s.Engine.GetJobRun(ctx, swf.GetJobRunRequest{
+		JobKey:           key,
+		IncludeOutputs:   true,
+		IncludeArtifacts: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return run.GetOutput(s.Engine, key.TenantId)
 }
 
 func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey, taskOrdinal int64, hash string, outType any) error {

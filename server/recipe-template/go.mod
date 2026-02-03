@@ -4,10 +4,11 @@ go 1.25.5
 
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/swf-go v0.0.0-20260130003039-6863340f19c3
+	github.com/colony-2/swf-go v0.0.0-20260203025253-bcc35d34ce6e
 	github.com/google/cel-go v0.26.0
 	github.com/itchyny/gojq v0.12.16
 	github.com/stretchr/testify v1.11.1
+	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4
 	google.golang.org/protobuf v1.36.10
 )
 
@@ -51,7 +52,6 @@ require (
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
