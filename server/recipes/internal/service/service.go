@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
@@ -387,6 +386,10 @@ func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (
 		}
 	}
 
+	if err := s.ensureCommitAvailable(ctx, workspace, commitHash); err != nil {
+		return nil, fmt.Errorf("%w: %v", model.ErrCommitNotFound, err)
+	}
+
 	// 4. Read file at specified commit from git
 	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
 	if err != nil {
@@ -519,23 +522,25 @@ func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name stri
 			}
 		}
 	} else {
-		// Resolve ref to commit hash
-		cmd := exec.CommandContext(ctx, "git", "rev-parse", ref)
-		cmd.Dir = workspace
-		output, err := cmd.Output()
+		// Resolve ref to commit hash (fetching history/tags if needed)
+		var err error
+		commitHash, err = s.resolveRefToCommit(ctx, workspace, ref)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve ref %s: %w", ref, err)
+			return nil, err
 		}
-		commitHash = strings.TrimSpace(string(output))
 
 		// Check if recipe is published
 		publishedRecipe, _ = s.store.GetByName(ctx, projectID, name)
 	}
 
+	if err := s.ensureCommitAvailable(ctx, workspace, commitHash); err != nil {
+		return nil, fmt.Errorf("%w: failed to get recipe at commit %s: %v", model.ErrNotFound, commitHash, err)
+	}
+
 	// 4. Fetch content from git
 	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to get recipe at commit %s", model.ErrNotFound, commitHash)
+		return nil, fmt.Errorf("%w: failed to get recipe at commit %s: %v", model.ErrNotFound, commitHash, err)
 	}
 
 	// 5. Build result with raw content (no parsing - invalid recipes can be saved, just not published)

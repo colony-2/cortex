@@ -1,0 +1,8 @@
+id: repro-child-fail
+sequence:
+  - id: boom
+    op: command_execution
+    inputs:
+      run: |
+        echo "child failing"
+        exit 1

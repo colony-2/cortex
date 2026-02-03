@@ -1,0 +1,6 @@
+id: repro-child-fails
+sequence:
+  - id: boom
+    op: command_execution
+    inputs:
+      run: "exit 1"

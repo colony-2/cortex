@@ -109,6 +109,10 @@ func (s *service) GetRecipeHistory(ctx context.Context, projectID project.ID, na
 
 	gitPath := deriveGitPath(name)
 
+	if err := s.ensureRepoHasHistory(ctx, workspace); err != nil {
+		return nil, fmt.Errorf("failed to prepare git history: %w", err)
+	}
+
 	// 3. Get git commit history for this file
 	cmd := exec.CommandContext(ctx, "git", "log", "--follow", "--format=%H|%an|%at|%s", "--", gitPath)
 	cmd.Dir = workspace

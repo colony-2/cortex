@@ -1,0 +1,14 @@
+id: repro-parent-child-fail
+sequence:
+  - id: child
+    op: recipe.run_and_get_result
+    inputs:
+      name: repro-child-fail
+      inputs: {}
+  - id: after
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        echo "after ran" > "{{ context.environment.outbox }}/after.txt"

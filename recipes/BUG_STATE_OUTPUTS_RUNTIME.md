@@ -1,6 +1,30 @@
-# Bug: Runtime `states.triage` missing after `recipe.run_and_get_result` (no such key: triage)
+# Bug: Runtime state-machine outputs can't see `states` (states map is empty)
 
-## Minimal Reproduction Recipe
+## Minimal Reproduction Recipe (no child recipe)
+State machine with a single command state, exporting the `states` map:
+```yaml
+id: repro-states-dump
+state:
+  initial: a
+  states:
+    a:
+      op: command_execution
+      inputs:
+        run: |
+          echo hi
+outputs:
+  states_string: "{{ string(states) }}"
+  has_a: "{{ 'a' in states }}"
+```
+
+### Observed runtime output
+Run id `398uqyGm2FOb4qLTQaCLvFa1qq0`:
+```json
+{"states_string":"{}","has_a":false}
+```
+So `states` is `{}` at top-level output resolution time.
+
+## Related reproduction (child recipe)
 Single-state machine calling a child recipe and exporting its outputs:
 ```yaml
 id: repro-state-child-outputs
@@ -31,14 +55,13 @@ Child recipe: `new-ticket-triage` (published) returns `cell_is_appropriate`, `re
 - Validation: **passes** (no guards required).
 - Runtime: Top-level outputs fail with `no such key: triage` when resolving `states.triage.outputs.outputs.*`; job ends `completed` with error.
 
-Example (run id `398EIvBP0UqiovaN3fzvPz7CNT5`):
+Example (run id `398ufvd1hYuJjdsYZTwvlqPI1jh`):
 ```
-"error": "failed to resolve state machine outputs: failed to resolve input 'cell_is_appropriate': failed to evaluate CEL expression: no such key: triage"
+"error": "failed to resolve state machine outputs: failed to resolve input 'triage_cell_ok': failed to evaluate CEL expression: no such key: triage"
 ```
 
 ## Scope
-- Appears specific to `recipe.run_and_get_result` child states. A control recipe using a single `command_execution` state and exporting `states.cmd.outputs.*` resolves correctly at runtime.
-- Both access patterns (`states.triage.outputs.*` and `states.triage.outputs.outputs.*`) hit the missing-key error at runtime, despite validating.
+- Not specific to `recipe.run_and_get_result`. Even in a one-state machine (`repro-states-dump`), the top-level outputs see `states` as an empty map `{}` at runtime.
 
 ## Expected
-After the `triage` state completes, `states.triage.outputs` should exist and include the child recipe outputs. Top-level outputs should resolve without guards.
+After a state-machine run, top-level outputs should have access to the executed states under `states.<state>.outputs` (and `states` should at least include the executed state keys).

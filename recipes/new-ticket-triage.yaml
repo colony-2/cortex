@@ -1,4 +1,5 @@
 id: new-ticket-triage
+version: 0.1.0
 input_schema:
   title:
     type: string

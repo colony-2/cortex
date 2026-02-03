@@ -162,14 +162,7 @@ func (r *RealGitRepository) InitRepository(ctx context.Context, path string, opt
 }
 
 func (r *RealGitRepository) Clone(ctx context.Context, url string, path string, opts git.CloneOptions) error {
-	args := []string{"clone"}
-	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch)
-	}
-	args = append(args, url, path)
-
-	cmd := exec.CommandContext(ctx, "git", args...)
-	return cmd.Run()
+	return r.underlying.Clone(ctx, url, path, opts)
 }
 
 func (r *RealGitRepository) Fetch(ctx context.Context, path string, opts git.FetchOptions) error {

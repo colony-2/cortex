@@ -1,0 +1,13 @@
+id: repro-states-dump
+desc: repro for runtime states map
+state:
+  initial: a
+  states:
+    a:
+      op: command_execution
+      inputs:
+        run: |
+          echo hi
+outputs:
+  states_string: "{{ string(states) }}"
+  has_a: "{{ 'a' in states }}"

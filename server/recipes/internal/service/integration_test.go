@@ -130,6 +130,58 @@ inputs:
 		}
 	})
 
+	// Regression: published commit behind HEAD should still be retrievable.
+	t.Run("GetRecipePublishedBehindHead", func(t *testing.T) {
+		// Create and publish v1
+		v1, err := svc.CreateRecipe(ctx, model.CreateInput{
+			ProjectID:   projectID,
+			Name:        "behind-head",
+			Content:     testutil.CreateTestRecipeContent("behind-head"),
+			Description: "Behind head test",
+			AutoPublish: true,
+		})
+		if err != nil {
+			t.Fatalf("CreateRecipe failed: %v", err)
+		}
+
+		// Update to v2 without publishing (HEAD moves)
+		v2Content := []byte(`version: "1.0"
+id: "behind-head"
+op: echo
+inputs:
+  message: "Behind head v2"
+`)
+		v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+			ProjectID:   projectID,
+			Name:        "behind-head",
+			Content:     v2Content,
+			Message:     "Update behind-head to v2",
+			AutoPublish: false,
+		})
+		if err != nil {
+			t.Fatalf("UpdateRecipe failed: %v", err)
+		}
+		if v2.CommitHash == v1.CommitHash {
+			t.Fatalf("expected different commits, got %s", v2.CommitHash)
+		}
+
+		// GetRecipe with empty ref should return published v1 (even though workspace clones depth=1 at v2)
+		recipe, err := svc.GetRecipe(ctx, projectID, "behind-head", "")
+		if err != nil {
+			t.Fatalf("GetRecipe failed: %v", err)
+		}
+		if recipe.CommitHash != v1.CommitHash {
+			t.Errorf("CommitHash = %q, want %q (published v1)", recipe.CommitHash, v1.CommitHash)
+		}
+		if !recipe.IsPublished {
+			t.Error("Recipe should be marked as published")
+		}
+		// Ensure we actually got v1 content (not HEAD/v2 content).
+		if string(recipe.Content) == string(v2Content) {
+			t.Error("Got v2 content, want v1 published content")
+		}
+	})
+
 	// Test 5: List recipes
 	t.Run("ListRecipes", func(t *testing.T) {
 		iter, err := svc.ListRecipes(ctx, model.RecipeFilter{
