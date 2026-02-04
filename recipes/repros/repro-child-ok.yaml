@@ -1,6 +1,0 @@
-id: repro-child-ok
-sequence:
-  - id: ok
-    op: command_execution
-    inputs:
-      run: "echo child-ok"

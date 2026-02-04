@@ -1,6 +1,0 @@
-id: repro-dot
-sequence:
-  - id: hello
-    op: command_execution
-    inputs:
-      run: "echo hi"
