@@ -1,13 +1,8 @@
 package test_fixtures_test
 
 import (
-	"context"
 	"testing"
 
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	childops "github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
 	testfixtures "github.com/colony-2/colony2/server/recipe-worker/test-fixtures"
 )
 
@@ -20,16 +15,6 @@ type echoOutput struct {
 }
 
 func TestRecipeFixtures(t *testing.T) {
-	coreops.Register(childops.GetOps()...)
-	coreops.Register(input.GetOp())
-	coreops.Register(input.GetAutoFillOp())
-	coreops.Register(commandop.GetOp())
-	coreops.Register(coreops.NewActivityMappedOpV2[echoInput, echoOutput](
-		coreops.OpMetadata{Type: "echo"},
-		func(_ coreops.OpDependencies, _ context.Context, in echoInput) (echoOutput, error) {
-			return echoOutput{Output: in.Message}, nil
-		},
-	))
-
+	_ = ensureFixtureOps()
 	testfixtures.RunTestOnAllRecipes("recipes/*.test.yaml", t)
 }

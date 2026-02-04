@@ -1,0 +1,12 @@
+id: repro-update-ticket-cell-name
+sequence:
+  - id: update
+    op: ticket.manage
+    inputs:
+      actions:
+        - type: update_ticket
+          ticket_id: "{{ context.actor.ticket_id }}"
+          stage: open
+          cell_name: "ui-app"
+outputs:
+  raw: '{{ string(sequence.update.outputs) }}'

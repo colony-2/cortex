@@ -1,0 +1,13 @@
+id: repro-update-ticket-cell
+sequence:
+  - id: update
+    op: ticket.manage
+    inputs:
+      actions:
+        - type: update_ticket
+          ticket_id: "{{ context.actor.ticket_id }}"
+          cell: "ui-app"
+outputs:
+  results_len: '{{ size(sequence.update.outputs.results) }}'
+  returned_cell_name: '{{ size(sequence.update.outputs.results) > 0 ? sequence.update.outputs.results[0].ticket.cellName : "" }}'
+  returned_cell_id: '{{ size(sequence.update.outputs.results) > 0 ? sequence.update.outputs.results[0].ticket.cellId : "" }}'

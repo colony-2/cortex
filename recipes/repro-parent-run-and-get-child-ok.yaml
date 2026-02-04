@@ -1,0 +1,7 @@
+id: repro-parent-run-and-get-child-ok
+sequence:
+  - id: child
+    op: recipe.run_and_get_result
+    inputs:
+      name: repro-child-ok
+      inputs: {}

@@ -1,0 +1,15 @@
+id: repro-create-ticket
+sequence:
+  - id: create
+    op: ticket.manage
+    inputs:
+      actions:
+        - type: create_ticket
+          project_id: "{{ context.workflow.project_id }}"
+          cell: "ui-app"
+          title: "Created via ticket.manage"
+          description: "Repro"
+          stage: open
+          state: working
+outputs:
+  raw: '{{ string(sequence.create.outputs) }}'

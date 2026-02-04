@@ -7,43 +7,75 @@ state:
     triage:
       op: recipe.run_and_get_result
       transitions:
-        - to: reassign
-          when: "!states.triage.outputs.outputs.cell_is_appropriate"
-        - to: approve
-          when: "states.triage.outputs.outputs.cell_is_appropriate"
+        - to: reassign_create
+          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && !states.triage.outputs.outputs.cell_is_appropriate && has(states.triage.outputs.outputs.recommended_cell_is_valid) && states.triage.outputs.outputs.recommended_cell_is_valid"
+        - to: requirements_planning
+          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && states.triage.outputs.outputs.cell_is_appropriate"
       inputs:
         name: new-ticket-triage
         inputs:
           title: '{{ context.ticket.title }}'
           description: '{{ context.ticket.description }}'
-    reassign:
+    reassign_create:
+      op: ticket.manage
+      when: 'has(context.ticket.id) && context.ticket.id != ""'
+      transitions:
+        - to: reassign_annotate
+          when: "true"
+      inputs:
+        actions:
+          - type: create_ticket
+            project_id: "{{ context.workflow.project_id }}"
+            cell: "{{ states.triage.outputs.outputs.recommended_cell_final }}"
+            title: "{{ context.ticket.title }}"
+            description: "{{ context.ticket.description }}"
+            stage: open
+            state: working
+    reassign_annotate:
       op: ticket.manage
       when: 'has(context.ticket.id) && context.ticket.id != ""'
       inputs:
         actions:
+          - type: append_ticket_note
+            ticket_id: "{{ context.ticket.id }}"
+            note: >-
+              Reassigned to cell "{{ states.triage.outputs.outputs.recommended_cell_final }}".
+              Created new ticket {{ size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : "(unknown)" }}.
           - type: update_ticket
             ticket_id: "{{ context.ticket.id }}"
-            cell: "{{ has(states.triage.outputs.outputs.recommended_cell) ? states.triage.outputs.outputs.recommended_cell : context.workflow.cell }}"
-            stage: open
-    approve:
-      op: input
+            state: waiting_user
+    requirements_planning:
+      op: recipe.run_and_get_result
       transitions:
-        - to: complete
+        - to: requirements_note
+          when: "true"
       inputs:
-        form:
-          title: 'Complete ticket?'
-          question: 'Approve completion after validation?'
-          type: short_answer
-    complete:
+        name: new-ticket-requirements-planning
+        inputs:
+          title: '{{ context.ticket.title }}'
+          description: '{{ context.ticket.description }}'
+    requirements_note:
       op: ticket.manage
       when: 'has(context.actor.ticket_id) && context.actor.ticket_id != ""'
       inputs:
         actions:
+          - type: append_ticket_note
+            ticket_id: "{{ context.actor.ticket_id }}"
+            note: >-
+              Requirements planning complete. Generated requirement documents as workflow artifacts under
+              "requirements/". Dependency order: {{ states.requirements_planning.outputs.outputs.dependency_order }}.
           - type: update_ticket
             ticket_id: "{{ context.actor.ticket_id }}"
-            stage: completed
+            state: waiting_user
 outputs:
-  cell_is_appropriate: "{{ 'triage' in states && has(states['triage'].outputs.outputs.cell_is_appropriate) ? states['triage'].outputs.outputs.cell_is_appropriate : false }}"
-  recommended_cell: "{{ 'triage' in states && has(states['triage'].outputs.outputs.recommended_cell) ? states['triage'].outputs.outputs.recommended_cell : \"\" }}"
-  rationale: "{{ 'triage' in states && has(states['triage'].outputs.outputs.rationale) ? states['triage'].outputs.outputs.rationale : \"\" }}"
-  reassign_performed: "{{ 'triage' in states && has(states['triage'].outputs.outputs.cell_is_appropriate) ? !states['triage'].outputs.outputs.cell_is_appropriate : false }}"
+  cell_is_appropriate: "{{ states.triage.outputs.outputs.cell_is_appropriate }}"
+  recommended_cell: "{{ states.triage.outputs.outputs.recommended_cell }}"
+  recommended_cell_is_valid: "{{ states.triage.outputs.outputs.recommended_cell_is_valid }}"
+  recommended_cell_final: "{{ states.triage.outputs.outputs.recommended_cell_final }}"
+  rationale: "{{ states.triage.outputs.outputs.rationale }}"
+  reassign_performed: "{{ !states.triage.outputs.outputs.cell_is_appropriate && states.triage.outputs.outputs.recommended_cell_is_valid }}"
+  reassigned_ticket_id: "{{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : \"\" }}"
+  reassigned_ticket_job_id: "{{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 && has(states.reassign_create.outputs.results[0].job_id) ? states.reassign_create.outputs.results[0].job_id : \"\" }}"
+  requirements_plan_json: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.plan_json : \"\" }}"
+  requirements_dependency_order: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
+  requirements: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"

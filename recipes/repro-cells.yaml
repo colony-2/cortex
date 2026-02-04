@@ -1,0 +1,8 @@
+id: repro-cells
+sequence:
+  - id: noop
+    op: command_execution
+    inputs:
+      run: "echo ok"
+outputs:
+  cells_raw: "{{ string(cells()) }}"

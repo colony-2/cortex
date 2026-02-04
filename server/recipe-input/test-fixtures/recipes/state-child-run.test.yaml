@@ -1,6 +1,7 @@
 recipes:
   - child-triage-ok.yaml
   - child-triage-fail.yaml
+  - repro-child-fail.yaml
 
 tests:
   - name: child_success_outputs_available
@@ -17,3 +18,8 @@ tests:
     wantErr: true
     wantErrContains: "exit status 127"
 
+  - name: child_failure_exit_1_propagates_error
+    inputs:
+      child_recipe: repro-child-fail
+    wantErr: true
+    wantErrContains: "exit status 1"

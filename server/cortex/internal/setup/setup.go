@@ -155,6 +155,15 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 
 	serverdepsops.RegisterOps()
 
+	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
+	if err != nil {
+		return web.Dependencies{}, nil, fmt.Errorf("failed to create embedded recipe provider: %w", err)
+	}
+	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	workflowRecipeProvider := workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
+		return recipeProviderWithFallback(projectID, recipeRef)
+	})
+
 	tempDeps := ops.NewServiceDepsBuilder().
 		WithSSEManager(sseManager).
 		WithDatabase(pgDB).
@@ -166,6 +175,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		PostgresDSN:        dsn,
 		StoragePath:        cfg.StoragePath,
 		Dependencies:       tempDeps,
+		RecipeRegistry:     workflowRecipeProvider,
 		Logger:             logger,
 		StrataMode:         serverdeps.StrataMode(cfg.StrataMode),
 		StrataURL:          cfg.StrataURL,
@@ -184,11 +194,6 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		}
 	})
 
-	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
-	if err != nil {
-		return web.Dependencies{}, nil, fmt.Errorf("failed to create embedded recipe provider: %w", err)
-	}
-	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
 	ticketRecipeProvider := ticket.RecipeProjectProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
 		return recipeProviderWithFallback(projectID, recipeRef)
 	})
@@ -216,10 +221,6 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		}
 		return graph.NewBuilder(root), nil
 	}
-
-	workflowRecipeProvider := workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
-		return recipeProviderWithFallback(projectID, recipeRef)
-	})
 
 	wfc := workflow.SWFWorkflowControl{
 		Engine:   engineSetup.Engine(),

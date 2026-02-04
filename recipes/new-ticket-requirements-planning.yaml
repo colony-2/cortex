@@ -1,0 +1,397 @@
+id: new-ticket-requirements-planning
+version: 0.1.0
+desc: Requirement + API planning with contrarian API review and user feedback loop
+input_schema:
+  title:
+    type: string
+    required: true
+  description:
+    type: string
+    required: true
+inputs:
+  title: "{{ inputs.title }}"
+  description: "{{ inputs.description }}"
+state:
+  initial: draft
+  states:
+    draft:
+      sequence:
+        - id: plan
+          op: llm_inference2
+          inputs:
+            default_provider: openai
+            default_model: gpt-4.1
+            temperature: 0
+            tools: []
+            response_schema:
+              type: object
+              properties:
+                summary:
+                  type: string
+                requirements:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      title:
+                        type: string
+                      target_cell:
+                        type: string
+                      depends_on:
+                        type: array
+                        items:
+                          type: string
+                      background:
+                        type: string
+                      proposal:
+                        type: string
+                      api_changes:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            surface:
+                              type: string
+                            change:
+                              type: string
+                            backwards_compatible:
+                              type: boolean
+                            notes:
+                              type: string
+                          required:
+                            - surface
+                            - change
+                            - backwards_compatible
+                            - notes
+                          additionalProperties: false
+                      acceptance_criteria:
+                        type: array
+                        items:
+                          type: string
+                      out_of_scope:
+                        type: array
+                        items:
+                          type: string
+                      open_questions:
+                        type: array
+                        items:
+                          type: string
+                      risks:
+                        type: array
+                        items:
+                          type: string
+                    required:
+                      - id
+                      - title
+                      - target_cell
+                      - depends_on
+                      - background
+                      - proposal
+                      - api_changes
+                      - acceptance_criteria
+                      - out_of_scope
+                      - open_questions
+                      - risks
+                    additionalProperties: false
+                dependency_order:
+                  type: array
+                  items:
+                    type: string
+                has_api_changes:
+                  type: boolean
+              required:
+                - summary
+                - requirements
+                - dependency_order
+                - has_api_changes
+              additionalProperties: false
+            system_prompt: >
+              You are doing requirements + API planning for a software ticket. Respond ONLY with a JSON
+              object matching response_schema. You must:
+              - Produce 1+ requirement documents (requirements[]), each with a target cell chosen EXACTLY
+                from the provided Available Cells list (use the cell "name" value).
+              - Think through whether work can be done entirely in the current cell vs requiring other
+                cells; split into multiple requirements if needed and assign the correct target cell.
+              - Provide dependency ordering (dependency_order) consistent with depends_on.
+              - For any API changes, prefer backwards compatible designs; if something might be breaking,
+                call it out in api_changes with backwards_compatible=false and include mitigation notes.
+            prompt: |
+              Ticket Title: {{ has(inputs.title) ? inputs.title : "" }}
+              Ticket Description:
+              {{ has(inputs.description) ? inputs.description : "" }}
+
+              Current Cell: {{ context.workflow.cell }}
+              Available Cells (name, path, description): {{ cells() }}
+
+              Prior draft plan JSON (empty if none):
+              {{ 'draft' in states ? states.draft.outputs.plan_json : "" }}
+
+              User feedback to incorporate (empty if none):
+              {{ 'user_review' in states && has(states.user_review.outputs.fields) && has(states.user_review.outputs.fields.feedback) ? states.user_review.outputs.fields.feedback : "" }}
+
+              Contrarian API review feedback to incorporate (empty if none):
+              {{ 'api_review' in states && has(states.api_review.outputs.feedback) ? states.api_review.outputs.feedback : "" }}
+
+              Produce a set of requirement documents. Use IDs like REQ-001, REQ-002, etc.
+              - If multiple requirements are needed, ensure depends_on references other requirement IDs.
+              - Ensure dependency_order contains every requirement ID exactly once.
+              - Each target_cell must be exactly one of the provided Available Cells' name values.
+              - The set of requirements should cover: scope, proposal, API impacts (if any), and acceptance criteria.
+
+        - id: write_docs
+          op: command_execution
+          inputs:
+            working_directory: "{{ context.environment.outbox }}"
+            run: |
+              set -euo pipefail
+              mkdir -p requirements
+              cat > requirements/plan.json <<'EOF'
+              {{ sequence.plan.outputs.response }}
+              EOF
+
+              python3 - <<'PY'
+              import json
+              import os
+              import re
+              from pathlib import Path
+
+              out_dir = Path("requirements")
+              plan_path = out_dir / "plan.json"
+
+              data = json.loads(plan_path.read_text())
+              requirements = data.get("requirements", [])
+              order = data.get("dependency_order", [])
+              summary = data.get("summary", "")
+              has_api = bool(data.get("has_api_changes", False))
+
+              def safe_slug(s: str) -> str:
+                s = s.strip().lower()
+                s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+                return s or "requirement"
+
+              index_lines = []
+              index_lines.append("# Requirements Plan")
+              index_lines.append("")
+              index_lines.append(f"- Ticket: {os.environ.get('TICKET_TITLE','')}".strip())
+              index_lines.append(f"- Current cell: {os.environ.get('CURRENT_CELL','')}".strip())
+              index_lines.append(f"- Has API changes: {str(has_api).lower()}")
+              index_lines.append("")
+              if summary:
+                index_lines.append("## Summary")
+                index_lines.append(summary.strip())
+                index_lines.append("")
+              index_lines.append("## Dependency Order")
+              for rid in order:
+                index_lines.append(f"- {rid}")
+              index_lines.append("")
+              index_lines.append("## Documents")
+              index_lines.append("")
+
+              for req in requirements:
+                rid = str(req.get("id", "")).strip()
+                title = str(req.get("title", "")).strip()
+                target_cell = str(req.get("target_cell", "")).strip()
+                depends = req.get("depends_on", [])
+                background = str(req.get("background", "")).strip()
+                proposal = str(req.get("proposal", "")).strip()
+                api_changes = req.get("api_changes", [])
+                acceptance = req.get("acceptance_criteria", [])
+                out_scope = req.get("out_of_scope", [])
+                open_q = req.get("open_questions", [])
+                risks = req.get("risks", [])
+
+                filename = f"{rid}-{safe_slug(title)[:40]}.md" if title else f"{rid}.md"
+                path = out_dir / filename
+
+                index_lines.append(f"- [{rid}]({path.name}) — cell: `{target_cell}`")
+
+                lines = []
+                lines.append(f"# {rid}: {title}".strip())
+                lines.append("")
+                lines.append(f"- Target cell: `{target_cell}`")
+                if depends:
+                  lines.append(f"- Depends on: {', '.join(depends)}")
+                lines.append("")
+
+                if background:
+                  lines.append("## Background")
+                  lines.append(background)
+                  lines.append("")
+
+                if proposal:
+                  lines.append("## Proposal")
+                  lines.append(proposal)
+                  lines.append("")
+
+                lines.append("## API Changes")
+                if api_changes:
+                  for ch in api_changes:
+                    surface = str(ch.get("surface", "")).strip()
+                    change = str(ch.get("change", "")).strip()
+                    bc = bool(ch.get("backwards_compatible", False))
+                    notes = str(ch.get("notes", "")).strip()
+                    lines.append(f"- `{surface}`: {change} (backwards_compatible={str(bc).lower()})")
+                    if notes:
+                      lines.append(f"  - Notes: {notes}")
+                else:
+                  lines.append("- None")
+                lines.append("")
+
+                if acceptance:
+                  lines.append("## Acceptance Criteria")
+                  for a in acceptance:
+                    lines.append(f"- {a}")
+                  lines.append("")
+
+                if out_scope:
+                  lines.append("## Out of Scope")
+                  for o in out_scope:
+                    lines.append(f"- {o}")
+                  lines.append("")
+
+                if open_q:
+                  lines.append("## Open Questions")
+                  for q in open_q:
+                    lines.append(f"- {q}")
+                  lines.append("")
+
+                if risks:
+                  lines.append("## Risks")
+                  for r in risks:
+                    lines.append(f"- {r}")
+                  lines.append("")
+
+                path.write_text("\n".join(lines).rstrip() + "\n")
+
+              (out_dir / "index.md").write_text("\n".join(index_lines).rstrip() + "\n")
+              PY
+          env:
+            TICKET_TITLE: "{{ has(inputs.title) ? inputs.title : \"\" }}"
+            CURRENT_CELL: "{{ context.workflow.cell }}"
+
+      transitions:
+        - to: api_review
+          when: "true"
+      outputs:
+        plan_json: "{{ sequence.plan.outputs.response }}"
+        has_api_changes: "{{ json_parse(sequence.plan.outputs.response).has_api_changes }}"
+
+    api_review:
+      sequence:
+        - id: review
+          op: llm_inference2
+          inputs:
+            default_provider: openai
+            default_model: gpt-4.1
+            temperature: 0
+            tools: []
+            response_schema:
+              type: object
+              properties:
+                ok:
+                  type: boolean
+                feedback:
+                  type: string
+                blocking_issues:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - ok
+                - feedback
+                - blocking_issues
+              additionalProperties: false
+            system_prompt: >
+              You are a contrarian API reviewer. Your job is to prevent bad API changes. Respond ONLY
+              with JSON matching response_schema. Be strict about:
+              - Backwards compatibility and safe evolution (additive changes preferred).
+              - Whether the proposed API changes make sense for the target cell(s) and their scope.
+              If there are no API changes, return ok=true with a short note.
+            prompt: |
+              Current Cell: {{ context.workflow.cell }}
+              Available Cells (name, path, description): {{ cells() }}
+
+              Proposed requirements plan JSON:
+              {{ 'draft' in states ? states.draft.outputs.plan_json : "" }}
+        - id: write_report
+          op: command_execution
+          inputs:
+            working_directory: "{{ context.environment.outbox }}"
+            run: |
+              set -euo pipefail
+              mkdir -p requirements
+              cat > requirements/api-review.json <<'EOF'
+              {{ sequence.review.outputs.response }}
+              EOF
+
+              python3 - <<'PY'
+              import json
+              from pathlib import Path
+
+              p = Path("requirements/api-review.json")
+              data = json.loads(p.read_text())
+              ok = bool(data.get("ok", False))
+              feedback = str(data.get("feedback", "")).strip()
+              issues = data.get("blocking_issues", [])
+
+              lines = []
+              lines.append("# Contrarian API Review")
+              lines.append("")
+              lines.append(f"- ok: {str(ok).lower()}")
+              lines.append("")
+              lines.append("## Feedback")
+              lines.append(feedback or "(none)")
+              lines.append("")
+              lines.append("## Blocking Issues")
+              if issues:
+                for i in issues:
+                  lines.append(f"- {i}")
+              else:
+                lines.append("- (none)")
+              lines.append("")
+
+              Path("requirements/api-review.md").write_text("\n".join(lines))
+              PY
+      transitions:
+        - to: draft
+          when: "json_parse(sequence.review.outputs.response).ok == false"
+        - to: user_review
+          when: "json_parse(sequence.review.outputs.response).ok == true"
+      outputs:
+        ok: "{{ json_parse(sequence.review.outputs.response).ok }}"
+        feedback: "{{ json_parse(sequence.review.outputs.response).feedback }}"
+
+    user_review:
+      op: input
+      transitions:
+        - to: draft
+          when: "has(outputs.fields) && has(outputs.fields.approved) && outputs.fields.approved == \"no\""
+      inputs:
+        form:
+          title: "Requirements review"
+          fields:
+            - id: approved
+              type: multiple_choice
+              question: "Are you satisfied with the requirements documents?"
+              required: true
+              options:
+                - value: "yes"
+                  label: "Yes"
+                - value: "no"
+                  label: "No, revise"
+            - id: feedback
+              type: paragraph_text
+              question: "If you want revisions, describe what to change/add/remove."
+              required: false
+          context:
+            artifacts_glob:
+              - pattern: "requirements/*.md"
+
+outputs:
+  plan_json: "{{ states.draft.outputs.plan_json }}"
+  has_api_changes: "{{ states.draft.outputs.has_api_changes }}"
+  summary: "{{ json_parse(states.draft.outputs.plan_json).summary }}"
+  requirements: "{{ json_parse(states.draft.outputs.plan_json).requirements }}"
+  dependency_order: "{{ json_parse(states.draft.outputs.plan_json).dependency_order }}"

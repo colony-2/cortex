@@ -2,7 +2,7 @@
 
 ## `cells()`
 - Available in Cortex via the CEL function registry.
-- Returns a list of maps, each with keys: `name`, `id`, `path`.
+- Returns a list of maps, each with keys: `name`, `id`, `path`, `description`.
 - Example: `cells()[0].name` yields the first cell's name; you can filter with standard CEL list ops, e.g. `cells().exists(c, c.name == "my-cell")`.
 
 Notes:

@@ -1,0 +1,11 @@
+id: repro-run-and-get-result-panic
+state:
+  initial: triage
+  states:
+    triage:
+      op: recipe.run_and_get_result
+      inputs:
+        name: new-ticket-triage
+        inputs:
+          title: "Repro"
+          description: "Repro"

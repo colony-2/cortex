@@ -45,9 +45,12 @@ sequence:
         Current Cell: {{ context.workflow.cell }}
         Available Cells (name, path, description): {{ cells() }}
 
-        Decide if the current cell is appropriate to run the work. If it is not, choose the single
-        best cell name from the Available Cells list (use the cell \"name\" value). Use the cell
-        descriptions to guide your choice. Provide a concise rationale.
+        Decide if the current cell is appropriate to run the work.
+        - Treat the current cell as appropriate ONLY if it is the best match among the Available Cells.
+        - Prefer specialized cells over general-purpose cells when a specialized cell clearly matches.
+        - If the current cell is not the best match, set cell_is_appropriate=false and choose the
+          single best cell name from the Available Cells list (use the cell \"name\" value).
+        Use the cell descriptions to guide your choice. Provide a concise rationale.
 
   - id: persist_triage_json
     op: command_execution
@@ -59,19 +62,9 @@ sequence:
         {{ sequence.assess_cell.outputs.response }}
         EOF
 
-  - id: stub_draft_requirements
-    op: command_execution
-    inputs:
-      run: |
-        set -euo pipefail
-        mkdir -p "{{ context.environment.outbox }}"
-        cat <<'EOF' > "{{ context.environment.outbox }}/requirements.md"
-        ## {{ inputs.title }}
-        
-        {{ inputs.description }}
-        EOF
-
 outputs:
   cell_is_appropriate: "{{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate }}"
   recommended_cell: "{{ json_parse(sequence.assess_cell.outputs.response).recommended_cell }}"
   rationale: "{{ json_parse(sequence.assess_cell.outputs.response).rationale }}"
+  recommended_cell_is_valid: "{{ cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) }}"
+  recommended_cell_final: "{{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) ? json_parse(sequence.assess_cell.outputs.response).recommended_cell : context.workflow.cell) }}"

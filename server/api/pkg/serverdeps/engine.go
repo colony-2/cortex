@@ -8,9 +8,11 @@ import (
 	"time"
 
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/strata-go/pkg/daemon"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
@@ -39,6 +41,7 @@ type EngineConfig struct {
 	PostgresDSN           string
 	StoragePath           string
 	Dependencies          ops2.ServiceDependencies2
+	RecipeRegistry        workerworkflow.RecipeProjectProvider
 	Logger                *slog.Logger
 	MaxActive             int
 	AwaitRecycleThreshold time.Duration
@@ -173,10 +176,12 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 		}
 		return nil, fmt.Errorf("failed to create activity registry: %w", err)
 	}
-	activityRegistry.SetDependencies(cfg.Dependencies)
+
+	deps := buildServiceDependencies(cfg, engine)
+	activityRegistry.SetDependencies(deps)
 
 	cfg.Logger.Info("creating recipe worker")
-	workset, err := compiler.NewRecipeWorker(cfg.Dependencies, activityRegistry, cfg.CELOptionsProvider)
+	workset, err := compiler.NewRecipeWorker(deps, activityRegistry, cfg.CELOptionsProvider)
 	if err != nil {
 		cancel()
 		if strata != nil {
@@ -197,6 +202,53 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 		baseURL:  strataBaseURL,
 		cancelFn: cancel,
 	}, nil
+}
+
+func buildServiceDependencies(cfg EngineConfig, engine swf.SWFEngine) ops2.ServiceDependencies2 {
+	base := cfg.Dependencies
+	if base == nil {
+		base = ops2.NewServiceDepsBuilder().Build()
+	}
+
+	db := base.Database()
+	if db == nil {
+		db = cfg.PostgresDB
+	}
+
+	sse := base.SSEManager()
+
+	ctl := base.WorkflowControl()
+	if ctl == nil {
+		ctl = &workerworkflow.SWFWorkflowControl{
+			Engine:   engine,
+			Registry: configuredRecipeRegistry(cfg),
+		}
+	} else if swfCtl, ok := ctl.(*workerworkflow.SWFWorkflowControl); ok {
+		registry := swfCtl.Registry
+		if registry == nil {
+			registry = configuredRecipeRegistry(cfg)
+		}
+		ctl = &workerworkflow.SWFWorkflowControl{
+			Engine:   engine,
+			Registry: registry,
+		}
+	}
+
+	return ops2.NewServiceDepsBuilder().
+		WithDatabase(db).
+		WithSSEManager(sse).
+		WithWorkflowControl(ctl).
+		Build()
+}
+
+func configuredRecipeRegistry(cfg EngineConfig) workerworkflow.RecipeProjectProvider {
+	if cfg.RecipeRegistry != nil {
+		return cfg.RecipeRegistry
+	}
+
+	return func(_ string, _ string) (*recipe.Recipe, error) {
+		return nil, fmt.Errorf("workflow recipe registry not configured")
+	}
 }
 
 // Engine returns the workflow engine.

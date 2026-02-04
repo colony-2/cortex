@@ -1,0 +1,14 @@
+id: repro-ticket-fields
+sequence:
+  - id: noop
+    op: command_execution
+    inputs:
+      run: |
+        set -euo pipefail
+        mkdir -p "{{ context.environment.outbox }}"
+        echo ok > "{{ context.environment.outbox }}/ok.txt"
+outputs:
+  ticket_id: "{{ context.ticket.id }}"
+  ticket_title: "{{ context.ticket.title }}"
+  ticket_description: "{{ context.ticket.description }}"
+  actor_ticket_id: "{{ context.actor.ticket_id }}"

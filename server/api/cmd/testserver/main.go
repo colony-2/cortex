@@ -197,6 +197,17 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	serverdepsops.RegisterOps()
 	slog.Info("ops registered", "elapsed", time.Since(startTime))
 
+	// Create embedded provider for internal recipes.
+	slog.Info("creating embedded recipe provider")
+	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
+	if err != nil {
+		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
+	}
+	slog.Info("embedded recipe provider created", "elapsed", time.Since(startTime))
+
+	// Create RecipeProjectProvider with fallback to embedded recipes.
+	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+
 	// Create initial dependencies for engine setup
 	slog.Info("creating initial dependencies for engine")
 	tempDeps := ops.NewServiceDepsBuilder().
@@ -211,6 +222,9 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		PostgresDSN:  dsn,
 		StoragePath:  storagePath,
 		Dependencies: tempDeps,
+		RecipeRegistry: workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
+			return recipeProviderWithFallback(projectID, recipeRef)
+		}),
 		InitializeDB: initializeDB,
 	})
 	if err != nil {
@@ -225,16 +239,6 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		}
 	}()
 
-	// Create embedded provider for internal recipes
-	slog.Info("creating embedded recipe provider")
-	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
-	if err != nil {
-		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
-	}
-	slog.Info("embedded recipe provider created", "elapsed", time.Since(startTime))
-
-	// Create RecipeProjectProvider with fallback to embedded recipes
-	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
 	ticketRecipeProvider := ticket.RecipeProjectProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
 		return recipeProviderWithFallback(projectID, recipeRef)
 	})
