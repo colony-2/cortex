@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -182,6 +183,27 @@ func (s *service) getFileLatestCommitWithDate(ctx context.Context, workspacePath
 	date := time.Unix(timestamp, 0)
 
 	return commitHash, date, nil
+}
+
+func (s *service) getCommitSummary(ctx context.Context, workspacePath, commitHash string) (author string, message string, createdAt time.Time, err error) {
+	cmd := exec.CommandContext(ctx, "git", "log", "-1", "--format=%an|%ae|%at|%s", commitHash)
+	cmd.Dir = workspacePath
+	output, err := cmd.Output()
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+
+	parts := strings.SplitN(strings.TrimSpace(string(output)), "|", 4)
+	if len(parts) != 4 {
+		return "", "", time.Time{}, fmt.Errorf("unexpected git log output format")
+	}
+
+	timestamp, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+
+	return fmt.Sprintf("%s <%s>", parts[0], parts[1]), parts[3], time.Unix(timestamp, 0), nil
 }
 
 // findRecipeFiles recursively finds all .recipe.yaml files in a directory.

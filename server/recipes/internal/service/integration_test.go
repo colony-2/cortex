@@ -69,6 +69,73 @@ func TestService_FullLifecycle(t *testing.T) {
 		}
 	})
 
+	// Regression: updating with identical bytes should be a no-op (not an HTTP 500).
+	t.Run("UpdateNoChangesIsNoOp", func(t *testing.T) {
+		name := "no-changes"
+		content := testutil.CreateTestRecipeContent(name)
+
+		v1, err := svc.CreateRecipe(ctx, model.CreateInput{
+			ProjectID:   projectID,
+			Name:        name,
+			Content:     content,
+			Description: "No changes test",
+			AutoPublish: false,
+		})
+		if err != nil {
+			t.Fatalf("CreateRecipe failed: %v", err)
+		}
+		if v1.IsPublished {
+			t.Fatalf("IsPublished = true, want false")
+		}
+
+		v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+			ProjectID:   projectID,
+			Name:        name,
+			Content:     content,
+			Message:     "noop update",
+			AutoPublish: false,
+		})
+		if err != nil {
+			t.Fatalf("UpdateRecipe failed: %v", err)
+		}
+		if v2.CommitHash != v1.CommitHash {
+			t.Errorf("CommitHash = %q, want %q", v2.CommitHash, v1.CommitHash)
+		}
+		if v2.IsPublished {
+			t.Errorf("IsPublished = true, want false")
+		}
+	})
+
+	t.Run("UpdateNoChangesAutoPublishPublishes", func(t *testing.T) {
+		name := "no-changes"
+		content := testutil.CreateTestRecipeContent(name)
+
+		v, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+			ProjectID:   projectID,
+			Name:        name,
+			Content:     content,
+			Message:     "noop publish",
+			AutoPublish: true,
+		})
+		if err != nil {
+			t.Fatalf("UpdateRecipe failed: %v", err)
+		}
+		if !v.IsPublished {
+			t.Fatalf("IsPublished = false, want true")
+		}
+
+		recipe, err := svc.GetRecipe(ctx, projectID, name, "")
+		if err != nil {
+			t.Fatalf("GetRecipe failed: %v", err)
+		}
+		if !recipe.IsPublished {
+			t.Fatalf("GetRecipe IsPublished = false, want true")
+		}
+		if string(recipe.Content) != string(content) {
+			t.Fatalf("GetRecipe content mismatch")
+		}
+	})
+
 	// Test 3: Update recipe without AutoPublish
 	t.Run("UpdateWithoutAutoPublish", func(t *testing.T) {
 		// Create different content by changing the message

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -244,6 +245,52 @@ func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*m
 
 	// 6. Write file
 	filePath := filepath.Join(workspace, gitPath)
+	currentContent, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(currentContent, input.Content) {
+		currentCommit, err := s.getFileLastCommit(ctx, workspace, gitPath)
+		if err != nil {
+			return nil, err
+		}
+
+		isPublished := false
+		publishedRecipe, err := s.store.GetByName(ctx, input.ProjectID, input.Name)
+		if err == nil {
+			isPublished = publishedRecipe.CommitHash == currentCommit
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+
+		if input.AutoPublish && !isPublished {
+			_, err := s.PublishRecipe(ctx, model.PublishInput{
+				ProjectID:  input.ProjectID,
+				Name:       input.Name,
+				CommitHash: currentCommit,
+			})
+			if err != nil {
+				return nil, err
+			}
+			isPublished = true
+		}
+
+		author, message, createdAt, err := s.getCommitSummary(ctx, workspace, currentCommit)
+		if err != nil {
+			return nil, err
+		}
+
+		return &model.RecipeVersion{
+			Name:        input.Name,
+			CommitHash:  currentCommit,
+			ShortHash:   shortHash(currentCommit),
+			Author:      author,
+			Message:     message,
+			CreatedAt:   createdAt,
+			IsPublished: isPublished,
+		}, nil
+	}
+
 	if err := os.WriteFile(filePath, input.Content, 0644); err != nil {
 		return nil, err
 	}
