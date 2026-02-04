@@ -1,0 +1,26 @@
+id: repro-command-transition-condition
+version: 0.1.0
+desc: "Repro: transitions.when can read outputs.exit_code"
+state:
+  initial: a
+  states:
+    a:
+      op: command_execution
+      inputs:
+        run: "exit 0"
+      transitions:
+        - to: b
+          when: "has(states.a.outputs.exit_code) && states.a.outputs.exit_code == 0"
+        - to: c
+          when: "true"
+    b:
+      op: command_execution
+      inputs:
+        run: "echo b"
+    c:
+      op: command_execution
+      inputs:
+        run: "echo c"
+outputs:
+  has_b: "{{ 'b' in states }}"
+  has_c: "{{ 'c' in states }}"

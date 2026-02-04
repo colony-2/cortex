@@ -1,0 +1,21 @@
+id: repro-command-transition
+version: 0.1.0
+desc: "Repro: command_execution state transitions should work"
+state:
+  initial: a
+  states:
+    a:
+      op: command_execution
+      inputs:
+        run: "echo a"
+      transitions:
+        - to: b
+          when: "true"
+    b:
+      op: command_execution
+      inputs:
+        run: "echo b"
+outputs:
+  has_a: "{{ 'a' in states }}"
+  has_b: "{{ 'b' in states }}"
+  states_string: "{{ string(states) }}"

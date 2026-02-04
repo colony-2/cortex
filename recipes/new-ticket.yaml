@@ -1,5 +1,5 @@
 id: new-ticket
-version: 0.1.0
+version: 0.1.4
 desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval (v2)
 state:
   initial: triage
@@ -7,10 +7,8 @@ state:
     triage:
       op: recipe.run_and_get_result
       transitions:
-        - to: reassign_create
-          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && !states.triage.outputs.outputs.cell_is_appropriate && has(states.triage.outputs.outputs.recommended_cell_is_valid) && states.triage.outputs.outputs.recommended_cell_is_valid"
         - to: requirements_planning
-          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && states.triage.outputs.outputs.cell_is_appropriate"
+          when: "true"
       inputs:
         name: new-ticket-triage
         inputs:
@@ -34,6 +32,9 @@ state:
     reassign_annotate:
       op: ticket.manage
       when: 'has(context.ticket.id) && context.ticket.id != ""'
+      transitions:
+        - to: requirements_note
+          when: "true"
       inputs:
         actions:
           - type: append_ticket_note
@@ -41,19 +42,102 @@ state:
             note: >-
               Reassigned to cell "{{ states.triage.outputs.outputs.recommended_cell_final }}".
               Created new ticket {{ size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : "(unknown)" }}.
-          - type: update_ticket
-            ticket_id: "{{ context.ticket.id }}"
-            state: waiting_user
     requirements_planning:
       op: recipe.run_and_get_result
       transitions:
-        - to: requirements_note
+        - to: requirements_review
           when: "true"
       inputs:
         name: new-ticket-requirements-planning
         inputs:
           title: '{{ context.ticket.title }}'
           description: '{{ context.ticket.description }}'
+          prior_plan_json: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
+          user_feedback: '{{ "check_approve" in states ? states.check_approve.outputs.stdout : "" }}'
+          api_review_feedback: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
+    requirements_review:
+      op: input
+      transitions:
+        - to: check_approve
+          when: "true"
+      inputs:
+        form:
+          title: "Review requirements"
+          question: |
+            Requirements bundle has been generated as artifacts under `requirements/` (see `requirements/index.md`).
+
+            Summary:
+            {{ states.requirements_planning.outputs.outputs.summary }}
+
+            Prior user feedback applied (from last loop, if any):
+            {{ "check_approve" in states && has(states.check_approve.outputs.stdout) ? states.check_approve.outputs.stdout : "" }}
+
+            Dependency order:
+            {{ states.requirements_planning.outputs.outputs.dependency_order }}
+
+            Requirements (JSON):
+            {{ states.requirements_planning.outputs.outputs.requirements }}
+
+            Contrarian API review:
+            ok={{ states.requirements_planning.outputs.outputs.api_review_ok }}
+            blocking_issues={{ states.requirements_planning.outputs.outputs.api_review_blocking_issues }}
+
+            Feedback:
+            {{ states.requirements_planning.outputs.outputs.api_review_feedback }}
+
+            Reply with "APPROVE" to proceed, or provide feedback to revise the requirements.
+          type: short_answer
+    check_approve:
+      op: command_execution
+      transitions:
+        - to: requirements_planning
+          when: "has(states.requirements_planning.outputs.outputs.api_review_ok) && !states.requirements_planning.outputs.outputs.api_review_ok"
+        - to: maybe_reassign
+          when: "has(states.check_approve.outputs.exit_code) && states.check_approve.outputs.exit_code == 0"
+        - to: requirements_planning
+          when: "true"
+      inputs:
+        run: |
+          set -euo pipefail
+
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT/requirements"
+
+          cat > "$OUT/requirements/user-review-raw.json" <<'EOF'
+          {{ string(states.requirements_review.outputs) }}
+          EOF
+
+          set +e
+          RESP=$(
+            python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          p = Path("{{ context.environment.outbox }}") / "requirements" / "user-review-raw.json"
+          j = json.loads(p.read_text(encoding="utf-8"))
+          fields = j.get("fields") or {}
+          resp = str(fields.get("response") or "")
+          resp_clean = resp.strip()
+          print(resp_clean)
+          sys.exit(0 if resp_clean.upper().startswith("APPROVE") else 1)
+          PY
+          )
+          PY_STATUS=$?
+          set -e
+
+          echo "$RESP" > "$OUT/requirements/user-review.txt"
+          echo "$RESP"
+          exit $PY_STATUS
+    maybe_reassign:
+      op: command_execution
+      transitions:
+        - to: reassign_create
+          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && !states.triage.outputs.outputs.cell_is_appropriate && has(states.triage.outputs.outputs.recommended_cell_is_valid) && states.triage.outputs.outputs.recommended_cell_is_valid"
+        - to: requirements_note
+          when: "true"
+      inputs:
+        run: "echo maybe_reassign"
     requirements_note:
       op: ticket.manage
       when: 'has(context.actor.ticket_id) && context.actor.ticket_id != ""'
@@ -79,3 +163,5 @@ outputs:
   requirements_plan_json: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.plan_json : \"\" }}"
   requirements_dependency_order: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
   requirements: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"
+  requirements_approved: "{{ 'check_approve' in states && has(states.check_approve.outputs.exit_code) ? states.check_approve.outputs.exit_code == 0 : false }}"
+  requirements_user_feedback: "{{ 'check_approve' in states && has(states.check_approve.outputs.stdout) ? states.check_approve.outputs.stdout : \"\" }}"

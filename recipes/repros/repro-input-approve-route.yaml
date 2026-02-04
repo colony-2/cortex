@@ -1,0 +1,58 @@
+id: repro-input-approve-route
+version: 0.1.0
+desc: "Repro: route based on command exit_code after parsing input"
+state:
+  initial: ask
+  states:
+    ask:
+      op: input
+      transitions:
+        - to: check
+          when: "true"
+      inputs:
+        form:
+          title: "Repro approve route"
+          question: "Type APPROVE"
+          type: short_answer
+    check:
+      op: command_execution
+      transitions:
+        - to: approved
+          when: "has(states.check.outputs.exit_code) && states.check.outputs.exit_code == 0"
+        - to: rejected
+          when: "true"
+      inputs:
+        run: |
+          set -euo pipefail
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT"
+          cat > "$OUT/input.json" <<'EOF'
+          {{ string(states.ask.outputs) }}
+          EOF
+          set +e
+          RESP=$(
+            python3 - <<'PY'
+          import json,sys
+          from pathlib import Path
+          p = Path("{{ context.environment.outbox }}") / "input.json"
+          j = json.loads(p.read_text(encoding="utf-8"))
+          resp = str((j.get("fields") or {}).get("response") or "").strip()
+          print(resp)
+          sys.exit(0 if resp.upper().startswith("APPROVE") else 1)
+          PY
+          )
+          PY_STATUS=$?
+          set -e
+          echo "$RESP"
+          exit $PY_STATUS
+    approved:
+      op: command_execution
+      inputs:
+        run: "echo approved"
+    rejected:
+      op: command_execution
+      inputs:
+        run: "echo rejected"
+outputs:
+  has_approved: "{{ 'approved' in states }}"
+  has_rejected: "{{ 'rejected' in states }}"

@@ -1,0 +1,26 @@
+id: repro-run-and-get-shape
+version: 0.1.0
+desc: "Repro: show shape of recipe.run_and_get_result outputs in a state"
+state:
+  initial: triage
+  states:
+    triage:
+      op: recipe.run_and_get_result
+      transitions:
+        - to: done
+          when: "true"
+      inputs:
+        name: new-ticket-triage
+        inputs:
+          title: "shape-check"
+          description: "shape-check"
+    done:
+      op: command_execution
+      inputs:
+        run: "echo done"
+outputs:
+  triage_outputs_string: "{{ string(states.triage.outputs) }}"
+  triage_outputs_has_outputs_key: "{{ 'outputs' in states.triage.outputs }}"
+  triage_outputs_outputs_string: "{{ 'outputs' in states.triage.outputs ? string(states.triage.outputs.outputs) : '' }}"
+  triage_cell_direct_string: "{{ 'cell_is_appropriate' in states.triage.outputs ? string(states.triage.outputs.cell_is_appropriate) : '' }}"
+  triage_cell_nested_string: "{{ 'outputs' in states.triage.outputs && 'cell_is_appropriate' in states.triage.outputs.outputs ? string(states.triage.outputs.outputs.cell_is_appropriate) : '' }}"

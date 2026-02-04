@@ -1,0 +1,39 @@
+id: repro-run-and-get-transition-scope
+version: 0.1.0
+desc: "Repro: which outputs path works in transitions.when for recipe.run_and_get_result"
+state:
+  initial: triage
+  states:
+    triage:
+      op: recipe.run_and_get_result
+      transitions:
+        - to: done_false
+          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && states.triage.outputs.outputs.cell_is_appropriate == false"
+        - to: done_true
+          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && states.triage.outputs.outputs.cell_is_appropriate == true"
+        - to: done_fallback
+          when: "true"
+      inputs:
+        name: new-ticket-triage
+        inputs:
+          title: "shape-check"
+          description: "shape-check"
+    done_false:
+      op: command_execution
+      inputs:
+        run: "echo false"
+    done_true:
+      op: command_execution
+      inputs:
+        run: "echo true"
+    done_fallback:
+      op: command_execution
+      inputs:
+        run: "echo fallback"
+outputs:
+  states_string: "{{ string(states) }}"
+  has_triage: "{{ 'triage' in states }}"
+  has_done_false: "{{ 'done_false' in states }}"
+  has_done_true: "{{ 'done_true' in states }}"
+  has_done_fallback: "{{ 'done_fallback' in states }}"
+  triage_outputs_string: "{{ 'triage' in states ? string(states.triage.outputs) : '' }}"
