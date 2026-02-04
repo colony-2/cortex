@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
-	"log"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
@@ -75,7 +79,12 @@ func defaultRecipeRegistryFactory(_ context.Context, projectID project.ID, repoP
 	}
 	cleanup := func() {
 		if err := reg.Stop(); err != nil {
-			log.Printf("failed to stop recipe registry for project %s: %v", projectID, err)
+			slog.Default().Warn("failed to stop recipe registry",
+				"project_id", projectID,
+				"error", err,
+				"error_chain", logutil.ErrorChain(err),
+				"stacktrace", logutil.Stacktrace(4),
+			)
 		}
 	}
 	return reg, recipesDir, cleanup, nil
@@ -115,18 +124,63 @@ func (h *Handlers) SetupRoutesWithExtensions(staticHandler http.Handler, extensi
 // withHandlerLog wraps a handler to log entry/exit with status for identifying which handler responded.
 func withHandlerLog(tag string, fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		lrw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		reqBodyPrefix := captureRequestBodyPrefix(r, 4096)
+
+		lrw := &logResponseWriter{ResponseWriter: w, status: http.StatusOK, bodyLimit: 4096}
 		start := time.Now()
-		log.Printf("HANDLER_LOG: enter tag=%s method=%s path=%s", tag, r.Method, r.URL.Path)
 		fn(lrw, r)
 		dur := time.Since(start)
-		log.Printf("HANDLER_LOG: exit tag=%s status=%d dur=%s", tag, lrw.status, dur)
+		if lrw.status < 400 {
+			return
+		}
+
+		template := "unmatched"
+		if route := mux.CurrentRoute(r); route != nil {
+			if tpl, err := route.GetPathTemplate(); err == nil {
+				template = tpl
+			}
+		}
+
+		level := slog.LevelWarn
+		attrs := []any{
+			"tag", tag,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"template", template,
+			"content_type", r.Header.Get("Content-Type"),
+			"content_length", r.ContentLength,
+			"request_body_prefix", reqBodyPrefix,
+			"status", lrw.status,
+			"duration_ms", dur.Milliseconds(),
+			"response_bytes", lrw.bytesWritten,
+			"error", lrw.err,
+			"error_chain", lrw.errChain,
+			"response_body_prefix", lrw.bodyPrefix(),
+		}
+		if lrw.status >= 500 {
+			level = slog.LevelError
+			stack := lrw.errStacktrace
+			if len(stack) == 0 {
+				stack = logutil.Stacktrace(5)
+			}
+			attrs = append(attrs, "stacktrace", stack)
+		}
+
+		slog.Default().Log(r.Context(), level, "http handler returned error", attrs...)
 	}
 }
 
 type logResponseWriter struct {
 	http.ResponseWriter
 	status int
+
+	bodyLimit    int64
+	bodyCaptured bytes.Buffer
+	bytesWritten int64
+
+	err           error
+	errChain      []string
+	errStacktrace []string
 }
 
 func (l *logResponseWriter) WriteHeader(code int) {
@@ -134,13 +188,72 @@ func (l *logResponseWriter) WriteHeader(code int) {
 	l.ResponseWriter.WriteHeader(code)
 }
 
+func (l *logResponseWriter) captureError(err error, chain []string, stacktrace []string) {
+	if l.err != nil {
+		return
+	}
+	l.err = err
+	l.errChain = chain
+	l.errStacktrace = stacktrace
+}
+
+func (l *logResponseWriter) Write(p []byte) (int, error) {
+	n, err := l.ResponseWriter.Write(p)
+	l.bytesWritten += int64(n)
+
+	if l.bodyLimit > 0 && l.bodyCaptured.Len() < int(l.bodyLimit) && n > 0 {
+		remaining := int(l.bodyLimit) - l.bodyCaptured.Len()
+		if remaining > 0 {
+			toWrite := n
+			if toWrite > remaining {
+				toWrite = remaining
+			}
+			_, _ = l.bodyCaptured.Write(p[:toWrite])
+		}
+	}
+
+	return n, err
+}
+
+func (l *logResponseWriter) bodyPrefix() string {
+	if l.bodyCaptured.Len() == 0 {
+		return ""
+	}
+	// Best-effort trim of leading/trailing whitespace and ensure valid UTF-8-ish output.
+	b := bytes.TrimSpace(l.bodyCaptured.Bytes())
+	return string(b)
+}
+
 // Flush implements http.Flusher to support SSE streaming
 func (l *logResponseWriter) Flush() {
 	if f, ok := l.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	} else {
-		log.Printf("DEBUG: Response writer does not support Flusher! Type: %T", l.ResponseWriter)
+		slog.Default().Debug("response writer does not support Flusher", "type", fmt.Sprintf("%T", l.ResponseWriter))
 	}
+}
+
+func captureRequestBodyPrefix(r *http.Request, limit int64) string {
+	if r == nil || r.Body == nil || limit <= 0 {
+		return ""
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return ""
+	}
+	if r.ContentLength == 0 {
+		return ""
+	}
+	ctype := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(ctype, "multipart/form-data") {
+		return ""
+	}
+	if strings.HasPrefix(ctype, "application/octet-stream") {
+		return ""
+	}
+
+	prefix, _ := io.ReadAll(io.LimitReader(r.Body, limit))
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(prefix), r.Body))
+	return string(bytes.TrimSpace(prefix))
 }
 
 // NewSPAHandler creates a handler for serving the single-page application

@@ -24,11 +24,11 @@ func (h *Handlers) handleListTicketEvents(w http.ResponseWriter, r *http.Request
 	// Verify ticket exists and belongs to project
 	tk, err := h.tickets.GetTicketAt(r.Context(), ticketID, time.Now().UTC())
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 	if tk.ProjectID != projectID {
-		writeError(w, errors.New("ticket does not belong to project"), http.StatusNotFound)
+		writeError(r, w, errors.New("ticket does not belong to project"), http.StatusNotFound)
 		return
 	}
 
@@ -46,7 +46,7 @@ func (h *Handlers) handleListTicketEvents(w http.ResponseWriter, r *http.Request
 	if sinceStr := query.Get("since"); sinceStr != "" {
 		since, err := time.Parse(time.RFC3339, sinceStr)
 		if err != nil {
-			writeError(w, err, http.StatusBadRequest)
+			writeError(r, w, err, http.StatusBadRequest)
 			return
 		}
 		filter.Since = &since
@@ -54,7 +54,7 @@ func (h *Handlers) handleListTicketEvents(w http.ResponseWriter, r *http.Request
 	if untilStr := query.Get("until"); untilStr != "" {
 		until, err := time.Parse(time.RFC3339, untilStr)
 		if err != nil {
-			writeError(w, err, http.StatusBadRequest)
+			writeError(r, w, err, http.StatusBadRequest)
 			return
 		}
 		filter.Until = &until
@@ -68,7 +68,7 @@ func (h *Handlers) handleListTicketEvents(w http.ResponseWriter, r *http.Request
 	// Retrieve events
 	iter, err := h.tickets.ListEvents(r.Context(), ticketID, filter)
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 
@@ -80,7 +80,7 @@ func (h *Handlers) handleListTicketEvents(w http.ResponseWriter, r *http.Request
 			if errors.Is(err, ticket.ErrIteratorDone) {
 				break
 			}
-			writeDomainError(w, err, http.StatusInternalServerError)
+			writeDomainError(r, w, err, http.StatusInternalServerError)
 			return
 		}
 		events = append(events, event)

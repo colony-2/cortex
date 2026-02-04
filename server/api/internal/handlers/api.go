@@ -6,15 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
@@ -123,7 +123,7 @@ func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	it, err := h.projects.ListProjects(r.Context(), filter)
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 	defer it.Close(r.Context())
@@ -135,7 +135,7 @@ func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			writeError(w, err, http.StatusInternalServerError)
+			writeError(r, w, err, http.StatusInternalServerError)
 			return
 		}
 		result = append(result, toOpenAPIProject(p))
@@ -150,7 +150,7 @@ func (h *Handlers) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body openapi.ProjectCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	created, err := h.projects.CreateProject(r.Context(), project.CreateInput{
@@ -158,7 +158,7 @@ func (h *Handlers) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		GitRepoPath: body.GitRepoPath,
 	})
 	if err != nil {
-		writeDomainError(w, err, projectErrorStatus(err))
+		writeDomainError(r, w, err, projectErrorStatus(err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, toOpenAPIProject(created))
@@ -173,7 +173,7 @@ func (h *Handlers) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	prj, err := h.projects.GetProject(r.Context(), project.ID(id))
 	if err != nil {
 		status := projectErrorStatus(err)
-		writeDomainError(w, err, status)
+		writeDomainError(r, w, err, status)
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPIProject(prj))
@@ -187,7 +187,7 @@ func (h *Handlers) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["projectId"]
 	var body openapi.ProjectUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	updated, err := h.projects.UpdateProject(r.Context(), project.ID(id), project.UpdateInput{
@@ -198,7 +198,7 @@ func (h *Handlers) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		status := projectErrorStatus(err)
-		writeDomainError(w, err, status)
+		writeDomainError(r, w, err, status)
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPIProject(updated))
@@ -212,7 +212,7 @@ func (h *Handlers) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["projectId"]
 	if err := h.projects.DeleteProject(r.Context(), project.ID(id)); err != nil {
 		status := projectErrorStatus(err)
-		writeDomainError(w, err, status)
+		writeDomainError(r, w, err, status)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -264,7 +264,7 @@ func (h *Handlers) handleListCells(w http.ResponseWriter, r *http.Request) {
 
 	it, err := h.cells.ListCells(r.Context(), filter)
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 	defer it.Close(r.Context())
@@ -276,7 +276,7 @@ func (h *Handlers) handleListCells(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			writeError(w, err, http.StatusInternalServerError)
+			writeError(r, w, err, http.StatusInternalServerError)
 			return
 		}
 		deps, _ := h.listCellDeps(r.Context(), c.ProjectID, c.ID)
@@ -294,7 +294,7 @@ func (h *Handlers) handleCreateCell(w http.ResponseWriter, r *http.Request) {
 	projectID := project.ID(vars["projectId"])
 	var body openapi.CellCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	input := cell.CreateInput{
@@ -314,7 +314,7 @@ func (h *Handlers) handleCreateCell(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.cells.CreateCell(r.Context(), input)
 	if err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 	deps, _ := h.listCellDeps(r.Context(), projectID, created.ID)
@@ -330,7 +330,7 @@ func (h *Handlers) handleGetCell(w http.ResponseWriter, r *http.Request) {
 	cellID := cell.ID(vars["cellId"])
 	c, err := h.cells.GetCell(r.Context(), cellID)
 	if err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 	deps, _ := h.listCellDeps(r.Context(), c.ProjectID, c.ID)
@@ -346,7 +346,7 @@ func (h *Handlers) handleUpdateCell(w http.ResponseWriter, r *http.Request) {
 	cellID := cell.ID(vars["cellId"])
 	var body openapi.CellUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	updated, err := h.cells.UpdateCell(r.Context(), cellID, cell.UpdateInput{
@@ -355,7 +355,7 @@ func (h *Handlers) handleUpdateCell(w http.ResponseWriter, r *http.Request) {
 		WorkingPath: body.WorkingPath,
 	})
 	if err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 	deps, _ := h.listCellDeps(r.Context(), updated.ProjectID, updated.ID)
@@ -370,7 +370,7 @@ func (h *Handlers) handleDeleteCell(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cellID := cell.ID(vars["cellId"])
 	if err := h.cells.MarkDeleted(r.Context(), cellID); err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -385,7 +385,7 @@ func (h *Handlers) handleReplaceDependencies(w http.ResponseWriter, r *http.Requ
 	cellID := cell.ID(vars["cellId"])
 	var body openapi.CellDependenciesRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	depIDs := make([]cell.ID, 0, len(body.Dependencies))
@@ -393,7 +393,7 @@ func (h *Handlers) handleReplaceDependencies(w http.ResponseWriter, r *http.Requ
 		depIDs = append(depIDs, cell.ID(id))
 	}
 	if err := h.cells.ReplaceDependencies(r.Context(), cellID, depIDs); err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -411,7 +411,7 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 
 	var body openapi.CellSyncRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -429,7 +429,7 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 	switch popName {
 	case "graph/moon":
 		if h.graphFactory == nil {
-			writeError(w, fmt.Errorf("graph factory not configured"), http.StatusInternalServerError)
+			writeError(r, w, fmt.Errorf("graph factory not configured"), http.StatusInternalServerError)
 			return
 		}
 		gb, err := h.graphFactory(r.Context(), string(projectID))
@@ -438,12 +438,12 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, project.ErrNotFound) || errors.Is(err, gorm.ErrRecordNotFound) {
 				status = http.StatusNotFound
 			}
-			writeError(w, fmt.Errorf("graph factory: %w", err), status)
+			writeError(r, w, fmt.Errorf("graph factory: %w", err), status)
 			return
 		}
 		pop = &graphBuilderPopulator{name: popName, builder: gb}
 	default:
-		writeError(w, fmt.Errorf("unsupported populator: %s", popName), http.StatusBadRequest)
+		writeError(r, w, fmt.Errorf("unsupported populator: %s", popName), http.StatusBadRequest)
 		return
 	}
 
@@ -454,7 +454,7 @@ func (h *Handlers) handleSyncCells(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.cells.SyncFromPopulator(r.Context(), projectID, pop, opts)
 	if err != nil {
-		writeDomainError(w, err, cellErrorStatus(err))
+		writeDomainError(r, w, err, cellErrorStatus(err))
 		return
 	}
 
@@ -490,7 +490,7 @@ func (h *Handlers) handleGetGraph(w http.ResponseWriter, r *http.Request) {
 
 	graph, err := h.buildGraphResponse(r.Context(), projectID)
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, graph)
@@ -594,7 +594,7 @@ func (h *Handlers) handleListTickets(w http.ResponseWriter, r *http.Request) {
 
 	it, err := h.tickets.SearchTickets(r.Context(), filter)
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 	defer it.Close(r.Context())
@@ -606,7 +606,7 @@ func (h *Handlers) handleListTickets(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if err != nil {
-			writeError(w, err, http.StatusInternalServerError)
+			writeError(r, w, err, http.StatusInternalServerError)
 			return
 		}
 		result = append(result, toOpenAPITicket(tk))
@@ -623,7 +623,7 @@ func (h *Handlers) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	projectID := project.ID(vars["projectId"])
 	var body openapi.TicketCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	input := ticket.CreateInput{
@@ -637,7 +637,7 @@ func (h *Handlers) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	created, _, err := h.tickets.CreateTicket(r.Context(), input)
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, toOpenAPITicket(created))
@@ -682,7 +682,7 @@ func (h *Handlers) handleListTicketStages(w http.ResponseWriter, r *http.Request
 
 	it, err := h.tickets.SearchStages(r.Context(), filter)
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 	defer it.Close(r.Context())
@@ -694,7 +694,7 @@ func (h *Handlers) handleListTicketStages(w http.ResponseWriter, r *http.Request
 			break
 		}
 		if err != nil {
-			writeError(w, err, http.StatusInternalServerError)
+			writeError(r, w, err, http.StatusInternalServerError)
 			return
 		}
 		result = append(result, string(stage))
@@ -721,11 +721,11 @@ func (h *Handlers) handleGetTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID := ticket.ID(vars["ticketId"])
 	tk, err := h.tickets.GetTicketAt(r.Context(), ticketID, time.Now().UTC())
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 	if tk.ProjectID != projectID {
-		writeError(w, errors.New("ticket does not belong to project"), http.StatusNotFound)
+		writeError(r, w, errors.New("ticket does not belong to project"), http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPITicket(tk))
@@ -740,7 +740,7 @@ func (h *Handlers) handleUpdateTicket(w http.ResponseWriter, r *http.Request) {
 	ticketID := ticket.ID(vars["ticketId"])
 	var body openapi.TicketUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	input := ticket.UpdateInput{
@@ -767,7 +767,7 @@ func (h *Handlers) handleUpdateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, err := h.tickets.UpdateTicket(r.Context(), ticketID, input)
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPITicket(updated))
@@ -788,16 +788,16 @@ func (h *Handlers) handleGetTicketAt(w http.ResponseWriter, r *http.Request) {
 	}
 	at, err := time.Parse(time.RFC3339, rawAt)
 	if err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	tk, err := h.tickets.GetTicketAt(r.Context(), ticketID, at)
 	if err != nil {
-		writeDomainError(w, err, ticketErrorStatus(err))
+		writeDomainError(r, w, err, ticketErrorStatus(err))
 		return
 	}
 	if tk.ProjectID != projectID {
-		writeError(w, errors.New("ticket does not belong to project"), http.StatusNotFound)
+		writeError(r, w, errors.New("ticket does not belong to project"), http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, toOpenAPITicket(tk))
@@ -953,16 +953,52 @@ func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		log.Printf("writeJSON encode error: %v", err)
+		slog.Default().Error("writeJSON encode error",
+			"status", status,
+			"error", err,
+			"error_chain", logutil.ErrorChain(err),
+			"stacktrace", logutil.Stacktrace(4),
+		)
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 	}
 }
 
-func writeError(w http.ResponseWriter, err error, status int) {
-	// Log stack trace for 500 errors
-	if status == http.StatusInternalServerError {
-		stack := debug.Stack()
-		log.Printf("Internal Server Error: %v\nStack trace:\n%s", err, stack)
+func writeError(r *http.Request, w http.ResponseWriter, err error, status int) {
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+
+	chain := logutil.ErrorChain(err)
+	var stack []string
+	if status >= 500 {
+		stack = logutil.Stacktrace(6)
+	}
+	if capturer, ok := w.(interface {
+		captureError(err error, chain []string, stacktrace []string)
+	}); ok {
+		capturer.captureError(err, chain, stack)
+	} else if status >= 500 {
+		template := "unmatched"
+		if r != nil {
+			if route := mux.CurrentRoute(r); route != nil {
+				if tpl, tplErr := route.GetPathTemplate(); tplErr == nil {
+					template = tpl
+				}
+			}
+		}
+		attrs := []any{
+			"status", status,
+			"template", template,
+			"error", err,
+			"error_chain", chain,
+			"stacktrace", stack,
+		}
+		if r != nil {
+			attrs = append(attrs, "method", r.Method, "path", r.URL.Path)
+			slog.Default().ErrorContext(r.Context(), "http error response", attrs...)
+		} else {
+			slog.Default().ErrorContext(context.Background(), "http error response", attrs...)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -970,11 +1006,8 @@ func writeError(w http.ResponseWriter, err error, status int) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
 
-func writeDomainError(w http.ResponseWriter, err error, status int) {
-	if status == 0 {
-		status = http.StatusInternalServerError
-	}
-	writeError(w, err, status)
+func writeDomainError(r *http.Request, w http.ResponseWriter, err error, status int) {
+	writeError(r, w, err, status)
 }
 
 func projectErrorStatus(err error) int {

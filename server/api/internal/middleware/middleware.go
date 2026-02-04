@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/gorilla/mux"
 )
 
@@ -82,8 +83,12 @@ func Recovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				stack := debug.Stack()
-				log.Printf("Panic recovered: %v\nStack trace:\n%s", err, stack)
+				slog.Default().Error("panic recovered",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"panic", err,
+					"stacktrace", logutil.Stacktrace(6),
+				)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			}
 		}()

@@ -35,7 +35,7 @@ func (h *Handlers) handleListRecipes(w http.ResponseWriter, r *http.Request) {
 		PublishStatus: publishStatus,
 	})
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 	defer iter.Close(r.Context())
@@ -48,7 +48,7 @@ func (h *Handlers) handleListRecipes(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(err, recipesvc.ErrIteratorDone) {
 				break
 			}
-			writeRecipeError(w, err)
+			writeRecipeError(r, w, err)
 			return
 		}
 
@@ -77,13 +77,13 @@ func (h *Handlers) handleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 
 	var req openapi.CreateRecipeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
 	// Validate inputs
 	if req.Name == "" || req.Content == "" {
-		writeError(w, fmt.Errorf("name and content are required"), http.StatusBadRequest)
+		writeError(r, w, fmt.Errorf("name and content are required"), http.StatusBadRequest)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handlers) handleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 		AutoPublish: autoPublish,
 	})
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -126,12 +126,12 @@ func (h *Handlers) handleValidateRecipe(w http.ResponseWriter, r *http.Request) 
 
 	var req openapi.ValidateRecipeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Name == "" || req.Content == "" {
-		writeError(w, fmt.Errorf("name and content are required"), http.StatusBadRequest)
+		writeError(r, w, fmt.Errorf("name and content are required"), http.StatusBadRequest)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (h *Handlers) handleValidateRecipe(w http.ResponseWriter, r *http.Request) 
 			})
 			return
 		}
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -166,7 +166,7 @@ func (h *Handlers) handleGetRecipe(w http.ResponseWriter, r *http.Request) {
 
 	recipe, err := h.recipeSvc.GetRecipe(r.Context(), projectID, recipeName, ref)
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -206,12 +206,12 @@ func (h *Handlers) handleUpdateRecipe(w http.ResponseWriter, r *http.Request) {
 
 	var req openapi.UpdateRecipeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
 	if req.Content == "" {
-		writeError(w, fmt.Errorf("content is required"), http.StatusBadRequest)
+		writeError(r, w, fmt.Errorf("content is required"), http.StatusBadRequest)
 		return
 	}
 
@@ -239,7 +239,7 @@ func (h *Handlers) handleUpdateRecipe(w http.ResponseWriter, r *http.Request) {
 		ExpectedCommit: expectedCommit,
 	})
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -260,7 +260,7 @@ func (h *Handlers) handleDeleteRecipe(w http.ResponseWriter, r *http.Request) {
 
 	err := h.recipeSvc.DeleteRecipe(r.Context(), projectID, recipeName)
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h *Handlers) handlePublishRecipe(w http.ResponseWriter, r *http.Request) {
 		ExpectedCommit: expectedCommit,
 	})
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -327,7 +327,7 @@ func (h *Handlers) handleUnpublishRecipe(w http.ResponseWriter, r *http.Request)
 		Name:      recipeName,
 	})
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 
@@ -341,7 +341,7 @@ func (h *Handlers) handleGetRecipeHistory(w http.ResponseWriter, r *http.Request
 
 	iter, err := h.recipeSvc.GetRecipeHistory(r.Context(), projectID, recipeName)
 	if err != nil {
-		writeRecipeError(w, err)
+		writeRecipeError(r, w, err)
 		return
 	}
 	defer iter.Close(r.Context())
@@ -353,7 +353,7 @@ func (h *Handlers) handleGetRecipeHistory(w http.ResponseWriter, r *http.Request
 			if errors.Is(err, recipesvc.ErrIteratorDone) {
 				break
 			}
-			writeRecipeError(w, err)
+			writeRecipeError(r, w, err)
 			return
 		}
 
@@ -373,7 +373,7 @@ func (h *Handlers) handleGetRecipeHistory(w http.ResponseWriter, r *http.Request
 }
 
 // writeRecipeError handles recipe service errors with appropriate HTTP status codes
-func writeRecipeError(w http.ResponseWriter, err error) {
+func writeRecipeError(r *http.Request, w http.ResponseWriter, err error) {
 	var vErr *recipesvc.ValidationFailedError
 	if errors.As(err, &vErr) {
 		if vErr != nil && vErr.Result != nil {
@@ -389,19 +389,19 @@ func writeRecipeError(w http.ResponseWriter, err error) {
 
 	switch {
 	case errors.Is(err, recipesvc.ErrNotFound):
-		writeError(w, err, http.StatusNotFound)
+		writeError(r, w, err, http.StatusNotFound)
 	case errors.Is(err, recipesvc.ErrNotPublished):
-		writeError(w, fmt.Errorf("recipe not published"), http.StatusConflict)
+		writeError(r, w, fmt.Errorf("recipe not published"), http.StatusConflict)
 	case errors.Is(err, recipesvc.ErrVersionConflict):
-		writeError(w, fmt.Errorf("version conflict"), http.StatusConflict)
+		writeError(r, w, fmt.Errorf("version conflict"), http.StatusConflict)
 	case errors.Is(err, recipesvc.ErrInvalidContent):
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 	case errors.Is(err, recipesvc.ErrAlreadyExists):
-		writeError(w, err, http.StatusConflict)
+		writeError(r, w, err, http.StatusConflict)
 	case errors.Is(err, recipesvc.ErrValidationUnavailable):
-		writeError(w, err, http.StatusServiceUnavailable)
+		writeError(r, w, err, http.StatusServiceUnavailable)
 	default:
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 	}
 }
 

@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -31,13 +34,48 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 
 	var zero ActivityInvocationOutput
 
+	logger := slog.Default().With(
+		"task_type", reg.TaskType,
+		"op_type", reg.Metadata.Type,
+		"step", reg.Step.Name,
+		"step_index", reg.StepIndex,
+		"ticket_id", req.GitTaskContext.TicketID,
+		"cell_name", req.GitTaskContext.CellName,
+		"cell_path", req.GitTaskContext.CellPath,
+		"node_path", req.GitTaskContext.NodePath,
+		"invoke_seq", req.GitTaskContext.InvokeSeq,
+		"invoke_hash", req.GitTaskContext.InvokeHash,
+		"input_artifact_count", len(inputArtifacts),
+		"artifact_key_count", len(req.ArtifactKeys),
+		"artifact_binding_count", len(req.Artifacts),
+	)
+	if jobTool != nil {
+		key := jobTool.GetJobKey()
+		logger = logger.With("tenant_id", key.TenantId, "job_id", key.JobId)
+	}
+	start := time.Now()
+
 	// Create temporary worktree directory for this invocation
 	workDir, err := createWorkDir()
 	if err != nil {
 		return zero, nil, fmt.Errorf("create temp worktree: %w", err)
 	}
-
 	worktreePath := filepath.Join(workDir, "worktree")
+
+	defer func() {
+		if err == nil {
+			return
+		}
+		logger.Error("opExecutor.do failed",
+			"duration_ms", time.Since(start).Milliseconds(),
+			"work_dir", workDir,
+			"worktree_path", worktreePath,
+			"error", err,
+			"error_chain", logutil.ErrorChain(err),
+			"stacktrace", logutil.Stacktrace(6),
+		)
+	}()
+
 	inbox := filepath.Join(workDir, "inbox")
 	err = os.Mkdir(inbox, 0o755)
 	if err != nil {

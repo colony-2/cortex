@@ -25,7 +25,7 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 
 	statuses, err := parseWorkflowStatuses(q["status"])
 	if err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -40,12 +40,12 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 
 	since, err := parseRFC3339(q.Get("since"))
 	if err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	until, err := parseRFC3339(q.Get("until"))
 	if err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -53,7 +53,7 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	if raw := q.Get("limit"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil {
-			writeError(w, err, http.StatusBadRequest)
+			writeError(r, w, err, http.StatusBadRequest)
 			return
 		}
 		limit = value
@@ -62,7 +62,7 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 	if raw := q.Get("offset"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil {
-			writeError(w, err, http.StatusBadRequest)
+			writeError(r, w, err, http.StatusBadRequest)
 			return
 		}
 		offset = value
@@ -79,7 +79,7 @@ func (h *Handlers) handleListWorkflows(w http.ResponseWriter, r *http.Request) {
 		Offset:    offset,
 	})
 	if err != nil {
-		writeError(w, err, http.StatusInternalServerError)
+		writeError(r, w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h *Handlers) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 
 	var body openapi.StartWorkflowRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, err, http.StatusBadRequest)
+		writeError(r, w, err, http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(body.RecipeName) == "" || strings.TrimSpace(body.CellId) == "" {
@@ -163,7 +163,7 @@ func (h *Handlers) handleGetWorkflow(w http.ResponseWriter, r *http.Request) {
 	if raw := r.URL.Query().Get("includeRawJobData"); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
-			writeError(w, err, http.StatusBadRequest)
+			writeError(r, w, err, http.StatusBadRequest)
 			return
 		}
 		includeRaw = parsed
