@@ -522,6 +522,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 				UpdatedAt:   ticket.UpdatedAt,
 			},
 			Workflow: contextual.WorkflowContext{
+				CellID:   string(cellRecord.ID),
 				CellName: string(ticket.CellName),
 				CellPath: cellRecord.WorkingPath,
 			},

@@ -20,7 +20,10 @@ type validationJobContext struct {
 }
 
 func (v *validationJobContext) AwaitJobs(jobIds ...string) error {
-	return v.AwaitJobs(jobIds...)
+	if v.inner == nil {
+		return nil
+	}
+	return v.inner.AwaitJobs(jobIds...)
 }
 
 func wrapValidationContext(ctx workflow.Context, commitContext contextual.GitCommitContext) workflow.Context {
@@ -52,13 +55,6 @@ func (v *validationJobContext) AwaitDuration(waitFor swf.Duration) error {
 		return nil
 	}
 	return v.inner.AwaitDuration(waitFor)
-}
-
-func (v *validationJobContext) SpawnAsync(jobType string, data swf.TaskData) (*swf.Future, error) {
-	if v.inner == nil {
-		return nil, fmt.Errorf("spawn async not supported in validation")
-	}
-	return v.inner.SpawnAsync(jobType, data)
 }
 
 func (v *validationJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf.TaskData) (swf.TaskData, error) {

@@ -1,0 +1,60 @@
+package starter
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+)
+
+func TestJobMetadataFromStartJob_JSONFields(t *testing.T) {
+	start := workflowctl.StartJob{
+		TenantId:   "proj-1",
+		RecipeName: "my-recipe",
+		GitRef:     "main",
+		JobContext: contextual.JobContext{
+			Actor: contextual.ActorContext{
+				TicketID:   "T-9",
+				ActorEmail: "user@example.com",
+			},
+			Workflow: contextual.WorkflowContext{
+				CellID:   "cell-1",
+				CellName: "alpha",
+			},
+		},
+	}
+
+	meta := JobMetadataFromStartJob(start)
+	if meta.Version != JobMetadataVersion {
+		t.Fatalf("expected version %d, got %d", JobMetadataVersion, meta.Version)
+	}
+
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal metadata map: %v", err)
+	}
+
+	if got, _ := m[string(MetaFieldRecipe)].(string); got != "my-recipe" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldRecipe, "my-recipe", m[string(MetaFieldRecipe)])
+	}
+	if got, _ := m[string(MetaFieldTicketID)].(string); got != "T-9" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldTicketID, "T-9", m[string(MetaFieldTicketID)])
+	}
+	if got, _ := m[string(MetaFieldCellID)].(string); got != "cell-1" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldCellID, "cell-1", m[string(MetaFieldCellID)])
+	}
+	if got, _ := m[string(MetaFieldCellName)].(string); got != "alpha" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldCellName, "alpha", m[string(MetaFieldCellName)])
+	}
+	if got, _ := m[string(MetaFieldActorEmail)].(string); got != "user@example.com" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldActorEmail, "user@example.com", m[string(MetaFieldActorEmail)])
+	}
+	if got, _ := m[string(MetaFieldGitRef)].(string); got != "main" {
+		t.Fatalf("expected %q=%q, got %#v", MetaFieldGitRef, "main", m[string(MetaFieldGitRef)])
+	}
+}

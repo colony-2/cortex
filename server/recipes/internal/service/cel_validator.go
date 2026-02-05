@@ -84,9 +84,6 @@ type noopJobContext struct{}
 func (n *noopJobContext) GetJobKey() swf.JobKey            { return swf.JobKey{} }
 func (n *noopJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (n *noopJobContext) AwaitDuration(swf.Duration) error { return nil }
-func (n *noopJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
-	return nil, fmt.Errorf("spawn async not supported in validation")
-}
 func (n *noopJobContext) DoTask(swf.RunPolicy, string, swf.TaskData) (swf.TaskData, error) {
 	return nil, fmt.Errorf("unexpected task invocation")
 }

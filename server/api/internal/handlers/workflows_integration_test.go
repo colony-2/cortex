@@ -13,6 +13,7 @@ import (
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/strata-go/pkg/client"
@@ -103,6 +104,18 @@ func TestWorkflowIntegration_ListAndGet(t *testing.T) {
 	projectID := "proj_123"
 	workflowID := "wf_1"
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	metaBytes, err := json.Marshal(starter.JobMetadata{
+		Version:    starter.JobMetadataVersion,
+		RecipeName: "recipe",
+		TicketID:   "ticket_1",
+		CellName:   "cell-a",
+		ActorEmail: "user@example.com",
+		GitRef:     "main",
+	})
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
 
 	startJob := workflowctl.StartJob{
 		TenantId:   projectID,
@@ -220,6 +233,7 @@ func TestWorkflowIntegration_ListAndGet(t *testing.T) {
 				Status:    swf.JobStatusActive,
 				CreatedAt: now,
 				Payload:   json.RawMessage(`{"raw":"data"}`),
+				Metadata:  metaBytes,
 			},
 		},
 	}
@@ -277,6 +291,18 @@ func TestWorkflowIntegration_ListReturnsAllStatusesByDefault(t *testing.T) {
 	runningWorkflowID := "wf_running"
 	completedWorkflowID := "wf_completed"
 	now := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	metaBytes, err := json.Marshal(starter.JobMetadata{
+		Version:    starter.JobMetadataVersion,
+		RecipeName: "recipe",
+		TicketID:   "ticket_1",
+		CellName:   "cell-a",
+		ActorEmail: "user@example.com",
+		GitRef:     "main",
+	})
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
 
 	createStartJobPayload := func(workflowID string) map[string]interface{} {
 		startJob := workflowctl.StartJob{
@@ -381,6 +407,7 @@ func TestWorkflowIntegration_ListReturnsAllStatusesByDefault(t *testing.T) {
 				Status:    swf.JobStatusActive,
 				CreatedAt: now,
 				Payload:   json.RawMessage(`{"raw":"data"}`),
+				Metadata:  metaBytes,
 			},
 			{
 				JobKey:     swf.JobKey{TenantId: projectID, JobId: completedWorkflowID},
@@ -388,6 +415,7 @@ func TestWorkflowIntegration_ListReturnsAllStatusesByDefault(t *testing.T) {
 				CreatedAt:  now.Add(-1 * time.Hour),
 				ArchivedAt: &now,
 				Payload:    json.RawMessage(`{"raw":"data"}`),
+				Metadata:   metaBytes,
 			},
 		},
 	}

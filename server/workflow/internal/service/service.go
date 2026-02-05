@@ -129,16 +129,53 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 	summaries := make([]model.WorkflowSummary, 0, target)
 	pageToken := ""
 	jobStatuses := workflowStatusesToJobStatuses(req.Statuses)
+
+	metaFilter := swf.Metadata()
+	metaFilterActive := false
+	if req.TicketID != nil && strings.TrimSpace(*req.TicketID) != "" {
+		var err error
+		metaFilter, err = metaFilter.EqualFilter(starter.MetaFieldTicketID, strings.TrimSpace(*req.TicketID))
+		if err != nil {
+			return nil, err
+		}
+		metaFilterActive = true
+	}
+	if req.CellID != nil && strings.TrimSpace(*req.CellID) != "" {
+		cellID := strings.TrimSpace(*req.CellID)
+		field := starter.MetaFieldCellID
+		value := any(cellID)
+		if s.cells != nil {
+			cellRecord, err := s.cells.GetCell(ctx, cell.ID(cellID))
+			if err != nil || cellRecord == nil || cellRecord.ProjectID != project.ID(req.ProjectID) {
+				return []model.WorkflowSummary{}, nil
+			}
+			field = starter.MetaFieldCellName
+			value = cellRecord.Name
+		}
+		var err error
+		metaFilter, err = metaFilter.EqualFilter(field, value)
+		if err != nil {
+			return nil, err
+		}
+		metaFilterActive = true
+	}
+
 	for {
-		resp, err := s.engine.ListJobs(ctx, swf.ListJobsRequest{
+		listReq := swf.ListJobsRequest{
 			TenantIds:     []string{req.ProjectID},
 			Statuses:      jobStatuses,
 			Stores:        []swf.JobStore{swf.JobStoreActive, swf.JobStoreArchived},
+			JobTypes:      []string{starter.RecipeJobType},
 			CreatedAfter:  req.Since,
 			CreatedBefore: req.Until,
 			PageSize:      pageSize,
 			PageToken:     pageToken,
-		})
+		}
+		if metaFilterActive {
+			listReq.MetadataFilter = metaFilter
+		}
+
+		resp, err := s.engine.ListJobs(ctx, listReq)
 		if err != nil {
 			return nil, err
 		}
@@ -169,11 +206,17 @@ func (s *Service) ListWorkflows(ctx context.Context, req model.ListWorkflowsRequ
 			s.logger.Debug("ListWorkflows: job included",
 				"job_id", job.JobKey.JobId,
 				"status", summary.Status)
-			if req.TicketID != nil && (summary.TicketID == nil || *summary.TicketID != *req.TicketID) {
-				continue
+			if req.TicketID != nil && strings.TrimSpace(*req.TicketID) != "" {
+				expected := strings.TrimSpace(*req.TicketID)
+				if summary.TicketID == nil || strings.TrimSpace(*summary.TicketID) != expected {
+					continue
+				}
 			}
-			if req.CellID != nil && (summary.CellID == nil || *summary.CellID != *req.CellID) {
-				continue
+			if req.CellID != nil && strings.TrimSpace(*req.CellID) != "" {
+				expected := strings.TrimSpace(*req.CellID)
+				if summary.CellID == nil || strings.TrimSpace(*summary.CellID) != expected {
+					continue
+				}
 			}
 			summaries = append(summaries, summary)
 			if len(summaries) >= target {
@@ -281,6 +324,7 @@ func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequ
 				ActorEmail: derefString(req.ActorEmail),
 			},
 			Workflow: contextual.WorkflowContext{
+				CellID:    cellID,
 				CellName:  cellRecord.Name,
 				CellPath:  cellRecord.WorkingPath,
 				ProjectId: projectID,
@@ -362,10 +406,16 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 		return nil, ErrWorkflowNotInProject
 	}
 
-	startJob, _ := s.loadStartJob(ctx, job.JobKey)
+	meta, metaErr := jobMetadataFromRaw(job.Metadata)
+	if metaErr != nil {
+		s.logger.Debug("GetWorkflow: failed to parse job metadata",
+			"workflow_id", req.WorkflowID,
+			"error", metaErr)
+	}
+
 	recipeName := ""
-	if startJob != nil {
-		recipeName = startJob.RecipeName
+	if meta != nil {
+		recipeName = meta.RecipeName
 	}
 
 	status := mapWorkflowStatus(job.Status)
@@ -380,33 +430,50 @@ func (s *Service) GetWorkflow(ctx context.Context, req model.GetWorkflowRequest)
 		RecipeName: recipeName,
 		StartTime:  startTime,
 		CloseTime:  closeTime,
-		Actor:      actorFromStartJob(startJob),
+		Actor:      actorFromJobMetadata(meta),
 		CreatedAt:  createdAt,
 	}
 
-	if startJob != nil {
-		if startJob.JobContext.Actor.TicketID != "" {
-			ticketID := startJob.JobContext.Actor.TicketID
-			detail.TicketID = &ticketID
-			if s.tickets != nil {
-				if ticketDetail, err := s.loadTicket(ctx, ticketID); err == nil {
-					detail.Ticket = ticketDetail
-				}
+	ticketID := ""
+	if meta != nil {
+		ticketID = meta.TicketID
+	}
+	if strings.TrimSpace(ticketID) != "" {
+		ticketID = strings.TrimSpace(ticketID)
+		detail.TicketID = &ticketID
+		if s.tickets != nil {
+			if ticketDetail, err := s.loadTicket(ctx, ticketID); err == nil {
+				detail.Ticket = ticketDetail
 			}
 		}
-		if startJob.JobContext.Workflow.CellName != "" {
-			cellName := startJob.JobContext.Workflow.CellName
-			detail.CellName = &cellName
-			if s.cells != nil {
-				if cellID, err := s.findCellID(ctx, req.ProjectID, cellName); err == nil {
-					detail.CellID = cellID
-				}
-			}
+	}
+
+	cellID := ""
+	cellName := ""
+	if meta != nil {
+		cellID = meta.CellID
+		cellName = meta.CellName
+	}
+	if strings.TrimSpace(cellName) != "" {
+		cellName = strings.TrimSpace(cellName)
+		detail.CellName = &cellName
+	}
+	if strings.TrimSpace(cellID) != "" {
+		cellID = strings.TrimSpace(cellID)
+		detail.CellID = &cellID
+	} else if detail.CellName != nil && s.cells != nil {
+		if resolved, err := s.findCellID(ctx, req.ProjectID, *detail.CellName); err == nil {
+			detail.CellID = resolved
 		}
-		if startJob.GitRef != "" {
-			gitRef := startJob.GitRef
-			detail.GitRef = &gitRef
-		}
+	}
+
+	gitRef := ""
+	if meta != nil {
+		gitRef = meta.GitRef
+	}
+	if strings.TrimSpace(gitRef) != "" {
+		gitRef = strings.TrimSpace(gitRef)
+		detail.GitRef = &gitRef
 	}
 
 	if req.IncludeRawJobData {
@@ -602,21 +669,18 @@ func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifac
 }
 
 func (s *Service) buildSummary(ctx context.Context, projectID string, job swf.JobSummary) (model.WorkflowSummary, bool, error) {
-	startJob, err := s.loadStartJob(ctx, job.JobKey)
-	if err != nil {
-		s.logger.Debug("buildSummary: failed to load start job",
+	meta, metaErr := jobMetadataFromRaw(job.Metadata)
+	if metaErr != nil {
+		s.logger.Debug("buildSummary: failed to parse job metadata",
 			"job_id", job.JobKey.JobId,
-			"error", err)
+			"error", metaErr)
 	}
-	if startJob == nil {
-		s.logger.Debug("buildSummary: no start job data",
+	if meta == nil {
+		s.logger.Debug("buildSummary: no job metadata",
 			"job_id", job.JobKey.JobId,
 			"strata_available", s.strata != nil)
 		return model.WorkflowSummary{}, false, nil
 	}
-	s.logger.Debug("buildSummary: successfully loaded start job",
-		"job_id", job.JobKey.JobId,
-		"recipe_name", startJob.RecipeName)
 
 	status := mapWorkflowStatus(job.Status)
 	createdAt := job.CreatedAt
@@ -627,70 +691,40 @@ func (s *Service) buildSummary(ctx context.Context, projectID string, job swf.Jo
 		WorkflowID: job.JobKey.JobId,
 		RunID:      job.JobKey.JobId,
 		Status:     status,
-		RecipeName: startJob.RecipeName,
+		RecipeName: meta.RecipeName,
 		StartTime:  startTime,
 		CloseTime:  closeTime,
-		Actor:      actorFromStartJob(startJob),
+		Actor:      actorFromJobMetadata(meta),
 		CreatedAt:  createdAt,
 	}
-	if startJob.SubmittedAt != nil {
-		summary.SubmittedAt = startJob.SubmittedAt
+	summary.SubmittedAt = &createdAt
+	if meta.TicketID != "" {
+		ticketID := meta.TicketID
+		summary.TicketID = &ticketID
 	}
-	if startJob.InputHash != "" {
-		summary.InputHash = stringPtr(startJob.InputHash)
+	if meta.CellName != "" {
+		cellName := meta.CellName
+		summary.CellName = &cellName
+	}
+	if meta.CellID != "" {
+		cellID := meta.CellID
+		summary.CellID = &cellID
 	}
 
-	if startJob.JobContext.Actor.TicketID != "" {
-		ticketID := startJob.JobContext.Actor.TicketID
-		summary.TicketID = &ticketID
-		if s.tickets != nil {
-			if ticketDetail, err := s.loadTicket(ctx, ticketID); err == nil && ticketDetail != nil {
-				title := ticketDetail.Title
-				summary.TicketTitle = &title
-			}
+	if summary.TicketID != nil && s.tickets != nil {
+		if ticketDetail, err := s.loadTicket(ctx, *summary.TicketID); err == nil && ticketDetail != nil {
+			title := ticketDetail.Title
+			summary.TicketTitle = &title
 		}
 	}
 
-	if startJob.JobContext.Workflow.CellName != "" {
-		cellName := startJob.JobContext.Workflow.CellName
-		summary.CellName = &cellName
-		if s.cells != nil {
-			if cellID, err := s.findCellID(ctx, projectID, cellName); err == nil {
-				summary.CellID = cellID
-			}
+	if summary.CellID == nil && summary.CellName != nil && s.cells != nil {
+		if cellID, err := s.findCellID(ctx, projectID, *summary.CellName); err == nil {
+			summary.CellID = cellID
 		}
 	}
 
 	return summary, true, nil
-}
-
-func (s *Service) loadStartJob(ctx context.Context, jobKey swf.JobKey) (*workflowctl.StartJob, error) {
-	if s.strata == nil {
-		return nil, nil
-	}
-	s.logger.Debug("loadStartJob: loading chapter 0",
-		"tenant_id", jobKey.TenantId,
-		"job_id", jobKey.JobId)
-	chap, err := s.strata.Chapter(ctx, jobKey.ToStoryKey(), 0)
-	if err != nil {
-		s.logger.Error("loadStartJob: failed to load chapter from strata",
-			"tenant_id", jobKey.TenantId,
-			"job_id", jobKey.JobId,
-			"error", err)
-		return nil, err
-	}
-	var env chapterEnvelope
-	if err := json.Unmarshal(chap.Body(), &env); err != nil {
-		return nil, err
-	}
-	if len(env.Payload) == 0 {
-		return nil, nil
-	}
-	var start workflowctl.StartJob
-	if err := json.Unmarshal(env.Payload, &start); err != nil {
-		return nil, err
-	}
-	return &start, nil
 }
 
 func (s *Service) loadChapters(ctx context.Context, jobKey swf.JobKey) ([]model.ChapterDetail, error) {
@@ -1014,14 +1048,23 @@ func hashInputs(inputs map[string]interface{}) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func actorFromStartJob(startJob *workflowctl.StartJob) model.Actor {
-	actor := model.Actor{Type: model.ActorTypeUser}
-	if startJob == nil {
-		return actor
+func jobMetadataFromRaw(raw json.RawMessage) (*starter.JobMetadata, error) {
+	if len(raw) == 0 {
+		return nil, nil
 	}
-	act := startJob.JobContext.Actor
-	if act.ActorEmail != "" {
-		actor.User = &model.ActorUser{Email: act.ActorEmail}
+	var meta starter.JobMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func actorFromJobMetadata(meta *starter.JobMetadata) model.Actor {
+	actor := model.Actor{Type: model.ActorTypeUser}
+	if meta != nil {
+		if email := strings.TrimSpace(meta.ActorEmail); email != "" {
+			actor.User = &model.ActorUser{Email: email}
+		}
 	}
 	return actor
 }

@@ -13,7 +13,7 @@ type thinpackForwarder struct {
 }
 
 func (a *thinpackForwarder) AwaitJobs(jobIds ...string) error {
-	return a.AwaitJobs(jobIds...)
+	return a.inner.AwaitJobs(jobIds...)
 }
 
 func newThinPackForwardingJobContext(inner swf.JobContext) *thinpackForwarder {
@@ -75,10 +75,6 @@ func findThinPack(artifacts []swf.Artifact) swf.Artifact {
 
 func (a *thinpackForwarder) AwaitDuration(waitFor swf.Duration) error {
 	return a.inner.AwaitDuration(waitFor)
-}
-
-func (a *thinpackForwarder) SpawnAsync(jobType string, data swf.TaskData) (*swf.Future, error) {
-	return a.inner.SpawnAsync(jobType, data)
 }
 
 var _ swf.JobContext = &thinpackForwarder{}

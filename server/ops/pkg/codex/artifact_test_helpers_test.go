@@ -57,10 +57,6 @@ func (c *artifactValidatingJobContext) AwaitDuration(waitFor swf.Duration) error
 	return c.inner.AwaitDuration(waitFor)
 }
 
-func (c *artifactValidatingJobContext) SpawnAsync(jobType string, data swf.TaskData) (*swf.Future, error) {
-	return c.inner.SpawnAsync(jobType, data)
-}
-
 func validateCodexArtifacts(t *testing.T, ctx context.Context, out swf.TaskData) {
 	t.Helper()
 	arts, err := out.GetArtifacts()

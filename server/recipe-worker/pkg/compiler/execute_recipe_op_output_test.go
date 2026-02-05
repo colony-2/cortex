@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"testing"
 
@@ -101,9 +100,6 @@ var _ swf.JobContext = &stubJobContext{}
 func (s *stubJobContext) GetJobKey() swf.JobKey            { return s.jobKey }
 func (s *stubJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (s *stubJobContext) AwaitDuration(swf.Duration) error { return nil }
-func (s *stubJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
-	return nil, fmt.Errorf("not implemented")
-}
 
 func (s *stubJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf.TaskData) (swf.TaskData, error) {
 	s.calls++

@@ -45,7 +45,7 @@ func TestCodexOpResumeSequence(t *testing.T) {
 	coreops.Register(GetOp())
 
 	cellRel := filepath.Join("cells", "alpha")
-	secret := "blue-kiwi-73"
+	token := "blue-kiwi-73"
 
 	recipeYaml := fmt.Sprintf(`
 ---
@@ -55,7 +55,7 @@ sequence:
     op: codex.exec
     inputs:
       prompt: |
-        Remember this secret token for the next turn: %s.
+        Remember this token for the next turn: %s.
         Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'stored', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
         Do not include any other text.
       cell_relative_path: %q
@@ -64,8 +64,8 @@ sequence:
     inputs:
       sessionId: "{{ .sequence.op1.outputs.sessionId }}"
       prompt: |
-        Resume the previous session and tell me the secret token you were asked to remember.
-        Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'secret: <token>', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
+        Resume the previous session and tell me the token you were asked to remember.
+        Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'token: <token>', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
         Do not include any other text.
       cell_relative_path: %q
 outputs:
@@ -74,7 +74,7 @@ outputs:
   op2_incomplete_reason: "{{ .sequence.op2.outputs.incompleteReason }}"
   op2_incomplete_category: "{{ .sequence.op2.outputs.incompleteCategory }}"
   op1_session_id: "{{ .sequence.op1.outputs.sessionId }}"
-`, secret, cellRel, cellRel)
+`, token, cellRel, cellRel)
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
 	require.NoError(t, err)
@@ -123,7 +123,7 @@ outputs:
 		)
 	}
 	require.NotEmpty(t, output.Op1SessionID)
-	require.True(t, strings.Contains(output.Op2Summary, secret), "expected op2_summary to include secret: %q", output.Op2Summary)
+	require.True(t, strings.Contains(output.Op2Summary, token), "expected op2_summary to include token: %q", output.Op2Summary)
 
 	_ = res
 }

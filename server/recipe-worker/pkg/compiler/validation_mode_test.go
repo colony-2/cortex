@@ -26,9 +26,6 @@ func (c *countingJobContext) AwaitJobs(jobIds ...string) error {
 func (c *countingJobContext) GetJobKey() swf.JobKey            { return c.jobKey }
 func (c *countingJobContext) Logger() *slog.Logger             { return slog.Default() }
 func (c *countingJobContext) AwaitDuration(swf.Duration) error { return nil }
-func (c *countingJobContext) SpawnAsync(string, swf.TaskData) (*swf.Future, error) {
-	return nil, fmt.Errorf("not supported")
-}
 func (c *countingJobContext) DoTask(swf.RunPolicy, string, swf.TaskData) (swf.TaskData, error) {
 	c.calls++
 	return nil, fmt.Errorf("unexpected task invocation")
