@@ -9,6 +9,7 @@ import CellDetailPage from './components/CellDetailPage';
 import ProjectSettingsPage from './components/ProjectSettingsPage';
 import WorkflowListPage from './components/WorkflowListPage';
 import WorkflowDetailPage from './components/WorkflowDetailPage';
+import WorkflowStoryPage from './components/WorkflowStoryPage';
 import RecipeListPage from './components/RecipeListPage';
 import RecipeDetailPage from './components/RecipeDetailPage';
 import PendingInputsListPage from './components/PendingInputsListPage';
@@ -226,6 +227,7 @@ function AppShell() {
               <Route path="/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows/:workflowId" element={<WorkflowDetailPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/workflows/:workflowId/story" element={<WorkflowStoryPage projectId={selectedProject.id} />} />
 
               {/* Recipe views */}
               <Route path="/recipes" element={<RecipeListPage projectId={selectedProject.id} />} />

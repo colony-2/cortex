@@ -105,7 +105,10 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       dataIndex: 'workflow_id',
       key: 'workflow_id',
       render: (id: string) => (
-        <Link to={`/project/${projectId}/workflows/${id}`}>
+        <Link
+          to={`/project/${projectId}/workflows/${id}/story`}
+          onClick={(e) => e.stopPropagation()}
+        >
           {id.slice(-12)}
         </Link>
       ),
@@ -131,7 +134,10 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       key: 'ticket',
       render: (_, record: WorkflowSummary) =>
         record.ticket_id ? (
-          <Link to={`/project/${projectId}/tickets/${record.ticket_id}`}>
+          <Link
+            to={`/project/${projectId}/tickets/${record.ticket_id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             {record.ticket_title || record.ticket_id.slice(-8)}
           </Link>
         ) : (
@@ -166,6 +172,19 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       render: (actor: any) => actor?.actor_email || 'system',
       ellipsis: true,
       width: 150,
+    },
+    {
+      title: 'Old View',
+      key: 'old_view',
+      render: (_, record: WorkflowSummary) => (
+        <Link
+          to={`/project/${projectId}/workflows/${record.workflow_id}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          Old detail
+        </Link>
+      ),
+      width: 100,
     },
   ];
 
@@ -243,7 +262,7 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
             onClick: (e) => {
               // Allow Ctrl/Cmd-click to open in new tab
               if (e.ctrlKey || e.metaKey) return;
-              navigate(`/project/${projectId}/workflows/${record.workflow_id}`);
+              navigate(`/project/${projectId}/workflows/${record.workflow_id}/story`);
             },
             style: { cursor: 'pointer' },
           })}
