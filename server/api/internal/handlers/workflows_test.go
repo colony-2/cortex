@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -19,6 +20,7 @@ type fakeWorkflowService struct {
 	listReq       *workflow.ListWorkflowsRequest
 	getReq        *workflow.GetWorkflowRequest
 	startReq      *workflow.StartWorkflowRequest
+	restartReq    *workflow.RestartRecipeJobRequest
 	artifactReq   *workflow.GetWorkflowArtifactRequest
 	engineArtReq  *workflow.GetArtifactByOrdinalRequest
 	outcomeReq    *workflow.GetWorkflowOutcomeRequest
@@ -26,6 +28,7 @@ type fakeWorkflowService struct {
 	listResp      []workflow.WorkflowSummary
 	getResp       *workflow.WorkflowDetail
 	startResp     *workflow.WorkflowSummary
+	restartResp   *workflow.RestartRecipeJobResponse
 	artifactResp  *workflow.ArtifactData
 	engineArtResp *workflow.ArtifactData
 	outcomeResp   *workflow.WorkflowOutcome
@@ -33,6 +36,7 @@ type fakeWorkflowService struct {
 	listErr       error
 	getErr        error
 	startErr      error
+	restartErr    error
 	artifactErr   error
 	engineArtErr  error
 	outcomeErr    error
@@ -52,6 +56,11 @@ func (f *fakeWorkflowService) GetWorkflow(ctx context.Context, req workflow.GetW
 func (f *fakeWorkflowService) StartWorkflow(ctx context.Context, req workflow.StartWorkflowRequest) (*workflow.WorkflowSummary, error) {
 	f.startReq = &req
 	return f.startResp, f.startErr
+}
+
+func (f *fakeWorkflowService) RestartRecipeJob(ctx context.Context, req workflow.RestartRecipeJobRequest) (*workflow.RestartRecipeJobResponse, error) {
+	f.restartReq = &req
+	return f.restartResp, f.restartErr
 }
 
 func (f *fakeWorkflowService) GetWorkflowArtifact(ctx context.Context, req workflow.GetWorkflowArtifactRequest) (*workflow.ArtifactData, error) {
@@ -384,6 +393,68 @@ func TestHandleGetJobRunStory_OK(t *testing.T) {
 	if body.Root.Kind != openapi.JobRunStoryNodeKind("recipe") {
 		t.Fatalf("unexpected root kind: %#v", body.Root.Kind)
 	}
+}
+
+func TestHandleRestartRecipeJob_OK(t *testing.T) {
+	projectID := "proj_123"
+	jobID := "job_1"
+
+	fake := &fakeWorkflowService{
+		restartResp: &workflow.RestartRecipeJobResponse{JobID: "job_2"},
+	}
+
+	h := &Handlers{workflows: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	body := `{"step_offset":3,"context_patch":{"job":{"git":{"author":"new"}}}}`
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/api/projects/"+projectID+"/jobs/"+jobID+"/restart", bytes.NewReader([]byte(body)))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 201, got %d: %s", resp.StatusCode, string(b))
+	}
+
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out["job_id"] != "job_2" {
+		t.Fatalf("expected job_id job_2, got %#v", out["job_id"])
+	}
+
+	if fake.restartReq == nil {
+		t.Fatalf("expected restart request captured")
+	}
+	if fake.restartReq.ProjectID != projectID || fake.restartReq.JobID != jobID {
+		t.Fatalf("expected project/job in restart request, got %#v", fake.restartReq)
+	}
+	if fake.restartReq.StepOffset != 3 {
+		t.Fatalf("expected step offset 3, got %d", fake.restartReq.StepOffset)
+	}
+	if fake.restartReq.Patch == nil || len(fake.restartReq.Patch.Job) == 0 {
+		t.Fatalf("expected context patch to be decoded")
+	}
+	git, ok := fake.restartReq.Patch.Job["git"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected patch job.git to be a map, got %T", fake.restartReq.Patch.Job["git"])
+	}
+	if git["author"] != "new" {
+		t.Fatalf("expected patch job.git.author new, got %#v", git["author"])
+	}
+
+	// Ensure the handler decodes into the canonical type.
+	_ = coretasks.ContextPatch{}
 }
 
 func TestHandleGetJobArtifact_OK(t *testing.T) {

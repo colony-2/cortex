@@ -1,14 +1,15 @@
 package story
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -21,10 +22,10 @@ type activityInvocationOutput struct {
 }
 
 type activityInvocationRequest struct {
-	Input        any                       `json:"input"`
+	Input        any                           `json:"input"`
 	GitTaskCtx   gitstate.GlobalGitTaskContext `json:"context"`
-	ArtifactKeys []swf.ArtifactKey         `json:"artifact_keys,omitempty"`
-	Artifacts    map[string]swf.ArtifactKey `json:"artifacts,omitempty"`
+	ArtifactKeys []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
+	Artifacts    map[string]swf.ArtifactKey    `json:"artifacts,omitempty"`
 }
 
 type executor struct {
@@ -406,6 +407,85 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 			return fmt.Errorf("%w: op %q task chain ended unexpectedly", ErrReplayMismatch, op)
 		}
 
+		// Restart-injected chapters (e.g. context patches) may appear in the story stream even
+		// though they do not match the expected task type for this op step. Consume and apply
+		// them before attempting the next task.
+		for {
+			nextTy, nextRun, ok := e.jobCtx.peekNextRunAny()
+			if !ok {
+				break
+			}
+			if nextTy == currentTask {
+				break
+			}
+
+			ord := int64(-1)
+			if len(nextRun.Attempts) > 0 {
+				ord = nextRun.Attempts[0].Ordinal
+			}
+
+			patchNode := e.tree.newNode(model.JobRunStoryNodeKindContextPatch, "context patch")
+			patchNode.Status = model.JobRunStoryNodeStatusRunning
+			patchNode.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+			e.tree.push(fmt.Sprintf("contextPatch:%d", ord), patchNode)
+
+			e.consumeTarget = patchNode
+			_, td, err := e.jobCtx.ConsumeNextAny()
+			e.consumeTarget = nil
+			if err != nil {
+				patchNode.Status = statusFromErr(err, patchNode.Status)
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return err
+			}
+
+			raw, err := td.GetData()
+			if err != nil {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return err
+			}
+
+			var env coretasks.OutputEnvelope
+			if err := json.Unmarshal(raw, &env); err != nil {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return fmt.Errorf("decode task output envelope: %w", err)
+			}
+			if env.Version != coretasks.OutputEnvelopeVersion {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return fmt.Errorf("%w: unsupported task output envelope version %d", ErrReplayMismatch, env.Version)
+			}
+			if env.Kind != coretasks.OutputKindContextPatch {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return fmt.Errorf("%w: unexpected task output kind %q before %q", ErrReplayMismatch, env.Kind, currentTask)
+			}
+
+			var patch coretasks.ContextPatch
+			if err := env.DecodePayload(&patch); err != nil {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return fmt.Errorf("decode context patch payload: %w", err)
+			}
+			if err := resCtx.ApplyContextPatch(patch); err != nil {
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // contextPatch
+				e.tree.pop() // op
+				return fmt.Errorf("apply context patch: %w", err)
+			}
+
+			patchNode.Status = model.JobRunStoryNodeStatusSucceeded
+			e.tree.pop() // contextPatch
+		}
+
 		stepID := stepIDFromTaskType(op, currentTask)
 		stepNode := e.tree.newNode(model.JobRunStoryNodeKindOpStep, "step "+stepID)
 		stepNode.StepID = stepID
@@ -437,17 +517,38 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 			e.tree.pop()
 			return err
 		}
-		var env activityInvocationOutput
-		if err := json.Unmarshal(raw, &env); err != nil {
+		var outEnv coretasks.OutputEnvelope
+		if err := json.Unmarshal(raw, &outEnv); err != nil {
 			opNode.Status = model.JobRunStoryNodeStatusFailed
 			e.tree.pop()
 			e.tree.pop()
-			return fmt.Errorf("decode activity output envelope: %w", err)
+			return fmt.Errorf("decode task output envelope: %w", err)
 		}
-		resCtx.UpdateGitState(env.GitResult)
-		finalOut = env.OpOutput
+		if outEnv.Version != coretasks.OutputEnvelopeVersion {
+			opNode.Status = model.JobRunStoryNodeStatusFailed
+			e.tree.pop()
+			e.tree.pop()
+			return fmt.Errorf("%w: unsupported task output envelope version %d", ErrReplayMismatch, outEnv.Version)
+		}
+		if outEnv.Kind != coretasks.OutputKindActivityInvocationOutput {
+			opNode.Status = model.JobRunStoryNodeStatusFailed
+			e.tree.pop()
+			e.tree.pop()
+			return fmt.Errorf("%w: unexpected task output kind %q for taskType=%q", ErrReplayMismatch, outEnv.Kind, currentTask)
+		}
 
-		if strings.TrimSpace(env.NextTask) == "" {
+		var out activityInvocationOutput
+		if err := outEnv.DecodePayload(&out); err != nil {
+			opNode.Status = model.JobRunStoryNodeStatusFailed
+			e.tree.pop()
+			e.tree.pop()
+			return fmt.Errorf("decode activity output payload: %w", err)
+		}
+
+		resCtx.UpdateGitState(out.GitResult)
+		finalOut = out.OpOutput
+
+		if strings.TrimSpace(out.NextTask) == "" {
 			arts, err := td.GetArtifacts()
 			if err != nil {
 				opNode.Status = model.JobRunStoryNodeStatusFailed
@@ -463,7 +564,7 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 
 		stepNode.Status = model.JobRunStoryNodeStatusSucceeded
 		e.tree.pop() // step
-		currentTask = env.NextTask
+		currentTask = out.NextTask
 	}
 
 	if finalOut == nil {
@@ -486,6 +587,8 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 			opNode.Input = ch.Input
 			opNode.Output = ch.Output
 			opNode.ArtifactKeys = ch.ArtifactKeys
+			opNode.TaskOrdinal = ch.TaskOrdinal
+			opNode.RestartFromOrdinal = ch.RestartFromOrdinal
 			opNode.StartedAt = ch.StartedAt
 			opNode.FinishedAt = ch.FinishedAt
 			opNode.Error = ch.Error
@@ -528,11 +631,33 @@ func (e *executor) onConsume(taskType string, run swf.TaskRun, final swf.TaskAtt
 		pa.PriorAttempts = make([]*model.JobRunStoryNode, 0)
 		pa.Children = make([]*model.JobRunStoryNode, 0)
 		pa.ArtifactKeys = make([]swf.ArtifactKey, 0)
+		pa.TaskOrdinal = nil
+		pa.RestartFromOrdinal = nil
 		fillAttemptOnNode(&pa, taskType, a, e.jobID)
 		prior = append(prior, &pa)
 	}
 	n.PriorAttempts = prior
 	n.Attempt = final.Attempt
+
+	// Expose a safe restart ordinal for the logical node: attempt 1 (or earliest ordinal fallback).
+	var restartOrd *int64
+	for i := range run.Attempts {
+		if run.Attempts[i].Attempt == 1 {
+			v := run.Attempts[i].Ordinal
+			restartOrd = &v
+			break
+		}
+	}
+	if restartOrd == nil && len(run.Attempts) > 0 {
+		min := run.Attempts[0].Ordinal
+		for i := 1; i < len(run.Attempts); i++ {
+			if run.Attempts[i].Ordinal < min {
+				min = run.Attempts[i].Ordinal
+			}
+		}
+		restartOrd = &min
+	}
+	n.RestartFromOrdinal = restartOrd
 
 	// started_at is always attempt created time.
 	t := run.Attempts[0].CreatedAt
@@ -547,6 +672,7 @@ func fillAttemptOnNode(n *model.JobRunStoryNode, taskType string, att swf.TaskAt
 	n.Status = statusFromAttempt(att)
 	t := att.CreatedAt
 	n.StartedAt = &t
+	n.TaskOrdinal = &att.Ordinal
 
 	// Try to decode the activity invocation request so input and invoke_seq are recipe-centric.
 	var req activityInvocationRequest
@@ -554,11 +680,34 @@ func fillAttemptOnNode(n *model.JobRunStoryNode, taskType string, att swf.TaskAt
 		n.Input = req.Input
 		n.InvokeSeq = req.GitTaskCtx.InvokeSeq
 	}
+	if n.Input == nil && att.Input != nil && len(att.Input.Data) > 0 {
+		// Best-effort: preserve raw input for non-activity chapters (e.g. injected context patches).
+		var raw any
+		if json.Unmarshal(att.Input.Data, &raw) == nil {
+			n.Input = raw
+		}
+	}
 
-	// Try to decode the activity output envelope so output is recipe-centric.
-	var env activityInvocationOutput
-	if att.Output != nil && len(att.Output.Data) > 0 && json.Unmarshal(att.Output.Data, &env) == nil {
-		n.Output = env.OpOutput
+	// Decode the task output envelope so output is recipe-centric.
+	if att.Output != nil && len(att.Output.Data) > 0 {
+		var outEnv coretasks.OutputEnvelope
+		if json.Unmarshal(att.Output.Data, &outEnv) == nil && outEnv.Version == coretasks.OutputEnvelopeVersion {
+			switch outEnv.Kind {
+			case coretasks.OutputKindActivityInvocationOutput:
+				var env activityInvocationOutput
+				if outEnv.DecodePayload(&env) == nil {
+					n.Output = env.OpOutput
+				}
+			case coretasks.OutputKindContextPatch:
+				var patch coretasks.ContextPatch
+				if outEnv.DecodePayload(&patch) == nil {
+					n.Output = patch
+				}
+			default:
+				// Unknown envelope kinds are preserved as raw bytes (best-effort).
+				n.Output = map[string]any{"kind": string(outEnv.Kind)}
+			}
+		}
 	}
 
 	// Artifacts from output IO.

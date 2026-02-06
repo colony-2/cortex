@@ -103,6 +103,39 @@ func (c *StoryBuildingContext) peekNextRun(taskType string) (swf.TaskRun, bool) 
 	return runs[idx], true
 }
 
+// peekNextRunAny returns the next unconsumed TaskRun across all task types by earliest ordinal.
+// It is used to support restart-injected context patch chapters, which may not match the next
+// expected task type during replay.
+func (c *StoryBuildingContext) peekNextRunAny() (string, swf.TaskRun, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.peekNextRunAnyLocked()
+}
+
+func (c *StoryBuildingContext) peekNextRunAnyLocked() (string, swf.TaskRun, bool) {
+	bestTy := ""
+	var bestOrd int64 = -1
+	var bestRun swf.TaskRun
+
+	for ty, runs := range c.runsByTy {
+		idx := c.cursor[ty]
+		if idx >= len(runs) {
+			continue
+		}
+		run := runs[idx]
+		if len(run.Attempts) == 0 {
+			continue
+		}
+		ord := run.Attempts[0].Ordinal
+		if bestOrd < 0 || ord < bestOrd {
+			bestOrd = ord
+			bestTy = ty
+			bestRun = run
+		}
+	}
+	return bestTy, bestRun, bestTy != ""
+}
+
 func (c *StoryBuildingContext) peekNextTimeAny() (time.Time, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -129,6 +162,18 @@ func (c *StoryBuildingContext) peekNextTimeAny() (time.Time, bool) {
 }
 
 func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.TaskData) (swf.TaskData, error) {
+	// Enforce global ordinal ordering during replay. This prevents skipping over restart-injected
+	// chapters (e.g. context patches) whose task type does not match the expected recipe task.
+	if nextTy, nextRun, ok := c.peekNextRunAny(); ok {
+		if nextTy != taskType {
+			ord := int64(-1)
+			if len(nextRun.Attempts) > 0 {
+				ord = nextRun.Attempts[0].Ordinal
+			}
+			return nil, fmt.Errorf("%w: next task is %q (ordinal=%d) but requested %q", ErrReplayMismatch, nextTy, ord, taskType)
+		}
+	}
+
 	c.mu.Lock()
 	runs := c.runsByTy[taskType]
 	idx := c.cursor[taskType]
@@ -186,6 +231,67 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 
 	// Preserve raw bytes since the downstream decoder expects the original task output envelope.
 	return &swf.SimpleTaskData{Data: json.RawMessage(outData), Artifacts: artifacts}, nil
+}
+
+// ConsumeNextAny consumes the next unconsumed TaskRun across all task types by earliest ordinal.
+// This is used by the story executor to "consume" restart-injected context patch chapters before
+// continuing with normal op execution.
+func (c *StoryBuildingContext) ConsumeNextAny() (string, swf.TaskData, error) {
+	c.mu.Lock()
+	taskType, run, ok := c.peekNextRunAnyLocked()
+	if !ok {
+		c.mu.Unlock()
+		return "", nil, fmt.Errorf("%w: no remaining task runs", ErrReplayMismatch)
+	}
+	idx := c.cursor[taskType]
+	c.cursor[taskType] = idx + 1
+	fn := c.onConsume
+	c.mu.Unlock()
+
+	if len(run.Attempts) == 0 {
+		return "", nil, fmt.Errorf("story replay: task run has no attempts for taskType=%q", taskType)
+	}
+	final := run.Attempts[len(run.Attempts)-1]
+	if fn != nil {
+		fn(taskType, run, final)
+	}
+
+	// Non-terminal runtime attempts indicate the job is still in progress.
+	switch final.State {
+	case swf.TaskAttemptStateReady, swf.TaskAttemptStateLeased, swf.TaskAttemptStateWaiting, swf.TaskAttemptStateRunning:
+		return "", nil, fmt.Errorf("%w: taskType=%q not complete (state=%s)", ErrReplayInProgress, taskType, final.State)
+	}
+
+	if final.Outcome.Status == swf.TaskOutcomeStatusFailed || final.State == swf.TaskAttemptStateFailed {
+		msg := "task failed"
+		if final.Outcome.Error != nil && strings.TrimSpace(final.Outcome.Error.Message) != "" {
+			msg = final.Outcome.Error.Message
+		}
+		return "", nil, fmt.Errorf("story replay: taskType=%q failed: %s", taskType, msg)
+	}
+
+	var outData []byte
+	if final.Output != nil && len(final.Output.Data) > 0 {
+		outData = final.Output.Data
+	} else {
+		outData = []byte("null")
+	}
+
+	artifacts := make([]swf.Artifact, 0)
+	if final.Output != nil {
+		artifacts = make([]swf.Artifact, 0, len(final.Output.Artifacts))
+		for _, a := range final.Output.Artifacts {
+			key := swf.ArtifactKey{
+				JobId:       c.jobKey.JobId,
+				TaskOrdinal: final.Ordinal,
+				Name:        a.Name,
+				SizeBytes:   a.SizeBytes,
+			}
+			artifacts = append(artifacts, key.ToLazyArtifact(c.engine, c.tenantID))
+		}
+	}
+
+	return taskType, &swf.SimpleTaskData{Data: json.RawMessage(outData), Artifacts: artifacts}, nil
 }
 
 var _ swf.JobContext = (*StoryBuildingContext)(nil)

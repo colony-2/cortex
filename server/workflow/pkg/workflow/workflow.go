@@ -39,6 +39,8 @@ type (
 	GetWorkflowRequest            = model.GetWorkflowRequest
 	GetWorkflowOutcomeRequest     = model.GetWorkflowOutcomeRequest
 	GetJobRunStoryRequest         = model.GetJobRunStoryRequest
+	RestartRecipeJobRequest       = model.RestartRecipeJobRequest
+	RestartRecipeJobResponse      = model.RestartRecipeJobResponse
 	GetArtifactByOrdinalRequest   = model.GetArtifactByOrdinalRequest
 	GetWorkflowArtifactRequest    = model.GetWorkflowArtifactRequest
 	StartWorkflowRequest          = model.StartWorkflowRequest
@@ -81,6 +83,7 @@ type Service interface {
 	GetWorkflow(ctx context.Context, req GetWorkflowRequest) (*WorkflowDetail, error)
 	GetWorkflowOutcome(ctx context.Context, req GetWorkflowOutcomeRequest) (*WorkflowOutcome, error)
 	GetJobRunStory(ctx context.Context, req GetJobRunStoryRequest) (*JobRunStory, error)
+	RestartRecipeJob(ctx context.Context, req RestartRecipeJobRequest) (*RestartRecipeJobResponse, error)
 	GetArtifactByOrdinal(ctx context.Context, req GetArtifactByOrdinalRequest) (*ArtifactData, error)
 	GetWorkflowArtifact(ctx context.Context, req GetWorkflowArtifactRequest) (*ArtifactData, error)
 	StartWorkflow(ctx context.Context, req StartWorkflowRequest) (*WorkflowSummary, error)

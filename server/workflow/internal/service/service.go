@@ -623,6 +623,31 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 	return st, buildErr
 }
 
+func (s *Service) RestartRecipeJob(ctx context.Context, req model.RestartRecipeJobRequest) (*model.RestartRecipeJobResponse, error) {
+	if s.engine == nil {
+		return nil, ErrEngineUnavailable
+	}
+
+	projectID := strings.TrimSpace(req.ProjectID)
+	jobID := strings.TrimSpace(req.JobID)
+	if projectID == "" {
+		return nil, ErrInvalidProject
+	}
+	if jobID == "" {
+		return nil, ErrNotFound
+	}
+
+	newKey, err := starter.RestartRecipeJob(ctx, s.engine, swf.JobKey{TenantId: projectID, JobId: jobID}, req.StepOffset, req.Patch)
+	if err != nil {
+		if errors.Is(err, swf.ErrJobNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	return &model.RestartRecipeJobResponse{JobID: newKey.JobId}, nil
+}
+
 func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifactByOrdinalRequest) (*model.ArtifactData, error) {
 	if s.engine == nil {
 		return nil, ErrEngineUnavailable

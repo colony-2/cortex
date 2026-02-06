@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/gorilla/mux"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -249,6 +250,52 @@ func (h *Handlers) handleGetJobRunStory(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, toOpenAPIJobRunStory(*story))
 }
 
+func (h *Handlers) handleRestartRecipeJob(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := vars["projectId"]
+	jobID := vars["jobId"]
+
+	type restartRecipeJobBody struct {
+		StepOffset   *int64                  `json:"step_offset"`
+		ContextPatch *coretasks.ContextPatch `json:"context_patch,omitempty"`
+	}
+	var body restartRecipeJobBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(r, w, err, http.StatusBadRequest)
+		return
+	}
+	if body.StepOffset == nil || *body.StepOffset < 0 {
+		writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "step_offset is required and must be >= 0"})
+		return
+	}
+
+	resp, err := h.workflows.RestartRecipeJob(r.Context(), workflow.RestartRecipeJobRequest{
+		ProjectID:  projectID,
+		JobID:      jobID,
+		StepOffset: *body.StepOffset,
+		Patch:      body.ContextPatch,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, workflow.ErrInvalidProject):
+			writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrEngineUnavailable):
+			writeJSON(w, http.StatusBadGateway, openapi.ErrorResponse{Message: err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: err.Error()})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"job_id": resp.JobID})
+}
+
 func (h *Handlers) handleGetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
 	if h.workflows == nil {
 		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
@@ -474,32 +521,34 @@ func toOpenAPIJobRunStoryNode(n *workflow.JobRunStoryNode) openapi.JobRunStoryNo
 	if n == nil {
 		var nilAny *interface{}
 		return openapi.JobRunStoryNode{
-			ArtifactKeys:   []openapi.ArtifactKey{},
-			Attempt:        1,
-			Children:       []openapi.JobRunStoryNode{},
-			Evaluations:    nil,
-			FinishedAt:     nil,
-			FromStateId:    nil,
-			Id:             "missing_root",
-			Input:          nilAny,
-			Invocation:     nil,
-			InvokeSeq:      0,
-			IsInitial:      nil,
-			Kind:           openapi.JobRunStoryNodeKind("recipe"),
-			OpId:           nil,
-			OpType:         nil,
-			Output:         nilAny,
-			Path:           []string{"root"},
-			PriorAttempts:  []openapi.JobRunStoryNode{},
-			RecipeId:       nil,
-			SequenceId:     nil,
-			StartedAt:      nil,
-			StateId:        nil,
-			StateMachineId: nil,
-			Status:         openapi.JobRunStoryNodeStatus("unknown"),
-			StepId:         nil,
-			StepType:       nil,
-			Title:          "missing root",
+			ArtifactKeys:       []openapi.ArtifactKey{},
+			Attempt:            1,
+			Children:           []openapi.JobRunStoryNode{},
+			Evaluations:        nil,
+			FinishedAt:         nil,
+			FromStateId:        nil,
+			Id:                 "missing_root",
+			Input:              nilAny,
+			Invocation:         nil,
+			InvokeSeq:          0,
+			IsInitial:          nil,
+			Kind:               openapi.JobRunStoryNodeKind("recipe"),
+			OpId:               nil,
+			OpType:             nil,
+			Output:             nilAny,
+			Path:               []string{"root"},
+			PriorAttempts:      []openapi.JobRunStoryNode{},
+			RecipeId:           nil,
+			RestartFromOrdinal: nil,
+			SequenceId:         nil,
+			StartedAt:          nil,
+			StateId:            nil,
+			StateMachineId:     nil,
+			Status:             openapi.JobRunStoryNodeStatus("unknown"),
+			StepId:             nil,
+			StepType:           nil,
+			TaskOrdinal:        nil,
+			Title:              "missing root",
 		}
 	}
 
@@ -619,34 +668,36 @@ func toOpenAPIJobRunStoryNode(n *workflow.JobRunStoryNode) openapi.JobRunStoryNo
 	}
 
 	return openapi.JobRunStoryNode{
-		ArtifactKeys:   keys,
-		Attempt:        n.Attempt,
-		Children:       children,
-		Decision:       decisionPtr,
-		Error:          errPtr,
-		Evaluations:    evalsPtr,
-		FinishedAt:     n.FinishedAt,
-		FromStateId:    fromStateID,
-		Id:             n.ID,
-		Input:          inPtr,
-		Invocation:     invPtr,
-		InvokeSeq:      n.InvokeSeq,
-		IsInitial:      n.IsInitial,
-		Kind:           openapi.JobRunStoryNodeKind(n.Kind),
-		OpId:           opID,
-		OpType:         opType,
-		Output:         outPtr,
-		Path:           n.Path,
-		PriorAttempts:  prior,
-		RecipeId:       recipeID,
-		SequenceId:     sequenceID,
-		StartedAt:      n.StartedAt,
-		StateId:        stateID,
-		StateMachineId: smID,
-		Status:         openapi.JobRunStoryNodeStatus(n.Status),
-		StepId:         stepID,
-		StepType:       stepType,
-		Title:          n.Title,
+		ArtifactKeys:       keys,
+		Attempt:            n.Attempt,
+		Children:           children,
+		Decision:           decisionPtr,
+		Error:              errPtr,
+		Evaluations:        evalsPtr,
+		FinishedAt:         n.FinishedAt,
+		FromStateId:        fromStateID,
+		Id:                 n.ID,
+		Input:              inPtr,
+		Invocation:         invPtr,
+		InvokeSeq:          n.InvokeSeq,
+		IsInitial:          n.IsInitial,
+		Kind:               openapi.JobRunStoryNodeKind(n.Kind),
+		OpId:               opID,
+		OpType:             opType,
+		Output:             outPtr,
+		Path:               n.Path,
+		PriorAttempts:      prior,
+		RecipeId:           recipeID,
+		RestartFromOrdinal: n.RestartFromOrdinal,
+		SequenceId:         sequenceID,
+		StartedAt:          n.StartedAt,
+		StateId:            stateID,
+		StateMachineId:     smID,
+		Status:             openapi.JobRunStoryNodeStatus(n.Status),
+		StepId:             stepID,
+		StepType:           stepType,
+		TaskOrdinal:        n.TaskOrdinal,
+		Title:              n.Title,
 	}
 }
 

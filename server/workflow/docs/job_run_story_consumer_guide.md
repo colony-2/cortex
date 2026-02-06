@@ -31,7 +31,7 @@ The key idea: **`root` contains `children`, and each child contains more childre
 
 Every node has:
 
-- `kind`: what type of thing it is (`recipe|sequence|op|opStep|stateMachine|state|transitionEval`).
+- `kind`: what type of thing it is (`recipe|sequence|op|opStep|contextPatch|stateMachine|state|transitionEval`).
 - `title`: display label (human-friendly).
 - `status`: current state of that node (`pending|running|succeeded|failed|canceled|skipped|unknown`).
 - `started_at` / `finished_at`: best-effort timestamps for that node (may be null).
@@ -39,6 +39,8 @@ Every node has:
 - `invoke_seq`: the recipe invocation sequence for that node (stable for correlation within a run).
 - `input` / `output`: the unmodified input/output payloads for the node (may be null if not available or not applicable).
 - `artifact_keys`: list of artifact keys produced/attached at that node (may be empty).
+- `task_ordinal`: SWF chapter ordinal for the node's latest attempt (only present for task-backed nodes, e.g. `opStep`).
+- `restart_from_ordinal`: SWF chapter ordinal for the first attempt of the logical node (safe restart cursor; only present for task-backed nodes).
 - `children`: nested story nodes in chronological order (may be empty).
 
 ### How to traverse it
@@ -58,6 +60,20 @@ Many things can be retried. The story represents this in a "latest-first" shape:
 Consumer recommendation:
 - Render the latest attempt inline.
 - Provide a disclosure to show `prior_attempts` when present.
+
+## Context patches (restart injection)
+
+When a job is restarted with a context patch, the story may include one or more nodes of:
+
+- `kind=contextPatch`
+
+These are synthetic chapters injected at restart time. The node `output` contains the patch object
+that was applied, and subsequent nodes reflect the updated template context.
+
+Consumer recommendation:
+- Render these as timeline annotations ("Context patched before resuming").
+- If you support "restart from here" UI, do not offer it on `contextPatch` nodes; use the next
+  `opStep` node's `restart_from_ordinal` instead.
 
 ## Ops vs op steps (multi-step ops)
 
@@ -129,4 +145,3 @@ For a job that is still running:
 Consumer recommendation:
 - Render what is available; treat the story as append-only as the run progresses.
 - Poll the endpoint (or later adopt server-sent events) to refresh.
-

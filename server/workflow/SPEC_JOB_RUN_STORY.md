@@ -19,6 +19,7 @@ The response is a single consolidated tree (recipe -> sequences -> ops/steps -> 
   - `job_id`, `invocation_sequence`, `recipe {id,name,version,source}`, `status`, `started_at`, `finished_at`, `root`.
 - `JobRunStoryNode`:
   - Always present fields: `id`, `kind`, `title`, `status`, `started_at?`, `finished_at?`, `path[]`, `invoke_seq`, `attempt`, `prior_attempts[]`, `input`, `output`, `artifact_keys[]`, `children[]`.
+  - Optional task cursor fields: `task_ordinal?`, `restart_from_ordinal?` (present for task-backed nodes like op steps).
   - `prior_attempts` holds prior attempts of the same logical node (latest attempt is inline).
 - `artifact_keys` uses the existing `swf.ArtifactKey` shape (jobId/taskOrdinal/name/sizeBytes). Artifact bodies are fetched separately.
 
@@ -43,6 +44,16 @@ The response is a single consolidated tree (recipe -> sequences -> ops/steps -> 
 - `ErrReplayMismatch`: recorded run cannot be deterministically matched to the recipe traversal (e.g., missing task types/runs).
 - `ErrReplayInProgress`: run is still active; the story is partial and ends at the current running node(s).
 
+## Restart context patches
+
+When a job has been restarted with context patching, the job story may contain synthetic chapters injected
+by restart. These appear in the tree as:
+
+- `kind=contextPatch`
+
+The node's `output` is the patch object that was applied. Subsequent nodes reflect the updated template-visible
+context used for input and output resolution.
+
 ## HTTP surface
 - Add `GET /api/projects/{projectId}/jobs/{jobId}/story` in `/src/api/openapi/colony2-api.yaml`.
 - Regenerate bindings in `/src/server/openapi`.
@@ -50,4 +61,3 @@ The response is a single consolidated tree (recipe -> sequences -> ops/steps -> 
 
 ## Feasibility note
 All required data (tasks, attempts, IO, job-start recipe artifacts) is available via `swf.GetJobRun` + `engine.GetArtifact`. The replay + story building can be implemented entirely in `server/workflow` (HTTP wiring lives in `server/api` + OpenAPI spec/bindings as normal).
-

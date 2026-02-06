@@ -1153,6 +1153,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/projects/{projectId}/jobs/{jobId}/restart:
+    post:
+      tags: [Workflows]
+      summary: Restart a recipe job from a SWF step offset with optional context patching
+      description: |
+        Creates a new job by cloning the prior job's story up to (step_offset - 1), then resuming
+        execution from step_offset. If context_patch is provided, it is applied before executing
+        the resumed step by injecting a context patch chapter.
+      operationId: postApiProjectsJobsRestart
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestartRecipeJobRequest'
+      responses:
+        '201':
+          description: Restarted job created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestartRecipeJobResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Job not found in project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '502':
+          description: Workflow engine unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName}:
     get:
       tags: [Workflows]
@@ -2453,7 +2505,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [recipe, sequence, op, opStep, stateMachine, state, transitionEval]
+          enum: [recipe, sequence, op, opStep, contextPatch, stateMachine, state, transitionEval]
         title:
           type: string
         status:
@@ -2490,6 +2542,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ArtifactKey'
+        task_ordinal:
+          type: integer
+          format: int64
+          nullable: true
+          description: SWF task/chapter ordinal for the node's latest attempt (when applicable)
+        restart_from_ordinal:
+          type: integer
+          format: int64
+          nullable: true
+          description: Safe restart ordinal (first attempt) for the logical node (when applicable)
         children:
           type: array
           items:
@@ -2576,6 +2638,57 @@ components:
         to_state_id:
           type: string
           nullable: true
+
+    ContextPatch:
+      type: object
+      description: |
+        A context patch applied at restart time. Job patches are global; scoped patches only affect
+        the locally visible scope containers (sequence/states) at the point of application.
+      properties:
+        job:
+          type: object
+          additionalProperties: true
+          nullable: true
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextPatchScopePatch'
+          nullable: true
+
+    ContextPatchScopePatch:
+      type: object
+      required: [container, id]
+      properties:
+        container:
+          type: string
+          enum: [sequence, states]
+        id:
+          type: string
+        outputs:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    RestartRecipeJobRequest:
+      type: object
+      required: [step_offset]
+      properties:
+        step_offset:
+          type: integer
+          format: int64
+          minimum: 0
+          description: SWF step offset (chapter ordinal) to resume from (0-indexed)
+        context_patch:
+          $ref: '#/components/schemas/ContextPatch'
+          nullable: true
+
+    RestartRecipeJobResponse:
+      type: object
+      required: [job_id]
+      properties:
+        job_id:
+          type: string
+          description: New job id created by restart
 
     ArtifactKey:
       type: object

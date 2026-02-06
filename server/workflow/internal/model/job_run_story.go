@@ -15,19 +15,19 @@ type GetJobRunStoryRequest struct {
 // JobRunStory is a recipe-centric narrative of a job run built by replaying recipe execution
 // against recorded task outcomes from swf.GetJobRunResponse.
 type JobRunStory struct {
-	JobID               string         `json:"job_id"`
-	InvocationSequence  int64          `json:"invocation_sequence"`
-	Recipe              JobRunStoryRecipe `json:"recipe"`
-	Status              WorkflowStatus `json:"status"`
-	StartedAt           time.Time      `json:"started_at"`
-	FinishedAt          *time.Time     `json:"finished_at"`
-	Root                *JobRunStoryNode `json:"root"`
+	JobID              string            `json:"job_id"`
+	InvocationSequence int64             `json:"invocation_sequence"`
+	Recipe             JobRunStoryRecipe `json:"recipe"`
+	Status             WorkflowStatus    `json:"status"`
+	StartedAt          time.Time         `json:"started_at"`
+	FinishedAt         *time.Time        `json:"finished_at"`
+	Root               *JobRunStoryNode  `json:"root"`
 }
 
 type JobRunStoryRecipe struct {
-	ID      string                 `json:"id"`
-	Name    string                 `json:"name"`
-	Version string                 `json:"version"`
+	ID      string                  `json:"id"`
+	Name    string                  `json:"name"`
+	Version string                  `json:"version"`
 	Source  JobRunStoryRecipeSource `json:"source"`
 }
 
@@ -43,6 +43,7 @@ const (
 	JobRunStoryNodeKindSequence       JobRunStoryNodeKind = "sequence"
 	JobRunStoryNodeKindOp             JobRunStoryNodeKind = "op"
 	JobRunStoryNodeKindOpStep         JobRunStoryNodeKind = "opStep"
+	JobRunStoryNodeKindContextPatch   JobRunStoryNodeKind = "contextPatch"
 	JobRunStoryNodeKindStateMachine   JobRunStoryNodeKind = "stateMachine"
 	JobRunStoryNodeKindState          JobRunStoryNodeKind = "state"
 	JobRunStoryNodeKindTransitionEval JobRunStoryNodeKind = "transitionEval"
@@ -67,22 +68,29 @@ const (
 // - The node itself represents the latest attempt.
 // - Prior attempts of the same logical node are stored in PriorAttempts.
 type JobRunStoryNode struct {
-	ID         string               `json:"id"`
-	Kind       JobRunStoryNodeKind  `json:"kind"`
-	Title      string               `json:"title"`
+	ID         string                `json:"id"`
+	Kind       JobRunStoryNodeKind   `json:"kind"`
+	Title      string                `json:"title"`
 	Status     JobRunStoryNodeStatus `json:"status"`
-	StartedAt  *time.Time           `json:"started_at"`
-	FinishedAt *time.Time           `json:"finished_at"`
+	StartedAt  *time.Time            `json:"started_at"`
+	FinishedAt *time.Time            `json:"finished_at"`
 
 	Path      []string `json:"path"`
 	InvokeSeq int64    `json:"invoke_seq"`
 
-	Attempt       int                 `json:"attempt"`
-	PriorAttempts []*JobRunStoryNode  `json:"prior_attempts"`
+	Attempt       int                `json:"attempt"`
+	PriorAttempts []*JobRunStoryNode `json:"prior_attempts"`
 
-	Input        any             `json:"input"`
-	Output       any             `json:"output"`
+	Input        any               `json:"input"`
+	Output       any               `json:"output"`
 	ArtifactKeys []swf.ArtifactKey `json:"artifact_keys"`
+
+	// TaskOrdinal is the SWF chapter ordinal for this node's latest attempt (when applicable).
+	// This is the primary "restart cursor" surface for the frontend.
+	TaskOrdinal *int64 `json:"task_ordinal,omitempty"`
+	// RestartFromOrdinal is the first attempt's ordinal for this logical node (when applicable).
+	// SWF restart cannot cut into a retry chain, so this is the safe ordinal to restart from.
+	RestartFromOrdinal *int64 `json:"restart_from_ordinal,omitempty"`
 
 	Children []*JobRunStoryNode `json:"children"`
 
@@ -97,16 +105,16 @@ type JobRunStoryNode struct {
 	OpType string            `json:"op_type,omitempty"`
 	Error  *JobRunStoryError `json:"error,omitempty"`
 
-	StepID   string            `json:"step_id,omitempty"`
-	StepType string            `json:"step_type,omitempty"`
+	StepID   string `json:"step_id,omitempty"`
+	StepType string `json:"step_type,omitempty"`
 
 	StateMachineID string `json:"state_machine_id,omitempty"`
 
-	StateID    string `json:"state_id,omitempty"`
-	IsInitial  *bool  `json:"is_initial,omitempty"`
+	StateID   string `json:"state_id,omitempty"`
+	IsInitial *bool  `json:"is_initial,omitempty"`
 
-	FromStateID string                     `json:"from_state_id,omitempty"`
-	Evaluations []JobRunStoryTransitionEval `json:"evaluations,omitempty"`
+	FromStateID string                         `json:"from_state_id,omitempty"`
+	Evaluations []JobRunStoryTransitionEval    `json:"evaluations,omitempty"`
 	Decision    *JobRunStoryTransitionDecision `json:"decision,omitempty"`
 }
 
@@ -126,4 +134,3 @@ type JobRunStoryTransitionDecision struct {
 	Kind      string  `json:"kind"` // state|fallthrough
 	ToStateID *string `json:"to_state_id,omitempty"`
 }
-
