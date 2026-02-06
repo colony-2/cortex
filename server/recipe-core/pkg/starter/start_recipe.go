@@ -3,8 +3,10 @@ package starter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gopkg.in/yaml.v3"
@@ -86,4 +88,47 @@ func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine s
 		Metadata:     metaRaw,
 	}
 	return engine.StartJob(ctx, job)
+}
+
+// RestartRecipeJob restarts an existing recipe job from the provided step offset.
+//
+// stepOffset is the next chapter ordinal to execute (0-based). Internally SWF uses LastStepToKeep,
+// so we keep chapters up to stepOffset-1.
+//
+// If patch is non-nil, we inject a context patch envelope as the next chapter output to be replayed.
+// This intentionally causes a swf.TaskInputMismatchError at replay time, allowing the recipe worker
+// to detect and apply the patch before re-executing the task.
+func RestartRecipeJob(ctx context.Context, engine swf.SWFEngine, prior swf.JobKey, stepOffset int64, patch *task.ContextPatch) (swf.JobKey, error) {
+	if stepOffset < 0 {
+		return swf.JobKey{}, fmt.Errorf("stepOffset must be >= 0, got %d", stepOffset)
+	}
+	lastToKeep := stepOffset - 1
+
+	req := swf.RestartJob{
+		PriorJobKey:    prior,
+		LastStepToKeep: lastToKeep,
+	}
+
+	if patch != nil {
+		env, err := task.NewOutputEnvelope(task.OutputKindContextPatch, patch)
+		if err != nil {
+			return swf.JobKey{}, err
+		}
+		out, err := swf.NewTaskData(env)
+		if err != nil {
+			return swf.JobKey{}, err
+		}
+
+		// Use an input that will not match normal ActivityInvocationRequest inputs, so the worker
+		// receives TaskInputMismatchError and can inspect the cached patch output.
+		in, err := swf.NewTaskData(map[string]any{"kind": string(task.OutputKindContextPatch)})
+		if err != nil {
+			return swf.JobKey{}, err
+		}
+
+		req.ExtraTaskInput = in
+		req.ExtraTaskOutput = out
+	}
+
+	return engine.RestartJob(ctx, req)
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -79,7 +80,11 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey
 		Output: outType,
 	}
 
-	outData, err := swf.NewTaskData(out)
+	env, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, out)
+	if err != nil {
+		return err
+	}
+	outData, err := swf.NewTaskData(env)
 	if err != nil {
 		return err
 	}

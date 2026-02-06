@@ -18,6 +18,7 @@ import (
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -237,7 +238,9 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 			PersistHash: req.GitTaskContext.PersistHash,
 		},
 	}
-	err = handles[0].Finish(context.Background(), swf.NewTaskDataOrPanic(envelope))
+	outEnv, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, envelope)
+	require.NoError(t, err)
+	err = handles[0].Finish(context.Background(), swf.NewTaskDataOrPanic(outEnv))
 	require.NoError(t, err)
 
 	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 5*time.Second, jobKey, engine))

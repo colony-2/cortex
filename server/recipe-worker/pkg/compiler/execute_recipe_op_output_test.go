@@ -8,6 +8,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -50,7 +51,9 @@ func TestExecuteRecipeSingleOpReturnsOutputs(t *testing.T) {
 		},
 		NextTask: "",
 	}
-	taskData := swf.NewTaskDataOrPanic(envelope)
+	outEnv, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, envelope)
+	require.NoError(t, err)
+	taskData := swf.NewTaskDataOrPanic(outEnv)
 
 	stub := &stubJobContext{
 		out:      taskData,

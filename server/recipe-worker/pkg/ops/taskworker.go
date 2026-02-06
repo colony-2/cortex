@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -35,7 +36,11 @@ func (t *taskWorker) Run(ctx swf.TaskContext, input swf.TaskData) (swf.TaskData,
 	if err != nil {
 		return nil, err
 	}
-	return swf.NewTaskData(out, outArt...)
+	env, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, out)
+	if err != nil {
+		return nil, err
+	}
+	return swf.NewTaskData(env, outArt...)
 }
 
 var _ swf.TaskWorker = &taskWorker{}

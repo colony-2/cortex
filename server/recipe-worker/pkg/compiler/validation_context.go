@@ -9,6 +9,7 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -116,5 +117,9 @@ func (v *validationJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf
 		NextTask:  nextTask,
 	}
 
-	return swf.NewTaskData(envelope)
+	env, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, envelope)
+	if err != nil {
+		return nil, err
+	}
+	return swf.NewTaskData(env)
 }

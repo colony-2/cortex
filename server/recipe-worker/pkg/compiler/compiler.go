@@ -1,16 +1,15 @@
 package compiler
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -207,53 +206,111 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 
 	var stepArtifacts map[string]swf.Artifact
 	for i := 0; i < 64; i++ { // guard against accidental loops
+		done := false
+		for patchAttempts := 0; patchAttempts < 64; patchAttempts++ {
+			invocation := workerops.ActivityInvocationRequest{
+				Input:          stepInput,
+				GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
+				ArtifactKeys:   artifactKeys,
+				Artifacts:      resolvedArtifacts,
+			}
 
-		invocation := workerops.ActivityInvocationRequest{
-			Input:          stepInput,
-			GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
-			ArtifactKeys:   artifactKeys,
-			Artifacts:      resolvedArtifacts,
-		}
-
-		taskData, err := swf.NewTaskData(invocation)
-		if err != nil {
-			return err
-		}
-
-		out, err := ctx.DoTask(
-			runPolicy,
-			taskType,
-			taskData,
-		)
-
-		if err != nil {
-			return err
-		}
-
-		outputData, err := out.GetData()
-		if err != nil {
-			return err
-		}
-
-		var envelope workerops.ActivityInvocationOutput
-		decoder := json.NewDecoder(strings.NewReader(string(outputData)))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&envelope); err != nil {
-			return fmt.Errorf("decode activity output envelope: %w", err)
-		}
-
-		gitResult := envelope.GitResult
-		resCtx.UpdateGitState(gitResult)
-		stepInput = normalizeOpOutput(chain[i].OutputType, envelope.OpOutput)
-		if envelope.NextTask == "" {
-			outputArtifacts, err := out.GetArtifacts()
+			taskData, err := swf.NewTaskData(invocation)
 			if err != nil {
 				return err
 			}
-			stepArtifacts = artifactsToMap(outputArtifacts)
+
+			out, err := ctx.DoTask(
+				runPolicy,
+				taskType,
+				taskData,
+			)
+
+			mismatchErr := err
+			hadMismatch := false
+			if err != nil {
+				if mismatch, ok := swf.UnexpectedChapter(err); ok {
+					if mismatch.CachedTaskDataErr() != nil {
+						return fmt.Errorf("rehydrate cached task output: %w", mismatch.CachedTaskDataErr())
+					}
+					out = mismatch.CachedTaskData()
+					hadMismatch = true
+				} else {
+					return err
+				}
+			}
+
+			outputData, err := out.GetData()
+			if err != nil {
+				return err
+			}
+
+			decoded, err := decodeTaskOutput(outputData)
+			if err != nil {
+				return err
+			}
+
+			switch decoded.Kind {
+			case coretask.OutputKindActivityInvocationOutput:
+				if hadMismatch {
+					// A mismatch that still produced an activity output indicates real non-determinism.
+					return mismatchErr
+				}
+				resCtx.UpdateGitState(decoded.Activity.GitResult)
+				stepInput = normalizeOpOutput(chain[i].OutputType, decoded.Activity.OpOutput)
+				if decoded.Activity.NextTask == "" {
+					outputArtifacts, err := out.GetArtifacts()
+					if err != nil {
+						return err
+					}
+					stepArtifacts = artifactsToMap(outputArtifacts)
+					done = true
+				} else {
+					taskType = decoded.Activity.NextTask
+				}
+				break
+
+			case coretask.OutputKindContextPatch:
+				if err := resCtx.ApplyContextPatch(decoded.Patch); err != nil {
+					return fmt.Errorf("apply context patch: %w", err)
+				}
+
+				// Re-resolve inputs for the task based on the updated context.
+				if i == 0 {
+					resolvedNodeInputs, err = resCtx.ResolveMap(metadata.Inputs)
+					if err != nil {
+						return fmt.Errorf("failed to resolve templates op inputs after patch: %w", err)
+					}
+					stepInput = resolvedNodeInputs
+
+					allowNulls := resCtx.Options.Mode == template.ModeValidate
+					if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
+						return fmt.Errorf("op input validation failed after patch: %w", err)
+					}
+				}
+
+				// Re-resolve artifacts and keys (patch may have changed bindings or inputs).
+				resolvedArtifacts, err = resolveArtifactBindings(resCtx, map[string]interface{}(metadata.Artifacts))
+				if err != nil {
+					return err
+				}
+				artifactKeys, err = collectArtifactKeysFromInput(resolvedNodeInputs)
+				if err != nil {
+					return fmt.Errorf("failed to collect artifact keys: %w", err)
+				}
+				if len(resolvedArtifacts) > 0 {
+					artifactKeys = appendArtifactKeys(artifactKeys, resolvedArtifacts)
+				}
+				continue
+
+			default:
+				return fmt.Errorf("unsupported task output kind: %q", decoded.Kind)
+			}
 			break
 		}
-		taskType = envelope.NextTask
+		if done {
+			break
+		}
 	}
 	resCtx.AddExecutionWithArtifacts(stepInput, stepArtifacts)
 	return nil
