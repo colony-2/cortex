@@ -36,6 +36,11 @@ Reference: `/src/server/workflow/docs/job_run_story_consumer_guide.md`.
 - Real-time streaming (SSE/WebSockets). Polling is sufficient.
 - Editing/rerunning workflows from this UI.
 
+## Add-on: Restarts (v1.1)
+
+The Story UI should support restarting a workflow from a task-backed node, optionally applying a
+context patch at the restart point. Reference: `/src/server/workflow/docs/recipe_job_restarts_user_guide.md`.
+
 ---
 
 ## Terminology / Data Model
@@ -53,7 +58,7 @@ Reference: `/src/server/workflow/docs/job_run_story_consumer_guide.md`.
 
 Every node includes:
 
-- `kind`: `recipe|sequence|op|opStep|stateMachine|state|transitionEval`
+- `kind`: `recipe|sequence|op|opStep|stateMachine|state|transitionEval|contextPatch`
 - `title`: display label
 - `status` (node-level): `pending|running|succeeded|failed|canceled|skipped|unknown`
 - `started_at`, `finished_at` (nullable)
@@ -68,6 +73,16 @@ Retries:
 - Inline node represents the **latest attempt**
 - `attempt`: attempt number for latest attempt
 - `prior_attempts`: array of previous attempts, same node shape
+
+Restart support (task-backed nodes only):
+
+- `task_ordinal`: ordinal for the node’s latest attempt.
+- `restart_from_ordinal`: safe restart cursor (attempt-1 ordinal of the logical node).
+
+Context patching (in restarted jobs):
+
+- `kind=contextPatch` nodes appear immediately before execution resumes.
+- For `contextPatch` nodes: `output` contains the patch object that was applied; `task_ordinal` is the injected ordinal.
 
 State machine transitions:
 
@@ -358,4 +373,3 @@ Add a prominent link/button near the header actions:
 - Should the Story UI also include a compact “search/filter” (by title/kind/status) for very large stories?
 - Do we want to expose “focus on subtree” mode in v1, or hold for v1.1?
 - Should we persist auto-refresh preference per user (localStorage)?
-

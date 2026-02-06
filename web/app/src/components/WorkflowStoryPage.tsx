@@ -6,6 +6,7 @@ import {
   Card,
   Descriptions,
   Empty,
+  Input,
   List,
   Modal,
   Radio,
@@ -33,6 +34,14 @@ const { Title, Text } = Typography;
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
 
+function newId(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+}
+
 type JobStatus =
   | 'running'
   | 'completed'
@@ -58,7 +67,8 @@ type StoryKind =
   | 'opStep'
   | 'stateMachine'
   | 'state'
-  | 'transitionEval';
+  | 'transitionEval'
+  | 'contextPatch';
 
 interface ArtifactKey {
   jobId: string;
@@ -91,6 +101,8 @@ interface StoryNode {
   children?: StoryNode[];
   attempt?: number;
   prior_attempts?: StoryNode[];
+  task_ordinal?: number | null;
+  restart_from_ordinal?: number | null;
 
   // transitionEval-only
   evaluations?: TransitionEvaluation[];
@@ -203,6 +215,8 @@ function kindLabel(kind: StoryKind): string {
       return 'State';
     case 'transitionEval':
       return 'Transition Eval';
+    case 'contextPatch':
+      return 'Context Patch';
     default:
       return kind;
   }
@@ -211,6 +225,62 @@ function kindLabel(kind: StoryKind): string {
 function extractRecipeLabel(recipe: any): string {
   if (!recipe) return '-';
   return recipe.name || recipe.recipe_name || recipe.path || recipe.id || '-';
+}
+
+function parseUserValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+}
+
+function setMergePatchValue(target: Record<string, any>, path: string, value: unknown) {
+  const parts = path
+    .split('.')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return;
+
+  let cursor: Record<string, any> = target;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const p = parts[i];
+    const next = cursor[p];
+    if (!next || typeof next !== 'object' || Array.isArray(next)) {
+      cursor[p] = {};
+    }
+    cursor = cursor[p];
+  }
+  cursor[parts[parts.length - 1]] = value;
+}
+
+type PatchLine = { id: string; path: string; value: string };
+type ScopePatchLine = { id: string; container: 'sequence' | 'states'; scopeId: string; path: string; value: string };
+
+function buildContextPatch(jobLines: PatchLine[], scopeLines: ScopePatchLine[]) {
+  const job: Record<string, any> = {};
+  for (const line of jobLines) {
+    if (!line.path.trim()) continue;
+    setMergePatchValue(job, line.path, parseUserValue(line.value));
+  }
+
+  const grouped = new Map<string, { container: 'sequence' | 'states'; id: string; outputs: Record<string, any> }>();
+  for (const line of scopeLines) {
+    if (!line.scopeId.trim() || !line.path.trim()) continue;
+    const k = `${line.container}::${line.scopeId}`;
+    const existing = grouped.get(k) ?? { container: line.container, id: line.scopeId, outputs: {} };
+    setMergePatchValue(existing.outputs, line.path, parseUserValue(line.value));
+    grouped.set(k, existing);
+  }
+
+  const scopes = Array.from(grouped.values()).filter((s) => Object.keys(s.outputs).length > 0);
+
+  const patch: any = {};
+  if (Object.keys(job).length > 0) patch.job = job;
+  if (scopes.length > 0) patch.scopes = scopes;
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 async function fetchStory(projectId: string, jobId: string): Promise<WorkflowStoryResponse> {
@@ -273,6 +343,13 @@ function buildTree(root: StoryNode | null | undefined) {
         </Tag>
       ) : null;
 
+    const restartBadge =
+      node.kind !== 'contextPatch' && node.restart_from_ordinal !== null && node.restart_from_ordinal !== undefined ? (
+        <Tag color="purple" style={{ marginInlineStart: 8 }}>
+          Restart
+        </Tag>
+      ) : null;
+
     const d = durationSeconds(node.started_at ?? null, node.finished_at ?? null);
     const durationText = d !== null ? (
       <Text type="secondary" style={{ marginInlineStart: 8 }}>
@@ -289,6 +366,7 @@ function buildTree(root: StoryNode | null | undefined) {
           <Tag color={statusTagColor(node.status)}>{node.status.toUpperCase()}</Tag>
           {attemptBadge}
           {artifactBadge}
+          {restartBadge}
           {durationText}
         </Space>
       ),
@@ -354,6 +432,12 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
   const [artifactLoading, setArtifactLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
+
+  const [restartOpen, setRestartOpen] = useState(false);
+  const [restartSubmitting, setRestartSubmitting] = useState(false);
+  const [jobPatchLines, setJobPatchLines] = useState<PatchLine[]>([]);
+  const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
+  const [applyPatch, setApplyPatch] = useState(false);
 
   const jobId = workflowId || '';
 
@@ -483,6 +567,57 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       next.set('attempt', String(attempt));
       return next;
     });
+  };
+
+  const restartable =
+    !!selectedNode &&
+    selectedNode.kind !== 'contextPatch' &&
+    selectedNode.restart_from_ordinal !== null &&
+    selectedNode.restart_from_ordinal !== undefined;
+
+  const resetRestartState = () => {
+    setApplyPatch(false);
+    setJobPatchLines([]);
+    setScopePatchLines([]);
+  };
+
+  const submitRestart = async () => {
+    if (!workflowId || !selectedNode) return;
+    const stepOffset = selectedNode.restart_from_ordinal;
+    if (stepOffset === null || stepOffset === undefined) return;
+
+    const contextPatch = applyPatch ? buildContextPatch(jobPatchLines, scopePatchLines) : null;
+
+    setRestartSubmitting(true);
+    try {
+      const response = await fetch(
+        `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(workflowId)}/restart`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            step_offset: stepOffset,
+            ...(contextPatch ? { context_patch: contextPatch } : {}),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`${response.status} ${response.statusText}${errText ? ` - ${errText}` : ''}`);
+      }
+
+      const data = (await response.json()) as { job_id: string };
+      message.success('Restarted workflow');
+      setRestartOpen(false);
+      resetRestartState();
+      navigate(`/project/${projectId}/workflows/${data.job_id}/story`);
+    } catch (e) {
+      console.error('Restart failed', e);
+      message.error(e instanceof Error ? e.message : 'Restart failed');
+    } finally {
+      setRestartSubmitting(false);
+    }
   };
 
   const detailsHeader = (
@@ -683,6 +818,12 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
                           <Descriptions.Item label="Attempt">
                             {nodeAttempt(selectedNode)}
                           </Descriptions.Item>
+                          <Descriptions.Item label="Task Ordinal">
+                            {selectedNode.task_ordinal ?? '-'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Restart From Ordinal">
+                            {selectedNode.restart_from_ordinal ?? '-'}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Invoke Seq">
                             {selectedNode.invoke_seq ?? '-'}
                           </Descriptions.Item>
@@ -699,6 +840,36 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
                             <Text code>{selectedNode.path.join(' / ')}</Text>
                           </Descriptions.Item>
                         </Descriptions>
+
+                        {restartable ? (
+                          <Card size="small" title="Restart">
+                            <Space direction="vertical" style={{ width: '100%' }}>
+                              <Text type="secondary">
+                                Restarts create a new job and resume from step offset{' '}
+                                <Text code>{selectedNode.restart_from_ordinal}</Text>.
+                              </Text>
+                              <Button type="primary" onClick={() => setRestartOpen(true)}>
+                                Restart from here
+                              </Button>
+                            </Space>
+                          </Card>
+                        ) : null}
+
+                        {selectedNode.kind === 'contextPatch' ? (
+                          <Card title="Applied Context Patch" size="small">
+                            {selectedNode.output ? (
+                              <ReactJson
+                                src={selectedNode.output as any}
+                                collapsed={2}
+                                displayDataTypes={false}
+                                enableClipboard
+                                theme="rjv-default"
+                              />
+                            ) : (
+                              <Empty description="No patch payload found" />
+                            )}
+                          </Card>
+                        ) : null}
 
                         {selectedNode.kind === 'transitionEval' ? (
                           <Card title="Transition" size="small">
@@ -917,6 +1088,259 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
               )}
             </div>
           </>
+        )}
+      </Modal>
+
+      <Modal
+        title="Restart Workflow"
+        open={restartOpen}
+        onCancel={() => {
+          setRestartOpen(false);
+          resetRestartState();
+        }}
+        width={900}
+        okText="Restart"
+        okButtonProps={{ loading: restartSubmitting, disabled: !restartable }}
+        onOk={submitRestart}
+      >
+        {selectedNode ? (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Alert
+              type="info"
+              showIcon
+              message="This will create a new job"
+              description={
+                <div>
+                  Restarting from <Text strong>{selectedNode.title}</Text> (step offset{' '}
+                  <Text code>{selectedNode.restart_from_ordinal ?? '-'}</Text>).
+                </div>
+              }
+            />
+
+            <Card title="Context Patching" size="small">
+              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Text type="secondary">
+                    Apply additional context over the existing context before resuming execution.
+                  </Text>
+                  <Space>
+                    <Text type="secondary">Enable</Text>
+                    <Switch checked={applyPatch} onChange={setApplyPatch} />
+                  </Space>
+                </Space>
+
+                {!applyPatch ? (
+                  <Text type="secondary">No context patch will be applied.</Text>
+                ) : (
+                  <Space direction="vertical" style={{ width: '100%' }} size="large">
+                    <Card
+                      size="small"
+                      title="Job Patch (global)"
+                      extra={
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            setJobPatchLines((prev) => [
+                              ...prev,
+                              { id: newId(), path: '', value: '' },
+                            ])
+                          }
+                        >
+                          Add line
+                        </Button>
+                      }
+                    >
+                      <Text type="secondary">
+                        Each line sets a merge-patch value under <Text code>context</Text>. Use dot
+                        paths like <Text code>git.author</Text>. Values accept JSON (e.g.{' '}
+                        <Text code>"james@example.com"</Text>, <Text code>true</Text>,{' '}
+                        <Text code>123</Text>, <Text code>null</Text>) or raw text.
+                      </Text>
+                      <div style={{ marginTop: 12 }}>
+                        {jobPatchLines.length === 0 ? (
+                          <Empty description="No job patch lines" />
+                        ) : (
+                          <List
+                            size="small"
+                            dataSource={jobPatchLines}
+                            renderItem={(line) => (
+                              <List.Item
+                                actions={[
+                                  <Button
+                                    key="remove"
+                                    size="small"
+                                    onClick={() =>
+                                      setJobPatchLines((prev) => prev.filter((p) => p.id !== line.id))
+                                    }
+                                  >
+                                    Remove
+                                  </Button>,
+                                ]}
+                              >
+                                <Space style={{ width: '100%' }}>
+                                  <Text style={{ width: 80 }} type="secondary">
+                                    Path
+                                  </Text>
+                                  <Input
+                                    style={{ flex: 1, padding: 6 }}
+                                    value={line.path}
+                                    placeholder='e.g. git.author'
+                                    onChange={(e) =>
+                                      setJobPatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, path: e.target.value } : p))
+                                      )
+                                    }
+                                  />
+                                  <Text style={{ width: 60 }} type="secondary">
+                                    Value
+                                  </Text>
+                                  <Input
+                                    style={{ flex: 1, padding: 6 }}
+                                    value={line.value}
+                                    placeholder='e.g. "james@example.com"'
+                                    onChange={(e) =>
+                                      setJobPatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, value: e.target.value } : p))
+                                      )
+                                    }
+                                  />
+                                </Space>
+                              </List.Item>
+                            )}
+                          />
+                        )}
+                      </div>
+                    </Card>
+
+                    <Card
+                      size="small"
+                      title="Scoped Patches (local outputs)"
+                      extra={
+                        <Button
+                          size="small"
+                          onClick={() =>
+                            setScopePatchLines((prev) => [
+                              ...prev,
+                              {
+                                id: newId(),
+                                container: 'sequence',
+                                scopeId: '',
+                                path: '',
+                                value: '',
+                              },
+                            ])
+                          }
+                        >
+                          Add line
+                        </Button>
+                      }
+                    >
+                      <Text type="secondary">
+                        Each line applies a merge-patch value under a scope container’s outputs.
+                        Container is <Text code>sequence</Text> or <Text code>states</Text>; id is the
+                        step/state id; path is under outputs (dot path).
+                      </Text>
+                      <div style={{ marginTop: 12 }}>
+                        {scopePatchLines.length === 0 ? (
+                          <Empty description="No scoped patch lines" />
+                        ) : (
+                          <List
+                            size="small"
+                            dataSource={scopePatchLines}
+                            renderItem={(line) => (
+                              <List.Item
+                                actions={[
+                                  <Button
+                                    key="remove"
+                                    size="small"
+                                    onClick={() =>
+                                      setScopePatchLines((prev) => prev.filter((p) => p.id !== line.id))
+                                    }
+                                  >
+                                    Remove
+                                  </Button>,
+                                ]}
+                              >
+                                <Space style={{ width: '100%' }} wrap>
+                                  <Text style={{ width: 80 }} type="secondary">
+                                    Container
+                                  </Text>
+                                  <Select
+                                    value={line.container}
+                                    style={{ width: 140 }}
+                                    options={[
+                                      { label: 'sequence', value: 'sequence' },
+                                      { label: 'states', value: 'states' },
+                                    ]}
+                                    onChange={(v) =>
+                                      setScopePatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, container: v } : p))
+                                      )
+                                    }
+                                  />
+                                  <Text style={{ width: 30 }} type="secondary">
+                                    ID
+                                  </Text>
+                                  <Input
+                                    style={{ width: 160 }}
+                                    value={line.scopeId}
+                                    placeholder='e.g. build'
+                                    onChange={(e) =>
+                                      setScopePatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, scopeId: e.target.value } : p))
+                                      )
+                                    }
+                                  />
+                                  <Text style={{ width: 40 }} type="secondary">
+                                    Path
+                                  </Text>
+                                  <Input
+                                    style={{ width: 200 }}
+                                    value={line.path}
+                                    placeholder='e.g. image_tag'
+                                    onChange={(e) =>
+                                      setScopePatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, path: e.target.value } : p))
+                                      )
+                                    }
+                                  />
+                                  <Text style={{ width: 50 }} type="secondary">
+                                    Value
+                                  </Text>
+                                  <Input
+                                    style={{ flex: 1, minWidth: 180 }}
+                                    value={line.value}
+                                    placeholder='e.g. "v2"'
+                                    onChange={(e) =>
+                                      setScopePatchLines((prev) =>
+                                        prev.map((p) => (p.id === line.id ? { ...p, value: e.target.value } : p))
+                                      )
+                                    }
+                                  />
+                                </Space>
+                              </List.Item>
+                            )}
+                          />
+                        )}
+                      </div>
+                    </Card>
+
+                    <Card size="small" title="Patch Preview">
+                      <ReactJson
+                        src={buildContextPatch(jobPatchLines, scopePatchLines) ?? {}}
+                        collapsed={2}
+                        displayDataTypes={false}
+                        enableClipboard
+                        theme="rjv-default"
+                      />
+                    </Card>
+                  </Space>
+                )}
+              </Space>
+            </Card>
+          </Space>
+        ) : (
+          <Empty description="Select a restartable node first" />
         )}
       </Modal>
     </div>

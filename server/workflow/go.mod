@@ -4,11 +4,14 @@ go 1.25.5
 
 require (
 	github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/git v0.0.0-20260128195911-f9fcb108644b
 	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260206225012-7b3039d8496f
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260205051038-e9aaaf516d92
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -31,6 +34,8 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
+	github.com/itchyny/gojq v0.12.16 // indirect
+	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -59,7 +64,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 	gorm.io/plugin/optimisticlock v1.1.3 // indirect

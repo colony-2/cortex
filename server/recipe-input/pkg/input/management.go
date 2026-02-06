@@ -12,6 +12,7 @@ import (
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	ops2 "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -163,19 +164,35 @@ func (s *inputManagementService) getOutput(ctx context.Context, projectID string
 		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("failed to get task artifacts: %w", err)
 	}
 
-	req := ops2.ActivityInvocationOutput{}
-	err = json.Unmarshal(data, &req)
-	if err != nil {
-		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("failed to unmarshal task data: %w", err)
+	// Note: for capability-based waiting tasks, swf-go exposes the cached output chapter
+	// data (the last completed step), not the next step's invocation request.
+	var env coretask.OutputEnvelope
+	if err := json.Unmarshal(data, &env); err != nil {
+		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("failed to unmarshal task output envelope: %w", err)
+	}
+	if env.Version != coretask.OutputEnvelopeVersion {
+		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("unsupported task output envelope version %d", env.Version)
+	}
+	if env.Kind != coretask.OutputKindActivityInvocationOutput {
+		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("unexpected task output kind %q", env.Kind)
 	}
 
-	return task, req, artifacts, nil
+	var out ops2.ActivityInvocationOutput
+	if err := env.DecodePayload(&out); err != nil {
+		return nil, ops2.ActivityInvocationOutput{}, nil, fmt.Errorf("failed to decode activity output payload: %w", err)
+	}
+
+	return task, out, artifacts, nil
 }
 
 // GetDetails returns details about a specific input request
 func (s *inputManagementService) getDetails(ctx context.Context, projectID string, jobId string) result[*detailsInput] {
 	task, req, _, err := s.getOutput(ctx, projectID, jobId)
 	form := InputForm{}
+	if err != nil {
+		return result[*detailsInput]{err: err.Error()}
+	}
+
 	err = ops.DecodeWithJsonTags(req.OpOutput, &form)
 	if err != nil {
 		return result[*detailsInput]{err: err.Error()}
@@ -344,9 +361,13 @@ func (s *inputManagementService) submitResponse(ctx context.Context, projectID s
 		GitResult: req.GitResult,
 		OpOutput:  opOutMap,
 	}
-	outData, error := swf.NewTaskData(out, artifacts...)
-	if error != nil {
-		return result[bool]{err: error.Error()}
+	env, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, out)
+	if err != nil {
+		return result[bool]{err: err.Error()}
+	}
+	outData, err := swf.NewTaskData(env, artifacts...)
+	if err != nil {
+		return result[bool]{err: err.Error()}
 	}
 
 	err = task.Finish(ctx, outData)
