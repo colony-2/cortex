@@ -12,6 +12,7 @@ import (
 
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 type fakeWorkflowService struct {
@@ -21,18 +22,21 @@ type fakeWorkflowService struct {
 	artifactReq   *workflow.GetWorkflowArtifactRequest
 	engineArtReq  *workflow.GetArtifactByOrdinalRequest
 	outcomeReq    *workflow.GetWorkflowOutcomeRequest
+	jobStoryReq   *workflow.GetJobRunStoryRequest
 	listResp      []workflow.WorkflowSummary
 	getResp       *workflow.WorkflowDetail
 	startResp     *workflow.WorkflowSummary
 	artifactResp  *workflow.ArtifactData
 	engineArtResp *workflow.ArtifactData
 	outcomeResp   *workflow.WorkflowOutcome
+	jobStoryResp  *workflow.JobRunStory
 	listErr       error
 	getErr        error
 	startErr      error
 	artifactErr   error
 	engineArtErr  error
 	outcomeErr    error
+	jobStoryErr   error
 }
 
 func (f *fakeWorkflowService) ListWorkflows(ctx context.Context, req workflow.ListWorkflowsRequest) ([]workflow.WorkflowSummary, error) {
@@ -63,6 +67,11 @@ func (f *fakeWorkflowService) GetArtifactByOrdinal(ctx context.Context, req work
 func (f *fakeWorkflowService) GetWorkflowOutcome(ctx context.Context, req workflow.GetWorkflowOutcomeRequest) (*workflow.WorkflowOutcome, error) {
 	f.outcomeReq = &req
 	return f.outcomeResp, f.outcomeErr
+}
+
+func (f *fakeWorkflowService) GetJobRunStory(ctx context.Context, req workflow.GetJobRunStoryRequest) (*workflow.JobRunStory, error) {
+	f.jobStoryReq = &req
+	return f.jobStoryResp, f.jobStoryErr
 }
 
 func TestHandleListWorkflows_OK(t *testing.T) {
@@ -297,6 +306,83 @@ func TestHandleGetWorkflowOutcome_OK(t *testing.T) {
 	}
 	if body.JobId != jobID || body.AttemptOrdinal == nil || *body.AttemptOrdinal != 3 {
 		t.Fatalf("unexpected outcome body: %#v", body)
+	}
+}
+
+func TestHandleGetJobRunStory_OK(t *testing.T) {
+	projectID := "proj_123"
+	jobID := "job_1"
+	now := time.Now().UTC()
+
+	root := &workflow.JobRunStoryNode{
+		ID:            "n_root",
+		Kind:          workflow.JobRunStoryNodeKind("recipe"),
+		Title:         "recipe recipes/demo",
+		Status:        workflow.JobRunStoryNodeStatus("succeeded"),
+		StartedAt:     &now,
+		FinishedAt:    &now,
+		Path:          []string{"root"},
+		InvokeSeq:     0,
+		Attempt:       1,
+		PriorAttempts: []*workflow.JobRunStoryNode{},
+		Input:         map[string]interface{}{"args": map[string]interface{}{}},
+		Output:        map[string]interface{}{"ok": true},
+		ArtifactKeys:  []swf.ArtifactKey{},
+		Children:      []*workflow.JobRunStoryNode{},
+		RecipeID:      "recipes/demo",
+		Invocation:    map[string]interface{}{"args": map[string]interface{}{}},
+	}
+
+	fake := &fakeWorkflowService{
+		jobStoryResp: &workflow.JobRunStory{
+			JobID:              jobID,
+			InvocationSequence: 0,
+			Recipe: workflow.JobRunStoryRecipe{
+				ID:      "recipes/demo",
+				Name:    "recipes/demo",
+				Version: "v1",
+				Source: workflow.JobRunStoryRecipeSource{
+					Kind:         "jobStartArtifact",
+					ArtifactName: "chapter0.recipe.yaml",
+				},
+			},
+			Status:     workflow.WorkflowStatusCompleted,
+			StartedAt:  now,
+			FinishedAt: &now,
+			Root:       root,
+		},
+	}
+
+	h := &Handlers{workflows: fake}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/api/projects/"+projectID+"/jobs/"+jobID+"/story", nil)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if fake.jobStoryReq == nil || fake.jobStoryReq.ProjectID != projectID || fake.jobStoryReq.JobID != jobID {
+		t.Fatalf("expected story request captured, got %#v", fake.jobStoryReq)
+	}
+
+	var body openapi.JobRunStory
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.JobId != jobID || body.Recipe.Id != "recipes/demo" {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+	if body.Root.Kind != openapi.JobRunStoryNodeKind("recipe") {
+		t.Fatalf("unexpected root kind: %#v", body.Root.Kind)
 	}
 }
 

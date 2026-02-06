@@ -219,6 +219,36 @@ func (h *Handlers) handleGetWorkflowOutcome(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, toOpenAPIWorkflowOutcome(*outcome))
 }
 
+func (h *Handlers) handleGetJobRunStory(w http.ResponseWriter, r *http.Request) {
+	if h.workflows == nil {
+		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
+		return
+	}
+	vars := mux.Vars(r)
+	projectID := vars["projectId"]
+	jobID := vars["jobId"]
+
+	story, err := h.workflows.GetJobRunStory(r.Context(), workflow.GetJobRunStoryRequest{
+		ProjectID: projectID,
+		JobID:     jobID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, workflow.ErrInvalidProject):
+			writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, openapi.ErrorResponse{Message: err.Error()})
+		case errors.Is(err, workflow.ErrJobRunStoryMismatch):
+			writeJSON(w, http.StatusConflict, openapi.ErrorResponse{Message: err.Error()})
+		default:
+			writeJSON(w, http.StatusInternalServerError, openapi.ErrorResponse{Message: "Internal server error"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toOpenAPIJobRunStory(*story))
+}
+
 func (h *Handlers) handleGetWorkflowArtifact(w http.ResponseWriter, r *http.Request) {
 	if h.workflows == nil {
 		http.Error(w, "workflow service unavailable", http.StatusNotImplemented)
@@ -423,6 +453,200 @@ func toOpenAPIWorkflowOutcome(out workflow.WorkflowOutcome) openapi.WorkflowOutc
 		JobId:          out.JobID,
 		Output:         output,
 		Status:         openapi.WorkflowStatus(out.Status),
+	}
+}
+
+func toOpenAPIJobRunStory(st workflow.JobRunStory) openapi.JobRunStory {
+	root := toOpenAPIJobRunStoryNode(st.Root)
+	return openapi.JobRunStory{
+		FinishedAt:         st.FinishedAt,
+		InvocationSequence: st.InvocationSequence,
+		JobId:              st.JobID,
+		Recipe:             openapi.JobRunStoryRecipe{Id: st.Recipe.ID, Name: st.Recipe.Name, Version: st.Recipe.Version, Source: openapi.JobRunStoryRecipeSource{Kind: st.Recipe.Source.Kind, ArtifactName: st.Recipe.Source.ArtifactName}},
+		Root:               root,
+		StartedAt:          st.StartedAt,
+		Status:             openapi.WorkflowStatus(st.Status),
+	}
+}
+
+func toOpenAPIJobRunStoryNode(n *workflow.JobRunStoryNode) openapi.JobRunStoryNode {
+	// Root is required by the schema; if we couldn't build it, return an empty "unknown" node.
+	if n == nil {
+		var nilAny *interface{}
+		return openapi.JobRunStoryNode{
+			ArtifactKeys:   []openapi.ArtifactKey{},
+			Attempt:        1,
+			Children:       []openapi.JobRunStoryNode{},
+			Evaluations:    nil,
+			FinishedAt:     nil,
+			FromStateId:    nil,
+			Id:             "missing_root",
+			Input:          nilAny,
+			Invocation:     nil,
+			InvokeSeq:      0,
+			IsInitial:      nil,
+			Kind:           openapi.JobRunStoryNodeKind("recipe"),
+			OpId:           nil,
+			OpType:         nil,
+			Output:         nilAny,
+			Path:           []string{"root"},
+			PriorAttempts:  []openapi.JobRunStoryNode{},
+			RecipeId:       nil,
+			SequenceId:     nil,
+			StartedAt:      nil,
+			StateId:        nil,
+			StateMachineId: nil,
+			Status:         openapi.JobRunStoryNodeStatus("unknown"),
+			StepId:         nil,
+			StepType:       nil,
+			Title:          "missing root",
+		}
+	}
+
+	keys := make([]openapi.ArtifactKey, 0, len(n.ArtifactKeys))
+	for _, k := range n.ArtifactKeys {
+		keys = append(keys, openapi.ArtifactKey{
+			JobId:       k.JobId,
+			TaskOrdinal: k.TaskOrdinal,
+			Name:        k.Name,
+			SizeBytes:   k.SizeBytes,
+		})
+	}
+
+	children := make([]openapi.JobRunStoryNode, 0, len(n.Children))
+	for _, ch := range n.Children {
+		children = append(children, toOpenAPIJobRunStoryNode(ch))
+	}
+
+	prior := make([]openapi.JobRunStoryNode, 0, len(n.PriorAttempts))
+	for _, pa := range n.PriorAttempts {
+		prior = append(prior, toOpenAPIJobRunStoryNode(pa))
+	}
+
+	var inPtr *interface{}
+	if n.Input != nil {
+		tmp := interface{}(n.Input)
+		inPtr = &tmp
+	}
+	var outPtr *interface{}
+	if n.Output != nil {
+		tmp := interface{}(n.Output)
+		outPtr = &tmp
+	}
+
+	var invPtr *map[string]interface{}
+	if n.Invocation != nil {
+		tmp := n.Invocation
+		invPtr = &tmp
+	}
+
+	var errPtr *openapi.JobRunStoryError
+	if n.Error != nil {
+		var code *string
+		if strings.TrimSpace(n.Error.Code) != "" {
+			tmp := n.Error.Code
+			code = &tmp
+		}
+		errPtr = &openapi.JobRunStoryError{Code: code, Message: n.Error.Message}
+	}
+
+	var evalsPtr *[]openapi.JobRunStoryTransitionEval
+	if len(n.Evaluations) > 0 {
+		evs := make([]openapi.JobRunStoryTransitionEval, 0, len(n.Evaluations))
+		for _, ev := range n.Evaluations {
+			evs = append(evs, openapi.JobRunStoryTransitionEval{
+				Expression: ev.Expression,
+				Reason:     ev.Reason,
+				Result:     ev.Result,
+				ToStateId:  ev.ToStateID,
+			})
+		}
+		evalsPtr = &evs
+	}
+
+	var decisionPtr *openapi.JobRunStoryTransitionDecision
+	if n.Decision != nil {
+		decisionPtr = &openapi.JobRunStoryTransitionDecision{
+			Kind:      openapi.JobRunStoryTransitionDecisionKind(n.Decision.Kind),
+			ToStateId: n.Decision.ToStateID,
+		}
+	}
+
+	var recipeID *string
+	if strings.TrimSpace(n.RecipeID) != "" {
+		tmp := n.RecipeID
+		recipeID = &tmp
+	}
+	var sequenceID *string
+	if strings.TrimSpace(n.SequenceID) != "" {
+		tmp := n.SequenceID
+		sequenceID = &tmp
+	}
+	var opID *string
+	if strings.TrimSpace(n.OpID) != "" {
+		tmp := n.OpID
+		opID = &tmp
+	}
+	var opType *string
+	if strings.TrimSpace(n.OpType) != "" {
+		tmp := n.OpType
+		opType = &tmp
+	}
+	var stepID *string
+	if strings.TrimSpace(n.StepID) != "" {
+		tmp := n.StepID
+		stepID = &tmp
+	}
+	var stepType *string
+	if strings.TrimSpace(n.StepType) != "" {
+		tmp := n.StepType
+		stepType = &tmp
+	}
+	var smID *string
+	if strings.TrimSpace(n.StateMachineID) != "" {
+		tmp := n.StateMachineID
+		smID = &tmp
+	}
+	var stateID *string
+	if strings.TrimSpace(n.StateID) != "" {
+		tmp := n.StateID
+		stateID = &tmp
+	}
+	var fromStateID *string
+	if strings.TrimSpace(n.FromStateID) != "" {
+		tmp := n.FromStateID
+		fromStateID = &tmp
+	}
+
+	return openapi.JobRunStoryNode{
+		ArtifactKeys:   keys,
+		Attempt:        n.Attempt,
+		Children:       children,
+		Decision:       decisionPtr,
+		Error:          errPtr,
+		Evaluations:    evalsPtr,
+		FinishedAt:     n.FinishedAt,
+		FromStateId:    fromStateID,
+		Id:             n.ID,
+		Input:          inPtr,
+		Invocation:     invPtr,
+		InvokeSeq:      n.InvokeSeq,
+		IsInitial:      n.IsInitial,
+		Kind:           openapi.JobRunStoryNodeKind(n.Kind),
+		OpId:           opID,
+		OpType:         opType,
+		Output:         outPtr,
+		Path:           n.Path,
+		PriorAttempts:  prior,
+		RecipeId:       recipeID,
+		SequenceId:     sequenceID,
+		StartedAt:      n.StartedAt,
+		StateId:        stateID,
+		StateMachineId: smID,
+		Status:         openapi.JobRunStoryNodeStatus(n.Status),
+		StepId:         stepID,
+		StepType:       stepType,
+		Title:          n.Title,
 	}
 }
 

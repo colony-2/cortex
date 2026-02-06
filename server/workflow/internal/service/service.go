@@ -19,6 +19,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
+	jobstory "github.com/colony-2/colony2/server/workflow/internal/story"
 	"github.com/colony-2/strata-go/pkg/client"
 	"github.com/colony-2/strata-go/pkg/client/pagination"
 	"github.com/colony-2/strata-go/pkg/client/story"
@@ -33,6 +34,7 @@ var (
 	ErrRecipeNotFound       = errors.New("workflow: recipe not found")
 	ErrEngineUnavailable    = errors.New("workflow: engine unavailable")
 	ErrOutcomePending       = errors.New("workflow: outcome not available yet")
+	ErrJobRunStoryMismatch  = errors.New("workflow: job run story replay mismatch")
 )
 
 type Config struct {
@@ -575,6 +577,50 @@ func (s *Service) GetWorkflowOutcome(ctx context.Context, req model.GetWorkflowO
 		Error:          errMsg,
 		Artifacts:      artifacts,
 	}, nil
+}
+
+func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRequest) (*model.JobRunStory, error) {
+	if s.engine == nil {
+		return nil, ErrEngineUnavailable
+	}
+
+	projectID := strings.TrimSpace(req.ProjectID)
+	jobID := strings.TrimSpace(req.JobID)
+	if projectID == "" {
+		return nil, ErrInvalidProject
+	}
+	if jobID == "" {
+		return nil, ErrNotFound
+	}
+
+	run, err := s.engine.GetJobRun(ctx, swf.GetJobRunRequest{
+		JobKey:               swf.JobKey{TenantId: projectID, JobId: jobID},
+		IncludeInputs:        true,
+		IncludeOutputs:       true,
+		IncludeArtifacts:     true,
+		IncludeAttemptInputs: true,
+	})
+	if err != nil {
+		if errors.Is(err, swf.ErrJobNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	if run.Start.Input == nil || len(run.Start.Input.Data) == 0 {
+		return nil, fmt.Errorf("job start payload unavailable")
+	}
+
+	var start workflowctl.StartJob
+	if err := json.Unmarshal(run.Start.Input.Data, &start); err != nil {
+		return nil, fmt.Errorf("decode job start payload: %w", err)
+	}
+
+	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger)
+	if buildErr != nil && errors.Is(buildErr, jobstory.ErrReplayMismatch) {
+		return st, ErrJobRunStoryMismatch
+	}
+	return st, buildErr
 }
 
 func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifactByOrdinalRequest) (*model.ArtifactData, error) {

@@ -1112,6 +1112,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/projects/{projectId}/jobs/{jobId}/story:
+    get:
+      tags: [Workflows]
+      summary: Get recipe-centric job run story
+      description: |
+        Returns a high-level story of what occurred while executing a recipe (ops, sequences,
+        state machines, states, and transitions). The story is built by replaying recorded
+        outcomes from the engine `GetJobRun` API; SWF task/chapter concepts are not exposed in
+        the response shape.
+      operationId: getJobRunStory
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job run story
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobRunStory'
+        '404':
+          description: Job not found in project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Story replay mismatch (run data does not align with current recipe definition)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName}:
     get:
       tags: [Workflows]
@@ -2340,6 +2381,217 @@ components:
           description: Aggregated artifact metadata across all attempts
           items:
             $ref: '#/components/schemas/ArtifactReference'
+
+    JobRunStory:
+      type: object
+      description: Recipe-centric, hierarchical execution story for a job run (built by replaying recipe execution against engine GetJobRun data)
+      required: [job_id, invocation_sequence, recipe, status, started_at, finished_at, root]
+      properties:
+        job_id:
+          type: string
+        invocation_sequence:
+          type: integer
+          format: int64
+          description: Invocation sequence of the root recipe execution (from contextual.Invocation)
+        recipe:
+          $ref: '#/components/schemas/JobRunStoryRecipe'
+        status:
+          $ref: '#/components/schemas/WorkflowStatus'
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        root:
+          $ref: '#/components/schemas/JobRunStoryNode'
+          nullable: true
+
+    JobRunStoryRecipe:
+      type: object
+      required: [id, name, version, source]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        source:
+          $ref: '#/components/schemas/JobRunStoryRecipeSource'
+
+    JobRunStoryRecipeSource:
+      type: object
+      required: [kind, artifact_name]
+      properties:
+        kind:
+          type: string
+          description: Currently always jobStartArtifact
+        artifact_name:
+          type: string
+
+    JobRunStoryNode:
+      type: object
+      required:
+        - id
+        - kind
+        - title
+        - status
+        - started_at
+        - finished_at
+        - path
+        - invoke_seq
+        - attempt
+        - prior_attempts
+        - input
+        - output
+        - artifact_keys
+        - children
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [recipe, sequence, op, opStep, stateMachine, state, transitionEval]
+        title:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, canceled, skipped, unknown]
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        path:
+          type: array
+          items:
+            type: string
+        invoke_seq:
+          type: integer
+          format: int64
+        attempt:
+          type: integer
+        prior_attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobRunStoryNode'
+        input:
+          nullable: true
+          description: Unmodified node input (JSON)
+        output:
+          nullable: true
+          description: Unmodified node output (JSON)
+        artifact_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactKey'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobRunStoryNode'
+
+        # Kind-specific fields (optional; present when relevant for the node kind)
+        recipe_id:
+          type: string
+          nullable: true
+        invocation:
+          type: object
+          additionalProperties: true
+          nullable: true
+        sequence_id:
+          type: string
+          nullable: true
+        op_id:
+          type: string
+          nullable: true
+        op_type:
+          type: string
+          nullable: true
+        error:
+          $ref: '#/components/schemas/JobRunStoryError'
+          nullable: true
+        step_id:
+          type: string
+          nullable: true
+        step_type:
+          type: string
+          nullable: true
+        state_machine_id:
+          type: string
+          nullable: true
+        state_id:
+          type: string
+          nullable: true
+        is_initial:
+          type: boolean
+          nullable: true
+        from_state_id:
+          type: string
+          nullable: true
+        evaluations:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobRunStoryTransitionEval'
+          nullable: true
+        decision:
+          $ref: '#/components/schemas/JobRunStoryTransitionDecision'
+          nullable: true
+
+    JobRunStoryError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+          nullable: true
+
+    JobRunStoryTransitionEval:
+      type: object
+      required: [to_state_id, expression, result]
+      properties:
+        to_state_id:
+          type: string
+        expression:
+          type: string
+        result:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+
+    JobRunStoryTransitionDecision:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [state, fallthrough]
+        to_state_id:
+          type: string
+          nullable: true
+
+    ArtifactKey:
+      type: object
+      description: Identifies an artifact within a job run; matches swf.ArtifactKey shape
+      required: [jobId, taskOrdinal, name, sizeBytes]
+      properties:
+        jobId:
+          type: string
+        taskOrdinal:
+          type: integer
+          format: int64
+        name:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
 
     ChapterStatus:
       type: string

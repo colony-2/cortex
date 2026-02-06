@@ -99,6 +99,7 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/workflows/{workflowId}", withHandlerLog("workflows:get", h.handleGetWorkflow)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/workflows/{workflowId}/chapters/{chapterNumber}/artifacts/{artifactName}", withHandlerLog("workflows:artifact:get", h.handleGetWorkflowArtifact)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", withHandlerLog("workflows:outcome:get", h.handleGetWorkflowOutcome)).Methods(http.MethodGet)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", withHandlerLog("workflows:story:get", h.handleGetJobRunStory)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName}", withHandlerLog("workflows:artifact:engine:get", h.handleGetJobArtifact)).Methods(http.MethodGet)
 }
 
