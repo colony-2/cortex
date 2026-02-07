@@ -17,6 +17,7 @@ export function createMockSingleQuestionDetails(jobId: string): UserInputDetails
     jobId,
     status: 'pending',
     startTime: new Date().toISOString(),
+    task_ordinal: 12,
     form: {
       question: 'How old are you?',
       type: 'short_answer',
@@ -29,6 +30,7 @@ export function createMockMultiFieldDetails(jobId: string): UserInputDetails {
     jobId,
     status: 'pending',
     startTime: new Date().toISOString(),
+    task_ordinal: 12,
     form: {
       title: 'Deployment Approval',
       fields: [

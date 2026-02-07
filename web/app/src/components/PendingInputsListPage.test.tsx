@@ -82,15 +82,13 @@ describe('PendingInputsListPage', () => {
 
     await waitFor(
       () => {
-        expect(screen.getByText(`Input Request #${jobId1}`)).toBeInTheDocument();
-        expect(screen.getByText(`Input Request #${jobId2}`)).toBeInTheDocument();
+        expect(screen.getByText(`Job ID: ${jobId1}`)).toBeInTheDocument();
+        expect(screen.getByText(`Job ID: ${jobId2}`)).toBeInTheDocument();
       },
       { timeout: 3000 }
     );
 
-    // Check that job IDs are displayed
-    expect(screen.getByText(`Job ID: ${jobId1}`)).toBeInTheDocument();
-    expect(screen.getByText(`Job ID: ${jobId2}`)).toBeInTheDocument();
+    expect(screen.getAllByText('Input Request').length).toBeGreaterThanOrEqual(2);
   });
 
   it('should show refresh button', async () => {
@@ -117,7 +115,7 @@ describe('PendingInputsListPage', () => {
 
     await waitFor(
       () => {
-        const viewButtons = screen.getAllByRole('button', { name: /view/i });
+        const viewButtons = screen.getAllByRole('button', { name: /open in workflow/i });
         expect(viewButtons).toHaveLength(1);
       },
       { timeout: 3000 }

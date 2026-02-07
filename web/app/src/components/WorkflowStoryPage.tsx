@@ -29,6 +29,9 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
+import { inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
+import InputFormRenderer from './InputFormRenderer';
+import { adaptInputFormConfig } from '../utils/formAdapter';
 
 const { Title, Text } = Typography;
 
@@ -294,10 +297,18 @@ async function fetchStory(projectId: string, jobId: string): Promise<WorkflowSto
   return response.json();
 }
 
-function buildTree(root: StoryNode | null | undefined) {
+function keyForTaskOrdinal(taskOrdinal: number, keyToRef: Map<string, NodeRef>): string | null {
+  for (const [key, ref] of keyToRef.entries()) {
+    if (ref.type !== 'node') continue;
+    if (ref.node.task_ordinal === taskOrdinal) return key;
+  }
+  return null;
+}
+
+function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskOrdinal?: number | null }) {
   const keyToRef = new Map<string, NodeRef>();
 
-  const buildNode = (node: StoryNode, opts?: { forceAttemptBadge?: boolean }): DataNode => {
+  const buildNode = (node: StoryNode, nodeOpts?: { forceAttemptBadge?: boolean }): DataNode => {
     const attempt = nodeAttempt(node);
     const key = nodeKey(node, attempt);
     keyToRef.set(key, { type: 'node', node, key, attempt });
@@ -329,7 +340,7 @@ function buildTree(root: StoryNode | null | undefined) {
     }
 
     const attemptBadge =
-      opts?.forceAttemptBadge ||
+      nodeOpts?.forceAttemptBadge ||
       (node.prior_attempts && node.prior_attempts.length > 0) ||
       attempt > 1 ? (
         <Tag style={{ marginInlineStart: 8 }}>Attempt {attempt}</Tag>
@@ -350,6 +361,15 @@ function buildTree(root: StoryNode | null | undefined) {
         </Tag>
       ) : null;
 
+    const pendingInputBadge =
+      treeOpts?.pendingTaskOrdinal !== null &&
+      treeOpts?.pendingTaskOrdinal !== undefined &&
+      node.task_ordinal === treeOpts.pendingTaskOrdinal ? (
+        <Tag color="magenta" style={{ marginInlineStart: 8 }}>
+          INPUT
+        </Tag>
+      ) : null;
+
     const d = durationSeconds(node.started_at ?? null, node.finished_at ?? null);
     const durationText = d !== null ? (
       <Text type="secondary" style={{ marginInlineStart: 8 }}>
@@ -367,6 +387,7 @@ function buildTree(root: StoryNode | null | undefined) {
           {attemptBadge}
           {artifactBadge}
           {restartBadge}
+          {pendingInputBadge}
           {durationText}
         </Space>
       ),
@@ -416,10 +437,13 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   const { workflowId } = useParams<{ workflowId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { pendingInputs, refresh: refreshPendingInputs } = useInputActivity();
 
   const [story, setStory] = useState<WorkflowStoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [activeDetailsTab, setActiveDetailsTab] = useState<string>('overview');
 
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -439,9 +463,31 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
   const [applyPatch, setApplyPatch] = useState(false);
 
+  const [pendingInputDetails, setPendingInputDetails] = useState<UserInputDetails | null>(null);
+  const [pendingInputLoading, setPendingInputLoading] = useState(false);
+  const [pendingInputError, setPendingInputError] = useState<string | null>(null);
+  const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
+
   const jobId = workflowId || '';
 
-  const { treeData, keyToRef } = useMemo(() => buildTree(story?.root), [story?.root]);
+  const wantInput = searchParams.get('input') === '1';
+  const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
+  const taskOrdinalParam = taskOrdinalParamRaw ? Number(taskOrdinalParamRaw) : null;
+
+  const isPendingInput = useMemo(() => pendingInputs.some((p) => p.id === jobId), [pendingInputs, jobId]);
+
+  const pendingTaskOrdinal = useMemo(() => {
+    const details: any = pendingInputDetails;
+    const ord = details?.task_ordinal ?? details?.taskOrdinal;
+    return typeof ord === 'number' ? ord : null;
+  }, [pendingInputDetails]);
+
+  const focusTaskOrdinal = taskOrdinalParam !== null && Number.isFinite(taskOrdinalParam) ? taskOrdinalParam : pendingTaskOrdinal;
+
+  const { treeData, keyToRef } = useMemo(
+    () => buildTree(story?.root, { pendingTaskOrdinal: focusTaskOrdinal }),
+    [story?.root, focusTaskOrdinal]
+  );
 
   const selectedRef = useMemo(() => {
     if (!selectedKey) return null;
@@ -501,6 +547,64 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, workflowId]);
+
+  useEffect(() => {
+    const shouldLoadDetails = !!workflowId && (isPendingInput || wantInput);
+    if (!shouldLoadDetails) {
+      setPendingInputDetails(null);
+      setPendingInputError(null);
+      setPendingInputLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPendingInputLoading(true);
+    setPendingInputError(null);
+
+    inputActivityService
+      .getInputDetails(projectId, workflowId)
+      .then((d) => {
+        if (cancelled) return;
+        setPendingInputDetails(d);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('Failed to load pending input details', e);
+        setPendingInputError(e instanceof Error ? e.message : 'Failed to load pending input details');
+        setPendingInputDetails(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setPendingInputLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, workflowId, isPendingInput, wantInput]);
+
+  useEffect(() => {
+    if (!focusTaskOrdinal || !story?.root) return;
+    const key = keyForTaskOrdinal(focusTaskOrdinal, keyToRef);
+    if (!key) return;
+
+    const ref = keyToRef.get(key);
+    if (!ref || ref.type !== 'node') return;
+
+    const ancestors = ancestorKeysForNode(ref.node, keyToRef);
+    setExpandedKeys((prev) => unionKeys(prev, ancestors));
+    setSelectedKey(key);
+    setActiveDetailsTab(wantInput ? 'pending_input' : 'overview');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('path', ref.node.path.join('/'));
+      next.set('attempt', String(ref.attempt));
+      next.set('taskOrdinal', String(focusTaskOrdinal));
+      if (wantInput) next.set('input', '1');
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskOrdinal, story?.root, keyToRef]);
 
   useEffect(() => {
     if (refreshTimerRef.current) {
@@ -658,6 +762,36 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     );
   }
 
+  const pendingInputForm = pendingInputDetails ? adaptInputFormConfig(pendingInputDetails.form, jobId) : null;
+  const selectedIsPendingNode =
+    focusTaskOrdinal !== null &&
+    focusTaskOrdinal !== undefined &&
+    selectedNode?.task_ordinal === focusTaskOrdinal;
+
+  const submitPendingInput = async (response: FormResponse) => {
+    if (!workflowId) return;
+    setPendingInputSubmitting(true);
+    try {
+      await inputActivityService.submitResponse(projectId, workflowId, response);
+      message.success('Response submitted');
+      await refreshPendingInputs();
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('input');
+        next.delete('taskOrdinal');
+        return next;
+      });
+      setActiveDetailsTab('overview');
+      setPendingInputDetails(null);
+      await load({ preserveSelection: true });
+    } catch (e) {
+      console.error('Failed to submit input response', e);
+      message.error(e instanceof Error ? e.message : 'Failed to submit response');
+    } finally {
+      setPendingInputSubmitting(false);
+    }
+  };
+
   return (
     <div style={{ padding: 24 }}>
       <Space direction="vertical" style={{ width: '100%' }} size="large">
@@ -708,6 +842,55 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
             action={
               <Button size="small" onClick={() => load()}>
                 Retry
+              </Button>
+            }
+          />
+        ) : null}
+
+        {pendingInputLoading ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Pending input"
+            description="Loading input prompt..."
+          />
+        ) : pendingInputError ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Pending input"
+            description={pendingInputError}
+          />
+        ) : pendingInputDetails ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Pending input required"
+            description={
+              <div>
+                This workflow is waiting for input.
+                {focusTaskOrdinal !== null ? (
+                  <>
+                    {' '}Task ordinal: <Text code>{focusTaskOrdinal}</Text>.
+                  </>
+                ) : null}
+              </div>
+            }
+            action={
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => {
+                  setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('input', '1');
+                    if (focusTaskOrdinal !== null) next.set('taskOrdinal', String(focusTaskOrdinal));
+                    return next;
+                  });
+                  setActiveDetailsTab('pending_input');
+                }}
+              >
+                Open prompt
               </Button>
             }
           />
@@ -797,6 +980,8 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
               <Empty description="Select a node from the story tree" />
             ) : (
               <Tabs
+                activeKey={activeDetailsTab}
+                onChange={setActiveDetailsTab}
                 items={[
                   {
                     key: 'overview',
@@ -913,6 +1098,63 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
                       </Space>
                     ),
                   },
+                  ...(pendingInputDetails
+                    ? [
+                        {
+                          key: 'pending_input',
+                          label: 'Pending Input',
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                              <Card size="small" title="Input Request">
+                                <Descriptions column={1} bordered size="small">
+                                  <Descriptions.Item label="Status">
+                                    <Tag color="magenta">{pendingInputDetails.status}</Tag>
+                                  </Descriptions.Item>
+                                  <Descriptions.Item label="Started">
+                                    {pendingInputDetails.startTime
+                                      ? dayjs(pendingInputDetails.startTime).format('YYYY-MM-DD HH:mm:ss')
+                                      : '-'}
+                                  </Descriptions.Item>
+                                  <Descriptions.Item label="Task Ordinal">
+                                    {focusTaskOrdinal ?? '-'}
+                                  </Descriptions.Item>
+                                </Descriptions>
+                              </Card>
+
+                              {focusTaskOrdinal !== null && !selectedIsPendingNode ? (
+                                <Alert
+                                  type="info"
+                                  showIcon
+                                  message="Select the input node"
+                                  description="The selected story node does not match the pending input’s task ordinal. Use the story tree to select the highlighted INPUT node."
+                                />
+                              ) : null}
+
+                              {pendingInputForm ? (
+                                <Card title={pendingInputForm.title} size="small">
+                                  <InputFormRenderer
+                                    form={pendingInputForm}
+                                    onSubmit={submitPendingInput}
+                                    onCancel={() => {
+                                      setSearchParams((prev) => {
+                                        const next = new URLSearchParams(prev);
+                                        next.delete('input');
+                                        next.delete('taskOrdinal');
+                                        return next;
+                                      });
+                                      setActiveDetailsTab('overview');
+                                    }}
+                                    loading={pendingInputSubmitting}
+                                  />
+                                </Card>
+                              ) : (
+                                <Empty description="No input form available" />
+                              )}
+                            </Space>
+                          ),
+                        },
+                      ]
+                    : []),
                   {
                     key: 'input',
                     label: 'Input',

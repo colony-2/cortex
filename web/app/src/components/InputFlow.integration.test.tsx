@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter, MemoryRouter, Routes, Route } from 'react-router-dom';
 import { setupServer } from 'msw/node';
+import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import PendingInputsListPage from './PendingInputsListPage';
-import InputDetailPage from './InputDetailPage';
+import WorkflowStoryPage from './WorkflowStoryPage';
 import {
   inputApiHandlers,
   resetMockInputStore,
@@ -66,6 +67,69 @@ describe('Input Flow - Complete E2E Integration', () => {
   it('should complete full input workflow from start to finish', async () => {
     const user = userEvent.setup();
 
+    server.use(
+      http.get('http://localhost:8080/api/projects/:projectId/jobs/:jobId/story', ({ params }) => {
+        const { jobId: requestedJobId } = params;
+        return HttpResponse.json({
+          job_id: requestedJobId,
+          invocation_sequence: 1,
+          recipe: { name: 'test-recipe' },
+          status: 'running',
+          started_at: new Date().toISOString(),
+          finished_at: null,
+          root: {
+            kind: 'recipe',
+            title: 'test-recipe',
+            status: 'running',
+            started_at: new Date().toISOString(),
+            finished_at: null,
+            path: ['root'],
+            invoke_seq: 1,
+            attempt: 1,
+            prior_attempts: [],
+            input: null,
+            output: null,
+            artifact_keys: [],
+            children: [
+              {
+                kind: 'sequence',
+                title: 'main',
+                status: 'running',
+                started_at: new Date().toISOString(),
+                finished_at: null,
+                path: ['root', 'sequence:main'],
+                invoke_seq: 1,
+                attempt: 1,
+                prior_attempts: [],
+                input: null,
+                output: null,
+                artifact_keys: [],
+                children: [
+                  {
+                    kind: 'opStep',
+                    title: 'await_input',
+                    status: 'running',
+                    started_at: new Date().toISOString(),
+                    finished_at: null,
+                    path: ['root', 'sequence:main', 'opStep:await_input'],
+                    invoke_seq: 1,
+                    attempt: 1,
+                    prior_attempts: [],
+                    input: null,
+                    output: null,
+                    artifact_keys: [],
+                    task_ordinal: 12,
+                    restart_from_ordinal: 12,
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      })
+    );
+
     // Step 1 & 2: Start with one pending input (simulating workflow created it)
     const inputDetails = createMockSingleQuestionDetails(jobId);
     const pendingInput = createMockPendingInput(jobId);
@@ -87,32 +151,30 @@ describe('Input Flow - Complete E2E Integration', () => {
     // Step 3: User sees pending input in list
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${jobId}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
     });
 
-    // Step 4: User clicks View button
-    const viewButton = screen.getByRole('button', { name: /view/i });
-    await user.click(viewButton);
+    // Step 4: User clicks Open in Workflow button
+    const openButton = screen.getByRole('button', { name: /open in workflow/i });
+    await user.click(openButton);
 
-    // Should navigate to detail page
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs/${jobId}`);
+    // Should navigate to workflow story with prompt open
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story?input=1`);
 
-    // Cleanup and render detail page
+    // Cleanup and render workflow story page
     unmount();
 
-    // Step 5-6: Render detail page with form
+    // Step 5-6: Render story page with form
     render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/inputs/${jobId}`]}>
-        <Routes>
-          <Route
-            path="/project/:projectId/inputs/:jobId"
-            element={
-              <InputActivityProvider>
-                <InputDetailPage projectId={projectId} />
-              </InputActivityProvider>
-            }
-          />
-        </Routes>
+      <MemoryRouter initialEntries={[`/project/${projectId}/workflows/${jobId}/story?input=1`]}>
+        <InputActivityProvider>
+          <Routes>
+            <Route
+              path="/project/:projectId/workflows/:workflowId/story"
+              element={<WorkflowStoryPage projectId={projectId} />}
+            />
+          </Routes>
+        </InputActivityProvider>
       </MemoryRouter>
     );
 
@@ -124,20 +186,21 @@ describe('Input Flow - Complete E2E Integration', () => {
       { timeout: 3000 }
     );
 
-    // Step 7-8: Fill and submit form
-    const input = screen.getByRole('textbox');
+    // Step 7-8: Fill and submit form (in story context)
+    const input = screen.getByRole('textbox', { name: /how old are you/i });
     await user.type(input, 'foolish');
 
     const submitButton = screen.getByRole('button', { name: /submit/i });
     await user.click(submitButton);
 
-    // Step 9: Should navigate to workflow details
+    // Verify input was removed from store
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
+      const key = `${projectId}:${jobId}`;
+      expect(mockInputDetailsStore.has(key)).toBe(false);
     });
 
-    // Workflow is now complete (tested list → detail → submit → navigation)
+    // Workflow is now complete (tested list → story → submit)
   });
 
   it('should handle concurrent inputs from multiple workflows', async () => {
@@ -171,9 +234,9 @@ describe('Input Flow - Complete E2E Integration', () => {
     // Should show all three inputs
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${jobId1}`)).toBeInTheDocument();
-      expect(screen.getByText(`Input Request #${jobId2}`)).toBeInTheDocument();
-      expect(screen.getByText(`Input Request #${jobId3}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId1}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId2}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId3}`)).toBeInTheDocument();
     });
 
     // Simulate completing middle input
@@ -183,15 +246,15 @@ describe('Input Flow - Complete E2E Integration', () => {
     // Should remove only the completed one
     await waitFor(
       () => {
-      expect(screen.queryByText(`Input Request #${jobId2}`)).not.toBeInTheDocument();
+      expect(screen.queryByText(`Job ID: ${jobId2}`)).not.toBeInTheDocument();
     });
 
     // Others should still be there
-    expect(screen.getByText(`Input Request #${jobId1}`)).toBeInTheDocument();
-    expect(screen.getByText(`Input Request #${jobId3}`)).toBeInTheDocument();
+    expect(screen.getByText(`Job ID: ${jobId1}`)).toBeInTheDocument();
+    expect(screen.getByText(`Job ID: ${jobId3}`)).toBeInTheDocument();
   });
 
-  it('should maintain form state during SSE reconnection', async () => {
+  it('should remain usable during SSE reconnection', async () => {
     const user = userEvent.setup();
     setupMockInputs(projectId, [createMockPendingInput(jobId)], [createMockSingleQuestionDetails(jobId)]);
 
@@ -208,7 +271,7 @@ describe('Input Flow - Complete E2E Integration', () => {
     sse.emitConnected();
 
     await waitFor(() => {
-      expect(screen.getByText(`Input Request #${jobId}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
     });
 
     // Simulate SSE close and reconnect
@@ -216,46 +279,14 @@ describe('Input Flow - Complete E2E Integration', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Page should still be rendered and functional
-    expect(screen.getByText(`Input Request #${jobId}`)).toBeInTheDocument();
+    expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
 
-    // Click view should still work
-    const viewButton = screen.getByRole('button', { name: /view/i });
-    await user.click(viewButton);
+    // Click open should still work
+    const openButton = screen.getByRole('button', { name: /open in workflow/i });
+    await user.click(openButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/inputs/${jobId}`);
-
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story?input=1`);
     unmount();
-
-    // Now test detail page maintains form state
-    render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/inputs/${jobId}`]}>
-        <Routes>
-          <Route
-            path="/project/:projectId/inputs/:jobId"
-            element={
-              <InputActivityProvider>
-                <InputDetailPage projectId={projectId} />
-              </InputActivityProvider>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    await waitFor(
-      () => {
-      expect(screen.getAllByText('How old are you?').length).toBeGreaterThan(0);
-    },
-      { timeout: 3000 }
-    );
-
-    // Fill form and verify state is maintained
-    const input = screen.getByRole('textbox');
-    await user.type(input, 'partial answer');
-    expect(input).toHaveValue('partial answer');
-
-    await user.type(input, ' completed');
-    expect(input).toHaveValue('partial answer completed');
   });
 
   it('should show count badge updates in real-time', async () => {
@@ -289,7 +320,7 @@ describe('Input Flow - Complete E2E Integration', () => {
     // Should show input
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${newJobId}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${newJobId}`)).toBeInTheDocument();
     });
 
     // Count should be 1 (would show in badge)

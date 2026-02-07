@@ -124,7 +124,7 @@ describe('InputDetailPage - Single Question Flow', () => {
     // Should navigate to workflow details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story`);
     });
 
     // Verify input was removed from store

@@ -140,6 +140,8 @@ export interface UserInputDetails {
   startTime: string;
   form: InputFormConfig;
   hash?: string;
+  task_ordinal?: number;
+  taskOrdinal?: number;
 }
 
 // SSE event types based on OpenAPI InputSSEEvent

@@ -24,7 +24,7 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
   };
 
   const handleViewInput = (jobId: string) => {
-    navigate(`/project/${projectId}/inputs/${jobId}`);
+    navigate(`/project/${projectId}/workflows/${jobId}/story?input=1`);
   };
 
   if (!isConnected) {
@@ -73,17 +73,17 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
                 onClick={() => handleViewInput(input.id)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Space direction="vertical" size="small">
-                    <Space>
-                      <FormOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                      <Text strong>Input Request #{input.id}</Text>
+                    <Space direction="vertical" size="small">
+                      <Space>
+                        <FormOutlined style={{ fontSize: 20, color: '#1890ff' }} />
+                      <Text strong>Input Request</Text>
                     </Space>
                     <Text type="secondary" style={{ fontSize: 13 }}>
                       Job ID: {input.id}
                     </Text>
                   </Space>
                   <Button type="primary" onClick={() => handleViewInput(input.id)}>
-                    View
+                    Open in Workflow
                   </Button>
                 </div>
               </Card>

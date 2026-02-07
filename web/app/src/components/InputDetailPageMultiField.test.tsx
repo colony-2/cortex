@@ -183,7 +183,7 @@ describe('InputDetailPage - Multi-field Forms', () => {
     // Should navigate to workflow details
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story`);
     });
   });
 
@@ -254,7 +254,7 @@ describe('InputDetailPage - Multi-field Forms', () => {
 
     await waitFor(
       () => {
-      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}`);
+      expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story`);
     });
   });
 
