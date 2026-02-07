@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	openapi "github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
@@ -127,14 +127,6 @@ func (s *inputManagementService) GetDetails(w http.ResponseWriter, r *http.Reque
 
 }
 
-type detailsInput struct {
-	JobKey    swf.JobKey `json:"jobKey"`
-	Status    swf.JobStatus
-	StartTime time.Time                   `json:"startTime"`
-	Form      InputForm                   `json:"form"`
-	Git       contextual.GitCommitContext `json:"git"`
-}
-
 func (s *inputManagementService) getOutput(ctx context.Context, projectID string, jobId string) (workflowctl.TaskHandle, ops2.ActivityInvocationOutput, []swf.Artifact, error) {
 	if s.ctl == nil {
 		return nil, ops2.ActivityInvocationOutput{}, nil, errors.New("workflow control unavailable")
@@ -186,29 +178,39 @@ func (s *inputManagementService) getOutput(ctx context.Context, projectID string
 }
 
 // GetDetails returns details about a specific input request
-func (s *inputManagementService) getDetails(ctx context.Context, projectID string, jobId string) result[*detailsInput] {
-	task, req, _, err := s.getOutput(ctx, projectID, jobId)
-	form := InputForm{}
-	if err != nil {
-		return result[*detailsInput]{err: err.Error()}
+func (s *inputManagementService) getDetails(ctx context.Context, projectID string, jobId string) result[*openapi.UserInputDetails] {
+	jobRes := s.findJob(ctx, projectID, jobId)
+	if jobRes.hasError() {
+		return result[*openapi.UserInputDetails]{err: jobRes.err, status: jobRes.status}
 	}
 
+	task, req, _, err := s.getOutput(ctx, projectID, jobId)
+	if err != nil {
+		return result[*openapi.UserInputDetails]{err: err.Error()}
+	}
+
+	form := InputForm{}
 	err = ops.DecodeWithJsonTags(req.OpOutput, &form)
 	if err != nil {
-		return result[*detailsInput]{err: err.Error()}
+		return result[*openapi.UserInputDetails]{err: err.Error()}
 	}
 
-	return result[*detailsInput]{value: &detailsInput{
-		JobKey:    task.JobKey(),
-		Status:    swf.JobStatusReady,
-		StartTime: time.Time{},
-		Form:      form,
-		Git:       req.GitResult,
+	_ = task // retained for future: task.JobKey() can be useful for debugging
+
+	return result[*openapi.UserInputDetails]{value: &openapi.UserInputDetails{
+		JobId:     jobId,
+		Status:    "pending",
+		StartTime: jobRes.value.CreatedAt,
+		Form:      toOpenAPIInputFormConfig(form),
 	}}
 }
 
 func (s *inputManagementService) findJob(ctx context.Context, projectID string, jobId string) result[*workflowctl.JobItem] {
 	slog.Info("find_job: searching for job", "project_id", projectID, "job_id", jobId)
+
+	if s.ctl == nil {
+		return result[*workflowctl.JobItem]{err: "workflow control unavailable"}
+	}
 
 	// Query with TenantId filter and specific JobKey, only for jobs waiting for input
 	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
@@ -313,11 +315,18 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if output.UserID == "" {
-		output.UserID = r.Header.Get("X-User-ID")
-		slog.Info("submit_response: using user ID from header", "project_id", projectID, "job_id", jobId, "user_id", output.UserID)
+	userID := ""
+	if output.UserId != nil {
+		userID = *output.UserId
+	}
+	if userID == "" {
+		userID = r.Header.Get("X-User-ID")
+		slog.Info("submit_response: using user ID from header", "project_id", projectID, "job_id", jobId, "user_id", userID)
 	} else {
-		slog.Info("submit_response: using user ID from body", "project_id", projectID, "job_id", jobId, "user_id", output.UserID)
+		slog.Info("submit_response: using user ID from body", "project_id", projectID, "job_id", jobId, "user_id", userID)
+	}
+	if userID != "" {
+		output.UserId = &userID
 	}
 
 	slog.Info("submit_response: submitting response", "project_id", projectID, "job_id", jobId, "field_count", len(output.Fields))
@@ -329,7 +338,10 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 	// Return success response
 	slog.Info("submit_response: success", "project_id", projectID, "job_id", jobId)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": res.value})
+	ok := res.value
+	_ = json.NewEncoder(w).Encode(struct {
+		Ok *bool `json:"ok,omitempty"`
+	}{Ok: &ok})
 }
 
 // SubmitResponse handles user form submission
@@ -341,14 +353,22 @@ func (s *inputManagementService) submitResponse(ctx context.Context, projectID s
 		return result[bool]{err: err.Error()}
 	}
 	// Get user ID preference: body overrides header, fallback to default
-	userID := output.UserID
+	userID := ""
+	if output.UserId != nil {
+		userID = *output.UserId
+	}
 	if userID == "" {
 		userID = "anonymous"
 		slog.Info("submitResponse: using anonymous user ID", "project_id", projectID, "job_id", jobId)
 	}
 
+	var response any
+	if output.Response != nil {
+		response = *output.Response
+	}
+
 	opOut := Output{
-		Response: output.Response,
+		Response: response,
 		Fields:   output.Fields,
 		UserID:   userID,
 	}
@@ -415,10 +435,8 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Parse cancellation request
-	var cancelRequest struct {
-		Reason string `json:"reason"`
-	}
+	// Parse cancellation request (OpenAPI-generated type)
+	var cancelRequest openapi.PostApiProjectsProjectIdUserInputsJobIdCancelJSONBody
 
 	slog.Info("cancel: decoding cancellation request", "project_id", projectID, "job_id", jobId)
 	if err := json.NewDecoder(r.Body).Decode(&cancelRequest); err != nil {
@@ -427,7 +445,12 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	slog.Info("cancel: attempting to cancel job", "project_id", projectID, "job_id", jobId, "reason", cancelRequest.Reason)
+	reason := ""
+	if cancelRequest.Reason != nil {
+		reason = *cancelRequest.Reason
+	}
+
+	slog.Info("cancel: attempting to cancel job", "project_id", projectID, "job_id", jobId, "reason", reason)
 	err := s.ctl.Cancel(r.Context(), swf.JobKey{TenantId: projectID, JobId: jobId})
 	if err != nil {
 		slog.Error("cancel: cancel failed",
@@ -445,14 +468,17 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 			Type: "input_cancelled",
 			Data: map[string]interface{}{
 				"jobId":  jobId,
-				"reason": cancelRequest.Reason,
+				"reason": reason,
 			},
 		})
 	}
 
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+	ok := true
+	_ = json.NewEncoder(w).Encode(struct {
+		Ok *bool `json:"ok,omitempty"`
+	}{Ok: &ok})
 }
 
 // SSEStream handles Server-Sent Events streaming for real-time updates
@@ -534,12 +560,12 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 				slog.Error("sse_stream: failed to marshal pending input",
 					"project_id", projectID,
 					"client_id", clientID,
-					"job_id", item.JobID,
+					"job_id", item.Id,
 					"error", err)
 				continue
 			}
 			fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
-			sentPending[item.JobID] = struct{}{}
+			sentPending[item.Id] = struct{}{}
 		}
 		flush(w)
 		slog.Info("sse_stream: finished sending pending inputs", "project_id", projectID, "client_id", clientID)
@@ -587,7 +613,7 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 					"error", err)
 			} else {
 				for _, item := range pending {
-					if _, ok := sentPending[item.JobID]; ok {
+					if _, ok := sentPending[item.Id]; ok {
 						continue
 					}
 					payload, err := json.Marshal(item)
@@ -595,12 +621,12 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 						slog.Error("sse_stream: failed to marshal polled pending input",
 							"project_id", projectID,
 							"client_id", clientID,
-							"job_id", item.JobID,
+							"job_id", item.Id,
 							"error", err)
 						continue
 					}
 					fmt.Fprintf(w, "event: input_pending\ndata: %s\n\n", payload)
-					sentPending[item.JobID] = struct{}{}
+					sentPending[item.Id] = struct{}{}
 					newPending = true
 					flush(w)
 				}
@@ -643,11 +669,185 @@ func (s *inputManagementService) collectPendingInputs(ctx context.Context, proje
 	out := make([]PendingInput, len(jobs))
 	for i, job := range jobs {
 		out[i] = PendingInput{
-			JobID: job.JobKey.JobId,
+			Id: job.JobKey.JobId,
 		}
 	}
 
 	return out, nil
+}
+
+func toOpenAPIInputFormConfig(form InputForm) openapi.InputFormConfig {
+	out := openapi.InputFormConfig{}
+
+	if form.Question != "" {
+		out.Question = &form.Question
+	}
+	if string(form.Type) != "" {
+		t := openapi.FieldType(form.Type)
+		out.Type = &t
+	}
+	if len(form.Options) > 0 {
+		opts := make([]openapi.Option, 0, len(form.Options))
+		for _, opt := range form.Options {
+			var label *string
+			if opt.Label != "" {
+				v := opt.Label
+				label = &v
+			}
+			opts = append(opts, openapi.Option{
+				Value: opt.Value,
+				Label: label,
+			})
+		}
+		out.Options = &opts
+	}
+	if form.Scale != nil {
+		scale := openapi.LinearScale{
+			Min: form.Scale.Min,
+			Max: form.Scale.Max,
+		}
+		if form.Scale.MinLabel != "" {
+			v := form.Scale.MinLabel
+			scale.MinLabel = &v
+		}
+		if form.Scale.MaxLabel != "" {
+			v := form.Scale.MaxLabel
+			scale.MaxLabel = &v
+		}
+		out.Scale = &scale
+	}
+
+	if form.Title != "" {
+		out.Title = &form.Title
+	}
+	if len(form.Fields) > 0 {
+		fields := make([]openapi.FormField, 0, len(form.Fields))
+		for _, f := range form.Fields {
+			fields = append(fields, toOpenAPIFormField(f))
+		}
+		out.Fields = &fields
+	}
+
+	if ctx, ok := toOpenAPIFormContext(form.Context); ok {
+		out.Context = &ctx
+	}
+
+	if form.Timeout > 0 {
+		secs := int(form.Timeout / time.Second)
+		out.Timeout = &secs
+	}
+
+	return out
+}
+
+func toOpenAPIFormField(field FormField) openapi.FormField {
+	out := openapi.FormField{
+		Id:       field.ID,
+		Question: field.Question,
+		Type:     openapi.FieldType(field.Type),
+	}
+
+	if field.Placeholder != "" {
+		out.Placeholder = &field.Placeholder
+	}
+	if field.Required {
+		v := true
+		out.Required = &v
+	}
+
+	if len(field.Options) > 0 {
+		opts := make([]openapi.Option, 0, len(field.Options))
+		for _, opt := range field.Options {
+			var label *string
+			if opt.Label != "" {
+				v := opt.Label
+				label = &v
+			}
+			opts = append(opts, openapi.Option{
+				Value: opt.Value,
+				Label: label,
+			})
+		}
+		out.Options = &opts
+	}
+	if field.Scale != nil {
+		scale := openapi.LinearScale{
+			Min: field.Scale.Min,
+			Max: field.Scale.Max,
+		}
+		if field.Scale.MinLabel != "" {
+			v := field.Scale.MinLabel
+			scale.MinLabel = &v
+		}
+		if field.Scale.MaxLabel != "" {
+			v := field.Scale.MaxLabel
+			scale.MaxLabel = &v
+		}
+		out.Scale = &scale
+	}
+
+	if fv, ok := toOpenAPIFieldValidation(field.Validation); ok {
+		out.Validation = &fv
+	}
+
+	return out
+}
+
+func toOpenAPIFieldValidation(v FieldValidation) (openapi.FieldValidation, bool) {
+	out := openapi.FieldValidation{}
+	used := false
+
+	if v.MinLength != 0 {
+		out.MinLength = &v.MinLength
+		used = true
+	}
+	if v.MaxLength != 0 {
+		out.MaxLength = &v.MaxLength
+		used = true
+	}
+	if v.Pattern != "" {
+		out.Pattern = &v.Pattern
+		used = true
+	}
+	if v.Min != 0 {
+		out.Min = &v.Min
+		used = true
+	}
+	if v.Max != 0 {
+		out.Max = &v.Max
+		used = true
+	}
+
+	return out, used
+}
+
+func toOpenAPIFormContext(ctx FormContext) (openapi.FormContext, bool) {
+	out := openapi.FormContext{}
+	used := false
+
+	if len(ctx.Artifacts) > 0 {
+		arts := make([]openapi.Artifact, 0, len(ctx.Artifacts))
+		for _, a := range ctx.Artifacts {
+			arts = append(arts, openapi.Artifact{Path: a.Path})
+		}
+		out.Artifacts = &arts
+		used = true
+	}
+	if ctx.ArtifactsFromOutput != "" {
+		v := ctx.ArtifactsFromOutput
+		out.ArtifactsFromOutput = &v
+		used = true
+	}
+	if len(ctx.ArtifactsGlob) > 0 {
+		globs := make([]openapi.GlobPattern, 0, len(ctx.ArtifactsGlob))
+		for _, g := range ctx.ArtifactsGlob {
+			globs = append(globs, openapi.GlobPattern{Pattern: g.Pattern})
+		}
+		out.ArtifactsGlob = &globs
+		used = true
+	}
+
+	return out, used
 }
 
 func stringValue(val any) string {

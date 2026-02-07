@@ -112,7 +112,7 @@ inputs:
 	})
 
 	// Get the job ID from pending inputs
-	jobID := inputs[0].JobID
+	jobID := inputs[0].Id
 
 	// Test GetDetails endpoint
 	t.Run("GetDetails", func(t *testing.T) {
@@ -130,11 +130,12 @@ inputs:
 
 	// Test SubmitResponse endpoint
 	t.Run("SubmitResponse", func(t *testing.T) {
+		hash := "test-hash"
 		response := FormResponse{
 			Fields: map[string]interface{}{
 				"response": "John Doe",
 			},
-			Hash: "test-hash",
+			Hash: &hash,
 		}
 		body, _ := json.Marshal(response)
 		req := httptest.NewRequest("POST", "/projects/test-project/user-inputs/"+jobID+"/respond", bytes.NewReader(body))

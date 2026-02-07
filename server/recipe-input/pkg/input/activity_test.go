@@ -132,15 +132,19 @@ outputs:
 	require.Equal(t, 1, len(inputs), "Expected 1 pending input after waiting")
 	pending := inputs[0]
 
-	result := opR.getDetails(context.Background(), "test-tenant", pending.JobID)
+	result := opR.getDetails(context.Background(), "test-tenant", pending.Id)
 	if result.hasError() {
 		t.Fatalf("failed to get result: %v", result.err)
 	}
 	details := result.value
-	require.Equal(t, "how old are you", details.Form.Question)
-	res2 := opR.submitResponse(context.Background(), "test-tenant", pending.JobID, FormResponse{
-		Response: "foolish",
-		Hash:     "abc123",
+	require.NotNil(t, details.Form.Question)
+	require.Equal(t, "how old are you", *details.Form.Question)
+	resp := any("foolish")
+	hash := "abc123"
+	res2 := opR.submitResponse(context.Background(), "test-tenant", pending.Id, FormResponse{
+		Fields:   map[string]interface{}{},
+		Response: &resp,
+		Hash:     &hash,
 	})
 	if res2.hasError() {
 		t.Fatalf("failed to submit response: %v", res2.err)
@@ -264,15 +268,19 @@ inputs:
 	require.NoError(t, err)
 	require.Equal(t, 1, len(afterWait), "Expected pending input after restart wait")
 
-	result := opR.getDetails(ctx, "test-tenant", pending.JobID)
+	result := opR.getDetails(ctx, "test-tenant", pending.Id)
 	if result.hasError() {
 		t.Fatalf("failed to get result: %v", result.err)
 	}
 	details := result.value
-	require.Equal(t, "how old are you", details.Form.Question)
-	res2 := opR.submitResponse(ctx, "test-tenant", pending.JobID, FormResponse{
-		Response: "foolish",
-		Hash:     "abc123",
+	require.NotNil(t, details.Form.Question)
+	require.Equal(t, "how old are you", *details.Form.Question)
+	resp := any("foolish")
+	hash := "abc123"
+	res2 := opR.submitResponse(ctx, "test-tenant", pending.Id, FormResponse{
+		Fields:   map[string]interface{}{},
+		Response: &resp,
+		Hash:     &hash,
 	})
 	if res2.hasError() {
 		t.Fatalf("failed to submit response: %v", res2.err)

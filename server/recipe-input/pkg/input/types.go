@@ -2,6 +2,8 @@ package input
 
 import (
 	"time"
+
+	openapi "github.com/colony-2/colony2/server/openapi/pkg/openapi"
 )
 
 // FieldType represents the type of form field
@@ -91,16 +93,8 @@ type InputForm struct {
 	Timeout time.Duration `json:"timeout,omitempty" jsonschema:"default=300,description=Timeout in seconds"`
 }
 
-// FormResponse represents the user's response to a form
-type FormResponse struct {
-	ActivityID     string                 `json:"activity_id"`
-	UserID         string                 `json:"user_id"`
-	Response       interface{}            `json:"response,omitempty"` // For single question
-	Fields         map[string]interface{} `json:"fields,omitempty"`   // For multi-field
-	SubmittedAt    time.Time              `json:"submitted_at"`
-	TimeToComplete int                    `json:"time_to_complete"`
-	Hash           string                 `json:"hash"`
-}
+// FormResponse represents the user's response to a form (OpenAPI-generated type).
+type FormResponse = openapi.FormResponse
 
 // InputWorkflowParams represents parameters for the input collection workflow
 type InputWorkflowParams struct {
@@ -126,10 +120,8 @@ type UserResponseSignal struct {
 	Metadata    map[string]interface{} `json:"metadata"`
 }
 
-// PendingInput represents a pending input request
-type PendingInput struct {
-	JobID string `json:"id"`
-}
+// PendingInput represents a pending input request (OpenAPI-generated type).
+type PendingInput = openapi.PendingInput
 
 // InputRequestSignal represents a signal sent by the activity to request user input
 type InputRequestSignal struct {
