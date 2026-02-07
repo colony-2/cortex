@@ -5,9 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
@@ -18,30 +17,28 @@ import (
 
 // Service provides recipe lifecycle operations.
 type Service interface {
-	// Recipe Lifecycle Operations
 	CreateRecipe(ctx context.Context, input model.CreateInput) (*model.RecipeVersion, error)
 	UpdateRecipe(ctx context.Context, input model.UpdateInput) (*model.RecipeVersion, error)
 	DeleteRecipe(ctx context.Context, projectID project.ID, name string) error
 
-	// Publishing Operations
 	PublishRecipe(ctx context.Context, input model.PublishInput) (*model.PublishedRecipe, error)
 	UnpublishRecipe(ctx context.Context, input model.UnpublishInput) error
 
-	// Retrieval Operations
 	GetRecipe(ctx context.Context, projectID project.ID, name string, ref string) (*model.RecipeWithContent, error)
 	ListRecipes(ctx context.Context, filter model.RecipeFilter) (store.Iterator[*model.RecipeInfo], error)
 	GetRecipeHistory(ctx context.Context, projectID project.ID, name string) (store.Iterator[*model.RecipeVersion], error)
 
-	// Validation
 	ValidateRecipe(ctx context.Context, input model.ValidateInput) (*model.ValidationResult, error)
 
-	// Remote Sync
+	// Kept for API compatibility; no-op for Postgres-backed storage.
 	SyncFromRemote(ctx context.Context, projectID project.ID) error
 }
 
 // ServiceConfig contains dependencies for the service.
 type ServiceConfig struct {
-	Store        store.Store
+	Store store.Store
+	// GitRepo is ignored by the Postgres-backed implementation.
+	// Field preserved for compatibility with older wiring.
 	GitRepo      git.Repository
 	Projects     project.Service
 	IDGen        model.ShortIDGenerator
@@ -51,20 +48,15 @@ type ServiceConfig struct {
 
 type service struct {
 	store        store.Store
-	gitRepo      git.Repository
 	projects     project.Service
 	idGen        model.ShortIDGenerator
 	clock        model.Clock
 	celValidator CELValidator
 }
 
-// New creates a new recipe service.
 func New(cfg ServiceConfig) (Service, error) {
 	if cfg.Store == nil {
 		return nil, errors.New("recipe service: store is required")
-	}
-	if cfg.GitRepo == nil {
-		return nil, errors.New("recipe service: git repository is required")
 	}
 	if cfg.Projects == nil {
 		return nil, errors.New("recipe service: project service is required")
@@ -78,10 +70,8 @@ func New(cfg ServiceConfig) (Service, error) {
 	if cfg.Clock == nil {
 		cfg.Clock = model.SystemClock{}
 	}
-
 	return &service{
 		store:        cfg.Store,
-		gitRepo:      cfg.GitRepo,
 		projects:     cfg.Projects,
 		idGen:        cfg.IDGen,
 		clock:        cfg.Clock,
@@ -89,36 +79,14 @@ func New(cfg ServiceConfig) (Service, error) {
 	}, nil
 }
 
-// CreateRecipe creates a new recipe in git and optionally publishes it.
 func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*model.RecipeVersion, error) {
-	// 1. Validate project exists
 	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
 		return nil, err
 	}
-
-	// 2. Validate recipe name
 	if err := validateRecipeName(input.Name); err != nil {
 		return nil, err
 	}
 
-	// 3. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
-	}
-	defer cleanup()
-
-	// 4. Check recipe doesn't already exist
-	gitPath := deriveGitPath(input.Name)
-	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		return nil, model.ErrAlreadyExists
-	}
-
-	// 5. If AutoPublish enabled: pre-validate content early
 	if input.AutoPublish {
 		if err := s.preValidateRecipe(ctx, model.ValidateInput{
 			ProjectID: input.ProjectID,
@@ -129,482 +97,765 @@ func (s *service) CreateRecipe(ctx context.Context, input model.CreateInput) (*m
 		}
 	}
 
-	// 6. Write file to git workspace
-	filePath := filepath.Join(workspace, gitPath)
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(filePath, input.Content, 0644); err != nil {
-		return nil, err
-	}
+	digest := sha256DigestBytes(input.Content)
+	now := s.clock.Now().UTC()
 
-	// 7. Stage and commit
-	if err := s.gitRepo.StageFiles(ctx, workspace, []string{gitPath}); err != nil {
-		return nil, err
-	}
+	var createdEvent model.RecipeEvent
+	var createdOrdinal int64 = 1
 
-	message := fmt.Sprintf("Create recipe: %s", input.Name)
-	if input.Description != "" {
-		message += "\n\n" + input.Description
-	}
+	err := s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
+		tx := txStore.DB()
 
-	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
-		return nil, err
-	}
-
-	// 8. Get commit hash
-	commitHash, err := s.gitRepo.GetCurrentCommit(ctx, workspace)
-	if err != nil {
-		return nil, err
-	}
-
-	// 9. Push to primary repository
-	if err := s.pushToOrigin(ctx, workspace); err != nil {
-		return nil, err
-	}
-
-	// 10. Auto-publish if requested
-	isPublished := false
-	if input.AutoPublish {
-		_, err := s.PublishRecipe(ctx, model.PublishInput{
-			ProjectID:  input.ProjectID,
-			Name:       input.Name,
-			CommitHash: commitHash,
-		})
-		if err != nil {
-			return nil, err
-		}
-		isPublished = true
-	}
-
-	// 11. Build version info
-	commits, err := s.gitRepo.GetHistory(ctx, workspace, 1)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.RecipeVersion{
-		Name:        input.Name,
-		CommitHash:  commitHash,
-		ShortHash:   shortHash(commitHash),
-		Author:      commits[0].Author,
-		Message:     commits[0].Message,
-		CreatedAt:   commits[0].Date,
-		IsPublished: isPublished,
-	}, nil
-}
-
-// UpdateRecipe updates an existing recipe in git and optionally publishes it.
-func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*model.RecipeVersion, error) {
-	// 1. Validate project exists
-	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
-		return nil, err
-	}
-
-	// 2. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
-	}
-	defer cleanup()
-
-	gitPath := deriveGitPath(input.Name)
-
-	// 3. Verify recipe exists
-	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
-	if err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, model.ErrNotFound
-	}
-
-	// 4. Optimistic Concurrency Check - get last commit for THIS FILE
-	if input.ExpectedCommit != "" {
-		currentCommit, err := s.getFileLastCommit(ctx, workspace, gitPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get recipe file commit: %w", err)
-		}
-
-		if input.ExpectedCommit != currentCommit {
-			return nil, fmt.Errorf("%w: expected %s, got %s",
-				model.ErrVersionConflict, input.ExpectedCommit, currentCommit)
-		}
-	}
-
-	// 5. If AutoPublish enabled: pre-validate content early
-	if input.AutoPublish {
-		if err := s.preValidateRecipe(ctx, model.ValidateInput{
-			ProjectID: input.ProjectID,
-			Name:      input.Name,
-			Content:   input.Content,
-		}); err != nil {
-			return nil, err
-		}
-	}
-
-	// 6. Write file
-	filePath := filepath.Join(workspace, gitPath)
-	currentContent, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-	if bytes.Equal(currentContent, input.Content) {
-		currentCommit, err := s.getFileLastCommit(ctx, workspace, gitPath)
-		if err != nil {
-			return nil, err
-		}
-
-		isPublished := false
-		publishedRecipe, err := s.store.GetByName(ctx, input.ProjectID, input.Name)
+		// Ensure recipe doesn't exist.
+		_, err := s.findRecipeRow(ctx, tx, input.ProjectID, input.Name)
 		if err == nil {
-			isPublished = publishedRecipe.CommitHash == currentCommit
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
+			return model.ErrAlreadyExists
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
 
-		if input.AutoPublish && !isPublished {
-			_, err := s.PublishRecipe(ctx, model.PublishInput{
-				ProjectID:  input.ProjectID,
-				Name:       input.Name,
-				CommitHash: currentCommit,
-			})
-			if err != nil {
-				return nil, err
-			}
-			isPublished = true
+		if err := upsertBlob(ctx, tx, digest, input.Content); err != nil {
+			return err
 		}
 
-		author, message, createdAt, err := s.getCommitSummary(ctx, workspace, currentCommit)
+		recipeID, err := s.idGen.NewID()
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		return &model.RecipeVersion{
-			Name:        input.Name,
-			CommitHash:  currentCommit,
-			ShortHash:   shortHash(currentCommit),
-			Author:      author,
-			Message:     message,
-			CreatedAt:   createdAt,
-			IsPublished: isPublished,
-		}, nil
-	}
-
-	if err := os.WriteFile(filePath, input.Content, 0644); err != nil {
-		return nil, err
-	}
-
-	// 7. Stage and commit
-	if err := s.gitRepo.StageFiles(ctx, workspace, []string{gitPath}); err != nil {
-		return nil, err
-	}
-
-	message := input.Message
-	if message == "" {
-		message = fmt.Sprintf("Update recipe: %s", input.Name)
-	}
-
-	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
-		return nil, err
-	}
-
-	// 8. Get new commit hash for this file
-	newCommitHash, err := s.getFileLastCommit(ctx, workspace, gitPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// 9. Push to primary repository
-	if err := s.pushToOrigin(ctx, workspace); err != nil {
-		return nil, err
-	}
-
-	// 10. Auto-publish if requested
-	isPublished := false
-	if input.AutoPublish {
-		_, err := s.PublishRecipe(ctx, model.PublishInput{
-			ProjectID:  input.ProjectID,
-			Name:       input.Name,
-			CommitHash: newCommitHash,
-		})
-		if err != nil {
-			return nil, err
-		}
-		isPublished = true
-	}
-
-	// 11. Build version info
-	commits, err := s.gitRepo.GetHistory(ctx, workspace, 1)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.RecipeVersion{
-		Name:        input.Name,
-		CommitHash:  newCommitHash,
-		ShortHash:   shortHash(newCommitHash),
-		Author:      commits[0].Author,
-		Message:     commits[0].Message,
-		CreatedAt:   commits[0].Date,
-		IsPublished: isPublished,
-	}, nil
-}
-
-// DeleteRecipe removes a recipe from git and unpublishes it.
-func (s *service) DeleteRecipe(ctx context.Context, projectID project.ID, name string) error {
-	// 1. Validate project exists
-	if err := s.ensureProject(ctx, projectID); err != nil {
-		return err
-	}
-
-	// 2. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
-	if err != nil {
-		return fmt.Errorf("failed to create workspace: %w", err)
-	}
-	defer cleanup()
-
-	// 3. Verify recipe exists
-	gitPath := deriveGitPath(name)
-	exists, err := s.fileExistsInGit(ctx, workspace, gitPath)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return model.ErrNotFound
-	}
-
-	// 4. Unpublish if currently published
-	publishedRecipe, err := s.store.GetByName(ctx, projectID, name)
-	if err == nil {
-		// Recipe is published, unpublish it first
-		if err := s.store.Delete(ctx, publishedRecipe.ID); err != nil {
-			return fmt.Errorf("failed to unpublish recipe: %w", err)
-		}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
-	// 5. Remove file from git
-	cmd := exec.CommandContext(ctx, "git", "rm", gitPath)
-	cmd.Dir = workspace
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to remove file from git: %w", err)
-	}
-
-	// 6. Commit deletion
-	message := fmt.Sprintf("Delete recipe: %s", name)
-	if err := s.gitRepo.CreateCommit(ctx, workspace, message); err != nil {
-		return err
-	}
-
-	// 7. Push to primary repository
-	if err := s.pushToOrigin(ctx, workspace); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// PublishRecipe validates and publishes a recipe version.
-func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (*model.PublishedRecipe, error) {
-	// 1. Validate project exists
-	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
-		return nil, err
-	}
-
-	// 2. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, input.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
-	}
-	defer cleanup()
-
-	gitPath := deriveGitPath(input.Name)
-
-	// 3. If no commit hash provided, get latest commit for this recipe file
-	commitHash := input.CommitHash
-	if commitHash == "" {
-		var err error
-		commitHash, err = s.getFileLastCommit(ctx, workspace, gitPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get latest commit for recipe: %w", err)
-		}
-	}
-
-	if err := s.ensureCommitAvailable(ctx, workspace, commitHash); err != nil {
-		return nil, fmt.Errorf("%w: %v", model.ErrCommitNotFound, err)
-	}
-
-	// 4. Read file at specified commit from git
-	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", model.ErrCommitNotFound, err)
-	}
-
-	// 5. Validate content (schema + ID + CEL)
-	if _, err := s.validateRecipe(ctx, model.ValidateInput{
-		ProjectID: input.ProjectID,
-		Name:      input.Name,
-		Content:   content,
-	}); err != nil {
-		return nil, err
-	}
-
-	// 6. Insert or update published recipe in database
-	var result *model.PublishedRecipe
-	err = s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
-		existing, err := txStore.GetByName(ctx, input.ProjectID, input.Name)
-
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// New published recipe
-			id, err := s.idGen.NewID()
-			if err != nil {
-				return err
-			}
-
-			result = &model.PublishedRecipe{
-				ID:          model.ID(id),
-				ProjectID:   input.ProjectID,
-				Name:        input.Name,
-				GitPath:     gitPath,
-				CommitHash:  commitHash,
-				PublishedAt: s.clock.Now(),
-				PublishedBy: input.PublishedBy,
-			}
-
-			return txStore.Create(ctx, result)
-		}
-
+		eventID, err := s.idGen.NewID()
 		if err != nil {
 			return err
 		}
 
-		// Content-based optimistic locking
-		if input.ExpectedCommit != nil && *input.ExpectedCommit != existing.CommitHash {
-			return fmt.Errorf("%w: expected %s, current is %s",
-				model.ErrVersionConflict, *input.ExpectedCommit, existing.CommitHash)
+		msg := fmt.Sprintf("Create recipe: %s", input.Name)
+		if strings.TrimSpace(input.Description) != "" {
+			msg += "\n\n" + strings.TrimSpace(input.Description)
 		}
 
-		// Update existing published recipe
-		existing.CommitHash = commitHash
-		existing.PublishedAt = s.clock.Now()
-		existing.PublishedBy = input.PublishedBy
-
-		err = txStore.Update(ctx, existing)
-		if errors.Is(err, store.ErrOptimisticLock) {
-			return model.ErrVersionConflict
+		createdEvent = model.RecipeEvent{
+			ID:                 eventID,
+			ProjectID:          input.ProjectID,
+			RecipeID:           recipeID,
+			Digest:             digest,
+			SavedOrdinal:       &createdOrdinal,
+			TargetSavedOrdinal: nil,
+			Published:          input.AutoPublish,
+			EventAt:            now,
+			Message:            &msg,
 		}
 
-		result = existing
-		return err
+		if err := tx.WithContext(ctx).Create(&model.RecipeRow{
+			ID:                 recipeID,
+			ProjectID:          input.ProjectID,
+			Name:               input.Name,
+			LatestSavedEventID: &eventID,
+			LatestSavedOrdinal: &createdOrdinal,
+			PublishedEventID:   nil,
+			DeletedAt:          nil,
+			CreatedAt:          now,
+			UpdatedAt:          now,
+		}).Error; err != nil {
+			if isDuplicateKey(err) {
+				return model.ErrAlreadyExists
+			}
+			return err
+		}
+
+		if err := tx.WithContext(ctx).Create(&createdEvent).Error; err != nil {
+			return err
+		}
+
+		if input.AutoPublish {
+			// Publish is represented by this same save event.
+			if err := tx.WithContext(ctx).Model(&model.RecipeRow{}).
+				Where("id = ?", recipeID).
+				Update("published_event_id", eventID).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
-
-	return result, err
-}
-
-// UnpublishRecipe removes a recipe from the published index.
-func (s *service) UnpublishRecipe(ctx context.Context, input model.UnpublishInput) error {
-	// 1. Validate project exists
-	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
-		return err
-	}
-
-	// 2. Get and verify published recipe
-	publishedRecipe, err := s.store.GetByName(ctx, input.ProjectID, input.Name)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return model.ErrNotPublished
-		}
-		return err
-	}
-
-	// 3. Optimistic concurrency control
-	if input.ExpectedCommit != publishedRecipe.CommitHash {
-		return fmt.Errorf("%w: expected %s, current is %s",
-			model.ErrVersionConflict, input.ExpectedCommit, publishedRecipe.CommitHash)
-	}
-
-	// 4. Delete from published index
-	return s.store.Delete(ctx, publishedRecipe.ID)
-}
-
-// GetRecipe retrieves a recipe by name with optional ref.
-func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name string, ref string) (*model.RecipeWithContent, error) {
-	// 1. Validate project exists
-	if err := s.ensureProject(ctx, projectID); err != nil {
 		return nil, err
 	}
 
-	// 2. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	return &model.RecipeVersion{
+		Name:        input.Name,
+		CommitHash:  formatSavedOrdinalRef(createdOrdinal),
+		ShortHash:   formatSavedOrdinalRef(createdOrdinal),
+		Author:      "",
+		Message:     derefString(createdEvent.Message),
+		CreatedAt:   createdEvent.EventAt,
+		IsPublished: input.AutoPublish,
+	}, nil
+}
+
+func (s *service) UpdateRecipe(ctx context.Context, input model.UpdateInput) (*model.RecipeVersion, error) {
+	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
+		return nil, err
 	}
-	defer cleanup()
+	if err := validateRecipeName(input.Name); err != nil {
+		return nil, err
+	}
 
-	gitPath := deriveGitPath(name)
+	digest := sha256DigestBytes(input.Content)
+	now := s.clock.Now().UTC()
 
-	// 3. Determine which version to fetch
-	var commitHash string
-	var publishedRecipe *model.PublishedRecipe
+	var outVersion *model.RecipeVersion
 
-	if ref == "" {
-		// Try to get published version first
-		var err error
-		publishedRecipe, err = s.store.GetByName(ctx, projectID, name)
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
+	err := s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
+		tx := txStore.DB()
+
+		row, err := s.lockRecipeRow(ctx, tx, input.ProjectID, input.Name)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrNotFound
+			}
+			return err
 		}
 
-		if publishedRecipe != nil {
-			// Use published version
-			commitHash = publishedRecipe.CommitHash
-		} else {
-			// No published version - fall back to latest commit for this file
-			commitHash, err = s.getFileLastCommit(ctx, workspace, gitPath)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %v", model.ErrNotFound, err)
+		// Concurrency check against latest saved.
+		if strings.TrimSpace(input.ExpectedCommit) != "" {
+			expected := strings.TrimSpace(input.ExpectedCommit)
+			expectedOrdinal, ok := parseSavedOrdinalRef(expected)
+			if !ok {
+				return fmt.Errorf("%w: invalid expected commit %q", model.ErrVersionConflict, expected)
+			}
+			currentOrdinal := int64(0)
+			if row.LatestSavedOrdinal != nil {
+				currentOrdinal = *row.LatestSavedOrdinal
+			}
+			if expectedOrdinal != currentOrdinal {
+				return fmt.Errorf("%w: expected %s, got %s",
+					model.ErrVersionConflict, formatSavedOrdinalRef(expectedOrdinal), formatSavedOrdinalRef(currentOrdinal))
 			}
 		}
-	} else {
-		// Resolve ref to commit hash (fetching history/tags if needed)
-		var err error
-		commitHash, err = s.resolveRefToCommit(ctx, workspace, ref)
+
+		latestEvent, err := s.getLatestSavedEvent(ctx, tx, row)
+		if err != nil {
+			return err
+		}
+
+		if bytes.Equal(latestEvent.Digest, digest) {
+			// No-op save. Optional auto-publish.
+			ordinal := int64(0)
+			if latestEvent.SavedOrdinal != nil {
+				ordinal = *latestEvent.SavedOrdinal
+			}
+
+			isPublished := false
+			publishedOrdinal, _, err := s.currentPublishedOrdinal(ctx, tx, row)
+			if err != nil {
+				return err
+			}
+			if publishedOrdinal != nil && *publishedOrdinal == ordinal {
+				isPublished = true
+			}
+
+			if input.AutoPublish && !isPublished {
+				var override *string
+				if strings.TrimSpace(input.Message) != "" {
+					override = &input.Message
+				}
+				if err := s.publishSavedOrdinalTx(ctx, tx, row, ordinal, digest, now, nil, "Auto-publish recipe", override); err != nil {
+					return err
+				}
+				isPublished = true
+			}
+
+			outVersion = &model.RecipeVersion{
+				Name:        input.Name,
+				CommitHash:  formatSavedOrdinalRef(ordinal),
+				ShortHash:   formatSavedOrdinalRef(ordinal),
+				Author:      derefString(latestEvent.Actor),
+				Message:     derefString(latestEvent.Message),
+				CreatedAt:   latestEvent.EventAt,
+				IsPublished: isPublished,
+			}
+			return nil
+		}
+
+		if input.AutoPublish {
+			if err := s.preValidateRecipe(ctx, model.ValidateInput{
+				ProjectID: input.ProjectID,
+				Name:      input.Name,
+				Content:   input.Content,
+			}); err != nil {
+				return err
+			}
+		}
+
+		if err := upsertBlob(ctx, tx, digest, input.Content); err != nil {
+			return err
+		}
+
+		nextOrdinal := int64(1)
+		if row.LatestSavedOrdinal != nil {
+			nextOrdinal = *row.LatestSavedOrdinal + 1
+		}
+
+		eventID, err := s.idGen.NewID()
+		if err != nil {
+			return err
+		}
+
+		msg := strings.TrimSpace(input.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("Update recipe: %s", input.Name)
+		}
+
+		saveEvent := model.RecipeEvent{
+			ID:                 eventID,
+			ProjectID:          input.ProjectID,
+			RecipeID:           row.ID,
+			Digest:             digest,
+			SavedOrdinal:       &nextOrdinal,
+			Published:          input.AutoPublish,
+			EventAt:            now,
+			Message:            &msg,
+			TargetSavedOrdinal: nil,
+		}
+
+		if err := tx.WithContext(ctx).Create(&saveEvent).Error; err != nil {
+			return err
+		}
+
+		updates := map[string]interface{}{
+			"latest_saved_event_id": eventID,
+			"latest_saved_ordinal":  nextOrdinal,
+			"updated_at":            now,
+		}
+		if input.AutoPublish {
+			updates["published_event_id"] = eventID
+		}
+
+		if err := tx.WithContext(ctx).Model(&model.RecipeRow{}).Where("id = ?", row.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		outVersion = &model.RecipeVersion{
+			Name:        input.Name,
+			CommitHash:  formatSavedOrdinalRef(nextOrdinal),
+			ShortHash:   formatSavedOrdinalRef(nextOrdinal),
+			Author:      derefString(saveEvent.Actor),
+			Message:     derefString(saveEvent.Message),
+			CreatedAt:   saveEvent.EventAt,
+			IsPublished: input.AutoPublish,
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return outVersion, nil
+}
+
+func (s *service) DeleteRecipe(ctx context.Context, projectID project.ID, name string) error {
+	if err := s.ensureProject(ctx, projectID); err != nil {
+		return err
+	}
+	if err := validateRecipeName(name); err != nil {
+		return err
+	}
+
+	now := s.clock.Now().UTC()
+
+	return s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
+		tx := txStore.DB()
+		row, err := s.lockRecipeRow(ctx, tx, projectID, name)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrNotFound
+			}
+			return err
+		}
+
+		// Insert an unpublish event so @asof behaves sensibly for timestamps after deletion.
+		unpublishEventID, err := s.idGen.NewID()
+		if err != nil {
+			return err
+		}
+		unpublish := model.RecipeEvent{
+			ID:        unpublishEventID,
+			ProjectID: projectID,
+			RecipeID:  row.ID,
+			Digest:    nil,
+			Published: false,
+			EventAt:   now,
+		}
+		if err := tx.WithContext(ctx).Create(&unpublish).Error; err != nil {
+			return err
+		}
+
+		if err := tx.WithContext(ctx).Model(&model.RecipeRow{}).
+			Where("id = ?", row.ID).
+			Updates(map[string]interface{}{
+				"deleted_at":         now,
+				"published_event_id": unpublishEventID,
+				"updated_at":         now,
+			}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (s *service) PublishRecipe(ctx context.Context, input model.PublishInput) (*model.PublishedRecipe, error) {
+	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
+		return nil, err
+	}
+	if err := validateRecipeName(input.Name); err != nil {
+		return nil, err
+	}
+
+	now := s.clock.Now().UTC()
+
+	var out *model.PublishedRecipe
+
+	err := s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
+		tx := txStore.DB()
+
+		row, err := s.lockRecipeRow(ctx, tx, input.ProjectID, input.Name)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrNotFound
+			}
+			return err
+		}
+
+		expected := input.ExpectedCommit
+		if expected != nil {
+			want := strings.TrimSpace(*expected)
+			currentRef, err := s.currentPublishedRef(ctx, tx, row)
+			if err != nil {
+				return err
+			}
+			if want != "" && want != currentRef {
+				return fmt.Errorf("%w: expected %s, current is %s", model.ErrVersionConflict, want, currentRef)
+			}
+		}
+
+		savedEvent, savedOrdinal, err := s.resolveSavedVersionRefTx(ctx, tx, row, strings.TrimSpace(input.CommitHash))
+		if err != nil {
+			return err
+		}
+
+		if savedEvent == nil || savedOrdinal == 0 {
+			return model.ErrNotFound
+		}
+
+		content, err := loadBlobContent(ctx, tx, savedEvent.Digest)
+		if err != nil {
+			return err
+		}
+
+		if _, err := s.validateRecipe(ctx, model.ValidateInput{
+			ProjectID: input.ProjectID,
+			Name:      input.Name,
+			Content:   content,
+		}); err != nil {
+			return err
+		}
+
+		if err := s.publishSavedOrdinalTx(ctx, tx, row, savedOrdinal, savedEvent.Digest, now, input.PublishedBy, "Publish recipe", nil); err != nil {
+			return err
+		}
+
+		out = &model.PublishedRecipe{
+			ProjectID:   input.ProjectID,
+			Name:        input.Name,
+			CommitHash:  formatSavedOrdinalRef(savedOrdinal),
+			PublishedAt: now,
+			PublishedBy: input.PublishedBy,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *service) UnpublishRecipe(ctx context.Context, input model.UnpublishInput) error {
+	if err := s.ensureProject(ctx, input.ProjectID); err != nil {
+		return err
+	}
+	if err := validateRecipeName(input.Name); err != nil {
+		return err
+	}
+
+	now := s.clock.Now().UTC()
+
+	return s.store.WithTx(ctx, func(ctx context.Context, txStore store.Store) error {
+		tx := txStore.DB()
+		row, err := s.lockRecipeRow(ctx, tx, input.ProjectID, input.Name)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return model.ErrNotFound
+			}
+			return err
+		}
+
+		// Optimistic check (best-effort, for API parity).
+		if strings.TrimSpace(input.ExpectedCommit) != "" {
+			currentRef, err := s.currentPublishedRef(ctx, tx, row)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(input.ExpectedCommit) != currentRef {
+				return fmt.Errorf("%w: expected %s, current is %s", model.ErrVersionConflict, strings.TrimSpace(input.ExpectedCommit), currentRef)
+			}
+		}
+
+		eventID, err := s.idGen.NewID()
+		if err != nil {
+			return err
+		}
+		unpublish := model.RecipeEvent{
+			ID:        eventID,
+			ProjectID: input.ProjectID,
+			RecipeID:  row.ID,
+			Digest:    nil,
+			Published: false,
+			EventAt:   now,
+		}
+		if err := tx.WithContext(ctx).Create(&unpublish).Error; err != nil {
+			return err
+		}
+		return tx.WithContext(ctx).Model(&model.RecipeRow{}).
+			Where("id = ?", row.ID).
+			Updates(map[string]interface{}{
+				"published_event_id": eventID,
+				"updated_at":         now,
+			}).Error
+	})
+}
+
+func (s *service) GetRecipe(ctx context.Context, projectID project.ID, name string, ref string) (*model.RecipeWithContent, error) {
+	if err := s.ensureProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if err := validateRecipeName(name); err != nil {
+		return nil, err
+	}
+
+	db := s.store.DB()
+
+	row, err := s.findRecipeRow(ctx, db, projectID, name)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, model.ErrNotFound
+		}
+		return nil, err
+	}
+
+	ref = strings.TrimSpace(ref)
+
+	if asof, ok := parseAsOfRef(ref); ok {
+		return s.getRecipeAsOf(ctx, db, row, name, asof)
+	}
+
+	if ref == "" {
+		// Current published if available, else latest saved.
+		pubEvent, pubOrdinal, err := s.currentPublishedEvent(ctx, db, row)
 		if err != nil {
 			return nil, err
 		}
+		if pubEvent != nil && pubEvent.Published && pubOrdinal != nil {
+			content, err := loadBlobContent(ctx, db, pubEvent.Digest)
+			if err != nil {
+				return nil, err
+			}
+			return &model.RecipeWithContent{
+				Name:        name,
+				CommitHash:  formatSavedOrdinalRef(*pubOrdinal),
+				Content:     content,
+				IsPublished: true,
+				PublishedAt: ptrTime(pubEvent.EventAt),
+				PublishedBy: pubEvent.Actor,
+			}, nil
+		}
 
-		// Check if recipe is published
-		publishedRecipe, _ = s.store.GetByName(ctx, projectID, name)
+		latest, err := s.getLatestSavedEvent(ctx, db, row)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, model.ErrNotFound
+			}
+			return nil, err
+		}
+		content, err := loadBlobContent(ctx, db, latest.Digest)
+		if err != nil {
+			return nil, err
+		}
+		ordinal := int64(0)
+		if latest.SavedOrdinal != nil {
+			ordinal = *latest.SavedOrdinal
+		}
+		return &model.RecipeWithContent{
+			Name:        name,
+			CommitHash:  formatSavedOrdinalRef(ordinal),
+			Content:     content,
+			IsPublished: false,
+		}, nil
 	}
 
-	if err := s.ensureCommitAvailable(ctx, workspace, commitHash); err != nil {
-		return nil, fmt.Errorf("%w: failed to get recipe at commit %s: %v", model.ErrNotFound, commitHash, err)
-	}
-
-	// 4. Fetch content from git
-	content, err := s.gitRepo.GetFileAtCommit(ctx, workspace, commitHash, gitPath)
+	// Resolve a specific saved version.
+	savedEvent, savedOrdinal, err := s.resolveSavedVersionRef(ctx, db, row, ref)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to get recipe at commit %s: %v", model.ErrNotFound, commitHash, err)
+		return nil, err
+	}
+	if savedEvent == nil {
+		return nil, model.ErrNotFound
+	}
+	content, err := loadBlobContent(ctx, db, savedEvent.Digest)
+	if err != nil {
+		return nil, err
 	}
 
-	// 5. Build result with raw content (no parsing - invalid recipes can be saved, just not published)
-	result := &model.RecipeWithContent{
-		Name:       name,
-		CommitHash: commitHash,
-		Content:    content,
+	isPublished := false
+	pubOrdinal, pubEvent, err := s.currentPublishedOrdinal(ctx, db, row)
+	if err != nil {
+		return nil, err
+	}
+	if pubOrdinal != nil && *pubOrdinal == savedOrdinal {
+		isPublished = true
 	}
 
-	// If published and this is the published version, include publish metadata
-	if publishedRecipe != nil && publishedRecipe.CommitHash == commitHash {
-		result.IsPublished = true
-		result.PublishedAt = &publishedRecipe.PublishedAt
-		result.PublishedBy = publishedRecipe.PublishedBy
+	var publishedAt *time.Time
+	var publishedBy *string
+	if isPublished && pubEvent != nil {
+		publishedAt = ptrTime(pubEvent.EventAt)
+		publishedBy = pubEvent.Actor
 	}
 
-	return result, nil
+	return &model.RecipeWithContent{
+		Name:        name,
+		CommitHash:  formatSavedOrdinalRef(savedOrdinal),
+		Content:     content,
+		IsPublished: isPublished,
+		PublishedAt: publishedAt,
+		PublishedBy: publishedBy,
+	}, nil
 }
 
-// Continued in next file...
+func (s *service) SyncFromRemote(ctx context.Context, projectID project.ID) error {
+	// Validate project exists
+	if err := s.ensureProject(ctx, projectID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func ptrTime(t time.Time) *time.Time {
+	tt := t.UTC()
+	return &tt
+}
+
+func (s *service) preValidateRecipe(ctx context.Context, input model.ValidateInput) error {
+	_, err := s.validateRecipe(ctx, input)
+	return err
+}
+
+// publishSavedOrdinalTx inserts a publish-only event and updates the recipe's published pointer.
+func (s *service) publishSavedOrdinalTx(
+	ctx context.Context,
+	tx *gorm.DB,
+	row *model.RecipeRow,
+	savedOrdinal int64,
+	digest []byte,
+	now time.Time,
+	actor *string,
+	defaultMessage string,
+	overrideMessage *string,
+) error {
+	if row == nil {
+		return fmt.Errorf("nil recipe row")
+	}
+
+	eventID, err := s.idGen.NewID()
+	if err != nil {
+		return err
+	}
+
+	msg := strings.TrimSpace(defaultMessage)
+	if overrideMessage != nil && strings.TrimSpace(*overrideMessage) != "" {
+		msg = strings.TrimSpace(*overrideMessage)
+	}
+
+	publishEvent := model.RecipeEvent{
+		ID:                 eventID,
+		ProjectID:          row.ProjectID,
+		RecipeID:           row.ID,
+		Digest:             digest,
+		SavedOrdinal:       nil,
+		TargetSavedOrdinal: &savedOrdinal,
+		Published:          true,
+		EventAt:            now,
+		Actor:              actor,
+		Message:            &msg,
+	}
+
+	if err := tx.WithContext(ctx).Create(&publishEvent).Error; err != nil {
+		return err
+	}
+
+	return tx.WithContext(ctx).Model(&model.RecipeRow{}).
+		Where("id = ?", row.ID).
+		Updates(map[string]interface{}{
+			"published_event_id": eventID,
+			"updated_at":         now,
+		}).Error
+}
+
+func (s *service) currentPublishedEvent(ctx context.Context, db *gorm.DB, row *model.RecipeRow) (*model.RecipeEvent, *int64, error) {
+	if row == nil || row.PublishedEventID == nil {
+		return nil, nil, nil
+	}
+	e, err := s.getEventByID(ctx, db, *row.PublishedEventID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	ord, ok := publishedSavedOrdinal(e)
+	if !ok {
+		return e, nil, nil
+	}
+	return e, &ord, nil
+}
+
+func (s *service) currentPublishedOrdinal(ctx context.Context, db *gorm.DB, row *model.RecipeRow) (*int64, *model.RecipeEvent, error) {
+	e, ord, err := s.currentPublishedEvent(ctx, db, row)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ord, e, nil
+}
+
+func (s *service) currentPublishedRef(ctx context.Context, db *gorm.DB, row *model.RecipeRow) (string, error) {
+	ord, _, err := s.currentPublishedOrdinal(ctx, db, row)
+	if err != nil {
+		return "", err
+	}
+	if ord == nil {
+		return "", nil
+	}
+	return formatSavedOrdinalRef(*ord), nil
+}
+
+func (s *service) resolveSavedVersionRef(ctx context.Context, db *gorm.DB, row *model.RecipeRow, ref string) (*model.RecipeEvent, int64, error) {
+	return s.resolveSavedVersionRefTx(ctx, db, row, ref)
+}
+
+func (s *service) resolveSavedVersionRefTx(ctx context.Context, db *gorm.DB, row *model.RecipeRow, ref string) (*model.RecipeEvent, int64, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		latest, err := s.getLatestSavedEvent(ctx, db, row)
+		if err != nil {
+			return nil, 0, err
+		}
+		if latest.SavedOrdinal == nil {
+			return nil, 0, model.ErrNotFound
+		}
+		return latest, *latest.SavedOrdinal, nil
+	}
+
+	if _, ok := parseAsOfRef(ref); ok {
+		return nil, 0, fmt.Errorf("%w: invalid ref for publish", model.ErrInvalidContent)
+	}
+
+	if ord, ok := parseSavedOrdinalRef(ref); ok {
+		e, err := s.getSavedEventByOrdinal(ctx, db, row.ID, ord)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, 0, model.ErrNotFound
+			}
+			return nil, 0, err
+		}
+		return e, ord, nil
+	}
+
+	if digest, ok := parseSHA256Ref(ref); ok {
+		var e model.RecipeEvent
+		err := db.WithContext(ctx).
+			Where("recipe_id = ? AND digest = ? AND saved_ordinal IS NOT NULL", row.ID, digest).
+			Order("saved_ordinal DESC").
+			First(&e).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, 0, model.ErrNotFound
+			}
+			return nil, 0, err
+		}
+		if e.SavedOrdinal == nil {
+			return nil, 0, model.ErrNotFound
+		}
+		return &e, *e.SavedOrdinal, nil
+	}
+
+	if id, ok := parseVerRef(ref); ok {
+		e, err := s.getEventByID(ctx, db, id)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, 0, model.ErrNotFound
+			}
+			return nil, 0, err
+		}
+		if e.RecipeID != row.ID {
+			return nil, 0, model.ErrNotFound
+		}
+		if e.SavedOrdinal == nil {
+			return nil, 0, model.ErrNotFound
+		}
+		return e, *e.SavedOrdinal, nil
+	}
+
+	return nil, 0, model.ErrNotFound
+}
+
+func (s *service) getRecipeAsOf(ctx context.Context, db *gorm.DB, row *model.RecipeRow, name string, asof time.Time) (*model.RecipeWithContent, error) {
+	var e model.RecipeEvent
+	err := db.WithContext(ctx).
+		Where("project_id = ? AND recipe_id = ? AND event_at <= ? AND (published = TRUE OR digest IS NULL)", row.ProjectID, row.ID, asof.UTC()).
+		Order("event_at DESC, id DESC").
+		First(&e).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, model.ErrNotPublished
+		}
+		return nil, err
+	}
+	if !e.Published {
+		return nil, model.ErrNotPublished
+	}
+	ord, ok := publishedSavedOrdinal(&e)
+	if !ok {
+		return nil, model.ErrNotPublished
+	}
+	content, err := loadBlobContent(ctx, db, e.Digest)
+	if err != nil {
+		return nil, err
+	}
+	return &model.RecipeWithContent{
+		Name:        name,
+		CommitHash:  formatSavedOrdinalRef(ord),
+		Content:     content,
+		IsPublished: true,
+		PublishedAt: ptrTime(e.EventAt),
+		PublishedBy: e.Actor,
+	}, nil
+}
+
+var _ Service = (*service)(nil)

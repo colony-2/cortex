@@ -2,181 +2,171 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"os/exec"
-	"path/filepath"
+	"errors"
 	"strings"
-	"time"
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
+	"gorm.io/gorm"
 )
 
-// ListRecipes lists recipes matching the filter criteria.
 func (s *service) ListRecipes(ctx context.Context, filter model.RecipeFilter) (store.Iterator[*model.RecipeInfo], error) {
-	// Validate project exists if filtering by single project
+	// Validate project exists if filtering by single project.
 	if len(filter.ProjectIDs) == 1 {
 		if err := s.ensureProject(ctx, filter.ProjectIDs[0]); err != nil {
 			return nil, err
 		}
 	}
 
-	var allRecipes []*model.RecipeInfo
-
-	// For each project, list recipes from git
-	projectIDs := filter.ProjectIDs
-	if len(projectIDs) == 0 {
-		// If no project filter, this would need to list all projects
-		// For now, return empty - this is a safety measure
+	if len(filter.ProjectIDs) == 0 {
 		return store.NewSliceIterator([]*model.RecipeInfo{}), nil
 	}
 
-	for _, projectID := range projectIDs {
-		// Create ephemeral workspace for this project
-		workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create workspace: %w", err)
-		}
-		// Cleanup will be called at end of this iteration
-		defer cleanup()
+	db := s.store.DB().WithContext(ctx)
 
-		// List all recipe files in .c2/recipes/
-		recipesDir := filepath.Join(workspace, ".c2", "recipes")
-		recipeFiles, err := s.findRecipeFiles(ctx, recipesDir)
-		if err != nil {
-			// If directory doesn't exist, no recipes for this project
-			cleanup() // Cleanup before continuing
+	var rows []model.RecipeRow
+	query := db.Where("deleted_at IS NULL").Where("project_id IN ?", filter.ProjectIDs)
+
+	if len(filter.Names) > 0 {
+		query = query.Where("name IN ?", filter.Names)
+	}
+	if strings.TrimSpace(filter.NamePrefix) != "" {
+		query = query.Where("name LIKE ?", strings.TrimSpace(filter.NamePrefix)+"%")
+	}
+
+	if err := query.Order("name ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	// Batch-load referenced events (latest saved + published pointers).
+	eventIDs := make([]string, 0, len(rows)*2)
+	for i := range rows {
+		if rows[i].LatestSavedEventID != nil {
+			eventIDs = append(eventIDs, *rows[i].LatestSavedEventID)
+		}
+		if rows[i].PublishedEventID != nil {
+			eventIDs = append(eventIDs, *rows[i].PublishedEventID)
+		}
+	}
+
+	eventsByID := map[string]*model.RecipeEvent{}
+	if len(eventIDs) > 0 {
+		var events []model.RecipeEvent
+		if err := db.Where("id IN ?", eventIDs).Find(&events).Error; err != nil {
+			return nil, err
+		}
+		for i := range events {
+			e := events[i]
+			eventsByID[e.ID] = &e
+		}
+	}
+
+	out := make([]*model.RecipeInfo, 0, len(rows))
+	for i := range rows {
+		row := rows[i]
+		latestEvent := (*model.RecipeEvent)(nil)
+		if row.LatestSavedEventID != nil {
+			latestEvent = eventsByID[*row.LatestSavedEventID]
+		}
+		if latestEvent == nil || latestEvent.SavedOrdinal == nil {
+			// Shouldn't happen for non-deleted rows, but be defensive.
 			continue
 		}
 
-		// Get published recipes for this project
-		publishedRecipes, err := s.getPublishedRecipesMap(ctx, projectID)
-		if err != nil {
-			return nil, err
+		info := &model.RecipeInfo{
+			Name:           row.Name,
+			LatestCommit:   formatSavedOrdinalRef(*latestEvent.SavedOrdinal),
+			LatestCommitAt: latestEvent.EventAt,
 		}
 
-		// Build RecipeInfo for each file
-		for _, recipeFile := range recipeFiles {
-			name := s.filePathToRecipeName(recipeFile, recipesDir)
-			gitPath := deriveGitPath(name)
-
-			// Get latest commit for this file
-			latestCommit, latestDate, err := s.getFileLatestCommitWithDate(ctx, workspace, gitPath)
-			if err != nil {
-				continue
+		pubEvent := (*model.RecipeEvent)(nil)
+		if row.PublishedEventID != nil {
+			pubEvent = eventsByID[*row.PublishedEventID]
+		}
+		if pubEvent != nil && pubEvent.Published {
+			ord, ok := publishedSavedOrdinal(pubEvent)
+			if ok {
+				ref := formatSavedOrdinalRef(ord)
+				info.PublishedCommit = &ref
+				at := pubEvent.EventAt.UTC()
+				info.PublishedAt = &at
+				info.PublishedBy = pubEvent.Actor
 			}
-
-			info := &model.RecipeInfo{
-				Name:           name,
-				LatestCommit:   latestCommit,
-				LatestCommitAt: latestDate,
-			}
-
-			// Add published info if available
-			if pub, ok := publishedRecipes[name]; ok {
-				info.PublishedCommit = &pub.CommitHash
-				info.PublishedAt = &pub.PublishedAt
-				info.PublishedBy = pub.PublishedBy
-			}
-
-			allRecipes = append(allRecipes, info)
 		}
 
-		// Cleanup workspace explicitly after processing this project
-		cleanup()
+		out = append(out, info)
 	}
 
-	// Apply filters
-	filtered := s.applyRecipeFilters(allRecipes, filter)
+	// Apply publish-status filter (post-filter, since it depends on event pointer semantics).
+	filtered := out[:0]
+	for _, r := range out {
+		switch filter.PublishStatus {
+		case model.PublishStatusPublished:
+			if r.PublishedCommit == nil {
+				continue
+			}
+		case model.PublishStatusUnpublished:
+			if r.PublishedCommit != nil {
+				continue
+			}
+		case model.PublishStatusAll:
+		}
+		filtered = append(filtered, r)
+	}
 
 	return store.NewSliceIterator(filtered), nil
 }
 
-// GetRecipeHistory returns the git commit history for a specific recipe.
 func (s *service) GetRecipeHistory(ctx context.Context, projectID project.ID, name string) (store.Iterator[*model.RecipeVersion], error) {
-	// 1. Validate project exists
 	if err := s.ensureProject(ctx, projectID); err != nil {
 		return nil, err
 	}
+	if err := validateRecipeName(name); err != nil {
+		return nil, err
+	}
 
-	// 2. Create ephemeral workspace
-	workspace, cleanup, err := s.createEphemeralWorkspace(ctx, projectID)
+	db := s.store.DB()
+	row, err := s.findRecipeRow(ctx, db, projectID, name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create workspace: %w", err)
-	}
-	defer cleanup()
-
-	gitPath := deriveGitPath(name)
-
-	if err := s.ensureRepoHasHistory(ctx, workspace); err != nil {
-		return nil, fmt.Errorf("failed to prepare git history: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, model.ErrNotFound
+		}
+		return nil, err
 	}
 
-	// 3. Get git commit history for this file
-	cmd := exec.CommandContext(ctx, "git", "log", "--follow", "--format=%H|%an|%at|%s", "--", gitPath)
-	cmd.Dir = workspace
-	output, err := cmd.Output()
+	var events []model.RecipeEvent
+	if err := db.WithContext(ctx).
+		Where("recipe_id = ? AND saved_ordinal IS NOT NULL", row.ID).
+		Order("saved_ordinal DESC").
+		Find(&events).Error; err != nil {
+		return nil, err
+	}
+
+	pubOrdinal, _, err := s.currentPublishedOrdinal(ctx, db, row)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get git history: %w", err)
+		return nil, err
 	}
 
-	// 4. Get published commit (if any)
-	var publishedCommit string
-	publishedRecipe, err := s.store.GetByName(ctx, projectID, name)
-	if err == nil {
-		publishedCommit = publishedRecipe.CommitHash
-	}
-
-	// 5. Parse commits
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	versions := make([]*model.RecipeVersion, 0, len(lines))
-
-	for _, line := range lines {
-		if line == "" {
+	versions := make([]*model.RecipeVersion, 0, len(events))
+	for i := range events {
+		e := events[i]
+		if e.SavedOrdinal == nil {
 			continue
 		}
+		ord := *e.SavedOrdinal
+		isPublished := pubOrdinal != nil && *pubOrdinal == ord
 
-		parts := strings.SplitN(line, "|", 4)
-		if len(parts) != 4 {
-			continue
-		}
-
-		commitHash := parts[0]
-		author := parts[1]
-		timestampStr := parts[2]
-		message := parts[3]
-
-		// Parse timestamp
-		var timestamp int64
-		fmt.Sscanf(timestampStr, "%d", &timestamp)
-		createdAt := time.Unix(timestamp, 0)
-
-		version := &model.RecipeVersion{
+		versions = append(versions, &model.RecipeVersion{
 			Name:        name,
-			CommitHash:  commitHash,
-			ShortHash:   shortHash(commitHash),
-			Author:      author,
-			Message:     message,
-			CreatedAt:   createdAt,
-			IsPublished: commitHash == publishedCommit,
-		}
-
-		versions = append(versions, version)
+			CommitHash:  formatSavedOrdinalRef(ord),
+			ShortHash:   formatSavedOrdinalRef(ord),
+			Author:      derefString(e.Actor),
+			Message:     derefString(e.Message),
+			CreatedAt:   e.EventAt,
+			IsPublished: isPublished,
+		})
 	}
 
 	return store.NewSliceIterator(versions), nil
-}
-
-// SyncFromRemote syncs the local workspace from the remote repository.
-// With ephemeral workspaces, this is a no-op since every operation creates
-// a fresh workspace from the remote. Kept for API compatibility.
-func (s *service) SyncFromRemote(ctx context.Context, projectID project.ID) error {
-	// Validate project exists
-	if err := s.ensureProject(ctx, projectID); err != nil {
-		return err
-	}
-
-	// No action needed - ephemeral workspaces are always synced on creation
-	return nil
 }

@@ -1,16 +1,16 @@
 # Recipe Service
 
-A git-backed recipe storage and versioning service for Colony2. The Recipe Service provides lifecycle management for recipe definitions with git-based versioning and a lightweight database index for published recipes.
+A Postgres-backed recipe storage and versioning service for Colony2. The Recipe Service provides lifecycle management for recipe definitions with immutable saved versions and independent publishing.
 
 ## Overview
 
-The Recipe Service manages recipes through a simple API while using git for version control behind the scenes. Users never interact with git directly - the service owns all recipe mutations and git operations.
+The Recipe Service manages recipes through a simple API while using Postgres as the source of truth behind the scenes. Users never interact with the underlying storage directly - the service owns all recipe mutations and publishing state.
 
 ### Key Features
 
-- **Git-backed storage** - All recipe content and history stored in git (`.c2/recipes/` directory)
+- **Postgres CAS storage** - Recipe bytes are stored once using content-addressable storage (sha256 digest)
 - **Service-managed lifecycle** - Create, update, delete, publish, and unpublish through API
-- **Version references** - Access recipes by published version or any git ref (commit, branch, tag)
+- **Version references** - Access recipes by published version, saved version (`vN`), content digest (`sha256:...`), or published-as-of time (`asof:...`)
 - **Optimistic concurrency** - Prevent conflicts during concurrent operations
 - **Automatic validation** - Recipes validated before publishing
 - **Hierarchical organization** - Support for nested recipe names (e.g., `workflows/ci/build`)
@@ -19,31 +19,31 @@ The Recipe Service manages recipes through a simple API while using git for vers
 
 ### Recipe Lifecycle
 
-1. **Create** - Service creates recipe file and commits to git
-2. **Update** - Service updates recipe file and commits (creates new version)
+1. **Create** - Service saves initial immutable version (creates `v1`)
+2. **Update** - Service saves new immutable version (creates `vN`)
 3. **Publish** - Service validates and marks a specific version as published
 4. **Unpublish** - Service removes published reference
-5. **Delete** - Service removes recipe file and commits
+5. **Delete** - Service marks recipe as deleted (versions remain for audit/GC policies)
 
 ### Recipe References
 
 Recipes can be referenced in two ways:
 
 - **Simple name** - `"workflows/ci/build"` returns the currently published version
-- **Name with ref** - `"workflows/ci/build@<ref>"` returns recipe at any git ref
+- **Name with ref** - `"workflows/ci/build@<ref>"` returns recipe at a specific saved version / digest / tag / as-of time
 
 Supported ref formats:
-- Commit hash: `"workflows/ci/build@a1b2c3d4e5f6"` (full or short)
-- Branch: `"workflows/ci/build@main"`
-- Tag: `"workflows/ci/build@v1.0.0"`
-- Relative: `"workflows/ci/build@HEAD~1"`
+- Saved ordinal: `"workflows/ci/build@v12"`
+- Content digest: `"workflows/ci/build@sha256:<hex>"`
+- Saved event id: `"workflows/ci/build@ver:<ksuid>"`
+- Published as-of: `"workflows/ci/build@asof:2026-04-01T12:12:12.123456Z"`
 
 ### Publishing Model
 
 - Each recipe name has exactly one published version at a time
 - Only published recipes are accessible to consumers by default
 - Re-publishing updates which version is considered published
-- All versions remain in git history and can be accessed via `name@ref`
+- All saved versions remain in the event log and can be accessed via `name@ref`
 
 ## Installation
 
@@ -64,7 +64,7 @@ import (
 
 // Option 1: From existing DB connection
 svc, err := recipe.NewServiceFromDB(db, recipe.ServiceConfig{
-    GitRepo:      gitRepo,        // git.Repository implementation
+    GitRepo:      gitRepo,        // ignored (kept for compatibility)
     Projects:     projectService, // project.Service for validation
     IDGen:        recipe.NewKSUIDGenerator(),
     Clock:        recipe.NewSystemClock(),
@@ -75,7 +75,7 @@ svc, err := recipe.NewServiceFromDB(db, recipe.ServiceConfig{
 store, _ := recipe.NewStore(db)
 svc, err := recipe.NewService(recipe.ServiceConfig{
     Store:        store,
-    GitRepo:      gitRepo,
+    GitRepo:      gitRepo, // ignored (kept for compatibility)
     Projects:     projectService,
     IDGen:        recipe.NewKSUIDGenerator(),
     Clock:        recipe.NewSystemClock(),

@@ -26,7 +26,7 @@ func NewProvider(service Service, projectID project.ID) *Provider {
 
 // GetRecipe retrieves a recipe by name, supporting the name@ref syntax.
 // - Simple name (e.g., "workflows/ci/build"): Returns the published version
-// - Name with ref (e.g., "workflows/ci/build@a1b2c3d"): Returns recipe at that specific git ref
+// - Name with ref (e.g., "workflows/ci/build@v12"): Returns recipe at that saved version
 func (p *Provider) GetRecipe(name string) (*recipecore.Recipe, error) {
 	ctx := context.Background()
 

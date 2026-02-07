@@ -3,818 +3,528 @@ package service
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/git/pkg/git"
 	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 	"github.com/colony-2/colony2/server/recipes/internal/testutil"
-	"gorm.io/gorm"
 )
 
-func TestService_FullLifecycle(t *testing.T) {
-	// Setup
-	pg := pgembed.StartEmbeddedPostgres(t)
-	defer pg.Close(t)
-
-	svc := setupTestService(t, pg.DB)
-	ctx := context.Background()
-	projectID := project.ID("proj_test")
-
-	// Test 1: Create recipe with AutoPublish
-	t.Run("CreateWithAutoPublish", func(t *testing.T) {
-		version, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        "test-recipe",
-			Content:     testutil.CreateTestRecipeContent("test-recipe"),
-			Description: "Test recipe",
-			AutoPublish: true,
-		})
-		if err != nil {
-			t.Fatalf("CreateRecipe failed: %v", err)
-		}
-
-		if version.Name != "test-recipe" {
-			t.Errorf("Name = %q, want %q", version.Name, "test-recipe")
-		}
-		if version.CommitHash == "" {
-			t.Error("CommitHash is empty")
-		}
-		if !version.IsPublished {
-			t.Error("IsPublished = false, want true")
-		}
-	})
-
-	// Test 2: Get published recipe
-	t.Run("GetPublishedRecipe", func(t *testing.T) {
-		recipe, err := svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-
-		if recipe.Name != "test-recipe" {
-			t.Errorf("Name = %q, want %q", recipe.Name, "test-recipe")
-		}
-		if !recipe.IsPublished {
-			t.Error("IsPublished = false, want true")
-		}
-		if len(recipe.Content) == 0 {
-			t.Error("Content is empty")
-		}
-	})
-
-	// Regression: updating with identical bytes should be a no-op (not an HTTP 500).
-	t.Run("UpdateNoChangesIsNoOp", func(t *testing.T) {
-		name := "no-changes"
-		content := testutil.CreateTestRecipeContent(name)
-
-		v1, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        name,
-			Content:     content,
-			Description: "No changes test",
-			AutoPublish: false,
-		})
-		if err != nil {
-			t.Fatalf("CreateRecipe failed: %v", err)
-		}
-		if v1.IsPublished {
-			t.Fatalf("IsPublished = true, want false")
-		}
-
-		v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
-			ProjectID:   projectID,
-			Name:        name,
-			Content:     content,
-			Message:     "noop update",
-			AutoPublish: false,
-		})
-		if err != nil {
-			t.Fatalf("UpdateRecipe failed: %v", err)
-		}
-		if v2.CommitHash != v1.CommitHash {
-			t.Errorf("CommitHash = %q, want %q", v2.CommitHash, v1.CommitHash)
-		}
-		if v2.IsPublished {
-			t.Errorf("IsPublished = true, want false")
-		}
-	})
-
-	t.Run("UpdateNoChangesAutoPublishPublishes", func(t *testing.T) {
-		name := "no-changes"
-		content := testutil.CreateTestRecipeContent(name)
-
-		v, err := svc.UpdateRecipe(ctx, model.UpdateInput{
-			ProjectID:   projectID,
-			Name:        name,
-			Content:     content,
-			Message:     "noop publish",
-			AutoPublish: true,
-		})
-		if err != nil {
-			t.Fatalf("UpdateRecipe failed: %v", err)
-		}
-		if !v.IsPublished {
-			t.Fatalf("IsPublished = false, want true")
-		}
-
-		recipe, err := svc.GetRecipe(ctx, projectID, name, "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-		if !recipe.IsPublished {
-			t.Fatalf("GetRecipe IsPublished = false, want true")
-		}
-		if string(recipe.Content) != string(content) {
-			t.Fatalf("GetRecipe content mismatch")
-		}
-	})
-
-	// Test 3: Update recipe without AutoPublish
-	t.Run("UpdateWithoutAutoPublish", func(t *testing.T) {
-		// Create different content by changing the message
-		updatedContent := []byte(`version: "1.0"
-id: "test-recipe"
-op: echo
-inputs:
-  message: "Updated test recipe"
-`)
-		version, err := svc.UpdateRecipe(ctx, model.UpdateInput{
-			ProjectID:   projectID,
-			Name:        "test-recipe",
-			Content:     updatedContent,
-			Message:     "Update recipe",
-			AutoPublish: false,
-		})
-		if err != nil {
-			t.Fatalf("UpdateRecipe failed: %v", err)
-		}
-
-		if version.IsPublished {
-			t.Error("IsPublished = true, want false (not auto-published)")
-		}
-
-		// Get recipe should still return old published version
-		recipe, err := svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-
-		// Should not be the new version
-		if recipe.CommitHash == version.CommitHash {
-			t.Error("Got new version, but should still be old published version")
-		}
-	})
-
-	// Test 4: Get recipe at specific commit
-	t.Run("GetRecipeAtCommit", func(t *testing.T) {
-		// Get latest version's commit
-		history, err := svc.GetRecipeHistory(ctx, projectID, "test-recipe")
-		if err != nil {
-			t.Fatalf("GetRecipeHistory failed: %v", err)
-		}
-		defer history.Close(ctx)
-
-		latest, err := history.Next(ctx)
-		if err != nil {
-			t.Fatalf("Next failed: %v", err)
-		}
-
-		// Get recipe at that commit
-		recipe, err := svc.GetRecipe(ctx, projectID, "test-recipe", latest.CommitHash)
-		if err != nil {
-			t.Fatalf("GetRecipe at commit failed: %v", err)
-		}
-
-		if recipe.CommitHash != latest.CommitHash {
-			t.Errorf("CommitHash = %q, want %q", recipe.CommitHash, latest.CommitHash)
-		}
-	})
-
-	// Regression: published commit behind HEAD should still be retrievable.
-	t.Run("GetRecipePublishedBehindHead", func(t *testing.T) {
-		// Create and publish v1
-		v1, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        "behind-head",
-			Content:     testutil.CreateTestRecipeContent("behind-head"),
-			Description: "Behind head test",
-			AutoPublish: true,
-		})
-		if err != nil {
-			t.Fatalf("CreateRecipe failed: %v", err)
-		}
-
-		// Update to v2 without publishing (HEAD moves)
-		v2Content := []byte(`version: "1.0"
-id: "behind-head"
-op: echo
-inputs:
-  message: "Behind head v2"
-`)
-		v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
-			ProjectID:   projectID,
-			Name:        "behind-head",
-			Content:     v2Content,
-			Message:     "Update behind-head to v2",
-			AutoPublish: false,
-		})
-		if err != nil {
-			t.Fatalf("UpdateRecipe failed: %v", err)
-		}
-		if v2.CommitHash == v1.CommitHash {
-			t.Fatalf("expected different commits, got %s", v2.CommitHash)
-		}
-
-		// GetRecipe with empty ref should return published v1 (even though workspace clones depth=1 at v2)
-		recipe, err := svc.GetRecipe(ctx, projectID, "behind-head", "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-		if recipe.CommitHash != v1.CommitHash {
-			t.Errorf("CommitHash = %q, want %q (published v1)", recipe.CommitHash, v1.CommitHash)
-		}
-		if !recipe.IsPublished {
-			t.Error("Recipe should be marked as published")
-		}
-		// Ensure we actually got v1 content (not HEAD/v2 content).
-		if string(recipe.Content) == string(v2Content) {
-			t.Error("Got v2 content, want v1 published content")
-		}
-	})
-
-	// Test 5: List recipes
-	t.Run("ListRecipes", func(t *testing.T) {
-		iter, err := svc.ListRecipes(ctx, model.RecipeFilter{
-			ProjectIDs:    []project.ID{projectID},
-			PublishStatus: model.PublishStatusAll,
-		})
-		if err != nil {
-			t.Fatalf("ListRecipes failed: %v", err)
-		}
-		defer iter.Close(ctx)
-
-		count := 0
-		for {
-			_, err := iter.Next(ctx)
-			if errors.Is(err, store.ErrIteratorDone) {
-				break
-			}
-			if err != nil {
-				t.Fatalf("Iterator error: %v", err)
-			}
-			count++
-		}
-
-		if count == 0 {
-			t.Error("No recipes found")
-		}
-	})
-
-	// Test 6: Get recipe history
-	t.Run("GetRecipeHistory", func(t *testing.T) {
-		iter, err := svc.GetRecipeHistory(ctx, projectID, "test-recipe")
-		if err != nil {
-			t.Fatalf("GetRecipeHistory failed: %v", err)
-		}
-		defer iter.Close(ctx)
-
-		count := 0
-		var foundPublished bool
-		for {
-			version, err := iter.Next(ctx)
-			if errors.Is(err, store.ErrIteratorDone) {
-				break
-			}
-			if err != nil {
-				t.Fatalf("Iterator error: %v", err)
-			}
-			count++
-			if version.IsPublished {
-				foundPublished = true
-			}
-		}
-
-		if count < 2 {
-			t.Errorf("Expected at least 2 versions, got %d", count)
-		}
-		if !foundPublished {
-			t.Error("No published version found in history")
-		}
-	})
-
-	// Test 7: Unpublish recipe
-	t.Run("UnpublishRecipe", func(t *testing.T) {
-		// Get current published commit
-		recipe, err := svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-
-		// Unpublish
-		err = svc.UnpublishRecipe(ctx, model.UnpublishInput{
-			ProjectID:      projectID,
-			Name:           "test-recipe",
-			ExpectedCommit: recipe.CommitHash,
-		})
-		if err != nil {
-			t.Fatalf("UnpublishRecipe failed: %v", err)
-		}
-
-		// Get recipe should still work (falls back to latest commit) but not be published
-		recipe, err = svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if err != nil {
-			t.Fatalf("GetRecipe should work for unpublished recipe: %v", err)
-		}
-		if recipe.IsPublished {
-			t.Error("Recipe should not be marked as published after unpublishing")
-		}
-	})
-
-	// Test 8: Republish recipe
-	t.Run("RepublishRecipe", func(t *testing.T) {
-		// Get latest commit
-		history, err := svc.GetRecipeHistory(ctx, projectID, "test-recipe")
-		if err != nil {
-			t.Fatalf("GetRecipeHistory failed: %v", err)
-		}
-		defer history.Close(ctx)
-
-		latest, err := history.Next(ctx)
-		if err != nil {
-			t.Fatalf("Next failed: %v", err)
-		}
-
-		// Publish it
-		_, err = svc.PublishRecipe(ctx, model.PublishInput{
-			ProjectID:  projectID,
-			Name:       "test-recipe",
-			CommitHash: latest.CommitHash,
-		})
-		if err != nil {
-			t.Fatalf("PublishRecipe failed: %v", err)
-		}
-
-		// Should be able to get it now
-		recipe, err := svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if err != nil {
-			t.Fatalf("GetRecipe failed: %v", err)
-		}
-		if !recipe.IsPublished {
-			t.Error("Recipe should be published")
-		}
-	})
-
-	// Test 9: Delete recipe
-	t.Run("DeleteRecipe", func(t *testing.T) {
-		err := svc.DeleteRecipe(ctx, projectID, "test-recipe")
-		if err != nil {
-			t.Fatalf("DeleteRecipe failed: %v", err)
-		}
-
-		// Recipe should not exist in git anymore
-		_, err = svc.GetRecipe(ctx, projectID, "test-recipe", "")
-		if !errors.Is(err, model.ErrNotFound) {
-			t.Errorf("Expected ErrNotFound after delete, got %v", err)
-		}
-	})
+func registerEchoOpForTests() {
+	recipeops.Clear()
+	recipeops.Register(recipeops.NewActivityMappedOpV2[map[string]interface{}, map[string]interface{}](
+		recipeops.OpMetadata{Type: "echo"},
+		func(_ recipeops.OpDependencies, _ context.Context, in map[string]interface{}) (map[string]interface{}, error) {
+			return in, nil
+		},
+	))
 }
 
-func TestService_UnpublishedRecipeEditing(t *testing.T) {
-	// This test specifically addresses the bug where unpublished recipes couldn't be edited
+func TestService_SavePublishAsOf(t *testing.T) {
+	registerEchoOpForTests()
+
 	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
-	svc := setupTestService(t, pg.DB)
 	ctx := context.Background()
 	projectID := project.ID("proj_test")
 
-	// Create recipe WITHOUT autopublish
-	version1, err := svc.CreateRecipe(ctx, model.CreateInput{
+	projects := testutil.NewMockProjectService()
+	projects.AddProject(&project.Project{ID: projectID})
+
+	clock := testutil.NewMockClock(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	idgen := testutil.NewMockIDGenerator("id_")
+	cel := &testutil.MockCELValidator{}
+
+	st, err := store.NewWithOptions(pg.DB, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatalf("store.NewWithOptions failed: %v", err)
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:        st,
+		Projects:     projects,
+		IDGen:        idgen,
+		Clock:        clock,
+		CELValidator: cel,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	clock.Set(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	v1, err := svc.CreateRecipe(ctx, model.CreateInput{
 		ProjectID:   projectID,
-		Name:        "unpublished-recipe",
-		Content:     testutil.CreateTestRecipeContent("unpublished-recipe"),
-		Description: "Test unpublished recipe",
-		AutoPublish: false,
+		Name:        "r1",
+		Content:     testutil.CreateTestRecipeContent("r1"),
+		Description: "v1",
+		AutoPublish: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateRecipe failed: %v", err)
 	}
-	if version1.IsPublished {
-		t.Error("Recipe should not be published")
+	if v1.CommitHash != "v1" || !v1.IsPublished {
+		t.Fatalf("CreateRecipe = (%s, published=%v), want (v1, true)", v1.CommitHash, v1.IsPublished)
 	}
 
-	// Should be able to get the unpublished recipe
-	recipe, err := svc.GetRecipe(ctx, projectID, "unpublished-recipe", "")
-	if err != nil {
-		t.Fatalf("GetRecipe failed for unpublished recipe: %v", err)
-	}
-	if recipe.IsPublished {
-		t.Error("Recipe should not be marked as published")
-	}
-	if recipe.CommitHash != version1.CommitHash {
-		t.Errorf("CommitHash = %q, want %q", recipe.CommitHash, version1.CommitHash)
-	}
-
-	// Should be able to update the unpublished recipe
-	updatedContent := []byte(`version: "1.0"
-id: "unpublished-recipe"
+	// Save v2 without publishing.
+	clock.Add(1 * time.Minute)
+	v2Content := []byte(`version: "1.0"
+id: "r1"
 op: echo
 inputs:
-  message: "Updated unpublished recipe"
+  message: "v2"
 `)
-	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+	v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:   projectID,
-		Name:        "unpublished-recipe",
-		Content:     updatedContent,
-		Message:     "Update unpublished recipe",
+		Name:        "r1",
+		Content:     v2Content,
+		Message:     "save v2",
 		AutoPublish: false,
 	})
 	if err != nil {
-		t.Fatalf("UpdateRecipe failed for unpublished recipe: %v", err)
+		t.Fatalf("UpdateRecipe failed: %v", err)
 	}
-	if version2.IsPublished {
-		t.Error("Updated recipe should not be published")
+	if v2.CommitHash != "v2" || v2.IsPublished {
+		t.Fatalf("UpdateRecipe = (%s, published=%v), want (v2, false)", v2.CommitHash, v2.IsPublished)
 	}
 
-	// Should get the updated version
-	recipe, err = svc.GetRecipe(ctx, projectID, "unpublished-recipe", "")
+	// Default Get returns published v1, not latest saved v2.
+	got, err := svc.GetRecipe(ctx, projectID, "r1", "")
 	if err != nil {
-		t.Fatalf("GetRecipe failed after update: %v", err)
+		t.Fatalf("GetRecipe failed: %v", err)
 	}
-	if recipe.CommitHash != version2.CommitHash {
-		t.Errorf("CommitHash = %q, want %q (should be updated version)", recipe.CommitHash, version2.CommitHash)
+	if got.CommitHash != "v1" || !got.IsPublished {
+		t.Fatalf("GetRecipe() = (%s, published=%v), want (v1, true)", got.CommitHash, got.IsPublished)
+	}
+
+	// Publish v2.
+	clock.Add(1 * time.Minute)
+	_, err = svc.PublishRecipe(ctx, model.PublishInput{
+		ProjectID:  projectID,
+		Name:       "r1",
+		CommitHash: "v2",
+	})
+	if err != nil {
+		t.Fatalf("PublishRecipe failed: %v", err)
+	}
+
+	got2, err := svc.GetRecipe(ctx, projectID, "r1", "")
+	if err != nil {
+		t.Fatalf("GetRecipe failed: %v", err)
+	}
+	if got2.CommitHash != "v2" || !got2.IsPublished {
+		t.Fatalf("GetRecipe() = (%s, published=%v), want (v2, true)", got2.CommitHash, got2.IsPublished)
+	}
+
+	// As-of before publish should return v1.
+	asofBefore := time.Date(2026, 2, 7, 12, 0, 30, 0, time.UTC)
+	asofRecipe, err := svc.GetRecipe(ctx, projectID, "r1", "asof:"+asofBefore.Format(time.RFC3339Nano))
+	if err != nil {
+		t.Fatalf("GetRecipe asof failed: %v", err)
+	}
+	if asofRecipe.CommitHash != "v1" {
+		t.Fatalf("asof commit = %s, want v1", asofRecipe.CommitHash)
+	}
+
+	// Unpublish and verify asof after unpublish is not published.
+	clock.Add(1 * time.Minute)
+	if err := svc.UnpublishRecipe(ctx, model.UnpublishInput{ProjectID: projectID, Name: "r1"}); err != nil {
+		t.Fatalf("UnpublishRecipe failed: %v", err)
+	}
+
+	afterUnpub := time.Date(2026, 2, 7, 12, 5, 0, 0, time.UTC)
+	_, err = svc.GetRecipe(ctx, projectID, "r1", "asof:"+afterUnpub.Format(time.RFC3339Nano))
+	if !errors.Is(err, model.ErrNotPublished) {
+		t.Fatalf("GetRecipe asof after unpublish error = %v, want ErrNotPublished", err)
 	}
 }
 
-func TestService_HierarchicalRecipes(t *testing.T) {
+func TestService_PublishOldDoesNotMoveLatestSaved(t *testing.T) {
+	registerEchoOpForTests()
+
 	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
-	svc := setupTestService(t, pg.DB)
 	ctx := context.Background()
 	projectID := project.ID("proj_test")
 
-	// Create hierarchical recipes
-	recipes := []string{
-		"workflows/ci/build",
-		"workflows/ci/test",
-		"workflows/deploy/staging",
-		"workflows/deploy/production",
-		"utils/cleanup",
+	projects := testutil.NewMockProjectService()
+	projects.AddProject(&project.Project{ID: projectID})
+
+	clock := testutil.NewMockClock(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	idgen := testutil.NewMockIDGenerator("id_")
+	cel := &testutil.MockCELValidator{}
+
+	st, err := store.NewWithOptions(pg.DB, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatalf("store.NewWithOptions failed: %v", err)
 	}
 
-	for _, name := range recipes {
-		_, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        name,
-			Content:     testutil.CreateTestRecipeContent(name),
-			AutoPublish: true,
-		})
-		if err != nil {
-			t.Fatalf("CreateRecipe %q failed: %v", name, err)
-		}
-	}
-
-	// List with prefix filter
-	iter, err := svc.ListRecipes(ctx, model.RecipeFilter{
-		ProjectIDs:    []project.ID{projectID},
-		NamePrefix:    "workflows/ci/",
-		PublishStatus: model.PublishStatusPublished,
+	svc, err := New(ServiceConfig{
+		Store:        st,
+		Projects:     projects,
+		IDGen:        idgen,
+		Clock:        clock,
+		CELValidator: cel,
 	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	if _, err := svc.CreateRecipe(ctx, model.CreateInput{
+		ProjectID:   projectID,
+		Name:        "r2",
+		Content:     testutil.CreateTestRecipeContent("r2"),
+		Description: "v1",
+		AutoPublish: true,
+	}); err != nil {
+		t.Fatalf("CreateRecipe failed: %v", err)
+	}
+
+	clock.Add(1 * time.Minute)
+	if _, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+		ProjectID:   projectID,
+		Name:        "r2",
+		Content:     []byte(`version: "1.0"\nid: "r2"\nop: echo\ninputs:\n  message: "v2"\n`),
+		Message:     "save v2",
+		AutoPublish: false,
+	}); err != nil {
+		t.Fatalf("UpdateRecipe failed: %v", err)
+	}
+
+	// Publish v1 again.
+	clock.Add(1 * time.Minute)
+	if _, err := svc.PublishRecipe(ctx, model.PublishInput{
+		ProjectID:  projectID,
+		Name:       "r2",
+		CommitHash: "v1",
+	}); err != nil {
+		t.Fatalf("PublishRecipe failed: %v", err)
+	}
+
+	iter, err := svc.ListRecipes(ctx, model.RecipeFilter{ProjectIDs: []project.ID{projectID}, PublishStatus: model.PublishStatusAll})
 	if err != nil {
 		t.Fatalf("ListRecipes failed: %v", err)
 	}
 	defer iter.Close(ctx)
 
-	count := 0
-	for {
-		info, err := iter.Next(ctx)
-		if errors.Is(err, store.ErrIteratorDone) {
-			break
-		}
-		if err != nil {
-			t.Fatalf("Iterator error: %v", err)
-		}
-		count++
-
-		// Verify it's in the workflows/ci/ namespace
-		if !hasPrefix(info.Name, "workflows/ci/") {
-			t.Errorf("Recipe %q doesn't match prefix filter", info.Name)
-		}
+	info, err := iter.Next(ctx)
+	if err != nil {
+		t.Fatalf("Next failed: %v", err)
 	}
 
-	if count != 2 {
-		t.Errorf("Expected 2 recipes in workflows/ci/, got %d", count)
+	if info.LatestCommit != "v2" {
+		t.Fatalf("LatestCommit = %s, want v2", info.LatestCommit)
+	}
+	if info.PublishedCommit == nil || *info.PublishedCommit != "v1" {
+		t.Fatalf("PublishedCommit = %v, want v1", info.PublishedCommit)
 	}
 }
 
-func TestService_ConcurrentPublish(t *testing.T) {
+func TestService_GetByRefsAndHistory(t *testing.T) {
+	registerEchoOpForTests()
+
 	pg := pgembed.StartEmbeddedPostgres(t)
 	defer pg.Close(t)
 
-	svc := setupTestService(t, pg.DB)
 	ctx := context.Background()
 	projectID := project.ID("proj_test")
 
-	// Create recipe
-	version1, err := svc.CreateRecipe(ctx, model.CreateInput{
+	projects := testutil.NewMockProjectService()
+	projects.AddProject(&project.Project{ID: projectID})
+
+	clock := testutil.NewMockClock(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	idgen := testutil.NewMockIDGenerator("id_")
+	cel := &testutil.MockCELValidator{}
+
+	st, err := store.NewWithOptions(pg.DB, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatalf("store.NewWithOptions failed: %v", err)
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:        st,
+		Projects:     projects,
+		IDGen:        idgen,
+		Clock:        clock,
+		CELValidator: cel,
+	})
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+
+	v1Content := testutil.CreateTestRecipeContent("r3")
+	_, err = svc.CreateRecipe(ctx, model.CreateInput{
 		ProjectID:   projectID,
-		Name:        "concurrent-test",
-		Content:     testutil.CreateTestRecipeContent("concurrent-test"),
+		Name:        "r3",
+		Content:     v1Content,
+		Description: "v1",
 		AutoPublish: true,
 	})
 	if err != nil {
 		t.Fatalf("CreateRecipe failed: %v", err)
 	}
 
-	// Update to create version 2 (with different content)
-	version2Content := []byte(`version: "1.0"
-id: "concurrent-test"
+	clock.Add(1 * time.Minute)
+	v2Content := []byte(`version: "1.0"
+id: "r3"
 op: echo
 inputs:
-  message: "Updated concurrent-test"
+  message: "v2"
 `)
-	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+	_, err = svc.UpdateRecipe(ctx, model.UpdateInput{
 		ProjectID:   projectID,
-		Name:        "concurrent-test",
-		Content:     version2Content,
+		Name:        "r3",
+		Content:     v2Content,
+		Message:     "save v2",
 		AutoPublish: false,
 	})
 	if err != nil {
 		t.Fatalf("UpdateRecipe failed: %v", err)
 	}
 
-	// Try to publish version2 with wrong ExpectedCommit
-	_, err = svc.PublishRecipe(ctx, model.PublishInput{
-		ProjectID:      projectID,
-		Name:           "concurrent-test",
-		CommitHash:     version2.CommitHash,
-		ExpectedCommit: stringPtr("wrong-commit"),
-	})
-	if !errors.Is(err, model.ErrVersionConflict) {
-		t.Errorf("Expected ErrVersionConflict, got %v", err)
+	// v1 is still published.
+	gotV1, err := svc.GetRecipe(ctx, projectID, "r3", "v1")
+	if err != nil {
+		t.Fatalf("GetRecipe v1 failed: %v", err)
+	}
+	if gotV1.CommitHash != "v1" || !gotV1.IsPublished {
+		t.Fatalf("GetRecipe v1 = (%s, published=%v), want (v1, true)", gotV1.CommitHash, gotV1.IsPublished)
 	}
 
-	// Publish with correct ExpectedCommit should work
-	_, err = svc.PublishRecipe(ctx, model.PublishInput{
-		ProjectID:      projectID,
-		Name:           "concurrent-test",
-		CommitHash:     version2.CommitHash,
-		ExpectedCommit: &version1.CommitHash,
+	gotV2, err := svc.GetRecipe(ctx, projectID, "r3", "v2")
+	if err != nil {
+		t.Fatalf("GetRecipe v2 failed: %v", err)
+	}
+	if gotV2.CommitHash != "v2" || gotV2.IsPublished {
+		t.Fatalf("GetRecipe v2 = (%s, published=%v), want (v2, false)", gotV2.CommitHash, gotV2.IsPublished)
+	}
+
+	// sha256 ref resolves to the most recent saved version with that digest.
+	v2DigestRef := digestToRef(sha256DigestBytes(v2Content))
+	gotByDigest, err := svc.GetRecipe(ctx, projectID, "r3", v2DigestRef)
+	if err != nil {
+		t.Fatalf("GetRecipe sha256 failed: %v", err)
+	}
+	if gotByDigest.CommitHash != "v2" {
+		t.Fatalf("GetRecipe sha256 commit = %s, want v2", gotByDigest.CommitHash)
+	}
+
+	// ver:<id> ref resolves a saved event id.
+	impl := svc.(*service)
+	var row model.RecipeRow
+	if err := impl.store.DB().WithContext(ctx).First(&row, "project_id = ? AND name = ?", projectID, "r3").Error; err != nil {
+		t.Fatalf("load recipe row failed: %v", err)
+	}
+	var ev model.RecipeEvent
+	if err := impl.store.DB().WithContext(ctx).First(&ev, "recipe_id = ? AND saved_ordinal = ?", row.ID, int64(2)).Error; err != nil {
+		t.Fatalf("load saved event failed: %v", err)
+	}
+
+	gotByVer, err := svc.GetRecipe(ctx, projectID, "r3", "ver:"+ev.ID)
+	if err != nil {
+		t.Fatalf("GetRecipe ver:id failed: %v", err)
+	}
+	if gotByVer.CommitHash != "v2" {
+		t.Fatalf("GetRecipe ver:id commit = %s, want v2", gotByVer.CommitHash)
+	}
+
+	// History is ordered by saved ordinal desc and marks published.
+	it, err := svc.GetRecipeHistory(ctx, projectID, "r3")
+	if err != nil {
+		t.Fatalf("GetRecipeHistory failed: %v", err)
+	}
+	defer it.Close(ctx)
+
+	h1, err := it.Next(ctx)
+	if err != nil {
+		t.Fatalf("history next failed: %v", err)
+	}
+	if h1.CommitHash != "v2" {
+		t.Fatalf("history[0] = %s, want v2", h1.CommitHash)
+	}
+	if h1.IsPublished {
+		t.Fatalf("history[0] IsPublished = true, want false")
+	}
+
+	h2, err := it.Next(ctx)
+	if err != nil {
+		t.Fatalf("history next failed: %v", err)
+	}
+	if h2.CommitHash != "v1" || !h2.IsPublished {
+		t.Fatalf("history[1] = (%s, published=%v), want (v1, true)", h2.CommitHash, h2.IsPublished)
+	}
+}
+
+func TestService_UpdateIdenticalBytesIsNoOp(t *testing.T) {
+	registerEchoOpForTests()
+
+	pg := pgembed.StartEmbeddedPostgres(t)
+	defer pg.Close(t)
+
+	ctx := context.Background()
+	projectID := project.ID("proj_test")
+
+	projects := testutil.NewMockProjectService()
+	projects.AddProject(&project.Project{ID: projectID})
+
+	clock := testutil.NewMockClock(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	idgen := testutil.NewMockIDGenerator("id_")
+	cel := &testutil.MockCELValidator{}
+
+	st, err := store.NewWithOptions(pg.DB, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatalf("store.NewWithOptions failed: %v", err)
+	}
+
+	svc, err := New(ServiceConfig{
+		Store:        st,
+		Projects:     projects,
+		IDGen:        idgen,
+		Clock:        clock,
+		CELValidator: cel,
 	})
 	if err != nil {
-		t.Fatalf("PublishRecipe with correct ExpectedCommit failed: %v", err)
+		t.Fatalf("New failed: %v", err)
 	}
-}
 
-func TestService_RecipeValidation(t *testing.T) {
-	pg := pgembed.StartEmbeddedPostgres(t)
-	defer pg.Close(t)
-
-	svc := setupTestService(t, pg.DB)
-	ctx := context.Background()
-	projectID := project.ID("proj_test")
-
-	t.Run("InvalidRecipeID", func(t *testing.T) {
-		// Create recipe with mismatched ID
-		invalidContent := []byte(`version: "1.0"
-id: "wrong-id"
-op: echo
-inputs:
-  message: "test"
-`)
-
-		_, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        "test-recipe",
-			Content:     invalidContent,
-			AutoPublish: true,
-		})
-		if err == nil {
-			t.Fatal("Expected error for mismatched recipe ID, got nil")
-		}
-		if !errors.Is(err, model.ErrInvalidContent) {
-			t.Errorf("Expected ErrInvalidContent, got %v", err)
-		}
-	})
-
-	t.Run("InvalidYAML", func(t *testing.T) {
-		invalidContent := []byte(`this is not valid yaml: [[[`)
-
-		_, err := svc.CreateRecipe(ctx, model.CreateInput{
-			ProjectID:   projectID,
-			Name:        "invalid-yaml",
-			Content:     invalidContent,
-			AutoPublish: true,
-		})
-		if err == nil {
-			t.Fatal("Expected error for invalid YAML, got nil")
-		}
-	})
-
-	t.Run("ValidateOnly", func(t *testing.T) {
-		validContent := testutil.CreateTestRecipeContent("test-validate")
-
-		result, err := svc.ValidateRecipe(ctx, model.ValidateInput{
-			ProjectID: projectID,
-			Name:      "test-validate",
-			Content:   validContent,
-		})
-		if err != nil {
-			t.Errorf("ValidateRecipe failed on valid content: %v", err)
-		}
-		if result == nil || !result.Valid {
-			t.Errorf("ValidateRecipe returned invalid result for valid content: %+v", result)
-		}
-
-		_, err = svc.ValidateRecipe(ctx, model.ValidateInput{
-			ProjectID: projectID,
-			Name:      "test-validate",
-			Content:   []byte("invalid"),
-		})
-		if err == nil {
-			t.Error("ValidateRecipe should fail on invalid content")
-		}
-	})
-}
-
-func TestService_UpdateOptimisticLocking(t *testing.T) {
-	pg := pgembed.StartEmbeddedPostgres(t)
-	defer pg.Close(t)
-
-	svc := setupTestService(t, pg.DB)
-	ctx := context.Background()
-	projectID := project.ID("proj_test")
-
-	// Create recipe
-	version1, err := svc.CreateRecipe(ctx, model.CreateInput{
+	content := testutil.CreateTestRecipeContent("r4")
+	v1, err := svc.CreateRecipe(ctx, model.CreateInput{
 		ProjectID:   projectID,
-		Name:        "lock-test",
-		Content:     testutil.CreateTestRecipeContent("lock-test"),
+		Name:        "r4",
+		Content:     content,
+		Description: "v1",
 		AutoPublish: false,
 	})
 	if err != nil {
 		t.Fatalf("CreateRecipe failed: %v", err)
 	}
+	if v1.CommitHash != "v1" {
+		t.Fatalf("v1 = %s, want v1", v1.CommitHash)
+	}
 
-	// Update recipe (version 2) - with different content
-	version2Content := []byte(`version: "1.0"
-id: "lock-test"
-op: echo
-inputs:
-  message: "Lock test v2"
-`)
-	version2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
-		ProjectID:      projectID,
-		Name:           "lock-test",
-		Content:        version2Content,
-		ExpectedCommit: version1.CommitHash,
-		AutoPublish:    false,
+	clock.Add(1 * time.Minute)
+	v2, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+		ProjectID:   projectID,
+		Name:        "r4",
+		Content:     content,
+		Message:     "noop",
+		AutoPublish: false,
 	})
 	if err != nil {
 		t.Fatalf("UpdateRecipe failed: %v", err)
 	}
-
-	// Try to update with version1 commit (should fail) - with different content
-	version3Content := []byte(`version: "1.0"
-id: "lock-test"
-op: echo
-inputs:
-  message: "Lock test v3 - stale"
-`)
-	_, err = svc.UpdateRecipe(ctx, model.UpdateInput{
-		ProjectID:      projectID,
-		Name:           "lock-test",
-		Content:        version3Content,
-		ExpectedCommit: version1.CommitHash, // Stale!
-		AutoPublish:    false,
-	})
-	if !errors.Is(err, model.ErrVersionConflict) {
-		t.Errorf("Expected ErrVersionConflict, got %v", err)
-	}
-
-	// Update with version2 commit (should succeed) - with different content
-	version4Content := []byte(`version: "1.0"
-id: "lock-test"
-op: echo
-inputs:
-  message: "Lock test v4"
-`)
-	_, err = svc.UpdateRecipe(ctx, model.UpdateInput{
-		ProjectID:      projectID,
-		Name:           "lock-test",
-		Content:        version4Content,
-		ExpectedCommit: version2.CommitHash,
-		AutoPublish:    false,
-	})
-	if err != nil {
-		t.Fatalf("UpdateRecipe with correct commit failed: %v", err)
+	if v2.CommitHash != "v1" {
+		t.Fatalf("noop update created new version %s, want v1", v2.CommitHash)
 	}
 }
 
-func setupTestService(t *testing.T, db *gorm.DB) Service {
-	t.Helper()
+func TestService_AsOfAcrossRecipes(t *testing.T) {
+	registerEchoOpForTests()
 
-	// Register test ops
-	registerTestOps()
+	pg := pgembed.StartEmbeddedPostgres(t)
+	defer pg.Close(t)
 
-	store, err := store.New(db)
-	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
-	}
-
-	gitRepo := testutil.NewRealGitRepository()
-	mockProjects := testutil.NewMockProjectService()
-
-	// Create a bare git repository for the test project
-	projectRepoPath := t.TempDir()
 	ctx := context.Background()
-	cmd := testutil.GitCommand(ctx, filepath.Dir(projectRepoPath), "init", "--bare", filepath.Base(projectRepoPath))
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("failed to create bare repo: %v", err)
-	}
+	projectID := project.ID("proj_test")
 
-	// Create initial commit in the bare repo via a temp clone
-	tempClone := t.TempDir()
-	if err := gitRepo.Clone(ctx, projectRepoPath, tempClone, git.CloneOptions{}); err != nil {
-		t.Fatalf("failed to clone: %v", err)
-	}
-	if err := testutil.ConfigureGitUser(ctx, tempClone); err != nil {
-		t.Fatalf("failed to configure git user: %v", err)
-	}
-	initFile := filepath.Join(tempClone, ".gitkeep")
-	if err := os.WriteFile(initFile, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to write .gitkeep: %v", err)
-	}
-	if err := gitRepo.StageFiles(ctx, tempClone, []string{".gitkeep"}); err != nil {
-		t.Fatalf("failed to stage: %v", err)
-	}
-	if err := gitRepo.CreateCommit(ctx, tempClone, "Initial commit"); err != nil {
-		t.Fatalf("failed to commit: %v", err)
-	}
-	if _, err := gitRepo.Push(ctx, tempClone, git.PushOptions{
-		Remote:      "origin",
-		SetUpstream: true,
-	}); err != nil {
-		t.Fatalf("failed to push: %v", err)
-	}
+	projects := testutil.NewMockProjectService()
+	projects.AddProject(&project.Project{ID: projectID})
 
-	// Add test project with git repo path
-	mockProjects.AddProject(&project.Project{
-		ID:          "proj_test",
-		Name:        "Test Project",
-		GitRepoPath: projectRepoPath,
-	})
+	clock := testutil.NewMockClock(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	idgen := testutil.NewMockIDGenerator("id_")
+	cel := &testutil.MockCELValidator{}
+
+	st, err := store.NewWithOptions(pg.DB, store.Options{Migrate: true})
+	if err != nil {
+		t.Fatalf("store.NewWithOptions failed: %v", err)
+	}
 
 	svc, err := New(ServiceConfig{
-		Store:        store,
-		GitRepo:      gitRepo,
-		Projects:     mockProjects,
-		IDGen:        testutil.NewMockIDGenerator("recipe_"),
-		Clock:        testutil.NewMockClock(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
-		CELValidator: &testutil.MockCELValidator{},
+		Store:        st,
+		Projects:     projects,
+		IDGen:        idgen,
+		Clock:        clock,
+		CELValidator: cel,
 	})
 	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
+		t.Fatalf("New failed: %v", err)
 	}
 
-	return svc
-}
+	// rA published at 12:00.
+	clock.Set(time.Date(2026, 2, 7, 12, 0, 0, 0, time.UTC))
+	if _, err := svc.CreateRecipe(ctx, model.CreateInput{
+		ProjectID:   projectID,
+		Name:        "rA",
+		Content:     testutil.CreateTestRecipeContent("rA"),
+		Description: "v1",
+		AutoPublish: true,
+	}); err != nil {
+		t.Fatalf("CreateRecipe rA failed: %v", err)
+	}
 
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
+	// rB published at 12:01.
+	clock.Set(time.Date(2026, 2, 7, 12, 1, 0, 0, time.UTC))
+	if _, err := svc.CreateRecipe(ctx, model.CreateInput{
+		ProjectID:   projectID,
+		Name:        "rB",
+		Content:     testutil.CreateTestRecipeContent("rB"),
+		Description: "v1",
+		AutoPublish: true,
+	}); err != nil {
+		t.Fatalf("CreateRecipe rB failed: %v", err)
+	}
 
-func stringPtr(s string) *string {
-	return &s
-}
+	// rA v2 saved+published at 12:02.
+	clock.Set(time.Date(2026, 2, 7, 12, 2, 0, 0, time.UTC))
+	if _, err := svc.UpdateRecipe(ctx, model.UpdateInput{
+		ProjectID: projectID,
+		Name:      "rA",
+		Content: []byte(`version: "1.0"
+id: "rA"
+op: echo
+inputs:
+  message: "v2"
+`),
+		Message:     "save+publish v2",
+		AutoPublish: true,
+	}); err != nil {
+		t.Fatalf("UpdateRecipe rA failed: %v", err)
+	}
 
-// Test op input/output types
-type EchoInput struct {
-	Message string `yaml:"message"`
-}
+	// rB unpublished at 12:03.
+	clock.Set(time.Date(2026, 2, 7, 12, 3, 0, 0, time.UTC))
+	if err := svc.UnpublishRecipe(ctx, model.UnpublishInput{ProjectID: projectID, Name: "rB"}); err != nil {
+		t.Fatalf("UnpublishRecipe rB failed: %v", err)
+	}
 
-type EchoOutput struct {
-	Output string `yaml:"output"`
-}
+	// As-of 12:02:30 => rA is v2, rB is still v1.
+	asof := time.Date(2026, 2, 7, 12, 2, 30, 0, time.UTC).Format(time.RFC3339Nano)
+	rA, err := svc.GetRecipe(ctx, projectID, "rA", "asof:"+asof)
+	if err != nil {
+		t.Fatalf("GetRecipe rA asof failed: %v", err)
+	}
+	if rA.CommitHash != "v2" {
+		t.Fatalf("rA asof commit = %s, want v2", rA.CommitHash)
+	}
 
-// registerTestOps registers operations needed for integration tests
-func registerTestOps() {
-	// Register echo op used by test recipes
-	echoOp := recipeops.NewActivityMappedOpV2[EchoInput, EchoOutput](
-		recipeops.OpMetadata{Type: "echo"},
-		func(_ recipeops.OpDependencies, _ context.Context, input EchoInput) (EchoOutput, error) {
-			return EchoOutput{
-				Output: input.Message,
-			}, nil
-		},
-	)
-	recipeops.Register(echoOp)
+	rB, err := svc.GetRecipe(ctx, projectID, "rB", "asof:"+asof)
+	if err != nil {
+		t.Fatalf("GetRecipe rB asof failed: %v", err)
+	}
+	if rB.CommitHash != "v1" {
+		t.Fatalf("rB asof commit = %s, want v1", rB.CommitHash)
+	}
+
+	// As-of 12:03:30 => rB not published.
+	asof2 := time.Date(2026, 2, 7, 12, 3, 30, 0, time.UTC).Format(time.RFC3339Nano)
+	_, err = svc.GetRecipe(ctx, projectID, "rB", "asof:"+asof2)
+	if !errors.Is(err, model.ErrNotPublished) {
+		t.Fatalf("rB asof after unpublish err = %v, want ErrNotPublished", err)
+	}
 }

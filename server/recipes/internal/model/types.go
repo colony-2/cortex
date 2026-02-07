@@ -7,6 +7,10 @@ import (
 	"github.com/colony-2/colony2/server/project/pkg/project"
 )
 
+// ID is a generic identifier type kept for API compatibility.
+// It previously represented a published recipe index row ID.
+type ID string
+
 // CreateInput contains parameters for creating a new recipe.
 type CreateInput struct {
 	ProjectID   project.ID
@@ -127,6 +131,11 @@ type RecipeFilter struct {
 // Clock provides time for testability.
 type Clock interface {
 	Now() time.Time
+}
+
+// ShortIDGenerator generates unique short IDs (like KSUID).
+type ShortIDGenerator interface {
+	NewID() (string, error)
 }
 
 // Iterator provides paginated access to results.

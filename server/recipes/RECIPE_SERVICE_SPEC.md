@@ -1,5 +1,9 @@
 # Recipe Service Specification
 
+> **Note (2026-02-07):** This document describes the legacy git-backed implementation.
+> The current direction is Postgres-backed, content-addressable storage (CAS) with an append-only `recipe_events` log.
+> See `POSTGRES_CAS_RECIPE_STORAGE_SPEC.md` for the up-to-date design.
+
 ## Overview
 
 The Recipe Service provides git-backed storage and versioning for recipe definitions. Users interact with the service API to create, update, delete, and publish recipes. The service handles all git operations internally, using git for versioning and history. The database maintains a lightweight index of published recipes, mapping recipe names to specific git commit hashes.
