@@ -32,6 +32,9 @@
       "@colony2/kanban": [
         "../kanban/src/index.ts"
       ],
+      "@colony2/notebook": [
+        "../notebook/src/index.ts"
+      ],
       "@colony2/shared/*": [
         "../shared/src/*"
       ],
@@ -40,6 +43,9 @@
       ],
       "@colony2/kanban/*": [
         "../kanban/src/*"
+      ],
+      "@colony2/notebook/*": [
+        "../notebook/src/*"
       ],
       "@colony2/openapi-client/*": [
         "../openapi/src/*"
@@ -69,6 +75,9 @@
     },
     {
       "path": "../shared"
+    },
+    {
+      "path": "../notebook"
     }
   ]
 }

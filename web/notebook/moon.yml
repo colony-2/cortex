@@ -1,0 +1,4 @@
+id: ui-notebook
+project:
+  description: Jupyter-like notebook UI for monitoring, running, and authoring recipes/workflows.
+

@@ -1,0 +1,30 @@
+{
+  "name": "@colony2/notebook",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@ant-design/icons": "^5.5.2",
+    "@colony2/openapi-client": "file:../openapi",
+    "antd": "^5.26.7",
+    "dayjs": "^1.11.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^27.4.0",
+    "typescript": "~5.8.3",
+    "vite": "^5.4.0",
+    "vitest": "^3.2.4"
+  }
+}
+

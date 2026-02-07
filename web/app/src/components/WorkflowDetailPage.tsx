@@ -14,7 +14,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import { ArrowLeftOutlined, ReloadOutlined, DownloadOutlined, BranchesOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ReloadOutlined, DownloadOutlined, BranchesOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { WorkflowDetail, ChapterDetail, ArtifactReference } from '@colony2/openapi-client';
 import { WorkflowsService } from '@colony2/openapi-client';
 import dayjs from 'dayjs';
@@ -321,6 +321,14 @@ export default function WorkflowDetailPage({ projectId }: WorkflowDetailPageProp
                 onClick={() => navigate(`/project/${projectId}/workflows/${workflowId}/story`)}
               >
                 Open story view
+              </Button>
+            ) : null}
+            {workflowId ? (
+              <Button
+                icon={<FileTextOutlined />}
+                onClick={() => navigate(`/project/${projectId}/workflows/${workflowId}/notebook`)}
+              >
+                Open notebook
               </Button>
             ) : null}
             <Button icon={<ReloadOutlined />} onClick={loadWorkflow}>

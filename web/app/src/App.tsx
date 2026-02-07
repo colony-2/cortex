@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Link, useParams } from 'react-router-dom';
 import { AppstoreOutlined, FileTextOutlined, OrderedListOutlined, SettingOutlined, ThunderboltOutlined, ProjectOutlined, PlusOutlined, FormOutlined } from '@ant-design/icons';
 import { Badge, Button, Empty, Layout, Menu, message, Space, Typography } from 'antd';
 import { InputActivityProvider, listProjects, type Project, isAuthenticated, clearUserEmail, CreateTicketModal, useInputActivity } from '@colony2/shared';
 import { KanbanBoard } from '@colony2/kanban';
+import { RecipeNotebookPage } from '@colony2/notebook';
 import CellsList from './components/CellsList';
 import CellDetailPage from './components/CellDetailPage';
 import ProjectSettingsPage from './components/ProjectSettingsPage';
@@ -89,6 +90,7 @@ function AppShell() {
     const path = location.pathname;
     if (path.includes('/admin/projects')) return 'project-admin';
     if (path.includes('/settings')) return 'settings';
+    if (path.includes('/recipes/notebook')) return 'recipe-notebook';
     if (path.includes('/recipes')) return 'recipes';
     if (path.includes('/workflows')) return 'workflows';
     if (path.includes('/inputs')) return 'inputs';
@@ -170,6 +172,14 @@ function AppShell() {
                 disabled: !selectedProject,
               },
               {
+                key: 'recipe-notebook',
+                label: selectedProject ? (
+                  <Link to={`/project/${selectedProject.id}/recipes/notebook`}>Recipe Notebook</Link>
+                ) : 'Recipe Notebook',
+                icon: <FileTextOutlined />,
+                disabled: !selectedProject,
+              },
+              {
                 key: 'cells',
                 label: selectedProject ? (
                   <Link to={`/project/${selectedProject.id}/cells`}>Cells</Link>
@@ -228,10 +238,12 @@ function AppShell() {
               <Route path="/project/:projectId/workflows" element={<WorkflowListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows/:workflowId" element={<WorkflowDetailPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/workflows/:workflowId/story" element={<WorkflowStoryPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/workflows/:workflowId/notebook" element={<WorkflowNotebookRoute projectId={selectedProject.id} />} />
 
               {/* Recipe views */}
               <Route path="/recipes" element={<RecipeListPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/recipes" element={<RecipeListPage projectId={selectedProject.id} />} />
+              <Route path="/project/:projectId/recipes/notebook" element={<RecipeNotebookPage projectId={selectedProject.id} />} />
               <Route path="/project/:projectId/recipes/*" element={<RecipeDetailPage projectId={selectedProject.id} />} />
 
               {/* Cell detail routes */}
@@ -263,6 +275,19 @@ function AppShell() {
         />
       )}
     </Layout>
+  );
+}
+
+function WorkflowNotebookRoute(props: { projectId: string }): JSX.Element {
+  const { workflowId } = useParams<{ workflowId: string }>();
+  if (!workflowId) {
+    return <Empty description="Missing workflowId" />;
+  }
+  return (
+    <RecipeNotebookPage
+      projectId={props.projectId}
+      initial={{ mode: 'monitor', backendMode: 'real', jobId: workflowId, autoLoadJob: true }}
+    />
   );
 }
 

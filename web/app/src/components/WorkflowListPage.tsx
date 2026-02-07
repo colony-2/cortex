@@ -186,6 +186,19 @@ export default function WorkflowListPage({ projectId }: WorkflowListPageProps) {
       ),
       width: 100,
     },
+    {
+      title: 'Notebook',
+      key: 'notebook',
+      render: (_, record: WorkflowSummary) => (
+        <Link
+          to={`/project/${projectId}/workflows/${record.workflow_id}/notebook`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          Notebook
+        </Link>
+      ),
+      width: 110,
+    },
   ];
 
   return (
