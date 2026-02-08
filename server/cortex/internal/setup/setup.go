@@ -83,6 +83,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe store: %w", err)
 	}
 	celFns := funcregistry.NewBuilder().WithDefaults()
+	registerArtifactCELFunctions(celFns)
 	funcregistry.AddZeroFuncWithContext(celFns, "cells", func(ctx context.Context, taskCtx contextual.TaskExecutionContext) ([]funcregistry.CELCell, error) {
 		projectID := strings.TrimSpace(taskCtx.Workflow.ProjectId)
 		if projectID == "" {

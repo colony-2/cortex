@@ -114,7 +114,7 @@ steps:
       release_artifacts: >-
         {{ artifact_filter(
              artifact_concat(sequence.build.artifacts, states.test.artifacts),
-             {name_regex: '.*\\.(tar\\.gz|zip)$', min_size: 1024}
+             {"name_regex": ".*\\.(tar\\.gz|zip)$", "min_size": 1024}
            )
         }}
       release_names: "{{ artifact_names(sequence.build.artifacts) }}"
