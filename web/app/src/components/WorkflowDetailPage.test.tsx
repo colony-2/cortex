@@ -6,11 +6,15 @@ import WorkflowDetailPage from './WorkflowDetailPage';
 import { WorkflowsService } from '@colony2/openapi-client';
 import type { WorkflowDetail } from '@colony2/openapi-client';
 
-vi.mock('@colony2/openapi-client', () => ({
-  WorkflowsService: {
-    getApiProjectsWorkflows1: vi.fn(),
-  },
-}));
+vi.mock('@colony2/openapi-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@colony2/openapi-client')>();
+  return {
+    ...actual,
+    WorkflowsService: {
+      getApiProjectsWorkflows1: vi.fn(),
+    },
+  };
+});
 
 declare global {
   // eslint-disable-next-line no-var

@@ -91,6 +91,7 @@ interface TransitionEvaluation {
 }
 
 interface StoryNode {
+  id?: string;
   kind: StoryKind;
   title: string;
   status: NodeStatus;
@@ -130,9 +131,8 @@ function nodeAttempt(node: StoryNode): number {
   return node.attempt ?? 1;
 }
 
-function nodeKey(node: StoryNode, attemptOverride?: number): string {
-  const attempt = attemptOverride ?? nodeAttempt(node);
-  return `${node.path.join('/')}|attempt:${attempt}`;
+function nodeKey(node: StoryNode): string | null {
+  return node.id ?? null;
 }
 
 function formatTimestamp(ts?: string | null): string {
@@ -307,17 +307,38 @@ function keyForTaskOrdinal(taskOrdinal: number, keyToRef: Map<string, NodeRef>):
 
 function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskOrdinal?: number | null }) {
   const keyToRef = new Map<string, NodeRef>();
+  const keyToParent = new Map<string, string | null>();
+  const legacyKeyToKey = new Map<string, string>();
+  let syntheticCounter = 0;
 
-  const buildNode = (node: StoryNode, nodeOpts?: { forceAttemptBadge?: boolean }): DataNode => {
+  const keyForNode = (node: StoryNode): string => {
+    const k = nodeKey(node);
+    if (k) return k;
+    syntheticCounter += 1;
+    return `synthetic:${syntheticCounter}`;
+  };
+
+  const maybeSetLegacyKey = (legacyKey: string, key: string) => {
+    if (!legacyKeyToKey.has(legacyKey)) legacyKeyToKey.set(legacyKey, key);
+  };
+
+  const buildNode = (
+    node: StoryNode,
+    parentKey: string | null,
+    nodeOpts?: { forceAttemptBadge?: boolean }
+  ): DataNode => {
     const attempt = nodeAttempt(node);
-    const key = nodeKey(node, attempt);
+    const key = keyForNode(node);
     keyToRef.set(key, { type: 'node', node, key, attempt });
+    keyToParent.set(key, parentKey);
+    maybeSetLegacyKey(`${node.path.join('/')}|attempt:${attempt}`, key);
 
     const children: DataNode[] = [];
 
     if (node.prior_attempts && node.prior_attempts.length > 0) {
-      const groupKey = `${key}|priorAttempts`;
+      const groupKey = `priorAttemptsGroup:${key}`;
       keyToRef.set(groupKey, { type: 'priorAttemptsGroup', parent: node, key: groupKey });
+      keyToParent.set(groupKey, key);
       children.push({
         key: groupKey,
         title: (
@@ -326,17 +347,13 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
           </Text>
         ),
         children: node.prior_attempts.map((pa) => {
-          const paAttempt = nodeAttempt(pa);
-          const paKey = nodeKey(pa, paAttempt);
-          keyToRef.set(paKey, { type: 'node', node: pa, key: paKey, attempt: paAttempt });
-
-          return buildNode(pa, { forceAttemptBadge: true });
+          return buildNode(pa, groupKey, { forceAttemptBadge: true });
         }),
       });
     }
 
     if (node.children && node.children.length > 0) {
-      children.push(...node.children.map(buildNode));
+      children.push(...node.children.map((child) => buildNode(child, key)));
     }
 
     const attemptBadge =
@@ -395,32 +412,18 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
     };
   };
 
-  const treeData = root ? [buildNode(root)] : [];
-  return { treeData, keyToRef };
+  const treeData = root ? [buildNode(root, null)] : [];
+  return { treeData, keyToRef, keyToParent, legacyKeyToKey };
 }
 
-function latestKeyForPathPrefix(pathPrefix: string, keyToRef: Map<string, NodeRef>): string | null {
-  let best: { key: string; attempt: number } | null = null;
-  const prefix = `${pathPrefix}|attempt:`;
-
-  for (const [key, ref] of keyToRef.entries()) {
-    if (ref.type !== 'node') continue;
-    if (!key.startsWith(prefix)) continue;
-    const attempt = ref.attempt;
-    if (!best || attempt > best.attempt) best = { key, attempt };
-  }
-
-  return best?.key ?? null;
-}
-
-function ancestorKeysForNode(node: StoryNode, keyToRef: Map<string, NodeRef>): string[] {
+function ancestorKeysForKey(key: string, keyToParent: Map<string, string | null>): string[] {
   const keys: string[] = [];
-  for (let i = 1; i < node.path.length; i++) {
-    const prefix = node.path.slice(0, i).join('/');
-    const k = latestKeyForPathPrefix(prefix, keyToRef);
-    if (k) keys.push(k);
+  let cursor = keyToParent.get(key) ?? null;
+  while (cursor) {
+    keys.push(cursor);
+    cursor = keyToParent.get(cursor) ?? null;
   }
-  return keys;
+  return keys.reverse();
 }
 
 function unionKeys(a: string[], b: string[]): string[] {
@@ -484,7 +487,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
 
   const focusTaskOrdinal = taskOrdinalParam !== null && Number.isFinite(taskOrdinalParam) ? taskOrdinalParam : pendingTaskOrdinal;
 
-  const { treeData, keyToRef } = useMemo(
+  const { treeData, keyToRef, keyToParent } = useMemo(
     () => buildTree(story?.root, { pendingTaskOrdinal: focusTaskOrdinal }),
     [story?.root, focusTaskOrdinal]
   );
@@ -502,38 +505,37 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     setError(null);
     try {
       const data = await fetchStory(projectId, workflowId);
-      const { keyToRef: nextKeyToRef } = buildTree(data.root);
+      const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
+        buildTree(data.root);
       setStory(data);
 
       if (data.status === 'running') {
         setAutoRefresh((prev) => prev || true);
       }
 
+      const urlNodeId = searchParams.get('nodeId');
       const urlPath = searchParams.get('path');
       const urlAttempt = searchParams.get('attempt');
-      const urlKey =
-        urlPath && urlAttempt
-          ? `${urlPath}|attempt:${urlAttempt}`
-          : urlPath
-          ? `${urlPath}|attempt:1`
-          : null;
+      const legacyUrlKey =
+        urlPath && urlAttempt ? `${urlPath}|attempt:${urlAttempt}` : urlPath ? `${urlPath}|attempt:1` : null;
+      const legacyResolvedKey = legacyUrlKey ? (nextLegacyKeyToKey.get(legacyUrlKey) ?? null) : null;
+      const rootKey = (nextTreeData[0]?.key as string | undefined) ?? null;
 
-      const nextSelectedKey =
-        urlKey && nextKeyToRef.has(urlKey)
-          ? urlKey
-          : opts?.preserveSelection && selectedKey && nextKeyToRef.has(selectedKey)
-          ? selectedKey
-          : data.root
-          ? nodeKey(data.root)
-          : null;
+      let nextSelectedKey: string | null = null;
+      if (urlNodeId && nextKeyToRef.has(urlNodeId)) {
+        nextSelectedKey = urlNodeId;
+      } else if (legacyResolvedKey && nextKeyToRef.has(legacyResolvedKey)) {
+        nextSelectedKey = legacyResolvedKey;
+      } else if (opts?.preserveSelection && selectedKey && nextKeyToRef.has(selectedKey)) {
+        nextSelectedKey = selectedKey;
+      } else {
+        nextSelectedKey = rootKey;
+      }
 
       if (nextSelectedKey && nextKeyToRef.has(nextSelectedKey)) {
         setSelectedKey(nextSelectedKey);
-        const ref = nextKeyToRef.get(nextSelectedKey);
-        if (ref?.type === 'node') {
-          const ancestors = ancestorKeysForNode(ref.node, nextKeyToRef);
-          setExpandedKeys((prev) => unionKeys(prev, ancestors));
-        }
+        const ancestors = ancestorKeysForKey(nextSelectedKey, nextKeyToParent);
+        setExpandedKeys((prev) => unionKeys(prev, ancestors));
       }
     } catch (e) {
       console.error('Failed to load workflow story', e);
@@ -591,12 +593,13 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     const ref = keyToRef.get(key);
     if (!ref || ref.type !== 'node') return;
 
-    const ancestors = ancestorKeysForNode(ref.node, keyToRef);
+    const ancestors = ancestorKeysForKey(key, keyToParent);
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSelectedKey(key);
     setActiveDetailsTab(wantInput ? 'pending_input' : 'overview');
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
+      if (ref.node.id) next.set('nodeId', ref.node.id);
       next.set('path', ref.node.path.join('/'));
       next.set('attempt', String(ref.attempt));
       next.set('taskOrdinal', String(focusTaskOrdinal));
@@ -604,7 +607,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       return next;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusTaskOrdinal, story?.root, keyToRef]);
+  }, [focusTaskOrdinal, story?.root, keyToRef, keyToParent]);
 
   useEffect(() => {
     if (refreshTimerRef.current) {
@@ -660,15 +663,16 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   };
 
   const setSelectedFromNode = (node: StoryNode) => {
-    const attempt = nodeAttempt(node);
-    const key = nodeKey(node, attempt);
+    const key = nodeKey(node);
+    if (!key) return;
     setSelectedKey(key);
-    const ancestors = ancestorKeysForNode(node, keyToRef);
+    const ancestors = ancestorKeysForKey(key, keyToParent);
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
+      next.set('nodeId', key);
       next.set('path', node.path.join('/'));
-      next.set('attempt', String(attempt));
+      next.set('attempt', String(nodeAttempt(node)));
       return next;
     });
   };
@@ -958,11 +962,12 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
                   const ref = keyToRef.get(key);
                   if (!ref) return;
                   if (ref.type === 'node') {
-                    const ancestors = ancestorKeysForNode(ref.node, keyToRef);
+                    const ancestors = ancestorKeysForKey(key, keyToParent);
                     setExpandedKeys((prev) => unionKeys(prev, ancestors));
                     setSelectedKey(key);
                     setSearchParams((prev) => {
                       const next = new URLSearchParams(prev);
+                      if (ref.node.id) next.set('nodeId', ref.node.id);
                       next.set('path', ref.node.path.join('/'));
                       next.set('attempt', String(ref.attempt));
                       return next;

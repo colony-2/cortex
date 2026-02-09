@@ -6,11 +6,15 @@ import RecipeListPage from './RecipeListPage';
 import { RecipesService } from '@colony2/openapi-client';
 
 // Mock the RecipesService
-vi.mock('@colony2/openapi-client', () => ({
-  RecipesService: {
-    listRecipes: vi.fn(),
-  },
-}));
+vi.mock('@colony2/openapi-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@colony2/openapi-client')>();
+  return {
+    ...actual,
+    RecipesService: {
+      listRecipes: vi.fn(),
+    },
+  };
+});
 
 // Mock react-router-dom navigation
 const mockNavigate = vi.fn();

@@ -19,6 +19,7 @@ The response is a single consolidated tree (recipe -> sequences -> ops/steps -> 
   - `job_id`, `invocation_sequence`, `recipe {id,name,version,source}`, `status`, `started_at`, `finished_at`, `root`.
 - `JobRunStoryNode`:
   - Always present fields: `id`, `kind`, `title`, `status`, `started_at?`, `finished_at?`, `path[]`, `invoke_seq`, `attempt`, `prior_attempts[]`, `input`, `output`, `artifact_keys[]`, `children[]`.
+  - `path[]` is derived from the execution context’s `invocation.path` (split on `/`); some non-invocation nodes append a final segment (e.g. `step:<id>`, `transitionEval`, `contextPatch:<ordinal>`).
   - Optional task cursor fields: `task_ordinal?`, `restart_from_ordinal?` (present for task-backed nodes like op steps).
   - `prior_attempts` holds prior attempts of the same logical node (latest attempt is inline).
 - `artifact_keys` uses the existing `swf.ArtifactKey` shape (jobId/taskOrdinal/name/sizeBytes). Artifact bodies are fetched separately.

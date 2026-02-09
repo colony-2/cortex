@@ -112,7 +112,7 @@ outputs:
 		},
 	}
 
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, tasks, nil)
+	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, tasks, nil)
 	exec := newExecutor("tenant", "job", jobCtx)
 
 	jobContext := contextual.JobContext{

@@ -8,12 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
+	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
@@ -616,11 +621,379 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 		return nil, fmt.Errorf("decode job start payload: %w", err)
 	}
 
+	if shouldDebugDumpJobRunStory() {
+		s.logger.Info("GetJobRunStory: debug swf job run dump",
+			"project_id", projectID,
+			"job_id", jobID,
+			"job_type", run.Job.JobType,
+			"job_status", run.Job.Status,
+			"swf_job_run_dump", dumpSWFJobRunForLog(run),
+		)
+		if s.strata != nil {
+			if chapters, err := s.dumpStrataChaptersForLog(ctx, run.Job.JobKey); err == nil {
+				s.logger.Info("GetJobRunStory: debug strata chapters dump",
+					"project_id", projectID,
+					"job_id", jobID,
+					"job_type", run.Job.JobType,
+					"job_status", run.Job.Status,
+					"strata_chapters_dump", chapters,
+				)
+			} else {
+				s.logger.Info("GetJobRunStory: debug failed to dump strata chapters",
+					"project_id", projectID,
+					"job_id", jobID,
+					"error", err,
+					"error_chain", logutil.ErrorChain(err),
+				)
+			}
+		}
+	}
+
 	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger)
 	if buildErr != nil && errors.Is(buildErr, jobstory.ErrReplayMismatch) {
+		s.logger.Error("GetJobRunStory: swf job run dump",
+			"project_id", projectID,
+			"job_id", jobID,
+			"job_type", run.Job.JobType,
+			"job_status", run.Job.Status,
+			"swf_job_run_dump", dumpSWFJobRunForLog(run),
+		)
+		if s.strata != nil {
+			if chapters, err := s.dumpStrataChaptersForLog(ctx, run.Job.JobKey); err == nil {
+				s.logger.Error("GetJobRunStory: strata chapters dump",
+					"project_id", projectID,
+					"job_id", jobID,
+					"job_type", run.Job.JobType,
+					"job_status", run.Job.Status,
+					"strata_chapters_dump", chapters,
+				)
+			} else {
+				s.logger.Error("GetJobRunStory: failed to dump strata chapters",
+					"project_id", projectID,
+					"job_id", jobID,
+					"error", err,
+					"error_chain", logutil.ErrorChain(err),
+				)
+			}
+		}
+
+		s.logger.Error("GetJobRunStory: replay mismatch",
+			"project_id", projectID,
+			"job_id", jobID,
+			"job_type", run.Job.JobType,
+			"job_status", run.Job.Status,
+			"job_created_at", run.Job.CreatedAt,
+			"job_archived_at", run.Job.ArchivedAt,
+			"job_start_ordinal", run.Start.Ordinal,
+			"job_start_worker_id", run.Start.WorkerID,
+			"task_count", len(run.Tasks),
+			"task_timeline", summarizeTaskTimelineForLog(run.Tasks),
+			"ops_registry_size", coreops.Size(),
+			"replay_error", buildErr,
+			"replay_error_chain", errorChainForLog(buildErr),
+			"story_present", st != nil,
+			"story_status", storyStatusForLog(st),
+			"story_recipe_id", storyRecipeIDForLog(st),
+		)
 		return st, ErrJobRunStoryMismatch
 	}
 	return st, buildErr
+}
+
+func shouldDebugDumpJobRunStory() bool {
+	v := strings.TrimSpace(os.Getenv("C2_DEBUG_JOB_RUN_STORY_DUMPS"))
+	if v == "" {
+		return false
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func dumpSWFJobRunForLog(run swf.GetJobRunResponse) map[string]any {
+	out := map[string]any{
+		"job": map[string]any{
+			"job_key":     run.Job.JobKey,
+			"job_type":    run.Job.JobType,
+			"status":      run.Job.Status,
+			"created_at":  run.Job.CreatedAt,
+			"archived_at": run.Job.ArchivedAt,
+			"metadata":    string(run.Job.Metadata),
+		},
+		"start": map[string]any{
+			"ordinal":    run.Start.Ordinal,
+			"worker_id":  run.Start.WorkerID,
+			"created_at": run.Start.CreatedAt,
+			"input":      truncateTaskIOForLog(run.Start.Input),
+		},
+		"tasks":        dumpTaskRunsForLog(run.Tasks),
+		"job_attempts": dumpJobAttemptsForLog(run.JobAttempts),
+	}
+	if run.Result != nil {
+		out["result"] = map[string]any{
+			"ordinal":   run.Result.Ordinal,
+			"attempt":   run.Result.Attempt,
+			"worker_id": run.Result.WorkerID,
+			"created_at": run.Result.CreatedAt,
+			"outcome":   run.Result.Outcome,
+			"output":    truncateTaskIOForLog(run.Result.Output),
+		}
+	}
+	return out
+}
+
+func dumpTaskRunsForLog(tasks []swf.TaskRun) []any {
+	out := make([]any, 0, len(tasks))
+	for _, tr := range tasks {
+		row := map[string]any{
+			"task_run_id": tr.TaskRunID,
+			"task_type":   tr.TaskType,
+			"attempts":    dumpTaskAttemptsForLog(tr.Attempts),
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func dumpTaskAttemptsForLog(attempts []swf.TaskAttempt) []any {
+	out := make([]any, 0, len(attempts))
+	for _, a := range attempts {
+		row := map[string]any{
+			"ordinal":        a.Ordinal,
+			"attempt":        a.Attempt,
+			"worker_id":      a.WorkerID,
+			"created_at":     a.CreatedAt,
+			"state":          a.State,
+			"outcome":        a.Outcome,
+			"input_hash":     a.InputHash,
+			"input_ref":      a.InputRef,
+			"run_policy":     a.RunPolicy,
+			"retryable":      a.Retryable,
+			"max_attempts":   a.MaxAttempts,
+			"next_attempt_at": a.NextAttemptAt,
+			"backoff_ms":     a.BackoffMillis,
+			"input":          truncateTaskIOForLog(a.Input),
+			"output":         truncateTaskIOForLog(a.Output),
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func dumpJobAttemptsForLog(attempts []swf.JobAttempt) []any {
+	out := make([]any, 0, len(attempts))
+	for _, a := range attempts {
+		row := map[string]any{
+			"ordinal":    a.Ordinal,
+			"attempt":    a.Attempt,
+			"worker_id":  a.WorkerID,
+			"created_at": a.CreatedAt,
+			"input_ref":  a.InputRef,
+			"outcome":    a.Outcome,
+			"output":     truncateTaskIOForLog(a.Output),
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func truncateTaskIOForLog(io *swf.TaskIO) map[string]any {
+	if io == nil {
+		return nil
+	}
+	arts := make([]map[string]any, 0, len(io.Artifacts))
+	for _, a := range io.Artifacts {
+		arts = append(arts, map[string]any{
+			"name":       a.Name,
+			"size_bytes": a.SizeBytes,
+			"sha256":     a.Sha256,
+			"key":        a.Key,
+		})
+	}
+	return map[string]any{
+		"data":            string(io.Data),
+		"data_len_bytes":  len(io.Data),
+		"artifact_count":  len(io.Artifacts),
+		"artifacts_brief": arts,
+	}
+}
+
+func (s *Service) dumpStrataChaptersForLog(ctx context.Context, jobKey swf.JobKey) ([]any, error) {
+	if s.strata == nil {
+		return nil, errors.New("strata unavailable")
+	}
+	st, err := s.strata.Story(ctx, jobKey.ToStoryKey())
+	if err != nil {
+		return nil, err
+	}
+	iter, err := st.Chapters(ctx, story.ChaptersOptions{PageSize: 500, Direction: story.DirectionForward})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]any, 0, 128)
+	for iter.HasNext() {
+		chap, err := iter.Next(ctx)
+		if errors.Is(err, pagination.ErrNoMoreItems) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		body := chap.Body()
+		entry := map[string]any{
+			"ordinal":       chap.Ordinal(),
+			"body_len":      len(body),
+			"body":          string(body),
+			"artifact_count": len(chap.Artifacts()),
+		}
+		var env chapterEnvelope
+		if json.Unmarshal(body, &env) == nil {
+			entry["meta_task_type"] = env.Meta.TaskType
+			entry["meta_worker_id"] = env.Meta.WorkerID
+			entry["meta_created_at"] = env.Meta.CreatedAt
+			entry["meta_ordinal"] = env.Meta.Ordinal
+			entry["meta_attempt"] = env.Meta.Attempt
+			entry["payload_kind"] = env.PayloadKind
+			entry["payload_len"] = len(env.Payload)
+			entry["payload"] = string(env.Payload)
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func storyStatusForLog(st *model.JobRunStory) string {
+	if st == nil {
+		return ""
+	}
+	return string(st.Status)
+}
+
+func storyRecipeIDForLog(st *model.JobRunStory) string {
+	if st == nil {
+		return ""
+	}
+	return st.Recipe.ID
+}
+
+func errorChainForLog(err error) []string {
+	if err == nil {
+		return nil
+	}
+	out := make([]string, 0, 6)
+	seen := make(map[error]struct{}, 6)
+	for err != nil {
+		if _, ok := seen[err]; ok {
+			break
+		}
+		seen[err] = struct{}{}
+		out = append(out, err.Error())
+		err = errors.Unwrap(err)
+		if len(out) >= 6 {
+			break
+		}
+	}
+	return out
+}
+
+func summarizeTaskTimelineForLog(tasks []swf.TaskRun) []string {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	type row struct {
+		ord      int64
+		taskType string
+		attempts int
+		state    string
+	}
+
+	rows := make([]row, 0, len(tasks))
+	for _, tr := range tasks {
+		r := row{
+			ord:      -1,
+			taskType: tr.TaskType,
+			attempts: len(tr.Attempts),
+			state:    "",
+		}
+		if len(tr.Attempts) > 0 {
+			r.ord = tr.Attempts[0].Ordinal
+			r.state = tr.Attempts[len(tr.Attempts)-1].State
+		} else if ord, ok := parseOrdinalFromTaskRunID(tr.TaskRunID); ok {
+			r.ord = ord
+		}
+		rows = append(rows, r)
+	}
+
+	// Sort by ordinal ascending; unknown ordinals go last.
+	sort.SliceStable(rows, func(i, j int) bool {
+		oi := rows[i].ord
+		oj := rows[j].ord
+		if oi < 0 && oj < 0 {
+			return rows[i].taskType < rows[j].taskType
+		}
+		if oi < 0 {
+			return false
+		}
+		if oj < 0 {
+			return true
+		}
+		if oi != oj {
+			return oi < oj
+		}
+		return rows[i].taskType < rows[j].taskType
+	})
+
+	format := func(r row) string {
+		if r.ord >= 0 {
+			if r.state != "" {
+				return fmt.Sprintf("ord=%d type=%q attempts=%d state=%q", r.ord, r.taskType, r.attempts, r.state)
+			}
+			return fmt.Sprintf("ord=%d type=%q attempts=%d", r.ord, r.taskType, r.attempts)
+		}
+		if r.state != "" {
+			return fmt.Sprintf("ord=? type=%q attempts=%d state=%q", r.taskType, r.attempts, r.state)
+		}
+		return fmt.Sprintf("ord=? type=%q attempts=%d", r.taskType, r.attempts)
+	}
+
+	const max = 24
+	if len(rows) <= max {
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, format(r))
+		}
+		return out
+	}
+
+	head := rows[:12]
+	tail := rows[len(rows)-12:]
+	out := make([]string, 0, max+1)
+	for _, r := range head {
+		out = append(out, format(r))
+	}
+	out = append(out, fmt.Sprintf("... (%d more tasks) ...", len(rows)-24))
+	for _, r := range tail {
+		out = append(out, format(r))
+	}
+	return out
+}
+
+func parseOrdinalFromTaskRunID(taskRunID string) (int64, bool) {
+	taskRunID = strings.TrimSpace(taskRunID)
+	if taskRunID == "" {
+		return 0, false
+	}
+	last := taskRunID
+	if idx := strings.LastIndex(taskRunID, ":"); idx >= 0 && idx < len(taskRunID)-1 {
+		last = taskRunID[idx+1:]
+	}
+	ord, err := strconv.ParseInt(last, 10, 64)
+	return ord, err == nil
 }
 
 func (s *Service) RestartRecipeJob(ctx context.Context, req model.RestartRecipeJobRequest) (*model.RestartRecipeJobResponse, error) {

@@ -10,7 +10,6 @@ require (
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/gorm v1.30.0
-	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (
@@ -25,6 +24,7 @@ require (
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
+	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
 
 require (
@@ -36,7 +36,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260205051038-e9aaaf516d92
+	github.com/colony-2/swf-go v0.0.0-20260209193327-8c2d7dbeb6b0
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

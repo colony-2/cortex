@@ -8,7 +8,7 @@ require (
 	github.com/colony-2/colony2/server/pgembed v0.0.0-20260128195911-f9fcb108644b
 	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/swf-go v0.0.0-20260205051038-e9aaaf516d92
+	github.com/colony-2/swf-go v0.0.0-20260209193327-8c2d7dbeb6b0
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
 	github.com/segmentio/ksuid v1.0.4

@@ -53,7 +53,7 @@ state:
           title: '{{ context.ticket.title }}'
           description: '{{ context.ticket.description }}'
           prior_plan_json: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
-          user_feedback: '{{ "check_approve" in states ? states.check_approve.outputs.stdout : "" }}'
+          user_feedback: '{{ "check_approve" in states && has(states.check_approve.outputs.exit_code) && states.check_approve.outputs.exit_code != 0 ? states.check_approve.outputs.stdout : "" }}'
           api_review_feedback: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
     requirements_review:
       op: input
@@ -93,7 +93,7 @@ state:
         - to: requirements_planning
           when: "has(states.requirements_planning.outputs.outputs.api_review_ok) && !states.requirements_planning.outputs.outputs.api_review_ok"
         - to: maybe_reassign
-          when: "has(states.check_approve.outputs.exit_code) && states.check_approve.outputs.exit_code == 0"
+          when: "has(outputs.exit_code) && outputs.exit_code == 0"
         - to: requirements_planning
           when: "true"
       inputs:

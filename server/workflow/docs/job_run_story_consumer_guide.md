@@ -35,7 +35,7 @@ Every node has:
 - `title`: display label (human-friendly).
 - `status`: current state of that node (`pending|running|succeeded|failed|canceled|skipped|unknown`).
 - `started_at` / `finished_at`: best-effort timestamps for that node (may be null).
-- `path`: an array of strings representing breadcrumbs from the root (for example `["root","sequence:main","op:llm2"]`).
+- `path`: an array of strings representing the canonical recipe invocation path segments (derived from the execution context’s `invocation.path`, split on `/`). Some non-invocation nodes append a final segment (e.g. `step:<id>`, `transitionEval`, `contextPatch:<ordinal>`) for stable disambiguation.
 - `invoke_seq`: the recipe invocation sequence for that node (stable for correlation within a run).
 - `input` / `output`: the unmodified input/output payloads for the node (may be null if not available or not applicable).
 - `artifact_keys`: list of artifact keys produced/attached at that node (may be empty).

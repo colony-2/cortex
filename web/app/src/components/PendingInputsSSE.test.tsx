@@ -73,7 +73,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
     // Should fetch and display new input
     await waitFor(
       () => {
-        expect(screen.getByText(`Input Request #${newJobId}`)).toBeInTheDocument();
+        expect(screen.getByText(`Job ID: ${newJobId}`)).toBeInTheDocument();
       },
       { timeout: 2000 }
     );
@@ -90,7 +90,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
     // Verify input is displayed
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${jobId}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
     });
 
     // Simulate input being cancelled
@@ -129,7 +129,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${jobId1}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId1}`)).toBeInTheDocument();
     });
 
     // Add second input
@@ -139,7 +139,7 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
 
     await waitFor(
       () => {
-      expect(screen.getByText(`Input Request #${jobId2}`)).toBeInTheDocument();
+      expect(screen.getByText(`Job ID: ${jobId2}`)).toBeInTheDocument();
     });
 
     // Remove first input
@@ -148,11 +148,11 @@ describe('PendingInputsListPage - Real-time SSE Updates', () => {
 
     await waitFor(
       () => {
-      expect(screen.queryByText(`Input Request #${jobId1}`)).not.toBeInTheDocument();
+      expect(screen.queryByText(`Job ID: ${jobId1}`)).not.toBeInTheDocument();
     });
 
     // Second should still be there
-    expect(screen.getByText(`Input Request #${jobId2}`)).toBeInTheDocument();
+    expect(screen.getByText(`Job ID: ${jobId2}`)).toBeInTheDocument();
   });
 
   it('should handle heartbeat events without errors', async () => {

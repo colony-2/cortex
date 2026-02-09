@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
@@ -119,9 +120,9 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 					return nil, cachedErr
 				}
 				cached = append(cached, funcregistry.CELCell{
-					Name: c.Name,
-					ID:   string(c.ID),
-					Path: c.WorkingPath,
+					Name:        c.Name,
+					ID:          string(c.ID),
+					Path:        c.WorkingPath,
 					Description: c.Description,
 				})
 			}
@@ -265,6 +266,54 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("ops setup failed: %w", err)
 	}
+
+	var activeUserInputStreams atomic.Int64
+	for i := range extensionRoutes {
+		route := extensionRoutes[i]
+		if !strings.EqualFold(route.Method, http.MethodGet) {
+			continue
+		}
+		if !strings.HasSuffix(route.Path, "/user-inputs/stream") {
+			continue
+		}
+		next := route.Handler
+		extensionRoutes[i].Handler = func(w http.ResponseWriter, r *http.Request) {
+			// Help proxies avoid buffering SSE.
+			w.Header().Set("X-Accel-Buffering", "no")
+
+			projectID := ""
+			parts := strings.Split(r.URL.Path, "/")
+			for idx := 0; idx < len(parts)-1; idx++ {
+				if parts[idx] == "projects" && idx+1 < len(parts) {
+					projectID = parts[idx+1]
+					break
+				}
+			}
+
+			active := activeUserInputStreams.Add(1)
+			start := time.Now()
+			logger.Info("user-input SSE connected",
+				"active_streams", active,
+				"project_id", projectID,
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.Header.Get("User-Agent"),
+				"path", r.URL.Path,
+			)
+			defer func() {
+				active := activeUserInputStreams.Add(-1)
+				logger.Info("user-input SSE disconnected",
+					"active_streams", active,
+					"project_id", projectID,
+					"duration", time.Since(start).String(),
+					"context_err", r.Context().Err(),
+					"path", r.URL.Path,
+				)
+			}()
+
+			next(w, r)
+		}
+	}
+
 	if len(cleanupOps) > 0 {
 		cleanupFns = append(cleanupFns, func() {
 			for _, fn := range cleanupOps {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
@@ -38,6 +39,38 @@ type executor struct {
 
 	// consumeTarget points to the node currently associated with the next DoTask call.
 	consumeTarget *model.JobRunStoryNode
+}
+
+func splitInvocationNodePath(nodePath string) []string {
+	nodePath = strings.TrimSpace(nodePath)
+	if nodePath == "" {
+		return make([]string, 0)
+	}
+	parts := strings.Split(nodePath, "/")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func setStoryNodePath(n *model.JobRunStoryNode, invocationNodePath string, extra ...string) {
+	if n == nil {
+		return
+	}
+	path := splitInvocationNodePath(invocationNodePath)
+	for _, seg := range extra {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		path = append(path, seg)
+	}
+	n.Path = path
 }
 
 func newExecutor(projectID, jobID string, jobCtx *StoryBuildingContext) *executor {
@@ -72,6 +105,7 @@ func (e *executor) ExecuteRecipe(r *recipe.Recipe, inputs map[string]interface{}
 	root.Invocation = map[string]interface{}{"args": inputs}
 	root.Input = inputs
 	root.InvokeSeq = rCtx.TaskExecutionContext().Invocation.InvokeSeq
+	setStoryNodePath(root, rCtx.TaskExecutionContext().Invocation.NodePath)
 	e.tree.push("root", root)
 	e.root = root
 
@@ -151,6 +185,7 @@ func (e *executor) ExecuteSequence(parentCtx *template.ResolutionContext, metada
 		return fmt.Errorf("failed to create sequence resolution context: %w", err)
 	}
 	node.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+	setStoryNodePath(node, resCtx.TaskExecutionContext().Invocation.NodePath)
 
 	for i := range sequence {
 		nodeDef := sequence[i]
@@ -206,6 +241,7 @@ func (e *executor) ExecuteStateMachine(parentCtx *template.ResolutionContext, me
 		return fmt.Errorf("failed to create state machine context: %w", err)
 	}
 	node.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+	setStoryNodePath(node, resCtx.TaskExecutionContext().Invocation.NodePath)
 
 	currentState := strings.TrimSpace(stateMap.Initial)
 	if currentState == "" {
@@ -249,6 +285,7 @@ func (e *executor) ExecuteStateMachine(parentCtx *template.ResolutionContext, me
 			return fmt.Errorf("failed to create state context: %w", err)
 		}
 		stNode.InvokeSeq = stateResCtx.TaskExecutionContext().Invocation.InvokeSeq
+		setStoryNodePath(stNode, stateResCtx.TaskExecutionContext().Invocation.NodePath)
 
 		if err := e.ExecuteNode(stateResCtx, &stateDef.Node); err != nil {
 			if errors.Is(err, ErrReplayInProgress) {
@@ -270,11 +307,11 @@ func (e *executor) ExecuteStateMachine(parentCtx *template.ResolutionContext, me
 			break
 		}
 
-		evNode, nextState, err := e.evalTransitions(stateDef.Transitions, resCtx, currentState)
-		if err != nil {
-			if errors.Is(err, ErrReplayInProgress) {
-				stNode.Status = model.JobRunStoryNodeStatusRunning
-				node.Status = model.JobRunStoryNodeStatusRunning
+			evNode, nextState, err := e.evalTransitions(stateDef.Transitions, resCtx, stateResCtx, currentState)
+			if err != nil {
+				if errors.Is(err, ErrReplayInProgress) {
+					stNode.Status = model.JobRunStoryNodeStatusRunning
+					node.Status = model.JobRunStoryNodeStatusRunning
 			} else {
 				stNode.Status = model.JobRunStoryNodeStatusFailed
 				node.Status = model.JobRunStoryNodeStatusFailed
@@ -312,20 +349,26 @@ func (e *executor) ExecuteStateMachine(parentCtx *template.ResolutionContext, me
 	return nil
 }
 
-func (e *executor) evalTransitions(transitions []recipe.Transition, resCtx *template.ResolutionContext, fromState string) (*model.JobRunStoryNode, string, error) {
+func (e *executor) evalTransitions(transitions []recipe.Transition, evalResCtx, invResCtx *template.ResolutionContext, fromState string) (*model.JobRunStoryNode, string, error) {
+	if evalResCtx == nil {
+		return nil, "", fmt.Errorf("nil transition evaluation context")
+	}
+	if invResCtx == nil {
+		invResCtx = evalResCtx
+	}
+
 	// Temporary context sharing CEL env + template data.
 	evalCtx := &template.ResolutionContext{
-		ScopeType:    resCtx.ScopeType,
-		TemplateData: resCtx.TemplateData,
-		CELEnv:       resCtx.CELEnv,
+		ScopeType:    evalResCtx.ScopeType,
+		TemplateData: evalResCtx.TemplateData,
+		CELEnv:       evalResCtx.CELEnv,
 	}
 
 	node := e.tree.newNode(model.JobRunStoryNodeKindTransitionEval, "evaluate transitions")
 	node.FromStateID = fromState
 	node.Status = model.JobRunStoryNodeStatusSucceeded
-	node.Path = append([]string(nil), e.tree.segments...)
-	node.Path = append(node.Path, "transitionEval")
-	node.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+	node.InvokeSeq = invResCtx.TaskExecutionContext().Invocation.InvokeSeq
+	setStoryNodePath(node, invResCtx.TaskExecutionContext().Invocation.NodePath, "transitionEval")
 	node.Attempt = 1
 	node.PriorAttempts = make([]*model.JobRunStoryNode, 0)
 	node.Input = nil
@@ -373,12 +416,6 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 		return fmt.Errorf("missing op name")
 	}
 
-	prefix := op + ":"
-	taskType, ok := e.jobCtx.NextTaskTypeForPrefix(prefix)
-	if !ok {
-		return fmt.Errorf("%w: no task runs found for op %q", ErrReplayMismatch, op)
-	}
-
 	opNode := e.tree.newNode(model.JobRunStoryNodeKindOp, "op "+op)
 	opNode.OpID = op
 	opNode.OpType = "custom"
@@ -392,6 +429,23 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 		return fmt.Errorf("failed to create op resolution context: %w", err)
 	}
 	opNode.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+	setStoryNodePath(opNode, resCtx.TaskExecutionContext().Invocation.NodePath)
+
+	prefix := op + ":"
+	taskType, ok := e.jobCtx.NextTaskTypeForPrefix(prefix)
+	if !ok {
+		// When a job is still running, SWF may not have recorded any task runs for the next op
+		// yet (or may only show a runtime placeholder). Treat that as in-progress rather than
+		// a deterministic mismatch.
+		if e.jobCtx != nil && isJobStatusRunning(e.jobCtx.jobStatus) {
+			opNode.Status = model.JobRunStoryNodeStatusRunning
+			e.tree.pop()
+			return fmt.Errorf("%w: op %q not started (no task runs)", ErrReplayInProgress, op)
+		}
+		opNode.Status = model.JobRunStoryNodeStatusFailed
+		e.tree.pop()
+		return fmt.Errorf("%w: no task runs found for op %q", ErrReplayMismatch, op)
+	}
 
 	var (
 		finalOut    any
@@ -415,18 +469,34 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 			if !ok {
 				break
 			}
-			if nextTy == currentTask {
+			if strings.TrimSpace(nextTy) == strings.TrimSpace(currentTask) {
 				break
 			}
 
+			// Only consume "out-of-order" chapters as context patches when the chapter is clearly
+			// a context patch. Otherwise, treat it as a replay mismatch.
+			if !isContextPatchRun(nextRun) {
+				// If the job is still running and the next chapter is in a non-terminal state, stop
+				// replay and surface "running" instead of treating it as a deterministic mismatch.
+				if e.jobCtx != nil && isJobStatusRunning(e.jobCtx.jobStatus) && isTaskRunInProgress(nextRun) {
+					opNode.Status = model.JobRunStoryNodeStatusRunning
+					e.tree.pop() // op
+					return fmt.Errorf("%w: op %q waiting on runtime task %q", ErrReplayInProgress, op, nextTy)
+				}
+				opNode.Status = model.JobRunStoryNodeStatusFailed
+				e.tree.pop() // op
+				return fmt.Errorf("%w: unexpected task %q before %q", ErrReplayMismatch, nextTy, currentTask)
+			}
+
 			ord := int64(-1)
-			if len(nextRun.Attempts) > 0 {
-				ord = nextRun.Attempts[0].Ordinal
+			if o, ok := taskRunFirstOrdinal(nextRun); ok {
+				ord = o
 			}
 
 			patchNode := e.tree.newNode(model.JobRunStoryNodeKindContextPatch, "context patch")
 			patchNode.Status = model.JobRunStoryNodeStatusRunning
 			patchNode.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+			setStoryNodePath(patchNode, resCtx.TaskExecutionContext().Invocation.NodePath, fmt.Sprintf("contextPatch:%d", ord))
 			e.tree.push(fmt.Sprintf("contextPatch:%d", ord), patchNode)
 
 			e.consumeTarget = patchNode
@@ -434,7 +504,11 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 			e.consumeTarget = nil
 			if err != nil {
 				patchNode.Status = statusFromErr(err, patchNode.Status)
-				opNode.Status = model.JobRunStoryNodeStatusFailed
+				if errors.Is(err, ErrReplayInProgress) {
+					opNode.Status = model.JobRunStoryNodeStatusRunning
+				} else {
+					opNode.Status = model.JobRunStoryNodeStatusFailed
+				}
 				e.tree.pop() // contextPatch
 				e.tree.pop() // op
 				return err
@@ -491,6 +565,8 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 		stepNode.StepID = stepID
 		stepNode.StepType = "other"
 		stepNode.Status = model.JobRunStoryNodeStatusRunning
+		stepNode.InvokeSeq = resCtx.TaskExecutionContext().Invocation.InvokeSeq
+		setStoryNodePath(stepNode, resCtx.TaskExecutionContext().Invocation.NodePath, "step:"+stepID)
 		e.tree.push("step:"+stepID, stepNode)
 		stepNodes = append(stepNodes, stepNode)
 
@@ -548,7 +624,17 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 		resCtx.UpdateGitState(out.GitResult)
 		finalOut = out.OpOutput
 
-		if strings.TrimSpace(out.NextTask) == "" {
+		next := strings.TrimSpace(out.NextTask)
+		if next == "" {
+			// If the chapter didn't explicitly provide nextTaskType, use the op definition
+			// (registered in the global ops registry) to determine the next step. This avoids
+			// guessing based on "whatever task run happens to come next", which can incorrectly
+			// chain multiple invocations of the same op.
+			if regNext, ok := nextTaskFromRegistry(op, currentTask); ok {
+				next = strings.TrimSpace(regNext)
+			}
+		}
+		if next == "" {
 			arts, err := td.GetArtifacts()
 			if err != nil {
 				opNode.Status = model.JobRunStoryNodeStatusFailed
@@ -564,7 +650,7 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 
 		stepNode.Status = model.JobRunStoryNodeStatusSucceeded
 		e.tree.pop() // step
-		currentTask = out.NextTask
+		currentTask = next
 	}
 
 	if finalOut == nil {
@@ -679,12 +765,25 @@ func fillAttemptOnNode(n *model.JobRunStoryNode, taskType string, att swf.TaskAt
 	if att.Input != nil && len(att.Input.Data) > 0 && json.Unmarshal(att.Input.Data, &req) == nil {
 		n.Input = req.Input
 		n.InvokeSeq = req.GitTaskCtx.InvokeSeq
+		if strings.TrimSpace(req.GitTaskCtx.NodePath) != "" {
+			if n.Kind == model.JobRunStoryNodeKindOpStep && strings.TrimSpace(n.StepID) != "" {
+				setStoryNodePath(n, req.GitTaskCtx.NodePath, "step:"+strings.TrimSpace(n.StepID))
+			} else {
+				setStoryNodePath(n, req.GitTaskCtx.NodePath)
+			}
+		}
 	}
 	if n.Input == nil && att.Input != nil && len(att.Input.Data) > 0 {
-		// Best-effort: preserve raw input for non-activity chapters (e.g. injected context patches).
-		var raw any
-		if json.Unmarshal(att.Input.Data, &raw) == nil {
-			n.Input = raw
+		// Some non-activity chapters store a task envelope in the "input" field. For API consumers,
+		// unwrap the envelope and return only the payload.
+		if payload, ok := unwrapTaskEnvelopePayload(att.Input.Data); ok {
+			n.Input = payload
+		} else {
+			// Best-effort: preserve raw input for unknown/non-envelope chapters.
+			var raw any
+			if json.Unmarshal(att.Input.Data, &raw) == nil {
+				n.Input = raw
+			}
 		}
 	}
 
@@ -819,4 +918,66 @@ func asMap(v any) map[string]interface{} {
 	}
 	// Best-effort: if op output isn't a map, store it under a stable key.
 	return map[string]interface{}{"value": v}
+}
+
+func isContextPatchRun(run swf.TaskRun) bool {
+	if len(run.Attempts) == 0 {
+		return false
+	}
+	final := run.Attempts[len(run.Attempts)-1]
+
+	// Use explicit output envelope kind; do not guess based on task type ordering.
+	if final.Output != nil && len(final.Output.Data) > 0 {
+		var env coretasks.OutputEnvelope
+		if json.Unmarshal(final.Output.Data, &env) == nil && env.Version == coretasks.OutputEnvelopeVersion {
+			return env.Kind == coretasks.OutputKindContextPatch
+		}
+	}
+	return false
+}
+
+func nextTaskFromRegistry(opID string, currentTask string) (string, bool) {
+	opID = strings.TrimSpace(opID)
+	if opID == "" {
+		return "", false
+	}
+	def, ok := coreops.Get(opID)
+	if !ok || def == nil {
+		return "", false
+	}
+	stepID := strings.TrimSpace(stepIDFromTaskType(opID, currentTask))
+	if stepID == "" {
+		return "", false
+	}
+	chain := def.TaskChain()
+	for i := range chain {
+		st := chain[i]
+		if strings.TrimSpace(st.Name) != stepID {
+			continue
+		}
+		next := strings.TrimSpace(st.NextStepTask)
+		if next == "" {
+			return "", false
+		}
+		return next, true
+	}
+	return "", false
+}
+
+func unwrapTaskEnvelopePayload(raw []byte) (any, bool) {
+	var env coretasks.OutputEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, false
+	}
+	if env.Version != coretasks.OutputEnvelopeVersion || strings.TrimSpace(string(env.Kind)) == "" {
+		return nil, false
+	}
+	if len(env.Payload) == 0 {
+		return nil, true
+	}
+	var payload any
+	if err := json.Unmarshal(env.Payload, &payload); err != nil {
+		return nil, false
+	}
+	return payload, true
 }

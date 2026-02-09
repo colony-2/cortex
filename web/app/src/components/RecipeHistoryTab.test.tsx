@@ -5,12 +5,16 @@ import RecipeHistoryTab from './RecipeHistoryTab';
 import { RecipesService } from '@colony2/openapi-client';
 
 // Mock the RecipesService
-vi.mock('@colony2/openapi-client', () => ({
-  RecipesService: {
-    getRecipeHistory: vi.fn(),
-    getRecipe: vi.fn(),
-  },
-}));
+vi.mock('@colony2/openapi-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@colony2/openapi-client')>();
+  return {
+    ...actual,
+    RecipesService: {
+      getRecipeHistory: vi.fn(),
+      getRecipe: vi.fn(),
+    },
+  };
+});
 
 describe('RecipeHistoryTab', () => {
   const projectId = 'proj_123';

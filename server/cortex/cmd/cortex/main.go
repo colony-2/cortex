@@ -3,7 +3,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -39,10 +42,12 @@ func main() {
 // Execute runs the CLI application.
 func Execute() error {
 	rootCmd := &cobra.Command{
-		Use:     "cortex",
-		Short:   "Cortex - Recipe management and visualization tool",
-		Version: fmt.Sprintf("%s (built %s)", Version, BuildTime),
-		Args:    cobra.NoArgs,
+		Use:           "cortex",
+		Short:         "Cortex - Recipe management and visualization tool",
+		Version:       fmt.Sprintf("%s (built %s)", Version, BuildTime),
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand is provided, run the server (default behavior)
 			return run(cfg)
@@ -85,46 +90,85 @@ managing dependencies, and working with development containers.`,
 }
 
 func run(cfg config.Config) error {
+	const (
+		shutdownBudget = 250 * time.Millisecond
+		cleanupBudget  = 250 * time.Millisecond
+	)
+
 	// Validate and complete configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	// Setup signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Initialize dependencies
 	deps, cleanup, err := setup.InitializeDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize dependencies: %w", err)
 	}
-	defer cleanup()
 
 	// Create and start server
 	server, err := setup.CreateServer(cfg, deps)
 	if err != nil {
+		cleanup()
 		return fmt.Errorf("failed to create server: %w", err)
+	}
+
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Port),
+		Handler: server,
+		BaseContext: func(_ net.Listener) context.Context {
+			return ctx
+		},
 	}
 
 	// Start server in background
 	errChan := make(chan error, 1)
 	go func() {
 		fmt.Printf("Server starting on :%d\n", cfg.Port)
-		errChan <- server.Start()
+		errChan <- httpServer.ListenAndServe()
 	}()
+
+	runCleanup := func(budget time.Duration) {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			cleanup()
+		}()
+		select {
+		case <-done:
+		case <-time.After(budget):
+		}
+	}
 
 	// Wait for signal or error
 	select {
-	case <-sigChan:
+	case <-ctx.Done():
 		fmt.Println("\nShutting down...")
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// We may have long-lived connections (e.g. SSE streams). Don't wait around:
+		// attempt a short graceful shutdown then force-close remaining connections.
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownBudget)
 		defer shutdownCancel()
-		return server.Stop(shutdownCtx)
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			_ = httpServer.Close()
+			// Treat Ctrl-C shutdown timeouts/cancels as a clean exit.
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				runCleanup(cleanupBudget)
+				return nil
+			}
+			runCleanup(cleanupBudget)
+			return err
+		}
+		runCleanup(cleanupBudget)
+		return nil
 	case err := <-errChan:
+		cleanup()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
 		return err
 	}
 }

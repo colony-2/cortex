@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,10 +17,12 @@ import (
 // It implements swf.JobContext so higher-level recipe logic can be executed deterministically without
 // re-running any real tasks.
 type StoryBuildingContext struct {
-	jobKey   swf.JobKey
-	logger   *slog.Logger
-	engine   swf.SWFEngine
-	tenantID string
+	jobKey    swf.JobKey
+	logger    *slog.Logger
+	engine    swf.SWFEngine
+	tenantID  string
+	jobType   string
+	jobStatus swf.JobStatus
 
 	mu       sync.Mutex
 	runsByTy map[string][]swf.TaskRun
@@ -27,22 +31,58 @@ type StoryBuildingContext struct {
 	onConsume func(taskType string, run swf.TaskRun, final swf.TaskAttempt)
 }
 
-func NewStoryBuildingContext(engine swf.SWFEngine, tenantID string, jobKey swf.JobKey, tasks []swf.TaskRun, logger *slog.Logger) *StoryBuildingContext {
+func NewStoryBuildingContext(engine swf.SWFEngine, tenantID string, jobKey swf.JobKey, jobType string, jobStatus swf.JobStatus, tasks []swf.TaskRun, logger *slog.Logger) *StoryBuildingContext {
 	runsByTy := make(map[string][]swf.TaskRun, len(tasks))
 	for _, tr := range tasks {
-		runsByTy[tr.TaskType] = append(runsByTy[tr.TaskType], tr)
+		ty := normalizeTaskType(jobType, tr.TaskType)
+		runsByTy[ty] = append(runsByTy[ty], tr)
+	}
+	const unknownOrdinal int64 = 1<<63 - 1
+	for ty := range runsByTy {
+		runs := runsByTy[ty]
+		sort.SliceStable(runs, func(i, j int) bool {
+			oi, ok := taskRunFirstOrdinal(runs[i])
+			if !ok {
+				oi = unknownOrdinal
+			}
+			oj, ok := taskRunFirstOrdinal(runs[j])
+			if !ok {
+				oj = unknownOrdinal
+			}
+			return oi < oj
+		})
+		runsByTy[ty] = runs
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &StoryBuildingContext{
-		jobKey:   jobKey,
-		logger:   logger,
-		engine:   engine,
-		tenantID: tenantID,
-		runsByTy: runsByTy,
-		cursor:   make(map[string]int, len(runsByTy)),
+		jobKey:    jobKey,
+		logger:    logger,
+		engine:    engine,
+		tenantID:  tenantID,
+		jobType:   strings.TrimSpace(jobType),
+		jobStatus: jobStatus,
+		runsByTy:  runsByTy,
+		cursor:    make(map[string]int, len(runsByTy)),
 	}
+}
+
+func normalizeTaskType(jobType, taskType string) string {
+	jobType = strings.TrimSpace(jobType)
+	taskType = strings.TrimSpace(taskType)
+	if jobType == "" || taskType == "" {
+		return taskType
+	}
+	prefix := jobType + ":"
+	if !strings.HasPrefix(taskType, prefix) {
+		return taskType
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(taskType, prefix))
+	if rest == "" {
+		return taskType
+	}
+	return rest
 }
 
 func (c *StoryBuildingContext) SetOnConsume(fn func(taskType string, run swf.TaskRun, final swf.TaskAttempt)) {
@@ -79,10 +119,10 @@ func (c *StoryBuildingContext) NextTaskTypeForPrefix(prefix string) (string, boo
 			continue
 		}
 		run := runs[idx]
-		if len(run.Attempts) == 0 {
+		ord, ok := taskRunFirstOrdinal(run)
+		if !ok {
 			continue
 		}
-		ord := run.Attempts[0].Ordinal
 		if bestOrd < 0 || ord < bestOrd {
 			bestOrd = ord
 			bestTy = ty
@@ -123,10 +163,10 @@ func (c *StoryBuildingContext) peekNextRunAnyLocked() (string, swf.TaskRun, bool
 			continue
 		}
 		run := runs[idx]
-		if len(run.Attempts) == 0 {
+		ord, ok := taskRunFirstOrdinal(run)
+		if !ok {
 			continue
 		}
-		ord := run.Attempts[0].Ordinal
 		if bestOrd < 0 || ord < bestOrd {
 			bestOrd = ord
 			bestTy = ty
@@ -167,8 +207,14 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 	if nextTy, nextRun, ok := c.peekNextRunAny(); ok {
 		if nextTy != taskType {
 			ord := int64(-1)
-			if len(nextRun.Attempts) > 0 {
-				ord = nextRun.Attempts[0].Ordinal
+			if o, ok := taskRunFirstOrdinal(nextRun); ok {
+				ord = o
+			}
+			// When a job is still running, SWF can surface "runtime" task runs/attempts in non-terminal
+			// states that do not necessarily align to the next replayable recipe task type. In that
+			// scenario, prefer surfacing "in progress" rather than a deterministic mismatch.
+			if isJobStatusRunning(c.jobStatus) && isTaskRunInProgress(nextRun) {
+				return nil, fmt.Errorf("%w: next task is %q (ordinal=%d) but requested %q", ErrReplayInProgress, nextTy, ord, taskType)
 			}
 			return nil, fmt.Errorf("%w: next task is %q (ordinal=%d) but requested %q", ErrReplayMismatch, nextTy, ord, taskType)
 		}
@@ -179,6 +225,12 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 	idx := c.cursor[taskType]
 	if idx >= len(runs) {
 		c.mu.Unlock()
+		// When a job is still running, "unheld"/capability-based tasks can be waiting even though
+		// the engine has not yet recorded a task attempt/run for the next step. Treat that as
+		// in-progress rather than a deterministic mismatch.
+		if isJobStatusRunning(c.jobStatus) {
+			return nil, fmt.Errorf("%w: taskType=%q not started (no task runs)", ErrReplayInProgress, taskType)
+		}
 		return nil, fmt.Errorf("%w: no remaining task runs for taskType=%q", ErrReplayMismatch, taskType)
 	}
 	run := runs[idx]
@@ -187,7 +239,9 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 	c.mu.Unlock()
 
 	if len(run.Attempts) == 0 {
-		return nil, fmt.Errorf("story replay: task run has no attempts for taskType=%q", taskType)
+		// A TaskRun can exist before its first attempt is created. Treat it as "in progress"
+		// so the story surfaces the node as pending/running rather than failed.
+		return nil, fmt.Errorf("%w: taskType=%q not started (no attempts)", ErrReplayInProgress, taskType)
 	}
 	final := run.Attempts[len(run.Attempts)-1]
 	if fn != nil {
@@ -241,6 +295,9 @@ func (c *StoryBuildingContext) ConsumeNextAny() (string, swf.TaskData, error) {
 	taskType, run, ok := c.peekNextRunAnyLocked()
 	if !ok {
 		c.mu.Unlock()
+		if isJobStatusRunning(c.jobStatus) {
+			return "", nil, fmt.Errorf("%w: no remaining task runs", ErrReplayInProgress)
+		}
 		return "", nil, fmt.Errorf("%w: no remaining task runs", ErrReplayMismatch)
 	}
 	idx := c.cursor[taskType]
@@ -249,7 +306,7 @@ func (c *StoryBuildingContext) ConsumeNextAny() (string, swf.TaskData, error) {
 	c.mu.Unlock()
 
 	if len(run.Attempts) == 0 {
-		return "", nil, fmt.Errorf("story replay: task run has no attempts for taskType=%q", taskType)
+		return "", nil, fmt.Errorf("%w: taskType=%q not started (no attempts)", ErrReplayInProgress, taskType)
 	}
 	final := run.Attempts[len(run.Attempts)-1]
 	if fn != nil {
@@ -292,6 +349,56 @@ func (c *StoryBuildingContext) ConsumeNextAny() (string, swf.TaskData, error) {
 	}
 
 	return taskType, &swf.SimpleTaskData{Data: json.RawMessage(outData), Artifacts: artifacts}, nil
+}
+
+func isJobStatusRunning(st swf.JobStatus) bool {
+	switch st {
+	case swf.JobStatusActive, swf.JobStatusPendingJobs, swf.JobStatusAwaitingFuture, swf.JobStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+func isTaskAttemptInProgress(att swf.TaskAttempt) bool {
+	switch att.State {
+	case swf.TaskAttemptStateReady, swf.TaskAttemptStateLeased, swf.TaskAttemptStateWaiting, swf.TaskAttemptStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+func isTaskRunInProgress(run swf.TaskRun) bool {
+	if len(run.Attempts) == 0 {
+		return true
+	}
+	final := run.Attempts[len(run.Attempts)-1]
+	return isTaskAttemptInProgress(final)
+}
+
+func taskRunFirstOrdinal(run swf.TaskRun) (int64, bool) {
+	if len(run.Attempts) > 0 {
+		return run.Attempts[0].Ordinal, true
+	}
+	taskRunID := strings.TrimSpace(run.TaskRunID)
+	if taskRunID == "" {
+		return 0, false
+	}
+	taskType := strings.TrimSpace(run.TaskType)
+	if taskType != "" {
+		prefix := taskType + ":"
+		if strings.HasPrefix(taskRunID, prefix) {
+			ord, err := strconv.ParseInt(strings.TrimPrefix(taskRunID, prefix), 10, 64)
+			return ord, err == nil
+		}
+	}
+	last := taskRunID
+	if idx := strings.LastIndex(taskRunID, ":"); idx >= 0 && idx < len(taskRunID)-1 {
+		last = taskRunID[idx+1:]
+	}
+	ord, err := strconv.ParseInt(last, 10, 64)
+	return ord, err == nil
 }
 
 var _ swf.JobContext = (*StoryBuildingContext)(nil)

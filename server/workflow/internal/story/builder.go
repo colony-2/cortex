@@ -42,7 +42,7 @@ func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID strin
 		return nil, err
 	}
 
-	jobCtx := NewStoryBuildingContext(engine, projectID, jobKey, run.Tasks, logger)
+	jobCtx := NewStoryBuildingContext(engine, projectID, jobKey, run.Job.JobType, run.Job.Status, run.Tasks, logger)
 	exec := newExecutor(projectID, jobKey.JobId, jobCtx)
 
 	commitCtx := contextual.GitCommitContext{ParentRef: start.GitRef}

@@ -44,11 +44,6 @@ func (b *treeBuilder) newNode(kind model.JobRunStoryNodeKind, title string) *mod
 }
 
 func (b *treeBuilder) push(segment string, n *model.JobRunStoryNode) {
-	path := make([]string, 0, len(b.segments)+1)
-	path = append(path, b.segments...)
-	path = append(path, segment)
-	n.Path = path
-
 	if len(b.stack) > 0 {
 		parent := b.stack[len(b.stack)-1]
 		parent.Children = append(parent.Children, n)
@@ -61,7 +56,7 @@ func (b *treeBuilder) pop() *model.JobRunStoryNode {
 	if len(b.stack) == 0 {
 		return nil
 	}
-n := b.stack[len(b.stack)-1]
+	n := b.stack[len(b.stack)-1]
 	b.stack = b.stack[:len(b.stack)-1]
 	if len(b.segments) > 0 {
 		b.segments = b.segments[:len(b.segments)-1]
@@ -153,4 +148,3 @@ func isTerminal(st model.JobRunStoryNodeStatus) bool {
 		return false
 	}
 }
-
