@@ -1207,6 +1207,7 @@ func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifac
 	if s.engine == nil {
 		return nil, ErrEngineUnavailable
 	}
+
 	projectID := strings.TrimSpace(req.ProjectID)
 	jobID := strings.TrimSpace(req.JobID)
 	if projectID == "" || jobID == "" {
@@ -1216,81 +1217,29 @@ func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifac
 		return nil, fmt.Errorf("invalid artifact request")
 	}
 
-	// Load job run to validate and get artifact size/type
-	run, err := s.engine.GetJobRun(ctx, swf.GetJobRunRequest{
-		JobKey:           swf.JobKey{TenantId: projectID, JobId: jobID},
-		IncludeArtifacts: true,
-	})
-	if err != nil {
-		if errors.Is(err, swf.ErrJobNotFound) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-
-	var meta *swf.ArtifactInfo
-	find := func(arts []swf.ArtifactInfo) {
-		for i := range arts {
-			if arts[i].Name == req.ArtifactName {
-				meta = &arts[i]
-				return
-			}
-		}
-	}
-	for _, jobAttempt := range run.Attempts {
-		if jobAttempt.Ordinal == req.TaskOrdinal && jobAttempt.Output != nil {
-			find(jobAttempt.Output.Artifacts)
-			if meta != nil {
-				break
-			}
-		}
-		for _, task := range jobAttempt.Tasks {
-			for _, att := range task.Attempts {
-				if att.Ordinal == req.TaskOrdinal && att.Output != nil {
-					find(att.Output.Artifacts)
-					if meta != nil {
-						break
-					}
-				}
-			}
-			if meta != nil {
-				break
-			}
-		}
-		if meta != nil {
-			break
-		}
-	}
-	if meta == nil {
-		return nil, ErrNotFound
-	}
-
 	key := swf.ArtifactKey{
-		JobId:       jobID,
+		JobId:       strings.TrimSpace(req.JobID),
 		TaskOrdinal: req.TaskOrdinal,
-		Name:        meta.Name,
-		SizeBytes:   meta.SizeBytes,
+		Name:        req.ArtifactName,
+		SizeBytes:   -1,
 	}
+
 	artifact, err := s.engine.GetArtifact(projectID, key)
 	if err != nil {
-		if errors.Is(err, swf.ErrArtifactKeyUnavailable) || errors.Is(err, swf.ErrJobNotFound) {
-			return nil, ErrNotFound
-		}
 		return nil, err
 	}
+
 	bytes, err := artifact.Bytes(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	contentType := meta.ContentType
 	return &model.ArtifactData{
 		Content:   bytes,
-		Filename:  meta.Name,
-		SizeBytes: int64(len(bytes)),
+		Filename:  artifact.Name(),
+		SizeBytes: artifact.Size(),
 		Metadata: map[string]string{
-			"artifactType": contentType,
-			"taskOrdinal":  fmt.Sprintf("%d", req.TaskOrdinal),
+			"taskOrdinal": fmt.Sprintf("%d", req.TaskOrdinal),
 		},
 	}, nil
 }
