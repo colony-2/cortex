@@ -65,8 +65,10 @@ const (
 // unless declared as pointers.
 //
 // Convention:
-// - The node itself represents the latest attempt.
-// - Prior attempts of the same logical node are stored in PriorAttempts.
+//   - The node itself represents the latest *task* attempt (retry) for that logical node.
+//   - Prior *task* attempts (retries) of the same logical node are stored in PriorAttempts.
+//   - This is distinct from SWF "job attempts" (GetJobRunResponse.Attempts), which are surfaced
+//     at the recipe root via JobAttempt/PastAttempts.
 type JobRunStoryNode struct {
 	ID         string                `json:"id"`
 	Kind       JobRunStoryNodeKind   `json:"kind"`
@@ -77,6 +79,13 @@ type JobRunStoryNode struct {
 
 	Path      []string `json:"path"`
 	InvokeSeq int64    `json:"invoke_seq"`
+
+	// JobAttempt is the SWF "job attempt" number (GetJobRunResponse.Attempts[i].Attempt).
+	// It is only set on recipe root nodes.
+	JobAttempt int `json:"job_attempt,omitempty"`
+	// PastAttempts are prior SWF job attempts represented as recipe root nodes.
+	// It is only set on the latest recipe root node.
+	PastAttempts []*JobRunStoryNode `json:"past_attempts,omitempty"`
 
 	Attempt       int                `json:"attempt"`
 	PriorAttempts []*JobRunStoryNode `json:"prior_attempts"`

@@ -49,10 +49,12 @@ type Handlers struct {
 	recipeSvc recipesvc.Service
 
 	cellDeps cellDependencyLister
+
+	swfEngine swfJobRunGetter
 }
 
 // New creates a new handlers instance
-func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister) *Handlers {
+func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister, swfEngine swfJobRunGetter) *Handlers {
 	if recipes == nil {
 		recipes = defaultRecipeRegistryFactory
 	}
@@ -65,6 +67,7 @@ func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.S
 		workflows:    workflows,
 		recipeSvc:    recipeSvc,
 		cellDeps:     cellDeps,
+		swfEngine:    swfEngine,
 	}
 }
 

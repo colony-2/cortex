@@ -59,7 +59,8 @@ outputs:
 		{TaskRunID: "test_chain_twice:second:4", TaskType: "test_chain_twice:second", Attempts: []swf.TaskAttempt{{Ordinal: 4, Attempt: 1, WorkerID: "w1", CreatedAt: now.Add(3 * time.Second), Input: &swf.TaskIO{Data: []byte(`{"input":{},"context":{"InvokeSeq":2}}`)}, Output: &swf.TaskIO{Data: stepEnv(map[string]any{"inv": 2, "step": "two"})}, State: swf.TaskAttemptStateSucceeded, Outcome: swf.TaskOutcome{Status: swf.TaskOutcomeStatusSucceeded}}}},
 	}
 
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, tasks, nil)
+	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
+	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
 	exec := newExecutor("tenant", "job", jobCtx)
 	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
 	if execErr != nil {

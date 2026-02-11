@@ -26,7 +26,8 @@ func TestStoryBuildingContext_NormalizesJobTypePrefixedTaskTypes(t *testing.T) {
 		},
 	}
 
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, tasks, nil)
+	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
+	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
 
 	if ty, ok := jobCtx.NextTaskTypeForPrefix("input:"); !ok || ty != "input:collect_user_input" {
 		t.Fatalf("expected NextTaskTypeForPrefix to return normalized task type, got ty=%q ok=%v", ty, ok)
@@ -37,4 +38,3 @@ func TestStoryBuildingContext_NormalizesJobTypePrefixedTaskTypes(t *testing.T) {
 		t.Fatalf("expected DoTask to return ErrReplayInProgress, got %v", err)
 	}
 }
-

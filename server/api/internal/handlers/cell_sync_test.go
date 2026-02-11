@@ -75,7 +75,7 @@ func TestHandleSyncCells_Success(t *testing.T) {
 		return nil, repoPath, func() {}, nil
 	}
 
-	h := New(graphFactory, noopRecipes, projectSvc, cellSvc, nil, nil, nil, cellStore)
+	h := New(graphFactory, noopRecipes, projectSvc, cellSvc, nil, nil, nil, cellStore, nil)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
@@ -158,7 +158,7 @@ func TestHandleSyncCells_UnsupportedPopulator(t *testing.T) {
 		return nil, fmt.Errorf("graph factory not implemented in test")
 	}
 
-	h := New(noopGraphFactory, noopRecipes, projectSvc, cellSvc, nil, nil, nil, cellStore)
+	h := New(noopGraphFactory, noopRecipes, projectSvc, cellSvc, nil, nil, nil, cellStore, nil)
 	router := h.SetupRoutes(nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()

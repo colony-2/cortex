@@ -6,6 +6,7 @@ import (
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/colony2/server/workflow/internal/service"
@@ -90,22 +91,24 @@ type Service interface {
 }
 
 type ServiceConfig struct {
-	Engine   swf.SWFEngine
-	Strata   *client.Client
-	Tickets  ticket.Service
-	Cells    cell.Service
-	Projects project.Service
-	Recipes  RecipeProvider
+	Engine             swf.SWFEngine
+	Strata             *client.Client
+	Tickets            ticket.Service
+	Cells              cell.Service
+	Projects           project.Service
+	Recipes            RecipeProvider
+	CELOptionsProvider template.CELOptionsProvider
 }
 
 func New(config ServiceConfig) (Service, error) {
 	return service.New(service.Config{
-		Engine:   config.Engine,
-		Strata:   config.Strata,
-		Tickets:  config.Tickets,
-		Cells:    config.Cells,
-		Projects: config.Projects,
-		Recipes:  config.Recipes,
+		Engine:             config.Engine,
+		Strata:             config.Strata,
+		Tickets:            config.Tickets,
+		Cells:              config.Cells,
+		Projects:           config.Projects,
+		Recipes:            config.Recipes,
+		CELOptionsProvider: config.CELOptionsProvider,
 	})
 }
 

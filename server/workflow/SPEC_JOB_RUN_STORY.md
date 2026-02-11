@@ -26,7 +26,7 @@ The response is a single consolidated tree (recipe -> sequences -> ops/steps -> 
 
 ## Components
 - **StoryBuildingContext** (`swf.JobContext`):
-  - Replays tasks from `GetJobRunResponse.Tasks`.
+  - Replays tasks from `GetJobRunResponse.Attempts[i].Tasks`.
   - `DoTask` consumes the next recorded `TaskRun` for the requested `taskType` and returns the recorded output (or an error). If the final attempt is non-terminal, returns `ErrReplayInProgress`.
 - **StoryBuildingExecutor**:
   - Lightweight executor that walks the recipe structure and builds a story tree while calling `DoTask` to advance op execution.
@@ -61,4 +61,4 @@ context used for input and output resolution.
 - Implement handler in `/src/server/api` that calls workflow service `GetJobRunStory`.
 
 ## Feasibility note
-All required data (tasks, attempts, IO, job-start recipe artifacts) is available via `swf.GetJobRun` + `engine.GetArtifact`. The replay + story building can be implemented entirely in `server/workflow` (HTTP wiring lives in `server/api` + OpenAPI spec/bindings as normal).
+All required data (attempt-scoped tasks, attempts, IO, job-start recipe artifacts) is available via `swf.GetJobRun` + `engine.GetArtifact`. The replay + story building can be implemented entirely in `server/workflow` (HTTP wiring lives in `server/api` + OpenAPI spec/bindings as normal).

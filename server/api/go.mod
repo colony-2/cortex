@@ -21,7 +21,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260209193327-8c2d7dbeb6b0
+	github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1

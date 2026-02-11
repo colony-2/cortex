@@ -102,6 +102,9 @@ func registerAPIRoutes(api *mux.Router, h *Handlers) {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", withHandlerLog("workflows:story:get", h.handleGetJobRunStory)).Methods(http.MethodGet)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", withHandlerLog("workflows:restart:post", h.handleRestartRecipeJob)).Methods(http.MethodPost)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName}", withHandlerLog("workflows:artifact:engine:get", h.handleGetJobArtifact)).Methods(http.MethodGet)
+
+	// Testing-only endpoints (intentionally not part of the OpenAPI contract).
+	api.HandleFunc("/_test/projects/{projectId}/jobs/{jobId}/engine/get-job-run", withHandlerLog("test:swf:getJobRun", h.handleTestGetJobRun)).Methods(http.MethodGet)
 }
 
 func (h *Handlers) handleListProjects(w http.ResponseWriter, r *http.Request) {

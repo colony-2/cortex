@@ -22,6 +22,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	jobstory "github.com/colony-2/colony2/server/workflow/internal/story"
@@ -43,23 +44,25 @@ var (
 )
 
 type Config struct {
-	Engine   swf.SWFEngine
-	Strata   *client.Client
-	Tickets  ticket.Service
-	Cells    cell.Service
-	Projects project.Service
-	Recipes  RecipeProvider
-	Logger   *slog.Logger
+	Engine             swf.SWFEngine
+	Strata             *client.Client
+	Tickets            ticket.Service
+	Cells              cell.Service
+	Projects           project.Service
+	Recipes            RecipeProvider
+	CELOptionsProvider template.CELOptionsProvider
+	Logger             *slog.Logger
 }
 
 type Service struct {
-	engine   swf.SWFEngine
-	strata   *client.Client
-	tickets  ticket.Service
-	cells    cell.Service
-	projects project.Service
-	recipes  RecipeProvider
-	logger   *slog.Logger
+	engine      swf.SWFEngine
+	strata      *client.Client
+	tickets     ticket.Service
+	cells       cell.Service
+	projects    project.Service
+	recipes     RecipeProvider
+	celProvider template.CELOptionsProvider
+	logger      *slog.Logger
 }
 
 type RecipeProvider func(projectID string, recipeRef string) (*recipe.Recipe, error)
@@ -73,13 +76,14 @@ func New(cfg Config) (*Service, error) {
 		logger = slog.Default()
 	}
 	return &Service{
-		engine:   cfg.Engine,
-		strata:   cfg.Strata,
-		tickets:  cfg.Tickets,
-		cells:    cfg.Cells,
-		projects: cfg.Projects,
-		recipes:  cfg.Recipes,
-		logger:   logger,
+		engine:      cfg.Engine,
+		strata:      cfg.Strata,
+		tickets:     cfg.Tickets,
+		cells:       cfg.Cells,
+		projects:    cfg.Projects,
+		recipes:     cfg.Recipes,
+		celProvider: cfg.CELOptionsProvider,
+		logger:      logger,
 	}, nil
 }
 
@@ -542,37 +546,50 @@ func (s *Service) GetWorkflowOutcome(ctx context.Context, req model.GetWorkflowO
 	}
 
 	status := mapWorkflowStatus(run.Job.Status)
-	selected := selectLatestAttemptWithOutcome(run.Tasks, run.JobAttempts)
-
-	if selected == nil && status == model.WorkflowStatusRunning {
-		return nil, ErrOutcomePending
-	}
 
 	var attemptOrdinal *int64
 	var output map[string]interface{}
 	var errMsg *string
 
-	if selected != nil {
-		attemptOrdinal = &selected.Ordinal
-		if selected.Output != nil && len(selected.Output.Data) > 0 {
-			if m := mapFromRaw(selected.Output.Data); m != nil {
+	latest := (*swf.JobAttempt)(nil)
+	if len(run.Attempts) > 0 {
+		latest = &run.Attempts[len(run.Attempts)-1]
+	}
+
+	// With the new SWF shape, job-level output/error is carried directly on the latest attempt.
+	if latest != nil {
+		hasOutput := latest.Output != nil && len(latest.Output.Data) > 0
+		hasError := latest.Outcome.Error != nil || latest.Outcome.Status == swf.TaskOutcomeStatusFailed
+
+		if !hasOutput && !hasError && status == model.WorkflowStatusRunning {
+			return nil, ErrOutcomePending
+		}
+
+		// Preserve existing surface: only set AttemptOrdinal when we have a terminal-ish signal.
+		if hasOutput || hasError || status != model.WorkflowStatusRunning {
+			attemptOrdinal = &latest.Ordinal
+		}
+		if hasOutput {
+			if m := mapFromRaw(latest.Output.Data); m != nil {
 				output = *m
 			}
 		}
-		if selected.Outcome.Error != nil && selected.Outcome.Error.Message != "" {
-			msg := selected.Outcome.Error.Message
+		if latest.Outcome.Error != nil && latest.Outcome.Error.Message != "" {
+			msg := latest.Outcome.Error.Message
 			errMsg = &msg
-		} else if selected.Outcome.Status == swf.TaskOutcomeStatusFailed {
+		} else if latest.Outcome.Status == swf.TaskOutcomeStatusFailed {
 			msg := "task failed"
 			errMsg = &msg
 		}
-		// If job status is still running but latest attempt failed, surface failed status.
-		if status == model.WorkflowStatusRunning && selected.Outcome.Status == swf.TaskOutcomeStatusFailed {
+		// If job status is still running but the current attempt is failed, surface failed status.
+		if status == model.WorkflowStatusRunning && latest.Outcome.Status == swf.TaskOutcomeStatusFailed {
 			status = model.WorkflowStatusFailed
 		}
+	} else if status == model.WorkflowStatusRunning {
+		return nil, ErrOutcomePending
 	}
 
-	artifacts := aggregateArtifacts(run.Tasks, run.JobAttempts, projectID, jobID)
+	artifacts := aggregateArtifacts(run.Attempts, projectID, jobID)
 
 	return &model.WorkflowOutcome{
 		JobID:          jobID,
@@ -649,8 +666,30 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 		}
 	}
 
-	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger)
+	resOpts := template.DefaultResolutionOptions()
+	resOpts.CELOptionsProvider = s.celProvider
+	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger, resOpts)
+
+	// SWF JobStatusCompleted means "terminal", not "successful". Some terminal jobs end due to a
+	// job-level timeout and may not have recorded task runs for the next step. In that case,
+	// story replay can report a mismatch even though the recorded timeline is simply truncated.
+	//
+	// For those runs, prefer returning the partial story (HTTP 200) instead of surfacing HTTP 409.
+	if st != nil {
+		if status, ok := terminalStoryStatusOverrideFromRun(run); ok {
+			st.Status = status
+			if st.Root != nil && status == model.WorkflowStatusTimedOut && st.Root.Status != model.JobRunStoryNodeStatusFailed {
+				// Ensure the root isn't shown as succeeded for terminal timeout runs.
+				st.Root.Status = model.JobRunStoryNodeStatusFailed
+			}
+		}
+		applyJobAttemptOutcomeAndOutputToStory(st, run)
+	}
+
 	if buildErr != nil && errors.Is(buildErr, jobstory.ErrReplayMismatch) {
+		if shouldSuppressReplayMismatchForRun(run) {
+			return st, nil
+		}
 		s.logger.Error("GetJobRunStory: swf job run dump",
 			"project_id", projectID,
 			"job_id", jobID,
@@ -686,8 +725,8 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 			"job_archived_at", run.Job.ArchivedAt,
 			"job_start_ordinal", run.Start.Ordinal,
 			"job_start_worker_id", run.Start.WorkerID,
-			"task_count", len(run.Tasks),
-			"task_timeline", summarizeTaskTimelineForLog(run.Tasks),
+			"task_count", countTaskRuns(run.Attempts),
+			"task_timeline", summarizeTaskTimelineForLog(run.Attempts),
 			"ops_registry_size", coreops.Size(),
 			"replay_error", buildErr,
 			"replay_error_chain", errorChainForLog(buildErr),
@@ -698,6 +737,125 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 		return st, ErrJobRunStoryMismatch
 	}
 	return st, buildErr
+}
+
+func shouldSuppressReplayMismatchForRun(run swf.GetJobRunResponse) bool {
+	// Today we only suppress replay mismatches for job-level timeouts, where the recorded
+	// timeline may be truncated (e.g. missing a final "next task" run).
+	status, ok := terminalStoryStatusOverrideFromRun(run)
+	return ok && status == model.WorkflowStatusTimedOut
+}
+
+func terminalStoryStatusOverrideFromRun(run swf.GetJobRunResponse) (model.WorkflowStatus, bool) {
+	// Only override when SWF says the job is terminal and the latest attempt clearly indicates
+	// a job-level timeout.
+	if !isTerminalJobStatus(run.Job.Status) {
+		return "", false
+	}
+	out, ok := latestAttemptOutcome(run)
+	if !ok {
+		return "", false
+	}
+	if isTimeoutOutcome(out) {
+		return model.WorkflowStatusTimedOut, true
+	}
+	return "", false
+}
+
+func latestAttemptTerminalError(run swf.GetJobRunResponse) (msg string, code string, ok bool) {
+	if len(run.Attempts) == 0 {
+		return "", "", false
+	}
+	latest := run.Attempts[len(run.Attempts)-1]
+	if latest.Outcome.Error == nil {
+		return "", "", false
+	}
+	msg = strings.TrimSpace(latest.Outcome.Error.Message)
+	code = strings.TrimSpace(latest.Outcome.Error.Code)
+	if msg == "" {
+		return "", "", false
+	}
+	return msg, code, true
+}
+
+func latestAttemptOutcome(run swf.GetJobRunResponse) (swf.TaskOutcome, bool) {
+	if len(run.Attempts) == 0 {
+		return swf.TaskOutcome{}, false
+	}
+	return run.Attempts[len(run.Attempts)-1].Outcome, true
+}
+
+func isTimeoutOutcome(out swf.TaskOutcome) bool {
+	if strings.EqualFold(strings.TrimSpace(out.PayloadKind), "Timeout") {
+		return true
+	}
+	if out.Error == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(out.Error.Kind), "TIMEOUT") {
+		return true
+	}
+	code := strings.ToLower(strings.TrimSpace(out.Error.Code))
+	return strings.HasPrefix(code, "timeout")
+}
+
+func isTerminalJobStatus(st swf.JobStatus) bool {
+	switch st {
+	case swf.JobStatusCompleted, swf.JobStatusCancelled, swf.JobStatusExpired, swf.JobStatusCrashConcern:
+		return true
+	default:
+		return false
+	}
+}
+
+func applyJobAttemptOutcomeAndOutputToStory(st *model.JobRunStory, run swf.GetJobRunResponse) {
+	if st == nil || st.Root == nil || len(run.Attempts) == 0 {
+		return
+	}
+
+	byAttempt := make(map[int]swf.JobAttempt, len(run.Attempts))
+	for i := range run.Attempts {
+		att := run.Attempts[i]
+		byAttempt[att.Attempt] = att
+	}
+
+	apply := func(n *model.JobRunStoryNode) {
+		if n == nil || n.JobAttempt <= 0 {
+			return
+		}
+		att, ok := byAttempt[n.JobAttempt]
+		if !ok {
+			return
+		}
+
+		// Prefer surfacing the job attempt output on the recipe attempt node, since it contains
+		// runner-level terminal details (e.g. job total timeout message) that the recipe output
+		// may not include.
+		if att.Output != nil && len(att.Output.Data) > 0 {
+			var v any
+			if err := json.Unmarshal(att.Output.Data, &v); err == nil {
+				n.Output = v
+			} else {
+				n.Output = string(att.Output.Data)
+			}
+		}
+
+		// Best-effort: attach terminal error when not already present.
+		if n.Error == nil && att.Outcome.Error != nil {
+			msg := strings.TrimSpace(att.Outcome.Error.Message)
+			if msg != "" {
+				n.Error = &model.JobRunStoryError{
+					Message: msg,
+					Code:    strings.TrimSpace(att.Outcome.Error.Code),
+				}
+			}
+		}
+	}
+
+	apply(st.Root)
+	for _, pa := range st.Root.PastAttempts {
+		apply(pa)
+	}
 }
 
 func shouldDebugDumpJobRunStory() bool {
@@ -714,6 +872,10 @@ func shouldDebugDumpJobRunStory() bool {
 }
 
 func dumpSWFJobRunForLog(run swf.GetJobRunResponse) map[string]any {
+	latest := (*swf.JobAttempt)(nil)
+	if len(run.Attempts) > 0 {
+		latest = &run.Attempts[len(run.Attempts)-1]
+	}
 	out := map[string]any{
 		"job": map[string]any{
 			"job_key":     run.Job.JobKey,
@@ -729,17 +891,16 @@ func dumpSWFJobRunForLog(run swf.GetJobRunResponse) map[string]any {
 			"created_at": run.Start.CreatedAt,
 			"input":      truncateTaskIOForLog(run.Start.Input),
 		},
-		"tasks":        dumpTaskRunsForLog(run.Tasks),
-		"job_attempts": dumpJobAttemptsForLog(run.JobAttempts),
+		"attempts": dumpJobAttemptsForLog(run.Attempts),
 	}
-	if run.Result != nil {
+	if latest != nil {
 		out["result"] = map[string]any{
-			"ordinal":   run.Result.Ordinal,
-			"attempt":   run.Result.Attempt,
-			"worker_id": run.Result.WorkerID,
-			"created_at": run.Result.CreatedAt,
-			"outcome":   run.Result.Outcome,
-			"output":    truncateTaskIOForLog(run.Result.Output),
+			"ordinal":    latest.Ordinal,
+			"attempt":    latest.Attempt,
+			"worker_id":  latest.WorkerID,
+			"created_at": latest.CreatedAt,
+			"outcome":    latest.Outcome,
+			"output":     truncateTaskIOForLog(latest.Output),
 		}
 	}
 	return out
@@ -762,21 +923,21 @@ func dumpTaskAttemptsForLog(attempts []swf.TaskAttempt) []any {
 	out := make([]any, 0, len(attempts))
 	for _, a := range attempts {
 		row := map[string]any{
-			"ordinal":        a.Ordinal,
-			"attempt":        a.Attempt,
-			"worker_id":      a.WorkerID,
-			"created_at":     a.CreatedAt,
-			"state":          a.State,
-			"outcome":        a.Outcome,
-			"input_hash":     a.InputHash,
-			"input_ref":      a.InputRef,
-			"run_policy":     a.RunPolicy,
-			"retryable":      a.Retryable,
-			"max_attempts":   a.MaxAttempts,
+			"ordinal":         a.Ordinal,
+			"attempt":         a.Attempt,
+			"worker_id":       a.WorkerID,
+			"created_at":      a.CreatedAt,
+			"state":           a.State,
+			"outcome":         a.Outcome,
+			"input_hash":      a.InputHash,
+			"input_ref":       a.InputRef,
+			"run_policy":      a.RunPolicy,
+			"retryable":       a.Retryable,
+			"max_attempts":    a.MaxAttempts,
 			"next_attempt_at": a.NextAttemptAt,
-			"backoff_ms":     a.BackoffMillis,
-			"input":          truncateTaskIOForLog(a.Input),
-			"output":         truncateTaskIOForLog(a.Output),
+			"backoff_ms":      a.BackoffMillis,
+			"input":           truncateTaskIOForLog(a.Input),
+			"output":          truncateTaskIOForLog(a.Output),
 		}
 		out = append(out, row)
 	}
@@ -794,6 +955,8 @@ func dumpJobAttemptsForLog(attempts []swf.JobAttempt) []any {
 			"input_ref":  a.InputRef,
 			"outcome":    a.Outcome,
 			"output":     truncateTaskIOForLog(a.Output),
+			"task_count": len(a.Tasks),
+			"tasks":      dumpTaskRunsForLog(a.Tasks),
 		}
 		out = append(out, row)
 	}
@@ -845,9 +1008,9 @@ func (s *Service) dumpStrataChaptersForLog(ctx context.Context, jobKey swf.JobKe
 		}
 		body := chap.Body()
 		entry := map[string]any{
-			"ordinal":       chap.Ordinal(),
-			"body_len":      len(body),
-			"body":          string(body),
+			"ordinal":        chap.Ordinal(),
+			"body_len":       len(body),
+			"body":           string(body),
 			"artifact_count": len(chap.Artifacts()),
 		}
 		var env chapterEnvelope
@@ -900,33 +1063,46 @@ func errorChainForLog(err error) []string {
 	return out
 }
 
-func summarizeTaskTimelineForLog(tasks []swf.TaskRun) []string {
-	if len(tasks) == 0 {
+func countTaskRuns(attempts []swf.JobAttempt) int {
+	n := 0
+	for i := range attempts {
+		n += len(attempts[i].Tasks)
+	}
+	return n
+}
+
+func summarizeTaskTimelineForLog(attempts []swf.JobAttempt) []string {
+	if len(attempts) == 0 {
 		return nil
 	}
 
 	type row struct {
 		ord      int64
+		jobAtt   int
 		taskType string
 		attempts int
 		state    string
 	}
 
-	rows := make([]row, 0, len(tasks))
-	for _, tr := range tasks {
-		r := row{
-			ord:      -1,
-			taskType: tr.TaskType,
-			attempts: len(tr.Attempts),
-			state:    "",
+	rows := make([]row, 0, countTaskRuns(attempts))
+	for i := range attempts {
+		ja := attempts[i]
+		for _, tr := range ja.Tasks {
+			r := row{
+				ord:      -1,
+				jobAtt:   ja.Attempt,
+				taskType: tr.TaskType,
+				attempts: len(tr.Attempts),
+				state:    "",
+			}
+			if len(tr.Attempts) > 0 {
+				r.ord = tr.Attempts[0].Ordinal
+				r.state = tr.Attempts[len(tr.Attempts)-1].State
+			} else if ord, ok := parseOrdinalFromTaskRunID(tr.TaskRunID); ok {
+				r.ord = ord
+			}
+			rows = append(rows, r)
 		}
-		if len(tr.Attempts) > 0 {
-			r.ord = tr.Attempts[0].Ordinal
-			r.state = tr.Attempts[len(tr.Attempts)-1].State
-		} else if ord, ok := parseOrdinalFromTaskRunID(tr.TaskRunID); ok {
-			r.ord = ord
-		}
-		rows = append(rows, r)
 	}
 
 	// Sort by ordinal ascending; unknown ordinals go last.
@@ -934,6 +1110,9 @@ func summarizeTaskTimelineForLog(tasks []swf.TaskRun) []string {
 		oi := rows[i].ord
 		oj := rows[j].ord
 		if oi < 0 && oj < 0 {
+			if rows[i].jobAtt != rows[j].jobAtt {
+				return rows[i].jobAtt < rows[j].jobAtt
+			}
 			return rows[i].taskType < rows[j].taskType
 		}
 		if oi < 0 {
@@ -945,20 +1124,23 @@ func summarizeTaskTimelineForLog(tasks []swf.TaskRun) []string {
 		if oi != oj {
 			return oi < oj
 		}
+		if rows[i].jobAtt != rows[j].jobAtt {
+			return rows[i].jobAtt < rows[j].jobAtt
+		}
 		return rows[i].taskType < rows[j].taskType
 	})
 
 	format := func(r row) string {
 		if r.ord >= 0 {
 			if r.state != "" {
-				return fmt.Sprintf("ord=%d type=%q attempts=%d state=%q", r.ord, r.taskType, r.attempts, r.state)
+				return fmt.Sprintf("ord=%d job_attempt=%d type=%q attempts=%d state=%q", r.ord, r.jobAtt, r.taskType, r.attempts, r.state)
 			}
-			return fmt.Sprintf("ord=%d type=%q attempts=%d", r.ord, r.taskType, r.attempts)
+			return fmt.Sprintf("ord=%d job_attempt=%d type=%q attempts=%d", r.ord, r.jobAtt, r.taskType, r.attempts)
 		}
 		if r.state != "" {
-			return fmt.Sprintf("ord=? type=%q attempts=%d state=%q", r.taskType, r.attempts, r.state)
+			return fmt.Sprintf("ord=? job_attempt=%d type=%q attempts=%d state=%q", r.jobAtt, r.taskType, r.attempts, r.state)
 		}
-		return fmt.Sprintf("ord=? type=%q attempts=%d", r.taskType, r.attempts)
+		return fmt.Sprintf("ord=? job_attempt=%d type=%q attempts=%d", r.jobAtt, r.taskType, r.attempts)
 	}
 
 	const max = 24
@@ -1055,27 +1237,28 @@ func (s *Service) GetArtifactByOrdinal(ctx context.Context, req model.GetArtifac
 			}
 		}
 	}
-	for _, task := range run.Tasks {
-		for _, att := range task.Attempts {
-			if att.Ordinal == req.TaskOrdinal && att.Output != nil {
-				find(att.Output.Artifacts)
-				if meta != nil {
-					break
+	for _, jobAttempt := range run.Attempts {
+		if jobAttempt.Ordinal == req.TaskOrdinal && jobAttempt.Output != nil {
+			find(jobAttempt.Output.Artifacts)
+			if meta != nil {
+				break
+			}
+		}
+		for _, task := range jobAttempt.Tasks {
+			for _, att := range task.Attempts {
+				if att.Ordinal == req.TaskOrdinal && att.Output != nil {
+					find(att.Output.Artifacts)
+					if meta != nil {
+						break
+					}
 				}
+			}
+			if meta != nil {
+				break
 			}
 		}
 		if meta != nil {
 			break
-		}
-	}
-	if meta == nil {
-		for _, attempt := range run.JobAttempts {
-			if attempt.Ordinal == req.TaskOrdinal && attempt.Output != nil {
-				find(attempt.Output.Artifacts)
-				if meta != nil {
-					break
-				}
-			}
 		}
 	}
 	if meta == nil {
@@ -1394,48 +1577,7 @@ func stringPtr(val string) *string {
 	return &val
 }
 
-type outcomeAttempt struct {
-	Ordinal int64
-	Attempt int
-	Output  *swf.TaskIO
-	Outcome swf.TaskOutcome
-}
-
-func selectLatestAttemptWithOutcome(tasks []swf.TaskRun, jobAttempts []swf.JobAttempt) *outcomeAttempt {
-	var chosen *outcomeAttempt
-
-	consider := func(ord int64, attempt int, out *swf.TaskIO, outcome swf.TaskOutcome) {
-		hasOutput := out != nil && len(out.Data) > 0
-		hasError := outcome.Error != nil || outcome.Status == swf.TaskOutcomeStatusFailed
-		if !hasOutput && !hasError {
-			return
-		}
-		if chosen == nil || ord > chosen.Ordinal || (ord == chosen.Ordinal && attempt > chosen.Attempt) {
-			chosen = &outcomeAttempt{
-				Ordinal: ord,
-				Attempt: attempt,
-				Output:  out,
-				Outcome: outcome,
-			}
-		}
-	}
-
-	for i := range tasks {
-		for j := range tasks[i].Attempts {
-			att := tasks[i].Attempts[j]
-			consider(att.Ordinal, att.Attempt, att.Output, att.Outcome)
-		}
-	}
-
-	for i := range jobAttempts {
-		ja := jobAttempts[i]
-		consider(ja.Ordinal, ja.Attempt, ja.Output, ja.Outcome)
-	}
-
-	return chosen
-}
-
-func aggregateArtifacts(tasks []swf.TaskRun, jobAttempts []swf.JobAttempt, projectID, jobID string) []model.ArtifactReference {
+func aggregateArtifacts(jobAttempts []swf.JobAttempt, projectID, jobID string) []model.ArtifactReference {
 	type artifactKey struct {
 		id   string
 		name string
@@ -1463,17 +1605,16 @@ func aggregateArtifacts(tasks []swf.TaskRun, jobAttempts []swf.JobAttempt, proje
 		}
 	}
 
-	for _, task := range tasks {
-		for _, att := range task.Attempts {
-			if att.Output != nil {
-				addArtifacts(att.Output.Artifacts, att.CreatedAt, att.Ordinal)
-			}
-		}
-	}
-
 	for _, attempt := range jobAttempts {
 		if attempt.Output != nil {
 			addArtifacts(attempt.Output.Artifacts, attempt.CreatedAt, attempt.Ordinal)
+		}
+		for _, task := range attempt.Tasks {
+			for _, att := range task.Attempts {
+				if att.Output != nil {
+					addArtifacts(att.Output.Artifacts, att.CreatedAt, att.Ordinal)
+				}
+			}
 		}
 	}
 

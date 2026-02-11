@@ -112,7 +112,8 @@ outputs:
 		},
 	}
 
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, tasks, nil)
+	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
+	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
 	exec := newExecutor("tenant", "job", jobCtx)
 
 	jobContext := contextual.JobContext{

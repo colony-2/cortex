@@ -12,6 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gopkg.in/yaml.v3"
@@ -24,7 +25,7 @@ var (
 
 // BuildJobRunStory constructs a recipe-centric JobRunStory by replaying the recipe execution
 // using recorded outcomes from swf.GetJobRunResponse.
-func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID string, run swf.GetJobRunResponse, start workflowctl.StartJob, logger *slog.Logger) (*model.JobRunStory, error) {
+func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID string, run swf.GetJobRunResponse, start workflowctl.StartJob, logger *slog.Logger, opts ...template.ResolutionOptions) (*model.JobRunStory, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("engine is required")
 	}
@@ -42,18 +43,53 @@ func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID strin
 		return nil, err
 	}
 
-	jobCtx := NewStoryBuildingContext(engine, projectID, jobKey, run.Job.JobType, run.Job.Status, run.Tasks, logger)
-	exec := newExecutor(projectID, jobKey.JobId, jobCtx)
-
 	commitCtx := contextual.GitCommitContext{ParentRef: start.GitRef}
 	inputs := start.Inputs
 	if inputs == nil {
 		inputs = map[string]interface{}{}
 	}
 
-	_, _, execErr := exec.ExecuteRecipe(rec, inputs, start.JobContext, commitCtx)
+	// Build one story per SWF job attempt (recipe retry). Each job attempt is a distinct ExecuteRecipe
+	// run and should not consume tasks from other attempts.
+	attemptRoots := make([]*model.JobRunStoryNode, 0, len(run.Attempts))
+	var latestExecErr error
+	for i := range run.Attempts {
+		att := run.Attempts[i]
 
-	root := exec.Root()
+		// For non-latest attempts, force terminal semantics so replay doesn't treat missing tasks
+		// as "in progress".
+		replayStatus := run.Job.Status
+		if i < len(run.Attempts)-1 {
+			if att.Outcome.Status == swf.TaskOutcomeStatusFailed {
+				replayStatus = swf.JobStatusCrashConcern
+			} else {
+				replayStatus = swf.JobStatusCompleted
+			}
+		}
+
+		jobCtx := NewStoryBuildingContext(engine, projectID, jobKey, run.Job.JobType, replayStatus, []swf.JobAttempt{att}, logger)
+		exec := newExecutor(projectID, jobKey.JobId, jobCtx, opts...)
+
+		_, _, execErr := exec.ExecuteRecipe(rec, inputs, start.JobContext, commitCtx)
+		root := exec.Root()
+		if root != nil {
+			root.JobAttempt = att.Attempt
+		}
+		attemptRoots = append(attemptRoots, root)
+
+		if i == len(run.Attempts)-1 {
+			latestExecErr = execErr
+		}
+	}
+
+	var root *model.JobRunStoryNode
+	if len(attemptRoots) > 0 {
+		root = attemptRoots[len(attemptRoots)-1]
+		if root != nil && len(attemptRoots) > 1 {
+			root.PastAttempts = attemptRoots[:len(attemptRoots)-1]
+		}
+	}
+
 	storyStatus := mapStoryStatus(run.Job.Status)
 	if storyStatus == model.WorkflowStatusRunning && root != nil {
 		// If replay stopped due to an in-progress task, the root status should reflect "running".
@@ -93,7 +129,7 @@ func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID strin
 	inferFinishedTimes(story.Root, story.FinishedAt)
 
 	// For failed/running runs, recipe replay naturally returns an error. The story itself is still useful.
-	if execErr == nil {
+	if latestExecErr == nil {
 		return story, nil
 	}
 
@@ -104,13 +140,13 @@ func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID strin
 
 	// If the job is terminal but we could not deterministically replay the recipe structure, surface a mismatch.
 	// This typically indicates the recipe definition differs from what was executed, or the run timeline is incomplete.
-	if errors.Is(execErr, ErrReplayMismatch) {
-		return story, execErr
+	if errors.Is(latestExecErr, ErrReplayMismatch) {
+		return story, latestExecErr
 	}
 	// JSON decode issues for task outputs are hard failures; they indicate corrupted/non-conforming task outputs.
 	var syntaxErr *json.SyntaxError
-	if errors.As(execErr, &syntaxErr) {
-		return story, execErr
+	if errors.As(latestExecErr, &syntaxErr) {
+		return story, latestExecErr
 	}
 	// Default: return story without failing the API for terminal failed runs.
 	return story, nil

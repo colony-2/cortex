@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
@@ -33,6 +34,9 @@ type executor struct {
 	projectID string
 	jobID     string
 	jobCtx    *StoryBuildingContext
+
+	resolutionOptions template.ResolutionOptions
+	hasResolutionOpts bool
 
 	tree *treeBuilder
 	root *model.JobRunStoryNode
@@ -73,12 +77,16 @@ func setStoryNodePath(n *model.JobRunStoryNode, invocationNodePath string, extra
 	n.Path = path
 }
 
-func newExecutor(projectID, jobID string, jobCtx *StoryBuildingContext) *executor {
+func newExecutor(projectID, jobID string, jobCtx *StoryBuildingContext, opts ...template.ResolutionOptions) *executor {
 	e := &executor{
 		projectID: projectID,
 		jobID:     jobID,
 		jobCtx:    jobCtx,
 		tree:      newTreeBuilder(),
+	}
+	if len(opts) > 0 {
+		e.resolutionOptions = opts[0]
+		e.hasResolutionOpts = true
 	}
 	if jobCtx != nil {
 		jobCtx.SetOnConsume(e.onConsume)
@@ -95,7 +103,26 @@ func (e *executor) ExecuteRecipe(r *recipe.Recipe, inputs map[string]interface{}
 		return nil, nil, fmt.Errorf("nil recipe")
 	}
 
-	rCtx, err := template.NewRecipeResolutionContext(&commitCtx, inputs, execCtx)
+	// Mirror runtime behavior: backfill workflow identifiers onto context.
+	if strings.TrimSpace(e.jobID) != "" {
+		execCtx.Workflow.JobID = strings.TrimSpace(e.jobID)
+	}
+	if strings.TrimSpace(e.projectID) != "" {
+		execCtx.Workflow.ProjectId = strings.TrimSpace(e.projectID)
+	}
+
+	// Mirror runtime behavior: validate/fill recipe input defaults using the recipe schema.
+	recipeInputs, err := r.GetMetdata().ValidateInputShapeAndFillDefaults(inputs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: recipe input validation failed: %w", ErrReplayMismatch, err)
+	}
+
+	var rCtx *template.ResolutionContext
+	if e.hasResolutionOpts {
+		rCtx, err = template.NewRecipeResolutionContext(&commitCtx, recipeInputs, execCtx, e.resolutionOptions)
+	} else {
+		rCtx, err = template.NewRecipeResolutionContext(&commitCtx, recipeInputs, execCtx)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create resolution context: %w", err)
 	}
@@ -307,11 +334,11 @@ func (e *executor) ExecuteStateMachine(parentCtx *template.ResolutionContext, me
 			break
 		}
 
-			evNode, nextState, err := e.evalTransitions(stateDef.Transitions, resCtx, stateResCtx, currentState)
-			if err != nil {
-				if errors.Is(err, ErrReplayInProgress) {
-					stNode.Status = model.JobRunStoryNodeStatusRunning
-					node.Status = model.JobRunStoryNodeStatusRunning
+		evNode, nextState, err := e.evalTransitions(stateDef.Transitions, resCtx, stateResCtx, currentState)
+		if err != nil {
+			if errors.Is(err, ErrReplayInProgress) {
+				stNode.Status = model.JobRunStoryNodeStatusRunning
+				node.Status = model.JobRunStoryNodeStatusRunning
 			} else {
 				stNode.Status = model.JobRunStoryNodeStatusFailed
 				node.Status = model.JobRunStoryNodeStatusFailed
@@ -622,7 +649,7 @@ func (e *executor) ExecuteOp(parentCtx *template.ResolutionContext, metadata rec
 		}
 
 		resCtx.UpdateGitState(out.GitResult)
-		finalOut = out.OpOutput
+		finalOut = normalizeOpOutputForTask(op, currentTask, out.OpOutput)
 
 		next := strings.TrimSpace(out.NextTask)
 		if next == "" {
@@ -914,10 +941,125 @@ func asMap(v any) map[string]interface{} {
 	}
 	m, ok := v.(map[string]interface{})
 	if ok {
+		if m == nil {
+			return map[string]interface{}{}
+		}
 		return m
 	}
 	// Best-effort: if op output isn't a map, store it under a stable key.
 	return map[string]interface{}{"value": v}
+}
+
+func normalizeOpOutputForTask(opID string, taskType string, opOutput any) any {
+	// Story replay should match runtime semantics: op outputs are normalized against the
+	// registered output type so missing keys are present with zero values.
+	opID = strings.TrimSpace(opID)
+	if opID == "" {
+		return opOutput
+	}
+
+	var outMap map[string]interface{}
+	if opOutput != nil {
+		var ok bool
+		outMap, ok = opOutput.(map[string]interface{})
+		if !ok {
+			return opOutput
+		}
+	}
+	def, ok := coreops.Get(opID)
+	if !ok || def == nil {
+		return opOutput
+	}
+	stepID := strings.TrimSpace(stepIDFromTaskType(opID, taskType))
+	if stepID == "" {
+		return opOutput
+	}
+
+	var outType reflect.Type
+	for _, st := range def.TaskChain() {
+		if strings.TrimSpace(st.Name) == stepID {
+			outType = st.OutputType
+			break
+		}
+	}
+	normalized, ok := normalizeOutputFromType(outType, outMap)
+	if !ok {
+		return opOutput
+	}
+	return normalized
+}
+
+func normalizeOutputFromType(outputType reflect.Type, output map[string]interface{}) (map[string]interface{}, bool) {
+	if outputType == nil {
+		return output, true
+	}
+	if outputType.Kind() == reflect.Pointer {
+		outputType = outputType.Elem()
+	}
+	switch outputType.Kind() {
+	case reflect.Struct:
+		base := zeroStructMap(outputType)
+		for k, v := range output {
+			base[k] = v
+		}
+		return base, true
+	case reflect.Map:
+		return output, true
+	default:
+		return output, false
+	}
+}
+
+func zeroStructMap(outputType reflect.Type) map[string]interface{} {
+	out := make(map[string]interface{}, outputType.NumField())
+	for i := 0; i < outputType.NumField(); i++ {
+		field := outputType.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := field.Tag.Get("json")
+		if name == "-" {
+			continue
+		}
+		if name != "" {
+			if comma := strings.Index(name, ","); comma >= 0 {
+				name = name[:comma]
+			}
+		}
+		if name == "" {
+			name = field.Name
+		}
+		out[name] = zeroValueForType(field.Type)
+	}
+	return out
+}
+
+func zeroValueForType(t reflect.Type) interface{} {
+	if t.Kind() == reflect.Pointer {
+		return zeroValueForType(t.Elem())
+	}
+	switch t.Kind() {
+	case reflect.String:
+		return ""
+	case reflect.Bool:
+		return false
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return 0
+	case reflect.Float32, reflect.Float64:
+		return 0
+	case reflect.Map:
+		return map[string]interface{}{}
+	case reflect.Slice, reflect.Array:
+		return []interface{}{}
+	case reflect.Struct:
+		return zeroStructMap(t)
+	case reflect.Interface:
+		return nil
+	default:
+		return nil
+	}
 }
 
 func isContextPatchRun(run swf.TaskRun) bool {

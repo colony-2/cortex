@@ -14,6 +14,7 @@ import (
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 // Config defines configuration for the web server.
@@ -50,6 +51,9 @@ type Dependencies struct {
 	Workflows workflow.Service
 	RecipeSvc recipesvc.Service
 
+	// SWFEngine is optionally used by testing-only endpoints.
+	SWFEngine swf.SWFEngine
+
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
 
@@ -79,7 +83,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps)
+	h := handlers.New(deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps, deps.SWFEngine)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler

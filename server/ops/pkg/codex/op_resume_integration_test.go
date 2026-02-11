@@ -33,6 +33,9 @@ type resumeSequenceOutput struct {
 func TestCodexOpResumeSequence(t *testing.T) {
 	ensureCodexRequired(t)
 	t.Setenv("VIBETHIS_CODEX_USE_DIRECT", "1")
+	// Codex may emit rollout-state warnings to stderr depending on local config/state.
+	// This integration test asserts stderr is empty, so suppress that module's logs.
+	t.Setenv("RUST_LOG", "codex_core::rollout::list=off")
 
 	originalOps := coreops.List()
 	t.Cleanup(func() {

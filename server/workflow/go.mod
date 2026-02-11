@@ -11,7 +11,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260206225012-7b3039d8496f
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260209193327-8c2d7dbeb6b0
+	github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd
 	gopkg.in/yaml.v3 v3.0.1
 )
 

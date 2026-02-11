@@ -339,6 +339,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		Tickets:         ticketSvc,
 		Workflows:       workflowSvc,
 		RecipeSvc:       recipeSvc,
+		SWFEngine:       engineSetup.Engine(),
 		CellDeps:        cellStore,
 		ExtensionRoutes: extensionRoutes,
 	}

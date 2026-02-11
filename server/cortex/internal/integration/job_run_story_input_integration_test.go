@@ -92,7 +92,7 @@ outputs:
 			IncludeAttemptInputs: true,
 		})
 		require.NoError(t, err)
-		return hasWaitingCollectUserInput(run.Tasks)
+		return hasWaitingCollectUserInput(run.Attempts)
 	}, 30*time.Second, 100*time.Millisecond)
 
 	svc, err := workflow.New(workflow.ServiceConfig{Engine: engine})
@@ -180,7 +180,7 @@ outputs:
 	require.Eventually(t, func() bool {
 		run, err := engine.GetJobRun(ctx, swf.GetJobRunRequest{JobKey: jobKey, IncludeOutputs: true, IncludeAttemptInputs: true})
 		require.NoError(t, err)
-		return hasWaitingCollectUserInput(run.Tasks)
+		return hasWaitingCollectUserInput(run.Attempts)
 	}, 30*time.Second, 100*time.Millisecond)
 
 	// Simulate the API process not having the recipe ops registry populated.
@@ -310,19 +310,21 @@ func startRecipeJob(t *testing.T, ctx context.Context, engine swf.SWFEngine, rec
 	return jobKey
 }
 
-func hasWaitingCollectUserInput(tasks []swf.TaskRun) bool {
-	for _, tr := range tasks {
-		if tr.TaskType != "recipe:input:collect_user_input" && tr.TaskType != "input:collect_user_input" {
-			continue
-		}
-		if len(tr.Attempts) == 0 {
-			continue
-		}
-		st := tr.Attempts[len(tr.Attempts)-1].State
-		switch st {
-		case swf.TaskAttemptStateReady, swf.TaskAttemptStateWaiting, swf.TaskAttemptStateLeased, swf.TaskAttemptStateRunning:
-			return true
-		default:
+func hasWaitingCollectUserInput(attempts []swf.JobAttempt) bool {
+	for _, ja := range attempts {
+		for _, tr := range ja.Tasks {
+			if tr.TaskType != "recipe:input:collect_user_input" && tr.TaskType != "input:collect_user_input" {
+				continue
+			}
+			if len(tr.Attempts) == 0 {
+				continue
+			}
+			st := tr.Attempts[len(tr.Attempts)-1].State
+			switch st {
+			case swf.TaskAttemptStateReady, swf.TaskAttemptStateWaiting, swf.TaskAttemptStateLeased, swf.TaskAttemptStateRunning:
+				return true
+			default:
+			}
 		}
 	}
 	return false
@@ -359,4 +361,3 @@ func captureAndClearOpsRegistry(t *testing.T) func() {
 		coreops.Register(ops...)
 	}
 }
-

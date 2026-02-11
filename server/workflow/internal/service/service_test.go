@@ -172,3 +172,118 @@ func TestBuildSummary_UsesJobMetadata(t *testing.T) {
 		t.Fatalf("expected actor email user@example.com, got %#v", summary.Actor)
 	}
 }
+
+func TestJobRunStory_TerminalTimeout_OverridesStatusAndSuppressesMismatch(t *testing.T) {
+	run := swf.GetJobRunResponse{
+		Job: swf.JobRunSummary{Status: swf.JobStatusCompleted},
+		Attempts: []swf.JobAttempt{
+			{
+				Attempt: 1,
+				Outcome: swf.TaskOutcome{
+					Status:      swf.TaskOutcomeStatusFailed,
+					PayloadKind: "Timeout",
+					Error: &swf.TaskError{
+						Kind:    "TIMEOUT",
+						Code:    "timeout_total",
+						Message: "job total timed out after 30m0s",
+					},
+				},
+			},
+		},
+	}
+
+	status, ok := terminalStoryStatusOverrideFromRun(run)
+	if !ok {
+		t.Fatalf("expected override ok=true")
+	}
+	if status != model.WorkflowStatusTimedOut {
+		t.Fatalf("expected timed_out, got %q", status)
+	}
+	if !shouldSuppressReplayMismatchForRun(run) {
+		t.Fatalf("expected mismatch suppression for terminal timeout")
+	}
+
+	msg, code, ok := latestAttemptTerminalError(run)
+	if !ok {
+		t.Fatalf("expected terminal error present")
+	}
+	if msg != "job total timed out after 30m0s" {
+		t.Fatalf("unexpected msg %q", msg)
+	}
+	if code != "timeout_total" {
+		t.Fatalf("unexpected code %q", code)
+	}
+}
+
+func TestJobRunStory_NonTimeoutTerminal_DoesNotSuppressMismatch(t *testing.T) {
+	run := swf.GetJobRunResponse{
+		Job: swf.JobRunSummary{Status: swf.JobStatusCompleted},
+		Attempts: []swf.JobAttempt{
+			{
+				Attempt: 1,
+				Outcome: swf.TaskOutcome{
+					Status:      swf.TaskOutcomeStatusFailed,
+					PayloadKind: "AppError",
+					Error: &swf.TaskError{
+						Kind:    "APP",
+						Code:    "boom",
+						Message: "boom",
+					},
+				},
+			},
+		},
+	}
+
+	if _, ok := terminalStoryStatusOverrideFromRun(run); ok {
+		t.Fatalf("expected no override")
+	}
+	if shouldSuppressReplayMismatchForRun(run) {
+		t.Fatalf("expected no mismatch suppression")
+	}
+}
+
+func TestJobRunStory_AttemptOutput_IsShownOnRecipeAttemptNodes(t *testing.T) {
+	run := swf.GetJobRunResponse{
+		Attempts: []swf.JobAttempt{
+			{
+				Attempt: 1,
+				Output:  &swf.TaskIO{Data: json.RawMessage(`{"message":"attempt1"}`)},
+				Outcome: swf.TaskOutcome{Error: &swf.TaskError{Message: "attempt1 err", Code: "e1"}},
+			},
+			{
+				Attempt: 2,
+				Output:  &swf.TaskIO{Data: json.RawMessage(`{"message":"attempt2"}`)},
+				Outcome: swf.TaskOutcome{Error: &swf.TaskError{Message: "attempt2 err", Code: "e2"}},
+			},
+		},
+	}
+
+	st := &model.JobRunStory{
+		Root: &model.JobRunStoryNode{
+			JobAttempt: 2,
+			Output:     map[string]any{"old": true},
+			PastAttempts: []*model.JobRunStoryNode{
+				{JobAttempt: 1, Output: map[string]any{"old": true}},
+			},
+		},
+	}
+
+	applyJobAttemptOutcomeAndOutputToStory(st, run)
+
+	rootOut, ok := st.Root.Output.(map[string]any)
+	if !ok || rootOut["message"] != "attempt2" {
+		t.Fatalf("expected root output attempt2, got %#v", st.Root.Output)
+	}
+	if st.Root.Error == nil || st.Root.Error.Message != "attempt2 err" || st.Root.Error.Code != "e2" {
+		t.Fatalf("expected root error from attempt2, got %#v", st.Root.Error)
+	}
+
+	pa := st.Root.PastAttempts[0]
+	paOut, ok := pa.Output.(map[string]any)
+	if !ok || paOut["message"] != "attempt1" {
+		t.Fatalf("expected past attempt output attempt1, got %#v", pa.Output)
+	}
+	if pa.Error == nil || pa.Error.Message != "attempt1 err" || pa.Error.Code != "e1" {
+		t.Fatalf("expected past attempt error from attempt1, got %#v", pa.Error)
+	}
+}

@@ -31,11 +31,35 @@ type StoryBuildingContext struct {
 	onConsume func(taskType string, run swf.TaskRun, final swf.TaskAttempt)
 }
 
-func NewStoryBuildingContext(engine swf.SWFEngine, tenantID string, jobKey swf.JobKey, jobType string, jobStatus swf.JobStatus, tasks []swf.TaskRun, logger *slog.Logger) *StoryBuildingContext {
-	runsByTy := make(map[string][]swf.TaskRun, len(tasks))
-	for _, tr := range tasks {
-		ty := normalizeTaskType(jobType, tr.TaskType)
-		runsByTy[ty] = append(runsByTy[ty], tr)
+func (c *StoryBuildingContext) isJobTypeTaskType(taskType string) bool {
+	if c == nil {
+		return false
+	}
+	jt := strings.TrimSpace(c.jobType)
+	if jt == "" {
+		return false
+	}
+	return strings.TrimSpace(taskType) == jt
+}
+
+func (c *StoryBuildingContext) shouldIgnoreJobTypeRun(taskType string, run swf.TaskRun) bool {
+	// Job-level runs for the job type (e.g. TaskType=="recipe" for jobType=="recipe") can appear
+	// in the task list. For terminal attempts, these are boundary chapters and should not block
+	// story replay. For in-progress attempts, they should block replay so the story surfaces as
+	// "running" rather than incorrectly skipping ahead.
+	if !c.isJobTypeTaskType(taskType) {
+		return false
+	}
+	return !isTaskRunInProgress(run)
+}
+
+func NewStoryBuildingContext(engine swf.SWFEngine, tenantID string, jobKey swf.JobKey, jobType string, jobStatus swf.JobStatus, attempts []swf.JobAttempt, logger *slog.Logger) *StoryBuildingContext {
+	runsByTy := make(map[string][]swf.TaskRun, 64)
+	for i := range attempts {
+		for _, tr := range attempts[i].Tasks {
+			ty := normalizeTaskType(jobType, tr.TaskType)
+			runsByTy[ty] = append(runsByTy[ty], tr)
+		}
 	}
 	const unknownOrdinal int64 = 1<<63 - 1
 	for ty := range runsByTy {
@@ -163,6 +187,9 @@ func (c *StoryBuildingContext) peekNextRunAnyLocked() (string, swf.TaskRun, bool
 			continue
 		}
 		run := runs[idx]
+		if c.shouldIgnoreJobTypeRun(ty, run) {
+			continue
+		}
 		ord, ok := taskRunFirstOrdinal(run)
 		if !ok {
 			continue
@@ -187,6 +214,9 @@ func (c *StoryBuildingContext) peekNextTimeAny() (time.Time, bool) {
 			continue
 		}
 		run := runs[idx]
+		if c.shouldIgnoreJobTypeRun(ty, run) {
+			continue
+		}
 		if len(run.Attempts) == 0 {
 			continue
 		}

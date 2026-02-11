@@ -343,6 +343,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Tickets:         ticketSvc,
 		Workflows:       workflowSvc,
 		RecipeSvc:       recipeSvc,
+		SWFEngine:       engineSetup.Engine(),
 		CellDeps:        cellStore,
 		ExtensionRoutes: extensionRoutes,
 	}

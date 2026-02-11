@@ -109,7 +109,7 @@ func setupSSETestEnv(t *testing.T) sseTestEnv {
 	require.NoError(t, err)
 	require.NoError(t, eng.RegisterWorkers(workSet))
 
-	h := handlers.New(nil, nil, projectSvc, cellSvc, nil, nil, nil, cellStore)
+	h := handlers.New(nil, nil, projectSvc, cellSvc, nil, nil, nil, cellStore, nil)
 	router := h.SetupRoutesWithExtensions(nil, extensionRoutes)
 	srv := httptest.NewServer(router)
 
@@ -507,7 +507,7 @@ func TestUserInputsSSEFlushingWorks(t *testing.T) {
 	}
 
 	// Setup server
-	h := handlers.New(nil, nil, projectSvc, cellSvc, nil, nil, nil, cellStore)
+	h := handlers.New(nil, nil, projectSvc, cellSvc, nil, nil, nil, cellStore, nil)
 	router := h.SetupRoutesWithExtensions(nil, extensionRoutes)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
