@@ -16,27 +16,48 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
-type recipeWorkerImpl struct {
-	activityRegistry *workerops.ActivityRegistry
-	recipes          *recipeRetriever
+type RecipeJobWorkerOptions struct {
+	CELOptionsProvider template.CELOptionsProvider
+
+	// Executor overrides recipe execution for instrumentation. When nil, DefaultRecipeExecutor is used.
+	Executor RecipeExecutor
+	// ExecutorFactory overrides Executor when provided, allowing per-run executors.
+	ExecutorFactory func() RecipeExecutor
+
+	// OnRecipeLoaded is called after the recipe artifact has been loaded and parsed.
+	OnRecipeLoaded func(recipeName string)
+}
+
+type recipeJobWorker struct {
 	celProvider      template.CELOptionsProvider
+	executor         RecipeExecutor
+	executorFactory  func() RecipeExecutor
+	onRecipeLoadedFn func(recipeName string)
+}
+
+func NewRecipeJobWorker(opts RecipeJobWorkerOptions) swf.JobWorker {
+	return &recipeJobWorker{
+		celProvider:      opts.CELOptionsProvider,
+		executor:         opts.Executor,
+		executorFactory:  opts.ExecutorFactory,
+		onRecipeLoadedFn: opts.OnRecipeLoaded,
+	}
 }
 
 func NewRecipeWorker(dependencies ops.ServiceDependencies2, activityRegistry *workerops.ActivityRegistry, provider ...template.CELOptionsProvider) (*swf.WorkSet, error) {
-	job := &recipeWorkerImpl{
-		activityRegistry: activityRegistry,
-	}
+	opts := RecipeJobWorkerOptions{}
 	if len(provider) > 0 {
-		job.celProvider = provider[0]
+		opts.CELOptionsProvider = provider[0]
 	}
+	job := NewRecipeJobWorker(opts)
 	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers(dependencies)...)
 }
 
-func (j recipeWorkerImpl) Name() string {
+func (j recipeJobWorker) Name() string {
 	return starter.RecipeJobType
 }
 
-func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobData, error) {
+func (j recipeJobWorker) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobData, error) {
 	jobKey := ctx.GetJobKey()
 	logger := ctx.Logger()
 	if logger == nil {
@@ -56,7 +77,7 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 		)
 		return nil, err
 	}
-	j.recipes = newRetriever(artifacts)
+	recipes := newRetriever(artifacts)
 
 	data, err := jobData.GetData()
 	if err != nil {
@@ -85,7 +106,11 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 	}
 	logger = logger.With("recipe_name", input.RecipeName)
 
-	r, err := j.recipes.GetRecipe(input.RecipeName)
+	if j.onRecipeLoadedFn != nil {
+		j.onRecipeLoadedFn(input.RecipeName)
+	}
+
+	r, err := recipes.GetRecipe(input.RecipeName)
 	if err != nil {
 		logger.Error("recipe job: failed to load recipe",
 			"error", err,
@@ -148,7 +173,14 @@ func (j recipeWorkerImpl) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobD
 		opts.CELOptionsProvider = j.celProvider
 	}
 
-	out, artifacts, err := ExecuteRecipe(wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef}, opts)
+	exec := j.executor
+	if j.executorFactory != nil {
+		exec = j.executorFactory()
+	}
+	if exec == nil {
+		exec = DefaultRecipeExecutor{}
+	}
+	out, artifacts, err := ExecuteRecipeWithExecutor(exec, wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef}, opts)
 
 	if err != nil {
 		logger.Error("recipe execution failed",
@@ -186,4 +218,4 @@ func ensureSentinel(field *string, sentinel string, name string) error {
 	return nil
 }
 
-var _ swf.JobWorker = &recipeWorkerImpl{}
+var _ swf.JobWorker = &recipeJobWorker{}

@@ -3,10 +3,10 @@ module github.com/colony-2/colony2/server/recipe-input
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/openapi v0.0.0-00010101000000-000000000000
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260202220646-d309ccfaeb4e
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78
 	github.com/fatih/structs v1.1.0
 	github.com/gorilla/mux v1.8.1
@@ -34,9 +34,9 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260205023558-5abc9c8562fb // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
@@ -109,5 +109,3 @@ require (
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 )
-
-replace github.com/colony-2/colony2/server/openapi => ../openapi

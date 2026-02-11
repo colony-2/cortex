@@ -13,14 +13,14 @@ import (
 )
 
 type recordingExecutor struct {
-	inner  compiler.DefaultRecipeExecutor
-	tree   *treeBuilder
-	root   *model.JobRunStoryNode
-	jobCtx *recordingJobContext
+	inner compiler.DefaultRecipeExecutor
+	tree  *treeBuilder
+	root  *model.JobRunStoryNode
+	rec   *replayStoryRecorder
 }
 
-func newRecordingExecutor(inner compiler.DefaultRecipeExecutor, tree *treeBuilder, jobCtx *recordingJobContext) *recordingExecutor {
-	return &recordingExecutor{inner: inner, tree: tree, jobCtx: jobCtx}
+func newRecordingExecutor(inner compiler.DefaultRecipeExecutor, tree *treeBuilder, rec *replayStoryRecorder) *recordingExecutor {
+	return &recordingExecutor{inner: inner, tree: tree, rec: rec}
 }
 
 func (e *recordingExecutor) Root() *model.JobRunStoryNode { return e.root }
@@ -34,6 +34,10 @@ func (e *recordingExecutor) ExecuteRecipe(ctx coreworkflow.Context, r recipe.Rec
 	root.Status = model.JobRunStoryNodeStatusRunning
 	e.tree.push("root", root)
 	e.root = root
+	if e.rec != nil {
+		e.rec.SetRecipeMeta(recipeID, strings.TrimSpace(r.GetMetadata().Version))
+		e.rec.SetRoot(root)
+	}
 
 	out, arts, err := e.inner.WithDelegate(e).ExecuteRecipe(ctx, r, rawRecipeInputs, execCtx, commitContext, opts...)
 	if err != nil {
@@ -139,12 +143,12 @@ func (e *recordingExecutor) ExecuteOp(ctx coreworkflow.Context, parentResolution
 	opNode.Status = model.JobRunStoryNodeStatusRunning
 	e.tree.push("op:"+opID, opNode)
 
-	if e.jobCtx != nil {
-		e.jobCtx.SetCurrentOpNode(opNode)
+	if e.rec != nil {
+		e.rec.SetCurrentOpNode(opNode)
 	}
 	err := e.inner.WithDelegate(e).ExecuteOp(ctx, parentResolutionContext, metadata, opID)
-	if e.jobCtx != nil {
-		e.jobCtx.SetCurrentOpNode(nil)
+	if e.rec != nil {
+		e.rec.SetCurrentOpNode(nil)
 	}
 
 	if err != nil {

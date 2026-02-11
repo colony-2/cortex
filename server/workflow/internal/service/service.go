@@ -15,15 +15,12 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
-	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	jobstory "github.com/colony-2/colony2/server/workflow/internal/story"
@@ -616,150 +613,18 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 		return nil, ErrNotFound
 	}
 
-	run, err := s.engine.GetJobRun(ctx, swf.GetJobRunRequest{
-		JobKey:               swf.JobKey{TenantId: projectID, JobId: jobID},
-		IncludeInputs:        true,
-		IncludeOutputs:       true,
-		IncludeArtifacts:     true,
-		IncludeAttemptInputs: true,
-	})
+	jobKey := swf.JobKey{TenantId: projectID, JobId: jobID}
+	st, err := jobstory.BuildJobRunStory(ctx, s.engine, jobKey, s.celProvider, s.logger)
 	if err != nil {
 		if errors.Is(err, swf.ErrJobNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, err
-	}
-
-	if run.Start.Input == nil || len(run.Start.Input.Data) == 0 {
-		return nil, fmt.Errorf("job start payload unavailable")
-	}
-
-	var start workflowctl.StartJob
-	if err := json.Unmarshal(run.Start.Input.Data, &start); err != nil {
-		return nil, fmt.Errorf("decode job start payload: %w", err)
-	}
-
-	if shouldDebugDumpJobRunStory() {
-		s.logger.Info("GetJobRunStory: debug swf job run dump",
-			"project_id", projectID,
-			"job_id", jobID,
-			"job_type", run.Job.JobType,
-			"job_status", run.Job.Status,
-			"swf_job_run_dump", dumpSWFJobRunForLog(run),
-		)
-		if s.strata != nil {
-			if chapters, err := s.dumpStrataChaptersForLog(ctx, run.Job.JobKey); err == nil {
-				s.logger.Info("GetJobRunStory: debug strata chapters dump",
-					"project_id", projectID,
-					"job_id", jobID,
-					"job_type", run.Job.JobType,
-					"job_status", run.Job.Status,
-					"strata_chapters_dump", chapters,
-				)
-			} else {
-				s.logger.Info("GetJobRunStory: debug failed to dump strata chapters",
-					"project_id", projectID,
-					"job_id", jobID,
-					"error", err,
-					"error_chain", logutil.ErrorChain(err),
-				)
-			}
+		if errors.Is(err, swf.ErrWorkflowNotDeterministic) {
+			return st, ErrJobRunStoryMismatch
 		}
+		return st, err
 	}
-
-	execOpts := compiler.ExecutionOptions{CELOptionsProvider: s.celProvider}
-	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger, execOpts)
-
-	// SWF JobStatusCompleted means "terminal", not "successful". Some terminal jobs end due to a
-	// job-level timeout and may not have recorded task runs for the next step. In that case,
-	// story replay can report a mismatch even though the recorded timeline is simply truncated.
-	//
-	// For those runs, prefer returning the partial story (HTTP 200) instead of surfacing HTTP 409.
-	if st != nil {
-		if status, ok := terminalStoryStatusOverrideFromRun(run); ok {
-			st.Status = status
-			if st.Root != nil && status == model.WorkflowStatusTimedOut && st.Root.Status != model.JobRunStoryNodeStatusFailed {
-				// Ensure the root isn't shown as succeeded for terminal timeout runs.
-				st.Root.Status = model.JobRunStoryNodeStatusFailed
-			}
-		}
-		applyJobAttemptOutcomeAndOutputToStory(st, run)
-	}
-
-	if buildErr != nil && errors.Is(buildErr, jobstory.ErrReplayMismatch) {
-		if shouldSuppressReplayMismatchForRun(run) {
-			return st, nil
-		}
-		s.logger.Error("GetJobRunStory: swf job run dump",
-			"project_id", projectID,
-			"job_id", jobID,
-			"job_type", run.Job.JobType,
-			"job_status", run.Job.Status,
-			"swf_job_run_dump", dumpSWFJobRunForLog(run),
-		)
-		if s.strata != nil {
-			if chapters, err := s.dumpStrataChaptersForLog(ctx, run.Job.JobKey); err == nil {
-				s.logger.Error("GetJobRunStory: strata chapters dump",
-					"project_id", projectID,
-					"job_id", jobID,
-					"job_type", run.Job.JobType,
-					"job_status", run.Job.Status,
-					"strata_chapters_dump", chapters,
-				)
-			} else {
-				s.logger.Error("GetJobRunStory: failed to dump strata chapters",
-					"project_id", projectID,
-					"job_id", jobID,
-					"error", err,
-					"error_chain", logutil.ErrorChain(err),
-				)
-			}
-		}
-
-		s.logger.Error("GetJobRunStory: replay mismatch",
-			"project_id", projectID,
-			"job_id", jobID,
-			"job_type", run.Job.JobType,
-			"job_status", run.Job.Status,
-			"job_created_at", run.Job.CreatedAt,
-			"job_archived_at", run.Job.ArchivedAt,
-			"job_start_ordinal", run.Start.Ordinal,
-			"job_start_worker_id", run.Start.WorkerID,
-			"task_count", countTaskRuns(run.Attempts),
-			"task_timeline", summarizeTaskTimelineForLog(run.Attempts),
-			"ops_registry_size", coreops.Size(),
-			"replay_error", buildErr,
-			"replay_error_chain", errorChainForLog(buildErr),
-			"story_present", st != nil,
-			"story_status", storyStatusForLog(st),
-			"story_recipe_id", storyRecipeIDForLog(st),
-		)
-		return st, ErrJobRunStoryMismatch
-	}
-	return st, buildErr
-}
-
-func shouldSuppressReplayMismatchForRun(run swf.GetJobRunResponse) bool {
-	// Today we only suppress replay mismatches for job-level timeouts, where the recorded
-	// timeline may be truncated (e.g. missing a final "next task" run).
-	status, ok := terminalStoryStatusOverrideFromRun(run)
-	return ok && status == model.WorkflowStatusTimedOut
-}
-
-func terminalStoryStatusOverrideFromRun(run swf.GetJobRunResponse) (model.WorkflowStatus, bool) {
-	// Only override when SWF says the job is terminal and the latest attempt clearly indicates
-	// a job-level timeout.
-	if !isTerminalJobStatus(run.Job.Status) {
-		return "", false
-	}
-	out, ok := latestAttemptOutcome(run)
-	if !ok {
-		return "", false
-	}
-	if isTimeoutOutcome(out) {
-		return model.WorkflowStatusTimedOut, true
-	}
-	return "", false
+	return st, nil
 }
 
 func latestAttemptTerminalError(run swf.GetJobRunResponse) (msg string, code string, ok bool) {

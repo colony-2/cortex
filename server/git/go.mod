@@ -3,8 +3,8 @@ module github.com/colony-2/colony2/server/git
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78
 	github.com/stretchr/testify v1.11.1
 )

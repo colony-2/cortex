@@ -1,0 +1,401 @@
+package story
+
+import (
+	"encoding/json"
+	"log/slog"
+	"sort"
+	"strings"
+	"sync"
+
+	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
+	"github.com/colony-2/colony2/server/workflow/internal/model"
+	"github.com/colony-2/swf-go/pkg/swf"
+)
+
+type replayStoryRecorder struct {
+	mu sync.Mutex
+
+	jobKey swf.JobKey
+	logger *slog.Logger
+
+	recipeNameFromStart string
+	recipeID            string
+	recipeVersion       string
+
+	currentJobAttempt int
+
+	attemptTrees      map[int]*treeBuilder
+	rootsByJobAttempt map[int]*model.JobRunStoryNode
+
+	currentOpNode  *model.JobRunStoryNode
+	currentOpSteps map[int64]*ordinalStepTracker
+}
+
+type ordinalStepTracker struct {
+	taskType string
+	stepID   string
+	stepNode *model.JobRunStoryNode
+
+	attemptNodes []*model.JobRunStoryNode
+	byAttempt    map[int]*model.JobRunStoryNode
+}
+
+func newReplayStoryRecorder(jobKey swf.JobKey, logger *slog.Logger) *replayStoryRecorder {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &replayStoryRecorder{
+		jobKey:            jobKey,
+		logger:            logger,
+		currentJobAttempt: 0,
+		attemptTrees:      make(map[int]*treeBuilder),
+		rootsByJobAttempt: make(map[int]*model.JobRunStoryNode),
+	}
+}
+
+func (r *replayStoryRecorder) EnsureAttemptTree() *treeBuilder {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	att := r.currentJobAttempt
+	if att <= 0 {
+		att = 1
+		r.currentJobAttempt = att
+	}
+	if t, ok := r.attemptTrees[att]; ok && t != nil {
+		return t
+	}
+	t := newTreeBuilder()
+	r.attemptTrees[att] = t
+	return t
+}
+
+func (r *replayStoryRecorder) OnJobStartAttempt(attemptNumber int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if attemptNumber <= 0 {
+		attemptNumber = 1
+	}
+	r.currentJobAttempt = attemptNumber
+	if _, ok := r.attemptTrees[attemptNumber]; !ok {
+		r.attemptTrees[attemptNumber] = newTreeBuilder()
+	}
+}
+
+func (r *replayStoryRecorder) OnRecipeLoaded(recipeName string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recipeNameFromStart = strings.TrimSpace(recipeName)
+}
+
+func (r *replayStoryRecorder) SetRecipeMeta(id, version string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if strings.TrimSpace(id) != "" {
+		r.recipeID = strings.TrimSpace(id)
+	}
+	if strings.TrimSpace(version) != "" {
+		r.recipeVersion = strings.TrimSpace(version)
+	}
+}
+
+func (r *replayStoryRecorder) SetRoot(root *model.JobRunStoryNode) {
+	if root == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	att := r.currentJobAttempt
+	if att <= 0 {
+		att = 1
+		r.currentJobAttempt = att
+	}
+	root.JobAttempt = att
+	r.rootsByJobAttempt[att] = root
+}
+
+func (r *replayStoryRecorder) SetCurrentOpNode(op *model.JobRunStoryNode) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.currentOpNode = op
+	if op == nil {
+		r.currentOpSteps = nil
+		return
+	}
+	r.currentOpSteps = make(map[int64]*ordinalStepTracker)
+}
+
+func (r *replayStoryRecorder) OnTaskStart(event swf.TaskStartEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	op := r.currentOpNode
+	tree := r.attemptTrees[r.currentJobAttempt]
+	if op == nil || tree == nil {
+		return
+	}
+
+	if r.currentOpSteps == nil {
+		r.currentOpSteps = make(map[int64]*ordinalStepTracker)
+	}
+
+	tr, ok := r.currentOpSteps[event.Ordinal]
+	if !ok || tr == nil {
+		stepID := strings.TrimSpace(stepIDFromTaskType(op.OpID, event.TaskType))
+		stepNode := tree.newNode(model.JobRunStoryNodeKindOpStep, "step "+stepID)
+		stepNode.StepID = stepID
+		stepNode.StepType = "other"
+		stepNode.Status = model.JobRunStoryNodeStatusRunning
+		ord := event.Ordinal
+		stepNode.RestartFromOrdinal = &ord
+		op.Children = append(op.Children, stepNode)
+
+		tr = &ordinalStepTracker{
+			taskType:     strings.TrimSpace(event.TaskType),
+			stepID:       stepID,
+			stepNode:     stepNode,
+			attemptNodes: make([]*model.JobRunStoryNode, 0, 2),
+			byAttempt:    make(map[int]*model.JobRunStoryNode),
+		}
+		r.currentOpSteps[event.Ordinal] = tr
+	}
+
+	// Create an attempt node; we fold the latest attempt into the step node.
+	attNode := tree.newNode(model.JobRunStoryNodeKindOpStep, "step "+strings.TrimSpace(tr.stepID))
+	attNode.StepID = strings.TrimSpace(tr.stepID)
+	attNode.StepType = "other"
+	attNode.Status = model.JobRunStoryNodeStatusRunning
+	attNode.Attempt = event.AttemptNumber
+	ord := event.Ordinal
+	attNode.TaskOrdinal = &ord
+
+	applyTaskInputToNode(attNode, event.Input)
+	tr.attemptNodes = append(tr.attemptNodes, attNode)
+	tr.byAttempt[event.AttemptNumber] = attNode
+}
+
+func (r *replayStoryRecorder) OnTaskEnd(event swf.TaskEndEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.currentOpSteps == nil {
+		return
+	}
+
+	tr := r.currentOpSteps[event.Ordinal]
+	if tr == nil || tr.stepNode == nil || tr.byAttempt == nil {
+		return
+	}
+
+	attNode := tr.byAttempt[event.AttemptNumber]
+	if attNode == nil {
+		return
+	}
+	applyTaskOutputToNode(attNode, r.jobKey.JobId, event.TaskType, event.Output, event.Err)
+
+	// Fold the latest attempt into the step node and populate prior attempts.
+	copyAttemptIntoStep(tr.stepNode, attNode)
+	prior := make([]*model.JobRunStoryNode, 0, len(tr.attemptNodes))
+	for _, n := range tr.attemptNodes {
+		if n == nil || n == attNode {
+			continue
+		}
+		prior = append(prior, n)
+	}
+	tr.stepNode.PriorAttempts = prior
+}
+
+func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	latestAttempt := 0
+	for att := range r.rootsByJobAttempt {
+		if att > latestAttempt {
+			latestAttempt = att
+		}
+	}
+	root := r.rootsByJobAttempt[latestAttempt]
+	if root != nil && len(r.rootsByJobAttempt) > 1 {
+		// Attach past attempts in order.
+		keys := make([]int, 0, len(r.rootsByJobAttempt))
+		for k := range r.rootsByJobAttempt {
+			keys = append(keys, k)
+		}
+		sort.Ints(keys)
+		past := make([]*model.JobRunStoryNode, 0, len(keys)-1)
+		for _, k := range keys {
+			if k == latestAttempt {
+				continue
+			}
+			if r.rootsByJobAttempt[k] != nil {
+				past = append(past, r.rootsByJobAttempt[k])
+			}
+		}
+		root.PastAttempts = past
+	}
+
+	recipeID := strings.TrimSpace(r.recipeID)
+	recipeName := toRecipeNameFromIDFallback(recipeID, r.recipeNameFromStart)
+
+	status := mapStoryStatusFromReplayErr(replayErr)
+	if status == model.WorkflowStatusRunning && root != nil {
+		root.Status = model.JobRunStoryNodeStatusRunning
+	}
+
+	story := &model.JobRunStory{
+		JobID:              r.jobKey.JobId,
+		InvocationSequence: 0,
+		Recipe: model.JobRunStoryRecipe{
+			ID:      recipeID,
+			Name:    recipeName,
+			Version: strings.TrimSpace(r.recipeVersion),
+			Source: model.JobRunStoryRecipeSource{
+				Kind:         "jobStartArtifact",
+				ArtifactName: recipeSourceArtifactName(r.recipeNameFromStart),
+			},
+		},
+		Status:     status,
+		FinishedAt: nil,
+		Root:       root,
+	}
+	if root != nil {
+		story.InvocationSequence = root.InvokeSeq
+	}
+	return story
+}
+
+func copyAttemptIntoStep(dst, src *model.JobRunStoryNode) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.Kind = src.Kind
+	dst.Title = src.Title
+	dst.Status = src.Status
+	dst.Attempt = src.Attempt
+	dst.Input = src.Input
+	dst.Output = src.Output
+	dst.ArtifactKeys = src.ArtifactKeys
+	dst.TaskOrdinal = src.TaskOrdinal
+	dst.Error = src.Error
+	dst.InvokeSeq = src.InvokeSeq
+	dst.Path = append([]string{}, src.Path...)
+}
+
+func applyTaskInputToNode(n *model.JobRunStoryNode, td swf.TaskData) {
+	if n == nil || td == nil {
+		return
+	}
+	raw, err := td.GetData()
+	if err != nil || len(raw) == 0 {
+		return
+	}
+
+	// Try to decode the activity invocation request so input and invoke_seq are recipe-centric.
+	var req activityInvocationRequest
+	if json.Unmarshal(raw, &req) == nil {
+		n.Input = req.Input
+		n.InvokeSeq = req.GitTaskCtx.InvokeSeq
+		if strings.TrimSpace(req.GitTaskCtx.NodePath) != "" {
+			if n.Kind == model.JobRunStoryNodeKindOpStep && strings.TrimSpace(n.StepID) != "" {
+				setStoryNodePath(n, req.GitTaskCtx.NodePath, "step:"+strings.TrimSpace(n.StepID))
+			} else {
+				setStoryNodePath(n, req.GitTaskCtx.NodePath)
+			}
+		}
+		return
+	}
+
+	// Some chapters store an OutputEnvelope in the "input" field. For API consumers,
+	// unwrap the envelope and return only the payload.
+	if payload, ok := unwrapTaskEnvelopePayload(raw); ok {
+		n.Input = payload
+		return
+	}
+
+	var anyRaw any
+	if json.Unmarshal(raw, &anyRaw) == nil {
+		n.Input = anyRaw
+	}
+}
+
+func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType string, td swf.TaskData, err error) {
+	if n == nil {
+		return
+	}
+
+	// For unexpected chapters (restart context patches), SWF reports a determinism mismatch but
+	// still carries a cached output. Use that output as the story output and treat the node as
+	// succeeded when the cached payload is a context patch.
+	if mismatch, ok := swf.UnexpectedChapter(err); ok && mismatch.CachedTaskDataErr() == nil && mismatch.CachedTaskData() != nil {
+		cached := mismatch.CachedTaskData()
+		raw, rerr := cached.GetData()
+		if rerr == nil && len(raw) > 0 {
+			kind, ok := outputKindFromRaw(raw)
+			if ok && kind == coretasks.OutputKindContextPatch {
+				td = cached
+				err = nil
+			}
+		}
+	}
+
+	if err != nil {
+		n.Status = model.JobRunStoryNodeStatusFailed
+		n.Error = &model.JobRunStoryError{Message: err.Error()}
+	} else {
+		n.Status = model.JobRunStoryNodeStatusSucceeded
+	}
+
+	if td != nil {
+		raw, derr := td.GetData()
+		if derr == nil && len(raw) > 0 {
+			var outEnv coretasks.OutputEnvelope
+			if json.Unmarshal(raw, &outEnv) == nil && outEnv.Version == coretasks.OutputEnvelopeVersion {
+				switch outEnv.Kind {
+				case coretasks.OutputKindActivityInvocationOutput:
+					var env activityInvocationOutput
+					if outEnv.DecodePayload(&env) == nil {
+						n.Output = env.OpOutput
+					}
+				case coretasks.OutputKindContextPatch:
+					var patch coretasks.ContextPatch
+					if outEnv.DecodePayload(&patch) == nil {
+						n.Kind = model.JobRunStoryNodeKindContextPatch
+						n.Title = "context patch"
+						n.StepID = ""
+						n.StepType = ""
+						n.Output = patch
+					}
+				default:
+					n.Output = map[string]any{"kind": string(outEnv.Kind)}
+				}
+			}
+		}
+
+		arts, aerr := td.GetArtifacts()
+		if aerr == nil && len(arts) > 0 {
+			keys := make([]swf.ArtifactKey, 0, len(arts))
+			for _, art := range arts {
+				if art == nil {
+					continue
+				}
+				if k, kerr := art.ArtifactKey(); kerr == nil {
+					keys = append(keys, k)
+					continue
+				}
+				ord := int64(0)
+				if n.TaskOrdinal != nil {
+					ord = *n.TaskOrdinal
+				}
+				keys = append(keys, swf.ArtifactKey{
+					JobId:       jobID,
+					TaskOrdinal: ord,
+					Name:        art.Name(),
+					SizeBytes:   art.Size(),
+				})
+			}
+			n.ArtifactKeys = keys
+		}
+	}
+
+	_ = taskType
+}

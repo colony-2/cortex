@@ -3,20 +3,20 @@ module github.com/colony-2/colony2/server/cortex
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/api v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/ops v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260204230334-a48ad330539d
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/recipes v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
-	github.com/colony-2/colony2/server/workflow v0.0.0-20260129221415-4d1ad05d9208
+	github.com/colony-2/colony2/server/api v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/cell v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/ops v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/project v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/recipes v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/ticket v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/workflow v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78
 	github.com/google/cel-go v0.26.0
@@ -53,10 +53,10 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260129221415-4d1ad05d9208 // indirect
-	github.com/colony-2/colony2/server/registry v0.0.0-20260129221415-4d1ad05d9208 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/registry v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260205023558-5abc9c8562fb // indirect
 	github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
