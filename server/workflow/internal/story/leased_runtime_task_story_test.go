@@ -56,16 +56,12 @@ outputs:
 		},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-
-	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr == nil || !errors.Is(execErr, ErrReplayInProgress) {
-		t.Fatalf("expected ErrReplayInProgress, got %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusActive, tasks)
+	if res.err == nil || !errors.Is(res.err, ErrReplayInProgress) {
+		t.Fatalf("expected ErrReplayInProgress, got %v", res.err)
 	}
 
-	root := exec.Root()
+	root := res.exec.Root()
 	if root == nil {
 		t.Fatalf("expected story root")
 	}
@@ -129,16 +125,12 @@ outputs:
 		},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-
-	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr == nil || !errors.Is(execErr, ErrReplayInProgress) {
-		t.Fatalf("expected ErrReplayInProgress, got %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusActive, tasks)
+	if res.err == nil || !errors.Is(res.err, ErrReplayInProgress) {
+		t.Fatalf("expected ErrReplayInProgress, got %v", res.err)
 	}
 
-	root := exec.Root()
+	root := res.exec.Root()
 	if root == nil {
 		t.Fatalf("expected story root")
 	}

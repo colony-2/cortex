@@ -11,7 +11,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -76,22 +76,18 @@ outputs:
 		},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-
-	outMap, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr != nil {
-		t.Fatalf("ExecuteRecipe: %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusActive, tasks)
+	if res.err != nil {
+		t.Fatalf("ExecuteRecipe: %v", res.err)
 	}
-	if outMap == nil {
+	if res.out == nil {
 		t.Fatalf("expected output map")
 	}
-	if outMap["present"] != "ok" {
-		t.Fatalf("expected present=%q, got %#v", "ok", outMap["present"])
+	if res.out["present"] != "ok" {
+		t.Fatalf("expected present=%q, got %#v", "ok", res.out["present"])
 	}
-	if outMap["missing"] != "" {
-		t.Fatalf("expected missing=%q, got %#v", "", outMap["missing"])
+	if res.out["missing"] != "" {
+		t.Fatalf("expected missing=%q, got %#v", "", res.out["missing"])
 	}
 }
 
@@ -120,18 +116,20 @@ outputs:
 		t.Fatalf("parse recipe: %v", err)
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: []swf.TaskRun{}}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx, template.ResolutionOptions{
-		Mode:               template.ModeRun,
-		CELOptionsProvider: builder,
-	})
-
-	outMap, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr != nil {
-		t.Fatalf("ExecuteRecipe: %v", execErr)
+	res := runRecipeReplay(
+		t,
+		&rec,
+		map[string]interface{}{},
+		contextual.JobContext{},
+		contextual.GitCommitContext{},
+		swf.JobStatusActive,
+		[]swf.TaskRun{},
+		compiler.ExecutionOptions{CELOptionsProvider: builder},
+	)
+	if res.err != nil {
+		t.Fatalf("ExecuteRecipe: %v", res.err)
 	}
-	if outMap == nil || outMap["greet"] != "hi" {
-		t.Fatalf("expected greet=%q, got %#v", "hi", outMap)
+	if res.out == nil || res.out["greet"] != "hi" {
+		t.Fatalf("expected greet=%q, got %#v", "hi", res.out)
 	}
 }

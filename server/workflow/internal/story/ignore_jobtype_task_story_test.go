@@ -88,11 +88,8 @@ outputs:
 		},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusCompleted, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr != nil {
-		t.Fatalf("expected replay success, got %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusCompleted, tasks)
+	if res.err != nil {
+		t.Fatalf("expected replay success, got %v", res.err)
 	}
 }

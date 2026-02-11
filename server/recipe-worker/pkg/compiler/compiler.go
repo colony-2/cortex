@@ -30,11 +30,27 @@ type RecipeExecutor interface {
 // DefaultRecipeExecutor preserves the existing execution behavior, with optional CEL provider injection.
 type DefaultRecipeExecutor struct {
 	celProvider template.CELOptionsProvider
+	delegate    RecipeExecutor
 }
 
 // NewDefaultRecipeExecutor builds an executor with a default CEL provider.
 func NewDefaultRecipeExecutor(provider template.CELOptionsProvider) DefaultRecipeExecutor {
 	return DefaultRecipeExecutor{celProvider: provider}
+}
+
+// WithDelegate returns a copy of the executor that will dispatch recursive executor calls
+// (ExecuteNode/ExecuteSequence/ExecuteStateMachine/ExecuteOp) to the provided delegate.
+// This allows decorators to wrap the default executor without reimplementing execution logic.
+func (d DefaultRecipeExecutor) WithDelegate(delegate RecipeExecutor) DefaultRecipeExecutor {
+	d.delegate = delegate
+	return d
+}
+
+func (d DefaultRecipeExecutor) self() RecipeExecutor {
+	if d.delegate != nil {
+		return d.delegate
+	}
+	return d
 }
 
 // ExecuteRecipe keeps the existing public entry point, delegating to the default executor.
@@ -81,11 +97,11 @@ func (d DefaultRecipeExecutor) ExecuteRecipe(ctx workflow.Context, r recipe.Reci
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		err = d.ExecuteStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
+		err = d.self().ExecuteStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.RecipeOp:
-		err = d.ExecuteOp(ctx, rCtx, metadata, t.OpData.Op)
+		err = d.self().ExecuteOp(ctx, rCtx, metadata, t.OpData.Op)
 	case *recipe.RecipeSequence:
-		err = d.ExecuteSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
+		err = d.self().ExecuteSequence(ctx, rCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return nil, nil, fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -101,11 +117,11 @@ func (d DefaultRecipeExecutor) ExecuteNode(ctx workflow.Context, parentResCtx *t
 	metadata := n.GetMetadata()
 	switch t := n.NodeImpl.(type) {
 	case *recipe.NodeState:
-		return d.ExecuteStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateMachineData.States)
+		return d.self().ExecuteStateMachine(ctx, parentResCtx, metadata, t.Outputs, t.StateMachineData.States)
 	case *recipe.NodeOp:
-		return d.ExecuteOp(ctx, parentResCtx, metadata, t.OpData.Op)
+		return d.self().ExecuteOp(ctx, parentResCtx, metadata, t.OpData.Op)
 	case *recipe.NodeSequence:
-		return d.ExecuteSequence(ctx, parentResCtx, metadata, t.Outputs, t.SequenceData.Sequence)
+		return d.self().ExecuteSequence(ctx, parentResCtx, metadata, t.Outputs, t.SequenceData.Sequence)
 	default:
 		return fmt.Errorf("unsupported recipe type: %T", t)
 	}
@@ -333,7 +349,7 @@ func (d DefaultRecipeExecutor) innerSequence(ctx workflow.Context, parentCtx *te
 
 	for i, node := range sequence {
 		// Execute the node
-		err := d.ExecuteNode(ctx, resCtx, &node)
+		err := d.self().ExecuteNode(ctx, resCtx, &node)
 		if err != nil {
 			return fmt.Errorf("sequence node %d failed: %w", i, err)
 		}

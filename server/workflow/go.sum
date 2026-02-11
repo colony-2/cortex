@@ -45,8 +45,8 @@ github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208 h1:KZ
 github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208/go.mod h1:cEgRrUw+RjmJHYXb8N44BhAiaBD4rkDLAZ2USgn+kME=
 github.com/colony-2/colony2/server/core v0.0.0-20260208010316-6ecc50916c50 h1:cmJavev6oQHHLGOfxf44SUI/sWLeVJr64NETJHMmEpM=
 github.com/colony-2/colony2/server/core v0.0.0-20260208010316-6ecc50916c50/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
-github.com/colony-2/colony2/server/git v0.0.0-20260128195911-f9fcb108644b h1:4lMtBlitS/S4mmFnlXInbRr5tbc9RESE6UnKXN1i/8M=
-github.com/colony-2/colony2/server/git v0.0.0-20260128195911-f9fcb108644b/go.mod h1:0QDudNjEvbgkEfT7c/16YBGYbpSk1/FQdb+eThlMisQ=
+github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208 h1:Zwa1q3LtCvou6/2HTjDC9yukch69hIZeoGK8yiNoOQc=
+github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208/go.mod h1:0QDudNjEvbgkEfT7c/16YBGYbpSk1/FQdb+eThlMisQ=
 github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208 h1:iyLwqK42T+AHFcMxi2u6kHbRWR3/0ZABdfU7g9ChOE4=
 github.com/colony-2/colony2/server/graph v0.0.0-20260129221415-4d1ad05d9208/go.mod h1:outKz8O58yqEGnwmc7QFo+LoOxi4B7axXXvC9UT4MqA=
 github.com/colony-2/colony2/server/pgembed v0.0.0-20260128195911-f9fcb108644b h1:uHNmNU00qgYrva3Xzf69uQVwFp9/Y6fwt2HXnzG0IA8=
@@ -65,8 +65,8 @@ github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 h1:5ZDVR9qJeUdR8k
 github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2/go.mod h1:74Q5xywfOsHUlgUoAJjeP1wJ/kZbdgV3b2YvtwPGXAQ=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 h1:e+MtgzMa1bTA95SZyf8EIMNPzC857pBhw0+pIO9pU1M=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966/go.mod h1:4/4TnrosiT7QfXLQMzX84jJVV7+kmpCf9i2xcC/iVbU=
-github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd h1:vKiDqyQLbzyBx2E0Eq3L/ypHqlQNhOAQxkpJcylfip8=
-github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd/go.mod h1:ATrIiZGv5n42DfJHscGgU3CIH32Maq2h8ANczhtZQ78=
+github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78 h1:6HGsMVmLhEKV7T2T8uIFciCfTN1pYWHXoIOtxI4RNgs=
+github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78/go.mod h1:ATrIiZGv5n42DfJHscGgU3CIH32Maq2h8ANczhtZQ78=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
@@ -198,6 +198,10 @@ github.com/yudai/gojsondiff v1.0.0 h1:27cbfqXLVEJ1o8I6v3y9lg8Ydm53EKqHXAOMxEGlCO
 github.com/yudai/gojsondiff v1.0.0/go.mod h1:AY32+k2cwILAkW1fbgxQ5mUmMiZFgLIV+FBNExI05xg=
 github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82 h1:BHyfKlQyqbsFN5p3IfnEUduWvb9is428/nNb5L3U01M=
 github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82/go.mod h1:lgjkn3NuSvDfVJdfcVVdX+jpBxNmX4rDAzaS45IcYoM=
+go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
+go.uber.org/multierr v1.11.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
+go.uber.org/zap v1.27.0 h1:aJMhYGrd5QSmlpLMr2MftRKl7t8J8PTZPA732ud/XR8=
+go.uber.org/zap v1.27.0/go.mod h1:GB2qFLM7cTU87MWRP2mPIjqfIDnGu+VIO4V/SdhGo2E=
 golang.org/x/crypto v0.41.0 h1:WKYxWedPGCTVVl5+WHSSrOBT0O8lx32+zxmHxijgXp4=
 golang.org/x/crypto v0.41.0/go.mod h1:pO5AFd7FA68rFak7rOAGVuygIISepHftHnr8dr6+sUc=
 golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa h1:t2QcU6V556bFjYgu4L6C+6VrCPyJZ+eyRsABUPs1mz4=

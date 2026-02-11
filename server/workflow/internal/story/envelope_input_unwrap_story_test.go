@@ -61,8 +61,8 @@ outputs:
 	now := time.Date(2026, 2, 8, 2, 0, 0, 0, time.UTC)
 	tasks := []swf.TaskRun{
 		{
-			TaskRunID: "test_unwrap_env_input:step1:1",
-			TaskType:  "test_unwrap_env_input:step1",
+			TaskRunID: "test_unwrap_env_input:test_unwrap_env_input:1",
+			TaskType:  "test_unwrap_env_input:test_unwrap_env_input",
 			Attempts: []swf.TaskAttempt{
 				{
 					Ordinal:   1,
@@ -78,38 +78,31 @@ outputs:
 		},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr != nil {
-		t.Fatalf("ExecuteRecipe: %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusActive, tasks)
+	if res.err != nil {
+		t.Fatalf("ExecuteRecipe: %v", res.err)
 	}
 
-	root := exec.Root()
+	root := res.exec.Root()
 	if root == nil || len(root.Children) == 0 || root.Children[0] == nil || len(root.Children[0].Children) == 0 || root.Children[0].Children[0] == nil {
 		t.Fatalf("expected recipe -> sequence -> op structure")
 	}
 	op := root.Children[0].Children[0]
-	if len(op.Children) != 1 || op.Children[0] == nil {
-		t.Fatalf("expected 1 opStep child")
-	}
-	step := op.Children[0]
 
-	inMap, ok := step.Input.(map[string]any)
+	inMap, ok := op.Input.(map[string]any)
 	if !ok {
-		t.Fatalf("expected step input to be a map, got %T", step.Input)
+		t.Fatalf("expected op input to be a map, got %T", op.Input)
 	}
 	if inMap["hello"] != "world" {
-		t.Fatalf("expected unwrapped payload in input, got %#v", step.Input)
+		t.Fatalf("expected unwrapped payload in input, got %#v", op.Input)
 	}
 	if _, hasV := inMap["v"]; hasV {
-		t.Fatalf("expected envelope wrapper removed from input, got %#v", step.Input)
+		t.Fatalf("expected envelope wrapper removed from input, got %#v", op.Input)
 	}
 	if _, hasKind := inMap["kind"]; hasKind {
-		t.Fatalf("expected envelope wrapper removed from input, got %#v", step.Input)
+		t.Fatalf("expected envelope wrapper removed from input, got %#v", op.Input)
 	}
 	if _, hasPayload := inMap["payload"]; hasPayload {
-		t.Fatalf("expected envelope wrapper removed from input, got %#v", step.Input)
+		t.Fatalf("expected envelope wrapper removed from input, got %#v", op.Input)
 	}
 }

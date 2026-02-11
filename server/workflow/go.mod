@@ -5,15 +5,19 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/cell v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/core v0.0.0-20260208010316-6ecc50916c50
-	github.com/colony-2/colony2/server/git v0.0.0-20260128195911-f9fcb108644b
+	github.com/colony-2/colony2/server/git v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/project v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260206225012-7b3039d8496f
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260129221415-4d1ad05d9208
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd
+	github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78
+	github.com/google/cel-go v0.26.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/colony-2/colony2/server/recipe-worker => ../recipe-worker
 
 require (
 	cel.dev/expr v0.24.0 // indirect
@@ -30,7 +34,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
-	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
@@ -46,7 +49,6 @@ require (
 	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
 	github.com/oapi-codegen/runtime v1.1.2 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect

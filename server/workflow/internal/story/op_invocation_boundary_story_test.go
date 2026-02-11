@@ -59,15 +59,12 @@ outputs:
 		{TaskRunID: "test_chain_twice:second:4", TaskType: "test_chain_twice:second", Attempts: []swf.TaskAttempt{{Ordinal: 4, Attempt: 1, WorkerID: "w1", CreatedAt: now.Add(3 * time.Second), Input: &swf.TaskIO{Data: []byte(`{"input":{},"context":{"InvokeSeq":2}}`)}, Output: &swf.TaskIO{Data: stepEnv(map[string]any{"inv": 2, "step": "two"})}, State: swf.TaskAttemptStateSucceeded, Outcome: swf.TaskOutcome{Status: swf.TaskOutcomeStatusSucceeded}}}},
 	}
 
-	attempts := []swf.JobAttempt{{Attempt: 1, Tasks: tasks}}
-	jobCtx := NewStoryBuildingContext(nil, "tenant", swf.JobKey{TenantId: "tenant", JobId: "job"}, "recipe", swf.JobStatusActive, attempts, nil)
-	exec := newExecutor("tenant", "job", jobCtx)
-	_, _, execErr := exec.ExecuteRecipe(&rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{})
-	if execErr != nil {
-		t.Fatalf("ExecuteRecipe: %v", execErr)
+	res := runRecipeReplay(t, &rec, map[string]interface{}{}, contextual.JobContext{}, contextual.GitCommitContext{}, swf.JobStatusActive, tasks)
+	if res.err != nil {
+		t.Fatalf("ExecuteRecipe: %v", res.err)
 	}
 
-	root := exec.Root()
+	root := res.exec.Root()
 	if root == nil || len(root.Children) != 1 || root.Children[0] == nil {
 		t.Fatalf("expected recipe -> sequence structure")
 	}

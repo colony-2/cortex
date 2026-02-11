@@ -23,6 +23,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	jobstory "github.com/colony-2/colony2/server/workflow/internal/story"
@@ -666,9 +667,8 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 		}
 	}
 
-	resOpts := template.DefaultResolutionOptions()
-	resOpts.CELOptionsProvider = s.celProvider
-	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger, resOpts)
+	execOpts := compiler.ExecutionOptions{CELOptionsProvider: s.celProvider}
+	st, buildErr := jobstory.BuildJobRunStory(ctx, s.engine, projectID, run, start, s.logger, execOpts)
 
 	// SWF JobStatusCompleted means "terminal", not "successful". Some terminal jobs end due to a
 	// job-level timeout and may not have recorded task runs for the next step. In that case,

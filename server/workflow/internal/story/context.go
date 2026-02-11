@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -240,6 +241,36 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 			if o, ok := taskRunFirstOrdinal(nextRun); ok {
 				ord = o
 			}
+			// Runtime can inject non-step chapters (e.g. context patches) that should be consumed
+			// before the requested step. Mirror runtime determinism semantics by returning an
+			// "unexpected chapter" error carrying the cached output for the injected chapter.
+			if isContextPatchTaskRun(nextRun) {
+				// Consume the injected chapter so subsequent DoTask calls can proceed.
+				consumedTy, td, err := c.ConsumeNextAny()
+				if err != nil {
+					return nil, err
+				}
+				meta := swf.TaskDeterminismMeta{
+					Ordinal:   ord,
+					TaskType:  strings.TrimSpace(consumedTy),
+					CreatedAt: time.Time{},
+					Attempt:   0,
+					InputHash: "unexpected_chapter",
+					Version:   1,
+				}
+				if len(nextRun.Attempts) > 0 {
+					meta.CreatedAt = nextRun.Attempts[0].CreatedAt
+					meta.Attempt = nextRun.Attempts[len(nextRun.Attempts)-1].Attempt
+				}
+				return nil, swf.TaskInputMismatchError{
+					TaskType:          taskType,
+					Ordinal:           ord,
+					CachedInputHash:   "unexpected_chapter",
+					ComputedInputHash: "unexpected_chapter",
+					CachedOutput:      td,
+					Meta:              meta,
+				}
+			}
 			// When a job is still running, SWF can surface "runtime" task runs/attempts in non-terminal
 			// states that do not necessarily align to the next replayable recipe task type. In that
 			// scenario, prefer surfacing "in progress" rather than a deterministic mismatch.
@@ -315,6 +346,21 @@ func (c *StoryBuildingContext) DoTask(_ swf.RunPolicy, taskType string, _ swf.Ta
 
 	// Preserve raw bytes since the downstream decoder expects the original task output envelope.
 	return &swf.SimpleTaskData{Data: json.RawMessage(outData), Artifacts: artifacts}, nil
+}
+
+func isContextPatchTaskRun(run swf.TaskRun) bool {
+	if len(run.Attempts) == 0 {
+		return false
+	}
+	final := run.Attempts[len(run.Attempts)-1]
+	if final.Output == nil || len(final.Output.Data) == 0 {
+		return false
+	}
+	var env coretasks.OutputEnvelope
+	if json.Unmarshal(final.Output.Data, &env) != nil {
+		return false
+	}
+	return env.Version == coretasks.OutputEnvelopeVersion && env.Kind == coretasks.OutputKindContextPatch
 }
 
 // ConsumeNextAny consumes the next unconsumed TaskRun across all task types by earliest ordinal.

@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	coreworkflow "github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gopkg.in/yaml.v3"
@@ -25,7 +27,7 @@ var (
 
 // BuildJobRunStory constructs a recipe-centric JobRunStory by replaying the recipe execution
 // using recorded outcomes from swf.GetJobRunResponse.
-func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID string, run swf.GetJobRunResponse, start workflowctl.StartJob, logger *slog.Logger, opts ...template.ResolutionOptions) (*model.JobRunStory, error) {
+func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID string, run swf.GetJobRunResponse, start workflowctl.StartJob, logger *slog.Logger, opts ...compiler.ExecutionOptions) (*model.JobRunStory, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("engine is required")
 	}
@@ -68,9 +70,16 @@ func BuildJobRunStory(ctx context.Context, engine swf.SWFEngine, projectID strin
 		}
 
 		jobCtx := NewStoryBuildingContext(engine, projectID, jobKey, run.Job.JobType, replayStatus, []swf.JobAttempt{att}, logger)
-		exec := newExecutor(projectID, jobKey.JobId, jobCtx, opts...)
+		tree := newTreeBuilder()
+		recJobCtx := newRecordingJobContext(jobCtx, jobKey.JobId, tree)
+		exec := newRecordingExecutor(compiler.DefaultRecipeExecutor{}, tree, recJobCtx)
 
-		_, _, execErr := exec.ExecuteRecipe(rec, inputs, start.JobContext, commitCtx)
+		wCtx := coreworkflow.Context{
+			JobContext:           recJobCtx,
+			ServiceDependencies2: coreops.NewServiceDepsBuilder().Build(),
+		}
+		_, _, execErr := compiler.ExecuteRecipeWithExecutor(exec, wCtx, *rec, inputs, start.JobContext, commitCtx, opts...)
+
 		root := exec.Root()
 		if root != nil {
 			root.JobAttempt = att.Attempt

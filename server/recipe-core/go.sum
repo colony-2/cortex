@@ -50,8 +50,8 @@ github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 h1:5ZDVR9qJeUdR8k
 github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2/go.mod h1:74Q5xywfOsHUlgUoAJjeP1wJ/kZbdgV3b2YvtwPGXAQ=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 h1:e+MtgzMa1bTA95SZyf8EIMNPzC857pBhw0+pIO9pU1M=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966/go.mod h1:4/4TnrosiT7QfXLQMzX84jJVV7+kmpCf9i2xcC/iVbU=
-github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd h1:vKiDqyQLbzyBx2E0Eq3L/ypHqlQNhOAQxkpJcylfip8=
-github.com/colony-2/swf-go v0.0.0-20260210002347-e0457018c1bd/go.mod h1:ATrIiZGv5n42DfJHscGgU3CIH32Maq2h8ANczhtZQ78=
+github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78 h1:6HGsMVmLhEKV7T2T8uIFciCfTN1pYWHXoIOtxI4RNgs=
+github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78/go.mod h1:ATrIiZGv5n42DfJHscGgU3CIH32Maq2h8ANczhtZQ78=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=

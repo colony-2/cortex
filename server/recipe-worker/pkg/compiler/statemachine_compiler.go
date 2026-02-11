@@ -144,5 +144,5 @@ func (d DefaultRecipeExecutor) runState(ctx workflow.Context, resCtx *template.R
 		return fmt.Errorf("failed to create state context: %w", err)
 	}
 
-	return d.ExecuteNode(ctx, stateResCtx, &node.Node)
+	return d.self().ExecuteNode(ctx, stateResCtx, &node.Node)
 }
