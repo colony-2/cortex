@@ -2,12 +2,14 @@ package story
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -291,15 +293,15 @@ func applyTaskInputToNode(n *model.JobRunStoryNode, td swf.TaskData) {
 	}
 
 	// Try to decode the activity invocation request so input and invoke_seq are recipe-centric.
-	var req activityInvocationRequest
+	var req ops.ActivityInvocationRequest
 	if json.Unmarshal(raw, &req) == nil {
 		n.Input = req.Input
-		n.InvokeSeq = req.GitTaskCtx.InvokeSeq
-		if strings.TrimSpace(req.GitTaskCtx.NodePath) != "" {
+		n.InvokeSeq = req.GitTaskContext.InvokeSeq
+		if strings.TrimSpace(req.GitTaskContext.NodePath) != "" {
 			if n.Kind == model.JobRunStoryNodeKindOpStep && strings.TrimSpace(n.StepID) != "" {
-				setStoryNodePath(n, req.GitTaskCtx.NodePath, "step:"+strings.TrimSpace(n.StepID))
+				setStoryNodePath(n, req.GitTaskContext.NodePath, "step:"+strings.TrimSpace(n.StepID))
 			} else {
-				setStoryNodePath(n, req.GitTaskCtx.NodePath)
+				setStoryNodePath(n, req.GitTaskContext.NodePath)
 			}
 		}
 		return
@@ -339,8 +341,14 @@ func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType stri
 	}
 
 	if err != nil {
-		n.Status = model.JobRunStoryNodeStatusFailed
-		n.Error = &model.JobRunStoryError{Message: err.Error()}
+		var miss swf.ReplayCacheMissError
+		if errors.As(err, &miss) {
+			n.Status = model.JobRunStoryNodeStatusRunning
+			n.Error = &model.JobRunStoryError{Message: err.Error()}
+		} else {
+			n.Status = model.JobRunStoryNodeStatusFailed
+			n.Error = &model.JobRunStoryError{Message: err.Error()}
+		}
 	} else {
 		n.Status = model.JobRunStoryNodeStatusSucceeded
 	}
@@ -352,7 +360,7 @@ func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType stri
 			if json.Unmarshal(raw, &outEnv) == nil && outEnv.Version == coretasks.OutputEnvelopeVersion {
 				switch outEnv.Kind {
 				case coretasks.OutputKindActivityInvocationOutput:
-					var env activityInvocationOutput
+					var env ops.ActivityInvocationOutput
 					if outEnv.DecodePayload(&env) == nil {
 						n.Output = env.OpOutput
 					}

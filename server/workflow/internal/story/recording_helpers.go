@@ -5,25 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/colony-2/colony2/server/git/pkg/gitstate"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
-
-type activityInvocationOutput struct {
-	GitResult contextual.GitCommitContext `json:"git,omitempty"`
-	NextTask  string                      `json:"nextTaskType,omitempty"`
-	OpOutput  any                         `json:"output"`
-}
-
-type activityInvocationRequest struct {
-	Input        any                           `json:"input"`
-	GitTaskCtx   gitstate.GlobalGitTaskContext `json:"context"`
-	ArtifactKeys []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
-	Artifacts    map[string]swf.ArtifactKey    `json:"artifacts,omitempty"`
-}
 
 func splitInvocationNodePath(nodePath string) []string {
 	nodePath = strings.TrimSpace(nodePath)
