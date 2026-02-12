@@ -109,7 +109,7 @@ func (e *recordingExecutor) ExecuteSequence(ctx coreworkflow.Context, rCtx *temp
 	return nil
 }
 
-func (e *recordingExecutor) ExecuteStateMachine(ctx coreworkflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error {
+func (e *recordingExecutor) ExecuteStateMachine(ctx coreworkflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap, opts ...compiler.ExecutionOptions) error {
 	smID := template.ScopeID(metadata, "", template.ScopeStateMachine)
 	node := e.tree.newNode(model.JobRunStoryNodeKindStateMachine, "stateMachine "+smID)
 	node.StateMachineID = smID

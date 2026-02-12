@@ -22,9 +22,22 @@ import (
 type RecipeExecutor interface {
 	ExecuteRecipe(ctx workflow.Context, r recipe.Recipe, rawRecipeInputs map[string]interface{}, execCtx contextual.JobContext, commitContext contextual.GitCommitContext, opts ...ExecutionOptions) (map[string]interface{}, []swf.Artifact, error)
 	ExecuteNode(ctx workflow.Context, parentResCtx *template.ResolutionContext, n *recipe.Node) error
-	ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error
+	ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap, opts ...ExecutionOptions) error
 	ExecuteOp(ctx workflow.Context, parentResolutionContext *template.ResolutionContext, metadata recipe.NodeMetadata, op string) error
 	ExecuteSequence(ctx workflow.Context, rCtx *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, sequence []recipe.Node) error
+}
+
+type StateObserver interface {
+	StateEntered(stateName string)
+	StateExited(stateName string)
+	TransitionEvalauted(expression string, result bool, nextStateIfExpressionTrue string)
+}
+
+type NoOpStateObserver struct{}
+
+func (NoOpStateObserver) StateEntered(stateName string) {}
+func (NoOpStateObserver) StateExited(stateName string)  {}
+func (NoOpStateObserver) TransitionEvalauted(expression string, result bool, nextStateIfExpressionTrue string) {
 }
 
 // DefaultRecipeExecutor preserves the existing execution behavior, with optional CEL provider injection.
@@ -97,7 +110,7 @@ func (d DefaultRecipeExecutor) ExecuteRecipe(ctx workflow.Context, r recipe.Reci
 
 	switch t := r.RecipeImpl.(type) {
 	case *recipe.RecipeState:
-		err = d.self().ExecuteStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States)
+		err = d.self().ExecuteStateMachine(ctx, rCtx, metadata, t.Outputs, t.StateMachineData.States, opts...)
 	case *recipe.RecipeOp:
 		err = d.self().ExecuteOp(ctx, rCtx, metadata, t.OpData.Op)
 	case *recipe.RecipeSequence:

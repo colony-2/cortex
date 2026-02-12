@@ -7,7 +7,7 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/swf-go v0.0.0-20260211045848-2df6f3d03e78
+	github.com/colony-2/swf-go v0.0.0-20260212193941-65b958896b9c
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/invopop/jsonschema v0.13.0
 	github.com/mitchellh/mapstructure v1.5.0

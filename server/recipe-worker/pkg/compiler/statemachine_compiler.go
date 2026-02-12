@@ -9,7 +9,7 @@ import (
 )
 
 // ExecuteStateMachine runs the state machine with the new StateMap format
-func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap) error {
+func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentContext *template.ResolutionContext, metadata recipe.NodeMetadata, outputTemplate map[string]interface{}, stateMap *recipe.StateMap, opts ...ExecutionOptions) error {
 	// Create resolution context for the state machine
 	resolvedInputs, err := parentContext.ResolveMap(metadata.Inputs)
 	if err != nil {
@@ -33,6 +33,16 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		return fmt.Errorf("state '%s' not found", currentState)
 	}
 	stateInvocationCount := make(map[string]int)
+	var observer StateObserver
+
+	if len(opts) > 1 {
+		return fmt.Errorf("too many execution options specified")
+	}
+	if len(opts) == 1 && opts[0].StateObserver != nil {
+		observer = opts[0].StateObserver
+	} else {
+		observer = NoOpStateObserver{}
+	}
 
 	if resCtx.Options.Mode == template.ModeValidate && resCtx.Options.ValidationMode == string(ValidateAll) {
 		stateNames := sortedStateNames(stateMap.States)
@@ -40,12 +50,14 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		lastStateDef := recipe.State{}
 		for _, stateName := range stateNames {
 			stateDef := stateMap.States[stateName]
+			observer.StateEntered(stateName)
 			if err := d.runState(ctx, resCtx, stateName, stateDef); err != nil {
 				return fmt.Errorf("state '%s' execution failed: %w", stateName, err)
 			}
+			observer.StateExited(stateName)
 			lastStateName = stateName
 			lastStateDef = stateDef
-			if _, err := evaluateTransitionsWithContext(stateDef.Transitions, resCtx); err != nil {
+			if _, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx); err != nil {
 				return fmt.Errorf("failed to evaluate state transitions: %w", err)
 			}
 		}
@@ -67,18 +79,19 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 			return fmt.Errorf("state '%s' not found", currentState)
 		}
 
+		observer.StateEntered(currentState)
 		if err := d.runState(ctx, resCtx, currentState, stateDef); err != nil {
 			// Handle retry if configured
 			return fmt.Errorf("state '%s' execution failed: %w", currentState, err)
 		}
-
+		observer.StateExited(currentState)
 		// Terminal states end the machine after they run.
 		if isTerminalState(currentState, stateMap.States) {
 			break
 		}
 
 		// Evaluate transitions using resolution context
-		nextState, err := evaluateTransitionsWithContext(stateDef.Transitions, resCtx)
+		nextState, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx)
 		if err != nil {
 			return fmt.Errorf("failed to evaluate state transitions: %w", err)
 		}
@@ -117,7 +130,7 @@ func isTerminalState(stateName string, states map[string]recipe.State) bool {
 }
 
 // evaluateTransitionsWithContext evaluates transitions using resolution context
-func evaluateTransitionsWithContext(transitions []recipe.Transition, resCtx *template.ResolutionContext) (string, error) {
+func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Transition, resCtx *template.ResolutionContext) (string, error) {
 	// Create a temporary context for transition evaluation
 	evalCtx := &template.ResolutionContext{
 		ScopeType:    resCtx.ScopeType,
@@ -130,7 +143,7 @@ func evaluateTransitionsWithContext(transitions []recipe.Transition, resCtx *tem
 		if err != nil {
 			return "", fmt.Errorf("failed to evaluate transition condition: %w", err)
 		}
-
+		obs.TransitionEvalauted(transition.When.String(), shouldTransition, transition.To)
 		if shouldTransition {
 			return transition.To, nil
 		}

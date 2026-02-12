@@ -26,6 +26,7 @@ type ExecutionOptions struct {
 	Validation ValidationOptions
 	// Optional CEL options provider to inject extra functions/types.
 	CELOptionsProvider template.CELOptionsProvider
+	StateObserver      StateObserver
 }
 
 func normalizeExecutionOptions(opts []ExecutionOptions) ExecutionOptions {
