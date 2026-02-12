@@ -5,7 +5,7 @@ import { Button, Card, Modal, Space, Tabs, Tag, Typography, message } from 'antd
 import { RecipesService, type RecipeWithContent } from '@colony2/openapi-client';
 import RecipeEditor from './RecipeEditor';
 import RecipeHistoryTab from './RecipeHistoryTab';
-import { getErrorMessage } from '../utils/errorHandling';
+import { showError } from '../utils/showError';
 
 const { Title } = Typography;
 
@@ -46,7 +46,7 @@ export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
       setHasChanges(false);
     } catch (error: any) {
       console.error('Failed to load recipe', error);
-      message.error(getErrorMessage(error, 'Failed to load recipe'));
+      showError(error, 'Failed to load recipe');
     } finally {
       setLoading(false);
     }
@@ -86,7 +86,7 @@ export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
       }
     } catch (error: any) {
       console.error('Failed to save recipe', error);
-      message.error(getErrorMessage(error, 'Failed to save recipe'));
+      showError(error, 'Failed to save recipe');
     } finally {
       setSaving(false);
     }
@@ -102,7 +102,7 @@ export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
       await loadRecipe();
     } catch (error: any) {
       console.error('Failed to publish recipe', error);
-      message.error(getErrorMessage(error, 'Failed to publish recipe'));
+      showError(error, 'Failed to publish recipe');
     } finally {
       setSaving(false);
     }
@@ -118,7 +118,7 @@ export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
       await loadRecipe();
     } catch (error: any) {
       console.error('Failed to unpublish recipe', error);
-      message.error(getErrorMessage(error, 'Failed to unpublish recipe'));
+      showError(error, 'Failed to unpublish recipe');
     } finally {
       setSaving(false);
     }
@@ -137,7 +137,7 @@ export default function RecipeDetailPage({ projectId }: RecipeDetailPageProps) {
           navigate(`/project/${projectId}/recipes`);
         } catch (error: any) {
           console.error('Failed to delete recipe', error);
-          message.error(getErrorMessage(error, 'Failed to delete recipe'));
+          showError(error, 'Failed to delete recipe');
         }
       },
     });

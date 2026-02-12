@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Input, Select, Space, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Input, Select, Space, Tag, Tree, Typography } from 'antd';
 import { FileTextOutlined, FolderOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { RecipesService, type RecipeInfo } from '@colony2/openapi-client';
 import type { DataNode } from 'antd/es/tree';
-import { getErrorMessage } from '../utils/errorHandling';
+import { showError } from '../utils/showError';
 
 const { Title } = Typography;
 
@@ -26,7 +26,7 @@ export default function RecipeListPage({ projectId }: RecipeListPageProps) {
       setRecipes(response.recipes);
     } catch (error: any) {
       console.error('Failed to load recipes', error);
-      message.error(getErrorMessage(error, 'Failed to load recipes'));
+      showError(error, 'Failed to load recipes');
     } finally {
       setLoading(false);
     }

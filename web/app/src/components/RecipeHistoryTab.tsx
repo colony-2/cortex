@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { CheckCircleOutlined } from '@ant-design/icons';
-import { Button, Input, List, Modal, Space, Tag, Typography, message } from 'antd';
+import { Button, Input, List, Modal, Space, Tag, Typography } from 'antd';
 import { RecipesService, type RecipeVersion, type RecipeWithContent } from '@colony2/openapi-client';
-import { getErrorMessage } from '../utils/errorHandling';
+import { showError } from '../utils/showError';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -30,7 +30,7 @@ export default function RecipeHistoryTab({
       setVersions(response.versions);
     } catch (error: any) {
       console.error('Failed to load recipe history', error);
-      message.error(getErrorMessage(error, 'Failed to load recipe history'));
+      showError(error, 'Failed to load recipe history');
     } finally {
       setLoading(false);
     }
@@ -47,7 +47,7 @@ export default function RecipeHistoryTab({
       setViewingContent(recipe);
     } catch (error: any) {
       console.error('Failed to load version content', error);
-      message.error(getErrorMessage(error, 'Failed to load version content'));
+      showError(error, 'Failed to load version content');
     } finally {
       setLoadingContent(false);
     }
