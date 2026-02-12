@@ -24,6 +24,12 @@ type fakeSWFEngine struct {
 	jobs []swf.JobSummary
 }
 
+var _ swf.SWFEngine = &fakeSWFEngine{}
+
+func (f *fakeSWFEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRequest) (swf.JobData, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (f *fakeSWFEngine) ListJobs(ctx context.Context, req swf.ListJobsRequest) (swf.ListJobsResponse, error) {
 	out := make([]swf.JobSummary, 0, len(f.jobs))
 	for _, job := range f.jobs {

@@ -149,7 +149,7 @@ func (e *recordingExecutor) ExecuteStateMachine(ctx coreworkflow.Context, parent
 	}
 	e.tree.push("stateMachine:"+smID, node)
 
-	stObs := newStoryStateObserver(e.tree, smID)
+	stObs := newStoryStateObserver(e.tree)
 	defer stObs.Flush()
 
 	var execOpts compiler.ExecutionOptions

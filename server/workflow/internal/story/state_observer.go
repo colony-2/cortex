@@ -18,8 +18,7 @@ type storyStateObserver struct {
 	transitionEval *model.JobRunStoryNode
 }
 
-func newStoryStateObserver(tree *treeBuilder, stateMachineID string) *storyStateObserver {
-	_ = stateMachineID
+func newStoryStateObserver(tree *treeBuilder) *storyStateObserver {
 	return &storyStateObserver{tree: tree}
 }
 

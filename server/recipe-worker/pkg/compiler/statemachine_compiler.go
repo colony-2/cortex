@@ -140,10 +140,11 @@ func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Tran
 
 	for _, transition := range transitions {
 		shouldTransition, err := evalCtx.EvaluateCEL(transition.When.String())
+		obs.TransitionEvalauted(transition.When.String(), shouldTransition, transition.To)
 		if err != nil {
 			return "", fmt.Errorf("failed to evaluate transition condition: %w", err)
 		}
-		obs.TransitionEvalauted(transition.When.String(), shouldTransition, transition.To)
+
 		if shouldTransition {
 			return transition.To, nil
 		}

@@ -78,10 +78,15 @@ func (e CELExpr) Evaluate(inputsMap map[string]interface{}) (interface{}, error)
 	if e.AlwaysTrue() {
 		return true, nil
 	}
-	if e.program == nil {
-		return nil, fmt.Errorf("expression not compiled")
+	program := e.program
+	if program == nil {
+		var err error
+		program, err = compile(e.expr)
+		if err != nil {
+			return nil, err
+		}
 	}
-	val, _, err := e.program.Eval(map[string]interface{}{
+	val, _, err := program.Eval(map[string]interface{}{
 		"inputs": &DynamicMapValue{data: inputsMap},
 	})
 	if err != nil {
@@ -101,19 +106,17 @@ func (e *CELExpr) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	// Empty expression is allowed and treated as true
+	// Intentionally do not compile during YAML unmarshal.
+	// Validation happens later (e.g., during template validation / execution),
+	// and compilation depends on the evaluation environment.
 	if strings.TrimSpace(s) == "" {
 		e.expr = ""
 		e.program = nil
 		return nil
 	}
 
-	program, err := compile(s)
-	if err != nil {
-		return err
-	}
 	e.expr = s
-	e.program = program
+	e.program = nil
 	return nil
 }
 

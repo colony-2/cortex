@@ -49,7 +49,9 @@ func (s *State) UnmarshalYAML(node *yamlv3.Node) error {
 		Transitions []Transition `yaml:"transitions,omitempty"`
 	}
 	var meta metaOnly
-	_ = node.Decode(&meta)
+	if err := node.Decode(&meta); err != nil {
+		return err
+	}
 
 	// Decode the node definition using a filtered mapping node that omits state-only keys.
 	filtered := &yamlv3.Node{

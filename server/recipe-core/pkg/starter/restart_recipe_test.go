@@ -3,6 +3,7 @@ package starter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/task"
@@ -11,6 +12,10 @@ import (
 
 type captureEngine struct {
 	last *swf.RestartJob
+}
+
+func (c *captureEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRequest) (swf.JobData, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (c *captureEngine) RegisterWorkers(*swf.WorkSet) error { return nil }
