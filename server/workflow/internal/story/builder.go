@@ -20,9 +20,6 @@ type replayJobRunner interface {
 
 // BuildJobRunStory replays a job using swf.ReplayJobRun and collects a recipe-centric story
 // by decorating the recipe executor + observing SWF replay events.
-//
-// Timestamps are intentionally left as zero values for now (SWF replay events do not include
-// chapter CreatedAt/WorkerID yet).
 func BuildJobRunStory(ctx context.Context, engine replayJobRunner, jobKey swf.JobKey, celProvider template.CELOptionsProvider, logger *slog.Logger) (*model.JobRunStory, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("engine is required")

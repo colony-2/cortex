@@ -10,7 +10,7 @@ func (o *replayStoryObserver) OnJobStart(event swf.JobStartEvent) {
 	if o == nil || o.rec == nil {
 		return
 	}
-	o.rec.OnJobStartAttempt(event.AttemptNumber)
+	o.rec.OnJobStart(event)
 }
 
 func (o *replayStoryObserver) OnTaskStart(event swf.TaskStartEvent) {
@@ -28,8 +28,10 @@ func (o *replayStoryObserver) OnTaskEnd(event swf.TaskEndEvent) {
 }
 
 func (o *replayStoryObserver) OnJobEnd(event swf.JobEndEvent) {
-	// No-op for now; story nodes are finalized by the decorated executor + task events.
-	_ = event
+	if o == nil || o.rec == nil {
+		return
+	}
+	o.rec.OnJobEnd(event)
 }
 
 var _ swf.ReplayObserver = (*replayStoryObserver)(nil)

@@ -61,9 +61,29 @@ func (e *recordingExecutor) ExecuteNode(ctx coreworkflow.Context, parentResCtx *
 
 		title := "state"
 		if segs := splitInvocationNodePath(nodePath); len(segs) > 0 {
-			title = "state " + segs[len(segs)-1]
+			seg := strings.TrimSpace(segs[len(segs)-1])
+			seg = strings.TrimPrefix(seg, "state:")
+			seg = strings.TrimSpace(seg)
+			if seg != "" {
+				title = "state " + seg
+			}
 		}
 
+		// Prefer state nodes created by an injected compiler.StateObserver so transition
+		// evaluation nodes can be nested under the correct state.
+		if cur := e.tree.current(); cur != nil && cur.Kind == model.JobRunStoryNodeKindState && cur.Status == model.JobRunStoryNodeStatusRunning {
+			// Populate path/title opportunistically from the invocation context.
+			cur.Title = title
+			setStoryNodePath(cur, nodePath)
+			err := e.inner.WithDelegate(e).ExecuteNode(ctx, parentResCtx, n)
+			if err != nil {
+				cur.Status = statusFromErr(err, cur.Status)
+				return err
+			}
+			return nil
+		}
+
+		// Fallback: create state nodes here (no transition eval capture).
 		stateNode := e.tree.newNode(model.JobRunStoryNodeKindState, title)
 		stateNode.Status = model.JobRunStoryNodeStatusRunning
 		setStoryNodePath(stateNode, nodePath)
@@ -76,6 +96,9 @@ func (e *recordingExecutor) ExecuteNode(ctx coreworkflow.Context, parentResCtx *
 			return err
 		}
 		stateNode.Status = deriveContainerStatus(stateNode.Children)
+		if stateNode.Status == model.JobRunStoryNodeStatusUnknown {
+			stateNode.Status = model.JobRunStoryNodeStatusSucceeded
+		}
 		e.tree.pop()
 		return nil
 	}
@@ -115,19 +138,36 @@ func (e *recordingExecutor) ExecuteStateMachine(ctx coreworkflow.Context, parent
 	node.StateMachineID = smID
 	node.Status = model.JobRunStoryNodeStatusRunning
 	if parentContext != nil {
+		nodePath := ""
+		if tec := parentContext.TaskExecutionContext(); strings.TrimSpace(tec.Invocation.NodePath) != "" {
+			nodePath = tec.Invocation.NodePath
+		}
+		setStoryNodePath(node, nodePath, "stateMachine:"+smID)
 		if resolved, err := parentContext.ResolveMap(metadata.Inputs); err == nil {
 			node.Input = resolved
 		}
 	}
 	e.tree.push("stateMachine:"+smID, node)
 
-	err := e.inner.WithDelegate(e).ExecuteStateMachine(ctx, parentContext, metadata, outputTemplate, stateMap)
+	stObs := newStoryStateObserver(e.tree, smID)
+	defer stObs.Flush()
+
+	var execOpts compiler.ExecutionOptions
+	if len(opts) > 0 {
+		execOpts = opts[0]
+	}
+	execOpts.StateObserver = chainStateObservers(execOpts.StateObserver, stObs)
+
+	err := e.inner.WithDelegate(e).ExecuteStateMachine(ctx, parentContext, metadata, outputTemplate, stateMap, execOpts)
 	if err != nil {
 		node.Status = statusFromErr(err, node.Status)
 		e.tree.pop()
 		return err
 	}
 	node.Status = deriveContainerStatus(node.Children)
+	if node.Status == model.JobRunStoryNodeStatusUnknown {
+		node.Status = model.JobRunStoryNodeStatusSucceeded
+	}
 	if parentContext != nil {
 		node.Output = parentContext.GetLastExecution()
 	}

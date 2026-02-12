@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -23,6 +24,8 @@ import (
 type fakeReplayEngine struct {
 	jobInput    swf.JobData
 	taskScripts []fakeTaskScript
+	jobStartAt  time.Time
+	jobEndAt    time.Time
 }
 
 func (e *fakeReplayEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRequest) (swf.JobData, error) {
@@ -34,7 +37,7 @@ func (e *fakeReplayEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRe
 	}
 	obs := req.Observer
 	if obs != nil {
-		obs.OnJobStart(swf.JobStartEvent{JobKey: req.JobKey, AttemptNumber: 1, Input: e.jobInput})
+		obs.OnJobStart(swf.JobStartEvent{JobKey: req.JobKey, AttemptNumber: 1, Input: e.jobInput, At: e.jobStartAt})
 	}
 	jc := &fakeReplayJobContext{
 		jobKey:      req.JobKey,
@@ -44,7 +47,7 @@ func (e *fakeReplayEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRe
 	}
 	out, err := req.JobWorker.Run(jc, e.jobInput)
 	if obs != nil {
-		obs.OnJobEnd(swf.JobEndEvent{JobKey: req.JobKey, AttemptNumber: 1, Output: out, Err: err})
+		obs.OnJobEnd(swf.JobEndEvent{JobKey: req.JobKey, AttemptNumber: 1, Output: out, Err: err, At: e.jobEndAt})
 	}
 	return out, err
 }
@@ -64,9 +67,11 @@ func (c *fakeReplayJobContext) AwaitDuration(_ swf.Duration) error { return nil 
 func (c *fakeReplayJobContext) AwaitJobs(_ ...string) error        { return nil }
 
 type fakeTaskAttempt struct {
-	Attempt int
-	Output  swf.TaskData
-	Err     error
+	Attempt    int
+	Output     swf.TaskData
+	Err        error
+	StartedAt  time.Time
+	FinishedAt time.Time
 }
 
 type fakeTaskScript struct {
@@ -113,6 +118,7 @@ func (c *fakeReplayJobContext) DoTask(_ swf.RunPolicy, taskType string, input sw
 				Ordinal:       ord,
 				AttemptNumber: attemptNum,
 				Input:         input,
+				At:            att.StartedAt,
 			})
 		}
 		if c.observer != nil {
@@ -123,6 +129,7 @@ func (c *fakeReplayJobContext) DoTask(_ swf.RunPolicy, taskType string, input sw
 				AttemptNumber: attemptNum,
 				Output:        att.Output,
 				Err:           att.Err,
+				At:            att.FinishedAt,
 			})
 		}
 	}
@@ -506,4 +513,201 @@ outputs:
 	if outMap["greet"] != "hi" {
 		t.Fatalf("expected greet=%q, got %#v", "hi", outMap["greet"])
 	}
+}
+
+func TestJobRunStoryReplay_TaskTimestampsPopulateNodes(t *testing.T) {
+	type in struct{}
+	type out struct {
+		Value string `json:"value"`
+	}
+
+	opType := "test_story_timestamps"
+	coreops.Register(coreops.NewActivityMappedOpV2[in, out](coreops.OpMetadata{Type: opType}, func(_ coreops.OpDependencies, _ context.Context, _ in) (out, error) {
+		return out{Value: "ok"}, nil
+	}))
+
+	recipeYAML := `
+id: test
+version: "1.0.0"
+sequence:
+  - id: run
+    op: test_story_timestamps
+outputs: {}
+`
+	recipeArt := swf.NewArtifactFromBytes("test"+starter.RecipeArtifactSuffix, []byte(recipeYAML))
+	start := workflowctl.StartJob{RecipeName: "test", GitRef: "main", Inputs: map[string]any{}, JobContext: contextual.JobContext{}}
+	jobInput, err := swf.NewTaskData(start, recipeArt)
+	if err != nil {
+		t.Fatalf("NewTaskData(job start): %v", err)
+	}
+
+	env, err := coretasks.NewOutputEnvelope(coretasks.OutputKindActivityInvocationOutput, map[string]any{
+		"git":          map[string]any{},
+		"nextTaskType": "",
+		"output":       map[string]any{"value": "ok"},
+	})
+	if err != nil {
+		t.Fatalf("NewOutputEnvelope: %v", err)
+	}
+	raw, _ := json.Marshal(env)
+	taskOut := &swf.SimpleTaskData{Data: json.RawMessage(raw)}
+
+	t0 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(10 * time.Second)
+	t2 := t1.Add(5 * time.Second)
+	tEnd := t0.Add(1 * time.Minute)
+
+	engine := &fakeReplayEngine{
+		jobInput:   swf.JobData(jobInput),
+		jobStartAt: t0,
+		jobEndAt:   tEnd,
+		taskScripts: []fakeTaskScript{{
+			Attempts: []fakeTaskAttempt{{
+				Attempt:    1,
+				Output:     taskOut,
+				Err:        nil,
+				StartedAt:  t1,
+				FinishedAt: t2,
+			}},
+		}},
+	}
+
+	jobKey := swf.JobKey{TenantId: "tenant", JobId: "job"}
+	st, err := BuildJobRunStory(context.Background(), engine, jobKey, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildJobRunStory: %v", err)
+	}
+	if st.StartedAt.IsZero() || !st.StartedAt.Equal(t0) {
+		t.Fatalf("expected story started_at %v, got %v", t0, st.StartedAt)
+	}
+	if st.FinishedAt == nil || !st.FinishedAt.Equal(tEnd) {
+		t.Fatalf("expected story finished_at %v, got %#v", tEnd, st.FinishedAt)
+	}
+
+	seq := findFirstKind(st.Root.Children, model.JobRunStoryNodeKindSequence)
+	opNode := findFirstKind(seq.Children, model.JobRunStoryNodeKindOp)
+	if opNode == nil {
+		t.Fatalf("expected op node")
+	}
+	if opNode.StartedAt == nil || !opNode.StartedAt.Equal(t1) {
+		t.Fatalf("expected op started_at %v, got %#v", t1, opNode.StartedAt)
+	}
+	if opNode.FinishedAt == nil || !opNode.FinishedAt.Equal(t2) {
+		t.Fatalf("expected op finished_at %v, got %#v", t2, opNode.FinishedAt)
+	}
+}
+
+func TestJobRunStoryReplay_StateObserverCapturesTransitions(t *testing.T) {
+	type in struct{}
+	type out struct {
+		OK bool `json:"ok"`
+	}
+
+	opType := "test_story_state_observer"
+	coreops.Register(coreops.NewActivityMappedOpV2[in, out](coreops.OpMetadata{Type: opType}, func(_ coreops.OpDependencies, _ context.Context, _ in) (out, error) {
+		return out{OK: true}, nil
+	}))
+
+	recipeYAML := `
+id: test
+version: "1.0.0"
+sequence:
+  - id: sm
+    state:
+      initial: s1
+      states:
+        s1:
+          op: test_story_state_observer
+          inputs: {}
+          transitions:
+            - to: s2
+              when: "false"
+            - to: s2
+              when: "true"
+        s2:
+          op: test_story_state_observer
+          inputs: {}
+outputs: {}
+`
+	recipeArt := swf.NewArtifactFromBytes("test"+starter.RecipeArtifactSuffix, []byte(recipeYAML))
+	start := workflowctl.StartJob{RecipeName: "test", GitRef: "main", Inputs: map[string]any{}, JobContext: contextual.JobContext{}}
+	jobInput, err := swf.NewTaskData(start, recipeArt)
+	if err != nil {
+		t.Fatalf("NewTaskData(job start): %v", err)
+	}
+
+	env, err := coretasks.NewOutputEnvelope(coretasks.OutputKindActivityInvocationOutput, map[string]any{
+		"git":          map[string]any{},
+		"nextTaskType": "",
+		"output":       map[string]any{"ok": true},
+	})
+	if err != nil {
+		t.Fatalf("NewOutputEnvelope: %v", err)
+	}
+	raw, _ := json.Marshal(env)
+	taskOut := &swf.SimpleTaskData{Data: json.RawMessage(raw)}
+
+	engine := &fakeReplayEngine{
+		jobInput: swf.JobData(jobInput),
+		taskScripts: []fakeTaskScript{
+			{Attempts: []fakeTaskAttempt{{Attempt: 1, Output: taskOut, Err: nil}}},
+			{Attempts: []fakeTaskAttempt{{Attempt: 1, Output: taskOut, Err: nil}}},
+		},
+	}
+
+	jobKey := swf.JobKey{TenantId: "tenant", JobId: "job"}
+	st, err := BuildJobRunStory(context.Background(), engine, jobKey, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildJobRunStory: %v", err)
+	}
+	if st == nil || st.Root == nil {
+		t.Fatalf("expected root")
+	}
+
+	seq := findFirstKind(st.Root.Children, model.JobRunStoryNodeKindSequence)
+	if seq == nil {
+		t.Fatalf("expected sequence")
+	}
+	sm := findFirstKind(seq.Children, model.JobRunStoryNodeKindStateMachine)
+	if sm == nil {
+		t.Fatalf("expected stateMachine node")
+	}
+	s1 := findStateByID(sm.Children, "s1")
+	if s1 == nil {
+		t.Fatalf("expected state s1, got %#v", sm.Children)
+	}
+	if s1.IsInitial == nil || *s1.IsInitial != true {
+		t.Fatalf("expected s1 isInitial=true, got %#v", s1.IsInitial)
+	}
+	te := findFirstKind(s1.Children, model.JobRunStoryNodeKindTransitionEval)
+	if te == nil {
+		t.Fatalf("expected transitionEval under state s1")
+	}
+	if te.FromStateID != "s1" {
+		t.Fatalf("expected from_state_id=s1, got %q", te.FromStateID)
+	}
+	if len(te.Evaluations) != 2 {
+		t.Fatalf("expected 2 evaluations, got %#v", te.Evaluations)
+	}
+	if te.Evaluations[0].Expression != "false" || te.Evaluations[0].Result != false || te.Evaluations[0].ToStateID != "s2" {
+		t.Fatalf("unexpected evaluation[0]: %#v", te.Evaluations[0])
+	}
+	if te.Evaluations[1].Expression != "true" || te.Evaluations[1].Result != true || te.Evaluations[1].ToStateID != "s2" {
+		t.Fatalf("unexpected evaluation[1]: %#v", te.Evaluations[1])
+	}
+	if te.Decision == nil || te.Decision.Kind != "state" || te.Decision.ToStateID == nil || *te.Decision.ToStateID != "s2" {
+		t.Fatalf("unexpected decision: %#v", te.Decision)
+	}
+}
+
+func findStateByID(nodes []*model.JobRunStoryNode, stateID string) *model.JobRunStoryNode {
+	for _, n := range nodes {
+		if n == nil || n.Kind != model.JobRunStoryNodeKindState {
+			continue
+		}
+		if n.StateID == stateID {
+			return n
+		}
+	}
+	return nil
 }

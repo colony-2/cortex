@@ -78,6 +78,41 @@ func inferFinishedTimes(root *model.JobRunStoryNode, jobFinishedAt *time.Time) {
 	inferFinishedTimesRec(root, jobFinishedAt)
 }
 
+func inferStartedTimes(root *model.JobRunStoryNode) {
+	if root == nil {
+		return
+	}
+	inferStartedTimesRec(root)
+}
+
+func inferStartedTimesRec(n *model.JobRunStoryNode) {
+	if n == nil {
+		return
+	}
+	for _, ch := range n.Children {
+		inferStartedTimesRec(ch)
+	}
+
+	if n.StartedAt != nil {
+		return
+	}
+
+	earliest := (*time.Time)(nil)
+	for _, ch := range n.Children {
+		if ch == nil || ch.StartedAt == nil || ch.StartedAt.IsZero() {
+			continue
+		}
+		if earliest == nil || ch.StartedAt.Before(*earliest) {
+			t := *ch.StartedAt
+			earliest = &t
+		}
+	}
+	if earliest != nil {
+		t := *earliest
+		n.StartedAt = &t
+	}
+}
+
 func inferFinishedTimesRec(n *model.JobRunStoryNode, jobFinishedAt *time.Time) {
 	if n == nil {
 		return

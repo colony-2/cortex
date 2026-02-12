@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -28,9 +29,15 @@ type replayStoryRecorder struct {
 
 	attemptTrees      map[int]*treeBuilder
 	rootsByJobAttempt map[int]*model.JobRunStoryNode
+	attemptTiming     map[int]*jobAttemptTiming
 
 	currentOpNode  *model.JobRunStoryNode
 	currentOpSteps map[int64]*ordinalStepTracker
+}
+
+type jobAttemptTiming struct {
+	startedAt  *time.Time
+	finishedAt *time.Time
 }
 
 type ordinalStepTracker struct {
@@ -52,6 +59,7 @@ func newReplayStoryRecorder(jobKey swf.JobKey, logger *slog.Logger) *replayStory
 		currentJobAttempt: 0,
 		attemptTrees:      make(map[int]*treeBuilder),
 		rootsByJobAttempt: make(map[int]*model.JobRunStoryNode),
+		attemptTiming:     make(map[int]*jobAttemptTiming),
 	}
 }
 
@@ -71,9 +79,10 @@ func (r *replayStoryRecorder) EnsureAttemptTree() *treeBuilder {
 	return t
 }
 
-func (r *replayStoryRecorder) OnJobStartAttempt(attemptNumber int) {
+func (r *replayStoryRecorder) OnJobStart(event swf.JobStartEvent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	attemptNumber := event.AttemptNumber
 	if attemptNumber <= 0 {
 		attemptNumber = 1
 	}
@@ -81,6 +90,44 @@ func (r *replayStoryRecorder) OnJobStartAttempt(attemptNumber int) {
 	if _, ok := r.attemptTrees[attemptNumber]; !ok {
 		r.attemptTrees[attemptNumber] = newTreeBuilder()
 	}
+	if !event.At.IsZero() {
+		t := event.At
+		r.ensureAttemptTimingLocked(attemptNumber).startedAt = &t
+		if root := r.rootsByJobAttempt[attemptNumber]; root != nil && root.StartedAt == nil {
+			root.StartedAt = &t
+		}
+	}
+}
+
+func (r *replayStoryRecorder) OnJobEnd(event swf.JobEndEvent) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	attemptNumber := event.AttemptNumber
+	if attemptNumber <= 0 {
+		attemptNumber = 1
+	}
+	if !event.At.IsZero() {
+		t := event.At
+		r.ensureAttemptTimingLocked(attemptNumber).finishedAt = &t
+		if root := r.rootsByJobAttempt[attemptNumber]; root != nil && root.FinishedAt == nil {
+			root.FinishedAt = &t
+		}
+	}
+}
+
+func (r *replayStoryRecorder) ensureAttemptTimingLocked(attemptNumber int) *jobAttemptTiming {
+	if attemptNumber <= 0 {
+		attemptNumber = 1
+	}
+	if r.attemptTiming == nil {
+		r.attemptTiming = make(map[int]*jobAttemptTiming)
+	}
+	if tm, ok := r.attemptTiming[attemptNumber]; ok && tm != nil {
+		return tm
+	}
+	tm := &jobAttemptTiming{}
+	r.attemptTiming[attemptNumber] = tm
+	return tm
 }
 
 func (r *replayStoryRecorder) OnRecipeLoaded(recipeName string) {
@@ -113,6 +160,16 @@ func (r *replayStoryRecorder) SetRoot(root *model.JobRunStoryNode) {
 	}
 	root.JobAttempt = att
 	r.rootsByJobAttempt[att] = root
+	if tm := r.attemptTiming[att]; tm != nil {
+		if root.StartedAt == nil && tm.startedAt != nil {
+			t := *tm.startedAt
+			root.StartedAt = &t
+		}
+		if root.FinishedAt == nil && tm.finishedAt != nil {
+			t := *tm.finishedAt
+			root.FinishedAt = &t
+		}
+	}
 }
 
 func (r *replayStoryRecorder) SetCurrentOpNode(op *model.JobRunStoryNode) {
@@ -169,6 +226,10 @@ func (r *replayStoryRecorder) OnTaskStart(event swf.TaskStartEvent) {
 	attNode.Attempt = event.AttemptNumber
 	ord := event.Ordinal
 	attNode.TaskOrdinal = &ord
+	if !event.At.IsZero() {
+		t := event.At
+		attNode.StartedAt = &t
+	}
 
 	applyTaskInputToNode(attNode, event.Input)
 	tr.attemptNodes = append(tr.attemptNodes, attNode)
@@ -193,6 +254,10 @@ func (r *replayStoryRecorder) OnTaskEnd(event swf.TaskEndEvent) {
 		return
 	}
 	applyTaskOutputToNode(attNode, r.jobKey.JobId, event.TaskType, event.Output, event.Err)
+	if !event.At.IsZero() && attNode.FinishedAt == nil && isTerminal(attNode.Status) {
+		t := event.At
+		attNode.FinishedAt = &t
+	}
 
 	// Fold the latest attempt into the step node and populate prior attempts.
 	copyAttemptIntoStep(tr.stepNode, attNode)
@@ -209,6 +274,24 @@ func (r *replayStoryRecorder) OnTaskEnd(event swf.TaskEndEvent) {
 func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	earliestStart := time.Time{}
+	latestFinish := time.Time{}
+	for _, tm := range r.attemptTiming {
+		if tm == nil {
+			continue
+		}
+		if tm.startedAt != nil && !tm.startedAt.IsZero() {
+			if earliestStart.IsZero() || tm.startedAt.Before(earliestStart) {
+				earliestStart = *tm.startedAt
+			}
+		}
+		if tm.finishedAt != nil && !tm.finishedAt.IsZero() {
+			if latestFinish.IsZero() || tm.finishedAt.After(latestFinish) {
+				latestFinish = *tm.finishedAt
+			}
+		}
+	}
 
 	latestAttempt := 0
 	for att := range r.rootsByJobAttempt {
@@ -257,12 +340,21 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 			},
 		},
 		Status:     status,
+		StartedAt:  earliestStart,
 		FinishedAt: nil,
 		Root:       root,
+	}
+	if !latestFinish.IsZero() && status != model.WorkflowStatusRunning {
+		t := latestFinish
+		story.FinishedAt = &t
 	}
 	if root != nil {
 		story.InvocationSequence = root.InvokeSeq
 	}
+
+	inferStartedTimes(story.Root)
+	inferFinishedTimes(story.Root, story.FinishedAt)
+
 	return story
 }
 
@@ -273,6 +365,8 @@ func copyAttemptIntoStep(dst, src *model.JobRunStoryNode) {
 	dst.Kind = src.Kind
 	dst.Title = src.Title
 	dst.Status = src.Status
+	dst.StartedAt = src.StartedAt
+	dst.FinishedAt = src.FinishedAt
 	dst.Attempt = src.Attempt
 	dst.Input = src.Input
 	dst.Output = src.Output
