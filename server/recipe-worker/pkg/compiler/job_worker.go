@@ -183,12 +183,6 @@ func (j recipeJobWorker) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobDa
 	out, artifacts, err := ExecuteRecipeWithExecutor(exec, wCtx, r, input.Inputs, runContext, contextual.GitCommitContext{ParentRef: input.GitRef}, opts)
 
 	if err != nil {
-		logger.Error("recipe execution failed",
-			"git_ref", input.GitRef,
-			"error", err,
-			"error_chain", logutil.ErrorChain(err),
-			"stacktrace", logutil.Stacktrace(5),
-		)
 		return nil, err
 	}
 	taskData, err := swf.NewTaskData(out, artifacts...)
