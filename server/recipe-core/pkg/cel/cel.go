@@ -22,6 +22,42 @@ type CELExpr struct {
 	program cel.Program
 }
 
+// IsZero enables correct `omitempty` behavior for YAML/JSON encoders.
+// CELExpr stores its value in unexported fields, so reflection-based zero checks
+// may incorrectly treat non-empty expressions as empty.
+func (e CELExpr) IsZero() bool {
+	return strings.TrimSpace(e.expr) == ""
+}
+
+func (e CELExpr) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.expr)
+}
+
+func (e *CELExpr) UnmarshalJSON(data []byte) error {
+	// Treat null as empty expression for robustness.
+	if string(data) == "null" {
+		e.expr = ""
+		e.program = nil
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+
+	// Intentionally do not compile during JSON unmarshal. Validation happens later.
+	if strings.TrimSpace(s) == "" {
+		e.expr = ""
+		e.program = nil
+		return nil
+	}
+
+	e.expr = s
+	e.program = nil
+	return nil
+}
+
 func (CELExpr) JSONSchema() (jsg.Schema, error) {
 	var schema jsg.Schema
 	schema.AddType(jsg.String)
