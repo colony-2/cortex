@@ -23,6 +23,7 @@ func newWorkflowCmd() *cobra.Command {
 		newWorkflowOutputCmd(),
 		newWorkflowArtifactCmd(),
 		newWorkflowOutcomeCmd(),
+		newWorkflowStoryCmd(),
 	)
 	return cmd
 }
@@ -393,7 +394,11 @@ func newWorkflowArtifactCmd() *cobra.Command {
 
 func isWorkflowFailed(status openapi.WorkflowStatus) bool {
 	switch status {
-	case openapi.Failed, openapi.Terminated, openapi.Canceled, openapi.TimedOut, openapi.Unknown:
+	case openapi.WorkflowStatusFailed,
+		openapi.WorkflowStatusTerminated,
+		openapi.WorkflowStatusCanceled,
+		openapi.WorkflowStatusTimedOut,
+		openapi.WorkflowStatusUnknown:
 		return true
 	default:
 		return false
@@ -434,6 +439,36 @@ func newWorkflowOutcomeCmd() *cobra.Command {
 				return err
 			}
 			return app.Printer.JSON(outcome)
+		},
+	}
+	return cmd
+}
+
+// Workflow story via dedicated API (recipe-centric replay of events for a job run).
+func newWorkflowStoryCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "story <workflow-id>",
+		Short: "Show workflow story (recipe-centric job history) using the server story API",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := fetchApp(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if err := requireProject(app.Config.Project); err != nil {
+				return err
+			}
+			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
+			defer cancel()
+			resp, err := app.Client.GetJobRunStoryWithResponse(ctx, app.Config.Project, args[0])
+			if err != nil {
+				return err
+			}
+			story, err := requirePayload(resp.JSON200, resp.HTTPResponse, resp.Body, 200)
+			if err != nil {
+				return err
+			}
+			return app.Printer.JSON(story)
 		},
 	}
 	return cmd
