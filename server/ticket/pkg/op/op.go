@@ -376,6 +376,13 @@ func handleCreateTicket(
 		State:       state,
 		Actor:       actor,
 	}
+	if len(payload.DependsOnTicketIDs) > 0 {
+		deps := make([]ticket.ID, 0, len(payload.DependsOnTicketIDs))
+		for _, id := range payload.DependsOnTicketIDs {
+			deps = append(deps, ticket.ID(id))
+		}
+		input.DependsOnTicketIDs = deps
+	}
 	created, jobID, err := svc.CreateTicket(ctx, input)
 	if err != nil {
 		return nil, err

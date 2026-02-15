@@ -36,12 +36,13 @@ func (BaseAction) isAction() {}
 
 type CreateTicketAction struct {
 	BaseAction
-	Cell        string `json:"cell" yaml:"cell" validate:"required"`
-	ProjectID   string `json:"project_id" yaml:"project_id" validate:"required"`
-	Title       string `json:"title" yaml:"title" validate:"required"`
-	Stage       string `json:"stage" yaml:"stage" validate:"required"`
-	State       string `json:"state" yaml:"state" validate:"required"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	Cell               string   `json:"cell" yaml:"cell" validate:"required"`
+	ProjectID          string   `json:"project_id" yaml:"project_id" validate:"required"`
+	Title              string   `json:"title" yaml:"title" validate:"required"`
+	Stage              string   `json:"stage" yaml:"stage" validate:"required"`
+	State              string   `json:"state" yaml:"state" validate:"required"`
+	Description        string   `json:"description,omitempty" yaml:"description,omitempty"`
+	DependsOnTicketIDs []string `json:"depends_on_ticket_ids,omitempty" yaml:"depends_on_ticket_ids,omitempty"`
 }
 
 type UpdateTicketAction struct {

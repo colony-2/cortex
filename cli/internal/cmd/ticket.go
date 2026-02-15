@@ -100,6 +100,7 @@ func newTicketCreateCmd() *cobra.Command {
 	var description string
 	var actorType string
 	var actorEmail string
+	var dependsOnTickets []string
 
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -127,6 +128,9 @@ func newTicketCreateCmd() *cobra.Command {
 			}
 			if description != "" {
 				req.Description = &description
+			}
+			if len(dependsOnTickets) > 0 {
+				req.DependsOnTicketIds = &dependsOnTickets
 			}
 
 			// Apply actor overrides if provided.
@@ -164,5 +168,6 @@ func newTicketCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "Ticket description")
 	cmd.Flags().StringVar(&actorType, "actor-type", "user", "Actor type user|agent")
 	cmd.Flags().StringVar(&actorEmail, "actor-email", "j@j.com", "Actor email when actor-type=user")
+	cmd.Flags().StringSliceVar(&dependsOnTickets, "depends-on-ticket", nil, "Ticket ID prerequisite (repeatable)")
 	return cmd
 }

@@ -22,23 +22,28 @@ import (
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/go-playground/validator/v10"
 	"github.com/imdario/mergo"
+	"github.com/lib/pq"
+	"gorm.io/gorm"
 	"gorm.io/plugin/optimisticlock"
 )
 
 var (
-	ErrInvalidState        = errors.New("ticket: invalid state")
-	ErrInvalidActor        = errors.New("ticket: invalid actor")
-	ErrEmptyTitle          = errors.New("ticket: title is required")
-	ErrEmptyStage          = errors.New("ticket: stage is required")
-	ErrInvalidProject      = errors.New("ticket: invalid project")
-	ErrInvalidCell         = errors.New("ticket: invalid cell")
-	ErrIDGeneration        = errors.New("ticket: id generation failed")
-	ErrVersionConflict     = errors.New("ticket: version conflict")
-	ErrInvalidEventKind    = errors.New("ticket: invalid event kind")
-	ErrInvalidEventPayload = errors.New("ticket: invalid event payload")
-	ErrEventNotFound       = errors.New("ticket: event not found")
-	ErrResetNoEvents       = errors.New("ticket: no events to reset")
-	ErrUpdateNoFields      = errors.New("ticket: update requires at least one field")
+	ErrInvalidState           = errors.New("ticket: invalid state")
+	ErrInvalidActor           = errors.New("ticket: invalid actor")
+	ErrEmptyTitle             = errors.New("ticket: title is required")
+	ErrEmptyStage             = errors.New("ticket: stage is required")
+	ErrInvalidProject         = errors.New("ticket: invalid project")
+	ErrInvalidCell            = errors.New("ticket: invalid cell")
+	ErrIDGeneration           = errors.New("ticket: id generation failed")
+	ErrVersionConflict        = errors.New("ticket: version conflict")
+	ErrInvalidEventKind       = errors.New("ticket: invalid event kind")
+	ErrInvalidEventPayload    = errors.New("ticket: invalid event payload")
+	ErrEventNotFound          = errors.New("ticket: event not found")
+	ErrResetNoEvents          = errors.New("ticket: no events to reset")
+	ErrUpdateNoFields         = errors.New("ticket: update requires at least one field")
+	ErrInvalidDependency      = errors.New("ticket: invalid dependency")
+	ErrDependencyNoPrimaryJob = errors.New("ticket: dependency ticket missing primary job")
+	ErrAutostartUnavailable   = errors.New("ticket: autostart unavailable")
 )
 
 type Clock interface {
@@ -137,6 +142,11 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	input.Title = strings.TrimSpace(input.Title)
 	input.Stage = normalizeStage(input.Stage)
 	input.Actor = sanitizeActorFields(input.Actor)
+	normalizedDeps, err := normalizeDependencyIDs(input.DependsOnTicketIDs)
+	if err != nil {
+		return nil, "", err
+	}
+	input.DependsOnTicketIDs = normalizedDeps
 
 	if err := s.validateCreateInput(input); err != nil {
 		return nil, "", err
@@ -169,6 +179,16 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		return nil, "", errors.Join(ErrIDGeneration, err)
 	}
 
+	var primaryJobID string
+	if s.engine != nil && s.recipes != nil {
+		primaryJobID, err = s.idGen.NewID()
+		if err != nil {
+			return nil, "", errors.Join(ErrIDGeneration, err)
+		}
+	} else if len(input.DependsOnTicketIDs) > 0 {
+		return nil, "", ErrAutostartUnavailable
+	}
+
 	now := s.clock.Now()
 	ticket := &model.Ticket{
 		ID:          model.ID(ticketID),
@@ -183,6 +203,16 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+	if primaryJobID != "" {
+		ticket.PrimaryJobID = &primaryJobID
+	}
+	if len(input.DependsOnTicketIDs) > 0 {
+		deps := make([]string, 0, len(input.DependsOnTicketIDs))
+		for _, id := range input.DependsOnTicketIDs {
+			deps = append(deps, string(id))
+		}
+		ticket.DependsOnTicketIDs = pq.StringArray(deps)
+	}
 	if ticket.Stage == model.CompletedStage {
 		ticket.CompletedAt = ptrTime(now)
 	}
@@ -196,9 +226,12 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 			return err
 		}
 
-		// Kick off recipe job only when dependencies are provided.
 		if s.engine != nil && s.recipes != nil {
-			jobKey, err := s.startTicketRecipe(ctx, st, ticket, projectRecord, cellRecord)
+			prereqs, err := s.resolveTicketPrerequisites(ctx, st, ticket.ProjectID, ticket.ID, input.DependsOnTicketIDs)
+			if err != nil {
+				return err
+			}
+			jobKey, err := s.startTicketRecipe(ctx, st, ticket, projectRecord, cellRecord, primaryJobID, prereqs)
 			if err != nil {
 				return err
 			}
@@ -217,6 +250,26 @@ func (s *service) CreateTicket(ctx context.Context, input CreateInput) (*model.T
 	}
 
 	return created, jobID, nil
+}
+
+func normalizeDependencyIDs(ids []model.ID) ([]model.ID, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	seen := make(map[model.ID]struct{}, len(ids))
+	out := make([]model.ID, 0, len(ids))
+	for _, id := range ids {
+		trimmed := model.ID(strings.TrimSpace(string(id)))
+		if trimmed == "" {
+			return nil, ErrInvalidDependency
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out, nil
 }
 
 func (s *service) UpdateTicket(ctx context.Context, id model.ID, patch UpdateInput) (*model.Ticket, error) {
@@ -475,7 +528,7 @@ func applyTicketResetMetadata(ticket *model.Ticket, reset *model.TicketReset) {
 	ticket.LastResetAt = &atCopy
 }
 
-func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket *model.Ticket, projectRecord *project.Project, cellRecord *cell.Cell) (string, error) {
+func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket *model.Ticket, projectRecord *project.Project, cellRecord *cell.Cell, primaryJobID string, prereqs []swf.JobPrerequisite) (string, error) {
 	if st == nil || ticket == nil || projectRecord == nil || cellRecord == nil {
 		return "", errors.New("ticket: missing dependencies for recipe start")
 	}
@@ -543,7 +596,10 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 		jobCtx = swf.WithTx(ctx, tx)
 	}
 
-	jobKey, err := starter.StartRecipeJob(jobCtx, startJob, s.engine, *rec)
+	jobKey, err := starter.StartRecipeJobWithOptions(jobCtx, startJob, s.engine, starter.StartRecipeJobOptions{
+		JobID:         strings.TrimSpace(primaryJobID),
+		Prerequisites: prereqs,
+	}, *rec)
 	if err != nil {
 		return "", err
 	}
@@ -558,6 +614,39 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 		return "", err
 	}
 	return jobKey.JobId, nil
+}
+
+func (s *service) resolveTicketPrerequisites(ctx context.Context, st store.Store, projectID project.ID, ticketID model.ID, dependsOn []model.ID) ([]swf.JobPrerequisite, error) {
+	if len(dependsOn) == 0 {
+		return nil, nil
+	}
+	prereqs := make([]swf.JobPrerequisite, 0, len(dependsOn))
+	for _, depID := range dependsOn {
+		if depID == "" {
+			return nil, ErrInvalidDependency
+		}
+		if depID == ticketID {
+			return nil, ErrInvalidDependency
+		}
+		dep, err := st.Get(ctx, depID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, ErrInvalidDependency
+			}
+			return nil, err
+		}
+		if dep.ProjectID != projectID {
+			return nil, ErrInvalidDependency
+		}
+		if dep.PrimaryJobID == nil || strings.TrimSpace(*dep.PrimaryJobID) == "" {
+			return nil, ErrDependencyNoPrimaryJob
+		}
+		prereqs = append(prereqs, swf.JobPrerequisite{
+			JobID:     strings.TrimSpace(*dep.PrimaryJobID),
+			Condition: swf.JobPrereqSuccess,
+		})
+	}
+	return prereqs, nil
 }
 
 func (s *service) resolveCell(ctx context.Context, projectID project.ID, name core.CellName) (*cell.Cell, error) {

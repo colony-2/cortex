@@ -58,7 +58,7 @@ Add optional field to `components/schemas/TicketCreateRequest`:
 Semantics:
 
 - Each ID must be an existing ticket in the same project.
-- The new ticket’s primary job will wait for the primary jobs of these tickets to complete (SWF prerequisites with condition `complete`).
+- The new ticket’s primary job will wait for the primary jobs of these tickets to succeed (SWF prerequisites with condition `success`).
 
 ### OpenAPI: StartWorkflowRequest (generic workflow start)
 
@@ -132,7 +132,7 @@ Update `server/ticket/internal/service/service.go` `CreateTicket` to:
    - If missing, return an error indicating the dependency ticket cannot be depended upon.
 3) Start the ticket’s autostart recipe job and persist `PrimaryJobID`:
    - Start the recipe job with SWF prerequisites:
-     - `Prerequisites = [{JobID: upstreamPrimaryJobID, Condition: complete}, ...]`
+     - `Prerequisites = [{JobID: upstreamPrimaryJobID, Condition: success}, ...]`
    - Start the job inside the ticket DB transaction (`swf.WithTx(ctx, st.DB())`).
    - Store the returned job ID on the created ticket row as `PrimaryJobID`.
 4) Append the initial workflow “running” event as today.

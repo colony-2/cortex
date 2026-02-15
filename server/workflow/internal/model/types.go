@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 type WorkflowStatus string
@@ -171,4 +172,5 @@ type StartWorkflowRequest struct {
 	TicketID       *string
 	ActorEmail     *string
 	IdempotencyKey *string
+	Prerequisites  []swf.JobPrerequisite
 }

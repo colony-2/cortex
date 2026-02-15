@@ -108,20 +108,23 @@ const (
 )
 
 var (
-	ErrInvalidState        = internalservice.ErrInvalidState
-	ErrInvalidActor        = internalservice.ErrInvalidActor
-	ErrEmptyTitle          = internalservice.ErrEmptyTitle
-	ErrEmptyStage          = internalservice.ErrEmptyStage
-	ErrInvalidProject      = internalservice.ErrInvalidProject
-	ErrInvalidCell         = internalservice.ErrInvalidCell
-	ErrIDGeneration        = internalservice.ErrIDGeneration
-	ErrVersionConflict     = internalservice.ErrVersionConflict
-	ErrInvalidEventKind    = internalservice.ErrInvalidEventKind
-	ErrInvalidEventPayload = internalservice.ErrInvalidEventPayload
-	ErrEventNotFound       = internalservice.ErrEventNotFound
-	ErrResetNoEvents       = internalservice.ErrResetNoEvents
-	ErrUpdateNoFields      = internalservice.ErrUpdateNoFields
-	ErrIteratorDone        = internalstore.ErrIteratorDone
+	ErrInvalidState           = internalservice.ErrInvalidState
+	ErrInvalidActor           = internalservice.ErrInvalidActor
+	ErrEmptyTitle             = internalservice.ErrEmptyTitle
+	ErrEmptyStage             = internalservice.ErrEmptyStage
+	ErrInvalidProject         = internalservice.ErrInvalidProject
+	ErrInvalidCell            = internalservice.ErrInvalidCell
+	ErrIDGeneration           = internalservice.ErrIDGeneration
+	ErrVersionConflict        = internalservice.ErrVersionConflict
+	ErrInvalidEventKind       = internalservice.ErrInvalidEventKind
+	ErrInvalidEventPayload    = internalservice.ErrInvalidEventPayload
+	ErrEventNotFound          = internalservice.ErrEventNotFound
+	ErrResetNoEvents          = internalservice.ErrResetNoEvents
+	ErrUpdateNoFields         = internalservice.ErrUpdateNoFields
+	ErrInvalidDependency      = internalservice.ErrInvalidDependency
+	ErrDependencyNoPrimaryJob = internalservice.ErrDependencyNoPrimaryJob
+	ErrAutostartUnavailable   = internalservice.ErrAutostartUnavailable
+	ErrIteratorDone           = internalstore.ErrIteratorDone
 )
 
 func NewService(config ServiceConfig) (Service, error) {

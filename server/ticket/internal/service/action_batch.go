@@ -110,6 +110,13 @@ func (s *service) handleCreateTicket(ctx context.Context, payload model.CreateTi
 		State:       state,
 		Actor:       actor,
 	}
+	if len(payload.DependsOnTicketIDs) > 0 {
+		deps := make([]model.ID, 0, len(payload.DependsOnTicketIDs))
+		for _, id := range payload.DependsOnTicketIDs {
+			deps = append(deps, model.ID(id))
+		}
+		input.DependsOnTicketIDs = deps
+	}
 	created, jobID, err := s.CreateTicket(ctx, input)
 	if err != nil {
 		return nil, err

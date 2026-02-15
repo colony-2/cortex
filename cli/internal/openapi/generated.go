@@ -871,6 +871,17 @@ type SSEEvent struct {
 	Type *string `json:"type,omitempty"`
 }
 
+// JobPrereqCondition defines model for JobPrereqCondition.
+type JobPrereqCondition string
+
+// JobPrerequisite defines model for JobPrerequisite.
+type JobPrerequisite struct {
+	Condition JobPrereqCondition `json:"condition"`
+
+	// JobId Job/workflow ID prerequisite.
+	JobId string `json:"job_id"`
+}
+
 // StartWorkflowRequest defines model for StartWorkflowRequest.
 type StartWorkflowRequest struct {
 	// ActorEmail Email address of the user starting the workflow
@@ -888,6 +899,9 @@ type StartWorkflowRequest struct {
 	// Inputs Key/value inputs passed to the recipe
 	Inputs *map[string]interface{} `json:"inputs,omitempty"`
 
+	// Prerequisites Optional job prerequisites that must be satisfied before the workflow runs.
+	Prerequisites *[]JobPrerequisite `json:"prerequisites,omitempty"`
+
 	// RecipeName Name of the recipe to execute
 	RecipeName string `json:"recipe_name"`
 
@@ -903,12 +917,13 @@ type Ticket struct {
 	CreatedAt   time.Time  `json:"createdAt"`
 
 	// Creator Actor performing the action. Provide `user` when type=user, or `agent` when type=agent.
-	Creator     Actor      `json:"creator"`
-	Description *string    `json:"description,omitempty"`
-	Id          string     `json:"id"`
-	LastResetAt *time.Time `json:"lastResetAt"`
-	LastResetId *string    `json:"lastResetId"`
-	ProjectId   string     `json:"projectId"`
+	Creator      Actor      `json:"creator"`
+	Description  *string    `json:"description,omitempty"`
+	Id           string     `json:"id"`
+	LastResetAt  *time.Time `json:"lastResetAt"`
+	LastResetId  *string    `json:"lastResetId"`
+	PrimaryJobId *string    `json:"primaryJobId,omitempty"`
+	ProjectId    string     `json:"projectId"`
 
 	// Stage Logical stage label (e.g., triage, review, __completed__)
 	Stage string `json:"stage"`
@@ -928,9 +943,10 @@ type TicketCreateRequest struct {
 	Actor Actor `json:"actor"`
 
 	// Cell Cell name within the project
-	Cell        string  `json:"cell"`
-	Description *string `json:"description,omitempty"`
-	Stage       string  `json:"stage"`
+	Cell               string    `json:"cell"`
+	DependsOnTicketIds *[]string `json:"dependsOnTicketIds,omitempty"`
+	Description        *string   `json:"description,omitempty"`
+	Stage              string    `json:"stage"`
 
 	// State Built-in ticket states
 	State TicketState `json:"state"`

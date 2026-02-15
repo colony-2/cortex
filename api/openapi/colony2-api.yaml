@@ -2157,6 +2157,10 @@ components:
         version:
           type: integer
           format: int64
+        primaryJobId:
+          type: string
+          nullable: true
+          description: Primary (auto-start) workflow/job ID associated with this ticket.
         projectId:
           type: string
         cellId:
@@ -2228,6 +2232,11 @@ components:
           $ref: '#/components/schemas/TicketState'
         actor:
           $ref: '#/components/schemas/Actor'
+        dependsOnTicketIds:
+          type: array
+          description: Optional list of ticket IDs whose primary jobs must succeed before this ticket's primary job may run.
+          items:
+            type: string
       required: [cell, title, stage, state, actor]
 
     TicketUpdateRequest:
@@ -2927,6 +2936,28 @@ components:
           type: string
           format: email
           description: Email address of the user starting the workflow
+        prerequisites:
+          type: array
+          description: Optional job prerequisites that must be satisfied before the workflow runs.
+          items:
+            $ref: '#/components/schemas/JobPrerequisite'
+
+    JobPrereqCondition:
+      type: string
+      enum: [complete, success]
+      description: |
+        complete = prerequisite job must be archived (any outcome).
+        success = prerequisite job must be archived and have completion_status == success.
+
+    JobPrerequisite:
+      type: object
+      required: [job_id, condition]
+      properties:
+        job_id:
+          type: string
+          description: Job/workflow ID prerequisite.
+        condition:
+          $ref: '#/components/schemas/JobPrereqCondition'
 
     FieldType:
       type: string

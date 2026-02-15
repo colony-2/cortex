@@ -349,7 +349,9 @@ func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequ
 		InputHash:    inputHash,
 	}
 
-	jobKey, err := starter.StartRecipeJob(ctx, start, s.engine, *rec)
+	jobKey, err := starter.StartRecipeJobWithOptions(ctx, start, s.engine, starter.StartRecipeJobOptions{
+		Prerequisites: req.Prerequisites,
+	}, *rec)
 	if err != nil {
 		return nil, err
 	}

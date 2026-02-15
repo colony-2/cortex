@@ -640,6 +640,13 @@ func (h *Handlers) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		State:       ticket.State(body.State),
 		Actor:       toTicketActor(body.Actor),
 	}
+	if body.DependsOnTicketIds != nil {
+		deps := make([]ticket.ID, 0, len(*body.DependsOnTicketIds))
+		for _, id := range *body.DependsOnTicketIds {
+			deps = append(deps, ticket.ID(id))
+		}
+		input.DependsOnTicketIDs = deps
+	}
 	created, _, err := h.tickets.CreateTicket(r.Context(), input)
 	if err != nil {
 		writeDomainError(r, w, err, ticketErrorStatus(err))
@@ -871,23 +878,24 @@ func toOpenAPIGraph(g *core.Graph) openapi.Graph {
 
 func toOpenAPITicket(tk *ticket.Ticket) openapi.Ticket {
 	return openapi.Ticket{
-		CellId:      string(tk.CellID),
-		CellName:    string(tk.CellName),
-		CompletedAt: tk.CompletedAt,
-		CreatedAt:   tk.CreatedAt,
-		Creator:     toOpenAPITicketActor(tk.Creator),
-		Description: stringPtr(tk.Description),
-		Id:          string(tk.ID),
-		LastResetAt: tk.LastResetAt,
-		LastResetId: toOptionalString(tk.LastResetID),
-		ProjectId:   string(tk.ProjectID),
-		Stage:       string(tk.Stage),
-		State:       openapi.TicketState(tk.State),
-		Title:       tk.Title,
-		UpdatedAt:   tk.UpdatedAt,
-		ValidFrom:   tk.ValidFrom,
-		ValidUntil:  tk.ValidUntil,
-		Version:     tk.Version.Int64,
+		CellId:       string(tk.CellID),
+		CellName:     string(tk.CellName),
+		CompletedAt:  tk.CompletedAt,
+		CreatedAt:    tk.CreatedAt,
+		Creator:      toOpenAPITicketActor(tk.Creator),
+		Description:  stringPtr(tk.Description),
+		Id:           string(tk.ID),
+		LastResetAt:  tk.LastResetAt,
+		LastResetId:  toOptionalString(tk.LastResetID),
+		PrimaryJobId: tk.PrimaryJobID,
+		ProjectId:    string(tk.ProjectID),
+		Stage:        string(tk.Stage),
+		State:        openapi.TicketState(tk.State),
+		Title:        tk.Title,
+		UpdatedAt:    tk.UpdatedAt,
+		ValidFrom:    tk.ValidFrom,
+		ValidUntil:   tk.ValidUntil,
+		Version:      tk.Version.Int64,
 	}
 }
 
@@ -1043,11 +1051,18 @@ func cellErrorStatus(err error) int {
 
 func ticketErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, ticket.ErrInvalidProject), errors.Is(err, ticket.ErrInvalidCell), errors.Is(err, ticket.ErrInvalidState), errors.Is(err, ticket.ErrInvalidActor), errors.Is(err, ticket.ErrEmptyTitle), errors.Is(err, ticket.ErrEmptyStage):
+	case errors.Is(err, ticket.ErrInvalidProject),
+		errors.Is(err, ticket.ErrInvalidCell),
+		errors.Is(err, ticket.ErrInvalidState),
+		errors.Is(err, ticket.ErrInvalidActor),
+		errors.Is(err, ticket.ErrEmptyTitle),
+		errors.Is(err, ticket.ErrEmptyStage),
+		errors.Is(err, ticket.ErrInvalidDependency),
+		errors.Is(err, ticket.ErrAutostartUnavailable):
 		return http.StatusBadRequest
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, ticket.ErrVersionConflict):
+	case errors.Is(err, ticket.ErrVersionConflict), errors.Is(err, ticket.ErrDependencyNoPrimaryJob):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

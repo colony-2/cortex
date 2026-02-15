@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -139,6 +140,7 @@ func newWorkflowRunCmd() *cobra.Command {
 	var actorEmail string
 	var idempotencyKey string
 	var inputs []string
+	var prereqs []string
 
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -177,6 +179,30 @@ func newWorkflowRunCmd() *cobra.Command {
 				}
 				req.Inputs = &m
 			}
+			if len(prereqs) > 0 {
+				parsed := make([]openapi.JobPrerequisite, 0, len(prereqs))
+				for _, raw := range prereqs {
+					parts := strings.SplitN(raw, ":", 2)
+					if len(parts) != 2 {
+						return fmt.Errorf("invalid --prereq %q, expected jobId:complete|success", raw)
+					}
+					jobID := strings.TrimSpace(parts[0])
+					cond := strings.TrimSpace(parts[1])
+					if jobID == "" {
+						return fmt.Errorf("invalid --prereq %q, jobId is required", raw)
+					}
+					switch cond {
+					case "complete", "success":
+					default:
+						return fmt.Errorf("invalid --prereq %q, condition must be complete or success", raw)
+					}
+					parsed = append(parsed, openapi.JobPrerequisite{
+						JobId:     jobID,
+						Condition: openapi.JobPrereqCondition(cond),
+					})
+				}
+				req.Prerequisites = &parsed
+			}
 
 			ctx, cancel := client.Context(cmd.Context(), app.Config.Timeout)
 			defer cancel()
@@ -202,6 +228,7 @@ func newWorkflowRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&actorEmail, "actor-email", "", "Actor email")
 	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key")
 	cmd.Flags().StringSliceVar(&inputs, "input", nil, "Input key=value (repeatable)")
+	cmd.Flags().StringSliceVar(&prereqs, "prereq", nil, "Job prerequisite jobId:complete|success (repeatable)")
 	return cmd
 }
 

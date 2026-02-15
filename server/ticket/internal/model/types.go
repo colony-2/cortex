@@ -6,6 +6,7 @@ import (
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/lib/pq"
 	"gorm.io/plugin/optimisticlock"
 )
 
@@ -53,23 +54,25 @@ type Actor struct {
 }
 
 type Ticket struct {
-	ID          ID                     `json:"id" gorm:"column:id;type:char(27);index;not null"`
-	Version     optimisticlock.Version `json:"-" gorm:"column:version"`
-	ProjectID   project.ID             `json:"project_id" gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
-	CellID      cell.ID                `json:"cell_id" gorm:"column:cell_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
-	CellName    core.CellName          `json:"cell_name" gorm:"column:cell_name;index;not null"`
-	Title       string                 `json:"title"`
-	Description string                 `json:"description"`
-	Stage       Stage                  `json:"stage"`
-	State       State                  `json:"state"`
-	Creator     Actor                  `json:"creator" gorm:"embedded;embeddedPrefix:creator_"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	CompletedAt *time.Time             `json:"completed_at,omitempty"`
-	ValidFrom   time.Time              `json:"valid_from" gorm:"primaryKey;type:timestamp"`
-	ValidUntil  time.Time              `json:"valid_until" gorm:"type:timestamp;not null"`
-	LastResetID *TicketResetID `json:"last_reset_id,omitempty" gorm:"column:last_reset_id;type:char(27);index"`
-	LastResetAt *time.Time     `json:"last_reset_at,omitempty" gorm:"column:last_reset_at"`
+	ID                 ID                     `json:"id" gorm:"column:id;type:char(27);index;not null"`
+	Version            optimisticlock.Version `json:"-" gorm:"column:version"`
+	PrimaryJobID       *string                `json:"primary_job_id,omitempty" gorm:"column:primary_job_id;type:char(27);index"`
+	DependsOnTicketIDs pq.StringArray         `json:"depends_on_ticket_ids,omitempty" gorm:"column:depends_on_ticket_ids;type:text[]"`
+	ProjectID          project.ID             `json:"project_id" gorm:"column:project_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	CellID             cell.ID                `json:"cell_id" gorm:"column:cell_id;type:char(27);index;not null;constraint:OnUpdate:RESTRICT,OnDelete:RESTRICT;"`
+	CellName           core.CellName          `json:"cell_name" gorm:"column:cell_name;index;not null"`
+	Title              string                 `json:"title"`
+	Description        string                 `json:"description"`
+	Stage              Stage                  `json:"stage"`
+	State              State                  `json:"state"`
+	Creator            Actor                  `json:"creator" gorm:"embedded;embeddedPrefix:creator_"`
+	CreatedAt          time.Time              `json:"created_at"`
+	UpdatedAt          time.Time              `json:"updated_at"`
+	CompletedAt        *time.Time             `json:"completed_at,omitempty"`
+	ValidFrom          time.Time              `json:"valid_from" gorm:"primaryKey;type:timestamp"`
+	ValidUntil         time.Time              `json:"valid_until" gorm:"type:timestamp;not null"`
+	LastResetID        *TicketResetID         `json:"last_reset_id,omitempty" gorm:"column:last_reset_id;type:char(27);index"`
+	LastResetAt        *time.Time             `json:"last_reset_at,omitempty" gorm:"column:last_reset_at"`
 }
 
 type ActorPatch struct {

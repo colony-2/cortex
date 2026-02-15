@@ -12,6 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
+	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/gorilla/mux"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -119,6 +120,29 @@ func (h *Handlers) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 		actorEmail = &email
 	}
 
+	var prereqs []swf.JobPrerequisite
+	if body.Prerequisites != nil {
+		for _, p := range *body.Prerequisites {
+			jobID := strings.TrimSpace(p.JobId)
+			if jobID == "" {
+				writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "prerequisites.job_id is required"})
+				return
+			}
+			cond := strings.TrimSpace(string(p.Condition))
+			var swfCond swf.JobPrereqCondition
+			switch cond {
+			case "complete":
+				swfCond = swf.JobPrereqComplete
+			case "success":
+				swfCond = swf.JobPrereqSuccess
+			default:
+				writeJSON(w, http.StatusBadRequest, openapi.ErrorResponse{Message: "invalid prerequisites.condition; must be complete or success"})
+				return
+			}
+			prereqs = append(prereqs, swf.JobPrerequisite{JobID: jobID, Condition: swfCond})
+		}
+	}
+
 	summary, err := h.workflows.StartWorkflow(r.Context(), workflow.StartWorkflowRequest{
 		ProjectID:      projectID,
 		RecipeName:     body.RecipeName,
@@ -128,6 +152,7 @@ func (h *Handlers) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 		TicketID:       body.TicketId,
 		ActorEmail:     actorEmail,
 		IdempotencyKey: body.IdempotencyKey,
+		Prerequisites:  prereqs,
 	})
 	if err != nil {
 		switch {

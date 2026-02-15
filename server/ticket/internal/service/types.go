@@ -10,13 +10,14 @@ import (
 )
 
 type CreateInput struct {
-	Cell        core.CellName
-	ProjectID   project.ID `validate:"required"`
-	Title       string     `validate:"required"`
-	Description string
-	Stage       model.Stage `validate:"required,stage"`
-	State       model.State `validate:"required,state"`
-	Actor       model.Actor `validate:"required"`
+	Cell               core.CellName
+	ProjectID          project.ID `validate:"required"`
+	Title              string     `validate:"required"`
+	Description        string
+	Stage              model.Stage `validate:"required,stage"`
+	State              model.State `validate:"required,state"`
+	Actor              model.Actor `validate:"required"`
+	DependsOnTicketIDs []model.ID
 }
 
 type UpdateInput struct {

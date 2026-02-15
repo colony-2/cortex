@@ -52,6 +52,15 @@ func JobMetadataFromStartJob(startJob workflowctl.StartJob) JobMetadata {
 }
 
 func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobKey, error) {
+	return StartRecipeJobWithOptions(ctx, startJob, engine, StartRecipeJobOptions{}, recipes...)
+}
+
+type StartRecipeJobOptions struct {
+	JobID         string
+	Prerequisites []swf.JobPrerequisite
+}
+
+func StartRecipeJobWithOptions(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, opts StartRecipeJobOptions, recipes ...recipe.Recipe) (swf.JobKey, error) {
 	recipeCount := len(recipes)
 	artifacts := make([]swf.Artifact, recipeCount+len(startJob.Artifacts))
 	for i, r := range recipes {
@@ -80,12 +89,14 @@ func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine s
 	}
 
 	job := swf.StartJob{
-		TenantId:     startJob.TenantId,
-		JobType:      RecipeJobType,
-		SingletonKey: startJob.SingletonKey,
-		Data:         inputData,
-		RunPolicy:    swf.DefaultRunPolicy(),
-		Metadata:     metaRaw,
+		TenantId:      startJob.TenantId,
+		JobType:       RecipeJobType,
+		JobID:         opts.JobID,
+		SingletonKey:  startJob.SingletonKey,
+		Data:          inputData,
+		RunPolicy:     swf.DefaultRunPolicy(),
+		Metadata:      metaRaw,
+		Prerequisites: opts.Prerequisites,
 	}
 	return engine.StartJob(ctx, job)
 }
