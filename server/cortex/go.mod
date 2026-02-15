@@ -18,7 +18,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260212193941-65b958896b9c
+	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
@@ -57,8 +57,8 @@ require (
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/colony2/server/registry v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/pgwf v0.0.0-20260205023558-5abc9c8562fb // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 // indirect
+	github.com/colony-2/pgwf v0.0.0-20260213034729-261a13e32396 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2 // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

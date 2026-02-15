@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/swf-go v0.0.0-20260212193941-65b958896b9c
+	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 )
@@ -19,7 +19,7 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260205031304-22973a0704d2 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2 // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect

@@ -31,6 +31,7 @@
 - Output: `c2 workflow output [get] <workflow-id> [--chapter N]` (defaults to last chapter with output; fails fast if workflow status is failed/terminated/timed_out/canceled/unknown)
 - Outcome (single API call): `c2 workflow outcome <workflow-id>`
 - Artifacts: `c2 workflow artifact list <workflow-id>`; download: `c2 workflow artifact get <workflow-id> --chapter N --name NAME [--output-file PATH]`
+- Story: `c2 workflow story <workflow-id>`
 
 ### Input Requests
 - List pending: `c2 input-request list`
