@@ -53,5 +53,67 @@ Your environment is configured with the c2 cli to work with recipes. The url and
 
 Your environment is already configured to point to the colony2 server and correct project so you can use c2 commands.
 
-you should start any work by reviewing the existing recipes. You can view them by running `c2 recipe list` and then `c2 recipe get <recipe-name`. 
+You should start any work by reviewing the existing recipes. You can view them by running `c2 recipe list` and then `c2 recipe get <recipe-name`.
+
+
+## Working on Recipes
+
+- When working on recipes, work iteratively. Making small changes and testing them often is the best way to get feedback. Often it is useful to create testing recipes that can be used to test out a single op. 
+- Be sure to review the scope rules in guides/NODE_SCOPE_SPEC.md. Often, recipe authors will be confused by the scope rules when trying to refer to outputs of other operations.
+- Prefer to use real ops as opposed to random code scripts (e.g. python) where possible.
+- When working with the LLM2 operations, try to use output schema to simplify things. 
+- When working with the user input operation, limit use of unstructured fields to the bare minimum. For example, if you want to ask a user if they approve something, use a radio or similar type of input field as opposed to a text field.
+- It is important that the primary job is largely a orchestration job and delegates to other recipes for actual work. The primary job serves a special purpose because its completion defines how dependent jobs are executed. A primary job should have a lifecyle directly corresponding to the primary ticket: it runs while the ticket is open and when it completes, the ticket is closed. If the ticket is completed successfully, the primary job should complete successfully. If the job or ticket are cancelled, the primary job should also be cancelled, etc.
+
+
+## Key Software Development Concepts
+We are focused on a formal software development process. The key steps are:
+
+- triage: determining the validity of a request, it's appropriateness to the current cell versus others
+- requirements: iterative definition of the key outcomes/requirements
+- design: defining the scope of the work, the architecture, the design, etc.
+- outcome determination: defining the test statements, acceptance criteria, etc.
+- implementation: iterating on the code/tests, responding to contrarian agent inspections, etc.
+- merge/completion: incorporating the work into the codebase, closing the ticket, etc.
+
+A key component of the c2 system is that human reviewers are focused on reviewing outcomes in human language, not code. The c2 workflows/process must be designed to support that. For example, the design step should produce a design document that can be reviewed by a human. The implementation step should produce test statements and acceptance criteria that can be reviewed by a human. The merge/completion step should produce a summary of the work done and the outcomes achieved that can be reviewed by a human.
+
+The key artifacts at each step are specifications for the following step to complete. These artifacts should be stored as c2 artifacts. All c2 artifacts are associated with the step that generates them and referrable to future steps. 
+
+### Key Concepts
+
+### Test Statements
+Test statements are a list of statements that can be used to test the outcome of the work. Test statements must be written in a way that is easy to understand and easy to validate. The rules for test statements are:
+
+- **MUST** be written in markdown
+- **MUST** limit test statements to 30 words or less
+- **MUST** each test statement should be annotated with the relevant filename(s)
+- **MUST** annotate each test statement with relative importance
+- **MUST** annotate each test statement with unit or integration and any required dependencies (e.g. docker)
+- **MUST** use business/expectation language rather than implementation details
+- **MUST** include both positive and negative test cases for critical functionality
+- **MUST** focus on integration points and avoid testing trivial getters/setters
+
+Any time changes are made to the codebase, the test statements must be updated to reflect the new state of the codebase. Test statements are defined before implementation. Test statements that are modified/reviewed as part of a change should only be done in the case of a deprecation plan.
+
+Test statements should be stored as c2 artifacts.
+
+### Deprecation Workflow
+
+When a feature is deprecated in a c2 project, it goes through two steps: (1) mark for deprecation but still supports and (2) removed from codebase. These must always be separate tickets and merge points. The deprecation plan must document how this is to be completed. The deprecation plan is a structured document that targets AI agents. This should be composed of:
+
+- a ordered list of things that must be done.
+- each list item should include: a concise llm to-be-consumed description of what changes should be made and a command that can be used to identify if this pattern exists within each cell.
+
+The data should be structured as a json document
+
+The deprecation workflow is responsible for taking a breaking change instruction and doing the following:
+- for each deprecation step that must be done. identify each component that must have that change. for each component, have component owning agent apply that change.
+- for any inflight changes that exist once all components for a deprecation step have been made, create a barrier that requires they will only be allowed to merge once they also do not match the deprecation step identifcation pattern
+- after that item is done such that no components still have the problematic pattern, move to the next deprecation step and repeat
+- the final deprecation step should be to eliminate any remaining deprecated code.
+
+The document should be structured to ensure this pattern can be completed effectively.
+
+Deprecation plans should be composed as c2 artifacts and additional tickets built on those artifacts. It's importan that those tickets have correct ticket dependencies against the marking of items as deprecated and their other required parents.
 
