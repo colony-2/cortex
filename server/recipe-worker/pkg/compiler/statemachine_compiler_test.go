@@ -10,7 +10,7 @@ import (
 // Test basic state machine structure validation
 func TestBasicStateMachineStructure(t *testing.T) {
 	stateMap := &recipe.StateMap{
-		Initial: "simple_state",
+		Initial: recipe.InitialState("simple_state"),
 		States: map[string]recipe.State{
 			"simple_state": {
 				Node: recipe.Node{
@@ -33,7 +33,9 @@ func TestBasicStateMachineStructure(t *testing.T) {
 	}
 
 	// Verify basic structure
-	assert.Equal(t, "simple_state", stateMap.Initial)
+	name, ok := stateMap.Initial.ShortcutState()
+	assert.True(t, ok)
+	assert.Equal(t, "simple_state", name)
 	assert.Contains(t, stateMap.States, "simple_state")
 	nodeOp := stateMap.States["simple_state"].Node.NodeImpl.(*recipe.NodeOp)
 	assert.Equal(t, "simple_activity", nodeOp.Op)
@@ -42,7 +44,7 @@ func TestBasicStateMachineStructure(t *testing.T) {
 // Test sequential composition structure
 func TestSequentialCompositionStructure(t *testing.T) {
 	stateMap := &recipe.StateMap{
-		Initial: "sequential_state",
+		Initial: recipe.InitialState("sequential_state"),
 		States: map[string]recipe.State{
 			"sequential_state": {
 				Node: recipe.Node{
@@ -114,7 +116,7 @@ func TestSequentialCompositionStructure(t *testing.T) {
 // Test nested sequence composition structure
 func TestNestedSequenceCompositionStructure(t *testing.T) {
 	stateMap := &recipe.StateMap{
-		Initial: "nested_state",
+		Initial: recipe.InitialState("nested_state"),
 		States: map[string]recipe.State{
 			"nested_state": {
 				Node: recipe.Node{

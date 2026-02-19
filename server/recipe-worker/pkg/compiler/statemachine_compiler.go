@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
@@ -24,15 +25,6 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		return err
 	}
 
-	// Initialize state tracking
-	currentState := stateMap.Initial
-	if currentState == "" {
-		return fmt.Errorf("state machine initial state is required")
-	}
-	if _, ok := stateMap.States[currentState]; !ok {
-		return fmt.Errorf("state '%s' not found", currentState)
-	}
-	stateInvocationCount := make(map[string]int)
 	var observer StateObserver
 
 	if len(opts) > 1 {
@@ -43,6 +35,16 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 	} else {
 		observer = NoOpStateObserver{}
 	}
+
+	// Resolve initial state using the same transition evaluator used by per-state transitions.
+	currentState, err := evaluateInitialState(observer, stateMap.Initial, resCtx)
+	if err != nil {
+		return err
+	}
+	if _, ok := stateMap.States[currentState]; !ok {
+		return fmt.Errorf("state '%s' not found", currentState)
+	}
+	stateInvocationCount := make(map[string]int)
 
 	if resCtx.Options.Mode == template.ModeValidate && resCtx.Options.ValidationMode == string(ValidateAll) {
 		stateNames := sortedStateNames(stateMap.States)
@@ -57,7 +59,7 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 			observer.StateExited(stateName)
 			lastStateName = stateName
 			lastStateDef = stateDef
-			if _, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx); err != nil {
+			if _, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx, stateName); err != nil {
 				return fmt.Errorf("failed to evaluate state transitions: %w", err)
 			}
 		}
@@ -91,7 +93,7 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		}
 
 		// Evaluate transitions using resolution context
-		nextState, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx)
+		nextState, err := evaluateTransitionsWithContext(observer, stateDef.Transitions, resCtx, currentState)
 		if err != nil {
 			return fmt.Errorf("failed to evaluate state transitions: %w", err)
 		}
@@ -120,6 +122,20 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 	return nil
 }
 
+func evaluateInitialState(obs StateObserver, initial recipe.InitialTransitions, resCtx *template.ResolutionContext) (string, error) {
+	if len(initial) == 0 {
+		return "", fmt.Errorf("state machine initial state is required")
+	}
+	nextState, err := evaluateTransitionsWithContext(obs, initial.Transitions(), resCtx, "")
+	if err != nil {
+		return "", fmt.Errorf("failed to evaluate initial transitions: %w", err)
+	}
+	if nextState == "" {
+		return "", fmt.Errorf("state machine initial transitions did not match any state")
+	}
+	return nextState, nil
+}
+
 // isTerminalState checks if a state is terminal using the new State type
 func isTerminalState(stateName string, states map[string]recipe.State) bool {
 	state, exists := states[stateName]
@@ -130,7 +146,7 @@ func isTerminalState(stateName string, states map[string]recipe.State) bool {
 }
 
 // evaluateTransitionsWithContext evaluates transitions using resolution context
-func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Transition, resCtx *template.ResolutionContext) (string, error) {
+func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Transition, resCtx *template.ResolutionContext, stateName string) (string, error) {
 	// Create a temporary context for transition evaluation
 	evalCtx := &template.ResolutionContext{
 		ScopeType:    resCtx.ScopeType,
@@ -139,7 +155,8 @@ func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Tran
 	}
 
 	for _, transition := range transitions {
-		shouldTransition, err := evalCtx.EvaluateCEL(transition.When.String())
+		expr := qualifyStateOutputsReference(transition.When.String(), stateName)
+		shouldTransition, err := evalCtx.EvaluateCEL(expr)
 		obs.TransitionEvalauted(transition.When.String(), shouldTransition, transition.To)
 		if err != nil {
 			return "", fmt.Errorf("failed to evaluate transition condition: %w", err)
@@ -150,6 +167,13 @@ func evaluateTransitionsWithContext(obs StateObserver, transitions []recipe.Tran
 		}
 	}
 	return "", nil
+}
+
+func qualifyStateOutputsReference(expr string, stateName string) string {
+	if strings.TrimSpace(expr) == "" || stateName == "" {
+		return expr
+	}
+	return strings.ReplaceAll(expr, "outputs.", "states."+stateName+".outputs.")
 }
 
 func (d DefaultRecipeExecutor) runState(ctx workflow.Context, resCtx *template.ResolutionContext, stateName string, node recipe.State) error {

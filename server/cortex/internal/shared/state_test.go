@@ -314,7 +314,7 @@ func TestStateMachineExecution_SingleState(t *testing.T) {
 		RecipeMetadata: recipe.RecipeMetadata{Version: "1.0", NodeMetadata: recipe.NodeMetadata{ID: "sm-single"}},
 		StateMachineData: recipe.StateMachineData{
 			States: &recipe.StateMap{
-				Initial: "start",
+				Initial: recipe.InitialState("start"),
 				States: map[string]recipe.State{
 					"start": {
 						Node: recipe.Node{NodeImpl: &recipe.NodeOp{NodeMetadata: recipe.NodeMetadata{ID: "start", Inputs: map[string]interface{}{"duration": "5ms"}}, OpData: recipe.OpData{Op: "sleep"}}},

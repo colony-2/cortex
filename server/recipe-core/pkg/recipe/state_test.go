@@ -12,17 +12,61 @@ import (
 func TestStateMachine_Construct_And_YAML(t *testing.T) {
 	registerTestOp()
 	// State machines define initial state correctly [pkg/recipe/state.go]
-	sm := &RecipeState{StateMachineData: StateMachineData{States: &StateMap{Initial: "start", States: map[string]State{
+	sm := &RecipeState{StateMachineData: StateMachineData{States: &StateMap{Initial: InitialState("start"), States: map[string]State{
 		"start": {Node: Node{NodeImpl: &NodeOp{OpData: OpData{Op: "echo"}}}, SingleStateMetadata: SingleStateMetadata{}},
 	}}}}
-	assert.Equal(t, "start", sm.States.Initial)
+	name, ok := sm.States.Initial.ShortcutState()
+	require.True(t, ok)
+	assert.Equal(t, "start", name)
 
 	// Complete state machines serialize to YAML [pkg/recipe/state.go]
 	b, err := yamlv3.Marshal(sm)
 	require.NoError(t, err)
 	var back RecipeState
 	require.NoError(t, yamlv3.Unmarshal(b, &back))
-	assert.Equal(t, sm.States.Initial, back.States.Initial)
+	backName, backOK := back.States.Initial.ShortcutState()
+	require.True(t, backOK)
+	assert.Equal(t, "start", backName)
+}
+
+func TestStateMachine_Initial_Unmarshal_Shapes(t *testing.T) {
+	registerTestOp()
+
+	var fromString Node
+	require.NoError(t, yamlUnmarshalStrict(`state: { initial: "start", states: { start: { op: echo, inputs: {message: hi}}}}`, &fromString))
+	stateFromString := fromString.NodeImpl.(*NodeState)
+	name, ok := stateFromString.States.Initial.ShortcutState()
+	require.True(t, ok)
+	assert.Equal(t, "start", name)
+
+	var fromObject Node
+	require.NoError(t, yamlUnmarshalStrict(`
+state:
+  initial: {to: start, when: true}
+  states:
+    start: {op: echo, inputs: {message: hi}}
+`, &fromObject))
+	stateFromObject := fromObject.NodeImpl.(*NodeState)
+	require.Len(t, stateFromObject.States.Initial, 1)
+	assert.Equal(t, "start", stateFromObject.States.Initial[0].To)
+	assert.Equal(t, "true", stateFromObject.States.Initial[0].When.String())
+
+	var fromList Node
+	require.NoError(t, yamlUnmarshalStrict(`
+state:
+  initial:
+    - to: missing
+      when: false
+    - to: start
+      when: true
+  states:
+    start: {op: echo, inputs: {message: hi}}
+    missing: {op: echo, inputs: {message: hi}}
+`, &fromList))
+	stateFromList := fromList.NodeImpl.(*NodeState)
+	require.Len(t, stateFromList.States.Initial, 2)
+	assert.Equal(t, "missing", stateFromList.States.Initial[0].To)
+	assert.Equal(t, "start", stateFromList.States.Initial[1].To)
 }
 
 func TestState_Transitions_With_CEL(t *testing.T) {

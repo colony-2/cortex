@@ -115,7 +115,9 @@ outputs:
 ### State Machine Transitions
 ```yaml
 states:
-  initial: validate
+  initial:
+    to: validate
+    when: true
   
   validate:
     op: validator
@@ -173,6 +175,6 @@ See the deeper guide: [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md).
 1. **String Interpolation**: `"Text {{ expr1 }} more {{ expr2 }}"` → interpolated string
 2. **Raw Types**: `"{{ single.expr }}"` → returns actual type (not stringified)
 3. **When Conditions**: No `{{ }}`, pure CEL: `when: "inputs.count > 5"`
-4. **No Direct Outputs**: Always use context prefix (`sequence.`, `states.`) - never `outputs.` alone
+4. **`outputs` Scope**: In state `transitions.when`, `outputs.*` means current state outputs. Elsewhere, use `sequence.*` / `states.*` prefixes.
 5. **Quote Escaping**: `{{ "string with }} inside" }}` and `{{ 'won''t fail' }}` both work
 6. **Validation**: All expressions validated at compile time

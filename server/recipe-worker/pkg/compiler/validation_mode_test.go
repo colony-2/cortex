@@ -154,7 +154,7 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 					"attempt": "{{ states.a.runs[2].outputs.value }}",
 				},
 				States: &recipe.StateMap{
-					Initial: "a",
+					Initial: recipe.InitialState("a"),
 					States: map[string]recipe.State{
 						"a": {
 							Node: recipe.Node{NodeImpl: &recipe.NodeOp{
@@ -198,7 +198,7 @@ func TestValidateAllCatchesLaterStateErrors(t *testing.T) {
 					"result": "{{ states.a.outputs.value }}",
 				},
 				States: &recipe.StateMap{
-					Initial: "a",
+					Initial: recipe.InitialState("a"),
 					States: map[string]recipe.State{
 						"a": {
 							Node: recipe.Node{NodeImpl: &recipe.NodeOp{

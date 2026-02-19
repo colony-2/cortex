@@ -43,12 +43,19 @@ Each node owns its scope; children inherit from the container but cannot see int
 *Children can access:*
 - `inputs` passed to the state machine.
 - Previously completed states via `states.<state-id>.outputs.*`.
+- In state `transitions.when`, `outputs.*` refers to the current state's outputs.
+
+`initial` supports either:
+- String shortcut: `initial: validate`
+- Transition object/list using the same `to` + `when` shape as regular `transitions`
 
 *Example*
 
 ```yaml
 state:
-  initial: validate
+  initial:
+    - to: validate
+      when: true
   states:
     validate:
       op: validator

@@ -174,7 +174,7 @@ func TestNodeStateTraversal(t *testing.T) {
 			RecipeMetadata: RecipeMetadata{Version: "1.0"},
 			StateMachineData: StateMachineData{
 				States: &StateMap{
-					Initial: "state1",
+					Initial: InitialState("state1"),
 					States: map[string]State{
 						"state1": {
 							Node: Node{NodeImpl: &NodeOp{
@@ -211,7 +211,9 @@ func TestNodeStateTraversal(t *testing.T) {
 	require.NoError(t, err)
 
 	resultState := result.RecipeImpl.(*RecipeState)
-	assert.Equal(t, "state1", resultState.States.Initial)
+	name, ok := resultState.States.Initial.ShortcutState()
+	require.True(t, ok)
+	assert.Equal(t, "state1", name)
 
 	// Check state1 is unchanged
 	state1 := resultState.States.States["state1"]
@@ -386,7 +388,7 @@ func TestComplexNestedStructure(t *testing.T) {
 			},
 			StateMachineData: StateMachineData{
 				States: &StateMap{
-					Initial: "state1",
+					Initial: InitialState("state1"),
 					States: map[string]State{
 						"state1": {
 							Node: Node{NodeImpl: &NodeSequence{
@@ -396,7 +398,7 @@ func TestComplexNestedStructure(t *testing.T) {
 										{NodeImpl: &NodeState{
 											StateMachineData: StateMachineData{
 												States: &StateMap{
-													Initial: "nested1",
+													Initial: InitialState("nested1"),
 													States: map[string]State{
 														"nested1": {
 															Node: Node{NodeImpl: &NodeOp{
@@ -435,5 +437,7 @@ func TestComplexNestedStructure(t *testing.T) {
 
 	// Second node should be the nested state
 	secondNode := seq.Sequence[1].NodeImpl.(*NodeState)
-	assert.Equal(t, "nested1", secondNode.States.Initial)
+	nestedName, nestedOk := secondNode.States.Initial.ShortcutState()
+	require.True(t, nestedOk)
+	assert.Equal(t, "nested1", nestedName)
 }

@@ -3,7 +3,15 @@
 Use the `state` node to model a state machine--branching workflows that react to runtime data. This guide focuses on what recipe authors need to define, transition, and export data from state machines.
 
 ## Building Blocks
-- **Entry point**: `initial` names the state that runs first.
+- **Entry point**: `initial` selects the first state. You can use:
+  - String shortcut: `initial: processing`
+  - Single transition object: `initial: { to: processing, when: true }`
+  - Ordered transition list:
+    - `initial:`
+    - `  - to: deep_path`
+    - `    when: inputs.mode == "deep"`
+    - `  - to: processing`
+    - `    when: true`
 - **States map**: `states` contains named states. Each state is just a regular node (`op`, `sequence`, or nested `state`) plus optional `transitions`.
 - **Inputs**: Passed in via the enclosing node’s `inputs:` block, available inside every state as `inputs.*`.
 - **Outputs**: Declare under the state machine’s top-level `outputs:` block to expose results to the parent scope.
@@ -25,6 +33,22 @@ state:
         message: 'Done'
 outputs:
   result: '{{ states.finalize.outputs.result }}'
+```
+
+Equivalent explicit form:
+```yaml
+state:
+  initial:
+    to: processing
+    when: true
+  states:
+    processing:
+      op: echo_activity
+      transitions:
+      - to: finalize
+        when: outputs.result != null
+    finalize:
+      op: echo_activity
 ```
 
 ## How Transitions Work
@@ -55,7 +79,7 @@ outputs:
 - Export only the data you need upward to keep templates maintainable.
 
 ## Validation Checklist
-- `initial` points to an existing state.
+- `initial` resolves to an existing state (first matching rule wins when using a transition list).
 - Every referenced `to` state exists.
 - Transition `when` expressions are valid CEL and reference available scope fields.
 - Required outputs are exported in the top-level `outputs:` block.
