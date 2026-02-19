@@ -34,7 +34,7 @@ sequence:
         - to: process
       process:
         inputs:
-          validated_data: '{{ states.validate.outputs.data }}'
+          validated_data: '${{ states.validate.outputs.data  }}'
         sequence:
         - id: transform
           op: data_transformer
@@ -43,14 +43,14 @@ sequence:
         - id: aggregate
           op: result_aggregator
           inputs:
-            data: '{{ sequence.transform.outputs.data }}'
+            data: '${{ sequence.transform.outputs.data  }}'
         outputs:
-          aggregate: '{{ sequence.aggregate.outputs.result }}'
+          aggregate: '${{ sequence.aggregate.outputs.result  }}'
         transitions:
         - to: finalize
       finalize:
         inputs:
-          aggregate: '{{ states.process.outputs.aggregate }}'
+          aggregate: '${{ states.process.outputs.aggregate  }}'
         sequence:
         - id: format_output
           op: output_formatter
@@ -64,17 +64,17 @@ sequence:
           op: chart_generator
           inputs:
             data:
-              summary: '{{ sequence.create_summary.outputs.result }}'
+              summary: '${{ sequence.create_summary.outputs.result  }}'
               report: '{{ inputs.aggregate }}'
         - id: store_results
           op: result_storage
           inputs:
             data: '{{ inputs.aggregate }}'
         outputs:
-          format_output: '{{ sequence.format_output.outputs.result }}'
-          create_summary: '{{ sequence.create_summary.outputs.result }}'
+          format_output: '${{ sequence.format_output.outputs.result  }}'
+          create_summary: '${{ sequence.create_summary.outputs.result  }}'
           store_results:
-            id: '{{ sequence.store_results.outputs.result }}'
+            id: '${{ sequence.store_results.outputs.result  }}'
         transitions:
         - to: success
       success:

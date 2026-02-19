@@ -43,7 +43,7 @@ sequence:
         {{ inputs.description }}
 
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): {{ cells() }}
+        Available Cells (name, path, description): ${{ cells() }}
 
         Decide if the current cell is appropriate to run the work.
         - Treat the current cell as appropriate ONLY if it is the best match among the Available Cells.
@@ -63,8 +63,8 @@ sequence:
         EOF
 
 outputs:
-  cell_is_appropriate: "{{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate }}"
-  recommended_cell: "{{ json_parse(sequence.assess_cell.outputs.response).recommended_cell }}"
-  rationale: "{{ json_parse(sequence.assess_cell.outputs.response).rationale }}"
-  recommended_cell_is_valid: "{{ cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) }}"
-  recommended_cell_final: "{{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) ? json_parse(sequence.assess_cell.outputs.response).recommended_cell : context.workflow.cell) }}"
+  cell_is_appropriate: "${{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate }}"
+  recommended_cell: "${{ json_parse(sequence.assess_cell.outputs.response).recommended_cell }}"
+  rationale: "${{ json_parse(sequence.assess_cell.outputs.response).rationale }}"
+  recommended_cell_is_valid: "${{ cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) }}"
+  recommended_cell_final: "${{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) ? json_parse(sequence.assess_cell.outputs.response).recommended_cell : context.workflow.cell) }}"

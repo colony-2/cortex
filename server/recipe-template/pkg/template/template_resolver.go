@@ -511,12 +511,12 @@ func (rc *ResolutionContext) GetLastArtifacts() []swf.Artifact {
 func (rc *ResolutionContext) validateTemplateReferences(expr string) error {
 	// Check if it's a template expression
 	trimmed := strings.TrimSpace(expr)
-	if !strings.HasPrefix(trimmed, "{{") || !strings.HasSuffix(trimmed, "}}") {
+	if !strings.HasPrefix(trimmed, "${{") || !strings.HasSuffix(trimmed, "}}") {
 		return nil // Not a template
 	}
 
 	// Extract and validate the CEL expression
-	innerExpr := strings.TrimSpace(trimmed[2 : len(trimmed)-2])
+	innerExpr := strings.TrimSpace(trimmed[3 : len(trimmed)-2])
 	return rc.validateCELExpression(innerExpr)
 }
 

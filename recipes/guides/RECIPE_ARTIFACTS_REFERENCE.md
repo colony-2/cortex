@@ -45,7 +45,7 @@ Example:
 - id: consume
   op: test_consume_artifact
   inputs:
-    artifact: "{{ sequence.emit.artifacts[\"foo\"] }}"
+    artifact: "${{ sequence.emit.artifacts[\"foo\"] }}"
 ```
 
 ### 3.2 Materialize Artifacts into the Inbox
@@ -65,7 +65,7 @@ Example:
     working_directory: "{{ context.environment.inbox }}"
     run: "cat payload.txt"
   artifacts:
-    payload.txt: "{{ sequence.write_outbox.artifacts[\"payload.txt\"] }}"
+    payload.txt: "${{ sequence.write_outbox.artifacts[\"payload.txt\"] }}"
 ```
 
 Binding name rules:
@@ -121,7 +121,7 @@ Recipe authors generally should not bind or inspect the thin pack directly; trea
 - id: consume
   op: test_consume_artifact
   inputs:
-    artifact: "{{ sequence.emit.artifacts[\"foo\"] }}"
+    artifact: "${{ sequence.emit.artifacts[\"foo\"] }}"
 ```
 
 ### Outbox -> Inbox
@@ -137,5 +137,5 @@ Recipe authors generally should not bind or inspect the thin pack directly; trea
     working_directory: "{{ context.environment.inbox }}"
     run: "cat payload.txt"
   artifacts:
-    payload.txt: "{{ sequence.write_outbox.artifacts[\"payload.txt\"] }}"
+    payload.txt: "${{ sequence.write_outbox.artifacts[\"payload.txt\"] }}"
 ```

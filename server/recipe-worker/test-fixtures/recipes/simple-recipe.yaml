@@ -12,5 +12,5 @@ sequence:
   inputs:
     run: echo 'Hello from test'
 outputs:
-  step1: '{{ sequence.step1.outputs }}'
-  step2: '{{ sequence.step2.outputs }}'
+  step1: '${{ sequence.step1.outputs }}'
+  step2: '${{ sequence.step2.outputs }}'

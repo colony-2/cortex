@@ -14,6 +14,6 @@ sequence:
       working_directory: "{{ context.environment.inbox }}"
       run: "cat payload.txt"
     artifacts:
-      payload.txt: '{{ sequence.write_outbox.artifacts["payload.txt"] }}'
+      payload.txt: '${{ sequence.write_outbox.artifacts["payload.txt"] }}'
 outputs:
   read_content: '{{ sequence.read_inbox.outputs.stdout }}'

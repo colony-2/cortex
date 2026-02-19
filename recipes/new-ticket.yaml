@@ -12,9 +12,9 @@ input_schema:
     type: string
     required: false
 inputs:
-  title: '{{ has(inputs.title) ? inputs.title : "" }}'
-  description: '{{ has(inputs.description) ? inputs.description : "" }}'
-  validate_commands: '{{ has(inputs.validate_commands) ? inputs.validate_commands : "" }}'
+  title: '${{ has(inputs.title) ? inputs.title : "" }}'
+  description: '${{ has(inputs.description) ? inputs.description : "" }}'
+  validate_commands: '${{ has(inputs.validate_commands) ? inputs.validate_commands : "" }}'
 state:
   initial: triage
   states:
@@ -29,13 +29,13 @@ state:
         name: new-ticket-triage
         inputs:
           title: >-
-            {{
+            ${{
               (has(inputs.title) && inputs.title != "")
                 ? inputs.title
                 : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
             }}
           description: >-
-            {{
+            ${{
               (has(inputs.description) && inputs.description != "")
                 ? inputs.description
                 : ((has(context.ticket.description) && context.ticket.description != "") ? context.ticket.description : "")
@@ -51,8 +51,8 @@ state:
           - type: create_ticket
             project_id: "{{ context.workflow.project_id }}"
             cell: "{{ states.triage.outputs.outputs.recommended_cell_final }}"
-            title: "{{ (has(inputs.title) && inputs.title != \"\") ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
-            description: "{{ (has(inputs.description) && inputs.description != \"\") ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
+            title: "${{ (has(inputs.title) && inputs.title != \"\") ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
+            description: "${{ (has(inputs.description) && inputs.description != \"\") ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
             stage: open
             state: working
     reassign_annotate:
@@ -65,7 +65,7 @@ state:
             ticket_id: "{{ context.ticket.id }}"
             note: >-
               Reassigned to cell "{{ states.triage.outputs.outputs.recommended_cell_final }}".
-              Created new ticket {{ size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : "(unknown)" }}.
+              Created new ticket ${{ size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : "(unknown)" }}.
           - type: update_ticket
             ticket_id: "{{ context.ticket.id }}"
             state: waiting_user
@@ -80,25 +80,25 @@ state:
         name: new-ticket-requirements-planning
         inputs:
           title: >-
-            {{
+            ${{
               (has(inputs.title) && inputs.title != "")
                 ? inputs.title
                 : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
             }}
           description: >-
-            {{
+            ${{
               (has(inputs.description) && inputs.description != "")
                 ? inputs.description
                 : ((has(context.ticket.description) && context.ticket.description != "") ? context.ticket.description : "")
             }}
-          prior_plan_json: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
+          prior_plan_json: '${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
           user_feedback: >-
-            {{
+            ${{
               ("requirements_feedback" in states && has(states.requirements_feedback.outputs.response))
                 ? states.requirements_feedback.outputs.response
                 : (("requirements_blocked_feedback" in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : "")
             }}
-          api_review_feedback: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
+          api_review_feedback: '${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
     requirements_blocked_feedback:
       op: input
       transitions:
@@ -149,7 +149,7 @@ state:
             {{ states.requirements_planning.outputs.outputs.notes_for_user_review }}
 
             Prior user feedback applied (from last loop, if any):
-            {{ "requirements_feedback" in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : "" }}
+            ${{ "requirements_feedback" in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : "" }}
 
             Dependency order:
             {{ states.requirements_planning.outputs.outputs.dependency_order }}
@@ -197,7 +197,7 @@ state:
           project_id = (os.environ.get("PROJECT_ID") or "").strip()
           parent_ticket_id = (os.environ.get("PARENT_TICKET_ID") or "").strip()
           parent_title = (os.environ.get("PARENT_TITLE") or "").strip()
-          reqs = json.loads("""{{ json_stringify(states.requirements_planning.outputs.outputs.requirements) }}""")
+          reqs = json.loads("""${{ json_stringify(states.requirements_planning.outputs.outputs.requirements) }}""")
           target_cells = sorted({(r.get("target_cell") or "").strip() for r in reqs if (r.get("target_cell") or "").strip()})
           foreign = [r for r in reqs if (r.get("target_cell") or "").strip() and (r.get("target_cell") or "").strip() != current]
 
@@ -257,9 +257,9 @@ state:
         env:
           CURRENT_CELL: "{{ context.workflow.cell }}"
           PROJECT_ID: "{{ context.workflow.project_id }}"
-          PARENT_TICKET_ID: "{{ has(context.actor.ticket_id) ? context.actor.ticket_id : \"\" }}"
+          PARENT_TICKET_ID: "${{ has(context.actor.ticket_id) ? context.actor.ticket_id : \"\" }}"
           PARENT_TITLE: >-
-            {{
+            ${{
               (has(inputs.title) && inputs.title != "")
                 ? inputs.title
                 : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
@@ -272,7 +272,7 @@ state:
         - to: requirements_note
           when: "true"
       inputs:
-        actions: "{{ json_parse(states.analyze_scope.outputs.stdout).actions }}"
+        actions: "${{ json_parse(states.analyze_scope.outputs.stdout).actions }}"
 
     implementation_session:
       op: input
@@ -286,7 +286,7 @@ state:
             - id: session_strategy
               type: dropdown
               question: >-
-                Session strategy (previous session id: {{ "implement" in states ? states.implement.outputs.outputs.session_id : "(none)" }}; previous summary available: {{ ("implement" in states && has(states.implement.outputs.outputs.assistant_summary) && states.implement.outputs.outputs.assistant_summary != "") ? "yes" : "no" }})
+                Session strategy (previous session id: ${{ "implement" in states ? states.implement.outputs.outputs.session_id : "(none)" }}; previous summary available: ${{ ("implement" in states && has(states.implement.outputs.outputs.assistant_summary) && states.implement.outputs.outputs.assistant_summary != "") ? "yes" : "no" }})
               required: true
               options:
                 - value: continue
@@ -330,10 +330,10 @@ state:
           print(json.dumps(out, ensure_ascii=False))
           PY
         env:
-          PREV_SESSION_ID: "{{ 'implement' in states ? states.implement.outputs.outputs.session_id : '' }}"
-          PREV_SUMMARY: "{{ 'implement' in states ? states.implement.outputs.outputs.assistant_summary : '' }}"
+          PREV_SESSION_ID: "${{ 'implement' in states ? states.implement.outputs.outputs.session_id : '' }}"
+          PREV_SUMMARY: "${{ 'implement' in states ? states.implement.outputs.outputs.assistant_summary : '' }}"
           SESSION_STRATEGY: "{{ states.implementation_session.outputs.fields.session_strategy }}"
-          EXTRA_INSTRUCTIONS: "{{ has(states.implementation_session.outputs.fields.extra_instructions) ? states.implementation_session.outputs.fields.extra_instructions : '' }}"
+          EXTRA_INSTRUCTIONS: "${{ has(states.implementation_session.outputs.fields.extra_instructions) ? states.implementation_session.outputs.fields.extra_instructions : '' }}"
 
     implement:
       op: recipe.run_and_get_result
@@ -343,14 +343,14 @@ state:
       inputs:
         name: ticket-implement
         inputs:
-          title: "{{ has(inputs.title) && inputs.title != \"\" ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
-          description: "{{ has(inputs.description) && inputs.description != \"\" ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
+          title: "${{ has(inputs.title) && inputs.title != \"\" ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
+          description: "${{ has(inputs.description) && inputs.description != \"\" ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
           requirements_plan_json: "{{ states.requirements_planning.outputs.outputs.plan_json }}"
-          validation_feedback: "{{ 'validate' in states ? states.validate.outputs.outputs.output_tail : '' }}"
-          session_id: "{{ json_parse(states.prepare_implement.outputs.stdout).session_id }}"
-          prior_session_summary: "{{ json_parse(states.prepare_implement.outputs.stdout).prior_session_summary }}"
-          include_prior_summary: "{{ json_parse(states.prepare_implement.outputs.stdout).include_prior_summary }}"
-          extra_instructions: "{{ json_parse(states.prepare_implement.outputs.stdout).extra_instructions }}"
+          validation_feedback: "${{ 'validate' in states ? states.validate.outputs.outputs.output_tail : '' }}"
+          session_id: "${{ json_parse(states.prepare_implement.outputs.stdout).session_id }}"
+          prior_session_summary: "${{ json_parse(states.prepare_implement.outputs.stdout).prior_session_summary }}"
+          include_prior_summary: "${{ json_parse(states.prepare_implement.outputs.stdout).include_prior_summary }}"
+          extra_instructions: "${{ json_parse(states.prepare_implement.outputs.stdout).extra_instructions }}"
 
     validate:
       op: recipe.run_and_get_result
@@ -393,10 +393,10 @@ state:
       inputs:
         name: ticket-merge
         inputs:
-          upstream_repo: "{{ has(context.git.repo) ? context.git.repo : \"\" }}"
-          upstream_branch: "{{ has(context.git.ref) ? context.git.ref : \"\" }}"
+          upstream_repo: "${{ has(context.git.repo) ? context.git.repo : \"\" }}"
+          upstream_branch: "${{ has(context.git.ref) ? context.git.ref : \"\" }}"
           commit_message: >-
-            {{
+            ${{
               (has(inputs.title) && inputs.title != "")
                 ? inputs.title
                 : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "Update")
@@ -435,10 +435,10 @@ state:
             note: >-
               Workflow update:
               - Requirements artifacts generated under "requirements/" (see `requirements/index.md`).
-              - Dependency order: {{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}.
-              - Cross-cell required: {{ ("analyze_scope" in states && has(states.analyze_scope.outputs.stdout) && states.analyze_scope.outputs.stdout != "") ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}.
-              - Validation passed: {{ "validate" in states ? states.validate.outputs.outputs.passed : false }}.
-              - Merged: {{ "merge" in states ? states.merge.outputs.outputs.merged : false }} (hash: {{ "merge" in states ? states.merge.outputs.outputs.merged_hash : "" }}).
+              - Dependency order: ${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}.
+              - Cross-cell required: ${{ ("analyze_scope" in states && has(states.analyze_scope.outputs.stdout) && states.analyze_scope.outputs.stdout != "") ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}.
+              - Validation passed: ${{ "validate" in states ? states.validate.outputs.outputs.passed : false }}.
+              - Merged: ${{ "merge" in states ? states.merge.outputs.outputs.merged : false }} (hash: ${{ "merge" in states ? states.merge.outputs.outputs.merged_hash : "" }}).
           - type: update_ticket
             ticket_id: "{{ context.actor.ticket_id }}"
             state: waiting_user
@@ -448,15 +448,15 @@ outputs:
   recommended_cell_is_valid: "{{ states.triage.outputs.outputs.recommended_cell_is_valid }}"
   recommended_cell_final: "{{ states.triage.outputs.outputs.recommended_cell_final }}"
   rationale: "{{ states.triage.outputs.outputs.rationale }}"
-  reassign_performed: "{{ !states.triage.outputs.outputs.cell_is_appropriate && states.triage.outputs.outputs.recommended_cell_is_valid }}"
-  reassigned_ticket_id: "{{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : \"\" }}"
-  reassigned_ticket_job_id: "{{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 && has(states.reassign_create.outputs.results[0].job_id) ? states.reassign_create.outputs.results[0].job_id : \"\" }}"
-  requirements_plan_json: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.plan_json : \"\" }}"
-  requirements_dependency_order: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
-  requirements: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"
-  requirements_approved: "{{ 'requirements_decision' in states && has(states.requirements_decision.outputs.response) ? states.requirements_decision.outputs.response == \"approve\" : false }}"
-  requirements_user_feedback: "{{ 'requirements_feedback' in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : (('requirements_blocked_feedback' in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : \"\") }}"
-  cross_cell_required: "{{ 'analyze_scope' in states ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}"
-  validation_passed: "{{ 'validate' in states ? states.validate.outputs.outputs.passed : false }}"
-  merged: "{{ 'merge' in states ? states.merge.outputs.outputs.merged : false }}"
-  merged_hash: "{{ 'merge' in states ? states.merge.outputs.outputs.merged_hash : \"\" }}"
+  reassign_performed: "${{ !states.triage.outputs.outputs.cell_is_appropriate && states.triage.outputs.outputs.recommended_cell_is_valid }}"
+  reassigned_ticket_id: "${{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : \"\" }}"
+  reassigned_ticket_job_id: "${{ 'reassign_create' in states && size(states.reassign_create.outputs.results) > 0 && has(states.reassign_create.outputs.results[0].job_id) ? states.reassign_create.outputs.results[0].job_id : \"\" }}"
+  requirements_plan_json: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.plan_json : \"\" }}"
+  requirements_dependency_order: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
+  requirements: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"
+  requirements_approved: "${{ 'requirements_decision' in states && has(states.requirements_decision.outputs.response) ? states.requirements_decision.outputs.response == \"approve\" : false }}"
+  requirements_user_feedback: "${{ 'requirements_feedback' in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : (('requirements_blocked_feedback' in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : \"\") }}"
+  cross_cell_required: "${{ 'analyze_scope' in states ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}"
+  validation_passed: "${{ 'validate' in states ? states.validate.outputs.outputs.passed : false }}"
+  merged: "${{ 'merge' in states ? states.merge.outputs.outputs.merged : false }}"
+  merged_hash: "${{ 'merge' in states ? states.merge.outputs.outputs.merged_hash : \"\" }}"

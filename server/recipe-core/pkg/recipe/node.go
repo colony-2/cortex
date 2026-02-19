@@ -129,6 +129,9 @@ func containsTemplateValue(value interface{}) bool {
 
 func isTemplateString(value string) bool {
 	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, "${{") && strings.HasSuffix(trimmed, "}}") {
+		return true
+	}
 	return strings.HasPrefix(trimmed, "{{") && strings.HasSuffix(trimmed, "}}")
 }
 

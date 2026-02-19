@@ -132,7 +132,7 @@ state:
             shell: "bash"
       outputs:
         # Prefer the file content if it exists, otherwise use whichever LLM step ran
-        doc: "{{ sequence.read_spec.outputs.stdout != '' ? sequence.read_spec.outputs.stdout : (sequence.llm_refine.outputs.response != '' ? sequence.llm_refine.outputs.response : sequence.llm_initial.outputs.response) }}"
+        doc: "${{ sequence.read_spec.outputs.stdout != '' ? sequence.read_spec.outputs.stdout : (sequence.llm_refine.outputs.response != '' ? sequence.llm_refine.outputs.response : sequence.llm_initial.outputs.response) }}"
       transitions:
         - to: review
 
@@ -150,9 +150,9 @@ state:
             box_id: "spec-definition"
             activity_id: "review-reason"    # Ask for a brief reason when rejecting
       outputs:
-        decision: "{{ lower(sequence.decision_input.outputs.response) }}"
+        decision: "${{ lower(sequence.decision_input.outputs.response) }}"
         reason: "{{ sequence.reason_input.outputs.response }}"
-        approved: "{{ lower(sequence.decision_input.outputs.response) == 'approve' }}"
+        approved: "${{ lower(sequence.decision_input.outputs.response) == 'approve' }}"
       transitions:
         - to: done
           when: "lower(sequence.decision_input.outputs.response) == 'approve'"

@@ -24,4 +24,4 @@ sequence:
 outputs:
   result: "{{ sequence.echo.outputs.output }}"
   user: "{{ sequence.question.outputs.user_id }}"
-  meta: "{{ sequence.question.outputs.metadata }}"
+  meta: "${{ sequence.question.outputs.metadata }}"

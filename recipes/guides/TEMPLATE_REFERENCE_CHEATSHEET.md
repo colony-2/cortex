@@ -1,27 +1,29 @@
 # Template Reference Cheatsheet
 
 ## Quick Reference
-Templates support **string interpolation** with multiple `{{ }}` expressions OR single CEL expressions.
+String fields support two expression systems:
+- CEL expressions use `${{ ... }}`.
+- Go string templates use `{{ ... }}`.
 
 ## Syntax Patterns
 
-### String Interpolation (NEW - Preferred)
+### CEL Expressions (`${{ ... }}`)
 ```yaml
 # Multiple expressions in one string
-message: "Hello {{ inputs.name }}, your order {{ inputs.order_id }} is ready"
-url: "https://{{ inputs.domain }}/api/{{ inputs.version }}/users/{{ inputs.user_id }}"
-log: "[{{ scope.timestamp }}] User {{ inputs.user_id }} performed {{ inputs.action }}"
+message: "Hello ${{ inputs.name }}, your order ${{ inputs.order_id }} is ready"
+url: "https://${{ inputs.domain }}/api/${{ inputs.version }}/users/${{ inputs.user_id }}"
+log: "[${{ scope.timestamp }}] User ${{ inputs.user_id }} performed ${{ inputs.action }}"
 
 # Mix static text with expressions
-subject: "[{{ inputs.priority }}] Order {{ inputs.order_id }} Update"
+subject: "[${{ inputs.priority }}] Order ${{ inputs.order_id }} Update"
 ```
 
-### Single Expressions (Returns Raw Type)
+### CEL Single Expression (Returns Raw Type)
 ```yaml
 # Returns actual data type (not stringified)
-user_data: "{{ sequence.fetch.outputs.user }}"     # Returns map/object
-count: "{{ sequence.calc.outputs.total }}"         # Returns number
-is_valid: "{{ sequence.check.outputs.valid }}"     # Returns boolean
+user_data: "${{ sequence.fetch.outputs.user }}"     # Returns map/object
+count: "${{ sequence.calc.outputs.total }}"         # Returns number
+is_valid: "${{ sequence.check.outputs.valid }}"     # Returns boolean
 ```
 
 ### Basic References
@@ -43,28 +45,36 @@ value: "{{ scope.timestamp }}"
 ### Nested Field Access
 ```yaml
 # Deep object traversal
-value: "{{ sequence.fetch.outputs.body.items[0].name }}"
+value: "${{ sequence.fetch.outputs.body.items[0].name }}"
 value: "{{ states.validate.outputs.metadata.status }}"
 ```
 
-### CEL Operations (Still Supported)
+### CEL Operations
 ```yaml
 # String concatenation (old style - still works)
-url: "{{ inputs.base_url + \"/api/\" + inputs.version }}"
+url: "${{ inputs.base_url + \"/api/\" + inputs.version }}"
 
 # Arithmetic
-count: "{{ sequence.calc.outputs.value * 2 + 10 }}"
+count: "${{ sequence.calc.outputs.value * 2 + 10 }}"
 
 # Type conversion (required for mixed types in CEL)
-result: "{{ double(sequence.node.outputs.int_value) * 3.14 }}"
+result: "${{ double(sequence.node.outputs.int_value) * 3.14 }}"
 ```
 
-### When Conditions (Pure CEL - No Interpolation)
+### When Conditions (Pure CEL - No Delimiters)
 ```yaml
-# Boolean conditions in 'when' clauses - NO {{ }} markers
+# Boolean conditions in 'when' clauses - NO `${{ }}` or `{{ }}`
 when: "sequence.validate.outputs.valid == true && sequence.transform.outputs.count > 0"
 when: "inputs.retry_count < inputs.max_retries"
 when: 'states.process.outputs.status == "success" || inputs.force == true'
+```
+
+### Go Templates (`{{ ... }}`)
+```yaml
+# Root context values are exposed as zero-arg functions:
+# inputs, sequence, states, scope, context
+message: "Cell {{ context.workflow.cell }} in project {{ context.workflow.project_id }}"
+summary: "{{ inputs.title }} -> {{ sequence.build.outputs.status }}"
 ```
 
 ## Scope Rules
@@ -138,11 +148,12 @@ states:
 ```
 
 ## Key Differences
-- **Interpolation**: Multiple `{{ }}` in one string creates interpolated string
-- **Single Expression**: One `{{ }}` alone returns raw type (map, number, bool)
-- **When Conditions**: Pure CEL without `{{ }}` markers
+- **CEL Expressions**: `${{ ... }}` for CEL anywhere in strings
+- **Go Templates**: `{{ ... }}` for Go template rendering in strings
+- **Single CEL Expression**: One `${{ ... }}` alone returns raw type (map, number, bool)
+- **When Conditions**: pure CEL expression string without delimiters
 - **Quote Handling**: Both `"` and `'` quotes work inside expressions
-- **No Leading Dots**: Use `inputs.field` not `.inputs.field`
+- **No Dot Root**: Use `inputs.*`/`context.*` as functions, not `.inputs.*`/`.context.*`
 
 ## Type Conversion Functions
 - `double()` - Convert to float64
@@ -157,24 +168,25 @@ states:
 
 ```yaml
 # Parse JSON string
-config: "{{ json_parse(inputs.config_json) }}"
+config: "${{ json_parse(inputs.config_json) }}"
 
 # Select fields with jq
-user_id: "{{ jq(inputs.payload, '.user.id') }}"
-tags: "{{ jq(inputs.payload, '.tags[]') }}"      # list when multiple
-maybe_email: "{{ jq(inputs.payload, 'empty') }}" # null when empty
+user_id: "${{ jq(inputs.payload, '.user.id') }}"
+tags: "${{ jq(inputs.payload, '.tags[]') }}"      # list when multiple
+maybe_email: "${{ jq(inputs.payload, 'empty') }}" # null when empty
 
 # Emit JSON
-payload_json: "{{ json_stringify(inputs.payload) }}"
+payload_json: "${{ json_stringify(inputs.payload) }}"
 log_line: "Snapshot: {{ inputs.payload }}"         # string(map) uses JSON
 ```
 
 See the deeper guide: [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md).
 
 ## Important Notes
-1. **String Interpolation**: `"Text {{ expr1 }} more {{ expr2 }}"` → interpolated string
-2. **Raw Types**: `"{{ single.expr }}"` → returns actual type (not stringified)
-3. **When Conditions**: No `{{ }}`, pure CEL: `when: "inputs.count > 5"`
+1. **CEL in strings**: `"Text ${{ expr1 }} more ${{ expr2 }}"` → CEL substitution
+2. **Go template in strings**: `"Text {{ inputs.name }}"` → Go template rendering
+3. **Raw CEL types**: `"${{ single.expr }}"` → returns actual type (not stringified)
+4. **When Conditions**: no delimiters, pure CEL: `when: "inputs.count > 5"`
 4. **`outputs` Scope**: In state `transitions.when`, `outputs.*` means current state outputs. Elsewhere, use `sequence.*` / `states.*` prefixes.
-5. **Quote Escaping**: `{{ "string with }} inside" }}` and `{{ 'won''t fail' }}` both work
+5. **Quote Escaping**: `${{ "string with }} inside" }}` and `${{ 'won''t fail' }}` both work
 6. **Validation**: All expressions validated at compile time

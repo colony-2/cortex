@@ -8,8 +8,8 @@ inputs:
   priority: normal
   output_format: json
 outputs:
-  result: '{{ sequence.document_processor.outputs.result  }}'
-  metadata: '{{ sequence.document_processor.outputs.metadata  }}'
+  result: '{{ sequence.document_processor.outputs.result }}'
+  metadata: '{{ sequence.document_processor.outputs.metadata }}'
 sequence:
 - id: document_processor
   name: Document Processing State Machine
@@ -195,8 +195,7 @@ sequence:
         op: queue_for_review
         inputs:
           data: '{{ states.quality_assurance.outputs }}'
-          reason: '{{ states.quality_assurance.outputs.validate_results.business_rules.reason
-            }}'
+          reason: '{{ states.quality_assurance.outputs.validate_results.business_rules.reason }}'
         transitions:
         - to: delivery
           when: outputs.approved == true
@@ -207,8 +206,7 @@ sequence:
         error: Document processing rejected
         outputs:
           error: .Document processing rejected
-          reason: '{{ states.quality_assurance.outputs.validate_results.business_rules.reason
-            }}'
+          reason: '{{ states.quality_assurance.outputs.validate_results.business_rules.reason }}'
       error_handling:
         terminal: true
         error: Processing error occurred

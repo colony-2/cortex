@@ -2,8 +2,8 @@
 
 # Before (using CEL string concatenation):
 old_style:
-  message: '{{ "Hello " + inputs.name + ", your order " + inputs.order_id + " is ready" }}'
-  url: '{{ "https://api." + inputs.env + ".example.com/" + inputs.version + "/orders/" + inputs.order_id }}'
+  message: '${{ "Hello " + inputs.name + ", your order " + inputs.order_id + " is ready" }}'
+  url: '${{ "https://api." + inputs.env + ".example.com/" + inputs.version + "/orders/" + inputs.order_id }}'
 
 # After (using string interpolation):
 new_style:
@@ -51,7 +51,7 @@ state_machine:
           when: "sequence.validate.outputs.valid == true && inputs.retry_count < 3"
         
         - to: retry
-          # Pure CEL expression, no {{ }} needed
+          # Pure CEL expression, no ${{ }} needed
           when: "sequence.validate.outputs.valid == false && inputs.retry_count < inputs.max_retries"
         
         - to: error

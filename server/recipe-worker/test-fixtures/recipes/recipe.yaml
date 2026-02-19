@@ -9,8 +9,8 @@ input_schema:
     type: number
     default_value: 10
 inputs:
-  topic: '{{ has(inputs.topic) ? inputs.topic : "AI Research" }}'
-  max_sources: '{{ has(inputs.max_sources) ? inputs.max_sources : 10 }}'
+  topic: '${{ has(inputs.topic) ? inputs.topic : "AI Research" }}'
+  max_sources: '${{ has(inputs.max_sources) ? inputs.max_sources : 10 }}'
 sequence:
 - id: research
   op: command_execution
@@ -25,6 +25,6 @@ sequence:
   inputs:
     run: echo 'Writing report'
 outputs:
-  research: '{{ sequence.research.outputs }}'
-  analyze: '{{ sequence.analyze.outputs }}'
-  writereport: '{{ sequence.writereport.outputs }}'
+  research: '${{ sequence.research.outputs }}'
+  analyze: '${{ sequence.analyze.outputs }}'
+  writereport: '${{ sequence.writereport.outputs }}'

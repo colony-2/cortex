@@ -8,7 +8,7 @@ sequence:
 - id: consume
   op: test_consume_artifact
   inputs:
-    artifact: '{{ sequence.emit.artifacts["foo"] }}'
+    artifact: '${{ sequence.emit.artifacts["foo"] }}'
 outputs:
   emitted: '{{ sequence.emit.outputs.name }}'
   consumed: '{{ sequence.consume.outputs.name }}'

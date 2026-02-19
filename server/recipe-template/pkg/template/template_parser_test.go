@@ -23,120 +23,118 @@ func TestParseTemplate(t *testing.T) {
 		},
 		{
 			name:  "single expression",
-			input: "{{ inputs.name }}",
-			expected: []Segment{
-				ExpressionSegment{Expression: "inputs.name", Pos: 3},
-			},
-		},
-		{
-			name:  "text and expression",
-			input: "Hello {{ inputs.name }}",
-			expected: []Segment{
-				TextSegment{Text: "Hello ", Pos: 0},
-				ExpressionSegment{Expression: "inputs.name", Pos: 9},
-			},
-		},
-		{
-			name:  "multiple expressions",
-			input: "Hello {{ inputs.name }}, your ID is {{ inputs.id }}",
-			expected: []Segment{
-				TextSegment{Text: "Hello ", Pos: 0},
-				ExpressionSegment{Expression: "inputs.name", Pos: 9},
-				TextSegment{Text: ", your ID is ", Pos: 23},
-				ExpressionSegment{Expression: "inputs.id", Pos: 39},
-			},
-		},
-		{
-			name:  "expression with double quotes",
-			input: `{{ "text with }} inside" }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `"text with }} inside"`, Pos: 3},
-			},
-		},
-		{
-			name:  "expression with single quotes",
-			input: `{{ 'text with }} inside' }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `'text with }} inside'`, Pos: 3},
-			},
-		},
-		{
-			name:  "escaped double quotes",
-			input: `{{ "escaped \"quote\"" }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `"escaped \"quote\""`, Pos: 3},
-			},
-		},
-		{
-			name:  "CEL single quote escape",
-			input: `{{ 'don''t' }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `'don''t'`, Pos: 3},
-			},
-		},
-		{
-			name:  "mixed quotes in expression",
-			input: `{{ inputs.type == 'active' || inputs.code == "ABC" }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `inputs.type == 'active' || inputs.code == "ABC"`, Pos: 3},
-			},
-		},
-		{
-			name:  "backslash in double quotes",
-			input: `{{ "C:\\Users\\file" }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `"C:\\Users\\file"`, Pos: 3},
-			},
-		},
-		{
-			name:  "literal backslash in single quotes",
-			input: `{{ 'C:\Users\file' }}`,
-			expected: []Segment{
-				ExpressionSegment{Expression: `'C:\Users\file'`, Pos: 3},
-			},
-		},
-		{
-			name:  "complex interpolation",
-			input: `[{{ scope.timestamp }}] User {{ inputs.user_id }} performed {{ inputs.action }}`,
-			expected: []Segment{
-				TextSegment{Text: "[", Pos: 0},
-				ExpressionSegment{Expression: "scope.timestamp", Pos: 4},
-				TextSegment{Text: "] User ", Pos: 22},
-				ExpressionSegment{Expression: "inputs.user_id", Pos: 32},
-				TextSegment{Text: " performed ", Pos: 49},
-				ExpressionSegment{Expression: "inputs.action", Pos: 63},
-			},
-		},
-		{
-			name:      "unclosed expression",
-			input:     "{{ inputs.name",
-			expectErr: true,
-		},
-		{
-			name:      "unclosed string in expression",
-			input:     `{{ "unclosed string }}`,
-			expectErr: true,
-		},
-		{
-			name:  "empty expression",
-			input: "{{ }}",
-			expected: []Segment{
-				ExpressionSegment{Expression: "", Pos: 3},
-			},
-		},
-		{
-			name:  "whitespace in expression",
-			input: "{{  inputs.name  }}",
+			input: "${{ inputs.name }}",
 			expected: []Segment{
 				ExpressionSegment{Expression: "inputs.name", Pos: 4},
 			},
 		},
 		{
-			name:  "nested braces in string",
-			input: `{{ "value: {{}}" }}`,
+			name:  "text and expression",
+			input: "Hello ${{ inputs.name }}",
 			expected: []Segment{
-				ExpressionSegment{Expression: `"value: {{}}"`, Pos: 3},
+				TextSegment{Text: "Hello ", Pos: 0},
+				ExpressionSegment{Expression: "inputs.name", Pos: 10},
 			},
+		},
+		{
+			name:  "multiple expressions",
+			input: "Hello ${{ inputs.name }}, your ID is ${{ inputs.id }}",
+			expected: []Segment{
+				TextSegment{Text: "Hello ", Pos: 0},
+				ExpressionSegment{Expression: "inputs.name", Pos: 10},
+				TextSegment{Text: ", your ID is ", Pos: 24},
+				ExpressionSegment{Expression: "inputs.id", Pos: 41},
+			},
+		},
+		{
+			name:  "expression with double quotes",
+			input: `${{ "text with }} inside" }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `"text with }} inside"`, Pos: 4},
+			},
+		},
+		{
+			name:  "expression with single quotes",
+			input: `${{ 'text with }} inside' }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `'text with }} inside'`, Pos: 4},
+			},
+		},
+		{
+			name:  "escaped double quotes",
+			input: `${{ "escaped \"quote\"" }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `"escaped \"quote\""`, Pos: 4},
+			},
+		},
+		{
+			name:  "CEL single quote escape",
+			input: `${{ 'don''t' }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `'don''t'`, Pos: 4},
+			},
+		},
+		{
+			name:  "mixed quotes in expression",
+			input: `${{ inputs.type == 'active' || inputs.code == "ABC" }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `inputs.type == 'active' || inputs.code == "ABC"`, Pos: 4},
+			},
+		},
+		{
+			name:  "backslash in double quotes",
+			input: `${{ "C:\\Users\\file" }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `"C:\\Users\\file"`, Pos: 4},
+			},
+		},
+		{
+			name:  "literal backslash in single quotes",
+			input: `${{ 'C:\Users\file' }}`,
+			expected: []Segment{
+				ExpressionSegment{Expression: `'C:\Users\file'`, Pos: 4},
+			},
+		},
+		{
+			name:  "complex interpolation",
+			input: `[${{ scope.timestamp }}] User ${{ inputs.user_id }} performed ${{ inputs.action }}`,
+			expected: []Segment{
+				TextSegment{Text: "[", Pos: 0},
+				ExpressionSegment{Expression: "scope.timestamp", Pos: 5},
+				TextSegment{Text: "] User ", Pos: 23},
+				ExpressionSegment{Expression: "inputs.user_id", Pos: 34},
+				TextSegment{Text: " performed ", Pos: 51},
+				ExpressionSegment{Expression: "inputs.action", Pos: 66},
+			},
+		},
+		{
+			name:      "unclosed expression",
+			input:     "${{ inputs.name",
+			expectErr: true,
+		},
+		{
+			name:      "unclosed string in expression",
+			input:     `${{ "unclosed string }}`,
+			expectErr: true,
+		},
+		{
+			name:  "empty expression",
+			input: "${{ }}",
+			expected: []Segment{
+				ExpressionSegment{Expression: "", Pos: 4},
+			},
+		},
+		{
+			name:  "whitespace in expression",
+			input: "${{  inputs.name  }}",
+			expected: []Segment{
+				ExpressionSegment{Expression: "inputs.name", Pos: 5},
+			},
+		},
+		{
+			name:      "nested go template delimiters in CEL are rejected",
+			input:     `${{ "value: ${{}}" }}`,
+			expectErr: true,
 		},
 	}
 
@@ -163,43 +161,43 @@ func TestFindExpressionEnd(t *testing.T) {
 	}{
 		{
 			name:     "simple expression",
-			input:    "{{ inputs.name }}",
+			input:    "${{ inputs.name }}",
 			start:    3,
-			expected: 15,
+			expected: 16,
 		},
 		{
 			name:     "expression with double quotes",
-			input:    `{{ "text with }} inside" }}`,
-			start:    3,
-			expected: 25,
-		},
-		{
-			name:     "expression with single quotes",
-			input:    `{{ 'text with }} inside' }}`,
-			start:    3,
-			expected: 25,
-		},
-		{
-			name:     "escaped quotes",
-			input:    `{{ "escaped \"}}\" quote" }}`,
+			input:    `${{ "text with }} inside" }}`,
 			start:    3,
 			expected: 26,
 		},
 		{
-			name:     "CEL single quote escape",
-			input:    `{{ 'don''t forget' }}`,
+			name:     "expression with single quotes",
+			input:    `${{ 'text with }} inside' }}`,
 			start:    3,
-			expected: 19,
+			expected: 26,
+		},
+		{
+			name:     "escaped quotes",
+			input:    `${{ "escaped \"}}\" quote" }}`,
+			start:    3,
+			expected: 27,
+		},
+		{
+			name:     "CEL single quote escape",
+			input:    `${{ 'don''t forget' }}`,
+			start:    3,
+			expected: 20,
 		},
 		{
 			name:      "unclosed expression",
-			input:     "{{ inputs.name",
+			input:     "${{ inputs.name",
 			start:     3,
 			expectErr: true,
 		},
 		{
 			name:      "unclosed string",
-			input:     `{{ "unclosed }}`,
+			input:     `${{ "unclosed }}`,
 			start:     3,
 			expectErr: true,
 		},

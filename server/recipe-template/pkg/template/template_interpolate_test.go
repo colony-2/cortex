@@ -60,35 +60,35 @@ func TestInterpolateString(t *testing.T) {
 		// Single expression tests (backward compatibility)
 		{
 			name:     "single expression returns raw type - string",
-			template: "{{ inputs.name }}",
+			template: "${{ inputs.name }}",
 			mode:     ModeInterpolation,
 			expected: "Alice",
 			isString: true,
 		},
 		{
 			name:     "single expression returns raw type - number",
-			template: "{{ inputs.user_id }}",
+			template: "${{ inputs.user_id }}",
 			mode:     ModeInterpolation,
 			expected: int64(123),
 			isString: false,
 		},
 		{
 			name:     "single expression returns raw type - boolean",
-			template: "{{ sequence.check.outputs.valid }}",
+			template: "${{ sequence.check.outputs.valid }}",
 			mode:     ModeInterpolation,
 			expected: true,
 			isString: false,
 		},
 		{
 			name:     "single expression returns raw type - map",
-			template: "{{ sequence.fetch.outputs.body }}",
+			template: "${{ sequence.fetch.outputs.body }}",
 			mode:     ModeInterpolation,
 			expected: map[string]interface{}{"data": "test"},
 			isString: false,
 		},
 		{
 			name:     "single expression returns raw type - artifact",
-			template: "{{ sequence.build.artifacts[\"readme.md\"] }}",
+			template: "${{ sequence.build.artifacts[\"readme.md\"] }}",
 			mode:     ModeInterpolation,
 			expected: swf.ArtifactKey{JobId: "job", TaskOrdinal: 1, Name: "readme.md", SizeBytes: int64(len("data"))},
 			isString: false,
@@ -97,35 +97,35 @@ func TestInterpolateString(t *testing.T) {
 		// Interpolation tests
 		{
 			name:     "multiple expressions interpolation",
-			template: "Hello {{ inputs.name }}, your ID is {{ inputs.user_id }}",
+			template: "Hello ${{ inputs.name }}, your ID is ${{ inputs.user_id }}",
 			mode:     ModeInterpolation,
 			expected: "Hello Alice, your ID is 123",
 			isString: true,
 		},
 		{
 			name:     "URL construction",
-			template: "https://{{ inputs.domain }}/api/{{ inputs.version }}/users/{{ inputs.user_id }}",
+			template: "https://${{ inputs.domain }}/api/${{ inputs.version }}/users/${{ inputs.user_id }}",
 			mode:     ModeInterpolation,
 			expected: "https://example.com/api/v2/users/123",
 			isString: true,
 		},
 		{
 			name:     "log message format",
-			template: "[{{ inputs.priority }}] Order {{ inputs.order_id }} - User {{ inputs.user_id }} performed {{ inputs.action }}",
+			template: "[${{ inputs.priority }}] Order ${{ inputs.order_id }} - User ${{ inputs.user_id }} performed ${{ inputs.action }}",
 			mode:     ModeInterpolation,
 			expected: "[HIGH] Order ORD-456 - User 123 performed login",
 			isString: true,
 		},
 		{
 			name:     "mixed static and dynamic",
-			template: "Order {{ inputs.order_id }} status: {{ inputs.status }}",
+			template: "Order ${{ inputs.order_id }} status: ${{ inputs.status }}",
 			mode:     ModeInterpolation,
 			expected: "Order ORD-456 status: active",
 			isString: true,
 		},
 		{
 			name:     "processed items summary",
-			template: "Processed {{ sequence.count.outputs.total }} items in {{ sequence.timer.outputs.duration }}ms",
+			template: "Processed ${{ sequence.count.outputs.total }} items in ${{ sequence.timer.outputs.duration }}ms",
 			mode:     ModeInterpolation,
 			expected: "Processed 42 items in 1500ms",
 			isString: true,
@@ -143,14 +143,14 @@ func TestInterpolateString(t *testing.T) {
 		// CEL expressions in strings
 		{
 			name:     "CEL string concat still works",
-			template: `{{ "Hello " + inputs.name }}`,
+			template: `${{ "Hello " + inputs.name }}`,
 			mode:     ModeInterpolation,
 			expected: "Hello Alice",
 			isString: true,
 		},
 		{
 			name:     "CEL arithmetic",
-			template: "{{ inputs.user_id + 100 }}",
+			template: "${{ inputs.user_id + 100 }}",
 			mode:     ModeInterpolation,
 			expected: int64(223),
 			isString: false,
@@ -159,21 +159,21 @@ func TestInterpolateString(t *testing.T) {
 		// Quotes in expressions
 		{
 			name:     "double quotes with }} inside",
-			template: `{{ "text with }} inside" }}`,
+			template: `${{ "text with }} inside" }}`,
 			mode:     ModeInterpolation,
 			expected: "text with }} inside",
 			isString: true,
 		},
 		{
 			name:     "single quotes with }} inside",
-			template: `{{ 'text with }} inside' }}`,
+			template: `${{ 'text with }} inside' }}`,
 			mode:     ModeInterpolation,
 			expected: "text with }} inside",
 			isString: true,
 		},
 		{
 			name:     "mixed quotes in CEL",
-			template: `{{ inputs.status == 'active' || inputs.code == "ABC" }}`,
+			template: `${{ inputs.status == 'active' || inputs.code == "ABC" }}`,
 			mode:     ModeInterpolation,
 			expected: true,
 			isString: false,
@@ -182,21 +182,21 @@ func TestInterpolateString(t *testing.T) {
 		// Empty and whitespace
 		{
 			name:     "empty expression",
-			template: "{{ }}",
+			template: "${{ }}",
 			mode:     ModeInterpolation,
 			expected: "",
 			isString: true,
 		},
 		{
 			name:     "whitespace preserved",
-			template: "  {{ inputs.name }}  ",
+			template: "  ${{ inputs.name }}  ",
 			mode:     ModeInterpolation,
 			expected: "  Alice  ", // Multiple segments due to whitespace
 			isString: true,
 		},
 		{
 			name:     "whitespace preserved in interpolation",
-			template: "  Hello {{ inputs.name }}  ",
+			template: "  Hello ${{ inputs.name }}  ",
 			mode:     ModeInterpolation,
 			expected: "  Hello Alice  ",
 			isString: true,
@@ -240,31 +240,31 @@ func TestInterpolateString_Errors(t *testing.T) {
 	}{
 		{
 			name:      "unclosed expression",
-			template:  "Hello {{ inputs.name",
+			template:  "Hello ${{ inputs.name",
 			mode:      ModeInterpolation,
 			expectErr: "template parse error",
 		},
 		{
 			name:      "undefined field",
-			template:  "{{ inputs.nonexistent }}",
+			template:  "${{ inputs.nonexistent }}",
 			mode:      ModeInterpolation,
 			expectErr: "no such key: nonexistent",
 		},
 		{
 			name:      "invalid CEL syntax",
-			template:  "{{ inputs.name + }}",
+			template:  "${{ inputs.name + }}",
 			mode:      ModeInterpolation,
 			expectErr: "failed to compile CEL expression",
 		},
 		{
 			name:      "multiple expressions with error",
-			template:  "Hello {{ inputs.name }}, ID: {{ inputs.missing }}",
+			template:  "Hello ${{ inputs.name }}, ID: ${{ inputs.missing }}",
 			mode:      ModeInterpolation,
 			expectErr: "expression error at position",
 		},
 		{
 			name:      "artifact in mixed interpolation",
-			template:  "Artifact {{ sequence.build.artifacts[\"readme.md\"] }}",
+			template:  "Artifact ${{ sequence.build.artifacts[\"readme.md\"] }}",
 			mode:      ModeInterpolation,
 			expectErr: "artifact values cannot be interpolated",
 		},
@@ -294,15 +294,15 @@ func TestResolveValueWithMode(t *testing.T) {
 	}{
 		{
 			name:     "string interpolation",
-			input:    "Hello {{ inputs.name }}",
+			input:    "Hello ${{ inputs.name }}",
 			mode:     ModeInterpolation,
 			expected: "Hello Alice",
 		},
 		{
 			name: "map with templates",
 			input: map[string]interface{}{
-				"greeting": "Hello {{ inputs.name }}",
-				"count":    "{{ inputs.count }}",
+				"greeting": "Hello ${{ inputs.name }}",
+				"count":    "${{ inputs.count }}",
 				"static":   "no template",
 			},
 			mode: ModeInterpolation,
@@ -315,8 +315,8 @@ func TestResolveValueWithMode(t *testing.T) {
 		{
 			name: "slice with templates",
 			input: []interface{}{
-				"{{ inputs.name }}",
-				"Count: {{ inputs.count }}",
+				"${{ inputs.name }}",
+				"Count: ${{ inputs.count }}",
 				"static",
 			},
 			mode: ModeInterpolation,
@@ -330,11 +330,11 @@ func TestResolveValueWithMode(t *testing.T) {
 			name: "nested structure",
 			input: map[string]interface{}{
 				"user": map[string]interface{}{
-					"name":    "{{ inputs.name }}",
-					"message": "Hello {{ inputs.name }}!",
+					"name":    "${{ inputs.name }}",
+					"message": "Hello ${{ inputs.name }}!",
 				},
 				"items": []interface{}{
-					"Item {{ inputs.count }}",
+					"Item ${{ inputs.count }}",
 				},
 			},
 			mode: ModeInterpolation,
@@ -376,7 +376,7 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 	// Simulates the scenario where input object has nested structure:
 	// type Foo struct { Bar Bar }
 	// type Bar struct { MyString string }
-	// And MyString contains a template like "{{ context.environment.worktree_path }}"
+	// And MyString contains a template like "${{ context.environment.worktree_path }}"
 
 	recipeCtx := newRecipeCtx(t, nil)
 
@@ -396,10 +396,10 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 		rawInputs := map[string]interface{}{
 			"foo": map[string]interface{}{
 				"bar": map[string]interface{}{
-					"myString": "{{ inputs.testValue }}",
+					"myString": "${{ inputs.testValue }}",
 				},
 			},
-			"simpleField": "{{ sequence.op1.outputs.result }}",
+			"simpleField": "${{ sequence.op1.outputs.result }}",
 		}
 
 		// This simulates what happens in compiler.go when resolving inputs before creating child context
@@ -432,7 +432,7 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 		// This is the critical assertion - the nested template should be resolved
 		myStringValue, ok := myString.(string)
 		require.True(t, ok, "myString should be a string")
-		assert.NotContains(t, myStringValue, "{{", "nested template should be resolved")
+		assert.NotContains(t, myStringValue, "${{", "nested template should be resolved")
 		assert.Equal(t, "hello", myStringValue)
 	})
 
@@ -441,7 +441,7 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 		rawInputs := map[string]interface{}{
 			"nested": map[string]interface{}{
 				"config": map[string]interface{}{
-					"value": "{{ inputs.testValue }}",
+					"value": "${{ inputs.testValue }}",
 				},
 			},
 		}
@@ -454,7 +454,7 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 		childCtx := newSequenceCtx(t, parentCtx, "child", resolved)
 
 		// Now when we reference the input in the child, it should already be resolved
-		result, err := childCtx.resolveTemplate("{{ inputs.nested.config.value }}")
+		result, err := childCtx.resolveTemplate("${{ inputs.nested.config.value }}")
 		require.NoError(t, err)
 		assert.Equal(t, "hello", result)
 	})
@@ -465,8 +465,8 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 			"level1": map[string]interface{}{
 				"level2": map[string]interface{}{
 					"level3": map[string]interface{}{
-						"inputRef": "{{ inputs.testValue }}",
-						"seqRef":   "{{ sequence.op1.outputs.result }}",
+						"inputRef": "${{ inputs.testValue }}",
+						"seqRef":   "${{ sequence.op1.outputs.result }}",
 					},
 				},
 			},
@@ -490,11 +490,11 @@ func TestResolveValueWithMode_NestedMapOfMaps(t *testing.T) {
 	// Test 4: Mixed nested and non-nested templates
 	t.Run("mixed nested structure", func(t *testing.T) {
 		mixed := map[string]interface{}{
-			"topLevel": "{{ inputs.testValue }}",
+			"topLevel": "${{ inputs.testValue }}",
 			"nested": map[string]interface{}{
-				"middle": "{{ sequence.op1.outputs.result }}",
+				"middle": "${{ sequence.op1.outputs.result }}",
 				"deeper": map[string]interface{}{
-					"value": "{{ inputs.testValue }}",
+					"value": "${{ inputs.testValue }}",
 				},
 			},
 		}
@@ -514,7 +514,7 @@ func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
 	// This test specifically tests the user's reported scenario:
 	// type Foo struct { Bar Bar }
 	// type Bar struct { MyString string }
-	// where MyString contains "{{ context.environment.worktree_path }}"
+	// where MyString contains "${{ context.environment.worktree_path }}"
 
 	// Note: The test helpers create a context with default/empty environment values
 	// In a real scenario, the worktree_path would be populated
@@ -531,7 +531,7 @@ func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
 		rawInputs := map[string]interface{}{
 			"foo": map[string]interface{}{
 				"bar": map[string]interface{}{
-					"myString": "{{ context.environment.worktree_path }}",
+					"myString": "${{ context.environment.worktree_path }}",
 				},
 			},
 		}
@@ -547,10 +547,10 @@ func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
 		bar := foo["bar"].(map[string]interface{})
 		myString := bar["myString"]
 
-		// The template should be resolved (the value will be empty string in test, but should not contain {{}})
+		// The template should be resolved (the value will be empty string in test, but should not contain ${{}})
 		myStringStr, ok := myString.(string)
 		require.True(t, ok, "myString should be a string")
-		assert.NotContains(t, myStringStr, "{{", "template markers should be gone - nested map template should be resolved")
+		assert.NotContains(t, myStringStr, "${{", "template markers should be gone - nested map template should be resolved")
 
 		// Log the actual value for debugging
 		t.Logf("Resolved myString value: '%s'", myStringStr)
@@ -561,7 +561,7 @@ func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
 		rawInputs := map[string]interface{}{
 			"config": map[string]interface{}{
 				"paths": map[string]interface{}{
-					"worktree": "{{ context.environment.worktree_path }}",
+					"worktree": "${{ context.environment.worktree_path }}",
 				},
 			},
 		}
@@ -574,13 +574,13 @@ func TestResolveValueWithMode_NestedMapContextEnvironment(t *testing.T) {
 		childCtx := newSequenceCtx(t, parentCtx, "child", resolved)
 
 		// Access the resolved value through the child context
-		result, err := childCtx.resolveTemplate("{{ inputs.config.paths.worktree }}")
+		result, err := childCtx.resolveTemplate("${{ inputs.config.paths.worktree }}")
 		require.NoError(t, err)
 
 		// The result should be a string (even if empty) and not contain template markers
 		resultStr, ok := result.(string)
 		require.True(t, ok, "result should be a string")
-		assert.NotContains(t, resultStr, "{{", "nested input should be resolved")
+		assert.NotContains(t, resultStr, "${{", "nested input should be resolved")
 
 		t.Logf("Resolved worktree value: '%s'", resultStr)
 	})
@@ -602,7 +602,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 
 		// Create an InputMap (custom type) with a template inside
 		inputMap := map[string]interface{}{
-			"question": "{{ inputs.prompt }}",
+			"question": "${{ inputs.prompt }}",
 		}
 
 		// Try to resolve it
@@ -627,14 +627,14 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 
 		// This is the bug - the template is NOT resolved
 		assert.Equal(t, "hello world", questionStr, "template in InputMap should be resolved")
-		assert.NotContains(t, questionStr, "{{", "template markers should be gone")
+		assert.NotContains(t, questionStr, "${{", "template markers should be gone")
 	})
 
 	t.Run("nested structure with recipe.InputMap", func(t *testing.T) {
 		// This is the exact scenario from the user's report
 		rawInputs := map[string]interface{}{
 			"form": map[string]interface{}{
-				"question": "{{ inputs.prompt }}",
+				"question": "${{ inputs.prompt }}",
 			},
 		}
 
@@ -664,7 +664,7 @@ func TestResolveValueWithMode_CustomMapTypes(t *testing.T) {
 
 		// This assertion will FAIL due to the bug
 		assert.Equal(t, "hello world", questionStr, "template in nested InputMap should be resolved")
-		assert.NotContains(t, questionStr, "{{", "template markers should be gone from nested InputMap")
+		assert.NotContains(t, questionStr, "${{", "template markers should be gone from nested InputMap")
 	})
 }
 
@@ -709,7 +709,7 @@ func TestPureCELMode(t *testing.T) {
 		},
 		{
 			name:      "invalid CEL",
-			expr:      "invalid syntax {{",
+			expr:      "invalid syntax ${{",
 			expectErr: true,
 		},
 	}
@@ -725,4 +725,53 @@ func TestPureCELMode(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestGoTemplateInterpolation(t *testing.T) {
+	recipeCtx := newRecipeCtx(t, nil)
+	ctx := newSequenceCtx(t, recipeCtx, "go-template", map[string]interface{}{
+		"name": "Alice",
+		"age":  42,
+	})
+	addOpOutput(t, ctx, "step1", map[string]interface{}{
+		"status":    "ok",
+		"completed": true,
+	})
+
+	t.Run("root functions are available", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("user={{ inputs.name }} status={{ sequence.step1.outputs.status }}")
+		require.NoError(t, err)
+		assert.Equal(t, "user=Alice status=ok", result)
+	})
+
+	t.Run("context root function supports CEL-style path", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("invoke_seq={{ context.invocation.sequence }}")
+		require.NoError(t, err)
+		assert.Contains(t, result, "invoke_seq=")
+	})
+
+	t.Run("single simple go template returns bool scalar", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("{{ sequence.step1.outputs.completed }}")
+		require.NoError(t, err)
+		assert.Equal(t, true, result)
+	})
+
+	t.Run("single simple go template returns number scalar", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("{{ inputs.age }}")
+		require.NoError(t, err)
+		assert.Equal(t, 42, result)
+	})
+
+	t.Run("single complex go template remains string for compatibility", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("{{ sequence.step1.outputs }}")
+		require.NoError(t, err)
+		assert.IsType(t, "", result)
+		assert.Contains(t, result.(string), "status:ok")
+	})
+
+	t.Run("CEL and Go templates can coexist at top level", func(t *testing.T) {
+		result, err := ctx.resolveTemplate("go={{ inputs.name }} cel=${{ inputs.name }}")
+		require.NoError(t, err)
+		assert.Equal(t, "go=Alice cel=Alice", result)
+	})
 }

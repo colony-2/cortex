@@ -17,4 +17,4 @@ sequence:
   inputs:
     message: test
 outputs:
-  step1: '{{ sequence.step1.outputs }}'
+  step1: '${{ sequence.step1.outputs }}'

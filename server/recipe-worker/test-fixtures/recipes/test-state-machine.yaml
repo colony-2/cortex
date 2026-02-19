@@ -61,5 +61,5 @@ state:
 outputs:
   start_message: 'Starting with action: {{ inputs.action }}'
   final_message: 'Workflow completed'
-  process_result: '{{ inputs.action == "process" ? "Processing data" : "not processed" }}'
-  error_result: '{{ inputs.should_fail == true ? "Error occurred during processing" : "no error" }}'
+  process_result: '${{ inputs.action == "process" ? "Processing data" : "not processed" }}'
+  error_result: '${{ inputs.should_fail == true ? "Error occurred during processing" : "no error" }}'

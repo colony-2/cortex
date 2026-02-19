@@ -6,7 +6,7 @@ Use a `sequence` to run a set of steps in order. Sequences are ideal when you wa
 - **Steps list**: `sequence` holds an ordered list of nodes. Each node can be an `op`, nested `sequence`, or `state`.
 - **Inputs**: Provided via the sequence’s `inputs:` block; available to every child node as `inputs.*`.
 - **Outputs**: Declare under the sequence’s top-level `outputs:` block to expose data to the parent scope.
-- **Per-step conditions**: Any node may include `when:` (CEL, no `{{ }}`) to skip that step when false.
+- **Per-step conditions**: Any node may include `when:` (CEL, no `${{ }}`) to skip that step when false.
 
 ```yaml
 - id: pipeline

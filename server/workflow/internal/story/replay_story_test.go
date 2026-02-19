@@ -483,7 +483,7 @@ id: test
 version: "1.0.0"
 sequence: []
 outputs:
-  greet: "{{ hello() }}"
+  greet: "${{ hello() }}"
 `
 	recipeArt := swf.NewArtifactFromBytes("test"+starter.RecipeArtifactSuffix, []byte(recipeYAML))
 	start := workflowctl.StartJob{

@@ -65,18 +65,18 @@ sequence:
   - id: op2
     op: codex.exec
     inputs:
-      sessionId: "{{ .sequence.op1.outputs.sessionId }}"
+      sessionId: "{{ sequence.op1.outputs.sessionId }}"
       prompt: |
         Resume the previous session and tell me the token you were asked to remember.
         Respond ONLY with JSON matching the schema: status 'completed', assistantSummary 'token: <token>', incompleteReason '', incompleteCategory '', errorMessage '', pendingDependencies [].
         Do not include any other text.
       cell_relative_path: %q
 outputs:
-  op2_summary: "{{ .sequence.op2.outputs.assistantSummary }}"
-  op2_status: "{{ .sequence.op2.outputs.status }}"
-  op2_incomplete_reason: "{{ .sequence.op2.outputs.incompleteReason }}"
-  op2_incomplete_category: "{{ .sequence.op2.outputs.incompleteCategory }}"
-  op1_session_id: "{{ .sequence.op1.outputs.sessionId }}"
+  op2_summary: "{{ sequence.op2.outputs.assistantSummary }}"
+  op2_status: "{{ sequence.op2.outputs.status }}"
+  op2_incomplete_reason: "{{ sequence.op2.outputs.incompleteReason }}"
+  op2_incomplete_category: "{{ sequence.op2.outputs.incompleteCategory }}"
+  op1_session_id: "{{ sequence.op1.outputs.sessionId }}"
 `, token, cellRel, cellRel)
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))

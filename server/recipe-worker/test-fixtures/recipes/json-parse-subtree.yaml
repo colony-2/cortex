@@ -14,17 +14,17 @@ input_schema:
 inputs:
   config_json: '{{ inputs.config_json }}'
   label: '{{ inputs.label }}'
-  flag: '{{ has(inputs.flag) ? inputs.flag : "default-flag" }}'
+  flag: '${{ has(inputs.flag) ? inputs.flag : "default-flag" }}'
 sequence:
 - id: show
   op: test_complex_input
   inputs:
-    config: '{{ json_parse(inputs.config_json) }}'
+    config: '${{ json_parse(inputs.config_json) }}'
     meta:
       label: '{{ inputs.label }}'
       flags:
       - '{{ inputs.flag }}'
       - static-flag
 outputs:
-  config: '{{ sequence.show.outputs.config }}'
-  meta: '{{ sequence.show.outputs.meta }}'
+  config: '${{ sequence.show.outputs.config  }}'
+  meta: '${{ sequence.show.outputs.meta  }}'

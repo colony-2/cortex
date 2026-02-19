@@ -11,6 +11,6 @@ sequence:
 - id: echo_cmd
   op: command_execution
   inputs:
-    run: '{{ "echo ''" + (has(inputs.text) ? inputs.text : "<no value>") + "''" }}'
+    run: '${{ "echo ''" + (has(inputs.text) ? inputs.text : "<no value>") + "''" }}'
 outputs:
   result: '{{ sequence.echo_cmd.outputs.stdout }}'

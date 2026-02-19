@@ -30,7 +30,7 @@ sequence:
       backoff_coefficient: 2.0
       maximum_interval: 1m
   inputs:
-    dataset: '{{ sequence.validate_datasets.outputs.valid_datasets[0] }}'
+    dataset: '${{ sequence.validate_datasets.outputs.valid_datasets[0] }}'
     processing_config:
       normalize: true
       remove_outliers: true
@@ -46,7 +46,7 @@ sequence:
     recipe: dataset-processor
     timeout: 20m
   inputs:
-    dataset: '{{ sequence.validate_datasets.outputs.valid_datasets[1] }}'
+    dataset: '${{ sequence.validate_datasets.outputs.valid_datasets[1] }}'
     processing_config:
       normalize: true
       remove_outliers: true
@@ -61,7 +61,7 @@ sequence:
     recipe: dataset-processor
     timeout: 20m
   inputs:
-    dataset: '{{ sequence.validate_datasets.outputs.valid_datasets[2] }}'
+    dataset: '${{ sequence.validate_datasets.outputs.valid_datasets[2] }}'
     processing_config:
       normalize: true
       remove_outliers: false
@@ -108,7 +108,7 @@ sequence:
   inputs:
     aggregated_data: '{{ sequence.aggregate_data.outputs.aggregated_data }}'
     statistics: '{{ sequence.aggregate_data.outputs.aggregation_stats }}'
-    original_count: '{{ len inputs.datasets }}'
+    original_count: '${{ len inputs.datasets }}'
     processed_count: '{{ sequence.filter_by_quality.outputs.passing_count }}'
   outputs:
     insights: '{{ .result.insights }}'
@@ -124,9 +124,8 @@ sequence:
     insights: '{{ sequence.generate_insights.outputs.insights }}'
     recommendations: '{{ sequence.generate_insights.outputs.recommendations }}'
     metadata:
-      total_datasets: '{{ len inputs.datasets }}'
-      processed_successfully: '{{ sequence.filter_by_quality.outputs.passing_count
-        }}'
+      total_datasets: '${{ len inputs.datasets }}'
+      processed_successfully: '{{ sequence.filter_by_quality.outputs.passing_count }}'
       aggregation_method: '{{ inputs.aggregation_method }}'
       quality_threshold: '{{ inputs.quality_threshold }}'
   outputs:

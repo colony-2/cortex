@@ -12,9 +12,9 @@ input_schema:
     type: string
     required: false
 inputs:
-  upstream_repo: '{{ has(inputs.upstream_repo) ? inputs.upstream_repo : "" }}'
-  upstream_branch: '{{ has(inputs.upstream_branch) ? inputs.upstream_branch : "" }}'
-  commit_message: '{{ has(inputs.commit_message) ? inputs.commit_message : "" }}'
+  upstream_repo: '${{ has(inputs.upstream_repo) ? inputs.upstream_repo : "" }}'
+  upstream_branch: '${{ has(inputs.upstream_branch) ? inputs.upstream_branch : "" }}'
+  commit_message: '${{ has(inputs.commit_message) ? inputs.commit_message : "" }}'
 state:
   initial: resolve
   states:
@@ -64,8 +64,8 @@ state:
           UPSTREAM_REPO_INPUT: "{{ inputs.upstream_repo }}"
           UPSTREAM_BRANCH_INPUT: "{{ inputs.upstream_branch }}"
           COMMIT_MESSAGE_INPUT: "{{ inputs.commit_message }}"
-          CTX_REPO: "{{ has(context.git.repo) ? context.git.repo : \"\" }}"
-          CTX_REF: "{{ has(context.git.ref) ? context.git.ref : \"\" }}"
+          CTX_REPO: "${{ has(context.git.repo) ? context.git.repo : \"\" }}"
+          CTX_REF: "${{ has(context.git.ref) ? context.git.ref : \"\" }}"
 
     prompt:
       op: input
@@ -102,11 +102,11 @@ state:
           question: |
             This will run `squashrebasemerge` and fast-forward merge back to the upstream branch.
 
-            Local hash: {{ json_parse(states.resolve.outputs.stdout).local_hash }}
-            Upstream repo: {{ json_parse(states.resolve.outputs.stdout).upstream_repo }}
-            Upstream branch: {{ json_parse(states.resolve.outputs.stdout).upstream_branch }}
+            Local hash: ${{ json_parse(states.resolve.outputs.stdout).local_hash }}
+            Upstream repo: ${{ json_parse(states.resolve.outputs.stdout).upstream_repo }}
+            Upstream branch: ${{ json_parse(states.resolve.outputs.stdout).upstream_branch }}
             Commit message:
-            {{ json_parse(states.resolve.outputs.stdout).commit_message }}
+            ${{ json_parse(states.resolve.outputs.stdout).commit_message }}
           type: multiple_choice
           options:
             - value: merge
@@ -121,23 +121,23 @@ state:
           when: "true"
       inputs:
         repo_path: "{{ context.environment.worktree_path }}"
-        local_hash: "{{ json_parse(states.resolve.outputs.stdout).local_hash }}"
+        local_hash: "${{ json_parse(states.resolve.outputs.stdout).local_hash }}"
         upstream_repo: >-
-          {{
+          ${{
             "prompt" in states
               ? states.prompt.outputs.fields.upstream_repo
               : json_parse(states.resolve.outputs.stdout).upstream_repo
           }}
         upstream_branch: >-
-          {{
+          ${{
             "prompt" in states
               ? states.prompt.outputs.fields.upstream_branch
               : json_parse(states.resolve.outputs.stdout).upstream_branch
           }}
         rebase: true
-        author: "{{ has(context.git.author) ? context.git.author : \"\" }}"
+        author: "${{ has(context.git.author) ? context.git.author : \"\" }}"
         commit_message: >-
-          {{
+          ${{
             "prompt" in states
               ? states.prompt.outputs.fields.commit_message
               : json_parse(states.resolve.outputs.stdout).commit_message
@@ -150,6 +150,6 @@ state:
         run: "echo done"
 
 outputs:
-  merged: "{{ 'merge' in states && has(states.merge.outputs.merged_hash) && states.merge.outputs.merged_hash != \"\" }}"
-  merged_hash: "{{ 'merge' in states && has(states.merge.outputs.merged_hash) ? states.merge.outputs.merged_hash : \"\" }}"
-  target_branch: "{{ 'merge' in states && has(states.merge.outputs.target_branch) ? states.merge.outputs.target_branch : \"\" }}"
+  merged: "${{ 'merge' in states && has(states.merge.outputs.merged_hash) && states.merge.outputs.merged_hash != \"\" }}"
+  merged_hash: "${{ 'merge' in states && has(states.merge.outputs.merged_hash) ? states.merge.outputs.merged_hash : \"\" }}"
+  target_branch: "${{ 'merge' in states && has(states.merge.outputs.target_branch) ? states.merge.outputs.target_branch : \"\" }}"

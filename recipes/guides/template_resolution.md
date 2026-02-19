@@ -1,6 +1,6 @@
 # Template Resolution - Definitive Guide
 
-Authoring templates follows the current resolver behavior (hybrid CEL + interpolation). Scopes constrain visibility; outputs must be explicitly produced to be referenced.
+Authoring templates follows the current resolver behavior (CEL + Go templates). Scopes constrain visibility; outputs must be explicitly produced to be referenced.
 
 ## Scope Model
 - Hierarchy: `recipe` → `state_machine` → `state` → `sequence` → `op`.
@@ -9,8 +9,12 @@ Authoring templates follows the current resolver behavior (hybrid CEL + interpol
 - Completed executions are stored in `sequence.<id>.outputs` or `states.<id>.outputs`; retries/loops append to `.runs[]`.
 
 ## Resolution Rules
-- Strings with `{{ ... }}` are interpolated. A single expression returns the raw CEL value (may be non-string); mixed text/expressions return a string.
-- When/conditions are pure CEL strings (no `{{ }}`) and must evaluate to `bool`; empty or `"true"` is treated as `true`.
+- CEL expressions use `${{ ... }}` in string fields.
+- Go templates use `{{ ... }}` in string fields.
+- A single `${{ ... }}` expression returns the raw CEL value (may be non-string); mixed CEL/text and Go templates resolve to strings.
+- Go template root values are exposed as zero-arg functions: `inputs`, `sequence`, `states`, `scope`, `context`.
+- Dot-root access like `.inputs`/`.context` is not supported.
+- When/conditions are pure CEL strings (no `${{ }}` and no `{{ }}`) and must evaluate to `bool`; empty or `"true"` is treated as `true`.
 - Visibility:
   - A sequence sees its inputs, sibling node outputs via `sequence.<id>.outputs`, and parent state-machine/state outputs via `states.<id>.outputs`.
   - An op sees the surrounding sequence/state-machine/state data.
@@ -30,12 +34,18 @@ inputs:
   profile_url: "https://{{ inputs.domain }}/api/{{ inputs.version }}/users/{{ inputs.user_id }}"
 ```
 
+### Go template example
+```yaml
+inputs:
+  summary: "Ticket {{ context.ticket.id }} in {{ context.workflow.cell }}"
+```
+
 ### Sequence outputs mapping
 ```yaml
 outputs:
   summary: "{{ sequence.transform.outputs.summary }}"
   total: "{{ sequence.fetch.outputs.body.total }}"
-  first_item: "{{ sequence.transform.outputs.items[0] }}"
+  first_item: "${{ sequence.transform.outputs.items[0] }}"
 ```
 
 ### State transition condition (pure CEL)
@@ -54,7 +64,7 @@ inputs:
 
 ### Cross-run access (retries/loops)
 ```yaml
-audit_message: "Last error: {{ sequence.api_call.runs[0].outputs.error }}"
+audit_message: "Last error: ${{ sequence.api_call.runs[0].outputs.error }}"
 ```
 
 ### Scoped isolation

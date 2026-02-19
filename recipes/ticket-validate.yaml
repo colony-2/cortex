@@ -9,8 +9,8 @@ input_schema:
     type: string
     required: false
 inputs:
-  commands: '{{ has(inputs.commands) ? inputs.commands : "" }}'
-  cell_relative_path: '{{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
+  commands: '${{ has(inputs.commands) ? inputs.commands : "" }}'
+  cell_relative_path: '${{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
 state:
   initial: detect
   states:
@@ -57,7 +57,7 @@ state:
         env:
           WT: "{{ context.environment.worktree_path }}"
           CELL: >-
-            {{
+            ${{
               (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
                 ? inputs.cell_relative_path
                 : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -75,7 +75,7 @@ state:
           title: "Validation commands"
           question: |
             Suggestions (detected):
-            {{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+            ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
           type: multiple_choice
           options:
             - value: use_suggested
@@ -95,7 +95,7 @@ state:
             Enter the validation commands to run (newline-separated).
 
             Suggestions (detected):
-            {{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+            ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
           type: paragraph_text
 
     run_provided:
@@ -123,7 +123,7 @@ state:
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
-          {{
+          ${{
             (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -156,7 +156,7 @@ state:
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
-          {{
+          ${{
             (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -189,7 +189,7 @@ state:
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
-          {{
+          ${{
             (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -221,6 +221,6 @@ state:
           PY
 outputs:
   exit_code: "{{ states.summarize.outputs.exit_code }}"
-  passed: "{{ has(states.summarize.outputs.exit_code) ? states.summarize.outputs.exit_code == 0 : false }}"
-  suggested_commands: "{{ json_parse(states.detect.outputs.stdout).suggested_commands }}"
+  passed: "${{ has(states.summarize.outputs.exit_code) ? states.summarize.outputs.exit_code == 0 : false }}"
+  suggested_commands: "${{ json_parse(states.detect.outputs.stdout).suggested_commands }}"
   output_tail: "{{ states.summarize.outputs.stdout }}"

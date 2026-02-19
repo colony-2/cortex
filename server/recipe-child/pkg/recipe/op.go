@@ -28,11 +28,11 @@ type SingleRecipeGit struct {
 
 type SingleRecipeWithRef struct {
 	SingleRecipe `json:",squash"`
-	GitRef       string `json:"git_ref" default:"{{ has(context.git.hash) && context.git.hash != \"\" ? context.git.hash : context.git.ref }}" validate:"required"`
+	GitRef       string `json:"git_ref" default:"${{ has(context.git.hash) && context.git.hash != \"\" ? context.git.hash : context.git.ref }}" validate:"required"`
 }
 
 type MultipleRecipes struct {
-	GitRef  string         `json:"git_ref" default:"{{ has(context.git.hash) && context.git.hash != \"\" ? context.git.hash : context.git.ref }}" validate:"required"`
+	GitRef  string         `json:"git_ref" default:"${{ has(context.git.hash) && context.git.hash != \"\" ? context.git.hash : context.git.ref }}" validate:"required"`
 	Recipes []SingleRecipe `json:"recipes"`
 }
 

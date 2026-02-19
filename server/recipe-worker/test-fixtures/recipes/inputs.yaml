@@ -6,7 +6,7 @@ input_schema:
     type: string
     default_value: test
 inputs:
-  message: '{{ has(inputs.message) ? inputs.message : "" }}'
+  message: '${{ has(inputs.message) ? inputs.message : "" }}'
 sequence:
 - id: echo
   op: echo_activity

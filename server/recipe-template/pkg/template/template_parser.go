@@ -39,14 +39,15 @@ func (ExpressionSegment) isSegment()      {}
 func (t TextSegment) Position() int       { return t.Pos }
 func (e ExpressionSegment) Position() int { return e.Pos }
 
-// parseTemplate parses a template string into segments
+// parseTemplate parses a template string into CEL expression segments.
+// CEL expressions use the `${{ ... }}` delimiter.
 func parseTemplate(input string) ([]Segment, error) {
 	var segments []Segment
 	pos := 0
 
 	for pos < len(input) {
-		// Look for next {{
-		idx := strings.Index(input[pos:], "{{")
+		// Look for next `${{`
+		idx := strings.Index(input[pos:], "${{")
 
 		if idx == -1 {
 			// No more expressions, rest is text
@@ -59,7 +60,7 @@ func parseTemplate(input string) ([]Segment, error) {
 			break
 		}
 
-		// Add text before {{
+		// Add text before `${{`
 		if idx > 0 {
 			segments = append(segments, TextSegment{
 				Text: input[pos : pos+idx],
@@ -68,7 +69,7 @@ func parseTemplate(input string) ([]Segment, error) {
 		}
 
 		// Find matching }} respecting quotes
-		exprStart := pos + idx + 2
+		exprStart := pos + idx + 3
 		exprEnd, err := findExpressionEnd(input, exprStart)
 		if err != nil {
 			return nil, fmt.Errorf("at position %d: %w", exprStart, err)
@@ -81,6 +82,9 @@ func parseTemplate(input string) ([]Segment, error) {
 		actualStart := exprStart
 		for actualStart < exprEnd && (input[actualStart] == ' ' || input[actualStart] == '\t') {
 			actualStart++
+		}
+		if strings.Contains(exprContent, "{{") {
+			return nil, fmt.Errorf("at position %d: CEL expressions cannot contain Go template delimiters", actualStart)
 		}
 		segments = append(segments, ExpressionSegment{
 			Expression: exprContent,
@@ -144,7 +148,7 @@ func findExpressionEnd(input string, start int) (int, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("unclosed expression (missing }})")
+	return 0, fmt.Errorf("unclosed CEL expression (missing }})")
 }
 
 // isInterpolationTemplate checks if a template needs interpolation

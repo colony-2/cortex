@@ -19,4 +19,4 @@ sequence:
   name: Summarize Results
   op: summarize_activity
   inputs:
-    data: '{{ sequence.search.outputs.result }}'
+    data: '${{ sequence.search.outputs.result  }}'

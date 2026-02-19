@@ -30,15 +30,15 @@ input_schema:
     type: string
     required: false
 inputs:
-  title: '{{ has(inputs.title) ? inputs.title : "" }}'
-  description: '{{ has(inputs.description) ? inputs.description : "" }}'
+  title: '${{ has(inputs.title) ? inputs.title : "" }}'
+  description: '${{ has(inputs.description) ? inputs.description : "" }}'
   requirements_plan_json: "{{ inputs.requirements_plan_json }}"
-  validation_feedback: '{{ has(inputs.validation_feedback) ? inputs.validation_feedback : "" }}'
-  cell_relative_path: '{{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
-  session_id: '{{ has(inputs.session_id) ? inputs.session_id : "" }}'
-  prior_session_summary: '{{ has(inputs.prior_session_summary) ? inputs.prior_session_summary : "" }}'
-  include_prior_summary: '{{ has(inputs.include_prior_summary) ? inputs.include_prior_summary : false }}'
-  extra_instructions: '{{ has(inputs.extra_instructions) ? inputs.extra_instructions : "" }}'
+  validation_feedback: '${{ has(inputs.validation_feedback) ? inputs.validation_feedback : "" }}'
+  cell_relative_path: '${{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
+  session_id: '${{ has(inputs.session_id) ? inputs.session_id : "" }}'
+  prior_session_summary: '${{ has(inputs.prior_session_summary) ? inputs.prior_session_summary : "" }}'
+  include_prior_summary: '${{ has(inputs.include_prior_summary) ? inputs.include_prior_summary : false }}'
+  extra_instructions: '${{ has(inputs.extra_instructions) ? inputs.extra_instructions : "" }}'
 state:
   initial: choose
   states:
@@ -61,7 +61,7 @@ state:
         sessionId: "{{ inputs.session_id }}"
         worktree_path: "{{ context.environment.worktree_path }}"
         cell_relative_path: >-
-          {{
+          ${{
             (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -84,7 +84,7 @@ state:
           {{ inputs.validation_feedback }}
 
           Previous session summary (included only when requested):
-          {{
+          ${{
             (has(inputs.include_prior_summary) && inputs.include_prior_summary == true)
               ? inputs.prior_session_summary
               : ""
@@ -111,7 +111,7 @@ state:
       inputs:
         worktree_path: "{{ context.environment.worktree_path }}"
         cell_relative_path: >-
-          {{
+          ${{
             (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
@@ -134,7 +134,7 @@ state:
           {{ inputs.validation_feedback }}
 
           Previous session summary (included only when requested):
-          {{
+          ${{
             (has(inputs.include_prior_summary) && inputs.include_prior_summary == true)
               ? inputs.prior_session_summary
               : ""
@@ -164,12 +164,12 @@ state:
           mkdir -p "$OUT/implementation"
 
           cat > "$OUT/implementation/assistant-summary.txt" <<'EOF'
-          {{ ("continue_session" in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}
+          ${{ ("continue_session" in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}
           EOF
 outputs:
-  status: "{{ ('continue_session' in states) ? states.continue_session.outputs.status : states.new_session.outputs.status }}"
-  assistant_summary: "{{ ('continue_session' in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}"
-  session_id: "{{ ('continue_session' in states) ? states.continue_session.outputs.sessionId : states.new_session.outputs.sessionId }}"
-  incomplete_reason: "{{ ('continue_session' in states) ? states.continue_session.outputs.incompleteReason : states.new_session.outputs.incompleteReason }}"
-  incomplete_category: "{{ ('continue_session' in states) ? states.continue_session.outputs.incompleteCategory : states.new_session.outputs.incompleteCategory }}"
-  pending_dependencies: "{{ ('continue_session' in states) ? states.continue_session.outputs.pendingDependencies : states.new_session.outputs.pendingDependencies }}"
+  status: "${{ ('continue_session' in states) ? states.continue_session.outputs.status : states.new_session.outputs.status }}"
+  assistant_summary: "${{ ('continue_session' in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}"
+  session_id: "${{ ('continue_session' in states) ? states.continue_session.outputs.sessionId : states.new_session.outputs.sessionId }}"
+  incomplete_reason: "${{ ('continue_session' in states) ? states.continue_session.outputs.incompleteReason : states.new_session.outputs.incompleteReason }}"
+  incomplete_category: "${{ ('continue_session' in states) ? states.continue_session.outputs.incompleteCategory : states.new_session.outputs.incompleteCategory }}"
+  pending_dependencies: "${{ ('continue_session' in states) ? states.continue_session.outputs.pendingDependencies : states.new_session.outputs.pendingDependencies }}"

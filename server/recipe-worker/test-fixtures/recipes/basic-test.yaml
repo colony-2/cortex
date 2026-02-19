@@ -11,6 +11,6 @@ sequence:
 - id: cmd
   op: command_execution
   inputs:
-    run: '{{ "echo ''" + inputs.message + "''" }}'
+    run: '${{ "echo ''" + inputs.message + "''" }}'
 outputs:
   result: '{{ sequence.cmd.outputs.stdout }}'

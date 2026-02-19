@@ -154,7 +154,7 @@ Example:
 - id: wait
   op: recipe.await_result
   inputs:
-    job_id: "{{ sequence.start.outputs.job_ids[0] }}"
+    job_id: "${{ sequence.start.outputs.job_ids[0] }}"
 ```
 
 ### `recipe.get_result`
@@ -174,7 +174,7 @@ Example:
 - id: get
   op: recipe.get_result
   inputs:
-    job_id: "{{ sequence.start.outputs.job_ids[0] }}"
+    job_id: "${{ sequence.start.outputs.job_ids[0] }}"
 ```
 
 ## End-to-End Example

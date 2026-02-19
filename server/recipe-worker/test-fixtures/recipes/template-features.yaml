@@ -12,22 +12,22 @@ inputs:
   items: '{{ inputs.items }}'
   separator: ', '
 outputs:
-  prepare: '{{ sequence.prepare.outputs }}'
-  format: '{{ sequence.format.outputs }}'
-  analyze: '{{ sequence.analyze.outputs }}'
-  summarize: '{{ sequence.summarize.outputs }}'
+  prepare: '${{ sequence.prepare.outputs }}'
+  format: '${{ sequence.format.outputs }}'
+  analyze: '${{ sequence.analyze.outputs }}'
+  summarize: '${{ sequence.summarize.outputs }}'
 sequence:
 - id: prepare
   op: prepare_data
   inputs:
     data:
       items: []
-      separator: '{{ has(inputs.separator) ? inputs.separator : ", " }}'
+      separator: '${{ has(inputs.separator) ? inputs.separator : ", " }}'
 - id: format
   op: format_text
   inputs:
     data:
-      text: 'Processing items: {{ size(inputs.items) }} items'
+      text: 'Processing items: ${{ size(inputs.items) }} items'
       count: 0
 - id: analyze
   op: analyze_data

@@ -12,9 +12,9 @@ input_schema:
     type: string
     default_value: json
 inputs:
-  message: '{{ has(inputs.message) ? inputs.message : "Hello" }}'
-  analysis_depth: '{{ has(inputs.analysis_depth) ? inputs.analysis_depth : "medium" }}'
-  output_format: '{{ has(inputs.output_format) ? inputs.output_format : "json" }}'
+  message: '${{ has(inputs.message) ? inputs.message : "Hello" }}'
+  analysis_depth: '${{ has(inputs.analysis_depth) ? inputs.analysis_depth : "medium" }}'
+  output_format: '${{ has(inputs.output_format) ? inputs.output_format : "json" }}'
 state:
   initial: processing
   states:

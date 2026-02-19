@@ -16,7 +16,7 @@ sequence:
   desc: Echo Message
   op: command_execution
   inputs:
-    run: '{{ "for i in $(seq 1 " + string(has(inputs.repeat_count) ? inputs.repeat_count
+    run: '${{ "for i in $(seq 1 " + string(has(inputs.repeat_count) ? inputs.repeat_count
       : 1) + "); do echo ''" + (has(inputs.message) ? inputs.message : "Hello") +
       "''; done" }}'
 outputs:

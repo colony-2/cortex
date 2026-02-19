@@ -34,9 +34,9 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 
 	// Test template resolution for next node inputs
 	validateInputTemplate := map[string]interface{}{
-		"data":           "{{ sequence.fetch_data.outputs.body }}",
-		"expected_count": "{{ sequence.fetch_data.outputs.body.total }}",
-		"user":           "{{ inputs.user_id }}",
+		"data":           "${{ sequence.fetch_data.outputs.body }}",
+		"expected_count": "${{ sequence.fetch_data.outputs.body.total }}",
+		"user":           "${{ inputs.user_id }}",
 	}
 
 	resolvedInputs, err := ctx.resolveValue(validateInputTemplate)
@@ -69,10 +69,10 @@ func TestIntegration_SequenceWithTemplates(t *testing.T) {
 
 	// Test output mapping templates
 	outputTemplates := map[string]interface{}{
-		"items":         "{{ sequence.transform.outputs.processed_items }}",
-		"is_valid":      "{{ sequence.validate.outputs.valid }}",
-		"total_count":   "{{ sequence.fetch_data.outputs.body.total }}",
-		"processing_ms": "{{ sequence.transform.outputs.metadata.processing_time_ms }}",
+		"items":         "${{ sequence.transform.outputs.processed_items }}",
+		"is_valid":      "${{ sequence.validate.outputs.valid }}",
+		"total_count":   "${{ sequence.fetch_data.outputs.body.total }}",
+		"processing_ms": "${{ sequence.transform.outputs.metadata.processing_time_ms }}",
 	}
 
 	finalOutputs, err := ctx.resolveValue(outputTemplates)
@@ -109,7 +109,7 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 	processSeq := newSequenceCtx(t, processCtx, "process-seq", smCtx.TemplateData.ContainerInputs)
 
 	// Test that process state can access validate state outputs
-	template := "{{ states.validate_order.outputs.validation_details.credit_check }}"
+	template := "${{ states.validate_order.outputs.validation_details.credit_check }}"
 	result, err := processCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, "passed", result)
@@ -133,9 +133,9 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 
 	// Test process state output mapping with access to sequence nodes
 	processOutputTemplate := map[string]interface{}{
-		"transaction_id": "{{ sequence.charge_payment.outputs.transaction_id }}",
-		"invoice_id":     "{{ sequence.generate_invoice.outputs.invoice_id }}",
-		"reservation_id": "{{ sequence.reserve_inventory.outputs.reservation_id }}",
+		"transaction_id": "${{ sequence.charge_payment.outputs.transaction_id }}",
+		"invoice_id":     "${{ sequence.generate_invoice.outputs.invoice_id }}",
+		"reservation_id": "${{ sequence.reserve_inventory.outputs.reservation_id }}",
 	}
 
 	processOutputs, err := processSeq.resolveValue(processOutputTemplate)
@@ -168,9 +168,9 @@ func TestIntegration_StateMachineWithNestedSequence(t *testing.T) {
 
 	// Complete state can access all previous states
 	completeTemplate := map[string]interface{}{
-		"order_id":       "{{ inputs.order_id }}",
-		"transaction_id": "{{ states.process_order.outputs.transaction_id }}",
-		"invoice_id":     "{{ states.process_order.outputs.invoice_id }}",
+		"order_id":       "${{ inputs.order_id }}",
+		"transaction_id": "${{ states.process_order.outputs.transaction_id }}",
+		"invoice_id":     "${{ states.process_order.outputs.invoice_id }}",
 		"status":         "completed",
 	}
 
@@ -223,12 +223,12 @@ func TestIntegration_RetryScenario(t *testing.T) {
 
 	// Test template that references current output
 	// Note: Accessing specific runs would need custom CEL functions
-	result, err := ctx.resolveTemplate("{{ sequence.api_call.outputs.status }}")
+	result, err := ctx.resolveTemplate("${{ sequence.api_call.outputs.status }}")
 	require.NoError(t, err)
 	assert.Equal(t, int64(200), result)
 
 	// Runs are addressable in CEL for audit history
-	history, err := ctx.resolveTemplate("{{ sequence.api_call.runs[1].outputs.error }}")
+	history, err := ctx.resolveTemplate("${{ sequence.api_call.runs[1].outputs.error }}")
 	require.NoError(t, err)
 	assert.Equal(t, "Service Unavailable", history)
 }
@@ -283,7 +283,7 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 	}
 
 	// Test CEL expression
-	template := `{{ sequence.calculate.outputs.base_value * 3 }}`
+	template := `${{ sequence.calculate.outputs.base_value * 3 }}`
 	result, err := seqCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, int64(150), result)
@@ -292,7 +292,7 @@ func TestIntegration_ComplexCELExpressions(t *testing.T) {
 	stateCtx := newStateCtx(t, smCtx, "loop-state")
 	stateCtx.AddExecution(map[string]interface{}{"count": 1})
 	stateCtx.AddExecution(map[string]interface{}{"count": 2})
-	runCount, err := stateCtx.resolveTemplate(`{{ states["loop-state"].runs[0].outputs.count }}`)
+	runCount, err := stateCtx.resolveTemplate(`${{ states["loop-state"].runs[0].outputs.count }}`)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), runCount)
 }

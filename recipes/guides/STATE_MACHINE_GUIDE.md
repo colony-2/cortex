@@ -55,7 +55,7 @@ state:
 - Each state may list `transitions`—ordered rules the runtime evaluates after the state finishes.
 - A transition has:
   - `to`: target state name.
-  - `when`: CEL condition (no `{{ }}`) evaluated in the current state’s context.
+  - `when`: CEL condition (no `${{ }}`) evaluated in the current state’s context.
 - The first transition whose `when` evaluates to `true` wins.
 - **Any state can be terminal**: if no transition matches (or none are defined), the machine completes with the current state’s outputs.
 

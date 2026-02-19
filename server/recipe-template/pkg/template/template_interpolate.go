@@ -1,11 +1,17 @@
 package template
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	texttemplate "text/template"
 
 	"github.com/colony-2/swf-go/pkg/swf"
 )
+
+var simpleGoTemplateExprPattern = regexp.MustCompile(`^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)\s*\}\}\s*$`)
 
 // interpolateString performs string interpolation with embedded CEL expressions
 func (rc *ResolutionContext) interpolateString(template string, mode RenderMode) (interface{}, error) {
@@ -29,6 +35,14 @@ func (rc *ResolutionContext) interpolateString(template string, mode RenderMode)
 		}
 		// Single text segment - return as-is
 		if text, ok := segments[0].(TextSegment); ok {
+			if strings.Contains(text.Text, "{{") && strings.Contains(text.Text, "}}") {
+				if value, ok, err := rc.resolveSimpleGoTemplateScalar(text.Text); err != nil {
+					return nil, err
+				} else if ok {
+					return value, nil
+				}
+				return rc.renderGoTemplate(text.Text)
+			}
 			return text.Text, nil
 		}
 	}
@@ -38,7 +52,11 @@ func (rc *ResolutionContext) interpolateString(template string, mode RenderMode)
 	for _, segment := range segments {
 		switch s := segment.(type) {
 		case TextSegment:
-			result.WriteString(s.Text)
+			rendered, err := rc.renderGoTemplateSegment(s.Text)
+			if err != nil {
+				return nil, fmt.Errorf("Go template error at position %d: %w", s.Pos, err)
+			}
+			result.WriteString(rendered)
 
 		case ExpressionSegment:
 			value, err := rc.evaluateCELExpression(s.Expression)
@@ -54,6 +72,211 @@ func (rc *ResolutionContext) interpolateString(template string, mode RenderMode)
 	}
 
 	return result.String(), nil
+}
+
+func (rc *ResolutionContext) resolveSimpleGoTemplateScalar(input string) (interface{}, bool, error) {
+	matches := simpleGoTemplateExprPattern.FindStringSubmatch(input)
+	if len(matches) != 2 {
+		return nil, false, nil
+	}
+	path := strings.Split(matches[1], ".")
+	if len(path) < 2 {
+		return nil, false, nil
+	}
+
+	root := path[0]
+	var current interface{}
+	switch root {
+	case "inputs":
+		current = rc.TemplateData.ContainerInputs
+	case "sequence":
+		current = flattenTemplateValue(rc.TemplateData.Sequence)
+	case "states":
+		current = flattenTemplateValue(rc.TemplateData.States)
+	case "scope":
+		current = flattenTemplateValue(rc.TemplateData.Scope)
+	case "context":
+		current = rc.goTemplateContextMap()
+	default:
+		return nil, false, nil
+	}
+
+	for _, key := range path[1:] {
+		asMap, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, false, nil
+		}
+		next, exists := asMap[key]
+		if !exists {
+			return nil, false, fmt.Errorf("map has no entry for key %q", key)
+		}
+		current = next
+	}
+
+	switch value := current.(type) {
+	case nil:
+		return "", true, nil
+	case string:
+		return value, true, nil
+	case bool:
+		return value, true, nil
+	case int:
+		return value, true, nil
+	case int8:
+		return value, true, nil
+	case int16:
+		return value, true, nil
+	case int32:
+		return value, true, nil
+	case int64:
+		return value, true, nil
+	case uint:
+		return value, true, nil
+	case uint8:
+		return value, true, nil
+	case uint16:
+		return value, true, nil
+	case uint32:
+		return value, true, nil
+	case uint64:
+		return value, true, nil
+	case float32:
+		return value, true, nil
+	case float64:
+		return value, true, nil
+	default:
+		// Preserve backward compatibility for non-scalar values by using normal Go template rendering.
+		return nil, false, nil
+	}
+}
+
+func (rc *ResolutionContext) renderGoTemplateSegment(input string) (string, error) {
+	if !strings.Contains(input, "{{") || !strings.Contains(input, "}}") {
+		return input, nil
+	}
+	return rc.renderGoTemplate(input)
+}
+
+func (rc *ResolutionContext) renderGoTemplate(input string) (string, error) {
+	tmpl, err := texttemplate.New("string").
+		Option("missingkey=error").
+		Funcs(rc.goTemplateFuncMap()).
+		Parse(input)
+	if err != nil {
+		return "", err
+	}
+
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, nil); err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
+func (rc *ResolutionContext) goTemplateFuncMap() texttemplate.FuncMap {
+	return texttemplate.FuncMap{
+		"inputs": func() map[string]interface{} {
+			return rc.TemplateData.ContainerInputs
+		},
+		"sequence": func() interface{} {
+			return flattenTemplateValue(rc.TemplateData.Sequence)
+		},
+		"states": func() interface{} {
+			return flattenTemplateValue(rc.TemplateData.States)
+		},
+		"scope": func() map[string]interface{} {
+			return flattenTemplateValue(rc.TemplateData.Scope)
+		},
+		"context": func() map[string]interface{} {
+			return rc.goTemplateContextMap()
+		},
+	}
+}
+
+func (rc *ResolutionContext) goTemplateContextMap() map[string]interface{} {
+	ctx := rc.TemplateData.Context
+
+	ticketCreatorUser := map[string]interface{}{
+		"email": "",
+	}
+	if ctx.Ticket.Creator.User != nil {
+		ticketCreatorUser["email"] = ctx.Ticket.Creator.User.Email
+	}
+
+	ticketCreatorAgent := map[string]interface{}{
+		"cell":            "",
+		"workflow_name":   "",
+		"execution_id":    "",
+		"invocation_hash": "",
+	}
+	if ctx.Ticket.Creator.Agent != nil {
+		ticketCreatorAgent["cell"] = ctx.Ticket.Creator.Agent.CellName
+		ticketCreatorAgent["workflow_name"] = ctx.Ticket.Creator.Agent.WorkflowName
+		ticketCreatorAgent["execution_id"] = ctx.Ticket.Creator.Agent.ExecutionID
+		ticketCreatorAgent["invocation_hash"] = ctx.Ticket.Creator.Agent.InvocationHash
+	}
+
+	return map[string]interface{}{
+		"actor": map[string]interface{}{
+			"ticket_id":   ctx.Actor.TicketID,
+			"actor_name":  ctx.Actor.ActorName,
+			"actor_email": ctx.Actor.ActorEmail,
+		},
+		"ticket": map[string]interface{}{
+			"id":          ctx.Ticket.ID,
+			"title":       ctx.Ticket.Title,
+			"description": ctx.Ticket.Description,
+			"creator": map[string]interface{}{
+				"type":  ctx.Ticket.Creator.Type,
+				"user":  ticketCreatorUser,
+				"agent": ticketCreatorAgent,
+			},
+			"created_at": ctx.Ticket.CreatedAt,
+			"updated_at": ctx.Ticket.UpdatedAt,
+		},
+		"environment": map[string]interface{}{
+			"worktree_path": ctx.Environment.WorktreePath,
+			"workdir":       ctx.Environment.WorkdirPath,
+			"inbox":         ctx.Environment.ArtifactInbox,
+			"outbox":        ctx.Environment.ArtifactOutbox,
+		},
+		"workflow": map[string]interface{}{
+			"cell_id":    ctx.Workflow.CellID,
+			"cell":       ctx.Workflow.CellName,
+			"cell_path":  ctx.Workflow.CellPath,
+			"job_id":     ctx.Workflow.JobID,
+			"project_id": ctx.Workflow.ProjectId,
+		},
+		"git": map[string]interface{}{
+			"repo":          ctx.GitTask.BaseRepo,
+			"ref":           ctx.GitTask.BaseRef,
+			"resolved_hash": ctx.GitTask.ResolvedBaseHash,
+			"author":        ctx.GitTask.GitAuthor,
+			"parent_ref":    ctx.GitTask.ParentRef,
+			"hash":          ctx.GitTask.PersistHash,
+			"parent_hash":   ctx.GitTask.ParentHash,
+		},
+		"invocation": map[string]interface{}{
+			"hash":     ctx.Invocation.Hash,
+			"path":     ctx.Invocation.NodePath,
+			"sequence": ctx.Invocation.InvokeSeq,
+		},
+	}
+}
+
+func flattenTemplateValue(value interface{}) map[string]interface{} {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return map[string]interface{}{}
+	}
+	if out == nil {
+		return map[string]interface{}{}
+	}
+	return out
 }
 
 func isArtifactInterpolationValue(value interface{}) bool {
@@ -97,8 +320,8 @@ func (rc *ResolutionContext) ResolveTemplateWithMode(expr string, mode RenderMod
 	// For interpolation mode, check if it looks like a template
 	trimmed := strings.TrimSpace(expr)
 
-	// If it doesn't have {{ }}, return as-is
-	if !strings.Contains(trimmed, "{{") || !strings.Contains(trimmed, "}}") {
+	// If it doesn't have template markers, return as-is
+	if !(strings.Contains(trimmed, "${{") || strings.Contains(trimmed, "{{")) {
 		return expr, nil
 	}
 

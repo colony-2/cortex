@@ -42,21 +42,21 @@ func TestInterpolationIntegration(t *testing.T) {
 	})
 
 	t.Run("Multi-expression interpolation", func(t *testing.T) {
-		template := "User {{ inputs.user.name }} ({{ inputs.user.id }}) placed order {{ inputs.order.id }}"
+		template := "User ${{ inputs.user.name }} (${{ inputs.user.id }}) placed order ${{ inputs.order.id }}"
 		result, err := ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "User Alice Smith (USR-12345) placed order ORD-98765", result)
 	})
 
 	t.Run("URL construction with interpolation", func(t *testing.T) {
-		template := "https://api-{{ inputs.environment }}.example.com/{{ inputs.api_version }}/users/{{ inputs.user.id }}/orders/{{ inputs.order.id }}"
+		template := "https://api-${{ inputs.environment }}.example.com/${{ inputs.api_version }}/users/${{ inputs.user.id }}/orders/${{ inputs.order.id }}"
 		result, err := ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "https://api-production.example.com/v2/users/USR-12345/orders/ORD-98765", result)
 	})
 
 	t.Run("Log message with mixed types", func(t *testing.T) {
-		template := "[{{ sequence.process.outputs.timestamp }}] Order {{ inputs.order.id }} - {{ inputs.order.items }} items totaling ${{ inputs.order.amount }} - Status: {{ sequence.validate.outputs.status }}"
+		template := "[${{ sequence.process.outputs.timestamp }}] Order ${{ inputs.order.id }} - ${{ inputs.order.items }} items totaling $${{ inputs.order.amount }} - Status: ${{ sequence.validate.outputs.status }}"
 		result, err := ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "[2024-01-15T10:30:00Z] Order ORD-98765 - 3 items totaling $299.99 - Status: valid", result)
@@ -65,18 +65,18 @@ func TestInterpolationIntegration(t *testing.T) {
 	t.Run("Complex nested data structure", func(t *testing.T) {
 		input := map[string]interface{}{
 			"notification": map[string]interface{}{
-				"subject": "Order {{ inputs.order.id }} Update",
-				"body":    "Dear {{ inputs.user.name }},\n\nYour order {{ inputs.order.id }} has been {{ sequence.process.outputs.result }}fully processed.\nTotal: ${{ inputs.order.amount }}\n\nProcessing time: {{ sequence.process.outputs.duration }}ms",
+				"subject": "Order ${{ inputs.order.id }} Update",
+				"body":    "Dear ${{ inputs.user.name }},\n\nYour order ${{ inputs.order.id }} has been ${{ sequence.process.outputs.result }}fully processed.\nTotal: $${{ inputs.order.amount }}\n\nProcessing time: ${{ sequence.process.outputs.duration }}ms",
 				"metadata": map[string]interface{}{
-					"user_id":  "{{ inputs.user.id }}",
-					"order_id": "{{ inputs.order.id }}",
-					"region":   "{{ inputs.region }}",
+					"user_id":  "${{ inputs.user.id }}",
+					"order_id": "${{ inputs.order.id }}",
+					"region":   "${{ inputs.region }}",
 				},
 			},
 			"logs": []interface{}{
-				"User {{ inputs.user.id }} initiated order",
-				"Validation score: {{ sequence.validate.outputs.score }}",
-				"Processing completed in {{ sequence.process.outputs.duration }}ms",
+				"User ${{ inputs.user.id }} initiated order",
+				"Validation score: ${{ sequence.validate.outputs.score }}",
+				"Processing completed in ${{ sequence.process.outputs.duration }}ms",
 			},
 		}
 
@@ -104,27 +104,27 @@ func TestInterpolationIntegration(t *testing.T) {
 
 	t.Run("Single expression returns raw type", func(t *testing.T) {
 		// String
-		result, err := ctx.resolveTemplate("{{ inputs.user.name }}")
+		result, err := ctx.resolveTemplate("${{ inputs.user.name }}")
 		require.NoError(t, err)
 		assert.Equal(t, "Alice Smith", result)
 
 		// Number (float)
-		result, err = ctx.resolveTemplate("{{ inputs.order.amount }}")
+		result, err = ctx.resolveTemplate("${{ inputs.order.amount }}")
 		require.NoError(t, err)
 		assert.Equal(t, 299.99, result)
 
 		// Number (int)
-		result, err = ctx.resolveTemplate("{{ sequence.validate.outputs.score }}")
+		result, err = ctx.resolveTemplate("${{ sequence.validate.outputs.score }}")
 		require.NoError(t, err)
 		assert.Equal(t, int64(95), result)
 
 		// Boolean
-		result, err = ctx.resolveTemplate("{{ inputs.user.is_admin }}")
+		result, err = ctx.resolveTemplate("${{ inputs.user.is_admin }}")
 		require.NoError(t, err)
 		assert.Equal(t, false, result)
 
 		// Map
-		result, err = ctx.resolveTemplate("{{ inputs.user }}")
+		result, err = ctx.resolveTemplate("${{ inputs.user }}")
 		require.NoError(t, err)
 		userMap := result.(map[string]interface{})
 		assert.Equal(t, "Alice Smith", userMap["name"])
@@ -133,20 +133,20 @@ func TestInterpolationIntegration(t *testing.T) {
 
 	t.Run("CEL expressions in interpolation", func(t *testing.T) {
 		// Arithmetic in interpolation
-		template := "Order total with tax (10%): ${{ inputs.order.amount * 1.1 }}"
+		template := "Order total with tax (10%): $${{ inputs.order.amount * 1.1 }}"
 		result, err := ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		// Use Contains for floating point result
 		assert.Contains(t, result.(string), "Order total with tax (10%): $329.989")
 
 		// Boolean logic in single expression
-		template = "{{ inputs.order.items > 2 && sequence.validate.outputs.score > 90 }}"
+		template = "${{ inputs.order.items > 2 && sequence.validate.outputs.score > 90 }}"
 		result, err = ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, true, result)
 
 		// String concatenation still works
-		template = `{{ "Order " + inputs.order.id + " for " + inputs.user.name }}`
+		template = `${{ "Order " + inputs.order.id + " for " + inputs.user.name }}`
 		result, err = ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "Order ORD-98765 for Alice Smith", result)
@@ -154,7 +154,7 @@ func TestInterpolationIntegration(t *testing.T) {
 
 	t.Run("Edge cases", func(t *testing.T) {
 		// Empty expression
-		result, err := ctx.resolveTemplate("{{ }}")
+		result, err := ctx.resolveTemplate("${{ }}")
 		require.NoError(t, err)
 		assert.Equal(t, "", result)
 
@@ -164,19 +164,19 @@ func TestInterpolationIntegration(t *testing.T) {
 		assert.Equal(t, "Plain text with no expressions", result)
 
 		// Expression with }} inside strings
-		template := `{{ "This string has }} inside" }}`
+		template := `${{ "This string has }} inside" }}`
 		result, err = ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "This string has }} inside", result)
 
 		// Multiple }} in single quotes
-		template = `{{ 'Another }} test }}' }}`
+		template = `${{ 'Another }} test }}' }}`
 		result, err = ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "Another }} test }}", result)
 
 		// Whitespace handling
-		template = "  {{ inputs.user.name }}  "
+		template = "  ${{ inputs.user.name }}  "
 		result, err = ctx.resolveTemplate(template)
 		require.NoError(t, err)
 		assert.Equal(t, "  Alice Smith  ", result)
@@ -228,7 +228,7 @@ func TestPureCELModeIntegration(t *testing.T) {
 		},
 		{
 			name:      "invalid - string interpolation not allowed",
-			expr:      "Status is {{ inputs.status }}",
+			expr:      "Status is ${{ inputs.status }}",
 			expectErr: true,
 		},
 	}

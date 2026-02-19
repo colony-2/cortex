@@ -74,7 +74,7 @@ func TestInjectDefaults_Nested(t *testing.T) {
 func TestInjectDefaults_TemplateExpression(t *testing.T) {
 	type TestInput struct {
 		Branch string `json:"branch" default:"{{ context.git.branch }}"`
-		Port   int    `json:"port" default:"{{ inputs.base_port + 1000 }}"`
+		Port   int    `json:"port" default:"${{ inputs.base_port + 1000 }}"`
 	}
 
 	inputMap := map[string]interface{}{}
@@ -89,7 +89,7 @@ func TestInjectDefaults_TemplateExpression(t *testing.T) {
 		t.Errorf("expected branch template, got %v", inputMap["branch"])
 	}
 
-	if inputMap["port"] != "{{ inputs.base_port + 1000 }}" {
+	if inputMap["port"] != "${{ inputs.base_port + 1000 }}" {
 		t.Errorf("expected port template, got %v", inputMap["port"])
 	}
 }

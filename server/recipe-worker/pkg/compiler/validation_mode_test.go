@@ -124,7 +124,7 @@ func TestValidationClampsRunIndex(t *testing.T) {
 					}},
 				},
 				Outputs: map[string]interface{}{
-					"value": "{{ sequence.call.runs[3].outputs.value }}",
+					"value": "${{ sequence.call.runs[3].outputs.value }}",
 					"flag":  "{{ sequence.call.outputs.flag }}",
 				},
 			},
@@ -151,7 +151,7 @@ func TestValidationAllowsFutureStateReference(t *testing.T) {
 			StateMachineData: recipe.StateMachineData{
 				Outputs: map[string]interface{}{
 					"result":  "{{ states.b.outputs.value }}",
-					"attempt": "{{ states.a.runs[2].outputs.value }}",
+					"attempt": "${{ states.a.runs[2].outputs.value }}",
 				},
 				States: &recipe.StateMap{
 					Initial: recipe.InitialState("a"),
@@ -262,7 +262,7 @@ func TestValidationRejectsInvalidCEL(t *testing.T) {
 					}},
 				},
 				Outputs: map[string]interface{}{
-					"bad": "{{ inputs.foo + }}",
+					"bad": "${{ inputs.foo + }}",
 				},
 			},
 		},

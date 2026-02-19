@@ -5,8 +5,8 @@ input_schema:
   name:
     type: string
 inputs:
-  name: '{{ has(inputs.name) ? inputs.name : "" }}'
-  greeting: '{{ "Hello, " + (has(inputs.name) ? inputs.name : "<no value>") + "!" }}'
+  name: '${{ has(inputs.name) ? inputs.name : "" }}'
+  greeting: '${{ "Hello, " + (has(inputs.name) ? inputs.name : "<no value>") + "!" }}'
 sequence:
 - id: echo
   op: echo_activity

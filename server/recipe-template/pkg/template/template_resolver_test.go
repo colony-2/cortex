@@ -27,7 +27,7 @@ func TestResolveTemplate_Simple(t *testing.T) {
 	}{
 		{
 			name:     "simple input reference",
-			template: "{{ inputs.name }}",
+			template: "${{ inputs.name }}",
 			expected: "Alice",
 		},
 		{
@@ -37,12 +37,12 @@ func TestResolveTemplate_Simple(t *testing.T) {
 		},
 		{
 			name:     "CEL string concatenation",
-			template: `{{ "Hello " + inputs.name }}`,
+			template: `${{ "Hello " + inputs.name }}`,
 			expected: "Hello Alice",
 		},
 		{
 			name:     "CEL arithmetic",
-			template: "{{ inputs.age + 10 }}",
+			template: "${{ inputs.age + 10 }}",
 			expected: int64(40),
 		},
 	}
@@ -76,12 +76,12 @@ func TestResolveTemplate_SequenceReferences(t *testing.T) {
 	}{
 		{
 			name:     "sequence node output",
-			template: "{{ sequence.fetch.outputs.status }}",
+			template: "${{ sequence.fetch.outputs.status }}",
 			expected: int64(200),
 		},
 		{
 			name:     "nested sequence output",
-			template: "{{ sequence.transform.outputs.result }}",
+			template: "${{ sequence.transform.outputs.result }}",
 			expected: "processed",
 		},
 	}
@@ -103,7 +103,7 @@ func TestResolveTemplate_CELFunction(t *testing.T) {
 		"value": 10,
 	})
 
-	result, err := seqCtx.resolveTemplate(`{{ sequence.calc.outputs.value + 5 }}`)
+	result, err := seqCtx.resolveTemplate(`${{ sequence.calc.outputs.value + 5 }}`)
 	require.NoError(t, err)
 	assert.Equal(t, int64(15), result)
 }
@@ -117,7 +117,7 @@ func TestResolveTemplate_JSONParse(t *testing.T) {
 	recipeCtx := newRecipeCtx(t, inputs)
 	seqCtx := newSequenceCtx(t, recipeCtx, "test", inputs)
 
-	result, err := seqCtx.resolveTemplate("{{ json_parse(inputs.config_json) }}")
+	result, err := seqCtx.resolveTemplate("${{ json_parse(inputs.config_json) }}")
 	require.NoError(t, err)
 
 	resultMap, ok := result.(map[string]interface{})
@@ -137,15 +137,15 @@ func TestResolveTemplate_JSONParse(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, float64(1), firstItem["id"])
 
-	_, err = seqCtx.resolveTemplate("{{ json_parse(inputs.invalid_json) }}")
+	_, err = seqCtx.resolveTemplate("${{ json_parse(inputs.invalid_json) }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json_parse: invalid JSON")
 
-	_, err = seqCtx.resolveTemplate("{{ json_parse(\"\") }}")
+	_, err = seqCtx.resolveTemplate("${{ json_parse(\"\") }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json_parse: expected string")
 
-	_, err = seqCtx.resolveTemplate("{{ json_parse(inputs.flag) }}")
+	_, err = seqCtx.resolveTemplate("${{ json_parse(inputs.flag) }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "json_parse: expected string")
 }
@@ -166,13 +166,13 @@ func TestCELJQFunctions(t *testing.T) {
 	seqCtx := newSequenceCtx(t, recipeCtx, "test", recipeCtx.TemplateData.ContainerInputs)
 
 	t.Run("happy path selects nested field", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".user.name\") }}")
+		val, err := seqCtx.resolveTemplate("${{ jq(inputs.payload, \".user.name\") }}")
 		require.NoError(t, err)
 		assert.Equal(t, "Ada", val)
 	})
 
 	t.Run("multiple results returns list", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".tags[]\") }}")
+		val, err := seqCtx.resolveTemplate("${{ jq(inputs.payload, \".tags[]\") }}")
 		require.NoError(t, err)
 
 		list, ok := val.([]interface{})
@@ -181,26 +181,26 @@ func TestCELJQFunctions(t *testing.T) {
 	})
 
 	t.Run("empty result yields nil", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \"empty\") }}")
+		val, err := seqCtx.resolveTemplate("${{ jq(inputs.payload, \"empty\") }}")
 		require.NoError(t, err)
 		t.Logf("empty result type=%T value=%v", val, val)
 		assert.Nil(t, val)
 	})
 
 	t.Run("invalid expression surfaces error", func(t *testing.T) {
-		_, err := seqCtx.resolveTemplate("{{ jq(inputs.payload, \".user | \") }}")
+		_, err := seqCtx.resolveTemplate("${{ jq(inputs.payload, \".user | \") }}")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "jq: invalid expression")
 	})
 
 	t.Run("non-map input still works", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ jq(inputs.raw, \".\") }}")
+		val, err := seqCtx.resolveTemplate("${{ jq(inputs.raw, \".\") }}")
 		require.NoError(t, err)
 		assert.Equal(t, "hello", val)
 	})
 
 	t.Run("json_stringify encodes map", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ json_stringify(inputs.payload) }}")
+		val, err := seqCtx.resolveTemplate("${{ json_stringify(inputs.payload) }}")
 		require.NoError(t, err)
 
 		var decoded map[string]interface{}
@@ -209,13 +209,13 @@ func TestCELJQFunctions(t *testing.T) {
 	})
 
 	t.Run("json_stringify errors on unsupported", func(t *testing.T) {
-		_, err := seqCtx.resolveTemplate("{{ json_stringify(inputs.bad) }}")
+		_, err := seqCtx.resolveTemplate("${{ json_stringify(inputs.bad) }}")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "json_stringify: failed to encode JSON")
 	})
 
 	t.Run("string overload encodes map", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("{{ string(inputs.payload) }}")
+		val, err := seqCtx.resolveTemplate("${{ string(inputs.payload) }}")
 		require.NoError(t, err)
 
 		var decoded map[string]interface{}
@@ -224,7 +224,7 @@ func TestCELJQFunctions(t *testing.T) {
 	})
 
 	t.Run("interpolation converts map to json", func(t *testing.T) {
-		val, err := seqCtx.resolveTemplate("Payload: {{ inputs.payload }}")
+		val, err := seqCtx.resolveTemplate("Payload: ${{ inputs.payload }}")
 		require.NoError(t, err)
 
 		s := val.(string)
@@ -258,23 +258,23 @@ func TestResolveTemplate_TicketContext(t *testing.T) {
 	ctx, err := NewRecipeResolutionContext(commitCtx, map[string]interface{}{}, jobCtx)
 	require.NoError(t, err)
 
-	val, err := ctx.resolveTemplate("{{ context.ticket.id }}")
+	val, err := ctx.resolveTemplate("${{ context.ticket.id }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ticket-123", val)
 
-	val, err = ctx.resolveTemplate("{{ context.ticket.title }}")
+	val, err = ctx.resolveTemplate("${{ context.ticket.title }}")
 	require.NoError(t, err)
 	assert.Equal(t, "Fix templates", val)
 
-	val, err = ctx.resolveTemplate("{{ context.ticket.creator.user.email }}")
+	val, err = ctx.resolveTemplate("${{ context.ticket.creator.user.email }}")
 	require.NoError(t, err)
 	assert.Equal(t, "creator@example.com", val)
 
-	val, err = ctx.resolveTemplate("{{ context.ticket.created_at }}")
+	val, err = ctx.resolveTemplate("${{ context.ticket.created_at }}")
 	require.NoError(t, err)
 	assertResolvedTime(t, val, createdAt)
 
-	val, err = ctx.resolveTemplate("{{ context.ticket.updated_at }}")
+	val, err = ctx.resolveTemplate("${{ context.ticket.updated_at }}")
 	require.NoError(t, err)
 	assertResolvedTime(t, val, updatedAt)
 }
@@ -363,7 +363,7 @@ func TestAddSequenceNode_WithRuns(t *testing.T) {
 	assert.Equal(t, 1, node.Runs[0].Outputs["attempt"])
 
 	// Runs should be addressable from CEL expressions
-	val, err := seqCtx.resolveTemplate("{{ sequence.retry_node.runs[0].outputs.status }}")
+	val, err := seqCtx.resolveTemplate("${{ sequence.retry_node.runs[0].outputs.status }}")
 	require.NoError(t, err)
 	assert.Equal(t, "failed", val)
 }
@@ -415,13 +415,13 @@ func TestResolveValue_Recursive(t *testing.T) {
 	})
 
 	value := map[string]interface{}{
-		"url": `{{ inputs.base_url + "/" + inputs.version }}`,
+		"url": `${{ inputs.base_url + "/" + inputs.version }}`,
 		"headers": map[string]interface{}{
-			"Authorization": `{{ "Bearer " + sequence.auth.outputs.token }}`,
+			"Authorization": `${{ "Bearer " + sequence.auth.outputs.token }}`,
 			"Content-Type":  "application/json",
 		},
 		"options": []interface{}{
-			"{{ inputs.version }}",
+			"${{ inputs.version }}",
 			"stable",
 		},
 	}
@@ -451,12 +451,12 @@ func TestValidateTemplateReferences(t *testing.T) {
 	}{
 		{
 			name:      "valid template",
-			template:  "{{ inputs.name }}",
+			template:  "${{ inputs.name }}",
 			wantError: false,
 		},
 		{
 			name:      "invalid syntax",
-			template:  "{{ inputs.name",
+			template:  "${{ inputs.name",
 			wantError: false, // Not a template anymore, just a plain string
 		},
 		{
@@ -580,19 +580,19 @@ func TestComplexStateMachineScenario(t *testing.T) {
 	processState := newStateCtx(t, smCtx, "process")
 	processSeq := newSequenceCtx(t, processState, "process-seq", smCtx.TemplateData.ContainerInputs)
 
-	template := "{{ states.validate.outputs.valid }}"
+	template := "${{ states.validate.outputs.valid }}"
 	result, err := processState.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, true, result)
 
 	addOpOutput(t, processSeq, "enrich", map[string]interface{}{
 		"enriched_data": map[string]interface{}{
-			"user":  "{{ inputs.user_id }}",
+			"user":  "${{ inputs.user_id }}",
 			"extra": "info",
 		},
 	})
 
-	template = "{{ sequence.enrich.outputs.enriched_data }}"
+	template = "${{ sequence.enrich.outputs.enriched_data }}"
 	result, err = processSeq.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
@@ -603,7 +603,7 @@ func TestComplexStateMachineScenario(t *testing.T) {
 
 	finalCtx := newStateCtx(t, smCtx, "complete")
 
-	template = "{{ states.process.outputs.final_result }}"
+	template = "${{ states.process.outputs.final_result }}"
 	result, err = finalCtx.resolveTemplate(template)
 	require.NoError(t, err)
 	assert.Equal(t, "completed", result)
@@ -625,29 +625,29 @@ func TestScopeVisibility_Positive(t *testing.T) {
 	})
 
 	// State can see previous states
-	val, err := stateCtx.resolveTemplate("{{ states.prev.outputs.status }}")
+	val, err := stateCtx.resolveTemplate("${{ states.prev.outputs.status }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", val)
 
 	// Sequence can see parent inputs and state outputs
-	val, err = seqCtx.resolveTemplate("{{ inputs.sm_input }}")
+	val, err = seqCtx.resolveTemplate("${{ inputs.sm_input }}")
 	require.NoError(t, err)
 	assert.Equal(t, "parent-value", val)
 
-	val, err = seqCtx.resolveTemplate("{{ sequence.task.outputs.value }}")
+	val, err = seqCtx.resolveTemplate("${{ sequence.task.outputs.value }}")
 	require.NoError(t, err)
 	assert.Equal(t, "done", val)
 
 	// Op created under sequence inherits same visibility
 	opCtx, err := seqCtx.NewChildContext(ScopeOp, recipe.NodeMetadata{ID: "inner-op"}, "inner-op", nil)
 	require.NoError(t, err)
-	val, err = opCtx.resolveTemplate("{{ inputs.sm_input }}")
+	val, err = opCtx.resolveTemplate("${{ inputs.sm_input }}")
 	require.NoError(t, err)
 	assert.Equal(t, "parent-value", val)
 
 	// Other state can see completed state outputs
 	anotherState := newStateCtx(t, smCtx, "next")
-	val, err = anotherState.resolveTemplate("{{ states.prev.outputs.status }}")
+	val, err = anotherState.resolveTemplate("${{ states.prev.outputs.status }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ok", val)
 }
@@ -663,7 +663,7 @@ func TestScopeVisibility_Negative(t *testing.T) {
 		"val": 1,
 	})
 	childSeq := newSequenceCtx(t, parentSeq, "child-seq", parentSeq.TemplateData.ContainerInputs)
-	_, err := childSeq.resolveTemplate("{{ sequence.outer.outputs.val }}")
+	_, err := childSeq.resolveTemplate("${{ sequence.outer.outputs.val }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no such key")
 
@@ -677,17 +677,17 @@ func TestScopeVisibility_Negative(t *testing.T) {
 
 	stateB := newStateCtx(t, smCtx, "stateB")
 	seqB := newSequenceCtx(t, stateB, "seqB", smCtx.TemplateData.ContainerInputs)
-	_, err = seqB.resolveTemplate("{{ sequence.taskA.outputs.value }}")
+	_, err = seqB.resolveTemplate("${{ sequence.taskA.outputs.value }}")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no such key")
 
 	// Root (outside state machine) cannot see inside state machine states
 	addStateOutput(t, smCtx, "stateA", map[string]interface{}{"result": "hidden"})
-	_, err = recipeCtx.resolveTemplate("{{ states.stateA.outputs.result }}")
+	_, err = recipeCtx.resolveTemplate("${{ states.stateA.outputs.result }}")
 	require.Error(t, err)
 
 	// Root (outside sequence) cannot see inside sequence nodes
-	_, err = recipeCtx.resolveTemplate("{{ sequence.outer.outputs.val }}")
+	_, err = recipeCtx.resolveTemplate("${{ sequence.outer.outputs.val }}")
 	require.Error(t, err)
 }
 
@@ -706,28 +706,28 @@ func TestResolveTemplate_ContextActorTicketID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test resolving context.actor.ticket_id
-	result, err := recipeCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	result, err := recipeCtx.resolveTemplate("${{ context.actor.ticket_id }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ticket-12345", result)
 
 	// Test resolving other actor fields
-	result, err = recipeCtx.resolveTemplate("{{ context.actor.actor_name }}")
+	result, err = recipeCtx.resolveTemplate("${{ context.actor.actor_name }}")
 	require.NoError(t, err)
 	assert.Equal(t, "test-user", result)
 
-	result, err = recipeCtx.resolveTemplate("{{ context.actor.actor_email }}")
+	result, err = recipeCtx.resolveTemplate("${{ context.actor.actor_email }}")
 	require.NoError(t, err)
 	assert.Equal(t, "test@example.com", result)
 
 	// Test in a sequence context - should inherit from parent
 	seqCtx := newSequenceCtx(t, recipeCtx, "test-seq", map[string]interface{}{})
-	result, err = seqCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	result, err = seqCtx.resolveTemplate("${{ context.actor.ticket_id }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ticket-12345", result)
 
 	// Test in a state machine context
 	smCtx := newStateMachineCtx(t, recipeCtx, "test-sm", map[string]interface{}{})
-	result, err = smCtx.resolveTemplate("{{ context.actor.ticket_id }}")
+	result, err = smCtx.resolveTemplate("${{ context.actor.ticket_id }}")
 	require.NoError(t, err)
 	assert.Equal(t, "ticket-12345", result)
 }

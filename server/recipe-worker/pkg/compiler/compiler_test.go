@@ -105,14 +105,14 @@ input_schema:
   param1:
     type: string
 inputs:
-  iParam1: "{{ .inputs.param1 }}"
+  iParam1: "{{ inputs.param1 }}"
 sequence:
   - id: echo
     op: echo_activity
     inputs:
-      Message: "{{ .inputs.iParam1 }}"
+      Message: "{{ inputs.iParam1 }}"
 outputs:
-  result: "{{ .sequence.echo.outputs.output }}"
+  result: "{{ sequence.echo.outputs.output }}"
 `
 
 	input := map[string]interface{}{

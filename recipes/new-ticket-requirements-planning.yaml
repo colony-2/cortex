@@ -20,9 +20,9 @@ input_schema:
 inputs:
   title: "{{ inputs.title }}"
   description: "{{ inputs.description }}"
-  prior_plan_json: '{{ has(inputs.prior_plan_json) ? inputs.prior_plan_json : "" }}'
-  user_feedback: '{{ has(inputs.user_feedback) ? inputs.user_feedback : "" }}'
-  api_review_feedback: '{{ has(inputs.api_review_feedback) ? inputs.api_review_feedback : "" }}'
+  prior_plan_json: '${{ has(inputs.prior_plan_json) ? inputs.prior_plan_json : "" }}'
+  user_feedback: '${{ has(inputs.user_feedback) ? inputs.user_feedback : "" }}'
+  api_review_feedback: '${{ has(inputs.api_review_feedback) ? inputs.api_review_feedback : "" }}'
 sequence:
   - id: generate_plan
     op: llm_inference2
@@ -128,7 +128,7 @@ sequence:
         {{ inputs.description }}
 
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): {{ cells() }}
+        Available Cells (name, path, description): ${{ cells() }}
 
         If you propose multiple requirement docs:
         - Use stable IDs like REQ-1, REQ-2, ...
@@ -298,7 +298,7 @@ sequence:
         Respond ONLY with a JSON object matching response_schema.
       prompt: |
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): {{ cells() }}
+        Available Cells (name, path, description): ${{ cells() }}
 
         Proposed requirements bundle (JSON):
         {{ sequence.generate_plan.outputs.response }}
@@ -353,11 +353,11 @@ sequence:
 
 outputs:
   plan_json: "{{ sequence.generate_plan.outputs.response }}"
-  summary: "{{ json_parse(sequence.generate_plan.outputs.response).summary }}"
-  needs_cross_cell_support: "{{ json_parse(sequence.generate_plan.outputs.response).needs_cross_cell_support }}"
-  dependency_order: "{{ json_parse(sequence.generate_plan.outputs.response).dependency_order }}"
-  requirements: "{{ json_parse(sequence.generate_plan.outputs.response).requirements }}"
-  notes_for_user_review: "{{ json_parse(sequence.generate_plan.outputs.response).notes_for_user_review }}"
-  api_review_ok: "{{ json_parse(sequence.contrarian_api_review.outputs.response).ok }}"
-  api_review_feedback: "{{ json_parse(sequence.contrarian_api_review.outputs.response).feedback }}"
-  api_review_blocking_issues: "{{ json_parse(sequence.contrarian_api_review.outputs.response).blocking_issues }}"
+  summary: "${{ json_parse(sequence.generate_plan.outputs.response).summary }}"
+  needs_cross_cell_support: "${{ json_parse(sequence.generate_plan.outputs.response).needs_cross_cell_support }}"
+  dependency_order: "${{ json_parse(sequence.generate_plan.outputs.response).dependency_order }}"
+  requirements: "${{ json_parse(sequence.generate_plan.outputs.response).requirements }}"
+  notes_for_user_review: "${{ json_parse(sequence.generate_plan.outputs.response).notes_for_user_review }}"
+  api_review_ok: "${{ json_parse(sequence.contrarian_api_review.outputs.response).ok }}"
+  api_review_feedback: "${{ json_parse(sequence.contrarian_api_review.outputs.response).feedback }}"
+  api_review_blocking_issues: "${{ json_parse(sequence.contrarian_api_review.outputs.response).blocking_issues }}"
