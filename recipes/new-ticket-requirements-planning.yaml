@@ -152,7 +152,6 @@ sequence:
         - If user_feedback contains concrete specifics (endpoint paths, UUID version/format, logging/telemetry systems,
           retention, privacy constraints), reflect them directly in requirements[].scope and acceptance_criteria.
         - Do not keep those items as open_questions once answered; remove or replace with any remaining unknowns.
-        - If user_feedback is exactly "APPROVE" (case-insensitive), treat it as empty/no feedback.
 
   - id: persist_plan_and_docs
     op: command_execution

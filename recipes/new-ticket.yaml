@@ -1,19 +1,45 @@
 id: new-ticket
-version: 0.1.4
-desc: Long-lived ticket recipe orchestrating triage, plan, execute, validate, and approval (v2)
+version: 0.2.0
+desc: "Ticket recipe: triage → requirements → (split to other cells OR implement/validate loop)"
+input_schema:
+  title:
+    type: string
+    required: false
+  description:
+    type: string
+    required: false
+  validate_commands:
+    type: string
+    required: false
+inputs:
+  title: '{{ has(inputs.title) ? inputs.title : "" }}'
+  description: '{{ has(inputs.description) ? inputs.description : "" }}'
+  validate_commands: '{{ has(inputs.validate_commands) ? inputs.validate_commands : "" }}'
 state:
   initial: triage
   states:
     triage:
       op: recipe.run_and_get_result
       transitions:
+        - to: reassign_create
+          when: 'has(context.ticket.id) && context.ticket.id != "" && !states.triage.outputs.outputs.cell_is_appropriate && states.triage.outputs.outputs.recommended_cell_is_valid'
         - to: requirements_planning
           when: "true"
       inputs:
         name: new-ticket-triage
         inputs:
-          title: '{{ context.ticket.title }}'
-          description: '{{ context.ticket.description }}'
+          title: >-
+            {{
+              (has(inputs.title) && inputs.title != "")
+                ? inputs.title
+                : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
+            }}
+          description: >-
+            {{
+              (has(inputs.description) && inputs.description != "")
+                ? inputs.description
+                : ((has(context.ticket.description) && context.ticket.description != "") ? context.ticket.description : "")
+            }}
     reassign_create:
       op: ticket.manage
       when: 'has(context.ticket.id) && context.ticket.id != ""'
@@ -25,16 +51,14 @@ state:
           - type: create_ticket
             project_id: "{{ context.workflow.project_id }}"
             cell: "{{ states.triage.outputs.outputs.recommended_cell_final }}"
-            title: "{{ context.ticket.title }}"
-            description: "{{ context.ticket.description }}"
+            title: "{{ (has(inputs.title) && inputs.title != \"\") ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
+            description: "{{ (has(inputs.description) && inputs.description != \"\") ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
             stage: open
             state: working
     reassign_annotate:
       op: ticket.manage
       when: 'has(context.ticket.id) && context.ticket.id != ""'
-      transitions:
-        - to: requirements_note
-          when: "true"
+      transitions: []
       inputs:
         actions:
           - type: append_ticket_note
@@ -42,41 +66,58 @@ state:
             note: >-
               Reassigned to cell "{{ states.triage.outputs.outputs.recommended_cell_final }}".
               Created new ticket {{ size(states.reassign_create.outputs.results) > 0 ? states.reassign_create.outputs.results[0].ticket.id : "(unknown)" }}.
+          - type: update_ticket
+            ticket_id: "{{ context.ticket.id }}"
+            state: waiting_user
     requirements_planning:
       op: recipe.run_and_get_result
       transitions:
-        - to: requirements_review
+        - to: requirements_blocked_feedback
+          when: "has(states.requirements_planning.outputs.outputs.api_review_ok) && !states.requirements_planning.outputs.outputs.api_review_ok"
+        - to: requirements_decision
           when: "true"
       inputs:
         name: new-ticket-requirements-planning
         inputs:
-          title: '{{ context.ticket.title }}'
-          description: '{{ context.ticket.description }}'
+          title: >-
+            {{
+              (has(inputs.title) && inputs.title != "")
+                ? inputs.title
+                : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
+            }}
+          description: >-
+            {{
+              (has(inputs.description) && inputs.description != "")
+                ? inputs.description
+                : ((has(context.ticket.description) && context.ticket.description != "") ? context.ticket.description : "")
+            }}
           prior_plan_json: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
-          user_feedback: '{{ "check_approve" in states && has(states.check_approve.outputs.exit_code) && states.check_approve.outputs.exit_code != 0 ? states.check_approve.outputs.stdout : "" }}'
+          user_feedback: >-
+            {{
+              ("requirements_feedback" in states && has(states.requirements_feedback.outputs.response))
+                ? states.requirements_feedback.outputs.response
+                : (("requirements_blocked_feedback" in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : "")
+            }}
           api_review_feedback: '{{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
-    requirements_review:
+    requirements_blocked_feedback:
       op: input
       transitions:
-        - to: check_approve
+        - to: requirements_planning
           when: "true"
       inputs:
         form:
-          title: "Review requirements"
+          title: "API review blocking"
           question: |
             Requirements bundle has been generated as artifacts under `requirements/` (see `requirements/index.md`).
 
             Summary:
             {{ states.requirements_planning.outputs.outputs.summary }}
 
-            Prior user feedback applied (from last loop, if any):
-            {{ "check_approve" in states && has(states.check_approve.outputs.stdout) ? states.check_approve.outputs.stdout : "" }}
+            Notes for review:
+            {{ states.requirements_planning.outputs.outputs.notes_for_user_review }}
 
             Dependency order:
             {{ states.requirements_planning.outputs.outputs.dependency_order }}
-
-            Requirements (JSON):
-            {{ states.requirements_planning.outputs.outputs.requirements }}
 
             Contrarian API review:
             ok={{ states.requirements_planning.outputs.outputs.api_review_ok }}
@@ -85,59 +126,305 @@ state:
             Feedback:
             {{ states.requirements_planning.outputs.outputs.api_review_feedback }}
 
-            Reply with "APPROVE" to proceed, or provide feedback to revise the requirements.
-          type: short_answer
-    check_approve:
-      op: command_execution
+            Provide feedback to revise the requirements bundle.
+          type: paragraph_text
+
+    requirements_decision:
+      op: input
       transitions:
-        - to: requirements_planning
-          when: "has(states.requirements_planning.outputs.outputs.api_review_ok) && !states.requirements_planning.outputs.outputs.api_review_ok"
-        - to: maybe_reassign
-          when: "has(outputs.exit_code) && outputs.exit_code == 0"
+        - to: analyze_scope
+          when: 'has(states.requirements_decision.outputs.response) && states.requirements_decision.outputs.response == "approve"'
+        - to: requirements_feedback
+          when: "true"
+      inputs:
+        form:
+          title: "Requirements review"
+          question: |
+            Requirements bundle has been generated as artifacts under `requirements/` (see `requirements/index.md`).
+
+            Summary:
+            {{ states.requirements_planning.outputs.outputs.summary }}
+
+            Notes for review:
+            {{ states.requirements_planning.outputs.outputs.notes_for_user_review }}
+
+            Prior user feedback applied (from last loop, if any):
+            {{ "requirements_feedback" in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : "" }}
+
+            Dependency order:
+            {{ states.requirements_planning.outputs.outputs.dependency_order }}
+
+            Contrarian API review:
+            ok={{ states.requirements_planning.outputs.outputs.api_review_ok }}
+            blocking_issues={{ states.requirements_planning.outputs.outputs.api_review_blocking_issues }}
+
+            Feedback:
+            {{ states.requirements_planning.outputs.outputs.api_review_feedback }}
+          type: multiple_choice
+          options:
+            - value: approve
+              label: Approve
+            - value: revise
+              label: Revise
+
+    requirements_feedback:
+      op: input
+      transitions:
         - to: requirements_planning
           when: "true"
       inputs:
+        form:
+          title: "Requirements feedback"
+          question: "What should change in the requirements bundle?"
+          type: paragraph_text
+    analyze_scope:
+      op: command_execution
+      transitions:
+        - to: spawn_child_tickets
+          when: 'has(context.actor.ticket_id) && context.actor.ticket_id != "" && has(states.analyze_scope.outputs.stdout) && states.analyze_scope.outputs.stdout != "" && json_parse(states.analyze_scope.outputs.stdout).cross_cell_required == true'
+        - to: implementation_session
+          when: "true"
+      inputs:
+        timeout: 5m
         run: |
           set -euo pipefail
 
-          OUT="{{ context.environment.outbox }}"
-          mkdir -p "$OUT/requirements"
-
-          cat > "$OUT/requirements/user-review-raw.json" <<'EOF'
-          {{ string(states.requirements_review.outputs) }}
-          EOF
-
-          set +e
-          RESP=$(
-            python3 - <<'PY'
+          python3 - <<'PY'
+          import os
           import json
-          import sys
-          from pathlib import Path
 
-          p = Path("{{ context.environment.outbox }}") / "requirements" / "user-review-raw.json"
-          j = json.loads(p.read_text(encoding="utf-8"))
-          fields = j.get("fields") or {}
-          resp = str(fields.get("response") or "")
-          resp_clean = resp.strip()
-          print(resp_clean)
-          sys.exit(0 if resp_clean.upper().startswith("APPROVE") else 1)
+          current = (os.environ.get("CURRENT_CELL") or "").strip()
+          project_id = (os.environ.get("PROJECT_ID") or "").strip()
+          parent_ticket_id = (os.environ.get("PARENT_TICKET_ID") or "").strip()
+          parent_title = (os.environ.get("PARENT_TITLE") or "").strip()
+          reqs = json.loads("""{{ json_stringify(states.requirements_planning.outputs.outputs.requirements) }}""")
+          target_cells = sorted({(r.get("target_cell") or "").strip() for r in reqs if (r.get("target_cell") or "").strip()})
+          foreign = [r for r in reqs if (r.get("target_cell") or "").strip() and (r.get("target_cell") or "").strip() != current]
+
+          actions = []
+          for r in foreign:
+            rid = (r.get("id") or "").strip()
+            title = (r.get("title") or "").strip()
+            cell = (r.get("target_cell") or "").strip()
+            depends = r.get("depends_on") or []
+            scope = (r.get("scope") or "").strip()
+            acceptance = r.get("acceptance_criteria") or []
+            risks = r.get("risks") or []
+            questions = r.get("open_questions") or []
+
+            def bullets(xs):
+              xs = [str(x).strip() for x in (xs or []) if str(x).strip()]
+              return "\n".join(f"- {x}" for x in xs) if xs else "- (none)"
+
+            desc = []
+            desc.append(f"Parent ticket: {parent_ticket_id}")
+            if parent_title:
+              desc.append(f"Parent title: {parent_title}")
+            desc.append("")
+            desc.append(f"Depends on: {', '.join(depends) if depends else '(none)'}")
+            desc.append("")
+            desc.append("## Scope")
+            desc.append(scope or "(tbd)")
+            desc.append("")
+            desc.append("## Acceptance criteria")
+            desc.append(bullets(acceptance))
+            desc.append("")
+            desc.append("## Risks")
+            desc.append(bullets(risks))
+            desc.append("")
+            desc.append("## Open questions")
+            desc.append(bullets(questions))
+            desc_text = "\n".join(desc).rstrip() + "\n"
+
+            actions.append({
+              "type": "create_ticket",
+              "project_id": project_id,
+              "cell": cell,
+              "title": f"[{rid}] {title}" if rid else title,
+              "description": desc_text,
+              "stage": "open",
+              "state": "working",
+            })
+
+          print(json.dumps({
+            "current_cell": current,
+            "target_cells": target_cells,
+            "cross_cell_required": len(foreign) > 0,
+            "foreign_requirement_ids": [r.get("id") for r in foreign],
+            "actions": actions,
+          }, ensure_ascii=False))
           PY
-          )
-          PY_STATUS=$?
-          set -e
+        env:
+          CURRENT_CELL: "{{ context.workflow.cell }}"
+          PROJECT_ID: "{{ context.workflow.project_id }}"
+          PARENT_TICKET_ID: "{{ has(context.actor.ticket_id) ? context.actor.ticket_id : \"\" }}"
+          PARENT_TITLE: >-
+            {{
+              (has(inputs.title) && inputs.title != "")
+                ? inputs.title
+                : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "")
+            }}
 
-          echo "$RESP" > "$OUT/requirements/user-review.txt"
-          echo "$RESP"
-          exit $PY_STATUS
-    maybe_reassign:
-      op: command_execution
+    spawn_child_tickets:
+      op: ticket.manage
+      when: 'has(context.actor.ticket_id) && context.actor.ticket_id != ""'
       transitions:
-        - to: reassign_create
-          when: "has(states.triage.outputs.outputs.cell_is_appropriate) && !states.triage.outputs.outputs.cell_is_appropriate && has(states.triage.outputs.outputs.recommended_cell_is_valid) && states.triage.outputs.outputs.recommended_cell_is_valid"
         - to: requirements_note
           when: "true"
       inputs:
-        run: "echo maybe_reassign"
+        actions: "{{ json_parse(states.analyze_scope.outputs.stdout).actions }}"
+
+    implementation_session:
+      op: input
+      transitions:
+        - to: prepare_implement
+          when: "true"
+      inputs:
+        form:
+          title: "Implementation session"
+          fields:
+            - id: session_strategy
+              type: dropdown
+              question: >-
+                Session strategy (previous session id: {{ "implement" in states ? states.implement.outputs.outputs.session_id : "(none)" }}; previous summary available: {{ ("implement" in states && has(states.implement.outputs.outputs.assistant_summary) && states.implement.outputs.outputs.assistant_summary != "") ? "yes" : "no" }})
+              required: true
+              options:
+                - value: continue
+                  label: Continue previous session (default)
+                - value: new_blank
+                  label: Start new session (no context)
+                - value: new_with_summary
+                  label: Start new session (include prior summary)
+            - id: extra_instructions
+              type: paragraph_text
+              question: "Extra instructions for Codex (optional)"
+              required: false
+
+    prepare_implement:
+      op: command_execution
+      transitions:
+        - to: implement
+          when: "true"
+      inputs:
+        timeout: 2m
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          prev_session_id = (os.environ.get("PREV_SESSION_ID") or "").strip()
+          prev_summary = os.environ.get("PREV_SUMMARY") or ""
+          strategy = (os.environ.get("SESSION_STRATEGY") or "new_blank").strip()
+          extra = os.environ.get("EXTRA_INSTRUCTIONS") or ""
+
+          use_session = (strategy == "continue" and prev_session_id != "")
+          include_summary = (strategy == "new_with_summary" and prev_summary.strip() != "")
+
+          out = {
+            "session_id": prev_session_id if use_session else "",
+            "include_prior_summary": bool(include_summary),
+            "prior_session_summary": prev_summary if include_summary else "",
+            "extra_instructions": extra,
+          }
+          print(json.dumps(out, ensure_ascii=False))
+          PY
+        env:
+          PREV_SESSION_ID: "{{ 'implement' in states ? states.implement.outputs.outputs.session_id : '' }}"
+          PREV_SUMMARY: "{{ 'implement' in states ? states.implement.outputs.outputs.assistant_summary : '' }}"
+          SESSION_STRATEGY: "{{ states.implementation_session.outputs.fields.session_strategy }}"
+          EXTRA_INSTRUCTIONS: "{{ has(states.implementation_session.outputs.fields.extra_instructions) ? states.implementation_session.outputs.fields.extra_instructions : '' }}"
+
+    implement:
+      op: recipe.run_and_get_result
+      transitions:
+        - to: validate
+          when: "true"
+      inputs:
+        name: ticket-implement
+        inputs:
+          title: "{{ has(inputs.title) && inputs.title != \"\" ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
+          description: "{{ has(inputs.description) && inputs.description != \"\" ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
+          requirements_plan_json: "{{ states.requirements_planning.outputs.outputs.plan_json }}"
+          validation_feedback: "{{ 'validate' in states ? states.validate.outputs.outputs.output_tail : '' }}"
+          session_id: "{{ json_parse(states.prepare_implement.outputs.stdout).session_id }}"
+          prior_session_summary: "{{ json_parse(states.prepare_implement.outputs.stdout).prior_session_summary }}"
+          include_prior_summary: "{{ json_parse(states.prepare_implement.outputs.stdout).include_prior_summary }}"
+          extra_instructions: "{{ json_parse(states.prepare_implement.outputs.stdout).extra_instructions }}"
+
+    validate:
+      op: recipe.run_and_get_result
+      transitions:
+        - to: validation_failed_review
+          when: "has(states.validate.outputs.outputs.passed) && !states.validate.outputs.outputs.passed"
+        - to: merge_review
+          when: "true"
+      inputs:
+        name: ticket-validate
+        inputs:
+          commands: "{{ inputs.validate_commands }}"
+
+    merge_review:
+      op: input
+      transitions:
+        - to: merge
+          when: 'has(states.merge_review.outputs.response) && states.merge_review.outputs.response == "merge"'
+        - to: requirements_note
+          when: "true"
+      inputs:
+        form:
+          title: "Merge"
+          question: |
+            Validation passed.
+
+            Choose whether to merge these changes now.
+          type: multiple_choice
+          options:
+            - value: merge
+              label: Merge
+            - value: skip
+              label: Skip
+
+    merge:
+      op: recipe.run_and_get_result
+      transitions:
+        - to: requirements_note
+          when: "true"
+      inputs:
+        name: ticket-merge
+        inputs:
+          upstream_repo: "{{ has(context.git.repo) ? context.git.repo : \"\" }}"
+          upstream_branch: "{{ has(context.git.ref) ? context.git.ref : \"\" }}"
+          commit_message: >-
+            {{
+              (has(inputs.title) && inputs.title != "")
+                ? inputs.title
+                : ((has(context.ticket.title) && context.ticket.title != "") ? context.ticket.title : "Update")
+            }}
+
+    validation_failed_review:
+      op: input
+      transitions:
+        - to: implementation_session
+          when: 'has(states.validation_failed_review.outputs.response) && states.validation_failed_review.outputs.response == "retry"'
+        - to: requirements_note
+          when: "true"
+      inputs:
+        form:
+          title: "Validation failed"
+          question: |
+            Validation failed.
+
+            Output tail:
+            {{ states.validate.outputs.outputs.output_tail }}
+
+            Choose what to do next.
+          type: multiple_choice
+          options:
+            - value: retry
+              label: Retry implement+validate
+            - value: stop
+              label: Stop for now
     requirements_note:
       op: ticket.manage
       when: 'has(context.actor.ticket_id) && context.actor.ticket_id != ""'
@@ -146,8 +433,12 @@ state:
           - type: append_ticket_note
             ticket_id: "{{ context.actor.ticket_id }}"
             note: >-
-              Requirements planning complete. Generated requirement documents as workflow artifacts under
-              "requirements/". Dependency order: {{ states.requirements_planning.outputs.outputs.dependency_order }}.
+              Workflow update:
+              - Requirements artifacts generated under "requirements/" (see `requirements/index.md`).
+              - Dependency order: {{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}.
+              - Cross-cell required: {{ ("analyze_scope" in states && has(states.analyze_scope.outputs.stdout) && states.analyze_scope.outputs.stdout != "") ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}.
+              - Validation passed: {{ "validate" in states ? states.validate.outputs.outputs.passed : false }}.
+              - Merged: {{ "merge" in states ? states.merge.outputs.outputs.merged : false }} (hash: {{ "merge" in states ? states.merge.outputs.outputs.merged_hash : "" }}).
           - type: update_ticket
             ticket_id: "{{ context.actor.ticket_id }}"
             state: waiting_user
@@ -163,5 +454,9 @@ outputs:
   requirements_plan_json: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.plan_json : \"\" }}"
   requirements_dependency_order: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
   requirements: "{{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"
-  requirements_approved: "{{ 'check_approve' in states && has(states.check_approve.outputs.exit_code) ? states.check_approve.outputs.exit_code == 0 : false }}"
-  requirements_user_feedback: "{{ 'check_approve' in states && has(states.check_approve.outputs.stdout) ? states.check_approve.outputs.stdout : \"\" }}"
+  requirements_approved: "{{ 'requirements_decision' in states && has(states.requirements_decision.outputs.response) ? states.requirements_decision.outputs.response == \"approve\" : false }}"
+  requirements_user_feedback: "{{ 'requirements_feedback' in states && has(states.requirements_feedback.outputs.response) ? states.requirements_feedback.outputs.response : (('requirements_blocked_feedback' in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : \"\") }}"
+  cross_cell_required: "{{ 'analyze_scope' in states ? json_parse(states.analyze_scope.outputs.stdout).cross_cell_required : false }}"
+  validation_passed: "{{ 'validate' in states ? states.validate.outputs.outputs.passed : false }}"
+  merged: "{{ 'merge' in states ? states.merge.outputs.outputs.merged : false }}"
+  merged_hash: "{{ 'merge' in states ? states.merge.outputs.outputs.merged_hash : \"\" }}"

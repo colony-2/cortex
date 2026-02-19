@@ -1,0 +1,226 @@
+id: ticket-validate
+version: 0.2.0
+desc: Run validation commands (tests/lint/build) in the current cell and summarize results
+input_schema:
+  commands:
+    type: string
+    required: false
+  cell_relative_path:
+    type: string
+    required: false
+inputs:
+  commands: '{{ has(inputs.commands) ? inputs.commands : "" }}'
+  cell_relative_path: '{{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
+state:
+  initial: detect
+  states:
+    detect:
+      op: command_execution
+      transitions:
+        - to: run_provided
+          when: 'has(inputs.commands) && inputs.commands != ""'
+        - to: choose_mode
+          when: "true"
+      inputs:
+        timeout: 15m
+        run: |
+          set -euo pipefail
+
+          DIR="$WT/$CELL"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          wt = Path(os.environ.get("WT") or ".").resolve()
+          cell = os.environ.get("CELL") or "."
+          d = (wt / cell).resolve()
+
+          cmds = []
+          if (d / "package.json").exists():
+            cmds.append("npm test")
+          if (d / "go.mod").exists():
+            cmds.append("go test ./...")
+          if (d / "Cargo.toml").exists():
+            cmds.append("cargo test")
+          if (d / "pyproject.toml").exists() or (d / "pytest.ini").exists():
+            cmds.append("python3 -m pytest -q")
+          if (d / "Makefile").exists():
+            cmds.append("make test")
+
+          if not cmds:
+            cmds = ["echo 'No default validation commands detected for this cell.'"]
+
+          print(json.dumps({"suggested_commands": "\\n".join(cmds)}, ensure_ascii=False))
+          PY
+        env:
+          WT: "{{ context.environment.worktree_path }}"
+          CELL: >-
+            {{
+              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+                ? inputs.cell_relative_path
+                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+            }}
+
+    choose_mode:
+      op: input
+      transitions:
+        - to: run_suggested
+          when: 'has(states.choose_mode.outputs.response) && states.choose_mode.outputs.response == "use_suggested"'
+        - to: prompt_custom
+          when: "true"
+      inputs:
+        form:
+          title: "Validation commands"
+          question: |
+            Suggestions (detected):
+            {{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+          type: multiple_choice
+          options:
+            - value: use_suggested
+              label: Use suggested commands
+            - value: provide_custom
+              label: Provide custom commands
+
+    prompt_custom:
+      op: input
+      transitions:
+        - to: run_custom
+          when: "true"
+      inputs:
+        form:
+          title: "Custom validation commands"
+          question: |
+            Enter the validation commands to run (newline-separated).
+
+            Suggestions (detected):
+            {{ json_parse(states.detect.outputs.stdout).suggested_commands }}
+          type: paragraph_text
+
+    run_provided:
+      op: command_execution
+      transitions:
+        - to: summarize
+          when: "true"
+      inputs:
+        timeout: 60m
+        continue_on_error: true
+        run: |
+          set -euo pipefail
+
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT/validation"
+
+          DIR="$WT/$CELL"
+          cd "$DIR"
+
+          cat > "$OUT/validation/commands.sh" <<'EOF'
+          {{ inputs.commands }}
+          EOF
+
+          bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+      env:
+        WT: "{{ context.environment.worktree_path }}"
+        CELL: >-
+          {{
+            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+              ? inputs.cell_relative_path
+              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+          }}
+
+    run_suggested:
+      op: command_execution
+      transitions:
+        - to: summarize
+          when: "true"
+      inputs:
+        timeout: 60m
+        continue_on_error: true
+        run: |
+          set -euo pipefail
+
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT/validation"
+
+          DIR="$WT/$CELL"
+          cd "$DIR"
+
+          PROMPTED="$(python3 - <<'PY'\nimport json\nprint(json.loads('''{{ states.detect.outputs.stdout }}''').get('suggested_commands',''))\nPY)"
+
+          cat > "$OUT/validation/commands.sh" <<EOF
+          ${PROMPTED}
+          EOF
+
+          bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+      env:
+        WT: "{{ context.environment.worktree_path }}"
+        CELL: >-
+          {{
+            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+              ? inputs.cell_relative_path
+              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+          }}
+
+    run_custom:
+      op: command_execution
+      transitions:
+        - to: summarize
+          when: "true"
+      inputs:
+        timeout: 60m
+        continue_on_error: true
+        run: |
+          set -euo pipefail
+
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT/validation"
+
+          DIR="$WT/$CELL"
+          cd "$DIR"
+
+          PROMPTED="{{ states.prompt_custom.outputs.response }}"
+
+          cat > "$OUT/validation/commands.sh" <<'EOF'
+          {{ states.prompt_custom.outputs.response }}
+          EOF
+
+          bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+      env:
+        WT: "{{ context.environment.worktree_path }}"
+        CELL: >-
+          {{
+            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+              ? inputs.cell_relative_path
+              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+          }}
+
+    summarize:
+      op: command_execution
+      transitions: []
+      inputs:
+        timeout: 5m
+        run: |
+          set -euo pipefail
+
+          OUT="{{ context.environment.outbox }}"
+          mkdir -p "$OUT/validation"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          out = Path("{{ context.environment.outbox }}") / "validation" / "output.txt"
+          if not out.exists():
+            print("(no validation output captured)")
+            raise SystemExit(0)
+
+          text = out.read_text(encoding="utf-8", errors="replace")
+          lines = text.strip().splitlines()
+          tail = "\n".join(lines[-80:]) if lines else ""
+          print(tail)
+          PY
+outputs:
+  exit_code: "{{ states.summarize.outputs.exit_code }}"
+  passed: "{{ has(states.summarize.outputs.exit_code) ? states.summarize.outputs.exit_code == 0 : false }}"
+  suggested_commands: "{{ json_parse(states.detect.outputs.stdout).suggested_commands }}"
+  output_tail: "{{ states.summarize.outputs.stdout }}"

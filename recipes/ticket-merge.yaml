@@ -1,0 +1,155 @@
+id: ticket-merge
+version: 0.2.0
+desc: Squash, rebase, and merge the current workspace back to upstream (requires explicit approval)
+input_schema:
+  upstream_repo:
+    type: string
+    required: false
+  upstream_branch:
+    type: string
+    required: false
+  commit_message:
+    type: string
+    required: false
+inputs:
+  upstream_repo: '{{ has(inputs.upstream_repo) ? inputs.upstream_repo : "" }}'
+  upstream_branch: '{{ has(inputs.upstream_branch) ? inputs.upstream_branch : "" }}'
+  commit_message: '{{ has(inputs.commit_message) ? inputs.commit_message : "" }}'
+state:
+  initial: resolve
+  states:
+    resolve:
+      op: command_execution
+      transitions:
+        - to: prompt
+          when: 'has(states.resolve.outputs.stdout) && states.resolve.outputs.stdout != "" && json_parse(states.resolve.outputs.stdout).needs_prompt == true'
+        - to: approve
+          when: "true"
+      inputs:
+        timeout: 5m
+        run: |
+          set -euo pipefail
+
+          LOCAL_HASH="$(git -C "$WT" rev-parse HEAD)"
+          export LOCAL_HASH
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          upstream_repo = os.environ.get("UPSTREAM_REPO_INPUT") or ""
+          upstream_branch = os.environ.get("UPSTREAM_BRANCH_INPUT") or ""
+          commit_message = os.environ.get("COMMIT_MESSAGE_INPUT") or ""
+
+          ctx_repo = os.environ.get("CTX_REPO") or ""
+          ctx_ref = os.environ.get("CTX_REF") or ""
+          local_hash = os.environ.get("LOCAL_HASH") or ""
+
+          repo = (upstream_repo or ctx_repo or "").strip()
+          branch = (upstream_branch or ctx_ref or "").strip()
+          msg = (commit_message or "").strip()
+
+          needs_prompt = (not repo) or (not branch) or (not msg)
+
+          print(json.dumps({
+            "local_hash": local_hash,
+            "upstream_repo": repo,
+            "upstream_branch": branch,
+            "commit_message": msg,
+            "needs_prompt": needs_prompt,
+          }, ensure_ascii=False))
+          PY
+        env:
+          WT: "{{ context.environment.worktree_path }}"
+          UPSTREAM_REPO_INPUT: "{{ inputs.upstream_repo }}"
+          UPSTREAM_BRANCH_INPUT: "{{ inputs.upstream_branch }}"
+          COMMIT_MESSAGE_INPUT: "{{ inputs.commit_message }}"
+          CTX_REPO: "{{ has(context.git.repo) ? context.git.repo : \"\" }}"
+          CTX_REF: "{{ has(context.git.ref) ? context.git.ref : \"\" }}"
+
+    prompt:
+      op: input
+      transitions:
+        - to: approve
+          when: "true"
+      inputs:
+        form:
+          title: "Merge details"
+          fields:
+            - id: upstream_repo
+              type: short_answer
+              question: "Upstream repo (e.g. git@host:org/repo.git)"
+              required: true
+            - id: upstream_branch
+              type: short_answer
+              question: "Upstream branch (e.g. main)"
+              required: true
+            - id: commit_message
+              type: paragraph_text
+              question: "Squash commit message"
+              required: true
+
+    approve:
+      op: input
+      transitions:
+        - to: merge
+          when: 'has(states.approve.outputs.response) && states.approve.outputs.response == "merge"'
+        - to: done
+          when: "true"
+      inputs:
+        form:
+          title: "Approve merge"
+          question: |
+            This will run `squashrebasemerge` and fast-forward merge back to the upstream branch.
+
+            Local hash: {{ json_parse(states.resolve.outputs.stdout).local_hash }}
+            Upstream repo: {{ json_parse(states.resolve.outputs.stdout).upstream_repo }}
+            Upstream branch: {{ json_parse(states.resolve.outputs.stdout).upstream_branch }}
+            Commit message:
+            {{ json_parse(states.resolve.outputs.stdout).commit_message }}
+          type: multiple_choice
+          options:
+            - value: merge
+              label: Merge
+            - value: cancel
+              label: Cancel
+
+    merge:
+      op: squashrebasemerge
+      transitions:
+        - to: done
+          when: "true"
+      inputs:
+        repo_path: "{{ context.environment.worktree_path }}"
+        local_hash: "{{ json_parse(states.resolve.outputs.stdout).local_hash }}"
+        upstream_repo: >-
+          {{
+            "prompt" in states
+              ? states.prompt.outputs.fields.upstream_repo
+              : json_parse(states.resolve.outputs.stdout).upstream_repo
+          }}
+        upstream_branch: >-
+          {{
+            "prompt" in states
+              ? states.prompt.outputs.fields.upstream_branch
+              : json_parse(states.resolve.outputs.stdout).upstream_branch
+          }}
+        rebase: true
+        author: "{{ has(context.git.author) ? context.git.author : \"\" }}"
+        commit_message: >-
+          {{
+            "prompt" in states
+              ? states.prompt.outputs.fields.commit_message
+              : json_parse(states.resolve.outputs.stdout).commit_message
+          }}
+
+    done:
+      op: command_execution
+      transitions: []
+      inputs:
+        run: "echo done"
+
+outputs:
+  merged: "{{ 'merge' in states && has(states.merge.outputs.merged_hash) && states.merge.outputs.merged_hash != \"\" }}"
+  merged_hash: "{{ 'merge' in states && has(states.merge.outputs.merged_hash) ? states.merge.outputs.merged_hash : \"\" }}"
+  target_branch: "{{ 'merge' in states && has(states.merge.outputs.target_branch) ? states.merge.outputs.target_branch : \"\" }}"
