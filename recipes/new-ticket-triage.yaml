@@ -43,7 +43,7 @@ sequence:
         {{ inputs.description }}
 
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): ${{ cells() }}
+        Available Cells (name, path, description): {{ cells | to_json }}
 
         Decide if the current cell is appropriate to run the work.
         - Treat the current cell as appropriate ONLY if it is the best match among the Available Cells.

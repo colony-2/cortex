@@ -8,6 +8,8 @@ import (
 	"strings"
 	texttemplate "text/template"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -174,7 +176,7 @@ func (rc *ResolutionContext) renderGoTemplate(input string) (string, error) {
 }
 
 func (rc *ResolutionContext) goTemplateFuncMap() texttemplate.FuncMap {
-	return texttemplate.FuncMap{
+	funcMap := texttemplate.FuncMap{
 		"inputs": func() map[string]interface{} {
 			return rc.TemplateData.ContainerInputs
 		},
@@ -191,6 +193,24 @@ func (rc *ResolutionContext) goTemplateFuncMap() texttemplate.FuncMap {
 			return rc.goTemplateContextMap()
 		},
 	}
+
+	type goTemplateFuncProvider interface {
+		TemplateFuncsWithContext(funcregistry.ContextProvider) map[string]interface{}
+	}
+	if provider, ok := rc.Options.CELOptionsProvider.(goTemplateFuncProvider); ok {
+		ctxProvider := func() contextual.TaskExecutionContext {
+			return rc.TemplateData.Context
+		}
+		for name, fn := range provider.TemplateFuncsWithContext(ctxProvider) {
+			if _, exists := funcMap[name]; exists {
+				// Keep root context helpers authoritative.
+				continue
+			}
+			funcMap[name] = fn
+		}
+	}
+
+	return funcMap
 }
 
 func (rc *ResolutionContext) goTemplateContextMap() map[string]interface{} {

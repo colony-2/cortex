@@ -1,8 +1,11 @@
 package template
 
 import (
+	"context"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -774,4 +777,32 @@ func TestGoTemplateInterpolation(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "go=Alice cel=Alice", result)
 	})
+}
+
+func TestGoTemplate_FunctionRegistryBuiltinsAndCustom(t *testing.T) {
+	builder := funcregistry.NewBuilder().WithDefaults()
+	funcregistry.AddZeroFuncWithContext(builder, "cells", func(ctx context.Context, taskCtx contextual.TaskExecutionContext) ([]funcregistry.CELCell, error) {
+		return []funcregistry.CELCell{
+			{Name: "alpha", ID: "1", Path: "/alpha"},
+			{Name: "beta", ID: "2", Path: "/beta"},
+		}, nil
+	})
+
+	opts := DefaultResolutionOptions()
+	opts.CELOptionsProvider = builder
+	ctx, err := NewRecipeResolutionContext(&contextual.GitCommitContext{}, map[string]interface{}{
+		"payload": map[string]interface{}{
+			"user": map[string]interface{}{"name": "Ada"},
+		},
+	}, contextual.JobContext{}, opts)
+	require.NoError(t, err)
+
+	result, err := ctx.resolveTemplate("name={{ jq inputs.payload \".user.name\" }} cell={{ (index (cells) 0).name }}")
+	require.NoError(t, err)
+	assert.Equal(t, "name=Ada cell=alpha", result)
+
+	jsonResult, err := ctx.resolveTemplate("cells_json={{ cells | to_json }}")
+	require.NoError(t, err)
+	assert.Contains(t, jsonResult, "cells_json=[")
+	assert.Contains(t, jsonResult, "\"name\":\"alpha\"")
 }

@@ -128,7 +128,7 @@ sequence:
         {{ inputs.description }}
 
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): ${{ cells() }}
+        Available Cells (name, path, description): {{ cells | to_json }}
 
         If you propose multiple requirement docs:
         - Use stable IDs like REQ-1, REQ-2, ...
@@ -298,7 +298,7 @@ sequence:
         Respond ONLY with a JSON object matching response_schema.
       prompt: |
         Current Cell: {{ context.workflow.cell }}
-        Available Cells (name, path, description): ${{ cells() }}
+        Available Cells (name, path, description): {{ cells | to_json }}
 
         Proposed requirements bundle (JSON):
         {{ sequence.generate_plan.outputs.response }}

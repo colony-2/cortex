@@ -75,6 +75,10 @@ when: 'states.process.outputs.status == "success" || inputs.force == true'
 # inputs, sequence, states, scope, context
 message: "Cell {{ context.workflow.cell }} in project {{ context.workflow.project_id }}"
 summary: "{{ inputs.title }} -> {{ sequence.build.outputs.status }}"
+
+# Standalone simple paths can preserve scalar types
+sleep_completed: "{{ sequence.sleep_step.outputs.completed }}"  # bool
+exit_code: "{{ sequence.cmd.outputs.exit_code }}"               # number
 ```
 
 ## Scope Rules
@@ -151,9 +155,11 @@ states:
 - **CEL Expressions**: `${{ ... }}` for CEL anywhere in strings
 - **Go Templates**: `{{ ... }}` for Go template rendering in strings
 - **Single CEL Expression**: One `${{ ... }}` alone returns raw type (map, number, bool)
+- **Single Simple Go Path**: One `{{ root.path }}` can also return scalar types (bool/number/string)
 - **When Conditions**: pure CEL expression string without delimiters
 - **Quote Handling**: Both `"` and `'` quotes work inside expressions
 - **No Dot Root**: Use `inputs.*`/`context.*` as functions, not `.inputs.*`/`.context.*`
+- **Shared Functions**: `funcregistry.Add*` helpers expose functions to both CEL and Go templates.
 
 ## Type Conversion Functions
 - `double()` - Convert to float64
@@ -164,7 +170,9 @@ states:
 ## JSON Helpers
 - `json_parse(str)` → map/list from a JSON string.
 - `jq(value, expr)` → evaluate jq against any value (empty → null, multiple → list).
-- `json_stringify(value)` → JSON string; `string(map|list)` also JSON-encodes for interpolation.
+- `json_stringify(value)` → JSON string (CEL).
+- `to_json(value)` → JSON string (Go templates).
+- `string(map|list)` also JSON-encodes for interpolation.
 
 ```yaml
 # Parse JSON string
@@ -176,7 +184,7 @@ tags: "${{ jq(inputs.payload, '.tags[]') }}"      # list when multiple
 maybe_email: "${{ jq(inputs.payload, 'empty') }}" # null when empty
 
 # Emit JSON
-payload_json: "${{ json_stringify(inputs.payload) }}"
+payload_json: "{{ inputs.payload | to_json }}"
 log_line: "Snapshot: {{ inputs.payload }}"         # string(map) uses JSON
 ```
 
@@ -186,7 +194,8 @@ See the deeper guide: [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md).
 1. **CEL in strings**: `"Text ${{ expr1 }} more ${{ expr2 }}"` → CEL substitution
 2. **Go template in strings**: `"Text {{ inputs.name }}"` → Go template rendering
 3. **Raw CEL types**: `"${{ single.expr }}"` → returns actual type (not stringified)
-4. **When Conditions**: no delimiters, pure CEL: `when: "inputs.count > 5"`
-4. **`outputs` Scope**: In state `transitions.when`, `outputs.*` means current state outputs. Elsewhere, use `sequence.*` / `states.*` prefixes.
-5. **Quote Escaping**: `${{ "string with }} inside" }}` and `${{ 'won''t fail' }}` both work
-6. **Validation**: All expressions validated at compile time
+4. **Simple Go scalar coercion**: `"{{ sequence.step.outputs.flag }}"` can return `bool`/`number`/`string`.
+5. **When Conditions**: no delimiters, pure CEL: `when: "inputs.count > 5"`
+6. **`outputs` Scope**: In state `transitions.when`, `outputs.*` means current state outputs. Elsewhere, use `sequence.*` / `states.*` prefixes.
+7. **Quote Escaping**: `${{ "string with }} inside" }}` and `${{ 'won''t fail' }}` both work
+8. **Validation**: All expressions validated at compile time

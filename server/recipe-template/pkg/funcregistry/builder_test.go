@@ -70,3 +70,37 @@ func TestAddZeroFuncWithContextReceivesTaskContext(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "proj-123-id", out.Value())
 }
+
+func TestTemplateFuncsWithContext(t *testing.T) {
+	builder := NewBuilder().WithDefaults()
+	AddZeroFuncWithContext(builder, "cells", func(ctx context.Context, task contextual.TaskExecutionContext) ([]CELCell, error) {
+		return []CELCell{{
+			Name: "cell-a",
+			ID:   task.Workflow.ProjectId,
+			Path: "/a",
+		}}, nil
+	})
+
+	funcs := builder.TemplateFuncsWithContext(func() contextual.TaskExecutionContext {
+		return contextual.TaskExecutionContext{
+			Workflow: contextual.WorkflowContext{ProjectId: "proj-1"},
+		}
+	})
+
+	cellsFn, ok := funcs["cells"].(func() (any, error))
+	require.True(t, ok)
+	cellsOut, err := cellsFn()
+	require.NoError(t, err)
+	cellsList, ok := cellsOut.([]interface{})
+	require.True(t, ok)
+	require.Len(t, cellsList, 1)
+	first, ok := cellsList[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "proj-1", first["id"])
+
+	jqFn, ok := funcs["jq"].(func(any, string) (any, error))
+	require.True(t, ok)
+	jqOut, err := jqFn(map[string]any{"user": map[string]any{"name": "Ada"}}, ".user.name")
+	require.NoError(t, err)
+	require.Equal(t, "Ada", jqOut)
+}

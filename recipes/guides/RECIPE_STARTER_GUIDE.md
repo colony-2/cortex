@@ -22,7 +22,7 @@ Use this short path to get productive quickly, with direct links to the deeper d
 
 ## 4) Author safely and validate early
 - Generate/validate against the schema exactly as described in `RECIPE_AUTHORING_GUIDE.md` before running anything.
-- Use `${{ ... }}` for CEL expressions and `{{ ... }}` for Go templates in string fields; for CEL, use single-expression form when you need raw types (see cheatsheet).
+- Use `${{ ... }}` for CEL expressions and `{{ ... }}` for Go templates in string fields; use CEL single-expression form for raw non-scalars (maps/lists) and either CEL or standalone simple Go paths for scalar types (see cheatsheet).
 - Always export data via an `outputs:` block when it must cross a scope boundary (sequence ↔ parent, state ↔ parent).
 
 ## 5) Test and iterate

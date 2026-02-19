@@ -21,6 +21,7 @@ This repo uses Colony2 “recipes” as workflows. When editing recipes, prefer 
 - `cells()` returns a list of maps (all string fields): `name`, `id`, `path`, `description`.
 - If an LLM recommends a cell, validate it in outputs/templates:
   - `cells().exists(c, c.name == recommended_cell)`
+- In prompt text, prefer Go templates: `{{ cells | to_json }}`.
 - Prefer including `cells()` in LLM prompts and instruct the model to choose exactly from the provided `name` values.
 
 ## Ticket Context Gotchas
@@ -33,4 +34,3 @@ This repo uses Colony2 “recipes” as workflows. When editing recipes, prefer 
 
 ## Recipe Publishing
 - `c2 recipe update ... --publish` will fail with “no changes to commit” if the content is identical; make a real edit (even a version/desc bump) before re-publishing.
-

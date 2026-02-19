@@ -18,17 +18,27 @@ type ContextProvider func() contextual.TaskExecutionContext
 
 // BuiltinFactory produces a cel.EnvOption given the adapter (needed for native conversions)
 // and, optionally, a TaskExecutionContext provider for context-aware functions.
+//
+// Advanced use only:
+// Prefer AddZeroFuncWithContext/AddZeroFunc/AddUnaryFunc/AddBinaryFunc for normal integrations.
+// Those helpers automatically register both CEL and Go-template equivalents.
+// WithBuiltin alone is CEL-only unless paired with WithTemplateFunc.
 type BuiltinFactory func(adapter types.Adapter, ctxProvider ContextProvider) cel.EnvOption
+type TemplateFuncFactory func(ctxProvider ContextProvider) interface{}
 
 // Builder holds a non-global set of builtin function factories and type declarations.
 type Builder struct {
-	factories map[string]BuiltinFactory
-	typeDecls []reflect.Type
+	factories         map[string]BuiltinFactory
+	templateFactories map[string]TemplateFuncFactory
+	typeDecls         []reflect.Type
 }
 
 // NewBuilder constructs an empty builder.
 func NewBuilder() *Builder {
-	return &Builder{factories: map[string]BuiltinFactory{}}
+	return &Builder{
+		factories:         map[string]BuiltinFactory{},
+		templateFactories: map[string]TemplateFuncFactory{},
+	}
 }
 
 // WithDefaults installs the legacy builtin set (json_parse, json_stringify, jq, string overloads).
@@ -36,12 +46,29 @@ func (b *Builder) WithDefaults() *Builder {
 	for name, f := range defaultBuiltins() {
 		b.factories[name] = f
 	}
+	for name, f := range defaultTemplateBuiltins() {
+		b.templateFactories[name] = f
+	}
 	return b
 }
 
-// WithBuiltin registers or overwrites a builtin factory.
+// WithBuiltin registers or overwrites a low-level CEL builtin factory.
+//
+// This API is intended for advanced CEL-specific integrations. Most callers should use
+// AddZeroFuncWithContext/AddZeroFunc/AddUnaryFunc/AddBinaryFunc to avoid drift between CEL
+// and Go templates. If you use WithBuiltin and need Go-template parity, also register
+// WithTemplateFunc for the same function name.
 func (b *Builder) WithBuiltin(name string, factory BuiltinFactory) *Builder {
 	b.factories[name] = factory
+	return b
+}
+
+// WithTemplateFunc registers or overwrites a low-level Go-template function factory.
+//
+// This is primarily a companion for advanced WithBuiltin usage. Prefer the typed Add*
+// helpers for regular function registration so both CEL and templates are wired together.
+func (b *Builder) WithTemplateFunc(name string, factory TemplateFuncFactory) *Builder {
+	b.templateFactories[name] = factory
 	return b
 }
 
@@ -72,6 +99,19 @@ func AddUnaryFunc[In any, Out any](b *Builder, name string, impl func(context.Co
 				}),
 			),
 		)
+	}
+	b.templateFactories[name] = func(_ ContextProvider) interface{} {
+		return func(arg any) (any, error) {
+			inVal, err := decodeNative[In](arg)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			out, err := impl(context.Background(), inVal)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			return toTemplateValue(out), nil
+		}
 	}
 	return b
 }
@@ -110,6 +150,23 @@ func AddBinaryFunc[A any, B any, Out any](b *Builder, name string, impl func(con
 			),
 		)
 	}
+	b.templateFactories[name] = func(_ ContextProvider) interface{} {
+		return func(lhs any, rhs any) (any, error) {
+			aVal, err := decodeNative[A](lhs)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			bVal, err := decodeNative[B](rhs)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			out, err := impl(context.Background(), aVal, bVal)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			return toTemplateValue(out), nil
+		}
+	}
 	return b
 }
 
@@ -142,11 +199,36 @@ func (b *Builder) FunctionOptionsWithContext(adapter types.Adapter, ctxProvider 
 	return opts, nil
 }
 
+// TemplateFuncsWithContext materializes text/template functions using the current task context provider.
+func (b *Builder) TemplateFuncsWithContext(ctxProvider ContextProvider) map[string]interface{} {
+	out := make(map[string]interface{}, len(b.templateFactories))
+	for name, factory := range b.templateFactories {
+		if factory == nil {
+			continue
+		}
+		out[name] = factory(ctxProvider)
+	}
+	return out
+}
+
 // Helper: decode ref.Val into typed Go value via JSON roundtrip.
 func decodeVal[T any](v ref.Val) (T, error) {
 	var zero T
 	raw := v.Value()
 	data, err := json.Marshal(raw)
+	if err != nil {
+		return zero, fmt.Errorf("marshal input: %w", err)
+	}
+	var out T
+	if err := json.Unmarshal(data, &out); err != nil {
+		return zero, fmt.Errorf("unmarshal input: %w", err)
+	}
+	return out, nil
+}
+
+func decodeNative[T any](v any) (T, error) {
+	var zero T
+	data, err := json.Marshal(v)
 	if err != nil {
 		return zero, fmt.Errorf("marshal input: %w", err)
 	}
@@ -211,6 +293,19 @@ func AddZeroFuncWithContext[Out any](b *Builder, name string, impl func(context.
 			),
 		)
 	}
+	b.templateFactories[name] = func(ctxProvider ContextProvider) interface{} {
+		return func() (any, error) {
+			var taskCtx contextual.TaskExecutionContext
+			if ctxProvider != nil {
+				taskCtx = ctxProvider()
+			}
+			out, err := impl(context.Background(), taskCtx)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
+			}
+			return toTemplateValue(out), nil
+		}
+	}
 	return b
 }
 
@@ -233,4 +328,16 @@ func toAdapterValue(adapter types.Adapter, v any) ref.Val {
 		return types.NewErr("convert value: %v", err)
 	}
 	return adapter.NativeToValue(decoded)
+}
+
+func toTemplateValue(v any) any {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var decoded interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return v
+	}
+	return decoded
 }

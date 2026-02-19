@@ -197,7 +197,7 @@ state:
           project_id = (os.environ.get("PROJECT_ID") or "").strip()
           parent_ticket_id = (os.environ.get("PARENT_TICKET_ID") or "").strip()
           parent_title = (os.environ.get("PARENT_TITLE") or "").strip()
-          reqs = json.loads("""${{ json_stringify(states.requirements_planning.outputs.outputs.requirements) }}""")
+          reqs = json.loads("""{{ states.requirements_planning.outputs.outputs.requirements | to_json }}""")
           target_cells = sorted({(r.get("target_cell") or "").strip() for r in reqs if (r.get("target_cell") or "").strip()})
           foreign = [r for r in reqs if (r.get("target_cell") or "").strip() and (r.get("target_cell") or "").strip() != current]
 

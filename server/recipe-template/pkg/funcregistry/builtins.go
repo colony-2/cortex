@@ -2,6 +2,7 @@ package funcregistry
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -72,6 +73,69 @@ func defaultBuiltins() map[string]BuiltinFactory {
 					cel.BinaryBinding(jqBinding(adapter)),
 				),
 			)
+		},
+	}
+}
+
+func defaultTemplateBuiltins() map[string]TemplateFuncFactory {
+	return map[string]TemplateFuncFactory{
+		"json_parse": func(_ ContextProvider) interface{} {
+			return func(input any) (any, error) {
+				raw, ok := input.(string)
+				if !ok {
+					return nil, fmt.Errorf("json_parse: expected string")
+				}
+				if len(raw) == 0 {
+					return nil, fmt.Errorf("json_parse: expected string")
+				}
+				var decoded interface{}
+				if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+					return nil, fmt.Errorf("json_parse: invalid JSON: %w", err)
+				}
+				return decoded, nil
+			}
+		},
+		"json_stringify": func(_ ContextProvider) interface{} {
+			return func(value any) (string, error) {
+				data, err := json.Marshal(value)
+				if err != nil {
+					return "", fmt.Errorf("json_stringify: failed to encode JSON: %w", err)
+				}
+				return string(data), nil
+			}
+		},
+		"to_json": func(_ ContextProvider) interface{} {
+			return func(value any) (string, error) {
+				data, err := json.Marshal(value)
+				if err != nil {
+					return "", fmt.Errorf("to_json: failed to encode JSON: %w", err)
+				}
+				return string(data), nil
+			}
+		},
+		"jq": func(_ ContextProvider) interface{} {
+			return func(input any, expr string) (any, error) {
+				parsed, err := gojq.Parse(expr)
+				if err != nil {
+					return nil, fmt.Errorf("jq: invalid expression: %w", err)
+				}
+				prog, err := gojq.Compile(parsed)
+				if err != nil {
+					return nil, fmt.Errorf("jq: compile failed: %w", err)
+				}
+				results, err := drainIter(prog.Run(input))
+				if err != nil {
+					return nil, fmt.Errorf("jq: execution failed: %w", err)
+				}
+				switch len(results) {
+				case 0:
+					return nil, nil
+				case 1:
+					return results[0], nil
+				default:
+					return results, nil
+				}
+			}
 		},
 	}
 }

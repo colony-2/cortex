@@ -11,8 +11,11 @@ Authoring templates follows the current resolver behavior (CEL + Go templates). 
 ## Resolution Rules
 - CEL expressions use `${{ ... }}` in string fields.
 - Go templates use `{{ ... }}` in string fields.
-- A single `${{ ... }}` expression returns the raw CEL value (may be non-string); mixed CEL/text and Go templates resolve to strings.
+- A single `${{ ... }}` expression returns the raw CEL value (may be non-string).
+- A single simple Go template path like `{{ sequence.step.outputs.flag }}` can also return scalar types (`bool`, `number`, `string`).
+- Mixed CEL/text and mixed Go-template/text resolve to strings.
 - Go template root values are exposed as zero-arg functions: `inputs`, `sequence`, `states`, `scope`, `context`.
+- Custom functions registered through `funcregistry.AddZeroFunc*` / `AddUnaryFunc` / `AddBinaryFunc` are available in both CEL and Go templates.
 - Dot-root access like `.inputs`/`.context` is not supported.
 - When/conditions are pure CEL strings (no `${{ }}` and no `{{ }}`) and must evaluate to `bool`; empty or `"true"` is treated as `true`.
 - Visibility:
@@ -22,7 +25,9 @@ Authoring templates follows the current resolver behavior (CEL + Go templates). 
   - Root/recipe cannot see inside sequences/states unless outputs are bubbled up. Sibling sequences in different states cannot see each other. Child sequences cannot see parent-sequence nodes.
 - JSON helpers:
   - `jq(value, expr)` / `value.jq(expr)` for jq queries (empty→null, multi→list).
-  - `json_stringify(value)` and `string(map|list)` for JSON strings in interpolated text.
+  - `json_stringify(value)` for CEL JSON-string output.
+  - `to_json(value)` for Go-template JSON-string output (preferred in `{{ ... }}` strings, e.g. `{{ cells | to_json }}`).
+  - `string(map|list)` also JSON-encodes during interpolation.
   - See [jq & JSON Helpers](./JQ_JSON_TEMPLATE_GUIDE.md) for details and examples.
 
 ## Examples

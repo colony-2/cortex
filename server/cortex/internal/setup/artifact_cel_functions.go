@@ -15,7 +15,14 @@ import (
 )
 
 func registerArtifactCELFunctions(b *funcregistry.Builder) {
-	// NOTE: These are registered in cortex (not recipe-template) via the CELOptionsProvider extension point.
+	// NOTE:
+	// These are advanced CEL-only registrations used by artifact helpers.
+	// For normal function integration, prefer funcregistry.AddZeroFuncWithContext /
+	// AddZeroFunc / AddUnaryFunc / AddBinaryFunc so functions are available in both CEL and Go templates.
+	// If one of these helpers must also be callable from Go templates, add a matching
+	// b.WithTemplateFunc(...) registration.
+	//
+	// Registered in cortex (not recipe-template) via the CELOptionsProvider extension point.
 	b.WithBuiltin("artifact_set", func(adapter types.Adapter, _ funcregistry.ContextProvider) cel.EnvOption {
 		return artifactSetLikeEnvOption(adapter, "artifact_set")
 	})
@@ -494,4 +501,3 @@ func toInt64(v ref.Val) (int64, bool) {
 		}
 	}
 }
-
