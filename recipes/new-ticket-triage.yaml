@@ -12,32 +12,18 @@ inputs:
   description: '{{ inputs.description }}'
 sequence:
   - id: assess_cell
-    op: llm_inference2
+    op: codex.exec
     inputs:
-      default_provider: openai
-      default_model: gpt-4.1
-      temperature: 0
-      tools: []
-      response_schema:
-        type: object
-        properties:
-          cell_is_appropriate:
-            type: boolean
-          recommended_cell:
-            type: string
-          rationale:
-            type: string
-        required:
-          - cell_is_appropriate
-          - recommended_cell
-          - rationale
-        additionalProperties: false
-      system_prompt: >
-        You are triaging a software ticket to decide if the current execution cell is the right
-        place to do the work. Use the available cells list to choose the best cell. Respond ONLY
-        with a JSON object matching the response_schema:
-        {"cell_is_appropriate": boolean, "recommended_cell": string, "rationale": string}.
+      worktree_path: "{{ context.environment.worktree_path }}"
+      cell_relative_path: >-
+        ${{
+          (has(context.workflow.cell_path) && context.workflow.cell_path != "")
+            ? context.workflow.cell_path
+            : "."
+        }}
       prompt: |
+        Triaging task: determine whether the current cell is appropriate for this ticket.
+
         Ticket Title: {{ inputs.title }}
         Ticket Description:
         {{ inputs.description }}
@@ -50,21 +36,31 @@ sequence:
         - Prefer specialized cells over general-purpose cells when a specialized cell clearly matches.
         - If the current cell is not the best match, set cell_is_appropriate=false and choose the
           single best cell name from the Available Cells list (use the cell \"name\" value).
-        Use the cell descriptions to guide your choice. Provide a concise rationale.
+        - Use the cell descriptions to guide your choice and provide a concise rationale.
 
-  - id: persist_triage_json
+        Write JSON artifact file:
+        - `{{ context.environment.outbox }}/triage.json`
+
+        JSON schema:
+        {
+          "cell_is_appropriate": boolean,
+          "recommended_cell": string,
+          "rationale": string
+        }
+
+  - id: read_triage_json
     op: command_execution
+    artifacts:
+      triage.json: '${{ sequence.assess_cell.artifacts["triage.json"] }}'
     inputs:
       run: |
         set -euo pipefail
-        mkdir -p "{{ context.environment.outbox }}"
-        cat > "{{ context.environment.outbox }}/triage.json" <<'EOF'
-        {{ sequence.assess_cell.outputs.response }}
-        EOF
+        cat "{{ context.environment.inbox }}/triage.json"
 
 outputs:
-  cell_is_appropriate: "${{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate }}"
-  recommended_cell: "${{ json_parse(sequence.assess_cell.outputs.response).recommended_cell }}"
-  rationale: "${{ json_parse(sequence.assess_cell.outputs.response).rationale }}"
-  recommended_cell_is_valid: "${{ cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) }}"
-  recommended_cell_final: "${{ json_parse(sequence.assess_cell.outputs.response).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.response).recommended_cell) ? json_parse(sequence.assess_cell.outputs.response).recommended_cell : context.workflow.cell) }}"
+  triage_json: "{{ sequence.read_triage_json.outputs.stdout }}"
+  cell_is_appropriate: "${{ json_parse(sequence.read_triage_json.outputs.stdout).cell_is_appropriate }}"
+  recommended_cell: "${{ json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell }}"
+  rationale: "${{ json_parse(sequence.read_triage_json.outputs.stdout).rationale }}"
+  recommended_cell_is_valid: "${{ cells().exists(c, c.name == json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell) }}"
+  recommended_cell_final: "${{ json_parse(sequence.read_triage_json.outputs.stdout).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell) ? json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell : context.workflow.cell) }}"

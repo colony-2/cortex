@@ -40,18 +40,12 @@ inputs:
   include_prior_summary: '${{ has(inputs.include_prior_summary) ? inputs.include_prior_summary : false }}'
   extra_instructions: '${{ has(inputs.extra_instructions) ? inputs.extra_instructions : "" }}'
 state:
-  initial: choose
+  initial:
+    - to: continue_session
+      when: 'has(inputs.session_id) && inputs.session_id != ""'
+    - to: new_session
+      when: "true"
   states:
-    choose:
-      op: command_execution
-      transitions:
-        - to: continue_session
-          when: 'has(inputs.session_id) && inputs.session_id != ""'
-        - to: new_session
-          when: "true"
-      inputs:
-        run: "echo choose"
-
     continue_session:
       op: codex.exec
       transitions:
@@ -66,9 +60,6 @@ state:
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
           }}
-        env:
-          C2_OUTBOX: "{{ context.environment.outbox }}"
-          C2_INBOX: "{{ context.environment.inbox }}"
         prompt: |
           You are implementing a software ticket in the c2 system.
 
@@ -95,7 +86,9 @@ state:
 
           Constraints:
           - Keep changes scoped to the current cell’s code.
-          - Do NOT write requirements/plan/review docs into the git repo; use the artifact outbox at $C2_OUTBOX for notes.
+          - Do NOT write requirements/plan/review docs into the git repo.
+          - If notes are needed, write artifacts under `{{ context.environment.outbox }}/implementation/`.
+          - Input artifacts are available under `{{ context.environment.inbox }}`.
           - Update/add tests if appropriate.
           - Prefer small, safe changes; keep backwards compatibility unless requirements explicitly say otherwise.
 
@@ -116,9 +109,6 @@ state:
               ? inputs.cell_relative_path
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
           }}
-        env:
-          C2_OUTBOX: "{{ context.environment.outbox }}"
-          C2_INBOX: "{{ context.environment.inbox }}"
         prompt: |
           You are implementing a software ticket in the c2 system.
 
@@ -145,7 +135,9 @@ state:
 
           Constraints:
           - Keep changes scoped to the current cell’s code.
-          - Do NOT write requirements/plan/review docs into the git repo; use the artifact outbox at $C2_OUTBOX for notes.
+          - Do NOT write requirements/plan/review docs into the git repo.
+          - If notes are needed, write artifacts under `{{ context.environment.outbox }}/implementation/`.
+          - Input artifacts are available under `{{ context.environment.inbox }}`.
           - Update/add tests if appropriate.
           - Prefer small, safe changes; keep backwards compatibility unless requirements explicitly say otherwise.
 

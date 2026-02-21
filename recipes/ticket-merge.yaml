@@ -22,7 +22,7 @@ state:
       op: command_execution
       transitions:
         - to: prompt
-          when: 'has(states.resolve.outputs.stdout) && states.resolve.outputs.stdout != "" && json_parse(states.resolve.outputs.stdout).needs_prompt == true'
+          when: 'has(outputs.stdout) && outputs.stdout != "" && json_parse(outputs.stdout).needs_prompt == true'
         - to: approve
           when: "true"
       inputs:
@@ -93,9 +93,7 @@ state:
       op: input
       transitions:
         - to: merge
-          when: 'has(states.approve.outputs.response) && states.approve.outputs.response == "merge"'
-        - to: done
-          when: "true"
+          when: 'has(outputs.response) && outputs.response == "merge"'
       inputs:
         form:
           title: "Approve merge"
@@ -116,9 +114,6 @@ state:
 
     merge:
       op: squashrebasemerge
-      transitions:
-        - to: done
-          when: "true"
       inputs:
         repo_path: "{{ context.environment.worktree_path }}"
         local_hash: "${{ json_parse(states.resolve.outputs.stdout).local_hash }}"
@@ -142,12 +137,6 @@ state:
               ? states.prompt.outputs.fields.commit_message
               : json_parse(states.resolve.outputs.stdout).commit_message
           }}
-
-    done:
-      op: command_execution
-      transitions: []
-      inputs:
-        run: "echo done"
 
 outputs:
   merged: "${{ 'merge' in states && has(states.merge.outputs.merged_hash) && states.merge.outputs.merged_hash != \"\" }}"

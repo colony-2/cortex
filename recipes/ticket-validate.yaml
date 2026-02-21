@@ -67,7 +67,7 @@ state:
       op: input
       transitions:
         - to: run_suggested
-          when: 'has(states.choose_mode.outputs.response) && states.choose_mode.outputs.response == "use_suggested"'
+          when: 'has(outputs.response) && outputs.response == "use_suggested"'
         - to: prompt_custom
           when: "true"
       inputs:
@@ -100,14 +100,12 @@ state:
 
     run_provided:
       op: command_execution
-      transitions:
-        - to: summarize
-          when: "true"
+      transitions: []
       inputs:
         timeout: 60m
         continue_on_error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
           OUT="{{ context.environment.outbox }}"
           mkdir -p "$OUT/validation"
@@ -119,7 +117,12 @@ state:
           {{ inputs.commands }}
           EOF
 
+          set +e
           bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+          RC=${PIPESTATUS[0]}
+          set -e
+          tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
+          exit $RC
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
@@ -131,14 +134,12 @@ state:
 
     run_suggested:
       op: command_execution
-      transitions:
-        - to: summarize
-          when: "true"
+      transitions: []
       inputs:
         timeout: 60m
         continue_on_error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
           OUT="{{ context.environment.outbox }}"
           mkdir -p "$OUT/validation"
@@ -146,13 +147,16 @@ state:
           DIR="$WT/$CELL"
           cd "$DIR"
 
-          PROMPTED="$(python3 - <<'PY'\nimport json\nprint(json.loads('''{{ states.detect.outputs.stdout }}''').get('suggested_commands',''))\nPY)"
-
           cat > "$OUT/validation/commands.sh" <<EOF
-          ${PROMPTED}
+          ${{ json_parse(states.detect.outputs.stdout).suggested_commands }}
           EOF
 
+          set +e
           bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+          RC=${PIPESTATUS[0]}
+          set -e
+          tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
+          exit $RC
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
@@ -164,14 +168,12 @@ state:
 
     run_custom:
       op: command_execution
-      transitions:
-        - to: summarize
-          when: "true"
+      transitions: []
       inputs:
         timeout: 60m
         continue_on_error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
           OUT="{{ context.environment.outbox }}"
           mkdir -p "$OUT/validation"
@@ -179,13 +181,16 @@ state:
           DIR="$WT/$CELL"
           cd "$DIR"
 
-          PROMPTED="{{ states.prompt_custom.outputs.response }}"
-
           cat > "$OUT/validation/commands.sh" <<'EOF'
           {{ states.prompt_custom.outputs.response }}
           EOF
 
+          set +e
           bash -euo pipefail "$OUT/validation/commands.sh" 2>&1 | tee "$OUT/validation/output.txt"
+          RC=${PIPESTATUS[0]}
+          set -e
+          tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
+          exit $RC
       env:
         WT: "{{ context.environment.worktree_path }}"
         CELL: >-
@@ -195,32 +200,9 @@ state:
               : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
           }}
 
-    summarize:
-      op: command_execution
-      transitions: []
-      inputs:
-        timeout: 5m
-        run: |
-          set -euo pipefail
-
-          OUT="{{ context.environment.outbox }}"
-          mkdir -p "$OUT/validation"
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          out = Path("{{ context.environment.outbox }}") / "validation" / "output.txt"
-          if not out.exists():
-            print("(no validation output captured)")
-            raise SystemExit(0)
-
-          text = out.read_text(encoding="utf-8", errors="replace")
-          lines = text.strip().splitlines()
-          tail = "\n".join(lines[-80:]) if lines else ""
-          print(tail)
-          PY
 outputs:
-  exit_code: "{{ states.summarize.outputs.exit_code }}"
-  passed: "${{ has(states.summarize.outputs.exit_code) ? states.summarize.outputs.exit_code == 0 : false }}"
+  exit_code: "${{ 'run_provided' in states ? states.run_provided.outputs.exit_code : (('run_suggested' in states) ? states.run_suggested.outputs.exit_code : (('run_custom' in states) ? states.run_custom.outputs.exit_code : 1)) }}"
+  passed: "${{ 'run_provided' in states ? states.run_provided.outputs.exit_code == 0 : (('run_suggested' in states) ? states.run_suggested.outputs.exit_code == 0 : (('run_custom' in states) ? states.run_custom.outputs.exit_code == 0 : false)) }}"
   suggested_commands: "${{ json_parse(states.detect.outputs.stdout).suggested_commands }}"
-  output_tail: "{{ states.summarize.outputs.stdout }}"
+  output_tail_artifact: "validation/output-tail.txt"
+  output_artifact: "validation/output.txt"
