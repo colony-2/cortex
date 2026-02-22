@@ -63,6 +63,27 @@ func registerOp(t *testing.T, opName string) {
 	withRegisteredOps(t, op.(coreops.RegisterableOp))
 }
 
+func registerArtifactOp(t *testing.T, opName string) {
+	t.Helper()
+	type input struct{}
+	type output struct {
+		Value string `json:"value"`
+		Flag  bool   `json:"flag"`
+	}
+
+	op, err := coreops.NewOp().
+		WithType(opName).
+		WithAcceptsArtifacts(true).
+		AddStep(opName, coreops.NewStepWithDeps(
+			func(_ coreops.OpDependencies, _ context.Context, _ input) (output, error) {
+				return output{Value: "filled", Flag: true}, nil
+			},
+		)).Build()
+	require.NoError(t, err)
+
+	withRegisteredOps(t, op.(coreops.RegisterableOp))
+}
+
 func newWorkflowContext(jobCtx swf.JobContext) workflow.Context {
 	return workflow.Context{
 		JobContext:           jobCtx,
@@ -134,6 +155,47 @@ func TestValidationClampsRunIndex(t *testing.T) {
 	result, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
 	require.NoError(t, err)
 	require.Equal(t, map[string]interface{}{"value": "", "flag": false}, result)
+}
+
+func TestValidationAllowsArtifactBindingsToFutureArtifactNames(t *testing.T) {
+	const opName = "validation-artifact-binding-op"
+	registerArtifactOp(t, opName)
+
+	jobCtx, gitCtx := GenerateTestContext()
+	ctx := newWorkflowContext(&countingJobContext{})
+
+	rec := recipe.Recipe{
+		RecipeImpl: &recipe.RecipeSequence{
+			RecipeMetadata: recipe.RecipeMetadata{
+				NodeMetadata: recipe.NodeMetadata{Inputs: map[string]interface{}{}},
+			},
+			SequenceData: recipe.SequenceData{
+				Sequence: []recipe.Node{
+					{NodeImpl: &recipe.NodeOp{
+						NodeMetadata: recipe.NodeMetadata{ID: "write", Inputs: map[string]interface{}{}},
+						OpData:       recipe.OpData{Op: opName},
+					}},
+					{NodeImpl: &recipe.NodeOp{
+						NodeMetadata: recipe.NodeMetadata{
+							ID:     "read",
+							Inputs: map[string]interface{}{},
+							Artifacts: map[string]interface{}{
+								"foo.txt": `${{ sequence.write.artifacts["foo.txt"] }}`,
+							},
+						},
+						OpData: recipe.OpData{Op: opName},
+					}},
+				},
+				Outputs: map[string]interface{}{
+					"result": "${{ sequence.read.outputs.value }}",
+				},
+			},
+		},
+	}
+
+	result, _, err := ExecuteRecipe(ctx, rec, map[string]interface{}{}, jobCtx, gitCtx, ExecutionOptions{Mode: ExecutionModeValidate})
+	require.NoError(t, err)
+	require.Equal(t, map[string]interface{}{"result": ""}, result)
 }
 
 func TestValidationAllowsFutureStateReference(t *testing.T) {

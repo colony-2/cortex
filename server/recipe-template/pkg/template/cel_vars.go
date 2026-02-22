@@ -1,7 +1,6 @@
 package template
 
 import (
-	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/traits"
 )
@@ -24,18 +23,16 @@ func clampStepOutputs(stepOutputs map[string]StepOutput, adapter types.Adapter) 
 	out := make(map[string]interface{}, len(stepOutputs))
 	for key, step := range stepOutputs {
 		artifacts := step.Artifacts
-		if artifacts == nil {
-			artifacts = map[string]swf.Artifact{}
-		}
 		outputs := step.Outputs
 		if outputs == nil {
 			outputs = map[string]interface{}{}
 		}
 		// In validation mode we want missing keys to yield null instead of failing.
 		outputsVal := newPermissiveMap(outputs, adapter)
+		artifactsVal := newPermissiveArtifactMap(artifacts, adapter)
 		out[key] = map[string]interface{}{
 			"outputs":   outputsVal,
-			"artifacts": artifacts,
+			"artifacts": artifactsVal,
 			"runs":      clampRuns(step.Runs, adapter),
 		}
 	}
@@ -49,16 +46,13 @@ func clampRuns(runs []RunOutput, adapter types.Adapter) traits.Lister {
 	runMaps := make([]interface{}, 0, len(runs))
 	for _, run := range runs {
 		artifacts := run.Artifacts
-		if artifacts == nil {
-			artifacts = map[string]swf.Artifact{}
-		}
 		outputs := run.Outputs
 		if outputs == nil {
 			outputs = map[string]interface{}{}
 		}
 		runMaps = append(runMaps, map[string]interface{}{
 			"outputs":   newPermissiveMap(outputs, adapter),
-			"artifacts": artifacts,
+			"artifacts": newPermissiveArtifactMap(artifacts, adapter),
 			"run_id":    run.RunID,
 			"timestamp": run.Timestamp,
 		})

@@ -611,6 +611,7 @@ type recipeTestJobContext struct {
 	mockMisses       []recipeTestMockMiss
 	executedNodes    map[string]bool
 	artifactContents map[string][]byte
+	artifactOrdinal  int64
 	recordings       map[string]recipePassthroughRecord
 }
 
@@ -716,11 +717,20 @@ func (j *recipeTestJobContext) buildTaskData(outputs map[string]interface{}, art
 	if err != nil {
 		return nil, err
 	}
+	j.artifactOrdinal++
+	taskOrdinal := j.artifactOrdinal
 	artifactList := make([]swf.Artifact, 0, len(artifacts))
 	for name, content := range artifacts {
 		b := []byte(content)
 		j.artifactContents[name] = b
-		artifactList = append(artifactList, swf.NewArtifactFromBytes(name, b))
+		artifact := swf.NewArtifactFromBytes(name, b)
+		swf.AssignArtifactKey(artifact, swf.ArtifactKey{
+			JobId:       j.jobKey.JobId,
+			TaskOrdinal: taskOrdinal,
+			Name:        name,
+			SizeBytes:   int64(len(b)),
+		})
+		artifactList = append(artifactList, artifact)
 	}
 	return swf.NewTaskData(env, artifactList...)
 }
