@@ -58,8 +58,11 @@ type Options struct {
 	Model     string
 	ExtraEnv  map[string]string
 
+	WorkDirRoot      string
 	WorktreeRoot     string
 	CellRelativePath string
+	ArtifactInbox    string
+	ArtifactOutbox   string
 
 	Clock            Clock
 	RunnerFactory    RunnerFactory

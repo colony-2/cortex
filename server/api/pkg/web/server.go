@@ -12,6 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
@@ -57,6 +58,8 @@ type Dependencies struct {
 
 	// RecipeTestDeps are runtime dependencies exposed to recipe-testing passthrough execution.
 	RecipeTestDeps coreops.ServiceDependencies2
+	// RecipeTestCELOptionsProvider injects CEL/template helper functions for recipe-test execution.
+	RecipeTestCELOptionsProvider template.CELOptionsProvider
 
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
@@ -98,6 +101,7 @@ func NewServer(config Config, deps Dependencies) *Server {
 		deps.CellDeps,
 		deps.SWFEngine,
 		handlers.WithRecipeTestDeps(deps.RecipeTestDeps),
+		handlers.WithRecipeTestCELOptionsProvider(deps.RecipeTestCELOptionsProvider),
 	)
 
 	// Setup static handler if filesystem is provided

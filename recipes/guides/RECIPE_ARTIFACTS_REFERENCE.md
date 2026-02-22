@@ -48,6 +48,8 @@ Example:
     artifact: "${{ sequence.emit.artifacts[\"foo\"] }}"
 ```
 
+Use a single CEL expression (`${{ ... }}`) when passing artifact keys. This preserves the artifact-key type instead of coercing to text.
+
 ### 3.2 Materialize Artifacts into the Inbox
 Some ops (like `command_execution`) support an `artifacts:` block to materialize referenced artifacts on disk before the op runs.
 
@@ -73,18 +75,106 @@ Binding name rules:
 - If the name ends with `/`, the artifact file name is appended.
 - Collisions or path escapes are errors.
 
-## 4. Propagation and Template Access
+## 4. Crossing Scope Boundaries (Important)
+
+Artifacts are stored on the node that produced them. If an outer scope needs an inner artifact, export the artifact key through the container `outputs:` map.
+
+### 4.1 Inner Sequence -> Outer Scope
+
+```yaml
+- id: outer
+  sequence:
+    - id: build
+      sequence:
+        - id: write
+          op: command_execution
+          inputs:
+            working_directory: "{{ context.environment.outbox }}"
+            run: "printf 'hello' > payload.txt"
+      outputs:
+        payload_artifact: '${{ sequence.write.artifacts["payload.txt"] }}'
+    - id: consume
+      op: command_execution
+      inputs:
+        working_directory: "{{ context.environment.inbox }}"
+        run: "cat payload.txt"
+      artifacts:
+        payload.txt: '${{ sequence.build.outputs.payload_artifact }}'
+```
+
+### 4.2 Inner State Machine -> Outer Scope
+
+```yaml
+- id: flow
+  state:
+    initial: generate
+    states:
+      generate:
+        op: command_execution
+        inputs:
+          working_directory: "{{ context.environment.outbox }}"
+          run: "printf 'report' > report.txt"
+        transitions:
+          - to: done
+            when: true
+      done:
+        op: echo_activity
+        inputs:
+          message: done
+  outputs:
+    report_artifact: '${{ states.generate.artifacts["report.txt"] }}'
+
+- id: read_report
+  op: command_execution
+  inputs:
+    working_directory: "{{ context.environment.inbox }}"
+    run: "cat report.txt"
+  artifacts:
+    report.txt: '${{ sequence.flow.outputs.report_artifact }}'
+```
+
+### 4.3 Child Recipe -> Parent Recipe
+
+Use `recipe.run_and_get_result`, `recipe.await_result`, or `recipe.get_result`:
+- Child value outputs are under `sequence.<step-id>.outputs.outputs.*`.
+- Child artifacts are attached to the parent step artifacts (`sequence.<step-id>.artifacts`).
+
+```yaml
+- id: run_child
+  op: recipe.run_and_get_result
+  inputs:
+    name: child-artifact
+    inputs: {}
+    artifacts: []
+    git_ref: "{{ inputs.git_ref }}"
+
+- id: use_child_artifact
+  op: command_execution
+  inputs:
+    working_directory: "{{ context.environment.inbox }}"
+    run: "cat foo"
+  artifacts:
+    foo: '${{ sequence.run_child.artifacts["foo"] }}'
+
+outputs:
+  child_name: "{{ sequence.run_child.outputs.outputs.name }}"
+```
+
+## 5. Propagation and Template Access
 
 Artifacts are stored per node and are accessible in templates:
 - Sequence nodes: `sequence.<node-id>.artifacts`
 - State nodes: `states.<state-id>.artifacts`
 - Prior runs (retries/loops): `sequence.<node-id>.runs[].artifacts`
 
-The final node in a sequence supplies the sequence-level artifacts. The job result includes artifacts from the last executed node.
+Composite-node caveat:
+- For a `sequence`, the sequence-level artifacts are taken from the final executed child node.
+- For a `state` machine, the state-machine-level artifacts are taken from the final state.
+- If you need a specific inner artifact regardless of terminal path, export its key via the container `outputs:` map.
 
 Artifacts are preserved on failure if the op ran and produced them, which is helpful for debugging output (logs, partial files).
 
-## 5. Inbox and Outbox Paths
+## 6. Inbox and Outbox Paths
 
 The executor replaces sentinel values in templates at runtime:
 - `context.environment.inbox` -> per-op inbox directory
@@ -92,7 +182,7 @@ The executor replaces sentinel values in templates at runtime:
 
 These are always local to the current task. The only way to move data between steps is by emitting artifacts and referencing them.
 
-## 6. Thin Pack Artifact (Git State)
+## 7. Thin Pack Artifact (Git State)
 
 The git workspace controller uses a special artifact named:
 
@@ -112,7 +202,7 @@ Behavior:
 
 Recipe authors generally should not bind or inspect the thin pack directly; treat it as internal state propagation for git-backed recipes.
 
-## 7. Quick Reference Examples
+## 8. Quick Reference Examples
 
 ### Emit -> Consume by Key
 ```yaml

@@ -31,6 +31,13 @@ git:
   author: ""                        # optional, defaults from context
 ```
 
+When populating `artifacts` with templates, use raw CEL values:
+
+```yaml
+artifacts:
+  - '${{ sequence.prepare.artifacts["payload.json"] }}'
+```
+
 Notes:
 - `cell_name` and `cell_path` must be present after defaults are applied; otherwise the op errors.
 - `git.base_repo`, `git.base_ref`, and `git.base_hash` must be present after defaults are applied; otherwise the op errors.
@@ -64,6 +71,7 @@ outputs:
 ```
 
 Child artifacts are attached to the parent job output artifacts automatically.
+You can reference those as `sequence.<step-id>.artifacts["name"]` in later nodes.
 
 ## Ops Reference
 
@@ -179,18 +187,32 @@ Example:
 
 ## End-to-End Example
 
-Run a child recipe and use its output:
+Run a child recipe, pass an artifact into it, then consume a child artifact and output:
 
 ```yaml
+- id: prepare
+  op: command_execution
+  inputs:
+    working_directory: "{{ context.environment.outbox }}"
+    run: "printf 'input for child' > child-input.txt"
+
 - id: child
   op: recipe.run_and_get_result
   inputs:
-    name: child-simple
-    inputs:
-      value: "{{ inputs.value }}"
-    artifacts: []
+    name: child-artifact
+    inputs: {}
+    artifacts:
+      - '${{ sequence.prepare.artifacts["child-input.txt"] }}'
     git_ref: "{{ inputs.git_ref }}"
 
+- id: consume_child_artifact
+  op: command_execution
+  inputs:
+    working_directory: "{{ context.environment.inbox }}"
+    run: "cat foo"
+  artifacts:
+    foo: '${{ sequence.child.artifacts["foo"] }}'
+
 outputs:
-  child_value: "{{ sequence.child.outputs.outputs.value }}"
+  child_name: "{{ sequence.child.outputs.outputs.name }}"
 ```

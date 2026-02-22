@@ -1,0 +1,73 @@
+id: codex-inbox-git-outbox
+version: "1.0.0"
+desc: Verify codex.exec reads inbox artifacts, persists git changes, and emits outbox artifacts
+input_schema: {}
+sequence:
+  - id: write_seed_artifact
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.outbox }}"
+      run: "printf 'fixture-token' > input.txt"
+
+  - id: codex_apply
+    op: codex.exec
+    artifacts:
+      input.txt: '${{ sequence.write_seed_artifact.artifacts["input.txt"] }}'
+    inputs:
+      workdir_path: "{{ context.environment.workdir }}"
+      worktree_path: "{{ context.environment.worktree_path }}"
+      artifact_inbox_path: "{{ context.environment.inbox }}"
+      artifact_outbox_path: "{{ context.environment.outbox }}"
+      cell_relative_path: >-
+        ${{
+          (has(context.workflow.cell_path) && context.workflow.cell_path != "")
+            ? context.workflow.cell_path
+            : "."
+        }}
+      prompt: |
+        Run this exact shell command and do not alter it:
+        bash -lc 'set -euo pipefail; token=$(cat "../inbox/input.txt"); mkdir -p "{{ context.workflow.cell_path }}"; printf "from_inbox=%s" "$token" > "{{ context.workflow.cell_path }}/codex-fixture.txt"; printf "outbox_from_inbox=%s" "$token" > "../outbox/codex-generated.txt"; test -s "{{ context.workflow.cell_path }}/codex-fixture.txt"; test -s "../outbox/codex-generated.txt"'
+        After running it, provide your normal structured response.
+
+  - id: read_git_file
+    op: command_execution
+    inputs:
+      run: |
+        if [ -f "{{ context.workflow.cell_path }}/codex-fixture.txt" ]; then
+          cat "{{ context.workflow.cell_path }}/codex-fixture.txt"
+        else
+          echo "__MISSING_GIT_FILE__"
+        fi
+
+  - id: codex_command_event
+    op: command_execution
+    artifacts:
+      stdout.jsonl: '${{ sequence.codex_apply.artifacts["stdout.jsonl"] }}'
+    inputs:
+      working_directory: "{{ context.environment.inbox }}"
+      run: |
+        if rg -q '"type":"command_execution"' stdout.jsonl; then
+          echo "yes"
+        else
+          echo "no"
+        fi
+
+  - id: codex_command_exit
+    op: command_execution
+    artifacts:
+      stdout.jsonl: '${{ sequence.codex_apply.artifacts["stdout.jsonl"] }}'
+    inputs:
+      working_directory: "{{ context.environment.inbox }}"
+      run: |
+        line="$(rg '\"type\":\"command_execution\".*\"status\":\"completed\"' stdout.jsonl | tail -n 1 || true)"
+        if [ -z "$line" ]; then
+          echo "none"
+          exit 0
+        fi
+        echo "$line" | grep -o '\"exit_code\":[-0-9]*' | head -n 1 | cut -d: -f2
+
+outputs:
+  codex_status: "{{ sequence.codex_apply.outputs.status }}"
+  git_content: "{{ sequence.read_git_file.outputs.stdout }}"
+  codex_command_event: "{{ sequence.codex_command_event.outputs.stdout }}"
+  codex_command_exit: "{{ sequence.codex_command_exit.outputs.stdout }}"

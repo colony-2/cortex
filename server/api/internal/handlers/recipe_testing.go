@@ -14,8 +14,9 @@ func (h *Handlers) handleRecipeTestCaseValidate(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, recipetesting.ValidateResponse{Valid: false, Errors: issues})
 		return
 	}
-	service := recipetesting.NewService(h.recipeSvc, h.recipeTestDeps)
-	prepared := service.Prepare(r.Context(), project.ID(mux.Vars(r)["projectId"]), req)
+	projectID := project.ID(mux.Vars(r)["projectId"])
+	service := recipetesting.NewService(h.recipeSvc, h.recipeTestDeps, h.recipeTestCELOptionsProvider)
+	prepared := service.Prepare(r.Context(), projectID, req)
 	status := http.StatusOK
 	if len(prepared.Validation.Errors) > 0 {
 		status = http.StatusBadRequest
@@ -29,11 +30,12 @@ func (h *Handlers) handleRecipeTestCaseExecute(w http.ResponseWriter, r *http.Re
 		writeJSON(w, http.StatusBadRequest, recipetesting.ValidateResponse{Valid: false, Errors: issues})
 		return
 	}
-	service := recipetesting.NewService(h.recipeSvc, h.recipeTestDeps)
-	prepared := service.Prepare(r.Context(), project.ID(mux.Vars(r)["projectId"]), req)
+	projectID := project.ID(mux.Vars(r)["projectId"])
+	service := recipetesting.NewService(h.recipeSvc, h.recipeTestDeps, h.recipeTestCELOptionsProvider)
+	prepared := service.Prepare(r.Context(), projectID, req)
 	if len(prepared.Validation.Errors) > 0 {
 		writeJSON(w, http.StatusBadRequest, prepared.Validation)
 		return
 	}
-	writeJSON(w, http.StatusOK, service.Execute(r.Context(), req, prepared))
+	writeJSON(w, http.StatusOK, service.Execute(r.Context(), projectID, req, prepared))
 }

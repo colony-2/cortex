@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -21,12 +22,15 @@ import (
 
 // ExecOpInput defines the codex.exec activity inputs expected from recipe-worker.
 type ExecOpInput struct {
-	Prompt           string            `json:"prompt" validate:"required"`
-	SessionID        string            `json:"sessionId,omitempty"`
-	Model            string            `json:"model,omitempty"`
-	Env              map[string]string `json:"env,omitempty"`
-	WorktreePath     string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}" validate:"required"`
-	CellRelativePath string            `json:"cell_relative_path" default:"{{ context.workflow.cell_path }}" validate:"required"`
+	Prompt             string            `json:"prompt" validate:"required"`
+	SessionID          string            `json:"sessionId,omitempty"`
+	Model              string            `json:"model,omitempty"`
+	Env                map[string]string `json:"env,omitempty"`
+	WorkdirPath        string            `json:"workdir_path,omitempty" default:"{{ context.environment.workdir }}"`
+	WorktreePath       string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}" validate:"required"`
+	ArtifactInboxPath  string            `json:"artifact_inbox_path,omitempty" default:"{{ context.environment.inbox }}"`
+	ArtifactOutboxPath string            `json:"artifact_outbox_path,omitempty" default:"{{ context.environment.outbox }}"`
+	CellRelativePath   string            `json:"cell_relative_path" default:"{{ context.workflow.cell_path }}" validate:"required"`
 }
 
 // ExecOpOutput mirrors the structured response surfaced by the codex library.
@@ -45,10 +49,11 @@ var executeLibrary = Execute
 // GetOp exposes the codex.exec activity as a RegisterableOp.
 func GetOp() ops.RegisterableOp {
 	return ops.NewActivityMappedOpV2[ExecOpInput, ExecOpOutput](ops.OpMetadata{
-		Type:           "codex.exec",
-		Description:    "Runs Codex CLI in non-interactive mode with structured output capture",
-		Version:        "1.0.0",
-		DefaultTimeout: 30 * time.Minute,
+		Type:             "codex.exec",
+		Description:      "Runs Codex CLI in non-interactive mode with structured output capture",
+		Version:          "1.0.0",
+		DefaultTimeout:   30 * time.Minute,
+		AcceptsArtifacts: true,
 	}, runCodexActivity)
 }
 
@@ -63,6 +68,19 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 	if worktree == "" {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("worktree_path is required")
 	}
+	workdir := strings.TrimSpace(input.WorkdirPath)
+	if workdir == "" {
+		// Backward-compatible fallback for direct tests/callers that only pass worktree.
+		workdir = worktree
+	}
+	inbox := strings.TrimSpace(input.ArtifactInboxPath)
+	if inbox == "" {
+		inbox = filepath.Join(workdir, "inbox")
+	}
+	outbox := strings.TrimSpace(input.ArtifactOutboxPath)
+	if outbox == "" {
+		outbox = filepath.Join(workdir, "outbox")
+	}
 	cellRelPath := strings.TrimSpace(input.CellRelativePath)
 	if cellRelPath == "" {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("cell_relative_path is required")
@@ -73,7 +91,10 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		SessionID:        strings.TrimSpace(input.SessionID),
 		Model:            strings.TrimSpace(input.Model),
 		ExtraEnv:         input.Env,
+		WorkDirRoot:      workdir,
 		WorktreeRoot:     worktree,
+		ArtifactInbox:    inbox,
+		ArtifactOutbox:   outbox,
 		CellRelativePath: cellRelPath,
 	}
 

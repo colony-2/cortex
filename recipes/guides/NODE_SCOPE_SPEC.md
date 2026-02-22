@@ -19,6 +19,7 @@ Each node owns its scope; children inherit from the container but cannot see int
 *Children can access:*
 - `inputs` passed to the sequence.
 - Sibling outputs via `sequence.<node-id>.outputs.*`.
+- Sibling artifacts via `sequence.<node-id>.artifacts["name"]`.
 - Outputs defined on the sequence itself (`outputs:` block) once exported upward.
 
 *Example*
@@ -43,6 +44,7 @@ Each node owns its scope; children inherit from the container but cannot see int
 *Children can access:*
 - `inputs` passed to the state machine.
 - Previously completed states via `states.<state-id>.outputs.*`.
+- Previously completed states via `states.<state-id>.artifacts["name"]`.
 - In state `transitions.when`, `outputs.*` refers to the current state's outputs.
 
 `initial` supports either:
@@ -83,28 +85,31 @@ You can compose nodes by nesting sequences/state machines. Always export data yo
   sequence:
     - id: prepare
       state:
-        initial: bootstrap
+        initial: write_workspace
         states:
-          bootstrap:
+          write_workspace:
             op: command_execution
             inputs:
-              run: 'mkdir -p work'
-            outputs:
-              work_dir: 'work'
-          complete:
-            op: command_execution
-            inputs:
-              run: 'ls work'
+              working_directory: "{{ context.environment.outbox }}"
+              run: "printf 'ready' > workspace.txt"
             transitions:
               - to: done
+                when: true
+          done:
+            op: echo_activity
+            inputs:
+              message: done
         outputs:
-          workspace: '{{ states.complete.outputs.work_dir }}'
+          workspace_artifact: '${{ states.write_workspace.artifacts["workspace.txt"] }}'
     - id: summary
       op: command_execution
       inputs:
-        run: "echo '{{ sequence.prepare.outputs.workspace }}'"
+        working_directory: "{{ context.environment.inbox }}"
+        run: "cat workspace.txt"
+      artifacts:
+        workspace.txt: '${{ sequence.prepare.outputs.workspace_artifact }}'
   outputs:
-    workspace: '{{ sequence.prepare.outputs.workspace }}'
+    workspace_artifact: '${{ sequence.prepare.outputs.workspace_artifact }}'
 ```
 
 ## Encapsulation Rules
@@ -113,13 +118,14 @@ You can compose nodes by nesting sequences/state machines. Always export data yo
 2. Children can reference siblings only via the container’s namespace (`sequence.<id>`, `states.<id>`).
 3. To share data with outer nodes, declare an `outputs:` map on the current container.
 4. Nesting requires importing context via `inputs` and exporting via `outputs` at each layer.
+5. For artifact keys, use raw CEL expressions (`${{ ... }}`) so the value remains an artifact key.
 
 ## Quick Reference
 
 | Node type | Access to inputs | Access to siblings | Export mechanism |
 |-----------|------------------|--------------------|------------------|
-| `op`      | `inputs.*`       | N/A                | activity outputs |
-| `sequence`| `inputs.*`       | `sequence.<id>.outputs.*` | `outputs:` block |
-| `state`   | `inputs.*`       | `states.<id>.outputs.*`   | `outputs:` block |
+| `op`      | `inputs.*`       | N/A                | activity outputs + artifacts |
+| `sequence`| `inputs.*`       | `sequence.<id>.outputs.*`, `sequence.<id>.artifacts.*` | `outputs:` block |
+| `state`   | `inputs.*`       | `states.<id>.outputs.*`, `states.<id>.artifacts.*`   | `outputs:` block |
 
 Use this spec whenever you structure recipes that combine multiple node types, ensuring data flows remain explicit and predictable.

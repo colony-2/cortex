@@ -51,7 +51,7 @@ sequence:
   - id: read_triage_json
     op: command_execution
     artifacts:
-      triage.json: '${{ sequence.assess_cell.artifacts["triage.json"] }}'
+      triage.json: "triage.json"
     inputs:
       run: |
         set -euo pipefail

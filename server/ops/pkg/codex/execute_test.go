@@ -57,10 +57,34 @@ func (h *runnerHarness) factory(cfg *shai.SandboxConfig) (Runner, error) {
 	return h.runner, nil
 }
 
+type opWorkLayout struct {
+	workdir  string
+	worktree string
+	inbox    string
+	outbox   string
+}
+
+func setupOpWorkLayout(t *testing.T) opWorkLayout {
+	t.Helper()
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	inbox := filepath.Join(workdir, "inbox")
+	outbox := filepath.Join(workdir, "outbox")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.MkdirAll(outbox, 0o755))
+	return opWorkLayout{
+		workdir:  workdir,
+		worktree: worktree,
+		inbox:    inbox,
+		outbox:   outbox,
+	}
+}
+
 func TestExecuteCompleted(t *testing.T) {
-	worktree := t.TempDir()
+	layout := setupOpWorkLayout(t)
 	cellRel := "cells/a"
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, cellRel), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(layout.worktree, cellRel), 0o755))
 
 	harness := &runnerHarness{
 		lines: []string{
@@ -71,7 +95,10 @@ func TestExecuteCompleted(t *testing.T) {
 
 	opts := Options{
 		Prompt:           "do the task",
-		WorktreeRoot:     worktree,
+		WorkDirRoot:      layout.workdir,
+		WorktreeRoot:     layout.worktree,
+		ArtifactInbox:    layout.inbox,
+		ArtifactOutbox:   layout.outbox,
 		CellRelativePath: cellRel,
 		Clock:            fakeClock{ts: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
@@ -110,13 +137,25 @@ func TestExecuteCompleted(t *testing.T) {
 	require.False(t, harness.config.ShowScriptOutput)
 	require.Contains(t, harness.config.PostSetupExec.Env, "CODEX_APPROVAL_POLICY")
 	require.Equal(t, "never", harness.config.PostSetupExec.Env["CODEX_APPROVAL_POLICY"])
-	require.Equal(t, []string{cellRel}, harness.config.ReadWritePaths)
+	require.Equal(t, layout.workdir, harness.config.WorkingDir)
+	require.Equal(t, []string{filepath.Join("worktree", cellRel)}, harness.config.ReadWritePaths)
+	require.NotNil(t, harness.config.PrependResourceSet)
+
+	mountByTarget := map[string]shai.Mount{}
+	for _, m := range harness.config.PrependResourceSet.Mounts {
+		mountByTarget[m.Target] = m
+	}
+	require.Equal(t, "ro", mountByTarget["/src/inbox"].Mode)
+	require.Equal(t, "inbox", mountByTarget["/src/inbox"].Source)
+	require.Equal(t, "rw", mountByTarget["/src/outbox"].Mode)
+	require.Equal(t, "outbox", mountByTarget["/src/outbox"].Source)
+
 	require.True(t, harness.runner.closed)
 }
 
 func TestExecuteIncompleteDependencies(t *testing.T) {
-	worktree := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cell"), 0o755))
+	layout := setupOpWorkLayout(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(layout.worktree, "cell"), 0o755))
 
 	harness := &runnerHarness{
 		lines: []string{
@@ -127,7 +166,10 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 
 	opts := Options{
 		Prompt:           "analyze",
-		WorktreeRoot:     worktree,
+		WorkDirRoot:      layout.workdir,
+		WorktreeRoot:     layout.worktree,
+		ArtifactInbox:    layout.inbox,
+		ArtifactOutbox:   layout.outbox,
 		CellRelativePath: "cell",
 		Clock:            fakeClock{ts: time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
@@ -151,8 +193,8 @@ func TestExecuteIncompleteDependencies(t *testing.T) {
 }
 
 func TestExecuteStructuredPayloadError(t *testing.T) {
-	worktree := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cell"), 0o755))
+	layout := setupOpWorkLayout(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(layout.worktree, "cell"), 0o755))
 
 	harness := &runnerHarness{
 		lines: []string{
@@ -164,7 +206,10 @@ func TestExecuteStructuredPayloadError(t *testing.T) {
 
 	opts := Options{
 		Prompt:           "go",
-		WorktreeRoot:     worktree,
+		WorkDirRoot:      layout.workdir,
+		WorktreeRoot:     layout.worktree,
+		ArtifactInbox:    layout.inbox,
+		ArtifactOutbox:   layout.outbox,
 		CellRelativePath: "cell",
 		Clock:            fakeClock{ts: time.Date(2024, 7, 8, 9, 10, 11, 0, time.UTC)},
 		RunnerFactory:    harness.factory,
@@ -185,8 +230,8 @@ func TestExecuteStructuredPayloadError(t *testing.T) {
 }
 
 func TestExecuteRunError(t *testing.T) {
-	worktree := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cell"), 0o755))
+	layout := setupOpWorkLayout(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(layout.worktree, "cell"), 0o755))
 
 	harness := &runnerHarness{
 		lines: []string{
@@ -198,7 +243,10 @@ func TestExecuteRunError(t *testing.T) {
 
 	opts := Options{
 		Prompt:           "task",
-		WorktreeRoot:     worktree,
+		WorkDirRoot:      layout.workdir,
+		WorktreeRoot:     layout.worktree,
+		ArtifactInbox:    layout.inbox,
+		ArtifactOutbox:   layout.outbox,
 		CellRelativePath: "cell",
 		Clock:            fakeClock{ts: time.Date(2024, 9, 10, 11, 12, 13, 0, time.UTC)},
 		RunnerFactory:    harness.factory,

@@ -63,8 +63,43 @@ state:
 - Inside a state, you can reference:
   - `inputs.*` passed to the state machine.
   - Completed states via `states.<state-id>.outputs.*`.
+- State artifacts are available via `states.<state-id>.artifacts["name"]`.
 - Inside a state that is a `sequence`, you can also use `sequence.<step-id>.outputs.*` for that state’s internal steps.
 - To make data visible outside the state machine, map it with the state machine’s top-level `outputs:`. Think “export at each boundary.”
+- In `transitions.when`, `outputs.*` refers to the current state outputs (not artifacts); use `states.<id>.artifacts` outside transition conditions.
+
+## Boundary Example: Inner State -> Outer Sequence
+
+Use this when a state emits artifacts that downstream nodes outside the state machine must consume.
+
+```yaml
+- id: branching_flow
+  state:
+    initial: generate
+    states:
+      generate:
+        op: command_execution
+        inputs:
+          working_directory: "{{ context.environment.outbox }}"
+          run: "printf 'state report' > report.txt"
+        transitions:
+        - to: done
+          when: true
+      done:
+        op: echo_activity
+        inputs:
+          message: done
+  outputs:
+    report_artifact: '${{ states.generate.artifacts["report.txt"] }}'
+
+- id: read_report
+  op: command_execution
+  inputs:
+    working_directory: "{{ context.environment.inbox }}"
+    run: "cat report.txt"
+  artifacts:
+    report.txt: '${{ sequence.branching_flow.outputs.report_artifact }}'
+```
 
 ## Design Patterns
 - **Guard/Process/Finalize**: validate inputs → branch to handlers → finalize. Transitions pick the handler based on validation outputs.
@@ -83,6 +118,7 @@ state:
 - Every referenced `to` state exists.
 - Transition `when` expressions are valid CEL and reference available scope fields.
 - Required outputs are exported in the top-level `outputs:` block.
+- For artifact export, keep `outputs:` values as raw CEL (`${{ states.<state>.artifacts["name"] }}`).
 
 ## Minimal Skeleton
 ```yaml

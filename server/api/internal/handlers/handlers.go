@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,7 +17,10 @@ import (
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
@@ -53,7 +57,8 @@ type Handlers struct {
 
 	swfEngine swfJobRunGetter
 
-	recipeTestDeps coreops.ServiceDependencies2
+	recipeTestDeps               coreops.ServiceDependencies2
+	recipeTestCELOptionsProvider template.CELOptionsProvider
 }
 
 type HandlerOption func(*Handlers)
@@ -61,6 +66,12 @@ type HandlerOption func(*Handlers)
 func WithRecipeTestDeps(deps coreops.ServiceDependencies2) HandlerOption {
 	return func(h *Handlers) {
 		h.recipeTestDeps = deps
+	}
+}
+
+func WithRecipeTestCELOptionsProvider(provider template.CELOptionsProvider) HandlerOption {
+	return func(h *Handlers) {
+		h.recipeTestCELOptionsProvider = provider
 	}
 }
 
@@ -86,7 +97,48 @@ func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.S
 	if h.recipeTestDeps == nil {
 		h.recipeTestDeps = coreops.NewServiceDepsBuilder().Build()
 	}
+	if h.recipeTestCELOptionsProvider == nil {
+		h.recipeTestCELOptionsProvider = newRecipeTestCELOptionsProvider(h.cells)
+	}
 	return h
+}
+
+func newRecipeTestCELOptionsProvider(cellsSvc cell.Service) template.CELOptionsProvider {
+	builder := funcregistry.NewBuilder().WithDefaults()
+	if cellsSvc == nil {
+		return builder
+	}
+	funcregistry.AddZeroFuncWithContext(builder, "cells", func(ctx context.Context, taskCtx contextual.TaskExecutionContext) ([]funcregistry.CELCell, error) {
+		projectID := strings.TrimSpace(taskCtx.Workflow.ProjectId)
+		if projectID == "" {
+			return nil, fmt.Errorf("cells: project_id is required in context.workflow.project_id")
+		}
+
+		it, err := cellsSvc.ListCells(ctx, cell.SearchFilter{ProjectIDs: []project.ID{project.ID(projectID)}})
+		if err != nil {
+			return nil, fmt.Errorf("cells: failed to list cells: %w", err)
+		}
+		defer it.Close(ctx)
+
+		out := make([]funcregistry.CELCell, 0)
+		for {
+			c, err := it.Next(ctx)
+			if errors.Is(err, cell.ErrIteratorDone) {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("cells: failed to list cells: %w", err)
+			}
+			out = append(out, funcregistry.CELCell{
+				Name:        c.Name,
+				ID:          string(c.ID),
+				Path:        c.WorkingPath,
+				Description: c.Description,
+			})
+		}
+		return out, nil
+	})
+	return builder
 }
 
 func defaultRecipeRegistryFactory(_ context.Context, projectID project.ID, repoPath string) (*registry.Registry, string, func(), error) {

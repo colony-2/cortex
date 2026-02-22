@@ -17,7 +17,7 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 	if err := opts.validate(); err != nil {
 		return Result{}, "", "", "", err
 	}
-	if err := ensureCellPath(opts); err != nil {
+	if err := ensureExecutionPaths(opts); err != nil {
 		return Result{}, "", "", "", err
 	}
 
@@ -111,13 +111,46 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 		return cmd.Run()
 	}
 
+	cellRelFromWorkdir, err := opts.relativeToWorkdir(filepath.Join(opts.WorktreeRoot, opts.CellRelativePath))
+	if err != nil {
+		return fmt.Errorf("resolve cell mount path: %w", err)
+	}
+	inboxRelFromWorkdir, err := opts.relativeToWorkdir(opts.ArtifactInbox)
+	if err != nil {
+		return fmt.Errorf("resolve inbox mount path: %w", err)
+	}
+	outboxRelFromWorkdir, err := opts.relativeToWorkdir(opts.ArtifactOutbox)
+	if err != nil {
+		return fmt.Errorf("resolve outbox mount path: %w", err)
+	}
+	inboxTarget, err := opts.containerPath(opts.ArtifactInbox)
+	if err != nil {
+		return fmt.Errorf("resolve inbox container path: %w", err)
+	}
+	outboxTarget, err := opts.containerPath(opts.ArtifactOutbox)
+	if err != nil {
+		return fmt.Errorf("resolve outbox container path: %w", err)
+	}
+
 	command := buildCommand(opts, schemaPath)
 	env := buildEnv(opts)
 
 	cfg := &shai.SandboxConfig{
-		WorkingDir:     opts.WorktreeRoot,
-		ReadWritePaths: []string{opts.CellRelativePath},
+		WorkingDir:     opts.WorkDirRoot,
+		ReadWritePaths: []string{cellRelFromWorkdir},
 		PrependResourceSet: &shai.ResourceSet{
+			Mounts: []shai.Mount{
+				{
+					Source: inboxRelFromWorkdir,
+					Target: inboxTarget,
+					Mode:   "ro",
+				},
+				{
+					Source: outboxRelFromWorkdir,
+					Target: outboxTarget,
+					Mode:   "rw",
+				},
+			},
 			RootCommands: []string{buildSchemaRootCommand(schemaPath, schemaPayload)},
 		},
 		PostSetupExec: &shai.SandboxExec{
@@ -165,10 +198,16 @@ func containerSchemaPath(opts Options) string {
 	return filepath.ToSlash(filepath.Join("/tmp", name))
 }
 
-func ensureCellPath(opts Options) error {
+func ensureExecutionPaths(opts Options) error {
 	cellPath := filepath.Join(opts.WorktreeRoot, opts.CellRelativePath)
 	if err := os.MkdirAll(cellPath, 0o755); err != nil {
 		return fmt.Errorf("create cell path: %w", err)
+	}
+	if err := os.MkdirAll(opts.ArtifactInbox, 0o755); err != nil {
+		return fmt.Errorf("create inbox path: %w", err)
+	}
+	if err := os.MkdirAll(opts.ArtifactOutbox, 0o755); err != nil {
+		return fmt.Errorf("create outbox path: %w", err)
 	}
 	return nil
 }

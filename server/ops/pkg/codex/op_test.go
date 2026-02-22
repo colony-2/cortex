@@ -61,9 +61,12 @@ func (f *fakeOpDependencies) WorktreePath() string {
 }
 
 func TestRunCodexActivitySuccess(t *testing.T) {
-	worktree := t.TempDir()
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
 	cellDir := filepath.Join(worktree, "cells", "alpha")
 	require.NoError(t, os.MkdirAll(cellDir, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workdir, "inbox"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workdir, "outbox"), 0o755))
 
 	// Create temp files for stdout and stderr
 	tempDir := t.TempDir()
@@ -86,10 +89,13 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 
 	inv := &fakeOpDependencies{}
 	input := ExecOpInput{
-		Prompt:           "do something",
-		Env:              map[string]string{"FOO": "BAR"},
-		WorktreePath:     worktree,
-		CellRelativePath: filepath.Join("cells", "alpha"),
+		Prompt:             "do something",
+		Env:                map[string]string{"FOO": "BAR"},
+		WorkdirPath:        workdir,
+		WorktreePath:       worktree,
+		ArtifactInboxPath:  filepath.Join(workdir, "inbox"),
+		ArtifactOutboxPath: filepath.Join(workdir, "outbox"),
+		CellRelativePath:   filepath.Join("cells", "alpha"),
 	}
 
 	out, err := runCodexActivity(inv, context.Background(), input)
@@ -105,7 +111,10 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	require.Equal(t, "stderr.txt", inv.artifacts[1].Name())
 
 	require.Equal(t, "do something", cap.options.Prompt)
+	require.Equal(t, workdir, cap.options.WorkDirRoot)
 	require.Equal(t, worktree, cap.options.WorktreeRoot)
+	require.Equal(t, filepath.Join(workdir, "inbox"), cap.options.ArtifactInbox)
+	require.Equal(t, filepath.Join(workdir, "outbox"), cap.options.ArtifactOutbox)
 	require.Equal(t, filepath.Join("cells", "alpha"), cap.options.CellRelativePath)
 	require.Equal(t, "BAR", cap.options.ExtraEnv["FOO"])
 
@@ -116,6 +125,11 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	stderrBytes, err := inv.artifacts[1].Bytes(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "test errors", string(stderrBytes))
+}
+
+func TestGetOpAcceptsArtifacts(t *testing.T) {
+	op := GetOp()
+	require.True(t, op.GetMetadata().AcceptsArtifacts)
 }
 
 func TestRunCodexActivityArtifactsRemainUntilBothConsumed(t *testing.T) {

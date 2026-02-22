@@ -33,8 +33,37 @@ Use a `sequence` to run a set of steps in order. Sequences are ideal when you wa
 - Inside a sequence:
   - `inputs.*` from the sequence’s own inputs.
   - Sibling outputs via `sequence.<step-id>.outputs.*` (only for steps that have completed).
+  - Sibling artifacts via `sequence.<step-id>.artifacts["name"]`.
 - Nested nodes obey their own scope: a child `state` uses `states.*`; a child `sequence` uses its own `sequence.*`.
 - To share data outside, map it in the outer sequence’s `outputs:` block.
+- If you need to export an artifact key, use a single CEL expression in `outputs:`: `${{ sequence.<step-id>.artifacts["name"] }}`.
+
+## Boundary Example: Inner Sequence -> Outer Sequence
+
+Use this pattern when a nested sequence creates artifacts that later outer steps need.
+
+```yaml
+- id: pipeline
+  sequence:
+  - id: prepare
+    sequence:
+    - id: write
+      op: command_execution
+      inputs:
+        working_directory: "{{ context.environment.outbox }}"
+        run: "printf 'hello from nested sequence' > payload.txt"
+    outputs:
+      payload_artifact: '${{ sequence.write.artifacts["payload.txt"] }}'
+  - id: consume
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.inbox }}"
+      run: "cat payload.txt"
+    artifacts:
+      payload.txt: '${{ sequence.prepare.outputs.payload_artifact }}'
+  outputs:
+    payload_artifact: '${{ sequence.prepare.outputs.payload_artifact }}'
+```
 
 ## Design Patterns
 - **Fetch → Transform → Store**: classic linear pipeline.
@@ -53,6 +82,7 @@ Use a `sequence` to run a set of steps in order. Sequences are ideal when you wa
 - All referenced `sequence.<id>` keys exist and point to completed steps.
 - `when` expressions use valid CEL and only reference visible scope fields.
 - Required outward data is surfaced via the sequence’s `outputs:` map.
+- For artifact export, `outputs:` uses `${{ ... }}` and not mixed text interpolation.
 
 ## Minimal Skeleton
 ```yaml

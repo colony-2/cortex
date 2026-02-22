@@ -22,6 +22,7 @@ import (
 	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
@@ -201,15 +202,24 @@ type PreparedCase struct {
 }
 
 type Service struct {
-	recipeSvc recipesvc.Service
-	deps      coreops.ServiceDependencies2
+	recipeSvc   recipesvc.Service
+	deps        coreops.ServiceDependencies2
+	celProvider template.CELOptionsProvider
 }
 
-func NewService(recipeSvc recipesvc.Service, deps coreops.ServiceDependencies2) *Service {
+func NewService(recipeSvc recipesvc.Service, deps coreops.ServiceDependencies2, provider ...template.CELOptionsProvider) *Service {
 	if deps == nil {
 		deps = coreops.NewServiceDepsBuilder().Build()
 	}
-	return &Service{recipeSvc: recipeSvc, deps: deps}
+	var celProvider template.CELOptionsProvider
+	if len(provider) > 0 {
+		celProvider = provider[0]
+	}
+	return &Service{
+		recipeSvc:   recipeSvc,
+		deps:        deps,
+		celProvider: celProvider,
+	}
 }
 
 func DecodeRequest(r io.Reader) (CaseRequest, []Issue) {
@@ -371,7 +381,7 @@ func requestUsesPassthrough(req recipeTestCaseRequest) bool {
 	return false
 }
 
-func (s *Service) Execute(ctx context.Context, req recipeTestCaseRequest, prepared PreparedCase) recipeTestExecuteResponse {
+func (s *Service) Execute(ctx context.Context, projectID project.ID, req recipeTestCaseRequest, prepared PreparedCase) recipeTestExecuteResponse {
 	started := time.Now()
 	execResp := recipeTestExecuteResponse{CaseId: req.Case.ID, Status: "passed", CaseHash: prepared.Validation.CaseHash}
 	timeout := parseTimeout(req.Execution.Timeout, 60*time.Second)
@@ -380,7 +390,7 @@ func (s *Service) Execute(ctx context.Context, req recipeTestCaseRequest, prepar
 	defer cancel()
 
 	execCfg := normalizedExecutionConfig(req)
-	jobCtx := newRecipeTestJobContext(req.Case, execCfg.Policy, s.deps)
+	jobCtx := newRecipeTestJobContext(projectID, req.Case, execCfg.Policy, s.deps)
 	wfCtx := workflow.Context{JobContext: jobCtx, ServiceDependencies2: coreops.NewServiceDepsBuilder().Build()}
 	rawInputs := req.Case.Inputs
 	if rawInputs == nil {
@@ -388,12 +398,19 @@ func (s *Service) Execute(ctx context.Context, req recipeTestCaseRequest, prepar
 	}
 	runCtx := contextual.JobContext{
 		Environment: contextual.EnvironmentContext{WorktreePath: "/tmp/recipe-tests/worktree", WorkdirPath: "/tmp/recipe-tests/workdir", ArtifactInbox: "/tmp/recipe-tests/inbox", ArtifactOutbox: "/tmp/recipe-tests/outbox"},
-		Workflow:    contextual.WorkflowContext{CellName: "recipe-tests", CellPath: "recipe-tests"},
+		Workflow:    contextual.WorkflowContext{CellName: "recipe-tests", CellPath: "recipe-tests", ProjectId: string(projectID)},
 		GitBase:     contextual.GitBaseContext{BaseRepo: "recipe-tests", BaseRef: prepared.ResolvedHash, ResolvedBaseHash: prepared.ResolvedHash},
 	}
 	gitCtx := contextual.GitCommitContext{ParentRef: prepared.ResolvedHash}
 
-	outputs, artifacts, err := compiler.ExecuteRecipe(wfCtx, *prepared.Recipe, rawInputs, runCtx, gitCtx)
+	outputs, artifacts, err := compiler.ExecuteRecipe(
+		wfCtx,
+		*prepared.Recipe,
+		rawInputs,
+		runCtx,
+		gitCtx,
+		compiler.ExecutionOptions{CELOptionsProvider: s.celProvider},
+	)
 	if err != nil {
 		execResp.Status = "failed"
 		execResp.FailureCategory = failureCategoryFromError(err)
@@ -603,9 +620,13 @@ type recipePassthroughRecord struct {
 	Artifacts map[string][]byte
 }
 
-func newRecipeTestJobContext(caseDef recipeTestCase, policy recipeTestPolicy, deps coreops.ServiceDependencies2) *recipeTestJobContext {
+func newRecipeTestJobContext(projectID project.ID, caseDef recipeTestCase, policy recipeTestPolicy, deps coreops.ServiceDependencies2) *recipeTestJobContext {
+	tenantID := strings.TrimSpace(string(projectID))
+	if tenantID == "" {
+		tenantID = "recipe-tests"
+	}
 	return &recipeTestJobContext{
-		jobKey:           swf.JobKey{TenantId: "recipe-tests", JobId: "recipe-test-job"},
+		jobKey:           swf.JobKey{TenantId: tenantID, JobId: "recipe-test-job"},
 		caseDef:          caseDef,
 		policy:           policy,
 		deps:             deps,

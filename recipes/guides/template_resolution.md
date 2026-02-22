@@ -6,7 +6,7 @@ Authoring templates follows the current resolver behavior (CEL + Go templates). 
 - Hierarchy: `recipe` → `state_machine` → `state` → `sequence` → `op`.
 - Each scope carries `inputs`, `sequence`, `states`, `scope`, `context`. There is no bare `outputs`.
 - Child scopes inherit parent inputs/context; outputs are only visible within the same scope or upwards, never across sibling scopes.
-- Completed executions are stored in `sequence.<id>.outputs` or `states.<id>.outputs`; retries/loops append to `.runs[]`.
+- Completed executions are stored in `sequence.<id>` / `states.<id>` with both `outputs` and `artifacts`; retries/loops append to `.runs[]`.
 
 ## Resolution Rules
 - CEL expressions use `${{ ... }}` in string fields.
@@ -19,9 +19,9 @@ Authoring templates follows the current resolver behavior (CEL + Go templates). 
 - Dot-root access like `.inputs`/`.context` is not supported.
 - When/conditions are pure CEL strings (no `${{ }}` and no `{{ }}`) and must evaluate to `bool`; empty or `"true"` is treated as `true`.
 - Visibility:
-  - A sequence sees its inputs, sibling node outputs via `sequence.<id>.outputs`, and parent state-machine/state outputs via `states.<id>.outputs`.
+  - A sequence sees its inputs, sibling node outputs via `sequence.<id>.outputs`, sibling artifacts via `sequence.<id>.artifacts`, and parent state-machine/state outputs via `states.<id>.outputs`.
   - An op sees the surrounding sequence/state-machine/state data.
-  - A state sees completed states in the same state machine via `states.<id>.outputs`.
+  - A state sees completed states in the same state machine via `states.<id>.outputs` and `states.<id>.artifacts`.
   - Root/recipe cannot see inside sequences/states unless outputs are bubbled up. Sibling sequences in different states cannot see each other. Child sequences cannot see parent-sequence nodes.
 - JSON helpers:
   - `jq(value, expr)` / `value.jq(expr)` for jq queries (empty→null, multi→list).
@@ -51,6 +51,7 @@ outputs:
   summary: "{{ sequence.transform.outputs.summary }}"
   total: "{{ sequence.fetch.outputs.body.total }}"
   first_item: "${{ sequence.transform.outputs.items[0] }}"
+  payload_artifact: "${{ sequence.fetch.artifacts[\"payload.json\"] }}"
 ```
 
 ### State transition condition (pure CEL)
@@ -70,6 +71,7 @@ inputs:
 ### Cross-run access (retries/loops)
 ```yaml
 audit_message: "Last error: ${{ sequence.api_call.runs[0].outputs.error }}"
+previous_artifact: "${{ sequence.api_call.runs[0].artifacts[\"stderr.txt\"] }}"
 ```
 
 ### Scoped isolation

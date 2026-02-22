@@ -84,10 +84,17 @@ sequence:
         Do not modify repo code for this step.
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
+  - id: read_plan_json_for_outputs
+    op: command_execution
+    artifacts:
+      plan.json: "requirements/plan.json"
+    inputs:
+      run: |
+        set -euo pipefail
+        cat "{{ context.environment.inbox }}/plan.json"
+
   - id: contrarian_api_review
     op: codex.exec
-    artifacts:
-      plan.json: '${{ sequence.persist_plan_and_docs.artifacts["requirements/plan.json"] }}'
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -103,9 +110,9 @@ sequence:
 
         Current Cell: {{ context.workflow.cell }}
         Available Cells (name, path, description): {{ cells | to_json }}
-        Requirements plan artifact path: `{{ context.environment.inbox }}/plan.json`
-
-        Read `plan.json` and produce a review object:
+        Proposed requirements bundle (JSON):
+        {{ sequence.read_plan_json_for_outputs.outputs.stdout }}
+        Produce a review object:
         {
           "ok": boolean,
           "feedback": string,
@@ -122,19 +129,10 @@ sequence:
         - `## Feedback`
         - `## Blocking issues` (bulleted list or `(none)`)
 
-  - id: read_plan_json_for_outputs
-    op: command_execution
-    artifacts:
-      plan.json: '${{ sequence.persist_plan_and_docs.artifacts["requirements/plan.json"] }}'
-    inputs:
-      run: |
-        set -euo pipefail
-        cat "{{ context.environment.inbox }}/plan.json"
-
   - id: read_api_review_json_for_outputs
     op: command_execution
     artifacts:
-      api-review.json: '${{ sequence.contrarian_api_review.artifacts["requirements/api-review.json"] }}'
+      api-review.json: "requirements/api-review.json"
     inputs:
       run: |
         set -euo pipefail

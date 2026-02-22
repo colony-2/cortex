@@ -6,6 +6,14 @@ Define server runtime behavior for per-case testing APIs where no test-run state
 
 If implemented with the CLI and OpenAPI specs, the system is fully functional end-to-end.
 
+Implementation detail companion:
+
+1. `RECIPE_TESTING_SERVER_DETAILED_SPEC.md` provides normative runtime mechanics for
+   - mock insertion
+   - `op_case` node scoping
+   - passthrough dependency contracts
+   - policy option handling
+
 ## Core model
 
 1. Server receives one test case request at a time.

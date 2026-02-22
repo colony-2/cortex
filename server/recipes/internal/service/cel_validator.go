@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -51,10 +52,9 @@ func NewRecipeWorkerCELValidatorWithProvider(deps coreops.ServiceDependencies2, 
 // ValidateCEL checks CEL expressions by running recipe-worker in validation mode.
 func (v *RecipeWorkerCELValidator) ValidateCEL(ctx context.Context, projectID project.ID, rec recipe.Recipe) ([]model.ValidationError, error) {
 	_ = ctx
-	_ = projectID
 
 	execCtx := workflow.Context{
-		JobContext:           v.jobCtx,
+		JobContext:           &projectAwareJobContext{inner: v.jobCtx, projectID: projectID},
 		ServiceDependencies2: v.deps,
 	}
 
@@ -91,3 +91,54 @@ func (n *noopJobContext) DoTask(swf.RunPolicy, string, swf.TaskData) (swf.TaskDa
 func (n *noopJobContext) AwaitJobs(jobIds ...string) error { return nil }
 
 var _ swf.JobContext = &noopJobContext{}
+
+type projectAwareJobContext struct {
+	inner     swf.JobContext
+	projectID project.ID
+}
+
+func (j *projectAwareJobContext) GetJobKey() swf.JobKey {
+	key := swf.JobKey{}
+	if j.inner != nil {
+		key = j.inner.GetJobKey()
+	}
+	if strings.TrimSpace(string(j.projectID)) != "" {
+		key.TenantId = string(j.projectID)
+	} else if strings.TrimSpace(key.TenantId) == "" {
+		key.TenantId = string(j.projectID)
+	}
+	if strings.TrimSpace(key.JobId) == "" {
+		key.JobId = "recipe-validate"
+	}
+	return key
+}
+
+func (j *projectAwareJobContext) Logger() *slog.Logger {
+	if j.inner != nil {
+		return j.inner.Logger()
+	}
+	return slog.Default()
+}
+
+func (j *projectAwareJobContext) AwaitDuration(wait swf.Duration) error {
+	if j.inner != nil {
+		return j.inner.AwaitDuration(wait)
+	}
+	return nil
+}
+
+func (j *projectAwareJobContext) DoTask(policy swf.RunPolicy, name string, data swf.TaskData) (swf.TaskData, error) {
+	if j.inner != nil {
+		return j.inner.DoTask(policy, name, data)
+	}
+	return nil, fmt.Errorf("unexpected task invocation")
+}
+
+func (j *projectAwareJobContext) AwaitJobs(jobIds ...string) error {
+	if j.inner != nil {
+		return j.inner.AwaitJobs(jobIds...)
+	}
+	return nil
+}
+
+var _ swf.JobContext = &projectAwareJobContext{}

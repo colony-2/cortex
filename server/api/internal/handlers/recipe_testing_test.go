@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 )
 
@@ -315,5 +318,71 @@ func TestHandleRecipeTestCaseExecute_PassthroughDependencyRequirement(t *testing
 	errorsRaw, _ := out["errors"].([]interface{})
 	if len(errorsRaw) == 0 {
 		t.Fatalf("expected validation errors for missing dependency")
+	}
+}
+
+func TestHandleRecipeTestCaseExecute_CellsTemplate_UsesInjectedProviderAndProjectID(t *testing.T) {
+	const projectID = "proj-cells-template"
+
+	builder := funcregistry.NewBuilder().WithDefaults()
+	funcregistry.AddZeroFuncWithContext(builder, "cells", func(_ context.Context, taskCtx contextual.TaskExecutionContext) ([]funcregistry.CELCell, error) {
+		if taskCtx.Workflow.ProjectId != projectID {
+			return nil, fmt.Errorf("cells: expected project_id %q, got %q", projectID, taskCtx.Workflow.ProjectId)
+		}
+		return []funcregistry.CELCell{
+			{Name: "alpha", ID: "1", Path: "/cells/alpha", Description: "alpha cell"},
+		}, nil
+	})
+
+	h := &Handlers{
+		recipeSvc:                    &fakeRecipeService{},
+		recipeTestCELOptionsProvider: builder,
+	}
+	router := h.SetupRoutes(nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	reqBody := map[string]interface{}{
+		"target_recipe": map[string]interface{}{
+			"mode":    "inline_recipe",
+			"format":  "yaml",
+			"content": "version: '1.0'\nid: test\nop: input\ninputs:\n  form:\n    question: \"{{ cells | to_json }}\"\n    type: short_answer\n",
+		},
+		"case": map[string]interface{}{
+			"id":   "c7",
+			"type": "recipe_case",
+			"mocks": map[string]interface{}{
+				"ops": []map[string]interface{}{
+					{
+						"match": map[string]interface{}{"op": "input"},
+						"behavior": map[string]interface{}{
+							"mode":    "return",
+							"outputs": map[string]interface{}{"response": "ok"},
+						},
+					},
+				},
+			},
+		},
+		"execution": map[string]interface{}{"mode": "isolated"},
+	}
+	raw, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/api/projects/"+projectID+"/recipe-tests/cases/execute", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var out map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if status, _ := out["status"].(string); status != "passed" {
+		t.Fatalf("expected passed, got %q; response=%#v", status, out)
 	}
 }
