@@ -16,6 +16,7 @@ import (
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
@@ -51,14 +52,24 @@ type Handlers struct {
 	cellDeps cellDependencyLister
 
 	swfEngine swfJobRunGetter
+
+	recipeTestDeps coreops.ServiceDependencies2
+}
+
+type HandlerOption func(*Handlers)
+
+func WithRecipeTestDeps(deps coreops.ServiceDependencies2) HandlerOption {
+	return func(h *Handlers) {
+		h.recipeTestDeps = deps
+	}
 }
 
 // New creates a new handlers instance
-func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister, swfEngine swfJobRunGetter) *Handlers {
+func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.Service, cells cell.Service, tickets ticket.Service, workflows workflow.Service, recipeSvc recipesvc.Service, cellDeps cellDependencyLister, swfEngine swfJobRunGetter, opts ...HandlerOption) *Handlers {
 	if recipes == nil {
 		recipes = defaultRecipeRegistryFactory
 	}
-	return &Handlers{
+	h := &Handlers{
 		graphFactory: factory,
 		recipes:      recipes,
 		projects:     projects,
@@ -69,6 +80,13 @@ func New(factory GraphFactory, recipes RecipeRegistryFactory, projects project.S
 		cellDeps:     cellDeps,
 		swfEngine:    swfEngine,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	if h.recipeTestDeps == nil {
+		h.recipeTestDeps = coreops.NewServiceDepsBuilder().Build()
+	}
+	return h
 }
 
 func defaultRecipeRegistryFactory(_ context.Context, projectID project.ID, repoPath string) (*registry.Registry, string, func(), error) {

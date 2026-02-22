@@ -22,6 +22,7 @@ func newRecipeCmd() *cobra.Command {
 		newRecipeCreateCmd(),
 		newRecipeUpdateCmd(),
 		newRecipeValidateCmd(),
+		newRecipeTestCmd(),
 	)
 	return cmd
 }

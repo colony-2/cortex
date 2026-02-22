@@ -11,6 +11,7 @@ import (
 	"github.com/colony-2/colony2/server/api/internal/middleware"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
+	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
@@ -54,6 +55,9 @@ type Dependencies struct {
 	// SWFEngine is optionally used by testing-only endpoints.
 	SWFEngine swf.SWFEngine
 
+	// RecipeTestDeps are runtime dependencies exposed to recipe-testing passthrough execution.
+	RecipeTestDeps coreops.ServiceDependencies2
+
 	// GraphFactory builds a graph builder per project (overrides Graph when set)
 	GraphFactory handlers.GraphFactory
 
@@ -83,7 +87,18 @@ type Server struct {
 
 // NewServer creates a new HTTP server with the given configuration and dependencies.
 func NewServer(config Config, deps Dependencies) *Server {
-	h := handlers.New(deps.GraphFactory, deps.RecipeRegistryFactory, deps.Projects, deps.Cells, deps.Tickets, deps.Workflows, deps.RecipeSvc, deps.CellDeps, deps.SWFEngine)
+	h := handlers.New(
+		deps.GraphFactory,
+		deps.RecipeRegistryFactory,
+		deps.Projects,
+		deps.Cells,
+		deps.Tickets,
+		deps.Workflows,
+		deps.RecipeSvc,
+		deps.CellDeps,
+		deps.SWFEngine,
+		handlers.WithRecipeTestDeps(deps.RecipeTestDeps),
+	)
 
 	// Setup static handler if filesystem is provided
 	var staticHandler http.Handler
