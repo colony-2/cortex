@@ -76,6 +76,15 @@ state:
           when: "true"
       inputs:
         name: new-ticket-requirements-planning
+        artifacts: >-
+          ${{
+            ("requirements_planning" in states)
+              ? [
+                  states.requirements_planning.artifacts["requirements/plan.json"],
+                  states.requirements_planning.artifacts["requirements/api-review.json"]
+                ]
+              : []
+          }}
         inputs:
           title: >-
             ${{
@@ -89,14 +98,12 @@ state:
                 ? inputs.description
                 : ((has(context.ticket.description) && context.ticket.description != "") ? context.ticket.description : "")
             }}
-          prior_plan_json: '${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
           user_feedback: >-
             ${{
               ("requirements_feedback" in states && has(states.requirements_feedback.outputs.response))
                 ? states.requirements_feedback.outputs.response
                 : (("requirements_blocked_feedback" in states && has(states.requirements_blocked_feedback.outputs.response)) ? states.requirements_blocked_feedback.outputs.response : "")
             }}
-          api_review_feedback: '${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_feedback : "" }}'
 
     requirements_blocked_feedback:
       op: input
@@ -232,10 +239,18 @@ state:
           when: "true"
       inputs:
         name: ticket-implement
+        artifacts: >-
+          ${{
+            ("requirements_planning" in states)
+              ? [
+                  states.requirements_planning.artifacts["requirements/plan.json"],
+                  states.requirements_planning.artifacts["requirements/index.md"]
+                ]
+              : []
+          }}
         inputs:
           title: "${{ has(inputs.title) && inputs.title != \"\" ? inputs.title : (has(context.ticket.title) ? context.ticket.title : \"\") }}"
           description: "${{ has(inputs.description) && inputs.description != \"\" ? inputs.description : (has(context.ticket.description) ? context.ticket.description : \"\") }}"
-          requirements_plan_json: '${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.plan_json : "" }}'
           validation_feedback: "${{ 'validate' in states ? 'See validation artifacts: validation/output-tail.txt and validation/output.txt' : '' }}"
           session_id: "${{ (states.implementation_session.outputs.fields.session_strategy == 'continue' && 'implement' in states) ? states.implement.outputs.outputs.session_id : '' }}"
           prior_session_summary: "${{ (states.implementation_session.outputs.fields.session_strategy == 'new_with_summary' && 'implement' in states) ? states.implement.outputs.outputs.assistant_summary : '' }}"

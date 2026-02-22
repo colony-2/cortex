@@ -10,7 +10,7 @@ input_schema:
     required: false
   requirements_plan_json:
     type: string
-    required: true
+    required: false
   validation_feedback:
     type: string
     required: false
@@ -32,7 +32,7 @@ input_schema:
 inputs:
   title: '${{ has(inputs.title) ? inputs.title : "" }}'
   description: '${{ has(inputs.description) ? inputs.description : "" }}'
-  requirements_plan_json: "{{ inputs.requirements_plan_json }}"
+  requirements_plan_json: '${{ has(inputs.requirements_plan_json) ? inputs.requirements_plan_json : "" }}'
   validation_feedback: '${{ has(inputs.validation_feedback) ? inputs.validation_feedback : "" }}'
   cell_relative_path: '${{ has(inputs.cell_relative_path) ? inputs.cell_relative_path : "" }}'
   session_id: '${{ has(inputs.session_id) ? inputs.session_id : "" }}'
@@ -68,7 +68,10 @@ state:
           - Description:
           {{ inputs.description }}
 
-          Requirements plan (JSON):
+          Requirements plan artifact path (preferred):
+          `{{ context.environment.inbox }}/requirements/plan.json`
+
+          Requirements plan JSON fallback (use only if artifact is absent):
           {{ inputs.requirements_plan_json }}
 
           Validation feedback from the last attempt (if any):
@@ -117,7 +120,10 @@ state:
           - Description:
           {{ inputs.description }}
 
-          Requirements plan (JSON):
+          Requirements plan artifact path (preferred):
+          `{{ context.environment.inbox }}/requirements/plan.json`
+
+          Requirements plan JSON fallback (use only if artifact is absent):
           {{ inputs.requirements_plan_json }}
 
           Validation feedback from the last attempt (if any):

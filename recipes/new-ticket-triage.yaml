@@ -48,19 +48,10 @@ sequence:
           "rationale": string
         }
 
-  - id: read_triage_json
-    op: command_execution
-    artifacts:
-      triage.json: "triage.json"
-    inputs:
-      run: |
-        set -euo pipefail
-        cat "{{ context.environment.inbox }}/triage.json"
-
 outputs:
-  triage_json: "{{ sequence.read_triage_json.outputs.stdout }}"
-  cell_is_appropriate: "${{ json_parse(sequence.read_triage_json.outputs.stdout).cell_is_appropriate }}"
-  recommended_cell: "${{ json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell }}"
-  rationale: "${{ json_parse(sequence.read_triage_json.outputs.stdout).rationale }}"
-  recommended_cell_is_valid: "${{ cells().exists(c, c.name == json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell) }}"
-  recommended_cell_final: "${{ json_parse(sequence.read_triage_json.outputs.stdout).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell) ? json_parse(sequence.read_triage_json.outputs.stdout).recommended_cell : context.workflow.cell) }}"
+  triage_json: "{{ sequence.assess_cell.outputs.assistantSummary }}"
+  cell_is_appropriate: "${{ json_parse(sequence.assess_cell.outputs.assistantSummary).cell_is_appropriate }}"
+  recommended_cell: "${{ json_parse(sequence.assess_cell.outputs.assistantSummary).recommended_cell }}"
+  rationale: "${{ json_parse(sequence.assess_cell.outputs.assistantSummary).rationale }}"
+  recommended_cell_is_valid: "${{ cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.assistantSummary).recommended_cell) }}"
+  recommended_cell_final: "${{ json_parse(sequence.assess_cell.outputs.assistantSummary).cell_is_appropriate ? context.workflow.cell : (cells().exists(c, c.name == json_parse(sequence.assess_cell.outputs.assistantSummary).recommended_cell) ? json_parse(sequence.assess_cell.outputs.assistantSummary).recommended_cell : context.workflow.cell) }}"

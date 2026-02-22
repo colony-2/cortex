@@ -44,14 +44,16 @@ sequence:
         Current Cell: {{ context.workflow.cell }}
         Available Cells (name, path, description): {{ cells | to_json }}
 
-        Prior plan JSON (if any):
+        Prior artifacts may be present in inbox from the previous iteration:
+        - `{{ context.environment.inbox }}/requirements/plan.json`
+        - `{{ context.environment.inbox }}/requirements/api-review.json`
+        If present, read them and incorporate the prior plan/review findings.
+
+        Prior plan JSON fallback (only when inbox artifact is missing):
         {{ inputs.prior_plan_json }}
 
         User feedback to incorporate (if any):
         {{ inputs.user_feedback }}
-
-        Contrarian API review feedback to incorporate (if any):
-        {{ inputs.api_review_feedback }}
 
         Requirements:
         - Produce one or more requirements.
@@ -84,17 +86,10 @@ sequence:
         Do not modify repo code for this step.
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
-  - id: read_plan_json_for_outputs
-    op: command_execution
-    artifacts:
-      plan.json: "requirements/plan.json"
-    inputs:
-      run: |
-        set -euo pipefail
-        cat "{{ context.environment.inbox }}/plan.json"
-
   - id: contrarian_api_review
     op: codex.exec
+    artifacts:
+      plan.json: '${{ sequence.persist_plan_and_docs.artifacts["requirements/plan.json"] }}'
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -110,8 +105,9 @@ sequence:
 
         Current Cell: {{ context.workflow.cell }}
         Available Cells (name, path, description): {{ cells | to_json }}
-        Proposed requirements bundle (JSON):
-        {{ sequence.read_plan_json_for_outputs.outputs.stdout }}
+        Requirements plan artifact path: `{{ context.environment.inbox }}/plan.json`
+        Read `plan.json` and evaluate it.
+
         Produce a review object:
         {
           "ok": boolean,
@@ -129,22 +125,13 @@ sequence:
         - `## Feedback`
         - `## Blocking issues` (bulleted list or `(none)`)
 
-  - id: read_api_review_json_for_outputs
-    op: command_execution
-    artifacts:
-      api-review.json: "requirements/api-review.json"
-    inputs:
-      run: |
-        set -euo pipefail
-        cat "{{ context.environment.inbox }}/api-review.json"
-
 outputs:
-  plan_json: "{{ sequence.read_plan_json_for_outputs.outputs.stdout }}"
-  summary: "${{ json_parse(sequence.read_plan_json_for_outputs.outputs.stdout).summary }}"
-  needs_cross_cell_support: "${{ json_parse(sequence.read_plan_json_for_outputs.outputs.stdout).needs_cross_cell_support }}"
-  dependency_order: "${{ json_parse(sequence.read_plan_json_for_outputs.outputs.stdout).dependency_order }}"
-  requirements: "${{ json_parse(sequence.read_plan_json_for_outputs.outputs.stdout).requirements }}"
-  notes_for_user_review: "${{ json_parse(sequence.read_plan_json_for_outputs.outputs.stdout).notes_for_user_review }}"
-  api_review_ok: "${{ json_parse(sequence.read_api_review_json_for_outputs.outputs.stdout).ok }}"
-  api_review_feedback: "${{ json_parse(sequence.read_api_review_json_for_outputs.outputs.stdout).feedback }}"
-  api_review_blocking_issues: "${{ json_parse(sequence.read_api_review_json_for_outputs.outputs.stdout).blocking_issues }}"
+  plan_json: "{{ sequence.persist_plan_and_docs.outputs.assistantSummary }}"
+  summary: "${{ json_parse(sequence.persist_plan_and_docs.outputs.assistantSummary).summary }}"
+  needs_cross_cell_support: "${{ json_parse(sequence.persist_plan_and_docs.outputs.assistantSummary).needs_cross_cell_support }}"
+  dependency_order: "${{ json_parse(sequence.persist_plan_and_docs.outputs.assistantSummary).dependency_order }}"
+  requirements: "${{ json_parse(sequence.persist_plan_and_docs.outputs.assistantSummary).requirements }}"
+  notes_for_user_review: "${{ json_parse(sequence.persist_plan_and_docs.outputs.assistantSummary).notes_for_user_review }}"
+  api_review_ok: "${{ json_parse(sequence.contrarian_api_review.outputs.assistantSummary).ok }}"
+  api_review_feedback: "${{ json_parse(sequence.contrarian_api_review.outputs.assistantSummary).feedback }}"
+  api_review_blocking_issues: "${{ json_parse(sequence.contrarian_api_review.outputs.assistantSummary).blocking_issues }}"
