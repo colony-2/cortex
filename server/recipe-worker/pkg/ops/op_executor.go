@@ -252,6 +252,11 @@ func replaceValue(val string, replacements map[string]string) string {
 	if replacement, exists := replacements[val]; exists {
 		return replacement
 	}
+	for sentinel, replacement := range replacements {
+		if strings.Contains(val, sentinel) {
+			val = strings.ReplaceAll(val, sentinel, replacement)
+		}
+	}
 	return val
 }
 

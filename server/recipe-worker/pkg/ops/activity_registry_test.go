@@ -1466,8 +1466,12 @@ func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {
 
 func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 	testPath := "/test/worktree/path"
+	testInbox := "/test/inbox/path"
+	testOutbox := "/test/outbox/path"
 	replacements := map[string]string{
-		contextual.WorktreePathSentinel: testPath,
+		contextual.WorktreePathSentinel:   testPath,
+		contextual.ArtifactInboxSentinel:  testInbox,
+		contextual.ArtifactOutboxSentinel: testOutbox,
 	}
 
 	t.Run("map[string]interface{} with sentinel", func(t *testing.T) {
@@ -1510,6 +1514,36 @@ func TestReplaceSentinelValue_HandlesInputMap(t *testing.T) {
 		assert.Equal(t, "normal", resultArr[1])
 		assert.Equal(t, testPath, resultArr[2].(map[string]interface{})["key"])
 		assert.Equal(t, testPath, resultArr[3].(map[string]interface{})["key"])
+	})
+
+	t.Run("sentinel embedded in string is replaced", func(t *testing.T) {
+		input := map[string]interface{}{
+			"run": contextual.ArtifactInboxSentinel + "/input.txt",
+		}
+		result := replaceSentinels(input, replacements)
+		assert.Equal(t, testInbox+"/input.txt", result["run"])
+	})
+
+	t.Run("multiple sentinels in one string are replaced", func(t *testing.T) {
+		input := map[string]interface{}{
+			"run": "cp " + contextual.ArtifactInboxSentinel + "/a.txt " + contextual.ArtifactOutboxSentinel + "/b.txt",
+		}
+		result := replaceSentinels(input, replacements)
+		assert.Equal(t, "cp "+testInbox+"/a.txt "+testOutbox+"/b.txt", result["run"])
+	})
+
+	t.Run("embedded sentinel replacement works in nested arrays and maps", func(t *testing.T) {
+		input := map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{
+					"path": contextual.ArtifactInboxSentinel + "/nested.txt",
+				},
+			},
+		}
+		result := replaceSentinels(input, replacements)
+		items := result["items"].([]interface{})
+		first := items[0].(map[string]interface{})
+		assert.Equal(t, testInbox+"/nested.txt", first["path"])
 	})
 
 	t.Run("non-sentinel values unchanged", func(t *testing.T) {
