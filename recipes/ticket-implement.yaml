@@ -48,9 +48,7 @@ state:
   states:
     continue_session:
       op: codex.exec
-      transitions:
-        - to: persist_summary
-          when: "true"
+      transitions: []
       inputs:
         sessionId: "{{ inputs.session_id }}"
         worktree_path: "{{ context.environment.worktree_path }}"
@@ -69,7 +67,7 @@ state:
           {{ inputs.description }}
 
           Requirements plan artifact path (preferred):
-          `{{ context.environment.inbox }}/requirements/plan.json`
+          `/src/inbox/requirements/plan.json`
 
           Requirements plan JSON fallback (use only if artifact is absent):
           {{ inputs.requirements_plan_json }}
@@ -90,10 +88,10 @@ state:
           Constraints:
           - Keep changes scoped to the current cell’s code.
           - Do NOT write requirements/plan/review docs into the git repo.
-          - If notes are needed, write artifacts under `{{ context.environment.outbox }}/implementation/`.
-          - Input artifacts are available under `{{ context.environment.inbox }}`.
+          - If notes are needed, write artifacts under `/src/outbox/implementation/`.
+          - Input artifacts are available under `/src/inbox`.
           - Update/add tests if appropriate.
-          - Prefer small, safe changes; keep backwards compatibility unless requirements explicitly say otherwise.
+          - Prefer small, safe changes and keep backwards compatibility.
 
           Deliverables:
           - Make the code changes in-repo.
@@ -101,9 +99,7 @@ state:
 
     new_session:
       op: codex.exec
-      transitions:
-        - to: persist_summary
-          when: "true"
+      transitions: []
       inputs:
         worktree_path: "{{ context.environment.worktree_path }}"
         cell_relative_path: >-
@@ -121,7 +117,7 @@ state:
           {{ inputs.description }}
 
           Requirements plan artifact path (preferred):
-          `{{ context.environment.inbox }}/requirements/plan.json`
+          `/src/inbox/requirements/plan.json`
 
           Requirements plan JSON fallback (use only if artifact is absent):
           {{ inputs.requirements_plan_json }}
@@ -142,28 +138,15 @@ state:
           Constraints:
           - Keep changes scoped to the current cell’s code.
           - Do NOT write requirements/plan/review docs into the git repo.
-          - If notes are needed, write artifacts under `{{ context.environment.outbox }}/implementation/`.
-          - Input artifacts are available under `{{ context.environment.inbox }}`.
+          - If notes are needed, write artifacts under `/src/outbox/implementation/`.
+          - Input artifacts are available under `/src/inbox`.
           - Update/add tests if appropriate.
-          - Prefer small, safe changes; keep backwards compatibility unless requirements explicitly say otherwise.
+          - Prefer small, safe changes and keep backwards compatibility.
 
           Deliverables:
           - Make the code changes in-repo.
           - Leave the workspace in a state where validation commands are likely to pass.
 
-    persist_summary:
-      op: command_execution
-      transitions: []
-      inputs:
-        timeout: 2m
-        run: |
-          set -euo pipefail
-          OUT="{{ context.environment.outbox }}"
-          mkdir -p "$OUT/implementation"
-
-          cat > "$OUT/implementation/assistant-summary.txt" <<'EOF'
-          ${{ ("continue_session" in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}
-          EOF
 outputs:
   status: "${{ ('continue_session' in states) ? states.continue_session.outputs.status : states.new_session.outputs.status }}"
   assistant_summary: "${{ ('continue_session' in states) ? states.continue_session.outputs.assistantSummary : states.new_session.outputs.assistantSummary }}"

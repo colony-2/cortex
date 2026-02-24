@@ -38,8 +38,8 @@ sequence:
           single best cell name from the Available Cells list (use the cell \"name\" value).
         - Use the cell descriptions to guide your choice and provide a concise rationale.
 
-        Write JSON artifact file:
-        - `{{ context.environment.outbox }}/triage.json`
+        Write JSON artifact file (sandbox path):
+        - `/src/outbox/triage.json`
 
         JSON schema:
         {

@@ -2,6 +2,9 @@ id: ticket-merge
 version: 0.2.0
 desc: Squash, rebase, and merge the current workspace back to upstream (requires explicit approval)
 input_schema:
+  local_hash:
+    type: string
+    required: false
   upstream_repo:
     type: string
     required: false
@@ -12,61 +15,17 @@ input_schema:
     type: string
     required: false
 inputs:
-  upstream_repo: '${{ has(inputs.upstream_repo) ? inputs.upstream_repo : "" }}'
-  upstream_branch: '${{ has(inputs.upstream_branch) ? inputs.upstream_branch : "" }}'
+  local_hash: '${{ has(inputs.local_hash) && inputs.local_hash != "" ? inputs.local_hash : (has(context.git.hash) ? context.git.hash : "") }}'
+  upstream_repo: '${{ has(inputs.upstream_repo) && inputs.upstream_repo != "" ? inputs.upstream_repo : (has(context.git.repo) ? context.git.repo : "") }}'
+  upstream_branch: '${{ has(inputs.upstream_branch) && inputs.upstream_branch != "" ? inputs.upstream_branch : (has(context.git.ref) ? context.git.ref : "") }}'
   commit_message: '${{ has(inputs.commit_message) ? inputs.commit_message : "" }}'
 state:
-  initial: resolve
+  initial:
+    - to: prompt
+      when: 'inputs.upstream_repo == "" || inputs.upstream_branch == "" || inputs.commit_message == ""'
+    - to: approve
+      when: "true"
   states:
-    resolve:
-      op: command_execution
-      transitions:
-        - to: prompt
-          when: 'has(outputs.stdout) && outputs.stdout != "" && json_parse(outputs.stdout).needs_prompt == true'
-        - to: approve
-          when: "true"
-      inputs:
-        timeout: 5m
-        run: |
-          set -euo pipefail
-
-          LOCAL_HASH="$(git -C "$WT" rev-parse HEAD)"
-          export LOCAL_HASH
-
-          python3 - <<'PY'
-          import json
-          import os
-
-          upstream_repo = os.environ.get("UPSTREAM_REPO_INPUT") or ""
-          upstream_branch = os.environ.get("UPSTREAM_BRANCH_INPUT") or ""
-          commit_message = os.environ.get("COMMIT_MESSAGE_INPUT") or ""
-
-          ctx_repo = os.environ.get("CTX_REPO") or ""
-          ctx_ref = os.environ.get("CTX_REF") or ""
-          local_hash = os.environ.get("LOCAL_HASH") or ""
-
-          repo = (upstream_repo or ctx_repo or "").strip()
-          branch = (upstream_branch or ctx_ref or "").strip()
-          msg = (commit_message or "").strip()
-
-          needs_prompt = (not repo) or (not branch) or (not msg)
-
-          print(json.dumps({
-            "local_hash": local_hash,
-            "upstream_repo": repo,
-            "upstream_branch": branch,
-            "commit_message": msg,
-            "needs_prompt": needs_prompt,
-          }, ensure_ascii=False))
-          PY
-        env:
-          WT: "{{ context.environment.worktree_path }}"
-          UPSTREAM_REPO_INPUT: "{{ inputs.upstream_repo }}"
-          UPSTREAM_BRANCH_INPUT: "{{ inputs.upstream_branch }}"
-          COMMIT_MESSAGE_INPUT: "{{ inputs.commit_message }}"
-          CTX_REPO: "${{ has(context.git.repo) ? context.git.repo : \"\" }}"
-          CTX_REF: "${{ has(context.git.ref) ? context.git.ref : \"\" }}"
-
     prompt:
       op: input
       transitions:
@@ -92,19 +51,21 @@ state:
     approve:
       op: input
       transitions:
+        - to: skipped_no_changes
+          when: 'has(outputs.response) && outputs.response == "merge" && inputs.local_hash == ""'
         - to: merge
-          when: 'has(outputs.response) && outputs.response == "merge"'
+          when: 'has(outputs.response) && outputs.response == "merge" && inputs.local_hash != ""'
       inputs:
         form:
           title: "Approve merge"
           question: |
             This will run `squashrebasemerge` and fast-forward merge back to the upstream branch.
 
-            Local hash: ${{ json_parse(states.resolve.outputs.stdout).local_hash }}
-            Upstream repo: ${{ json_parse(states.resolve.outputs.stdout).upstream_repo }}
-            Upstream branch: ${{ json_parse(states.resolve.outputs.stdout).upstream_branch }}
+            Local hash: {{ inputs.local_hash }}
+            Upstream repo: ${{ "prompt" in states ? states.prompt.outputs.fields.upstream_repo : inputs.upstream_repo }}
+            Upstream branch: ${{ "prompt" in states ? states.prompt.outputs.fields.upstream_branch : inputs.upstream_branch }}
             Commit message:
-            ${{ json_parse(states.resolve.outputs.stdout).commit_message }}
+            ${{ "prompt" in states ? states.prompt.outputs.fields.commit_message : inputs.commit_message }}
           type: multiple_choice
           options:
             - value: merge
@@ -112,22 +73,28 @@ state:
             - value: cancel
               label: Cancel
 
+    skipped_no_changes:
+      op: sleep
+      transitions: []
+      inputs:
+        duration: 1ms
+
     merge:
       op: squashrebasemerge
       inputs:
         repo_path: "{{ context.environment.worktree_path }}"
-        local_hash: "${{ json_parse(states.resolve.outputs.stdout).local_hash }}"
+        local_hash: "{{ inputs.local_hash }}"
         upstream_repo: >-
           ${{
             "prompt" in states
               ? states.prompt.outputs.fields.upstream_repo
-              : json_parse(states.resolve.outputs.stdout).upstream_repo
+              : inputs.upstream_repo
           }}
         upstream_branch: >-
           ${{
             "prompt" in states
               ? states.prompt.outputs.fields.upstream_branch
-              : json_parse(states.resolve.outputs.stdout).upstream_branch
+              : inputs.upstream_branch
           }}
         rebase: true
         author: "${{ has(context.git.author) ? context.git.author : \"\" }}"
@@ -135,7 +102,7 @@ state:
           ${{
             "prompt" in states
               ? states.prompt.outputs.fields.commit_message
-              : json_parse(states.resolve.outputs.stdout).commit_message
+              : inputs.commit_message
           }}
 
 outputs:
