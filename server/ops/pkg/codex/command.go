@@ -33,6 +33,9 @@ func buildEnv(opts Options) map[string]string {
 	if _, ok := env["CODEX_APPROVAL_POLICY"]; !ok {
 		env["CODEX_APPROVAL_POLICY"] = "never"
 	}
+	if strings.TrimSpace(opts.CodexHome) != "" {
+		env["CODEX_HOME"] = opts.CodexHome
+	}
 	return env
 }
 

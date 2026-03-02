@@ -3,6 +3,7 @@ package codex
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -11,6 +12,8 @@ var (
 	errEmptyPrompt     = errors.New("codex: prompt is required")
 	errMissingWorktree = errors.New("codex: worktree root is required")
 )
+
+const codexHomeArtifactDirName = "codex-home"
 
 func (o *Options) validate() error {
 	if strings.TrimSpace(o.Prompt) == "" {
@@ -37,6 +40,12 @@ func (o *Options) validate() error {
 		o.ArtifactOutbox = filepath.Join(o.WorkDirRoot, "outbox")
 	}
 	o.ArtifactOutbox = filepath.Clean(o.ArtifactOutbox)
+	o.CodexHome = strings.TrimSpace(o.CodexHome)
+	if o.CodexHome == "" {
+		o.CodexHome = filepath.Join(o.ArtifactOutbox, codexHomeArtifactDirName)
+	}
+	o.CodexHome = filepath.Clean(o.CodexHome)
+	o.HostCodexHome = resolveHostCodexHomePath(o.HostCodexHome)
 	if o.ExtraEnv == nil {
 		o.ExtraEnv = map[string]string{}
 	}
@@ -68,7 +77,14 @@ func (o *Options) validate() error {
 	if err := ensureDescendantPath(o.WorkDirRoot, o.ArtifactOutbox, "artifact outbox"); err != nil {
 		return err
 	}
+	if err := ensureDescendantPath(o.WorkDirRoot, o.CodexHome, "codex home"); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (o Options) codexHomeInboxPath() string {
+	return filepath.Join(o.ArtifactInbox, codexHomeArtifactDirName)
 }
 
 func (o Options) stdoutPath(dir string) string {
@@ -125,4 +141,25 @@ func ensureDescendantPath(basePath string, targetPath string, label string) erro
 		return fmt.Errorf("codex: %s %q escapes workdir %q", label, targetPath, basePath)
 	}
 	return nil
+}
+
+func resolveHostCodexHomePath(override string) string {
+	resolved := strings.TrimSpace(override)
+	if resolved == "" {
+		envHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+		if envHome != "" {
+			resolved = envHome
+		} else if userHome, err := os.UserHomeDir(); err == nil && strings.TrimSpace(userHome) != "" {
+			resolved = filepath.Join(userHome, ".codex")
+		}
+	}
+	if resolved == "" {
+		return ""
+	}
+	if !filepath.IsAbs(resolved) {
+		if absPath, err := filepath.Abs(resolved); err == nil {
+			resolved = absPath
+		}
+	}
+	return filepath.Clean(resolved)
 }

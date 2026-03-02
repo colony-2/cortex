@@ -63,6 +63,8 @@ type Options struct {
 	CellRelativePath string
 	ArtifactInbox    string
 	ArtifactOutbox   string
+	CodexHome        string
+	HostCodexHome    string
 
 	Clock            Clock
 	RunnerFactory    RunnerFactory

@@ -38,7 +38,7 @@ These statements are intended to drive `c2 recipe test` cases.
 | TS-030 | Blocking compatibility review sets `compat_review_ok=false` and returns blocking issues. | `new-ticket-implementation-planning.yaml` | High | Integration (`recipe_case`); deps: contrarian review output | Negative |
 | TS-031 | Approved implementation plan requiring dependency tickets creates child tickets and enters waiting state. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `ticket.manage` + child recipe mocks | Positive |
 | TS-032 | Merge decision `cancel_ticket` updates workflow to cancelled path without merge. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: input branching + `ticket.manage` mock | Negative |
-| TS-033 | Merge request without local hash forces merge-missing-changes decision before cancellation/edits. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: input branching | Negative |
+| TS-033 | Merge request without local hash returns to implementation instead of executing merge. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: ready-to-merge branching | Negative |
 | TS-034 | Successful merge path marks ticket completion (`ticket_done=true`) with non-empty merged hash. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `local_hash` input + `squashrebasemerge` mock | Positive |
 | TS-035 | Implementation-reported cross-cell bugs create child bug tickets before continuing workflow. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` pendingDependencies + `ticket.manage` mock | Positive |
 | TS-036 | Implementation user questions pause flow for structured user input, then resume Codex session. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + `input` + resumed `codex.exec` mock | Positive |
@@ -46,7 +46,7 @@ These statements are intended to drive `c2 recipe test` cases.
 | TS-038 | Outcome outputs expose update requirement flag and validation command plan. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: JSON output mapping | Positive |
 | TS-039 | Blocking outcome review sets `review_ok=false` and returns blocking issues. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: contrarian review output | Negative |
 | TS-040 | Main ticket runs outcome review before implementation and uses outcome validation commands by default. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: outcome child recipe + validation input mapping | Positive |
-| TS-041 | Implementation requesting statement changes enters a dedicated request gate instead of editing `.c2/tests/*.md` directly. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + request input gate | Positive |
+| TS-041 | Implementation requesting statement changes routes through pre-implementation follow-up review instead of direct `.c2/tests/*.md` edits. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + follow-up input gate | Positive |
 
 ## Notes for Test Authoring
 

@@ -79,7 +79,7 @@ func validateCodexArtifacts(t *testing.T, ctx context.Context, out swf.TaskData)
 
 	require.NotEmpty(t, stdout, "missing stdout.jsonl artifact")
 	validateJSONL(t, stdout)
-	require.Empty(t, stderr, "stderr.txt should be empty")
+	require.Empty(t, filterIgnorableCodexStderr(stderr), "stderr.txt should be empty")
 }
 
 func validateJSONL(t *testing.T, content []byte) {
@@ -95,4 +95,26 @@ func validateJSONL(t *testing.T, content []byte) {
 			t.Fatalf("invalid jsonl at line %d: %v\nline=%q", i+1, err, line)
 		}
 	}
+}
+
+func filterIgnorableCodexStderr(stderr []byte) []byte {
+	if len(stderr) == 0 {
+		return nil
+	}
+	lines := strings.Split(string(stderr), "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "WARNING: proceeding, even though we could not update PATH: Refusing to create helper binaries under temporary dir") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return []byte(strings.Join(filtered, "\n"))
 }

@@ -1,8 +1,10 @@
 package codex
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,13 @@ import (
 
 	"github.com/colony-2/shai/pkg/shai"
 )
+
+const hostCodexHomeMountTarget = "/run/codex-host-home"
+
+var codexCredentialFileNames = []string{
+	"auth.json",
+	"config.toml",
+}
 
 // Execute runs Codex in non-interactive mode and returns the normalized result.
 // The caller is responsible for managing the returned stdoutPath, stderrPath, and artifactDir.
@@ -59,6 +68,13 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 	collector := newOutputCollector(stdoutFile, stderrFile)
 
 	runErr := runCodexExec(ctx, opts, schemaPath, opts.StructuredSchema, collector)
+	if sanitizeErr := sanitizeCodexHomeOutput(opts); sanitizeErr != nil {
+		if runErr == nil {
+			runErr = fmt.Errorf("sanitize codex home output: %w", sanitizeErr)
+		} else {
+			runErr = fmt.Errorf("%v; sanitize codex home output: %w", runErr, sanitizeErr)
+		}
+	}
 	if closeErr := stdoutFile.Close(); closeErr != nil {
 		if runErr == nil {
 			runErr = fmt.Errorf("close stdout capture: %w", closeErr)
@@ -99,6 +115,9 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 
 func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPayload []byte, collector *outputCollector) error {
 	if useDirectCodex() {
+		if err := prepareDirectCodexHome(opts); err != nil {
+			return fmt.Errorf("prepare codex home: %w", err)
+		}
 		cmdArgs := buildCommand(opts, schemaPath)
 		cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
 		cmd.Env = os.Environ()
@@ -131,27 +150,49 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve outbox container path: %w", err)
 	}
+	codexHomeTarget, err := opts.containerPath(opts.CodexHome)
+	if err != nil {
+		return fmt.Errorf("resolve codex home container path: %w", err)
+	}
+	codexHomeInboxTarget, err := opts.containerPath(opts.codexHomeInboxPath())
+	if err != nil {
+		return fmt.Errorf("resolve codex home inbox path: %w", err)
+	}
 
 	command := buildCommand(opts, schemaPath)
 	env := buildEnv(opts)
+	env["CODEX_HOME"] = codexHomeTarget
+
+	mounts := []shai.Mount{
+		{
+			Source: inboxRelFromWorkdir,
+			Target: inboxTarget,
+			Mode:   "ro",
+		},
+		{
+			Source: outboxRelFromWorkdir,
+			Target: outboxTarget,
+			Mode:   "rw",
+		},
+	}
+	if hostCodexHomeMountable(opts.HostCodexHome) {
+		mounts = append(mounts, shai.Mount{
+			Source: opts.HostCodexHome,
+			Target: hostCodexHomeMountTarget,
+			Mode:   "ro",
+		})
+	}
+	rootCommands := []string{
+		buildSchemaRootCommand(schemaPath, schemaPayload),
+		buildCodexHomeRootCommand(codexHomeTarget, codexHomeInboxTarget, hostCodexHomeMountTarget),
+	}
 
 	cfg := &shai.SandboxConfig{
 		WorkingDir:     opts.WorkDirRoot,
 		ReadWritePaths: []string{cellRelFromWorkdir},
 		PrependResourceSet: &shai.ResourceSet{
-			Mounts: []shai.Mount{
-				{
-					Source: inboxRelFromWorkdir,
-					Target: inboxTarget,
-					Mode:   "ro",
-				},
-				{
-					Source: outboxRelFromWorkdir,
-					Target: outboxTarget,
-					Mode:   "rw",
-				},
-			},
-			RootCommands: []string{buildSchemaRootCommand(schemaPath, schemaPayload)},
+			Mounts:       mounts,
+			RootCommands: rootCommands,
 		},
 		PostSetupExec: &shai.SandboxExec{
 			Command: command,
@@ -209,6 +250,9 @@ func ensureExecutionPaths(opts Options) error {
 	if err := os.MkdirAll(opts.ArtifactOutbox, 0o755); err != nil {
 		return fmt.Errorf("create outbox path: %w", err)
 	}
+	if err := os.MkdirAll(opts.CodexHome, 0o755); err != nil {
+		return fmt.Errorf("create codex home path: %w", err)
+	}
 	return nil
 }
 
@@ -222,6 +266,337 @@ func buildSchemaRootCommand(schemaPath string, schemaPayload []byte) string {
 	}
 	fmt.Fprintf(&builder, "%s", delimiter)
 	return builder.String()
+}
+
+func sanitizeCodexHomeOutput(opts Options) error {
+	if err := removeSensitiveCodexFiles(opts.CodexHome); err != nil {
+		return err
+	}
+	return pruneUnchangedCodexFiles(opts.codexHomeInboxPath(), opts.CodexHome)
+}
+
+func removeSensitiveCodexFiles(codexHomeDir string) error {
+	for _, name := range codexCredentialFileNames {
+		targetPath := filepath.Join(codexHomeDir, name)
+		if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove sensitive codex file %q: %w", targetPath, err)
+		}
+	}
+	return nil
+}
+
+func pruneUnchangedCodexFiles(sourceDir string, targetDir string) error {
+	sourceDir = filepath.Clean(sourceDir)
+	targetDir = filepath.Clean(targetDir)
+	if sourceDir == targetDir {
+		return nil
+	}
+
+	targetInfo, err := os.Stat(targetDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat codex target dir %q: %w", targetDir, err)
+	}
+	if !targetInfo.IsDir() {
+		return nil
+	}
+
+	if err := filepath.WalkDir(targetDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(targetDir, path)
+		if err != nil {
+			return err
+		}
+		sourcePath := filepath.Join(sourceDir, rel)
+		equal, err := regularFilesEqual(sourcePath, path)
+		if err != nil {
+			return err
+		}
+		if !equal {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("prune unchanged codex files: %w", err)
+	}
+
+	if err := removeEmptyDirs(targetDir); err != nil {
+		return fmt.Errorf("remove empty codex directories: %w", err)
+	}
+	return nil
+}
+
+func regularFilesEqual(a string, b string) (bool, error) {
+	aInfo, err := os.Stat(a)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	bInfo, err := os.Stat(b)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !aInfo.Mode().IsRegular() || !bInfo.Mode().IsRegular() {
+		return false, nil
+	}
+	if aInfo.Size() != bInfo.Size() {
+		return false, nil
+	}
+	aFile, err := os.Open(a)
+	if err != nil {
+		return false, err
+	}
+	defer aFile.Close()
+	bFile, err := os.Open(b)
+	if err != nil {
+		return false, err
+	}
+	defer bFile.Close()
+
+	const chunkSize = 32 * 1024
+	aBuf := make([]byte, chunkSize)
+	bBuf := make([]byte, chunkSize)
+
+	for {
+		aN, aErr := aFile.Read(aBuf)
+		bN, bErr := bFile.Read(bBuf)
+		if aN != bN {
+			return false, nil
+		}
+		if aN > 0 && !bytes.Equal(aBuf[:aN], bBuf[:bN]) {
+			return false, nil
+		}
+		if aErr == io.EOF && bErr == io.EOF {
+			return true, nil
+		}
+		if aErr != nil && aErr != io.EOF {
+			return false, aErr
+		}
+		if bErr != nil && bErr != io.EOF {
+			return false, bErr
+		}
+	}
+}
+
+func removeEmptyDirs(root string) error {
+	var dirs []string
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			dirs = append(dirs, path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	for i := len(dirs) - 1; i >= 0; i-- {
+		dir := dirs[i]
+		if filepath.Clean(dir) == filepath.Clean(root) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if len(entries) == 0 {
+			if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func buildCodexHomeRootCommand(codexHomeTarget string, inboxCodexHomeTarget string, hostCodexHomeTarget string) string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(codexHomeTarget))
+	fmt.Fprintf(&builder, "if [ -d %s ]; then cp -a %s/. %s/; fi\n",
+		shellQuote(inboxCodexHomeTarget),
+		shellQuote(inboxCodexHomeTarget),
+		shellQuote(codexHomeTarget),
+	)
+	fmt.Fprintf(&builder, "if [ -d %s ]; then\n", shellQuote(hostCodexHomeTarget))
+	for _, name := range codexCredentialFileNames {
+		sourcePath := filepath.ToSlash(filepath.Join(hostCodexHomeTarget, name))
+		targetPath := filepath.ToSlash(filepath.Join(codexHomeTarget, name))
+		fmt.Fprintf(&builder, "  if [ -f %s ] && [ ! -f %s ]; then cp %s %s; fi\n",
+			shellQuote(sourcePath),
+			shellQuote(targetPath),
+			shellQuote(sourcePath),
+			shellQuote(targetPath),
+		)
+	}
+	builder.WriteString("fi")
+	return builder.String()
+}
+
+func hostCodexHomeMountable(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+func prepareDirectCodexHome(opts Options) error {
+	if err := copyDirContentsIfExists(opts.codexHomeInboxPath(), opts.CodexHome); err != nil {
+		return err
+	}
+	if err := seedCodexCredentialsIfNeeded(opts.HostCodexHome, opts.CodexHome); err != nil {
+		return err
+	}
+	return nil
+}
+
+func copyDirContentsIfExists(sourceDir string, targetDir string) error {
+	if filepath.Clean(sourceDir) == filepath.Clean(targetDir) {
+		return nil
+	}
+	info, err := os.Stat(sourceDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat inbox codex home %q: %w", sourceDir, err)
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	return copyDirContents(sourceDir, targetDir)
+}
+
+func copyDirContents(sourceDir string, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("create target directory %q: %w", targetDir, err)
+	}
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		return fmt.Errorf("read directory %q: %w", sourceDir, err)
+	}
+	for _, entry := range entries {
+		sourcePath := filepath.Join(sourceDir, entry.Name())
+		targetPath := filepath.Join(targetDir, entry.Name())
+
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("stat source path %q: %w", sourcePath, err)
+		}
+
+		if info.IsDir() {
+			if err := copyDirContents(sourcePath, targetPath); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		if err := copyRegularFile(sourcePath, targetPath, info.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedCodexCredentialsIfNeeded(sourceHomeDir string, targetHomeDir string) error {
+	sourceHomeDir = strings.TrimSpace(sourceHomeDir)
+	if sourceHomeDir == "" {
+		return nil
+	}
+	info, err := os.Stat(sourceHomeDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat host codex home %q: %w", sourceHomeDir, err)
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(targetHomeDir, 0o755); err != nil {
+		return fmt.Errorf("create codex home %q: %w", targetHomeDir, err)
+	}
+
+	for _, name := range codexCredentialFileNames {
+		sourcePath := filepath.Join(sourceHomeDir, name)
+		targetPath := filepath.Join(targetHomeDir, name)
+		if _, err := os.Stat(targetPath); err == nil {
+			continue
+		}
+
+		sourceInfo, err := os.Stat(sourcePath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("stat credential source %q: %w", sourcePath, err)
+		}
+		if !sourceInfo.Mode().IsRegular() {
+			continue
+		}
+		if err := copyRegularFile(sourcePath, targetPath, sourceInfo.Mode().Perm()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyRegularFile(sourcePath string, targetPath string, mode os.FileMode) error {
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open source file %q: %w", sourcePath, err)
+	}
+	defer sourceFile.Close()
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return fmt.Errorf("create target parent %q: %w", filepath.Dir(targetPath), err)
+	}
+	if mode == 0 {
+		mode = 0o644
+	}
+	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("open target file %q: %w", targetPath, err)
+	}
+	defer targetFile.Close()
+
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
+		return fmt.Errorf("copy %q to %q: %w", sourcePath, targetPath, err)
+	}
+	return nil
 }
 
 func chooseHeredocDelimiter(schemaPayload []byte) string {

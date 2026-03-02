@@ -26,6 +26,13 @@ type ExecOpInput struct {
 	SessionID          string            `json:"sessionId,omitempty"`
 	Model              string            `json:"model,omitempty"`
 	Env                map[string]string `json:"env,omitempty"`
+	Skill              string            `json:"skill,omitempty"`
+	Skills             []string          `json:"skills,omitempty"`
+	SkillMode          string            `json:"skill_mode,omitempty"`
+	SkillSelectionMode string            `json:"skill_selection_mode,omitempty"`
+	ReturnOn           []string          `json:"return_on,omitempty"`
+	StatusContract     StatusContractRef `json:"status_contract,omitempty"`
+	ResumeContext      map[string]any    `json:"resume_context,omitempty"`
 	WorkdirPath        string            `json:"workdir_path,omitempty" default:"{{ context.environment.workdir }}"`
 	WorktreePath       string            `json:"worktree_path" default:"{{ context.environment.worktree_path }}" validate:"required"`
 	ArtifactInboxPath  string            `json:"artifact_inbox_path,omitempty" default:"{{ context.environment.inbox }}"`
@@ -37,10 +44,53 @@ type ExecOpInput struct {
 type ExecOpOutput struct {
 	Status              string       `json:"status"`
 	SessionID           string       `json:"sessionId"`
+	Outcome             ExecOutcome  `json:"outcome"`
 	AssistantSummary    string       `json:"assistantSummary"`
 	IncompleteReason    string       `json:"incompleteReason"`
 	IncompleteCategory  string       `json:"incompleteCategory"`
 	PendingDependencies []Dependency `json:"pendingDependencies"`
+}
+
+type StatusContractRef struct {
+	Path string `json:"path,omitempty"`
+}
+
+type ExecOutcome struct {
+	Summary    ExecOutcomeSummary    `json:"summary"`
+	Skill      ExecOutcomeSkill      `json:"skill"`
+	Checkpoint ExecOutcomeCheckpoint `json:"checkpoint"`
+	Routing    ExecOutcomeRouting    `json:"routing"`
+}
+
+type ExecOutcomeSummary struct {
+	Human  string `json:"human,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type ExecOutcomeSkill struct {
+	Executed      string `json:"executed,omitempty"`
+	SelectionMode string `json:"selectionMode,omitempty"`
+	NextCandidate string `json:"nextCandidate,omitempty"`
+}
+
+type ExecOutcomeCheckpoint struct {
+	Status          string                       `json:"status,omitempty"`
+	Scope           string                       `json:"scope,omitempty"`
+	BlockingSkill   string                       `json:"blockingSkill,omitempty"`
+	Stack           []ExecOutcomeCheckpointFrame `json:"stack"`
+	StatusArtifact  string                       `json:"statusArtifact,omitempty"`
+	ReturnTriggered bool                         `json:"returnTriggered"`
+	ReturnReason    string                       `json:"returnReason,omitempty"`
+	ContractErrors  []string                     `json:"contractErrors"`
+}
+
+type ExecOutcomeCheckpointFrame struct {
+	Skill string `json:"skill"`
+	Scope string `json:"scope"`
+}
+
+type ExecOutcomeRouting struct {
+	NextAction string `json:"nextAction,omitempty"`
 }
 
 // executeLibrary is replaceable for tests.
@@ -85,9 +135,14 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 	if cellRelPath == "" {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("cell_relative_path is required")
 	}
+	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox)
+	if err != nil {
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("%s", err.Error())
+	}
+	promptForExec := renderSkillPrompt(prompt, skillCfg)
 
 	opts := Options{
-		Prompt:           prompt,
+		Prompt:           promptForExec,
 		SessionID:        strings.TrimSpace(input.SessionID),
 		Model:            strings.TrimSpace(input.Model),
 		ExtraEnv:         input.Env,
@@ -173,15 +228,24 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		debugArtifactStat("stderr-before-return", stderrPath)
 	}
 
+	outcome := buildExecOutcome(result, skillCfg, outbox)
+	finalStatus := deriveExecOutputStatus(result.Status, outcome)
 	output := ExecOpOutput{
-		Status:              string(result.Status),
+		Status:              string(finalStatus),
 		SessionID:           safeString(result.SessionID),
-		AssistantSummary:    safeString(result.AssistantSummary),
+		Outcome:             outcome,
+		AssistantSummary:    safeString(outcome.Summary.Human),
 		IncompleteReason:    safeString(result.IncompleteReason),
 		IncompleteCategory:  safeString(result.IncompleteCategory),
 		PendingDependencies: copyDependencies(result.PendingDependencies),
-		// StdoutBlobURI field removed - use output artifacts
-		// Stderr field removed - use output artifacts
+	}
+	if finalStatus == StatusIncomplete {
+		if output.IncompleteCategory == "" {
+			output.IncompleteCategory = safeString(outcome.Checkpoint.Status)
+		}
+		if output.IncompleteReason == "" {
+			output.IncompleteReason = safeString(outcome.Checkpoint.ReturnReason)
+		}
 	}
 
 	// Check for errors after artifacts are registered

@@ -59,19 +59,14 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               compat_review_ok: true
+              requires_dependency_tickets: true
               outputs:
-                plan_json: '{"summary":"Dependency tickets required","requires_dependency_tickets":true,"dependency_order":["REQ-1","REQ-2"],"dependency_ticket_specs":[{"id":"REQ-1","title":"API prep","target_cell":"api","depends_on_ids":[],"depends_on_markdown":"- (none)","scope":"Prepare API contract","acceptance_criteria_markdown":"- API contract ready","risks_markdown":"- Coordination delay","notes":"Must complete before local work"}],"local_steps":["Implement REQ-2 after REQ-1"],"notes_for_user_review":"Wait on dependency"}'
+                plan_json: '{"summary":"Dependency tickets required","requires_dependency_tickets":true,"dependency_order":["REQ-1","REQ-2"],"dependency_ticket_specs":[{"id":"REQ-1","title":"API prep","target_cell":"api","depends_on_ids":[],"depends_on_markdown":"- (none)","scope":"Prepare API contract","acceptance_criteria_markdown":"- API contract ready","risks_markdown":"- Coordination delay","notes":"Must complete before local work"}],"local_steps":["Implement REQ-2 after REQ-1"],"notes_for_user_review":"Wait on dependency","compat_review_ok":true,"compat_review_feedback":"Compatible","compat_review_blocking_issues":[]}'
                 summary: Dependency tickets required
                 requires_dependency_tickets: true
                 dependency_order: [REQ-1, REQ-2]
@@ -95,12 +90,6 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_and_spawn_dependencies
-        - match:
             node_path: new-ticket/spawn_dependency_tickets/ticket.manage
           behavior:
             mode: return
@@ -118,8 +107,6 @@ cases:
               actual_duration: 1ms
               error_message: ""
     assertions:
-      - type: node_executed
-        node_path: new-ticket/implementation_planning/recipe.run_and_get_result
       - type: node_executed
         node_path: new-ticket/spawn_dependency_tickets/ticket.manage
       - type: output_equals
@@ -174,12 +161,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -201,19 +182,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -230,19 +205,14 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
@@ -266,11 +236,16 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: cancel_ticket
+              fields:
+                decision: cancel_ticket
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -300,7 +275,7 @@ cases:
     type: recipe_case
     inputs:
       title: Merge without hash
-      description: Should route to merge-missing-changes
+      description: Merge decision should return to implementation when no hash exists
     mocks:
       ops:
         - match:
@@ -344,12 +319,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -371,19 +340,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -400,27 +363,22 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: "Proceed to merge check."
         - match:
-            node_path: new-ticket/implement/codex.exec
+            node_path: new-ticket/implement_resume/codex.exec
           behavior:
             mode: return
             outputs:
               status: completed
-              sessionId: sid-1
-              assistantSummary: Implemented changes
+              sessionId: sid-h0
+              assistantSummary: Pre-merge implementation completed
               incompleteReason: ""
               incompleteCategory: ""
               pendingDependencies: []
@@ -436,17 +394,36 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: merge
+              fields:
+                decision: merge
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
-            node_path: new-ticket/merge_missing_changes/input
+            node_path: new-ticket/implement/codex.exec
           behavior:
             mode: return
             outputs:
-              response: cancel_ticket
+              status: incomplete
+              sessionId: sid-h1
+              assistantSummary: Need clarification before merge
+              incompleteReason: "1. Confirm expected merge behavior with no local hash."
+              incompleteCategory: needs_user_input
+              pendingDependencies: []
+        - match:
+            node_path: new-ticket/pre_implementation_followup_review/input
+          behavior:
+            mode: return
+            outputs:
+              fields:
+                decision: cancel_ticket
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -466,8 +443,9 @@ cases:
               actual_duration: 1ms
               error_message: ""
     assertions:
-      - type: node_executed
-        node_path: new-ticket/merge_missing_changes/input
+      - type: output_equals
+        path: merged
+        value: false
       - type: output_equals
         path: canceled
         value: true
@@ -523,12 +501,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -550,19 +522,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -579,26 +545,21 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
             mode: return
             outputs:
               status: completed
-              sessionId: sid-1
+              sessionId: sid-merge
               assistantSummary: Implemented changes
               incompleteReason: ""
               incompleteCategory: ""
@@ -615,11 +576,16 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: merge
+              fields:
+                decision: merge
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
             node_path: new-ticket/merge/squashrebasemerge
           behavior:
@@ -704,12 +670,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -731,19 +691,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -760,19 +714,14 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
@@ -806,11 +755,16 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: cancel_ticket
+              fields:
+                decision: cancel_ticket
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -884,12 +838,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -911,19 +859,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -940,19 +882,14 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
@@ -965,12 +902,14 @@ cases:
               incompleteCategory: needs_user_input
               pendingDependencies: []
         - match:
-            node_path: new-ticket/implement_questions/input
+            node_path: new-ticket/pre_implementation_followup_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                user_answers: "1) Endpoint-specific retries only."
+                decision: continue
+                feedback: ""
+                implementation_answers: "1) Endpoint-specific retries only."
         - match:
             node_path: new-ticket/implement_resume/codex.exec
           behavior:
@@ -994,11 +933,16 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: cancel_ticket
+              fields:
+                decision: cancel_ticket
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -1019,7 +963,7 @@ cases:
               error_message: ""
     assertions:
       - type: node_executed
-        node_path: new-ticket/implement_questions/input
+        node_path: new-ticket/pre_implementation_followup_review/input
       - type: node_executed
         node_path: new-ticket/implement_resume/codex.exec
       - type: output_equals
@@ -1074,12 +1018,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -1101,19 +1039,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -1130,19 +1062,14 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
@@ -1166,11 +1093,16 @@ cases:
               validation/output.txt: ok
               validation/output-tail.txt: ok-tail
         - match:
-            node_path: new-ticket/merge_review/input
+            node_path: new-ticket/ready_to_merge_review/input
           behavior:
             mode: return
             outputs:
-              response: cancel_ticket
+              fields:
+                decision: cancel_ticket
+                feedback: ""
+                upstream_repo: ""
+                upstream_branch: ""
+                commit_message: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -1191,7 +1123,7 @@ cases:
               error_message: ""
     assertions:
       - type: node_executed
-        node_path: new-ticket/outcome_decision/input
+        node_path: new-ticket/pre_implementation_review/input
       - type: output_equals
         path: validation_selected_commands
         value: npm test
@@ -1200,7 +1132,7 @@ cases:
     type: recipe_case
     inputs:
       title: Implementation requests statement revision
-      description: Request should route back to outcome writer
+      description: Request should route to follow-up review gate
     mocks:
       ops:
         - match:
@@ -1244,12 +1176,6 @@ cases:
               requirements/index.md: '# Requirements'
               requirements/api-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/requirements_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve
-        - match:
             node_path: new-ticket/implementation_planning/recipe.run_and_get_result
           behavior:
             mode: return
@@ -1271,19 +1197,13 @@ cases:
               implementation/index.md: '# Implementation'
               implementation/compat-review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/implementation_planning_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
             node_path: new-ticket/outcome_determination/recipe.run_and_get_result
           behavior:
             mode: return
             outputs:
               review_ok: true
               outputs:
-                plan_json: '{"summary":"Outcome","current_test_statements_summary":"Existing statements cover baseline","test_statement_updates_required":true,"test_statement_repo_glob":".c2/tests/*.md","validation_commands":"npm test","notes_for_user_review":"Add negative path checks","review_ok":true,"review_feedback":"Looks good","review_blocking_issues":[]}'
+                plan_json: '{"summary":"Outcome"}'
                 summary: Outcome
                 current_test_statements_summary: Existing statements cover baseline
                 test_statement_updates_required: true
@@ -1300,19 +1220,14 @@ cases:
               outcome/validation-commands.txt: npm test
               outcome/review.json: '{"ok":true}'
         - match:
-            node_path: new-ticket/outcome_decision/input
-          behavior:
-            mode: return
-            outputs:
-              response: approve_start_implementation
-        - match:
-            node_path: new-ticket/implementation_session/input
+            node_path: new-ticket/pre_implementation_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                session_strategy: new_blank
-                extra_instructions: ""
+                decision: continue
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/implement/codex.exec
           behavior:
@@ -1325,13 +1240,14 @@ cases:
               incompleteCategory: needs_test_statement_update
               pendingDependencies: []
         - match:
-            node_path: new-ticket/implementation_test_statement_change_request/input
+            node_path: new-ticket/pre_implementation_followup_review/input
           behavior:
             mode: return
             outputs:
               fields:
-                writer_notes: "Please add a negative retries-exhausted statement."
-                response: cancel_ticket
+                decision: cancel_ticket
+                feedback: ""
+                implementation_answers: ""
         - match:
             node_path: new-ticket/cancel_ticket_route/sleep
           behavior:
@@ -1352,7 +1268,7 @@ cases:
               error_message: ""
     assertions:
       - type: node_executed
-        node_path: new-ticket/implementation_test_statement_change_request/input
+        node_path: new-ticket/pre_implementation_followup_review/input
       - type: output_equals
         path: implementation_requested_test_statement_update
         value: true
