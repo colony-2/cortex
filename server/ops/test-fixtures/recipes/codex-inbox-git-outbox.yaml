@@ -39,35 +39,6 @@ sequence:
           echo "__MISSING_GIT_FILE__"
         fi
 
-  - id: codex_command_event
-    op: command_execution
-    artifacts:
-      stdout.jsonl: '${{ sequence.codex_apply.artifacts["stdout.jsonl"] }}'
-    inputs:
-      working_directory: "{{ context.environment.inbox }}"
-      run: |
-        if rg -q '"type":"command_execution"' stdout.jsonl; then
-          echo "yes"
-        else
-          echo "no"
-        fi
-
-  - id: codex_command_exit
-    op: command_execution
-    artifacts:
-      stdout.jsonl: '${{ sequence.codex_apply.artifacts["stdout.jsonl"] }}'
-    inputs:
-      working_directory: "{{ context.environment.inbox }}"
-      run: |
-        line="$(rg '\"type\":\"command_execution\".*\"status\":\"completed\"' stdout.jsonl | tail -n 1 || true)"
-        if [ -z "$line" ]; then
-          echo "none"
-          exit 0
-        fi
-        echo "$line" | grep -o '\"exit_code\":[-0-9]*' | head -n 1 | cut -d: -f2
-
 outputs:
   codex_status: "{{ sequence.codex_apply.outputs.status }}"
   git_content: "{{ sequence.read_git_file.outputs.stdout }}"
-  codex_command_event: "{{ sequence.codex_command_event.outputs.stdout }}"
-  codex_command_exit: "{{ sequence.codex_command_exit.outputs.stdout }}"

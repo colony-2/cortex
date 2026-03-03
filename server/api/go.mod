@@ -22,6 +22,7 @@ require (
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
+	github.com/go-playground/validator/v10 v10.19.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/spf13/cobra v1.9.1
@@ -82,7 +83,6 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.19.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect

@@ -11,6 +11,7 @@ require (
 	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
+	github.com/lib/pq v1.10.9
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -48,7 +49,6 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

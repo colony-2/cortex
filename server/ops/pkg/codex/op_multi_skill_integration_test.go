@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +15,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
@@ -26,26 +28,12 @@ type multiSkillLoopOutput struct {
 	Run1Status           string `json:"run1_status"`
 	Run2Status           string `json:"run2_status"`
 	Run3Status           string `json:"run3_status"`
-	Run1Skill            string `json:"run1_skill"`
-	Run2Skill            string `json:"run2_skill"`
-	Run3Skill            string `json:"run3_skill"`
-	Run1Subskill         string `json:"run1_subskill"`
-	Run2Subskill         string `json:"run2_subskill"`
-	Run3Subskill         string `json:"run3_subskill"`
-	Run1CheckpointStatus string `json:"run1_checkpoint_status"`
-	Run2CheckpointStatus string `json:"run2_checkpoint_status"`
-	Run3CheckpointStatus string `json:"run3_checkpoint_status"`
-	Run1NextAction       string `json:"run1_next_action"`
-	Run2NextAction       string `json:"run2_next_action"`
-	Run3NextAction       string `json:"run3_next_action"`
-	Run1ReturnTriggered  bool   `json:"run1_return_triggered"`
-	Run2ReturnTriggered  bool   `json:"run2_return_triggered"`
-	Run3ReturnTriggered  bool   `json:"run3_return_triggered"`
-	Run2Scope            string `json:"run2_scope"`
-	Run2BlockingSkill    string `json:"run2_blocking_skill"`
-	Run1SelectionMode    string `json:"run1_selection_mode"`
-	Run2SelectionMode    string `json:"run2_selection_mode"`
-	Run3SelectionMode    string `json:"run3_selection_mode"`
+	Run1Summary          string `json:"run1_summary"`
+	Run2Summary          string `json:"run2_summary"`
+	Run3Summary          string `json:"run3_summary"`
+	Run1IncompleteReason string `json:"run1_incomplete_reason"`
+	Run2IncompleteReason string `json:"run2_incomplete_reason"`
+	Run3IncompleteReason string `json:"run3_incomplete_reason"`
 }
 
 func TestCodexOpMultiSkillStateMachineLoop(t *testing.T) {
@@ -61,128 +49,27 @@ func TestCodexOpMultiSkillStateMachineLoop(t *testing.T) {
 		}
 	})
 	coreops.Clear()
-	coreops.Register(commandop.GetOp())
 	coreops.Register(GetOp())
 
 	cellRel := filepath.Join("cells", "alpha")
 	token := "amber-lion-42"
+	repoPath, repoHash := createMultiSkillDelegationRepo(t, cellRel, token)
 
 	recipeYaml := fmt.Sprintf(`
 ---
 id: codex-op-multi-skill-loop
 state:
-  initial: seed
+  initial: codex_loop
   states:
-    seed:
-      op: command_execution
-      inputs:
-        working_directory: "{{ context.environment.outbox }}"
-        run: |
-          set -euo pipefail
-          mkdir -p codex-home/skills/software-dev-orchestrator
-          mkdir -p codex-home/skills/software-dev-plan
-          mkdir -p codex-home/skills/software-dev-execute
-          mkdir -p codex-home/skills/software-dev-test
-          mkdir -p implementation
-          cat > implementation/latest-status.json <<'JSON'
-          {"checkpoint":{"status":"start","scope":"top_level","stack":[{"skill":"software-dev-orchestrator","scope":"top_level"}]},"summary":{"human":"seed","reason":"init"}}
-          JSON
-
-          cat > codex-home/skills/software-dev-orchestrator/SKILL.md <<'EOF_SKILL'
-          ---
-          name: software-dev-orchestrator
-          description: Top-level software development workflow coordinator that routes between planning, execution, and testing subskills across continue turns.
-          ---
-          # Software Dev Orchestrator
-
-          ## Objective
-          Route a single workflow segment per invocation. Do not implement phase logic here; delegate to subskills.
-
-          ## Subskills
-          - software-dev-plan ($CODEX_HOME/skills/software-dev-plan/SKILL.md)
-          - software-dev-execute ($CODEX_HOME/skills/software-dev-execute/SKILL.md)
-          - software-dev-test ($CODEX_HOME/skills/software-dev-test/SKILL.md)
-
-          ## Routing Rules
-          1. Read ../inbox/implementation/latest-status.json.
-          2. If checkpoint.status == start, execute software-dev-plan.
-          3. If checkpoint.status == checkpoint_ready, execute software-dev-execute.
-          4. If checkpoint.status == needs_user_input, execute software-dev-test.
-          5. If checkpoint.status == completed, do not restart planning.
-
-          ## Execution Requirements
-          1. Before running a subskill, read that subskill file from disk and follow it exactly.
-          2. Keep machine-routing state in ../outbox/implementation/latest-status.json.
-          3. Respond only with schema JSON.
-          EOF_SKILL
-
-          cat > codex-home/skills/software-dev-plan/SKILL.md <<'EOF_SKILL'
-          ---
-          name: software-dev-plan
-          description: Planning segment for software-dev-orchestrator. Creates the first checkpoint artifact and schedules execute phase.
-          ---
-          # Planning Skill
-
-          ## Steps
-          1. Run this command exactly:
-          mkdir -p ../outbox/implementation
-          cat > ../outbox/implementation/latest-status.json <<'JSON'
-          {"checkpoint":{"status":"checkpoint_ready","scope":"top_level","stack":[{"skill":"software-dev-orchestrator","scope":"top_level"},{"skill":"software-dev-plan","scope":"nested"}]},"next_skill_candidates":["software-dev-execute"]}
-          JSON
-          2. Respond with schema JSON and assistantSummary exactly planning complete.
-          EOF_SKILL
-
-          cat > codex-home/skills/software-dev-execute/SKILL.md <<'EOF_SKILL'
-          ---
-          name: software-dev-execute
-          description: Execution segment for software-dev-orchestrator. Creates nested checkpoint for test phase and validates session memory.
-          ---
-          # Execution Skill
-
-          ## Steps
-          1. Run this command exactly:
-          mkdir -p ../outbox/implementation
-          cat > ../outbox/implementation/latest-status.json <<'JSON'
-          {"checkpoint":{"status":"needs_user_input","scope":"nested","blocking_skill":"software-dev-test","stack":[{"skill":"software-dev-orchestrator","scope":"top_level"},{"skill":"software-dev-execute","scope":"nested"}]},"next_skill_candidates":["software-dev-test"]}
-          JSON
-          2. Respond with schema JSON and assistantSummary exactly token: <token> where <token> is the token remembered from the initial user prompt in this same session.
-          EOF_SKILL
-
-          cat > codex-home/skills/software-dev-test/SKILL.md <<'EOF_SKILL'
-          ---
-          name: software-dev-test
-          description: Testing segment for software-dev-orchestrator. Marks workflow complete.
-          ---
-          # Testing Skill
-
-          ## Steps
-          1. Run this command exactly:
-          mkdir -p ../outbox/implementation
-          cat > ../outbox/implementation/latest-status.json <<'JSON'
-          {"checkpoint":{"status":"completed","scope":"top_level","stack":[{"skill":"software-dev-orchestrator","scope":"top_level"},{"skill":"software-dev-test","scope":"nested"}]}}
-          JSON
-          2. Respond with schema JSON and assistantSummary exactly validation complete.
-          EOF_SKILL
-      transitions:
-        - to: codex_loop
-          when: 'true'
-
     codex_loop:
       op: codex.exec
-      artifacts:
-        codex-home/skills/software-dev-orchestrator/SKILL.md: '${{ states.seed.artifacts["codex-home/skills/software-dev-orchestrator/SKILL.md"] }}'
-        codex-home/skills/software-dev-plan/SKILL.md: '${{ states.seed.artifacts["codex-home/skills/software-dev-plan/SKILL.md"] }}'
-        codex-home/skills/software-dev-execute/SKILL.md: '${{ states.seed.artifacts["codex-home/skills/software-dev-execute/SKILL.md"] }}'
-        codex-home/skills/software-dev-test/SKILL.md: '${{ states.seed.artifacts["codex-home/skills/software-dev-test/SKILL.md"] }}'
-        implementation/latest-status.json: '${{ "codex_loop" in states && "implementation/latest-status.json" in states["codex_loop"].artifacts ? states["codex_loop"].artifacts["implementation/latest-status.json"] : states.seed.artifacts["implementation/latest-status.json"] }}'
       inputs:
         sessionId: '${{ "codex_loop" in states ? states["codex_loop"].outputs.sessionId : "" }}'
         skill: "software-dev-orchestrator"
         skill_mode: "enforce"
-        status_contract:
-          path: "implementation/latest-status.json"
+        skill_selection_mode: "ordered"
         cell_relative_path: %q
-        prompt: '${{ !("codex_loop" in states) ? "Implement a small change using your software-dev workflow. Remember this token for follow-up turns: %s" : "continue" }}'
+        prompt: '${{ !("codex_loop" in states) ? "Start the software-development flow. previous_incomplete_reason=none. previous_summary=none. Execute exactly one delegated step, then return. Remember this token for follow-up turns: %s. Return only schema JSON." : "continue. previous_incomplete_reason=" + states["codex_loop"].outputs.incompleteReason + ". previous_summary=" + states["codex_loop"].outputs.assistantSummary + ". Execute exactly one delegated step, then return. Return only schema JSON." }}'
       transitions:
         - to: codex_loop
           when: 'outputs.status == "incomplete"'
@@ -192,26 +79,12 @@ outputs:
   run1_status: '${{ states["codex_loop"].runs[0].outputs.status }}'
   run2_status: '${{ states["codex_loop"].runs[1].outputs.status }}'
   run3_status: '${{ states["codex_loop"].outputs.status }}'
-  run1_skill: '${{ states["codex_loop"].runs[0].outputs.outcome.skill.executed }}'
-  run2_skill: '${{ states["codex_loop"].runs[1].outputs.outcome.skill.executed }}'
-  run3_skill: '${{ states["codex_loop"].outputs.outcome.skill.executed }}'
-  run1_subskill: '${{ states["codex_loop"].runs[0].outputs.outcome.checkpoint.stack[1].skill }}'
-  run2_subskill: '${{ states["codex_loop"].runs[1].outputs.outcome.checkpoint.stack[1].skill }}'
-  run3_subskill: '${{ states["codex_loop"].outputs.outcome.checkpoint.stack[1].skill }}'
-  run1_checkpoint_status: '${{ states["codex_loop"].runs[0].outputs.outcome.checkpoint.status }}'
-  run2_checkpoint_status: '${{ states["codex_loop"].runs[1].outputs.outcome.checkpoint.status }}'
-  run3_checkpoint_status: '${{ states["codex_loop"].outputs.outcome.checkpoint.status }}'
-  run1_next_action: '${{ states["codex_loop"].runs[0].outputs.outcome.routing.nextAction }}'
-  run2_next_action: '${{ states["codex_loop"].runs[1].outputs.outcome.routing.nextAction }}'
-  run3_next_action: '${{ states["codex_loop"].outputs.outcome.routing.nextAction }}'
-  run1_return_triggered: '${{ states["codex_loop"].runs[0].outputs.outcome.checkpoint.returnTriggered }}'
-  run2_return_triggered: '${{ states["codex_loop"].runs[1].outputs.outcome.checkpoint.returnTriggered }}'
-  run3_return_triggered: '${{ states["codex_loop"].outputs.outcome.checkpoint.returnTriggered }}'
-  run2_scope: '${{ states["codex_loop"].runs[1].outputs.outcome.checkpoint.scope }}'
-  run2_blocking_skill: '${{ states["codex_loop"].runs[1].outputs.outcome.checkpoint.blockingSkill }}'
-  run1_selection_mode: '${{ states["codex_loop"].runs[0].outputs.outcome.skill.selectionMode }}'
-  run2_selection_mode: '${{ states["codex_loop"].runs[1].outputs.outcome.skill.selectionMode }}'
-  run3_selection_mode: '${{ states["codex_loop"].outputs.outcome.skill.selectionMode }}'
+  run1_summary: '${{ states["codex_loop"].runs[0].outputs.assistantSummary }}'
+  run2_summary: '${{ states["codex_loop"].runs[1].outputs.assistantSummary }}'
+  run3_summary: '${{ states["codex_loop"].outputs.assistantSummary }}'
+  run1_incomplete_reason: '${{ states["codex_loop"].runs[0].outputs.incompleteReason }}'
+  run2_incomplete_reason: '${{ states["codex_loop"].runs[1].outputs.incompleteReason }}'
+  run3_incomplete_reason: '${{ states["codex_loop"].outputs.incompleteReason }}'
 `, cellRel, token)
 
 	testRecipe, err := recipe.LoadRecipeFromString([]byte(recipeYaml))
@@ -232,12 +105,16 @@ outputs:
 	jobCtx, gitCtx := compiler.GenerateTestContext()
 	jobCtx.Workflow.CellName = cellRel
 	jobCtx.Workflow.CellPath = cellRel
+	jobCtx.GitBase.BaseRepo = repoPath
+	jobCtx.GitBase.BaseRef = repoHash
+	jobCtx.GitBase.ResolvedBaseHash = repoHash
+	gitCtx.ParentRef = repoHash
 	start := workflowctl.StartJob{
 		TenantId:   "test-tenant",
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     map[string]interface{}{},
 		JobContext: jobCtx,
-		GitRef:     gitCtx.ParentRef,
+		GitRef:     repoHash,
 	}
 
 	key, err := starter.StartRecipeJob(context.Background(), start, engine, *testRecipe)
@@ -259,30 +136,101 @@ outputs:
 	require.Equal(t, string(StatusIncomplete), output.Run2Status)
 	require.Equal(t, string(StatusCompleted), output.Run3Status)
 
-	require.Equal(t, "software-dev-orchestrator", output.Run1Skill)
-	require.Equal(t, "software-dev-orchestrator", output.Run2Skill)
-	require.Equal(t, "software-dev-orchestrator", output.Run3Skill)
+	require.Equal(t, "planning complete", output.Run1Summary)
+	require.Equal(t, fmt.Sprintf("execution complete token:%s", token), output.Run2Summary)
+	require.Equal(t, "validation complete", output.Run3Summary)
 
-	require.Equal(t, "software-dev-plan", output.Run1Subskill)
-	require.Equal(t, "software-dev-execute", output.Run2Subskill)
-	require.Equal(t, "software-dev-test", output.Run3Subskill)
+	require.Equal(t, "next:execute", output.Run1IncompleteReason)
+	require.Equal(t, "next:validate", output.Run2IncompleteReason)
+	require.Equal(t, "", output.Run3IncompleteReason)
+}
 
-	require.Equal(t, "checkpoint_ready", output.Run1CheckpointStatus)
-	require.Equal(t, "needs_user_input", output.Run2CheckpointStatus)
-	require.Equal(t, "completed", output.Run3CheckpointStatus)
+func createMultiSkillDelegationRepo(t *testing.T, cellRel string, token string) (string, string) {
+	t.Helper()
 
-	require.Equal(t, routingReturnToCheckpoint, output.Run1NextAction)
-	require.Equal(t, routingReturnToCheckpoint, output.Run2NextAction)
-	require.Equal(t, routingCompleteSkillSegment, output.Run3NextAction)
+	repoDir := t.TempDir()
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+	runGit(t, repoDir, "config", "user.name", "Test User")
 
-	require.True(t, output.Run1ReturnTriggered)
-	require.True(t, output.Run2ReturnTriggered)
-	require.False(t, output.Run3ReturnTriggered)
+	writeRepoFile(t, filepath.Join(repoDir, "README.md"), "multi-skill integration fixture\n")
+	writeRepoFile(t, filepath.Join(repoDir, cellRel, "README.md"), "fixture cell\n")
 
-	require.Equal(t, checkpointScopeNested, output.Run2Scope)
-	require.Equal(t, "software-dev-test", output.Run2BlockingSkill)
+	skillsDir := filepath.Join(repoDir, ".c2", "skills")
+	writeRepoFile(t, filepath.Join(skillsDir, "software-dev-orchestrator", "SKILL.md"), fmt.Sprintf(`---
+name: software-dev-orchestrator
+description: Delegates software development phases to planning, execution, and validation skills.
+---
+# Software Development Orchestrator
 
-	require.Equal(t, skillSelectionModeAdaptive, output.Run1SelectionMode)
-	require.Equal(t, skillSelectionModeAdaptive, output.Run2SelectionMode)
-	require.Equal(t, skillSelectionModeAdaptive, output.Run3SelectionMode)
+Execute exactly one phase per invocation.
+
+1. Determine phase from current user request fields:
+   - if previous_incomplete_reason is none, phase is plan
+   - if previous_incomplete_reason is next:execute, phase is execute
+   - if previous_incomplete_reason is next:validate, phase is validate
+   - if previous_summary is validation complete, return completed JSON with assistantSummary "already complete", empty incompleteReason, empty incompleteCategory
+2. Delegate by invoking exactly one skill by name:
+   - software-dev-plan
+   - software-dev-execute
+   - software-dev-validate
+3. Do not run shell commands in this skill.
+4. Return only schema JSON.
+`))
+
+	writeRepoFile(t, filepath.Join(skillsDir, "software-dev-plan", "SKILL.md"), fmt.Sprintf(`---
+name: software-dev-plan
+description: Planning phase for the software development workflow.
+---
+# Planning Skill
+
+Return only schema JSON exactly:
+{"status":"incomplete","assistantSummary":"planning complete","incompleteReason":"next:execute","incompleteCategory":"","errorMessage":"","pendingDependencies":[]}
+`))
+
+	writeRepoFile(t, filepath.Join(skillsDir, "software-dev-execute", "SKILL.md"), fmt.Sprintf(`---
+name: software-dev-execute
+description: Execution phase for the software development workflow.
+---
+# Execution Skill
+
+Return only schema JSON exactly:
+{"status":"incomplete","assistantSummary":"execution complete token:%s","incompleteReason":"next:validate","incompleteCategory":"","errorMessage":"","pendingDependencies":[]}
+`, token))
+
+	writeRepoFile(t, filepath.Join(skillsDir, "software-dev-validate", "SKILL.md"), fmt.Sprintf(`---
+name: software-dev-validate
+description: Validation phase for the software development workflow.
+---
+# Validation Skill
+
+Return only schema JSON exactly:
+{"status":"completed","assistantSummary":"validation complete","incompleteReason":"","incompleteCategory":"","errorMessage":"","pendingDependencies":[]}
+`))
+
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "seed multi-skill fixtures")
+	hash := strings.TrimSpace(runGitOutput(t, repoDir, "rev-parse", "HEAD"))
+	return repoDir, hash
+}
+
+func writeRepoFile(t *testing.T, path string, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	_ = runGitOutput(t, dir, args...)
+}
+
+func runGitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v failed: %s", args, string(output))
+	return string(output)
 }

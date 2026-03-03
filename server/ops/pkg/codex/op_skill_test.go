@@ -13,7 +13,7 @@ import (
 func TestPrepareSkillExecutionConfigRejectsMultipleSkills(t *testing.T) {
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skills: []string{"a", "b"},
-	}, t.TempDir(), t.TempDir())
+	}, t.TempDir(), t.TempDir(), "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "only one skill")
 }
@@ -22,7 +22,7 @@ func TestPrepareSkillExecutionConfigRejectsUnsupportedSkillMode(t *testing.T) {
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "skill-a",
 		SkillMode: "prefer",
-	}, t.TempDir(), t.TempDir())
+	}, t.TempDir(), t.TempDir(), "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "skill_mode")
 }
@@ -36,9 +36,31 @@ func TestPrepareSkillExecutionConfigRequiresMaterializedSkillWhenEnforced(t *tes
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "missing-skill",
 		SkillMode: "enforce",
-	}, inbox, outbox)
+	}, inbox, outbox, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing-skill")
+}
+
+func TestPrepareSkillExecutionConfigAcceptsRepoSkillWhenEnforced(t *testing.T) {
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	inbox := filepath.Join(workdir, "inbox")
+	outbox := filepath.Join(workdir, "outbox")
+	require.NoError(t, os.MkdirAll(filepath.Join(worktree, ".c2", "skills", "repo-skill"), 0o755))
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.MkdirAll(outbox, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(worktree, ".c2", "skills", "repo-skill", "SKILL.md"),
+		[]byte("---\nname: repo-skill\ndescription: repo local\n---\n"),
+		0o644,
+	))
+
+	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
+		Skill:     "repo-skill",
+		SkillMode: "enforce",
+	}, inbox, outbox, worktree)
+	require.NoError(t, err)
+	require.Equal(t, "repo-skill", cfg.SelectedSkill)
 }
 
 func TestRunCodexActivityBuildsOutcomeFromStatusArtifact(t *testing.T) {

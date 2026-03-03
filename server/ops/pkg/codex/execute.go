@@ -154,9 +154,25 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve codex home container path: %w", err)
 	}
+	worktreeTarget, err := opts.containerPath(opts.WorktreeRoot)
+	if err != nil {
+		return fmt.Errorf("resolve worktree container path: %w", err)
+	}
 	codexHomeInboxTarget, err := opts.containerPath(opts.codexHomeInboxPath())
 	if err != nil {
 		return fmt.Errorf("resolve codex home inbox path: %w", err)
+	}
+	skillDirs, err := discoverWorktreeC2SkillDirs(opts.WorktreeRoot)
+	if err != nil {
+		return fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+	}
+	skillDirTargets := make([]string, 0, len(skillDirs))
+	for _, dir := range skillDirs {
+		target, targetErr := opts.containerPath(dir)
+		if targetErr != nil {
+			return fmt.Errorf("resolve c2 skill dir container path: %w", targetErr)
+		}
+		skillDirTargets = append(skillDirTargets, target)
 	}
 
 	command := buildCommand(opts, schemaPath)
@@ -185,6 +201,7 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	rootCommands := []string{
 		buildSchemaRootCommand(schemaPath, schemaPayload),
 		buildCodexHomeRootCommand(codexHomeTarget, codexHomeInboxTarget, hostCodexHomeMountTarget),
+		buildWorktreeC2SkillsRootCommand(codexHomeTarget, worktreeTarget, skillDirTargets),
 	}
 
 	cfg := &shai.SandboxConfig{
@@ -474,10 +491,43 @@ func prepareDirectCodexHome(opts Options) error {
 	if err := copyDirContentsIfExists(opts.codexHomeInboxPath(), opts.CodexHome); err != nil {
 		return err
 	}
+	if err := copyWorktreeC2SkillsIfExists(opts); err != nil {
+		return err
+	}
 	if err := seedCodexCredentialsIfNeeded(opts.HostCodexHome, opts.CodexHome); err != nil {
 		return err
 	}
 	return nil
+}
+
+func copyWorktreeC2SkillsIfExists(opts Options) error {
+	skillDirs, err := discoverWorktreeC2SkillDirs(opts.WorktreeRoot)
+	if err != nil {
+		return fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+	}
+	targetDir := filepath.Join(opts.CodexHome, "skills")
+	for _, sourceDir := range skillDirs {
+		if err := copyDirContentsIfExists(sourceDir, targetDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func buildWorktreeC2SkillsRootCommand(codexHomeTarget string, worktreeTarget string, skillDirTargets []string) string {
+	var builder strings.Builder
+	codexHomeSkillsTarget := filepath.ToSlash(filepath.Join(codexHomeTarget, "skills"))
+	fmt.Fprintf(&builder, "if [ -d %s ]; then\n", shellQuote(worktreeTarget))
+	fmt.Fprintf(&builder, "  mkdir -p %s\n", shellQuote(codexHomeSkillsTarget))
+	for _, dirTarget := range skillDirTargets {
+		fmt.Fprintf(&builder, "  if [ -d %s ]; then cp -a %s/. %s/; fi\n",
+			shellQuote(dirTarget),
+			shellQuote(dirTarget),
+			shellQuote(codexHomeSkillsTarget),
+		)
+	}
+	builder.WriteString("fi")
+	return builder.String()
 }
 
 func copyDirContentsIfExists(sourceDir string, targetDir string) error {

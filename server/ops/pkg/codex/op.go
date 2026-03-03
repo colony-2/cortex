@@ -135,7 +135,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 	if cellRelPath == "" {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("cell_relative_path is required")
 	}
-	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox)
+	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox, worktree)
 	if err != nil {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("%s", err.Error())
 	}

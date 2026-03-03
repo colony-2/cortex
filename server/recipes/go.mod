@@ -9,11 +9,13 @@ require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8
 	github.com/segmentio/ksuid v1.0.4
+	github.com/stretchr/testify v1.11.1
 	gorm.io/gorm v1.30.0
 )
 
 require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260204230334-a48ad330539d // indirect
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -22,6 +24,7 @@ require (
 	github.com/itchyny/gojq v0.12.16 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect

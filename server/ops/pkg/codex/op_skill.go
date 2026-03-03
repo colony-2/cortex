@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -72,7 +73,7 @@ type statusContractCheckpointFile struct {
 	Stack            []ExecOutcomeCheckpointFrame `json:"stack"`
 }
 
-func prepareSkillExecutionConfig(input ExecOpInput, inboxPath string, outboxPath string) (skillExecutionConfig, error) {
+func prepareSkillExecutionConfig(input ExecOpInput, inboxPath string, outboxPath string, worktreePath string) (skillExecutionConfig, error) {
 	selectedSkill, err := resolveSelectedSkill(input.Skill, input.Skills)
 	if err != nil {
 		return skillExecutionConfig{}, err
@@ -111,7 +112,7 @@ func prepareSkillExecutionConfig(input ExecOpInput, inboxPath string, outboxPath
 	}
 
 	if cfg.SkillMode == skillModeEnforce {
-		if err := ensureSkillAvailable(cfg.SelectedSkill, inboxPath, outboxPath); err != nil {
+		if err := ensureSkillAvailable(cfg.SelectedSkill, inboxPath, outboxPath, worktreePath); err != nil {
 			return skillExecutionConfig{}, err
 		}
 	}
@@ -148,7 +149,7 @@ func resolveSelectedSkill(skill string, skills []string) (string, error) {
 	return ordered[0], nil
 }
 
-func ensureSkillAvailable(skill string, inboxPath string, outboxPath string) error {
+func ensureSkillAvailable(skill string, inboxPath string, outboxPath string, worktreePath string) error {
 	skill = strings.TrimSpace(skill)
 	if skill == "" {
 		return nil
@@ -164,11 +165,16 @@ func ensureSkillAvailable(skill string, inboxPath string, outboxPath string) err
 		}
 	}
 
+	if skillExistsInWorktreeC2Skills(worktreePath, skill) {
+		return nil
+	}
+
 	return fmt.Errorf(
-		"skill %q not found under %q or %q",
+		"skill %q not found under %q, %q, or %q",
 		skill,
 		filepath.Join(inboxPath, codexHomeArtifactDirName, "skills"),
 		filepath.Join(outboxPath, codexHomeArtifactDirName, "skills"),
+		filepath.Join(worktreePath, "**", ".c2", "skills"),
 	)
 }
 
@@ -208,6 +214,113 @@ func skillCandidatePaths(codexHomePath string, skill string) []string {
 		filtered = append(filtered, cleanCandidate)
 	}
 	return filtered
+}
+
+func skillExistsInWorktreeC2Skills(worktreePath string, skill string) bool {
+	for _, candidate := range worktreeC2SkillCandidatePaths(worktreePath, skill) {
+		info, err := os.Stat(candidate)
+		if err != nil {
+			continue
+		}
+		if info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
+}
+
+func worktreeC2SkillCandidatePaths(worktreePath string, skill string) []string {
+	worktreePath = strings.TrimSpace(worktreePath)
+	if worktreePath == "" {
+		return nil
+	}
+	cleanSkill := filepath.Clean(filepath.FromSlash(strings.TrimSpace(skill)))
+	if cleanSkill == "." || cleanSkill == string(filepath.Separator) {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	filtered := make([]string, 0)
+	skillDirs, err := discoverWorktreeC2SkillDirs(worktreePath)
+	if err != nil {
+		return nil
+	}
+	for _, dir := range skillDirs {
+		candidate := filepath.Join(dir, cleanSkill, "SKILL.md")
+		cleanCandidate := filepath.Clean(candidate)
+		if _, exists := seen[cleanCandidate]; exists {
+			continue
+		}
+		seen[cleanCandidate] = struct{}{}
+		filtered = append(filtered, cleanCandidate)
+	}
+	return filtered
+}
+
+func discoverWorktreeC2SkillDirs(worktreePath string) ([]string, error) {
+	worktreePath = filepath.Clean(strings.TrimSpace(worktreePath))
+	if worktreePath == "" {
+		return nil, nil
+	}
+
+	info, err := os.Stat(worktreePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, nil
+	}
+
+	dirs := make([]string, 0)
+	err = filepath.WalkDir(worktreePath, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) != "skills" {
+			return nil
+		}
+		if filepath.Base(filepath.Dir(path)) != ".c2" {
+			return nil
+		}
+		dirs = append(dirs, filepath.Clean(path))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sortSkillDirsRootToLeaf(dirs, worktreePath)
+	return dirs, nil
+}
+
+func sortSkillDirsRootToLeaf(dirs []string, root string) {
+	root = filepath.Clean(root)
+	sort.Slice(dirs, func(i, j int) bool {
+		di := depthFromRoot(root, dirs[i])
+		dj := depthFromRoot(root, dirs[j])
+		if di != dj {
+			return di < dj
+		}
+		return filepath.ToSlash(dirs[i]) < filepath.ToSlash(dirs[j])
+	})
+}
+
+func depthFromRoot(root string, target string) int {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return strings.Count(filepath.Clean(target), string(filepath.Separator))
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." {
+		return 0
+	}
+	return strings.Count(rel, string(filepath.Separator)) + 1
 }
 
 func renderSkillPrompt(prompt string, cfg skillExecutionConfig) string {
