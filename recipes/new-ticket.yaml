@@ -1,6 +1,6 @@
 id: new-ticket
-version: 0.7.0
-desc: "Ticket recipe: triage → requirements → implementation planning → outcome determination → implement/validate/merge"
+version: 0.8.0
+desc: "Checkpoint-centric ticket recipe with skill-based implementation supervision"
 input_schema:
   title:
     type: string
@@ -115,39 +115,29 @@ state:
             }}
           user_feedback: >-
             ${{
-              ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.feedback) && states.pre_implementation_followup_review.outputs.fields.feedback != "" &&
-                has(states.pre_implementation_followup_review.outputs.fields.decision) &&
+              ("pre_implementation_review" in states &&
+                has(states.pre_implementation_review.outputs.fields.feedback) &&
+                states.pre_implementation_review.outputs.fields.feedback != "" &&
+                has(states.pre_implementation_review.outputs.fields.decision) &&
                 (
-                  states.pre_implementation_followup_review.outputs.fields.decision == "back_up_requirements" ||
+                  states.pre_implementation_review.outputs.fields.decision == "back_up_requirements" ||
                   (
-                    states.pre_implementation_followup_review.outputs.fields.decision == "revise_current_stage" &&
-                    has(states.pre_implementation_followup_review.outputs.fields.target_stage) &&
-                    states.pre_implementation_followup_review.outputs.fields.target_stage == "requirements"
+                    states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
+                    has(states.pre_implementation_review.outputs.fields.target_stage) &&
+                    states.pre_implementation_review.outputs.fields.target_stage == "requirements"
                   )
                 )
               )
-                ? states.pre_implementation_followup_review.outputs.fields.feedback
+                ? states.pre_implementation_review.outputs.fields.feedback
                 : (
-                    ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.feedback) && states.pre_implementation_review.outputs.fields.feedback != "" &&
-                      has(states.pre_implementation_review.outputs.fields.decision) &&
-                      (
-                        states.pre_implementation_review.outputs.fields.decision == "back_up_requirements" ||
-                        (
-                          states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
-                          has(states.pre_implementation_review.outputs.fields.target_stage) &&
-                          states.pre_implementation_review.outputs.fields.target_stage == "requirements"
-                        )
-                      )
+                    ("ready_to_merge_review" in states &&
+                      has(states.ready_to_merge_review.outputs.fields.feedback) &&
+                      states.ready_to_merge_review.outputs.fields.feedback != "" &&
+                      has(states.ready_to_merge_review.outputs.fields.decision) &&
+                      states.ready_to_merge_review.outputs.fields.decision == "back_up_requirements"
                     )
-                      ? states.pre_implementation_review.outputs.fields.feedback
-                      : (
-                          ("ready_to_merge_review" in states && has(states.ready_to_merge_review.outputs.fields.feedback) && states.ready_to_merge_review.outputs.fields.feedback != "" &&
-                            has(states.ready_to_merge_review.outputs.fields.decision) &&
-                            states.ready_to_merge_review.outputs.fields.decision == "back_up_requirements"
-                          )
-                            ? states.ready_to_merge_review.outputs.fields.feedback
-                            : ""
-                        )
+                      ? states.ready_to_merge_review.outputs.fields.feedback
+                      : ""
                   )
             }}
 
@@ -180,39 +170,29 @@ state:
             }}
           user_feedback: >-
             ${{
-              ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.feedback) && states.pre_implementation_followup_review.outputs.fields.feedback != "" &&
-                has(states.pre_implementation_followup_review.outputs.fields.decision) &&
+              ("pre_implementation_review" in states &&
+                has(states.pre_implementation_review.outputs.fields.feedback) &&
+                states.pre_implementation_review.outputs.fields.feedback != "" &&
+                has(states.pre_implementation_review.outputs.fields.decision) &&
                 (
-                  states.pre_implementation_followup_review.outputs.fields.decision == "back_up_implementation_planning" ||
+                  states.pre_implementation_review.outputs.fields.decision == "back_up_implementation_planning" ||
                   (
-                    states.pre_implementation_followup_review.outputs.fields.decision == "revise_current_stage" &&
-                    has(states.pre_implementation_followup_review.outputs.fields.target_stage) &&
-                    states.pre_implementation_followup_review.outputs.fields.target_stage == "implementation_planning"
+                    states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
+                    has(states.pre_implementation_review.outputs.fields.target_stage) &&
+                    states.pre_implementation_review.outputs.fields.target_stage == "implementation_planning"
                   )
                 )
               )
-                ? states.pre_implementation_followup_review.outputs.fields.feedback
+                ? states.pre_implementation_review.outputs.fields.feedback
                 : (
-                    ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.feedback) && states.pre_implementation_review.outputs.fields.feedback != "" &&
-                      has(states.pre_implementation_review.outputs.fields.decision) &&
-                      (
-                        states.pre_implementation_review.outputs.fields.decision == "back_up_implementation_planning" ||
-                        (
-                          states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
-                          has(states.pre_implementation_review.outputs.fields.target_stage) &&
-                          states.pre_implementation_review.outputs.fields.target_stage == "implementation_planning"
-                        )
-                      )
+                    ("ready_to_merge_review" in states &&
+                      has(states.ready_to_merge_review.outputs.fields.feedback) &&
+                      states.ready_to_merge_review.outputs.fields.feedback != "" &&
+                      has(states.ready_to_merge_review.outputs.fields.decision) &&
+                      states.ready_to_merge_review.outputs.fields.decision == "back_up_implementation_planning"
                     )
-                      ? states.pre_implementation_review.outputs.fields.feedback
-                      : (
-                          ("ready_to_merge_review" in states && has(states.ready_to_merge_review.outputs.fields.feedback) && states.ready_to_merge_review.outputs.fields.feedback != "" &&
-                            has(states.ready_to_merge_review.outputs.fields.decision) &&
-                            states.ready_to_merge_review.outputs.fields.decision == "back_up_implementation_planning"
-                          )
-                            ? states.ready_to_merge_review.outputs.fields.feedback
-                            : ""
-                        )
+                      ? states.ready_to_merge_review.outputs.fields.feedback
+                      : ""
                   )
             }}
 
@@ -243,69 +223,48 @@ state:
             }}
           user_feedback: >-
             ${{
-              ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.decision) &&
-                states.pre_implementation_followup_review.outputs.fields.decision == "revise_current_stage" &&
+              ("pre_implementation_review" in states &&
+                has(states.pre_implementation_review.outputs.fields.decision) &&
+                states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
                 (
-                  !has(states.pre_implementation_followup_review.outputs.fields.target_stage) ||
-                  states.pre_implementation_followup_review.outputs.fields.target_stage == "" ||
-                  states.pre_implementation_followup_review.outputs.fields.target_stage == "outcome_determination"
-                )
+                  !has(states.pre_implementation_review.outputs.fields.target_stage) ||
+                  states.pre_implementation_review.outputs.fields.target_stage == "" ||
+                  states.pre_implementation_review.outputs.fields.target_stage == "outcome_determination"
+                ) &&
+                has(states.pre_implementation_review.outputs.fields.feedback) &&
+                states.pre_implementation_review.outputs.fields.feedback != ""
               )
-                ? (
-                    (
-                      ("implement_resume" in states && has(states.implement_resume.outputs.incompleteCategory) && states.implement_resume.outputs.incompleteCategory == "needs_test_statement_update" && has(states.implement_resume.outputs.incompleteReason) && states.implement_resume.outputs.incompleteReason != "")
-                        ? states.implement_resume.outputs.incompleteReason
-                        : (("implement" in states && has(states.implement.outputs.incompleteReason)) ? states.implement.outputs.incompleteReason : "")
-                    ) +
-                    (
-                      ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.feedback) && states.pre_implementation_followup_review.outputs.fields.feedback != "")
-                        ? ("\n\nAdditional writer notes:\n" + states.pre_implementation_followup_review.outputs.fields.feedback)
-                        : ""
-                    )
-                  )
+                ? states.pre_implementation_review.outputs.fields.feedback
                 : (
-                    ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.decision) &&
-                      (
-                        states.pre_implementation_review.outputs.fields.decision == "revise_current_stage" &&
-                        (
-                          !has(states.pre_implementation_review.outputs.fields.target_stage) ||
-                          states.pre_implementation_review.outputs.fields.target_stage == "" ||
-                          states.pre_implementation_review.outputs.fields.target_stage == "outcome_determination"
-                        ) &&
-                        has(states.pre_implementation_review.outputs.fields.feedback) &&
-                        states.pre_implementation_review.outputs.fields.feedback != ""
-                      )
+                    ("pre_implementation_review" in states &&
+                      has(states.pre_implementation_review.outputs.fields.decision) &&
+                      states.pre_implementation_review.outputs.fields.decision == "continue" &&
+                      "implement" in states &&
+                      has(states.implement.outputs.incompleteCategory) &&
+                      states.implement.outputs.incompleteCategory == "needs_test_statement_update"
                     )
-                      ? states.pre_implementation_review.outputs.fields.feedback
-                      : (
-                          ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.decision) &&
-                            states.pre_implementation_review.outputs.fields.decision == "continue" &&
-                            (
-                              ("implement_resume" in states && has(states.implement_resume.outputs.incompleteCategory) && states.implement_resume.outputs.incompleteCategory == "needs_test_statement_update") ||
-                              ("implement" in states && has(states.implement.outputs.incompleteCategory) && states.implement.outputs.incompleteCategory == "needs_test_statement_update")
-                            )
+                      ? (
+                          (has(states.implement.outputs.incompleteReason) && states.implement.outputs.incompleteReason != "")
+                            ? states.implement.outputs.incompleteReason
+                            : ""
+                        ) +
+                        (
+                          ("pre_implementation_review" in states &&
+                            has(states.pre_implementation_review.outputs.fields.feedback) &&
+                            states.pre_implementation_review.outputs.fields.feedback != ""
                           )
-                            ? (
-                                (
-                                  ("implement_resume" in states && has(states.implement_resume.outputs.incompleteCategory) && states.implement_resume.outputs.incompleteCategory == "needs_test_statement_update" && has(states.implement_resume.outputs.incompleteReason) && states.implement_resume.outputs.incompleteReason != "")
-                                    ? states.implement_resume.outputs.incompleteReason
-                                    : (("implement" in states && has(states.implement.outputs.incompleteReason)) ? states.implement.outputs.incompleteReason : "")
-                                ) +
-                                (
-                                  (has(states.pre_implementation_review.outputs.fields.feedback) && states.pre_implementation_review.outputs.fields.feedback != "")
-                                    ? ("\n\nAdditional writer notes:\n" + states.pre_implementation_review.outputs.fields.feedback)
-                                    : ""
-                                )
-                              )
-                            : (
-                                ("ready_to_merge_review" in states && has(states.ready_to_merge_review.outputs.fields.decision) &&
-                                  states.ready_to_merge_review.outputs.fields.decision == "back_up_outcome" &&
-                                  has(states.ready_to_merge_review.outputs.fields.feedback) &&
-                                  states.ready_to_merge_review.outputs.fields.feedback != ""
-                                )
-                                  ? states.ready_to_merge_review.outputs.fields.feedback
-                                  : ""
-                              )
+                            ? ("\n\nAdditional writer notes:\n" + states.pre_implementation_review.outputs.fields.feedback)
+                            : ""
+                        )
+                      : (
+                          ("ready_to_merge_review" in states &&
+                            has(states.ready_to_merge_review.outputs.fields.decision) &&
+                            states.ready_to_merge_review.outputs.fields.decision == "back_up_outcome" &&
+                            has(states.ready_to_merge_review.outputs.fields.feedback) &&
+                            states.ready_to_merge_review.outputs.fields.feedback != ""
+                          )
+                            ? states.ready_to_merge_review.outputs.fields.feedback
+                            : ""
                         )
                   )
             }}
@@ -366,8 +325,6 @@ state:
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_requirements"'
         - to: implementation_planning
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_implementation_planning"'
-        - to: implement_resume
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "continue" && has(outputs.fields.implementation_answers) && outputs.fields.implementation_answers != ""'
         - to: implement
           when: "true"
       inputs:
@@ -404,9 +361,9 @@ state:
 
                 Implementation clarification request (if any):
                 ${{
-                  ("implement_resume" in states && has(states.implement_resume.outputs.incompleteCategory) && states.implement_resume.outputs.incompleteCategory != "" && has(states.implement_resume.outputs.incompleteReason))
-                    ? states.implement_resume.outputs.incompleteReason
-                    : (("implement" in states && has(states.implement.outputs.incompleteCategory) && states.implement.outputs.incompleteCategory != "" && has(states.implement.outputs.incompleteReason)) ? states.implement.outputs.incompleteReason : "")
+                  ("implement" in states && has(states.implement.outputs.incompleteCategory) && states.implement.outputs.incompleteCategory != "" && has(states.implement.outputs.incompleteReason))
+                    ? states.implement.outputs.incompleteReason
+                    : ""
                 }}
               required: true
               options:
@@ -445,84 +402,36 @@ state:
       transitions:
         - to: cancel_ticket_route
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "cancel_ticket"'
-        - to: requirements_planning
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "revise_current_stage" && has(outputs.fields.target_stage) && outputs.fields.target_stage == "requirements"'
-        - to: implementation_planning
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "revise_current_stage" && has(outputs.fields.target_stage) && outputs.fields.target_stage == "implementation_planning"'
-        - to: outcome_determination
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "revise_current_stage" && (!has(outputs.fields.target_stage) || outputs.fields.target_stage == "" || outputs.fields.target_stage == "outcome_determination")'
-        - to: requirements_planning
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_requirements"'
-        - to: implementation_planning
-          when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_implementation_planning"'
         - to: implement_resume
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "continue" && has(outputs.fields.implementation_answers) && outputs.fields.implementation_answers != ""'
         - to: implement
           when: "true"
       inputs:
         form:
-          title: "Pre-implementation review"
+          title: "Implementation follow-up review"
           fields:
             - id: decision
               type: multiple_choice
               question: |
-                Review status before implementation:
+                Codex paused implementation and needs direction.
 
-                Requirements summary:
-                ${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.summary : "" }}
-                Requirements API review ok:
-                ${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_ok : false }}
-                Requirements blocking issues:
-                ${{ "requirements_planning" in states ? states.requirements_planning.outputs.outputs.api_review_blocking_issues : [] }}
-
-                Implementation plan summary:
-                ${{ "implementation_planning" in states ? states.implementation_planning.outputs.outputs.summary : "" }}
-                Implementation compat review ok:
-                ${{ "implementation_planning" in states ? states.implementation_planning.outputs.outputs.compat_review_ok : false }}
-                Implementation blocking issues:
-                ${{ "implementation_planning" in states ? states.implementation_planning.outputs.outputs.compat_review_blocking_issues : [] }}
-
-                Outcome summary:
-                ${{ "outcome_determination" in states ? states.outcome_determination.outputs.outputs.summary : "" }}
-                Outcome review ok:
-                ${{ "outcome_determination" in states ? states.outcome_determination.outputs.outputs.review_ok : false }}
-                Outcome blocking issues:
-                ${{ "outcome_determination" in states ? states.outcome_determination.outputs.outputs.review_blocking_issues : [] }}
-                Test statements location:
-                ${{ "outcome_determination" in states ? states.outcome_determination.outputs.outputs.test_statement_repo_glob : ".c2/tests/*.md" }}
-
-                Implementation clarification request (if any):
+                Latest clarification/update request:
                 ${{
-                  ("implement_resume" in states && has(states.implement_resume.outputs.incompleteCategory) && states.implement_resume.outputs.incompleteCategory != "" && has(states.implement_resume.outputs.incompleteReason))
-                    ? states.implement_resume.outputs.incompleteReason
-                    : (("implement" in states && has(states.implement.outputs.incompleteCategory) && states.implement.outputs.incompleteCategory != "" && has(states.implement.outputs.incompleteReason)) ? states.implement.outputs.incompleteReason : "")
+                  ("implement" in states && has(states.implement.outputs.incompleteReason) && states.implement.outputs.incompleteReason != "")
+                    ? states.implement.outputs.incompleteReason
+                    : (("implement_resume" in states && has(states.implement_resume.outputs.incompleteReason) && states.implement_resume.outputs.incompleteReason != "")
+                        ? states.implement_resume.outputs.incompleteReason
+                        : "")
                 }}
               required: true
               options:
                 - value: continue
-                  label: Continue to implementation
-                - value: revise_current_stage
-                  label: Revise current stage
-                - value: back_up_implementation_planning
-                  label: Back up to implementation planning
-                - value: back_up_requirements
-                  label: Back up to requirements
+                  label: Continue implementation
                 - value: cancel_ticket
                   label: Cancel ticket
-            - id: target_stage
-              type: multiple_choice
-              question: "For revise current stage, select the stage to run (optional)"
-              required: false
-              options:
-                - value: outcome_determination
-                  label: Outcome determination
-                - value: implementation_planning
-                  label: Implementation planning
-                - value: requirements
-                  label: Requirements
             - id: feedback
               type: paragraph_text
-              question: "Revision/restart feedback for the selected stage (optional)"
+              question: "Optional implementation guidance"
               required: false
             - id: implementation_answers
               type: paragraph_text
@@ -536,6 +445,10 @@ state:
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
         - to: pre_implementation_followup_review
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"'
+        - to: pre_implementation_followup_review
+          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"'
+        - to: implement_bugs
+          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_tickets"'
         - to: implement_bugs
           when: "has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0"
         - to: validate
@@ -562,7 +475,20 @@ state:
               ? context.workflow.cell_path
               : "."
           }}
+        skill: "c2-implementation-loop"
+        skill_mode: "enforce"
+        skills:
+          - "github.com/colony-2/skills/.agents/skills@main"
+        return_on:
+          - needs_user_input
+          - needs_test_statement_update
+          - needs_dependency_tickets
+          - ready_for_validation
+          - blocked
+        status_contract:
+          path: implementation/latest-status.json
         prompt: |
+          Follow the `c2-implementation-loop` skill contract.
           You are implementing a software ticket in the c2 system.
 
           Ticket:
@@ -597,23 +523,39 @@ state:
           Validation feedback from the last attempt (if any):
           ${{ 'validate' in states ? 'See validation artifacts: validation/output-tail.txt and validation/output.txt' : '' }}
 
+          Prior clarification request (if any):
+          ${{
+            ("implement" in states && has(states.implement.outputs.incompleteReason) && states.implement.outputs.incompleteReason != "")
+              ? states.implement.outputs.incompleteReason
+              : ""
+          }}
+
+          User clarification answers (if provided):
+          ${{
+            ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.implementation_answers) && states.pre_implementation_review.outputs.fields.implementation_answers != "")
+              ? states.pre_implementation_review.outputs.fields.implementation_answers
+              : ""
+          }}
+
           Constraints:
           - Keep changes scoped to the current cell’s code.
           - Never introduce backwards-incompatible changes.
           - Do NOT write requirements/plan/review docs into the git repo.
           - If notes are needed, write artifacts under `/src/outbox/implementation/`.
           - Input artifacts are available under `/src/inbox`.
-          - If you discover bugs in other cells, add one entry per bug to `pendingDependencies`:
+          - If you discover bugs in other cells, write `implementation/dependency-ticket-specs.json` and add one entry per bug to `pendingDependencies`:
             - `component`: exact target cell name.
             - `requestedChanges`: bug summary, impact, and concrete repro/fix guidance.
-          - If you need user clarification before continuing, stop and set:
+          - If you need user clarification before continuing, write `implementation/questions.json` and set:
             - `incompleteCategory`: `needs_user_input`
             - `incompleteReason`: numbered list of questions for the user.
           - Align implementation with `.c2/tests/*.md` in the cell repo.
           - Do NOT modify `.c2/tests/*.md` during implementation.
-          - If test statements appear incorrect/incomplete, stop and set:
+          - If test statements appear incorrect/incomplete, write `implementation/test-statement-change-request.md` and set:
             - `incompleteCategory`: `needs_test_statement_update`
             - `incompleteReason`: concrete requested changes for the test statement writer.
+          - Set `incompleteCategory` to `ready_for_validation` only when code is ready for validation.
+          - Set `incompleteCategory` to `blocked` when work cannot proceed safely.
           - Update/add tests if appropriate.
           - Prefer small, safe changes.
 
@@ -642,6 +584,10 @@ state:
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
         - to: pre_implementation_followup_review
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_test_statement_update"'
+        - to: pre_implementation_followup_review
+          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "blocked"'
+        - to: implement_resume_bugs
+          when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_dependency_tickets"'
         - to: implement_resume_bugs
           when: "has(outputs.pendingDependencies) && size(outputs.pendingDependencies) > 0"
         - to: validate
@@ -670,66 +616,39 @@ state:
               ? context.workflow.cell_path
               : "."
           }}
+        skill: "c2-implementation-loop"
+        skill_mode: "enforce"
+        skills:
+          - "github.com/colony-2/skills/.agents/skills@main"
+        return_on:
+          - needs_user_input
+          - needs_test_statement_update
+          - needs_dependency_tickets
+          - ready_for_validation
+          - blocked
+        status_contract:
+          path: implementation/latest-status.json
         prompt: |
-          Continue the current Codex implementation session.
+          Continue implementation using the same c2 skill contract and previous session context.
 
           Ticket:
           - Title: ${{ has(inputs.title) && inputs.title != "" ? inputs.title : (has(context.ticket.title) ? context.ticket.title : "") }}
           - Description:
           ${{ has(inputs.description) && inputs.description != "" ? inputs.description : (has(context.ticket.description) ? context.ticket.description : "") }}
 
-          Prior clarification request:
-          ${{
-            ("implement_resume" in states && has(states.implement_resume.outputs.incompleteReason) && states.implement_resume.outputs.incompleteReason != "")
-              ? states.implement_resume.outputs.incompleteReason
-              : (("implement" in states && has(states.implement.outputs.incompleteReason)) ? states.implement.outputs.incompleteReason : "")
-          }}
-
-          User answers:
+          User clarification answers:
           ${{
             ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.implementation_answers) && states.pre_implementation_followup_review.outputs.fields.implementation_answers != "")
               ? states.pre_implementation_followup_review.outputs.fields.implementation_answers
-              : (("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.implementation_answers) && states.pre_implementation_review.outputs.fields.implementation_answers != "")
-                  ? states.pre_implementation_review.outputs.fields.implementation_answers
-                  : "")
+              : ""
           }}
 
-          Requirements plan artifact path:
-          `/src/inbox/requirements/plan.json`
-
-          Requirements index artifact path:
-          `/src/inbox/requirements/index.md`
-
-          Implementation plan artifact path:
-          `/src/inbox/implementation/plan.json`
-
-          Implementation index artifact path:
-          `/src/inbox/implementation/index.md`
-
-          Outcome plan artifact path:
-          `/src/inbox/outcome/plan.json`
-
-          Outcome tests index artifact path:
-          `/src/inbox/outcome/tests-index.md`
-
-          Authoritative test statement files (repo path):
-          `.c2/tests/*.md`
-
-          Outcome validation commands artifact path:
-          `/src/inbox/outcome/validation-commands.txt`
-
-          Constraints:
-          - Keep changes scoped to the current cell’s code.
-          - Never introduce backwards-incompatible changes.
-          - If you discover bugs in other cells, add them to `pendingDependencies` (`component` = target cell, `requestedChanges` = bug details).
-          - If more user clarification is required, set `incompleteCategory` to `needs_user_input` with numbered questions in `incompleteReason`.
-          - Align implementation with `.c2/tests/*.md` in the cell repo.
-          - Do NOT modify `.c2/tests/*.md` during implementation.
-          - If test statements appear incorrect/incomplete, set `incompleteCategory` to `needs_test_statement_update` with concrete requested changes in `incompleteReason`.
-
-          Deliverables:
-          - Continue implementation using the user answers.
-          - Leave the workspace in a state where validation commands are likely to pass.
+          Guidance:
+          ${{
+            ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.feedback) && states.pre_implementation_followup_review.outputs.fields.feedback != "")
+              ? states.pre_implementation_followup_review.outputs.fields.feedback
+              : ""
+          }}
 
     implement_resume_bugs:
       op: ticket.manage
@@ -775,13 +694,13 @@ state:
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_implementation_planning"'
         - to: outcome_determination
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "back_up_outcome"'
-        - to: implement
+        - to: implement_resume
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "revise_current_stage"'
         - to: merge
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "merge" && ((has(context.git.hash) && context.git.hash != "") || (has(inputs.local_hash) && inputs.local_hash != ""))'
-        - to: implement
+        - to: implement_resume
           when: 'has(outputs.fields.decision) && outputs.fields.decision == "merge" && (!has(context.git.hash) || context.git.hash == "") && (!has(inputs.local_hash) || inputs.local_hash == "")'
-        - to: implement
+        - to: implement_resume
           when: "true"
       inputs:
         form:
@@ -893,11 +812,7 @@ state:
                     : (
                         ("pre_implementation_review" in states && has(states.pre_implementation_review.outputs.fields.decision) && states.pre_implementation_review.outputs.fields.decision == "cancel_ticket")
                           ? "Cancelled during pre-implementation review."
-                          : (
-                              ("pre_implementation_followup_review" in states && has(states.pre_implementation_followup_review.outputs.fields.decision) && states.pre_implementation_followup_review.outputs.fields.decision == "cancel_ticket")
-                                ? "Cancelled during pre-implementation follow-up review."
-                                : "Cancelled by workflow decision."
-                            )
+                          : "Cancelled by workflow decision."
                       )
                 }}
               - Validation passed at cancellation: ${{ "validate" in states ? states.validate.outputs.outputs.passed : false }}.
@@ -971,7 +886,7 @@ outputs:
   requirements_dependency_order: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.dependency_order : [] }}"
   requirements: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements : [] }}"
   requirements_approved: "${{ ('implementation_planning' in states) || ('outcome_determination' in states) || ('implement' in states) || ('validate' in states) || ('ready_to_merge_review' in states) || ('merge' in states) }}"
-  requirements_user_feedback: "${{ 'pre_implementation_followup_review' in states && has(states.pre_implementation_followup_review.outputs.fields.feedback) && has(states.pre_implementation_followup_review.outputs.fields.decision) && (states.pre_implementation_followup_review.outputs.fields.decision == \"back_up_requirements\" || (states.pre_implementation_followup_review.outputs.fields.decision == \"revise_current_stage\" && has(states.pre_implementation_followup_review.outputs.fields.target_stage) && states.pre_implementation_followup_review.outputs.fields.target_stage == \"requirements\")) ? states.pre_implementation_followup_review.outputs.fields.feedback : (('pre_implementation_review' in states && has(states.pre_implementation_review.outputs.fields.feedback) && has(states.pre_implementation_review.outputs.fields.decision) && (states.pre_implementation_review.outputs.fields.decision == \"back_up_requirements\" || (states.pre_implementation_review.outputs.fields.decision == \"revise_current_stage\" && has(states.pre_implementation_review.outputs.fields.target_stage) && states.pre_implementation_review.outputs.fields.target_stage == \"requirements\"))) ? states.pre_implementation_review.outputs.fields.feedback : (('ready_to_merge_review' in states && has(states.ready_to_merge_review.outputs.fields.feedback) && has(states.ready_to_merge_review.outputs.fields.decision) && states.ready_to_merge_review.outputs.fields.decision == \"back_up_requirements\") ? states.ready_to_merge_review.outputs.fields.feedback : \"\")) }}"
+  requirements_user_feedback: "${{ ('pre_implementation_review' in states && has(states.pre_implementation_review.outputs.fields.feedback) && has(states.pre_implementation_review.outputs.fields.decision) && (states.pre_implementation_review.outputs.fields.decision == \"back_up_requirements\" || (states.pre_implementation_review.outputs.fields.decision == \"revise_current_stage\" && has(states.pre_implementation_review.outputs.fields.target_stage) && states.pre_implementation_review.outputs.fields.target_stage == \"requirements\"))) ? states.pre_implementation_review.outputs.fields.feedback : (('ready_to_merge_review' in states && has(states.ready_to_merge_review.outputs.fields.feedback) && has(states.ready_to_merge_review.outputs.fields.decision) && states.ready_to_merge_review.outputs.fields.decision == \"back_up_requirements\") ? states.ready_to_merge_review.outputs.fields.feedback : \"\") }}"
   cross_cell_required: "${{ 'requirements_planning' in states ? states.requirements_planning.outputs.outputs.requirements.exists(r, has(r.target_cell) && r.target_cell != \"\" && r.target_cell != context.workflow.cell) : false }}"
   implementation_plan_json: "${{ 'implementation_planning' in states ? states.implementation_planning.outputs.outputs.plan_json : \"\" }}"
   implementation_dependency_order: "${{ 'implementation_planning' in states ? states.implementation_planning.outputs.outputs.dependency_order : [] }}"

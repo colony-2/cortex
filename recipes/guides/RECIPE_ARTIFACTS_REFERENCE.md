@@ -50,6 +50,12 @@ Example:
 
 Use a single CEL expression (`${{ ... }}`) when passing artifact keys. This preserves the artifact-key type instead of coercing to text.
 
+This also applies to list-typed artifact-key inputs for ops that support them.
+
+`codex.exec` note:
+- `codex.exec` does not consume artifact-key skill sources.
+- Use `skills` refs (for example `github.com/acme/codex-platform-skills/.agents/skills@main`) to provide skill bundles.
+
 ### 3.2 Materialize Artifacts into the Inbox
 Some ops (like `command_execution`) support an `artifacts:` block to materialize referenced artifacts on disk before the op runs.
 

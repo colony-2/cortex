@@ -34,7 +34,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-requirements-author"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-requirements-author` skill contract.
         Create a requirements bundle for this ticket and write artifacts directly.
 
         Ticket Title: {{ inputs.title }}
@@ -98,7 +103,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-requirements-contrarian-review"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-requirements-contrarian-review` skill contract.
         You are a contrarian reviewer focused on API design and backwards compatibility.
         Be skeptical. Reject any backwards-incompatible change.
         Also verify API changes align with target cell ownership/scope.
@@ -124,6 +134,8 @@ sequence:
         - `ok: \`<bool>\``
         - `## Feedback`
         - `## Blocking issues` (bulleted list or `(none)`)
+
+        Final response must be ONLY the exact review JSON object.
 
 outputs:
   plan_json: "{{ sequence.persist_plan_and_docs.outputs.assistantSummary }}"

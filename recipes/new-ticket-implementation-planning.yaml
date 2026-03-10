@@ -26,7 +26,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-implementation-plan-author"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-implementation-plan-author` skill contract.
         Build an implementation plan for this ticket and write artifacts directly.
 
         Ticket Title: {{ inputs.title }}
@@ -95,7 +100,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-implementation-compat-review"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-implementation-compat-review` skill contract.
         You are a contrarian implementation-plan reviewer focused on compatibility and dependency sequencing.
         Reject any backwards-incompatible proposal.
 
@@ -120,6 +130,8 @@ sequence:
         - `ok: \`<bool>\``
         - `## Feedback`
         - `## Blocking issues` (bulleted list or `(none)`)
+
+        Final response must be ONLY the exact review JSON object.
 
 outputs:
   plan_json: "{{ sequence.build_plan.outputs.assistantSummary }}"

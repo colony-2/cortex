@@ -21,7 +21,8 @@ type capture struct {
 var _ ops.OpDependencies = (*fakeOpDependencies)(nil)
 
 type fakeOpDependencies struct {
-	artifacts []swf.Artifact
+	inputArtifacts  []swf.Artifact
+	outputArtifacts []swf.Artifact
 }
 
 func (f *fakeOpDependencies) SetNextTaskType(taskType string) {
@@ -32,20 +33,25 @@ func (f *fakeOpDependencies) JobTool() ops.JobTool {
 }
 
 func (f *fakeOpDependencies) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
-	return nil, nil
+	for _, artifact := range f.inputArtifacts {
+		if artifact.Name() == key.Name {
+			return artifact, nil
+		}
+	}
+	return nil, errors.New("artifact not found")
 }
 
 func (f *fakeOpDependencies) AddOutputArtifact(artifact swf.Artifact) error {
-	f.artifacts = append(f.artifacts, artifact)
+	f.outputArtifacts = append(f.outputArtifacts, artifact)
 	return nil
 }
 
 func (f *fakeOpDependencies) GetInputArtifacts() []swf.Artifact {
-	return nil
+	return f.inputArtifacts
 }
 
 func (f *fakeOpDependencies) GetOutputArtifacts() []swf.Artifact {
-	return f.artifacts
+	return f.outputArtifacts
 }
 
 func (f *fakeOpDependencies) Database() *gorm.DB {
@@ -106,9 +112,9 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	require.Equal(t, "all good", out.AssistantSummary)
 
 	// Verify artifacts were created
-	require.Len(t, inv.artifacts, 2)
-	require.Equal(t, "stdout.jsonl", inv.artifacts[0].Name())
-	require.Equal(t, "stderr.txt", inv.artifacts[1].Name())
+	require.Len(t, inv.outputArtifacts, 2)
+	require.Equal(t, "stdout.jsonl", inv.outputArtifacts[0].Name())
+	require.Equal(t, "stderr.txt", inv.outputArtifacts[1].Name())
 
 	require.Equal(t, "do something", cap.options.Prompt)
 	require.Equal(t, workdir, cap.options.WorkDirRoot)
@@ -118,13 +124,69 @@ func TestRunCodexActivitySuccess(t *testing.T) {
 	require.Equal(t, filepath.Join("cells", "alpha"), cap.options.CellRelativePath)
 	require.Equal(t, "BAR", cap.options.ExtraEnv["FOO"])
 
-	stdoutBytes, err := inv.artifacts[0].Bytes(context.Background())
+	stdoutBytes, err := inv.outputArtifacts[0].Bytes(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "test output", string(stdoutBytes))
 
-	stderrBytes, err := inv.artifacts[1].Bytes(context.Background())
+	stderrBytes, err := inv.outputArtifacts[1].Bytes(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "test errors", string(stderrBytes))
+}
+
+func TestRunCodexActivityIncludesSkillsInstalled(t *testing.T) {
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	cellDir := filepath.Join(worktree, "cells", "alpha")
+	require.NoError(t, os.MkdirAll(cellDir, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workdir, "inbox"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(workdir, "outbox"), 0o755))
+
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("test output"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte(""), 0o644))
+
+	var cap capture
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		cap.options = opts
+		return Result{
+			Status:              StatusCompleted,
+			SessionID:           "sess-123",
+			AssistantSummary:    "all good",
+			PendingDependencies: []Dependency{},
+		}, stdoutPath, stderrPath, tempDir, nil
+	}
+	defer func() { executeLibrary = Execute }()
+
+	originalMaterializer := materializeSkillRefsFn
+	materializeSkillRefsFn = func(ctx context.Context, skillRefs []string, stageRoot string, skillsRoot string) ([]string, error) {
+		require.Equal(t, []string{"github.com/acme/codex-platform-skills/.agents/skills@platform-v12"}, skillRefs)
+		require.NoError(t, os.MkdirAll(filepath.Join(skillsRoot, "platform-skill"), 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(skillsRoot, "platform-skill", "SKILL.md"),
+			[]byte("---\nname: platform-skill\ndescription: test\n---\n"),
+			0o644,
+		))
+		return []string{"github.com/acme/codex-platform-skills/.agents/skills@9c71eb0d4379a4aa8f4ab94e545e1f53ec94b0b4"}, nil
+	}
+	defer func() { materializeSkillRefsFn = originalMaterializer }()
+
+	inv := &fakeOpDependencies{}
+	input := ExecOpInput{
+		Prompt:             "do something",
+		Skills:             []string{"github.com/acme/codex-platform-skills/.agents/skills@platform-v12"},
+		WorkdirPath:        workdir,
+		WorktreePath:       worktree,
+		ArtifactInboxPath:  filepath.Join(workdir, "inbox"),
+		ArtifactOutboxPath: filepath.Join(workdir, "outbox"),
+		CellRelativePath:   filepath.Join("cells", "alpha"),
+	}
+
+	out, err := runCodexActivity(inv, context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, []string{"github.com/acme/codex-platform-skills/.agents/skills@9c71eb0d4379a4aa8f4ab94e545e1f53ec94b0b4"}, out.SkillsInstalled)
+	require.Len(t, cap.options.ConfiguredSkillDirs, 1)
 }
 
 func TestGetOpAcceptsArtifacts(t *testing.T) {
@@ -160,10 +222,10 @@ func TestRunCodexActivityArtifactsRemainUntilBothConsumed(t *testing.T) {
 
 	_, err := runCodexActivity(inv, context.Background(), input)
 	require.NoError(t, err)
-	require.Len(t, inv.artifacts, 2)
+	require.Len(t, inv.outputArtifacts, 2)
 
 	var stdoutArt, stderrArt swf.Artifact
-	for _, art := range inv.artifacts {
+	for _, art := range inv.outputArtifacts {
 		if art.Name() == "stdout.jsonl" {
 			stdoutArt = art
 		} else if art.Name() == "stderr.txt" {
@@ -261,16 +323,16 @@ func TestRunCodexActivityRegistersArtifactsOnTimeout(t *testing.T) {
 	require.Contains(t, err.Error(), "context deadline exceeded")
 
 	// Verify artifacts were still registered despite the error
-	require.Len(t, inv.artifacts, 2)
-	require.Equal(t, "stdout.jsonl", inv.artifacts[0].Name())
-	require.Equal(t, "stderr.txt", inv.artifacts[1].Name())
+	require.Len(t, inv.outputArtifacts, 2)
+	require.Equal(t, "stdout.jsonl", inv.outputArtifacts[0].Name())
+	require.Equal(t, "stderr.txt", inv.outputArtifacts[1].Name())
 
 	// Verify artifact contents are accessible
-	stdoutBytes, err := inv.artifacts[0].Bytes(context.Background())
+	stdoutBytes, err := inv.outputArtifacts[0].Bytes(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "partial output before timeout", string(stdoutBytes))
 
-	stderrBytes, err := inv.artifacts[1].Bytes(context.Background())
+	stderrBytes, err := inv.outputArtifacts[1].Bytes(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "error logs before timeout", string(stderrBytes))
 }

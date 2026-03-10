@@ -25,12 +25,15 @@ If Codex Skills become first-class in `codex.exec`, we can keep major checkpoint
    - Defines the non-long-lived process model: one Codex process per step with `sessionId`-based resume.
 7. `4E-codex-exec-user-api-and-multi-skill-examples.md`
    - Specifies concrete user API fields and sample multi-skill stepwise flow.
+8. `4F-multi-git-ref-skill-sources-for-codex-exec.md`
+   - Adds a multi-git-ref source pattern so one `codex.exec` call can mount platform and team skill repos together.
 
 ## Recommended sequence
 
 1. Implement 4A first (no large recipe rewrites yet).
-2. Pilot 4B on `new-ticket` once 4A is stable.
-3. Add 4C governance before broad migration.
+2. Add 4F so recipes can consume versioned platform skill repos without blob wiring.
+3. Pilot 4B on `new-ticket` once 4A and 4F are stable.
+4. Add 4C governance before broad migration.
 
 ## Decision questions
 

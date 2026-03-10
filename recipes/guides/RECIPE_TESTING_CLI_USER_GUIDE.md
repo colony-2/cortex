@@ -107,6 +107,24 @@ Common case fields:
 5. `evaluations`
 6. `options` (including policy constraints)
 
+## Op mock matching semantics
+
+`mocks.ops` matching is strict and single-use for safety.
+
+Matching precedence:
+
+1. `node_path + op`
+2. `node_path`
+3. `op`
+4. declaration order tie-break
+
+Consumption behavior:
+
+1. A selected mock is consumed once per unique invocation (`node_path`, `op`, `invoke_seq`).
+2. Repeated invocations of the same node/op require additional mock entries.
+3. Multi-step task execution inside one invocation reuses the same selected mock.
+4. If only consumed mocks match, execution fails with `mock exhausted for repeated invocation`.
+
 ## `compile`
 
 Purpose: local-only compile into canonical IR.
@@ -321,6 +339,8 @@ c2 recipe test run \
    - Fix: verify `--project`, API URL, auth token, and recipe reference existence.
 8. Expected artifacts missing locally
    - Fix: run with `--artifact-mode inline`; `none` omits artifact payloads.
+9. Error: `mock exhausted for repeated invocation`
+   - Fix: add additional `mocks.ops` entries for each expected repeat invocation of that node/op.
 
 ## Related docs
 

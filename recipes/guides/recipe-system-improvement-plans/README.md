@@ -47,6 +47,8 @@ This folder proposes alternatives for each area, with concrete recipe/runtime ch
   - Requirements for per-step Codex process model with session resume and checkpoint returns.
 - `4E-codex-exec-user-api-and-multi-skill-examples.md`
   - Concrete `codex.exec` user API changes and multi-skill stepwise examples.
+- `4F-multi-git-ref-skill-sources-for-codex-exec.md`
+  - Multi-source git-ref pattern for platform skill directories in a single `codex.exec` call.
 
 ## Suggested rollout order (lowest risk first)
 

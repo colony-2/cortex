@@ -49,6 +49,7 @@ type ExecOpOutput struct {
 	IncompleteReason    string       `json:"incompleteReason"`
 	IncompleteCategory  string       `json:"incompleteCategory"`
 	PendingDependencies []Dependency `json:"pendingDependencies"`
+	SkillsInstalled     []string     `json:"skills_installed,omitempty"`
 }
 
 type StatusContractRef struct {
@@ -135,22 +136,32 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 	if cellRelPath == "" {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("cell_relative_path is required")
 	}
-	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox, worktree)
+	configuredSkillDirs, skillsInstalled, skillSourcesCleanup, err := prepareConfiguredSkillSources(actx, input, workdir)
+	if err != nil {
+		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("%s", err.Error())
+	}
+	if skillSourcesCleanup != nil {
+		defer func() {
+			_ = skillSourcesCleanup()
+		}()
+	}
+	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox, worktree, configuredSkillDirs)
 	if err != nil {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("%s", err.Error())
 	}
 	promptForExec := renderSkillPrompt(prompt, skillCfg)
 
 	opts := Options{
-		Prompt:           promptForExec,
-		SessionID:        strings.TrimSpace(input.SessionID),
-		Model:            strings.TrimSpace(input.Model),
-		ExtraEnv:         input.Env,
-		WorkDirRoot:      workdir,
-		WorktreeRoot:     worktree,
-		ArtifactInbox:    inbox,
-		ArtifactOutbox:   outbox,
-		CellRelativePath: cellRelPath,
+		Prompt:              promptForExec,
+		SessionID:           strings.TrimSpace(input.SessionID),
+		Model:               strings.TrimSpace(input.Model),
+		ExtraEnv:            input.Env,
+		WorkDirRoot:         workdir,
+		WorktreeRoot:        worktree,
+		ArtifactInbox:       inbox,
+		ArtifactOutbox:      outbox,
+		CellRelativePath:    cellRelPath,
+		ConfiguredSkillDirs: configuredSkillDirs,
 	}
 
 	result, stdoutPath, stderrPath, artifactDir, executeErr := executeLibrary(actx, opts)
@@ -238,6 +249,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 		IncompleteReason:    safeString(result.IncompleteReason),
 		IncompleteCategory:  safeString(result.IncompleteCategory),
 		PendingDependencies: copyDependencies(result.PendingDependencies),
+		SkillsInstalled:     copyStrings(skillsInstalled),
 	}
 	if finalStatus == StatusIncomplete {
 		if output.IncompleteCategory == "" {
@@ -304,6 +316,15 @@ func copyDependencies(in []Dependency) []Dependency {
 		return []Dependency{}
 	}
 	out := make([]Dependency, len(in))
+	copy(out, in)
+	return out
+}
+
+func copyStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
 	copy(out, in)
 	return out
 }

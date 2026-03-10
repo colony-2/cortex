@@ -21,8 +21,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-triage-cell-boundary"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
-        Triaging task: determine whether the current cell is appropriate for this ticket.
+        Follow the `c2-triage-cell-boundary` skill contract.
 
         Ticket Title: {{ inputs.title }}
         Ticket Description:
@@ -38,8 +42,9 @@ sequence:
           single best cell name from the Available Cells list (use the cell \"name\" value).
         - Use the cell descriptions to guide your choice and provide a concise rationale.
 
-        Write JSON artifact file (sandbox path):
-        - `/src/outbox/triage.json`
+        Write JSON artifact files:
+        - `/src/outbox/triage/latest-status.json`
+        - `/src/outbox/triage/decision.md`
 
         JSON schema:
         {
@@ -47,6 +52,8 @@ sequence:
           "recommended_cell": string,
           "rationale": string
         }
+
+        Final response must be ONLY the exact JSON object above.
 
 outputs:
   triage_json: "{{ sequence.assess_cell.outputs.assistantSummary }}"

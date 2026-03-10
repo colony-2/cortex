@@ -609,6 +609,8 @@ type recipeTestJobContext struct {
 	deps             coreops.ServiceDependencies2
 	mockHits         []recipeTestMockHit
 	mockMisses       []recipeTestMockMiss
+	mockSelections   map[string]int
+	consumedMockIdxs map[int]struct{}
 	executedNodes    map[string]bool
 	artifactContents map[string][]byte
 	artifactOrdinal  int64
@@ -631,6 +633,8 @@ func newRecipeTestJobContext(projectID project.ID, caseDef recipeTestCase, polic
 		caseDef:          caseDef,
 		policy:           policy,
 		deps:             deps,
+		mockSelections:   map[string]int{},
+		consumedMockIdxs: map[int]struct{}{},
 		executedNodes:    map[string]bool{},
 		artifactContents: map[string][]byte{},
 		recordings:       map[string]recipePassthroughRecord{},
@@ -664,10 +668,13 @@ func (j *recipeTestJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf
 		return nil, fmt.Errorf("%s: %s", opName, reason)
 	}
 
-	mock, matched := selectOpMock(j.caseDef.Mocks.Ops, nodePath, opName)
+	invocationKey := fmt.Sprintf("%s::%s::%d", nodePath, opName, inv.GitTaskContext.InvokeSeq)
+	mock, matched := j.selectOpMockForInvocation(invocationKey, nodePath, opName)
 	if !matched {
 		reason := "unmocked op"
-		if _, blocked := j.policy.BlockedOps[opName]; blocked {
+		if hasOpMockCandidate(j.caseDef.Mocks.Ops, nodePath, opName) {
+			reason = "mock exhausted for repeated invocation"
+		} else if _, blocked := j.policy.BlockedOps[opName]; blocked {
 			reason = "blocked by policy"
 		} else if j.policy.RequireMocks {
 			reason = "policy requires op mock"
@@ -706,6 +713,23 @@ func (j *recipeTestJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf
 	default:
 		return nil, fmt.Errorf("mock mode %q not supported in isolated execution", mock.Behavior.Mode)
 	}
+}
+
+func (j *recipeTestJobContext) selectOpMockForInvocation(invocationKey string, nodePath string, opName string) (recipeTestOpMock, bool) {
+	if idx, ok := j.mockSelections[invocationKey]; ok {
+		if idx >= 0 && idx < len(j.caseDef.Mocks.Ops) {
+			return j.caseDef.Mocks.Ops[idx], true
+		}
+		return recipeTestOpMock{}, false
+	}
+
+	idx, matched := selectOpMock(j.caseDef.Mocks.Ops, nodePath, opName, j.consumedMockIdxs)
+	if !matched {
+		return recipeTestOpMock{}, false
+	}
+	j.mockSelections[invocationKey] = idx
+	j.consumedMockIdxs[idx] = struct{}{}
+	return j.caseDef.Mocks.Ops[idx], true
 }
 
 func (j *recipeTestJobContext) buildTaskData(outputs map[string]interface{}, artifacts map[string]string, nextTask string) (swf.TaskData, error) {
@@ -803,10 +827,15 @@ func (j *recipeTestJobContext) runPassthroughTask(taskType string, inv workerops
 	}, nil
 }
 
-func selectOpMock(mocks []recipeTestOpMock, nodePath string, opName string) (recipeTestOpMock, bool) {
+func selectOpMock(mocks []recipeTestOpMock, nodePath string, opName string, consumed map[int]struct{}) (int, bool) {
 	bestIdx := -1
 	bestScore := -1
 	for i, m := range mocks {
+		if consumed != nil {
+			if _, used := consumed[i]; used {
+				continue
+			}
+		}
 		nodeMatch := strings.TrimSpace(m.Match.NodePath)
 		opMatch := strings.TrimSpace(m.Match.Op)
 		score := -1
@@ -824,9 +853,14 @@ func selectOpMock(mocks []recipeTestOpMock, nodePath string, opName string) (rec
 		}
 	}
 	if bestIdx < 0 {
-		return recipeTestOpMock{}, false
+		return -1, false
 	}
-	return mocks[bestIdx], true
+	return bestIdx, true
+}
+
+func hasOpMockCandidate(mocks []recipeTestOpMock, nodePath string, opName string) bool {
+	_, matched := selectOpMock(mocks, nodePath, opName, nil)
+	return matched
 }
 
 func splitTaskType(taskType string) (string, string) {

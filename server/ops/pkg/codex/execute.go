@@ -162,15 +162,15 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve codex home inbox path: %w", err)
 	}
-	skillDirs, err := discoverWorktreeC2SkillDirs(opts.WorktreeRoot)
+	skillDirs, err := discoverMergedSkillDirs(opts.WorktreeRoot, opts.ConfiguredSkillDirs)
 	if err != nil {
-		return fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+		return err
 	}
 	skillDirTargets := make([]string, 0, len(skillDirs))
 	for _, dir := range skillDirs {
 		target, targetErr := opts.containerPath(dir)
 		if targetErr != nil {
-			return fmt.Errorf("resolve c2 skill dir container path: %w", targetErr)
+			return fmt.Errorf("resolve skill dir container path: %w", targetErr)
 		}
 		skillDirTargets = append(skillDirTargets, target)
 	}
@@ -491,11 +491,25 @@ func prepareDirectCodexHome(opts Options) error {
 	if err := copyDirContentsIfExists(opts.codexHomeInboxPath(), opts.CodexHome); err != nil {
 		return err
 	}
-	if err := copyWorktreeC2SkillsIfExists(opts); err != nil {
+	if err := copyConfiguredAndWorktreeSkillsIfExists(opts); err != nil {
 		return err
 	}
 	if err := seedCodexCredentialsIfNeeded(opts.HostCodexHome, opts.CodexHome); err != nil {
 		return err
+	}
+	return nil
+}
+
+func copyConfiguredAndWorktreeSkillsIfExists(opts Options) error {
+	skillDirs, err := discoverMergedSkillDirs(opts.WorktreeRoot, opts.ConfiguredSkillDirs)
+	if err != nil {
+		return err
+	}
+	targetDir := filepath.Join(opts.CodexHome, "skills")
+	for _, sourceDir := range skillDirs {
+		if err := copyDirContentsIfExists(sourceDir, targetDir); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -512,6 +526,36 @@ func copyWorktreeC2SkillsIfExists(opts Options) error {
 		}
 	}
 	return nil
+}
+
+func discoverMergedSkillDirs(worktreeRoot string, configuredSkillDirs []string) ([]string, error) {
+	dirs := make([]string, 0)
+	seen := map[string]struct{}{}
+	appendUnique := func(path string) {
+		path = filepath.Clean(path)
+		if strings.TrimSpace(path) == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		dirs = append(dirs, path)
+	}
+
+	for _, dir := range configuredSkillDirs {
+		appendUnique(dir)
+	}
+
+	worktreeSkillDirs, err := discoverWorktreeC2SkillDirs(worktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+	}
+	for _, dir := range worktreeSkillDirs {
+		appendUnique(dir)
+	}
+
+	return dirs, nil
 }
 
 func buildWorktreeC2SkillsRootCommand(codexHomeTarget string, worktreeTarget string, skillDirTargets []string) string {

@@ -10,19 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPrepareSkillExecutionConfigRejectsMultipleSkills(t *testing.T) {
-	_, err := prepareSkillExecutionConfig(ExecOpInput{
-		Skills: []string{"a", "b"},
-	}, t.TempDir(), t.TempDir(), "")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "only one skill")
-}
-
 func TestPrepareSkillExecutionConfigRejectsUnsupportedSkillMode(t *testing.T) {
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "skill-a",
 		SkillMode: "prefer",
-	}, t.TempDir(), t.TempDir(), "")
+	}, t.TempDir(), t.TempDir(), "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "skill_mode")
 }
@@ -36,7 +28,7 @@ func TestPrepareSkillExecutionConfigRequiresMaterializedSkillWhenEnforced(t *tes
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "missing-skill",
 		SkillMode: "enforce",
-	}, inbox, outbox, "")
+	}, inbox, outbox, "", nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing-skill")
 }
@@ -58,9 +50,31 @@ func TestPrepareSkillExecutionConfigAcceptsRepoSkillWhenEnforced(t *testing.T) {
 	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "repo-skill",
 		SkillMode: "enforce",
-	}, inbox, outbox, worktree)
+	}, inbox, outbox, worktree, nil)
 	require.NoError(t, err)
 	require.Equal(t, "repo-skill", cfg.SelectedSkill)
+}
+
+func TestPrepareSkillExecutionConfigAcceptsConfiguredSkillDirWhenEnforced(t *testing.T) {
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	inbox := filepath.Join(workdir, "inbox")
+	outbox := filepath.Join(workdir, "outbox")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(inbox, "skills", "artifact-skill"), 0o755))
+	require.NoError(t, os.MkdirAll(outbox, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(inbox, "skills", "artifact-skill", "SKILL.md"),
+		[]byte("---\nname: artifact-skill\ndescription: artifact provided\n---\n"),
+		0o644,
+	))
+
+	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
+		Skill:     "artifact-skill",
+		SkillMode: "enforce",
+	}, inbox, outbox, worktree, []string{filepath.Join(inbox, "skills")})
+	require.NoError(t, err)
+	require.Equal(t, "artifact-skill", cfg.SelectedSkill)
 }
 
 func TestRunCodexActivityBuildsOutcomeFromStatusArtifact(t *testing.T) {
@@ -142,6 +156,80 @@ func TestRunCodexActivityBuildsOutcomeFromStatusArtifact(t *testing.T) {
 
 	require.Contains(t, captured.Prompt, "execute exactly one top-level skill segment: my-skill")
 	require.Contains(t, captured.Prompt, "nested skill checkpoints are checkpoints")
+}
+
+func TestRunCodexActivitySupportsConfiguredSkillRefs(t *testing.T) {
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	inbox := filepath.Join(workdir, "inbox")
+	outbox := filepath.Join(workdir, "outbox")
+	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cells", "alpha"), 0o755))
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.MkdirAll(outbox, 0o755))
+
+	tempDir := t.TempDir()
+	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
+	stderrPath := filepath.Join(tempDir, "stderr.txt")
+	require.NoError(t, os.WriteFile(stdoutPath, []byte("test output"), 0o644))
+	require.NoError(t, os.WriteFile(stderrPath, []byte(""), 0o644))
+
+	var captured Options
+	executeLibrary = func(ctx context.Context, opts Options) (Result, string, string, string, error) {
+		captured = opts
+		require.Len(t, opts.ConfiguredSkillDirs, 1)
+
+		artifactSkillPath := filepath.Join(opts.ConfiguredSkillDirs[0], "artifact-skill", "SKILL.md")
+		blobSkillPath := filepath.Join(opts.ConfiguredSkillDirs[0], "blob-skill", "SKILL.md")
+		require.FileExists(t, artifactSkillPath)
+		require.FileExists(t, blobSkillPath)
+
+		return Result{
+			Status:              StatusCompleted,
+			SessionID:           "sess-123",
+			AssistantSummary:    "configured skills loaded",
+			PendingDependencies: []Dependency{},
+		}, stdoutPath, stderrPath, tempDir, nil
+	}
+	defer func() { executeLibrary = Execute }()
+
+	originalMaterializer := materializeSkillRefsFn
+	materializeSkillRefsFn = func(ctx context.Context, skillRefs []string, stageRoot string, skillsRoot string) ([]string, error) {
+		require.Equal(t, []string{"github.com/acme/platform-skills/.agents/skills@v12"}, skillRefs)
+		require.NoError(t, os.MkdirAll(filepath.Join(skillsRoot, "artifact-skill"), 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(skillsRoot, "artifact-skill", "SKILL.md"),
+			[]byte("---\nname: artifact-skill\ndescription: from skills ref\n---\n"),
+			0o644,
+		))
+		require.NoError(t, os.MkdirAll(filepath.Join(skillsRoot, "blob-skill"), 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(skillsRoot, "blob-skill", "SKILL.md"),
+			[]byte("---\nname: blob-skill\ndescription: from skills ref\n---\n"),
+			0o644,
+		))
+		return []string{"github.com/acme/platform-skills/.agents/skills@9c71eb0d4379a4aa8f4ab94e545e1f53ec94b0b4"}, nil
+	}
+	defer func() { materializeSkillRefsFn = originalMaterializer }()
+
+	inv := &fakeOpDependencies{}
+	input := ExecOpInput{
+		Prompt:             "implement this",
+		Skill:              "artifact-skill",
+		SkillMode:          "enforce",
+		Skills:             []string{"github.com/acme/platform-skills/.agents/skills@v12"},
+		WorkdirPath:        workdir,
+		WorktreePath:       worktree,
+		ArtifactInboxPath:  inbox,
+		ArtifactOutboxPath: outbox,
+		CellRelativePath:   filepath.Join("cells", "alpha"),
+	}
+
+	out, err := runCodexActivity(inv, context.Background(), input)
+	require.NoError(t, err)
+	require.Equal(t, string(StatusCompleted), out.Status)
+	require.Equal(t, "configured skills loaded", out.AssistantSummary)
+	require.Equal(t, []string{"github.com/acme/platform-skills/.agents/skills@9c71eb0d4379a4aa8f4ab94e545e1f53ec94b0b4"}, out.SkillsInstalled)
+	require.Contains(t, captured.Prompt, "execute exactly one top-level skill segment: artifact-skill")
 }
 
 func TestRunCodexActivityMissingStatusContractProducesBlockedCheckpoint(t *testing.T) {

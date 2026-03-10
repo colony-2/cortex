@@ -58,13 +58,14 @@ type Options struct {
 	Model     string
 	ExtraEnv  map[string]string
 
-	WorkDirRoot      string
-	WorktreeRoot     string
-	CellRelativePath string
-	ArtifactInbox    string
-	ArtifactOutbox   string
-	CodexHome        string
-	HostCodexHome    string
+	WorkDirRoot         string
+	WorktreeRoot        string
+	CellRelativePath    string
+	ArtifactInbox       string
+	ArtifactOutbox      string
+	CodexHome           string
+	HostCodexHome       string
+	ConfiguredSkillDirs []string
 
 	Clock            Clock
 	RunnerFactory    RunnerFactory

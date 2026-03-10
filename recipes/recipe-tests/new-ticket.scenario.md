@@ -372,7 +372,7 @@ cases:
                 feedback: ""
                 implementation_answers: "Proceed to merge check."
         - match:
-            node_path: new-ticket/implement_resume/codex.exec
+            node_path: new-ticket/implement/codex.exec
           behavior:
             mode: return
             outputs:
@@ -405,7 +405,7 @@ cases:
                 upstream_branch: ""
                 commit_message: ""
         - match:
-            node_path: new-ticket/implement/codex.exec
+            node_path: new-ticket/implement_resume/codex.exec
           behavior:
             mode: return
             outputs:
@@ -963,9 +963,9 @@ cases:
               error_message: ""
     assertions:
       - type: node_executed
-        node_path: new-ticket/pre_implementation_followup_review/input
+        node_path: new-ticket/pre_implementation_review/input
       - type: node_executed
-        node_path: new-ticket/implement_resume/codex.exec
+        node_path: new-ticket/implement/codex.exec
       - type: output_equals
         path: implementation_user_questions_requested
         value: true
@@ -1268,7 +1268,7 @@ cases:
               error_message: ""
     assertions:
       - type: node_executed
-        node_path: new-ticket/pre_implementation_followup_review/input
+        node_path: new-ticket/pre_implementation_review/input
       - type: output_equals
         path: implementation_requested_test_statement_update
         value: true

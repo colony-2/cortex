@@ -26,7 +26,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-test-statement-curator"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-test-statement-curator` skill contract.
         Build an outcome-determination bundle for this ticket before implementation starts.
 
         Ticket Title: {{ inputs.title }}
@@ -96,7 +101,12 @@ sequence:
             ? context.workflow.cell_path
             : "."
         }}
+      skill: "c2-outcome-contrarian-review"
+      skill_mode: "enforce"
+      skills:
+        - "github.com/colony-2/skills/.agents/skills@main"
       prompt: |
+        Follow the `c2-outcome-contrarian-review` skill contract.
         You are a contrarian reviewer for outcome determination and test statement quality.
         Be skeptical and block weak or incompatible outcomes.
 
@@ -129,6 +139,8 @@ sequence:
         - `ok: \`<bool>\``
         - `## Feedback`
         - `## Blocking issues` (bulleted list or `(none)`)
+
+        Final response must be ONLY the exact review JSON object.
 
 outputs:
   plan_json: "{{ sequence.build_outcome_bundle.outputs.assistantSummary }}"

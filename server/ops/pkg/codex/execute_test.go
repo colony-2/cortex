@@ -319,3 +319,45 @@ func TestCopyWorktreeC2SkillsIfExistsRootToLeafOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "leaf", string(payload))
 }
+
+func TestCopyConfiguredAndWorktreeSkillsIfExistsMergesSources(t *testing.T) {
+	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
+	configuredSkills := filepath.Join(workdir, ".codex-skill-inputs", "skills")
+	codexHome := filepath.Join(workdir, "outbox", "codex-home")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	require.NoError(t, os.MkdirAll(configuredSkills, 0o755))
+	require.NoError(t, os.MkdirAll(codexHome, 0o755))
+
+	configuredShared := filepath.Join(configuredSkills, "shared-skill", "SKILL.md")
+	configuredOnly := filepath.Join(configuredSkills, "configured-only-skill", "SKILL.md")
+	worktreeShared := filepath.Join(worktree, ".c2", "skills", "shared-skill", "SKILL.md")
+	worktreeOnly := filepath.Join(worktree, ".c2", "skills", "worktree-only-skill", "SKILL.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(configuredShared), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(configuredOnly), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(worktreeShared), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(worktreeOnly), 0o755))
+	require.NoError(t, os.WriteFile(configuredShared, []byte("configured-shared"), 0o644))
+	require.NoError(t, os.WriteFile(configuredOnly, []byte("configured-only"), 0o644))
+	require.NoError(t, os.WriteFile(worktreeShared, []byte("worktree-shared"), 0o644))
+	require.NoError(t, os.WriteFile(worktreeOnly, []byte("worktree-only"), 0o644))
+
+	err := copyConfiguredAndWorktreeSkillsIfExists(Options{
+		WorktreeRoot:        worktree,
+		ConfiguredSkillDirs: []string{configuredSkills},
+		CodexHome:           codexHome,
+	})
+	require.NoError(t, err)
+
+	sharedPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "shared-skill", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, "worktree-shared", string(sharedPayload))
+
+	configuredOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "configured-only-skill", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, "configured-only", string(configuredOnlyPayload))
+
+	worktreeOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "worktree-only-skill", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, "worktree-only", string(worktreeOnlyPayload))
+}

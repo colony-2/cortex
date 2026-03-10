@@ -9,7 +9,7 @@ These statements are intended to drive `c2 recipe test` cases.
 | TS-001 | Triage marks appropriate cell tickets as `cell_is_appropriate=true`. | `new-ticket-triage.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` mock | Positive |
 | TS-002 | Triage marks out-of-cell tickets as `cell_is_appropriate=false`. | `new-ticket-triage.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` mock | Positive |
 | TS-003 | Invalid recommended cell yields `recommended_cell_is_valid=false`. | `new-ticket-triage.yaml` | High | Integration (`recipe_case`); deps: `cells()` context | Negative |
-| TS-004 | Triage emits `triage.json` artifact with decision payload. | `new-ticket-triage.yaml` | Medium | Integration (`recipe_case`); deps: artifact capture | Positive |
+| TS-004 | Triage emits a triage decision artifact payload for downstream routing. | `new-ticket-triage.yaml` | Medium | Integration (`recipe_case`); deps: artifact capture | Positive |
 | TS-005 | Requirements planning emits `requirements/plan.json`, `requirements/index.md`, and requirement markdown artifacts. | `new-ticket-requirements-planning.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` mocks | Positive |
 | TS-006 | Requirements outputs expose dependency order and cross-cell flags from planning payload. | `new-ticket-requirements-planning.yaml` | High | Integration (`recipe_case`); deps: JSON output parsing | Positive |
 | TS-007 | Requirements planning accepts user feedback input and returns updated summary outputs. | `new-ticket-requirements-planning.yaml` | High | Integration (`recipe_case`); deps: input plumbing | Positive |
@@ -41,15 +41,16 @@ These statements are intended to drive `c2 recipe test` cases.
 | TS-033 | Merge request without local hash returns to implementation instead of executing merge. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: ready-to-merge branching | Negative |
 | TS-034 | Successful merge path marks ticket completion (`ticket_done=true`) with non-empty merged hash. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `local_hash` input + `squashrebasemerge` mock | Positive |
 | TS-035 | Implementation-reported cross-cell bugs create child bug tickets before continuing workflow. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` pendingDependencies + `ticket.manage` mock | Positive |
-| TS-036 | Implementation user questions pause flow for structured user input, then resume Codex session. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + `input` + resumed `codex.exec` mock | Positive |
+| TS-036 | Implementation user questions pause flow for structured user input, then continue the same Codex session. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + `input` + repeated `codex.exec` mock | Positive |
 | TS-037 | Outcome determination emits outcome artifacts and identifies authoritative test statements at `.c2/tests/*.md`. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` mocks + artifact capture | Positive |
 | TS-038 | Outcome outputs expose update requirement flag and validation command plan. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: JSON output mapping | Positive |
 | TS-039 | Blocking outcome review sets `review_ok=false` and returns blocking issues. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: contrarian review output | Negative |
 | TS-040 | Main ticket runs outcome review before implementation and uses outcome validation commands by default. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: outcome child recipe + validation input mapping | Positive |
-| TS-041 | Implementation requesting statement changes routes through pre-implementation follow-up review instead of direct `.c2/tests/*.md` edits. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + follow-up input gate | Positive |
+| TS-041 | Implementation requesting statement changes routes through pre-implementation review instead of direct `.c2/tests/*.md` edits. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + input gate | Positive |
 
 ## Notes for Test Authoring
 
 - Prefer `recipe_case` with explicit op mocks for deterministic branch coverage under test-policy sandboxing.
+- Op mocks are single-use per invocation; if a node/op can run multiple times, add one mock entry per expected invocation.
 - Use `integration_case` only when external workflow context is required and available in the harness.
 - Keep artifact assertions focused on outbox contract files, not assistant summary text.

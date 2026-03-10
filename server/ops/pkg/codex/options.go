@@ -80,6 +80,21 @@ func (o *Options) validate() error {
 	if err := ensureDescendantPath(o.WorkDirRoot, o.CodexHome, "codex home"); err != nil {
 		return err
 	}
+	if len(o.ConfiguredSkillDirs) > 0 {
+		normalized := make([]string, 0, len(o.ConfiguredSkillDirs))
+		for _, configuredDir := range o.ConfiguredSkillDirs {
+			trimmed := strings.TrimSpace(configuredDir)
+			if trimmed == "" {
+				continue
+			}
+			cleanDir := filepath.Clean(trimmed)
+			if err := ensureDescendantPath(o.WorkDirRoot, cleanDir, "configured skill dir"); err != nil {
+				return err
+			}
+			normalized = append(normalized, cleanDir)
+		}
+		o.ConfiguredSkillDirs = normalized
+	}
 	return nil
 }
 
