@@ -20,6 +20,7 @@ import (
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
+	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
 	"github.com/stretchr/testify/require"
 )
 
@@ -280,14 +281,14 @@ func startEmbeddedEngine(t *testing.T, ctx context.Context) swf.SWFEngine {
 	for _, tw := range workSet.TaskWorkers {
 		taskWorkers = append(taskWorkers, tw)
 	}
+	swfRuntime, err := directruntime.NewFromConfig(dsn, strata.BaseURL, strata.APIKey)
+	require.NoError(t, err)
 	engine, err := swf.NewEngineBuilder().
-		WithPostgresDSN(dsn).
-		WithStrata(strata.BaseURL).
-		WithStrataAPIKey(strata.APIKey).
+		WithRuntime(swfRuntime).
 		WithLogger(slog.Default()).
 		WithMaxActive(100).
 		PlusWorkers(workSet.JobWorker, taskWorkers...).
-		Build(impl.Builder)
+		BuildEngine()
 	require.NoError(t, err)
 
 	go engine.Run(ctx)

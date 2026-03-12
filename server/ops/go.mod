@@ -9,7 +9,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/shai v0.0.7
-	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
+	github.com/colony-2/swf-go v0.0.0-20260312021215-1ff66260c651
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.13.0

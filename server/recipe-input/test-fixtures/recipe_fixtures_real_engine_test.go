@@ -26,6 +26,7 @@ import (
 	testfixtures "github.com/colony-2/colony2/server/recipe-worker/test-fixtures"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
+	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,16 +79,16 @@ func TestRecipeFixturesRealEngine(t *testing.T) {
 	for _, tw := range workSet.TaskWorkers {
 		taskWorkers = append(taskWorkers, tw)
 	}
+	swfRuntime, err := directruntime.NewFromConfig(dsn, strata.BaseURL, strata.APIKey)
+	require.NoError(t, err)
 
 	engine, err := swf.NewEngineBuilder().
+		WithRuntime(swfRuntime).
 		WithAwaitRecycleThreshold(5*time.Second).
-		WithPostgresDSN(dsn).
-		WithStrata(strata.BaseURL).
-		WithStrataAPIKey(strata.APIKey).
 		WithLogger(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))).
 		WithMaxActive(100).
 		PlusWorkers(workSet.JobWorker, taskWorkers...).
-		Build(impl.Builder)
+		BuildEngine()
 	require.NoError(t, err)
 
 	wf.Engine = engine

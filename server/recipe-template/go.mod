@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
+	github.com/colony-2/swf-go v0.0.0-20260312021215-1ff66260c651
 	github.com/google/cel-go v0.26.0
 	github.com/itchyny/gojq v0.12.16
 	github.com/stretchr/testify v1.11.1

@@ -13,9 +13,11 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
+	strataclient "github.com/colony-2/strata-go/pkg/client"
 	"github.com/colony-2/strata-go/pkg/daemon"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
+	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
 	"gorm.io/gorm"
 )
 
@@ -150,15 +152,25 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 		cfg.Logger.Info("using remote Strata", "url", strataBaseURL)
 	}
 
+	strataClient, err := strataclient.New(strataclient.Config{
+		BaseURL: strataBaseURL,
+		APIKey:  cfg.StrataAPIKey,
+	})
+	if err != nil {
+		cancel()
+		if strata != nil {
+			strata.Shutdown(context.Background())
+		}
+		return nil, fmt.Errorf("failed to create Strata client: %w", err)
+	}
+
 	cfg.Logger.Info("building workflow engine")
 	engine, err := swf.NewEngineBuilder().
+		WithRuntime(directruntime.New(cfg.PostgresDB, strataClient)).
 		WithAwaitRecycleThreshold(cfg.AwaitRecycleThreshold).
-		WithPostgresDSN(cfg.PostgresDSN).
-		WithStrata(strataBaseURL).
-		WithStrataAPIKey(cfg.StrataAPIKey).
 		WithLogger(cfg.Logger).
 		WithMaxActive(cfg.MaxActive).
-		Build(impl.Builder)
+		BuildEngine()
 	if err != nil {
 		cancel()
 		if strata != nil {

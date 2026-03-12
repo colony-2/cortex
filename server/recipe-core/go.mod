@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/recipe-core
 go 1.25.5
 
 require (
-	github.com/colony-2/swf-go v0.0.0-20260215044714-bfd44e3f0dc5
+	github.com/colony-2/swf-go v0.0.0-20260312021215-1ff66260c651
 	github.com/fatih/structs v1.1.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/google/cel-go v0.26.0

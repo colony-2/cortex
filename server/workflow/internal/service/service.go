@@ -851,11 +851,18 @@ func truncateTaskIOForLog(io *swf.TaskIO) map[string]any {
 	}
 }
 
+func strataStoryKey(jobKey swf.JobKey) story.Key {
+	return story.Key{
+		AnthologyID: jobKey.TenantId,
+		StoryID:     jobKey.JobId,
+	}
+}
+
 func (s *Service) dumpStrataChaptersForLog(ctx context.Context, jobKey swf.JobKey) ([]any, error) {
 	if s.strata == nil {
 		return nil, errors.New("strata unavailable")
 	}
-	st, err := s.strata.Story(ctx, jobKey.ToStoryKey())
+	st, err := s.strata.Story(ctx, strataStoryKey(jobKey))
 	if err != nil {
 		return nil, err
 	}
@@ -1177,7 +1184,7 @@ func (s *Service) loadChapters(ctx context.Context, jobKey swf.JobKey) ([]model.
 	s.logger.Debug("loadChapters: loading story from strata",
 		"tenant_id", jobKey.TenantId,
 		"job_id", jobKey.JobId)
-	storyHandle, err := s.strata.Story(ctx, jobKey.ToStoryKey())
+	storyHandle, err := s.strata.Story(ctx, strataStoryKey(jobKey))
 	if err != nil {
 		s.logger.Error("loadChapters: failed to load story from strata",
 			"tenant_id", jobKey.TenantId,
@@ -1559,7 +1566,7 @@ func (s *Service) GetWorkflowArtifact(
 		"tenant_id", jobKey.TenantId,
 		"job_id", jobKey.JobId,
 		"chapter_number", req.ChapterNumber)
-	chap, err := s.strata.Chapter(ctx, jobKey.ToStoryKey(), int64(req.ChapterNumber))
+	chap, err := s.strata.Chapter(ctx, strataStoryKey(jobKey), int64(req.ChapterNumber))
 	if err != nil {
 		s.logger.Error("GetWorkflowArtifact: failed to retrieve chapter from strata",
 			"tenant_id", jobKey.TenantId,

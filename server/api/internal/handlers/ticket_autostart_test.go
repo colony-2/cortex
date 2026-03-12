@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
@@ -23,6 +23,7 @@ import (
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/colony-2/swf-go/pkg/swf/impl"
+	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
 	"github.com/stretchr/testify/require"
 	"log/slog"
 )
@@ -91,15 +92,15 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	for _, tw := range workset.TaskWorkers {
 		taskWorkers = append(taskWorkers, tw)
 	}
+	swfRuntime, err := directruntime.NewFromConfig(pg.DSN(), strata.BaseURL, strata.APIKey)
+	require.NoError(t, err)
 	engine, err := swf.NewEngineBuilder().
+		WithRuntime(swfRuntime).
 		WithAwaitRecycleThreshold(5*time.Second).
-		WithPostgresDSN(pg.DSN()).
-		WithStrata(strata.BaseURL).
-		WithStrataAPIKey(strata.APIKey).
 		WithLogger(slog.Default()).
 		WithMaxActive(100).
 		PlusWorkers(workset.JobWorker, taskWorkers...).
-		Build(impl.Builder)
+		BuildEngine()
 	require.NoError(t, err)
 
 	// Start worker loops
