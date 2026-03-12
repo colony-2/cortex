@@ -104,6 +104,14 @@ state:
       inputs:
         timeout: 60m
         continue_on_error: true
+        env:
+          WT: "{{ context.environment.worktree_path }}"
+          CELL: >-
+            ${{
+              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+                ? inputs.cell_relative_path
+                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+            }}
         run: |
           set -uo pipefail
 
@@ -123,14 +131,6 @@ state:
           set -e
           tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
           exit $RC
-      env:
-        WT: "{{ context.environment.worktree_path }}"
-        CELL: >-
-          ${{
-            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-              ? inputs.cell_relative_path
-              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-          }}
 
     run_suggested:
       op: command_execution
@@ -138,6 +138,14 @@ state:
       inputs:
         timeout: 60m
         continue_on_error: true
+        env:
+          WT: "{{ context.environment.worktree_path }}"
+          CELL: >-
+            ${{
+              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+                ? inputs.cell_relative_path
+                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+            }}
         run: |
           set -uo pipefail
 
@@ -157,14 +165,6 @@ state:
           set -e
           tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
           exit $RC
-      env:
-        WT: "{{ context.environment.worktree_path }}"
-        CELL: >-
-          ${{
-            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-              ? inputs.cell_relative_path
-              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-          }}
 
     run_custom:
       op: command_execution
@@ -172,6 +172,14 @@ state:
       inputs:
         timeout: 60m
         continue_on_error: true
+        env:
+          WT: "{{ context.environment.worktree_path }}"
+          CELL: >-
+            ${{
+              (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
+                ? inputs.cell_relative_path
+                : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
+            }}
         run: |
           set -uo pipefail
 
@@ -191,14 +199,6 @@ state:
           set -e
           tail -n 120 "$OUT/validation/output.txt" > "$OUT/validation/output-tail.txt" || true
           exit $RC
-      env:
-        WT: "{{ context.environment.worktree_path }}"
-        CELL: >-
-          ${{
-            (has(inputs.cell_relative_path) && inputs.cell_relative_path != "")
-              ? inputs.cell_relative_path
-              : ((has(context.workflow.cell_path) && context.workflow.cell_path != "") ? context.workflow.cell_path : ".")
-          }}
 
 outputs:
   exit_code: "${{ 'run_provided' in states ? states.run_provided.outputs.exit_code : (('run_suggested' in states) ? states.run_suggested.outputs.exit_code : (('run_custom' in states) ? states.run_custom.outputs.exit_code : 1)) }}"

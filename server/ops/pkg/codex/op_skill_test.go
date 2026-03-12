@@ -14,67 +14,18 @@ func TestPrepareSkillExecutionConfigRejectsUnsupportedSkillMode(t *testing.T) {
 	_, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "skill-a",
 		SkillMode: "prefer",
-	}, t.TempDir(), t.TempDir(), "", nil)
+	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "skill_mode")
 }
 
-func TestPrepareSkillExecutionConfigRequiresMaterializedSkillWhenEnforced(t *testing.T) {
-	inbox := filepath.Join(t.TempDir(), "inbox")
-	outbox := filepath.Join(t.TempDir(), "outbox")
-	require.NoError(t, os.MkdirAll(inbox, 0o755))
-	require.NoError(t, os.MkdirAll(outbox, 0o755))
-
-	_, err := prepareSkillExecutionConfig(ExecOpInput{
+func TestPrepareSkillExecutionConfigAllowsUnknownSkillWhenEnforced(t *testing.T) {
+	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
 		Skill:     "missing-skill",
 		SkillMode: "enforce",
-	}, inbox, outbox, "", nil)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "missing-skill")
-}
-
-func TestPrepareSkillExecutionConfigAcceptsRepoSkillWhenEnforced(t *testing.T) {
-	workdir := t.TempDir()
-	worktree := filepath.Join(workdir, "worktree")
-	inbox := filepath.Join(workdir, "inbox")
-	outbox := filepath.Join(workdir, "outbox")
-	require.NoError(t, os.MkdirAll(filepath.Join(worktree, ".c2", "skills", "repo-skill"), 0o755))
-	require.NoError(t, os.MkdirAll(inbox, 0o755))
-	require.NoError(t, os.MkdirAll(outbox, 0o755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(worktree, ".c2", "skills", "repo-skill", "SKILL.md"),
-		[]byte("---\nname: repo-skill\ndescription: repo local\n---\n"),
-		0o644,
-	))
-
-	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
-		Skill:     "repo-skill",
-		SkillMode: "enforce",
-	}, inbox, outbox, worktree, nil)
+	})
 	require.NoError(t, err)
-	require.Equal(t, "repo-skill", cfg.SelectedSkill)
-}
-
-func TestPrepareSkillExecutionConfigAcceptsConfiguredSkillDirWhenEnforced(t *testing.T) {
-	workdir := t.TempDir()
-	worktree := filepath.Join(workdir, "worktree")
-	inbox := filepath.Join(workdir, "inbox")
-	outbox := filepath.Join(workdir, "outbox")
-	require.NoError(t, os.MkdirAll(worktree, 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(inbox, "skills", "artifact-skill"), 0o755))
-	require.NoError(t, os.MkdirAll(outbox, 0o755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(inbox, "skills", "artifact-skill", "SKILL.md"),
-		[]byte("---\nname: artifact-skill\ndescription: artifact provided\n---\n"),
-		0o644,
-	))
-
-	cfg, err := prepareSkillExecutionConfig(ExecOpInput{
-		Skill:     "artifact-skill",
-		SkillMode: "enforce",
-	}, inbox, outbox, worktree, []string{filepath.Join(inbox, "skills")})
-	require.NoError(t, err)
-	require.Equal(t, "artifact-skill", cfg.SelectedSkill)
+	require.Equal(t, "missing-skill", cfg.SelectedSkill)
 }
 
 func TestRunCodexActivityBuildsOutcomeFromStatusArtifact(t *testing.T) {
@@ -85,10 +36,6 @@ func TestRunCodexActivityBuildsOutcomeFromStatusArtifact(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cells", "alpha"), 0o755))
 	require.NoError(t, os.MkdirAll(inbox, 0o755))
 	require.NoError(t, os.MkdirAll(outbox, 0o755))
-
-	skillPath := filepath.Join(inbox, codexHomeArtifactDirName, "skills", "my-skill", "SKILL.md")
-	require.NoError(t, os.MkdirAll(filepath.Dir(skillPath), 0o755))
-	require.NoError(t, os.WriteFile(skillPath, []byte("---\nname: my-skill\ndescription: test\n---\n"), 0o644))
 
 	statusPath := filepath.Join(outbox, "implementation", "latest-status.json")
 	require.NoError(t, os.MkdirAll(filepath.Dir(statusPath), 0o755))
@@ -241,10 +188,6 @@ func TestRunCodexActivityMissingStatusContractProducesBlockedCheckpoint(t *testi
 	require.NoError(t, os.MkdirAll(inbox, 0o755))
 	require.NoError(t, os.MkdirAll(outbox, 0o755))
 
-	skillPath := filepath.Join(inbox, codexHomeArtifactDirName, "skills", "my-skill", "SKILL.md")
-	require.NoError(t, os.MkdirAll(filepath.Dir(skillPath), 0o755))
-	require.NoError(t, os.WriteFile(skillPath, []byte("---\nname: my-skill\ndescription: test\n---\n"), 0o644))
-
 	tempDir := t.TempDir()
 	stdoutPath := filepath.Join(tempDir, "stdout.jsonl")
 	stderrPath := filepath.Join(tempDir, "stderr.txt")
@@ -291,18 +234,6 @@ func TestRunCodexActivityMultiSkillSequenceWithNestedCheckpoint(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(worktree, "cells", "alpha"), 0o755))
 	require.NoError(t, os.MkdirAll(inbox, 0o755))
 	require.NoError(t, os.MkdirAll(outbox, 0o755))
-
-	skills := []string{
-		"example-plan-step",
-		"example-parent-step",
-		"example-child-step",
-		"example-validate-step",
-	}
-	for _, skill := range skills {
-		skillPath := filepath.Join(inbox, codexHomeArtifactDirName, "skills", skill, "SKILL.md")
-		require.NoError(t, os.MkdirAll(filepath.Dir(skillPath), 0o755))
-		require.NoError(t, os.WriteFile(skillPath, []byte(fmt.Sprintf("---\nname: %s\ndescription: test\n---\n", skill)), 0o644))
-	}
 
 	type scriptedStep struct {
 		skill            string

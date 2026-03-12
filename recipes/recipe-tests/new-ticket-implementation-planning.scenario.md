@@ -17,9 +17,9 @@ cases:
               status: completed
               assistantSummary: '{"summary":"Audit plan","requires_dependency_tickets":false,"dependency_order":["REQ-1"],"dependency_ticket_specs":[],"local_steps":["Implement audit hooks"],"notes_for_user_review":"Plan is local-only"}'
             artifacts:
-              implementation/plan.json: '{"summary":"Audit plan"}'
+              implementation/plan.json: '{"summary":"Audit plan","requires_dependency_tickets":false,"dependency_order":["REQ-1"],"dependency_ticket_specs":[],"local_steps":["Implement audit hooks"],"notes_for_user_review":"Plan is local-only"}'
               implementation/index.md: '# Implementation plan\n- local-only'
-              implementation/REQ-1.md: '# REQ-1\nNo dependency ticket required'
+              implementation/REQ-1.md: '# REQ-1\nNo dependency ticket required' 
         - match:
             node_path: new-ticket-implementation-planning/compat_review
           behavior:
@@ -29,7 +29,7 @@ cases:
               assistantSummary: '{"ok":true,"feedback":"Compatible","blocking_issues":[]}'
             artifacts:
               implementation/compat-review.json: '{"ok":true,"feedback":"Compatible","blocking_issues":[]}'
-              implementation/compat-review.md: '# Implementation plan compatibility review'
+              implementation/compat-review.md: '# Implementation plan compatibility review' 
     assertions:
       - type: artifact_exists
         path: implementation/plan.json
@@ -53,9 +53,9 @@ cases:
               status: completed
               assistantSummary: '{"summary":"Cross-cell plan","requires_dependency_tickets":true,"dependency_order":["REQ-10","REQ-20"],"dependency_ticket_specs":[{"id":"REQ-10","title":"API prework","target_cell":"api","depends_on_ids":[],"depends_on_markdown":"- (none)","scope":"Prepare API","acceptance_criteria_markdown":"- API change available","risks_markdown":"- Coordination delay","notes":"Must land first"}],"local_steps":["Apply local integration"],"notes_for_user_review":"Dependency first"}'
             artifacts:
-              implementation/plan.json: '{"summary":"Cross-cell plan"}'
+              implementation/plan.json: '{"summary":"Cross-cell plan","requires_dependency_tickets":true,"dependency_order":["REQ-10","REQ-20"],"dependency_ticket_specs":[{"id":"REQ-10","title":"API prework","target_cell":"api","depends_on_ids":[],"depends_on_markdown":"- (none)","scope":"Prepare API","acceptance_criteria_markdown":"- API change available","risks_markdown":"- Coordination delay","notes":"Must land first"}],"local_steps":["Apply local integration"],"notes_for_user_review":"Dependency first"}'
               implementation/index.md: '# Implementation plan\n- dependency first'
-              implementation/REQ-10.md: '# REQ-10\nDependency ticket'
+              implementation/REQ-10.md: '# REQ-10\nDependency ticket' 
         - match:
             node_path: new-ticket-implementation-planning/compat_review
           behavior:
@@ -65,7 +65,7 @@ cases:
               assistantSummary: '{"ok":true,"feedback":"Sequence valid","blocking_issues":[]}'
             artifacts:
               implementation/compat-review.json: '{"ok":true,"feedback":"Sequence valid","blocking_issues":[]}'
-              implementation/compat-review.md: '# Implementation plan compatibility review'
+              implementation/compat-review.md: '# Implementation plan compatibility review' 
     assertions:
       - type: output_equals
         path: requires_dependency_tickets
@@ -89,9 +89,9 @@ cases:
               status: completed
               assistantSummary: '{"summary":"Plan draft","requires_dependency_tickets":false,"dependency_order":["REQ-1"],"dependency_ticket_specs":[],"local_steps":["Draft changes"],"notes_for_user_review":"Review needed"}'
             artifacts:
-              implementation/plan.json: '{"summary":"Plan draft"}'
+              implementation/plan.json: '{"summary":"Plan draft","requires_dependency_tickets":false,"dependency_order":["REQ-1"],"dependency_ticket_specs":[],"local_steps":["Draft changes"],"notes_for_user_review":"Review needed"}'
               implementation/index.md: '# Implementation plan\n- draft'
-              implementation/REQ-1.md: '# REQ-1\nDraft'
+              implementation/REQ-1.md: '# REQ-1\nDraft' 
         - match:
             node_path: new-ticket-implementation-planning/compat_review
           behavior:
@@ -101,7 +101,7 @@ cases:
               assistantSummary: '{"ok":false,"feedback":"Breaking interface detected","blocking_issues":["Backwards compatibility violation"]}'
             artifacts:
               implementation/compat-review.json: '{"ok":false,"feedback":"Breaking interface detected","blocking_issues":["Backwards compatibility violation"]}'
-              implementation/compat-review.md: '# Implementation plan compatibility review'
+              implementation/compat-review.md: '# Implementation plan compatibility review' 
     assertions:
       - type: output_equals
         path: compat_review_ok

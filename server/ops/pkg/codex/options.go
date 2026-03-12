@@ -13,7 +13,10 @@ var (
 	errMissingWorktree = errors.New("codex: worktree root is required")
 )
 
-const codexHomeArtifactDirName = "codex-home"
+const (
+	codexHomeDirName             = ".codex"
+	codexSessionsArtifactDirName = "codex-sessions"
+)
 
 func (o *Options) validate() error {
 	if strings.TrimSpace(o.Prompt) == "" {
@@ -42,7 +45,7 @@ func (o *Options) validate() error {
 	o.ArtifactOutbox = filepath.Clean(o.ArtifactOutbox)
 	o.CodexHome = strings.TrimSpace(o.CodexHome)
 	if o.CodexHome == "" {
-		o.CodexHome = filepath.Join(o.ArtifactOutbox, codexHomeArtifactDirName)
+		o.CodexHome = filepath.Join(o.WorkDirRoot, codexHomeDirName)
 	}
 	o.CodexHome = filepath.Clean(o.CodexHome)
 	o.HostCodexHome = resolveHostCodexHomePath(o.HostCodexHome)
@@ -98,8 +101,16 @@ func (o *Options) validate() error {
 	return nil
 }
 
-func (o Options) codexHomeInboxPath() string {
-	return filepath.Join(o.ArtifactInbox, codexHomeArtifactDirName)
+func (o Options) codexSessionsInboxPath() string {
+	return filepath.Join(o.ArtifactInbox, codexSessionsArtifactDirName)
+}
+
+func (o Options) codexSessionsOutboxPath() string {
+	return filepath.Join(o.ArtifactOutbox, codexSessionsArtifactDirName)
+}
+
+func (o Options) codexAgentsSkillsPath() string {
+	return filepath.Join(o.CodexHome, ".agents", "skills")
 }
 
 func (o Options) stdoutPath(dir string) string {

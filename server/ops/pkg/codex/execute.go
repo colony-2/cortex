@@ -1,7 +1,6 @@
 package codex
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -134,6 +133,10 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve cell mount path: %w", err)
 	}
+	codexHomeRelFromWorkdir, err := opts.relativeToWorkdir(opts.CodexHome)
+	if err != nil {
+		return fmt.Errorf("resolve codex home workdir path: %w", err)
+	}
 	inboxRelFromWorkdir, err := opts.relativeToWorkdir(opts.ArtifactInbox)
 	if err != nil {
 		return fmt.Errorf("resolve inbox mount path: %w", err)
@@ -154,20 +157,16 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve codex home container path: %w", err)
 	}
-	worktreeTarget, err := opts.containerPath(opts.WorktreeRoot)
+	codexSessionsInboxTarget, err := opts.containerPath(opts.codexSessionsInboxPath())
 	if err != nil {
-		return fmt.Errorf("resolve worktree container path: %w", err)
+		return fmt.Errorf("resolve codex sessions inbox path: %w", err)
 	}
-	codexHomeInboxTarget, err := opts.containerPath(opts.codexHomeInboxPath())
+	codexSessionsOutboxTarget, err := opts.containerPath(opts.codexSessionsOutboxPath())
 	if err != nil {
-		return fmt.Errorf("resolve codex home inbox path: %w", err)
+		return fmt.Errorf("resolve codex sessions outbox path: %w", err)
 	}
-	skillDirs, err := discoverMergedSkillDirs(opts.WorktreeRoot, opts.ConfiguredSkillDirs)
-	if err != nil {
-		return err
-	}
-	skillDirTargets := make([]string, 0, len(skillDirs))
-	for _, dir := range skillDirs {
+	skillDirTargets := make([]string, 0, len(opts.ConfiguredSkillDirs))
+	for _, dir := range opts.ConfiguredSkillDirs {
 		target, targetErr := opts.containerPath(dir)
 		if targetErr != nil {
 			return fmt.Errorf("resolve skill dir container path: %w", targetErr)
@@ -200,13 +199,13 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	}
 	rootCommands := []string{
 		buildSchemaRootCommand(schemaPath, schemaPayload),
-		buildCodexHomeRootCommand(codexHomeTarget, codexHomeInboxTarget, hostCodexHomeMountTarget),
-		buildWorktreeC2SkillsRootCommand(codexHomeTarget, worktreeTarget, skillDirTargets),
+		buildCodexHomeRootCommand(codexHomeTarget, codexSessionsInboxTarget, codexSessionsOutboxTarget, hostCodexHomeMountTarget),
+		buildConfiguredSkillsRootCommand(codexHomeTarget, skillDirTargets),
 	}
 
 	cfg := &shai.SandboxConfig{
 		WorkingDir:     opts.WorkDirRoot,
-		ReadWritePaths: []string{cellRelFromWorkdir},
+		ReadWritePaths: []string{cellRelFromWorkdir, codexHomeRelFromWorkdir},
 		PrependResourceSet: &shai.ResourceSet{
 			Mounts:       mounts,
 			RootCommands: rootCommands,
@@ -286,10 +285,7 @@ func buildSchemaRootCommand(schemaPath string, schemaPayload []byte) string {
 }
 
 func sanitizeCodexHomeOutput(opts Options) error {
-	if err := removeSensitiveCodexFiles(opts.CodexHome); err != nil {
-		return err
-	}
-	return pruneUnchangedCodexFiles(opts.codexHomeInboxPath(), opts.CodexHome)
+	return removeSensitiveCodexFiles(opts.CodexHome)
 }
 
 func removeSensitiveCodexFiles(codexHomeDir string) error {
@@ -302,163 +298,21 @@ func removeSensitiveCodexFiles(codexHomeDir string) error {
 	return nil
 }
 
-func pruneUnchangedCodexFiles(sourceDir string, targetDir string) error {
-	sourceDir = filepath.Clean(sourceDir)
-	targetDir = filepath.Clean(targetDir)
-	if sourceDir == targetDir {
-		return nil
-	}
-
-	targetInfo, err := os.Stat(targetDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("stat codex target dir %q: %w", targetDir, err)
-	}
-	if !targetInfo.IsDir() {
-		return nil
-	}
-
-	if err := filepath.WalkDir(targetDir, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		rel, err := filepath.Rel(targetDir, path)
-		if err != nil {
-			return err
-		}
-		sourcePath := filepath.Join(sourceDir, rel)
-		equal, err := regularFilesEqual(sourcePath, path)
-		if err != nil {
-			return err
-		}
-		if !equal {
-			return nil
-		}
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("prune unchanged codex files: %w", err)
-	}
-
-	if err := removeEmptyDirs(targetDir); err != nil {
-		return fmt.Errorf("remove empty codex directories: %w", err)
-	}
-	return nil
-}
-
-func regularFilesEqual(a string, b string) (bool, error) {
-	aInfo, err := os.Stat(a)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	bInfo, err := os.Stat(b)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !aInfo.Mode().IsRegular() || !bInfo.Mode().IsRegular() {
-		return false, nil
-	}
-	if aInfo.Size() != bInfo.Size() {
-		return false, nil
-	}
-	aFile, err := os.Open(a)
-	if err != nil {
-		return false, err
-	}
-	defer aFile.Close()
-	bFile, err := os.Open(b)
-	if err != nil {
-		return false, err
-	}
-	defer bFile.Close()
-
-	const chunkSize = 32 * 1024
-	aBuf := make([]byte, chunkSize)
-	bBuf := make([]byte, chunkSize)
-
-	for {
-		aN, aErr := aFile.Read(aBuf)
-		bN, bErr := bFile.Read(bBuf)
-		if aN != bN {
-			return false, nil
-		}
-		if aN > 0 && !bytes.Equal(aBuf[:aN], bBuf[:bN]) {
-			return false, nil
-		}
-		if aErr == io.EOF && bErr == io.EOF {
-			return true, nil
-		}
-		if aErr != nil && aErr != io.EOF {
-			return false, aErr
-		}
-		if bErr != nil && bErr != io.EOF {
-			return false, bErr
-		}
-	}
-}
-
-func removeEmptyDirs(root string) error {
-	var dirs []string
-	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			dirs = append(dirs, path)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	for i := len(dirs) - 1; i >= 0; i-- {
-		dir := dirs[i]
-		if filepath.Clean(dir) == filepath.Clean(root) {
-			continue
-		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return err
-		}
-		if len(entries) == 0 {
-			if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func buildCodexHomeRootCommand(codexHomeTarget string, inboxCodexHomeTarget string, hostCodexHomeTarget string) string {
+func buildCodexHomeRootCommand(codexHomeTarget string, inboxSessionsTarget string, outboxSessionsTarget string, hostCodexHomeTarget string) string {
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(codexHomeTarget))
+	fmt.Fprintf(&builder, "find %s -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true\n", shellQuote(codexHomeTarget))
+	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(outboxSessionsTarget))
+	fmt.Fprintf(&builder, "find %s -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true\n", shellQuote(outboxSessionsTarget))
 	fmt.Fprintf(&builder, "if [ -d %s ]; then cp -a %s/. %s/; fi\n",
-		shellQuote(inboxCodexHomeTarget),
-		shellQuote(inboxCodexHomeTarget),
-		shellQuote(codexHomeTarget),
+		shellQuote(inboxSessionsTarget),
+		shellQuote(inboxSessionsTarget),
+		shellQuote(outboxSessionsTarget),
+	)
+	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(filepath.ToSlash(filepath.Join(codexHomeTarget, ".agents"))))
+	fmt.Fprintf(&builder, "ln -s %s %s\n",
+		shellQuote(outboxSessionsTarget),
+		shellQuote(filepath.ToSlash(filepath.Join(codexHomeTarget, "sessions"))),
 	)
 	fmt.Fprintf(&builder, "if [ -d %s ]; then\n", shellQuote(hostCodexHomeTarget))
 	for _, name := range codexCredentialFileNames {
@@ -488,10 +342,16 @@ func hostCodexHomeMountable(path string) bool {
 }
 
 func prepareDirectCodexHome(opts Options) error {
-	if err := copyDirContentsIfExists(opts.codexHomeInboxPath(), opts.CodexHome); err != nil {
+	if err := resetCodexHomeContents(opts.CodexHome); err != nil {
 		return err
 	}
-	if err := copyConfiguredAndWorktreeSkillsIfExists(opts); err != nil {
+	if err := bootstrapCodexSessions(opts.codexSessionsInboxPath(), opts.codexSessionsOutboxPath()); err != nil {
+		return err
+	}
+	if err := linkCodexHomeSessions(opts.CodexHome, opts.codexSessionsOutboxPath()); err != nil {
+		return err
+	}
+	if err := installConfiguredSkillsIfExists(opts); err != nil {
 		return err
 	}
 	if err := seedCodexCredentialsIfNeeded(opts.HostCodexHome, opts.CodexHome); err != nil {
@@ -500,13 +360,9 @@ func prepareDirectCodexHome(opts Options) error {
 	return nil
 }
 
-func copyConfiguredAndWorktreeSkillsIfExists(opts Options) error {
-	skillDirs, err := discoverMergedSkillDirs(opts.WorktreeRoot, opts.ConfiguredSkillDirs)
-	if err != nil {
-		return err
-	}
-	targetDir := filepath.Join(opts.CodexHome, "skills")
-	for _, sourceDir := range skillDirs {
+func installConfiguredSkillsIfExists(opts Options) error {
+	targetDir := opts.codexAgentsSkillsPath()
+	for _, sourceDir := range opts.ConfiguredSkillDirs {
 		if err := copyDirContentsIfExists(sourceDir, targetDir); err != nil {
 			return err
 		}
@@ -514,63 +370,67 @@ func copyConfiguredAndWorktreeSkillsIfExists(opts Options) error {
 	return nil
 }
 
-func copyWorktreeC2SkillsIfExists(opts Options) error {
-	skillDirs, err := discoverWorktreeC2SkillDirs(opts.WorktreeRoot)
-	if err != nil {
-		return fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+func resetCodexHomeContents(codexHomeDir string) error {
+	if err := os.MkdirAll(codexHomeDir, 0o755); err != nil {
+		return fmt.Errorf("create codex home %q: %w", codexHomeDir, err)
 	}
-	targetDir := filepath.Join(opts.CodexHome, "skills")
-	for _, sourceDir := range skillDirs {
-		if err := copyDirContentsIfExists(sourceDir, targetDir); err != nil {
-			return err
+	entries, err := os.ReadDir(codexHomeDir)
+	if err != nil {
+		return fmt.Errorf("read codex home %q: %w", codexHomeDir, err)
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(codexHomeDir, entry.Name())); err != nil {
+			return fmt.Errorf("reset codex home entry %q: %w", entry.Name(), err)
 		}
 	}
 	return nil
 }
 
-func discoverMergedSkillDirs(worktreeRoot string, configuredSkillDirs []string) ([]string, error) {
-	dirs := make([]string, 0)
-	seen := map[string]struct{}{}
-	appendUnique := func(path string) {
-		path = filepath.Clean(path)
-		if strings.TrimSpace(path) == "" {
-			return
-		}
-		if _, ok := seen[path]; ok {
-			return
-		}
-		seen[path] = struct{}{}
-		dirs = append(dirs, path)
+func bootstrapCodexSessions(inboxSessionsDir string, outboxSessionsDir string) error {
+	if err := os.MkdirAll(outboxSessionsDir, 0o755); err != nil {
+		return fmt.Errorf("create codex sessions outbox %q: %w", outboxSessionsDir, err)
 	}
-
-	for _, dir := range configuredSkillDirs {
-		appendUnique(dir)
-	}
-
-	worktreeSkillDirs, err := discoverWorktreeC2SkillDirs(worktreeRoot)
+	entries, err := os.ReadDir(outboxSessionsDir)
 	if err != nil {
-		return nil, fmt.Errorf("discover worktree c2 skill dirs: %w", err)
+		return fmt.Errorf("read codex sessions outbox %q: %w", outboxSessionsDir, err)
 	}
-	for _, dir := range worktreeSkillDirs {
-		appendUnique(dir)
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(outboxSessionsDir, entry.Name())); err != nil {
+			return fmt.Errorf("reset codex sessions entry %q: %w", entry.Name(), err)
+		}
 	}
-
-	return dirs, nil
+	if err := copyDirContentsIfExists(inboxSessionsDir, outboxSessionsDir); err != nil {
+		return fmt.Errorf("seed codex sessions from inbox: %w", err)
+	}
+	return nil
 }
 
-func buildWorktreeC2SkillsRootCommand(codexHomeTarget string, worktreeTarget string, skillDirTargets []string) string {
+func linkCodexHomeSessions(codexHomeDir string, outboxSessionsDir string) error {
+	agentsDir := filepath.Join(codexHomeDir, ".agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		return fmt.Errorf("create codex agents dir %q: %w", agentsDir, err)
+	}
+	sessionsLink := filepath.Join(codexHomeDir, "sessions")
+	if err := os.RemoveAll(sessionsLink); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove codex sessions link %q: %w", sessionsLink, err)
+	}
+	if err := os.Symlink(outboxSessionsDir, sessionsLink); err != nil {
+		return fmt.Errorf("link codex sessions %q -> %q: %w", sessionsLink, outboxSessionsDir, err)
+	}
+	return nil
+}
+
+func buildConfiguredSkillsRootCommand(codexHomeTarget string, skillDirTargets []string) string {
 	var builder strings.Builder
-	codexHomeSkillsTarget := filepath.ToSlash(filepath.Join(codexHomeTarget, "skills"))
-	fmt.Fprintf(&builder, "if [ -d %s ]; then\n", shellQuote(worktreeTarget))
-	fmt.Fprintf(&builder, "  mkdir -p %s\n", shellQuote(codexHomeSkillsTarget))
+	codexHomeSkillsTarget := filepath.ToSlash(filepath.Join(codexHomeTarget, ".agents", "skills"))
+	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(codexHomeSkillsTarget))
 	for _, dirTarget := range skillDirTargets {
-		fmt.Fprintf(&builder, "  if [ -d %s ]; then cp -a %s/. %s/; fi\n",
+		fmt.Fprintf(&builder, "if [ -d %s ]; then cp -a %s/. %s/; fi\n",
 			shellQuote(dirTarget),
 			shellQuote(dirTarget),
 			shellQuote(codexHomeSkillsTarget),
 		)
 	}
-	builder.WriteString("fi")
 	return builder.String()
 }
 

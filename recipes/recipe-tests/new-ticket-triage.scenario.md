@@ -17,7 +17,7 @@ cases:
               status: completed
               assistantSummary: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"Best match"}'
             artifacts:
-              triage.json: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"Best match"}'
+              triage/latest-status.json: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"Best match"}' 
     assertions:
       - type: output_equals
         path: cell_is_appropriate
@@ -41,7 +41,7 @@ cases:
               status: completed
               assistantSummary: '{"cell_is_appropriate":false,"recommended_cell":"frontend","rationale":"UI scope"}'
             artifacts:
-              triage.json: '{"cell_is_appropriate":false,"recommended_cell":"frontend","rationale":"UI scope"}'
+              triage/latest-status.json: '{"cell_is_appropriate":false,"recommended_cell":"frontend","rationale":"UI scope"}' 
     assertions:
       - type: output_equals
         path: cell_is_appropriate
@@ -65,7 +65,7 @@ cases:
               status: completed
               assistantSummary: '{"cell_is_appropriate":false,"recommended_cell":"__not_a_real_cell__","rationale":"invalid"}'
             artifacts:
-              triage.json: '{"cell_is_appropriate":false,"recommended_cell":"__not_a_real_cell__","rationale":"invalid"}'
+              triage/latest-status.json: '{"cell_is_appropriate":false,"recommended_cell":"__not_a_real_cell__","rationale":"invalid"}' 
     assertions:
       - type: output_equals
         path: recommended_cell_is_valid
@@ -89,8 +89,8 @@ cases:
               status: completed
               assistantSummary: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"artifact check"}'
             artifacts:
-              triage.json: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"artifact check"}'
+              triage/latest-status.json: '{"cell_is_appropriate":true,"recommended_cell":"core","rationale":"artifact check"}' 
     assertions:
       - type: artifact_exists
-        path: triage.json
+        path: triage/latest-status.json
 ```

@@ -45,5 +45,6 @@ run_suite "ticket-merge.yaml" "ticket-merge.scenario.md" "merge"
 
 echo "TS-001..TS-041 (recipe suites) passed."
 "$ROOT_DIR/verify-cli-framework.sh"
+"$ROOT_DIR/verify-skill-quality-live.sh"
 
-echo "TS-001..TS-041 passed."
+echo "TS-001..TS-043 passed."

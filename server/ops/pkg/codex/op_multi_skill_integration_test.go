@@ -156,7 +156,7 @@ func createMultiSkillDelegationRepo(t *testing.T, cellRel string, token string) 
 	writeRepoFile(t, filepath.Join(repoDir, "README.md"), "multi-skill integration fixture\n")
 	writeRepoFile(t, filepath.Join(repoDir, cellRel, "README.md"), "fixture cell\n")
 
-	skillsDir := filepath.Join(repoDir, ".c2", "skills")
+	skillsDir := filepath.Join(repoDir, ".agents", "skills")
 	writeRepoFile(t, filepath.Join(skillsDir, "software-dev-orchestrator", "SKILL.md"), fmt.Sprintf(`---
 name: software-dev-orchestrator
 description: Delegates software development phases to planning, execution, and validation skills.

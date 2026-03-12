@@ -47,6 +47,8 @@ These statements are intended to drive `c2 recipe test` cases.
 | TS-039 | Blocking outcome review sets `review_ok=false` and returns blocking issues. | `new-ticket-outcome-determination.yaml` | High | Integration (`recipe_case`); deps: contrarian review output | Negative |
 | TS-040 | Main ticket runs outcome review before implementation and uses outcome validation commands by default. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: outcome child recipe + validation input mapping | Positive |
 | TS-041 | Implementation requesting statement changes routes through pre-implementation review instead of direct `.c2/tests/*.md` edits. | `new-ticket.yaml` | High | Integration (`recipe_case`); deps: `codex.exec` incompleteCategory + input gate | Positive |
+| TS-042 | Live skill bundle produces the intended behavior: correct cell triage, local-only compatible requirements, safe implementation planning, canonical outcome statements, and contrarian rejection of deliberately bad artifacts. | `skill-quality-smoke.yaml`, `recipe-tests/verify-skill-quality-live.sh` | High | Live workflow integration; deps: published `skill-quality-smoke`, live `codex.exec`, pinned git skill ref, `jq` | Positive |
+| TS-043 | Live skill execution reports the pinned HTTPS repo ref resolved to the expected concrete commit hash. | `skill-quality-smoke.yaml`, `recipe-tests/verify-skill-quality-live.sh` | High | Live workflow integration; deps: live `codex.exec`, `jq`, HTTPS-accessible skill repo | Positive |
 
 ## Notes for Test Authoring
 
@@ -54,3 +56,4 @@ These statements are intended to drive `c2 recipe test` cases.
 - Op mocks are single-use per invocation; if a node/op can run multiple times, add one mock entry per expected invocation.
 - Use `integration_case` only when external workflow context is required and available in the harness.
 - Keep artifact assertions focused on outbox contract files, not assistant summary text.
+- For live skill checks, use workflow-run acceptance tests that validate authoring quality and contrarian rejection behavior, not just recipe node wiring.

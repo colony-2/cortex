@@ -145,7 +145,7 @@ func runCodexActivity(inv ops.OpDependencies, actx context.Context, input ExecOp
 			_ = skillSourcesCleanup()
 		}()
 	}
-	skillCfg, err := prepareSkillExecutionConfig(input, inbox, outbox, worktree, configuredSkillDirs)
+	skillCfg, err := prepareSkillExecutionConfig(input)
 	if err != nil {
 		return ExecOpOutput{}, workflow.NewNonRetryableApplicationError("%s", err.Error())
 	}

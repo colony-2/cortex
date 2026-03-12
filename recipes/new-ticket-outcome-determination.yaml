@@ -29,7 +29,7 @@ sequence:
       skill: "c2-test-statement-curator"
       skill_mode: "enforce"
       skills:
-        - "github.com/colony-2/skills/.agents/skills@main"
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
       prompt: |
         Follow the `c2-test-statement-curator` skill contract.
         Build an outcome-determination bundle for this ticket before implementation starts.
@@ -93,6 +93,7 @@ sequence:
     op: codex.exec
     artifacts:
       plan.json: '${{ sequence.build_outcome_bundle.artifacts["outcome/plan.json"] }}'
+      tests-index.md: '${{ sequence.build_outcome_bundle.artifacts["outcome/tests-index.md"] }}'
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -104,7 +105,7 @@ sequence:
       skill: "c2-outcome-contrarian-review"
       skill_mode: "enforce"
       skills:
-        - "github.com/colony-2/skills/.agents/skills@main"
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
       prompt: |
         Follow the `c2-outcome-contrarian-review` skill contract.
         You are a contrarian reviewer for outcome determination and test statement quality.

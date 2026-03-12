@@ -29,7 +29,7 @@ sequence:
       skill: "c2-implementation-plan-author"
       skill_mode: "enforce"
       skills:
-        - "github.com/colony-2/skills/.agents/skills@main"
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
       prompt: |
         Follow the `c2-implementation-plan-author` skill contract.
         Build an implementation plan for this ticket and write artifacts directly.
@@ -103,7 +103,7 @@ sequence:
       skill: "c2-implementation-compat-review"
       skill_mode: "enforce"
       skills:
-        - "github.com/colony-2/skills/.agents/skills@main"
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
       prompt: |
         Follow the `c2-implementation-compat-review` skill contract.
         You are a contrarian implementation-plan reviewer focused on compatibility and dependency sequencing.

@@ -24,7 +24,7 @@ sequence:
       skill: "c2-triage-cell-boundary"
       skill_mode: "enforce"
       skills:
-        - "github.com/colony-2/skills/.agents/skills@main"
+        - "gitl.colony2.com/jnadeau/skills/.agents/skills@1362438426e25c733174ea85f248db11af99a8a7"
       prompt: |
         Follow the `c2-triage-cell-boundary` skill contract.
 

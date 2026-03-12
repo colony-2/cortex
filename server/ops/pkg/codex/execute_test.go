@@ -134,15 +134,16 @@ func TestExecuteCompleted(t *testing.T) {
 	require.NotNil(t, harness.config.PrependResourceSet)
 	require.Len(t, harness.config.PrependResourceSet.RootCommands, 3)
 	require.Contains(t, harness.config.PrependResourceSet.RootCommands[0], "/tmp/codex-schema-")
-	require.Contains(t, harness.config.PrependResourceSet.RootCommands[1], "codex-home")
-	require.Contains(t, harness.config.PrependResourceSet.RootCommands[2], "/src/worktree")
+	require.Contains(t, harness.config.PrependResourceSet.RootCommands[1], "/src/.codex")
+	require.Contains(t, harness.config.PrependResourceSet.RootCommands[1], "codex-sessions")
+	require.Contains(t, harness.config.PrependResourceSet.RootCommands[2], "/src/.codex/.agents/skills")
 	require.False(t, harness.config.ShowScriptOutput)
 	require.Contains(t, harness.config.PostSetupExec.Env, "CODEX_APPROVAL_POLICY")
 	require.Equal(t, "never", harness.config.PostSetupExec.Env["CODEX_APPROVAL_POLICY"])
 	require.Contains(t, harness.config.PostSetupExec.Env, "CODEX_HOME")
-	require.Equal(t, "/src/outbox/codex-home", harness.config.PostSetupExec.Env["CODEX_HOME"])
+	require.Equal(t, "/src/.codex", harness.config.PostSetupExec.Env["CODEX_HOME"])
 	require.Equal(t, layout.workdir, harness.config.WorkingDir)
-	require.Equal(t, []string{filepath.Join("worktree", cellRel)}, harness.config.ReadWritePaths)
+	require.Equal(t, []string{filepath.Join("worktree", cellRel), codexHomeDirName}, harness.config.ReadWritePaths)
 	require.NotNil(t, harness.config.PrependResourceSet)
 
 	mountByTarget := map[string]shai.Mount{}
@@ -278,86 +279,31 @@ func indexOf(haystack []string, needle string) int {
 	return -1
 }
 
-func TestDiscoverWorktreeC2SkillDirsRootToLeafOrder(t *testing.T) {
-	worktree := t.TempDir()
-	dirs := []string{
-		filepath.Join(worktree, ".c2", "skills"),
-		filepath.Join(worktree, "cells", ".c2", "skills"),
-		filepath.Join(worktree, "cells", "alpha", ".c2", "skills"),
-		filepath.Join(worktree, "cells", "alpha", "src", ".c2", "skills"),
-	}
-	for _, dir := range dirs {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-
-	found, err := discoverWorktreeC2SkillDirs(worktree)
-	require.NoError(t, err)
-	require.Equal(t, dirs, found)
-}
-
-func TestCopyWorktreeC2SkillsIfExistsRootToLeafOverride(t *testing.T) {
+func TestInstallConfiguredSkillsIfExistsCopiesIntoAgentsSkills(t *testing.T) {
 	workdir := t.TempDir()
-	worktree := filepath.Join(workdir, "worktree")
-	codexHome := filepath.Join(workdir, "outbox", "codex-home")
-	require.NoError(t, os.MkdirAll(worktree, 0o755))
-	require.NoError(t, os.MkdirAll(codexHome, 0o755))
-
-	rootSkill := filepath.Join(worktree, ".c2", "skills", "shared-skill", "SKILL.md")
-	leafSkill := filepath.Join(worktree, "cells", "alpha", ".c2", "skills", "shared-skill", "SKILL.md")
-	require.NoError(t, os.MkdirAll(filepath.Dir(rootSkill), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Dir(leafSkill), 0o755))
-	require.NoError(t, os.WriteFile(rootSkill, []byte("root"), 0o644))
-	require.NoError(t, os.WriteFile(leafSkill, []byte("leaf"), 0o644))
-
-	err := copyWorktreeC2SkillsIfExists(Options{
-		WorktreeRoot: worktree,
-		CodexHome:    codexHome,
-	})
-	require.NoError(t, err)
-
-	payload, err := os.ReadFile(filepath.Join(codexHome, "skills", "shared-skill", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, "leaf", string(payload))
-}
-
-func TestCopyConfiguredAndWorktreeSkillsIfExistsMergesSources(t *testing.T) {
-	workdir := t.TempDir()
-	worktree := filepath.Join(workdir, "worktree")
 	configuredSkills := filepath.Join(workdir, ".codex-skill-inputs", "skills")
-	codexHome := filepath.Join(workdir, "outbox", "codex-home")
-	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	codexHome := filepath.Join(workdir, codexHomeDirName)
 	require.NoError(t, os.MkdirAll(configuredSkills, 0o755))
 	require.NoError(t, os.MkdirAll(codexHome, 0o755))
 
 	configuredShared := filepath.Join(configuredSkills, "shared-skill", "SKILL.md")
 	configuredOnly := filepath.Join(configuredSkills, "configured-only-skill", "SKILL.md")
-	worktreeShared := filepath.Join(worktree, ".c2", "skills", "shared-skill", "SKILL.md")
-	worktreeOnly := filepath.Join(worktree, ".c2", "skills", "worktree-only-skill", "SKILL.md")
 	require.NoError(t, os.MkdirAll(filepath.Dir(configuredShared), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Dir(configuredOnly), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Dir(worktreeShared), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Dir(worktreeOnly), 0o755))
 	require.NoError(t, os.WriteFile(configuredShared, []byte("configured-shared"), 0o644))
 	require.NoError(t, os.WriteFile(configuredOnly, []byte("configured-only"), 0o644))
-	require.NoError(t, os.WriteFile(worktreeShared, []byte("worktree-shared"), 0o644))
-	require.NoError(t, os.WriteFile(worktreeOnly, []byte("worktree-only"), 0o644))
 
-	err := copyConfiguredAndWorktreeSkillsIfExists(Options{
-		WorktreeRoot:        worktree,
+	err := installConfiguredSkillsIfExists(Options{
 		ConfiguredSkillDirs: []string{configuredSkills},
 		CodexHome:           codexHome,
 	})
 	require.NoError(t, err)
 
-	sharedPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "shared-skill", "SKILL.md"))
+	sharedPayload, err := os.ReadFile(filepath.Join(codexHome, ".agents", "skills", "shared-skill", "SKILL.md"))
 	require.NoError(t, err)
-	require.Equal(t, "worktree-shared", string(sharedPayload))
+	require.Equal(t, "configured-shared", string(sharedPayload))
 
-	configuredOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "configured-only-skill", "SKILL.md"))
+	configuredOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, ".agents", "skills", "configured-only-skill", "SKILL.md"))
 	require.NoError(t, err)
 	require.Equal(t, "configured-only", string(configuredOnlyPayload))
-
-	worktreeOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, "skills", "worktree-only-skill", "SKILL.md"))
-	require.NoError(t, err)
-	require.Equal(t, "worktree-only", string(worktreeOnlyPayload))
 }
