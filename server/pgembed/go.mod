@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/pgembed
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882
 	github.com/fergusstrange/embedded-postgres v1.32.0
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.30.0

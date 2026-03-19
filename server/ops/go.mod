@@ -3,11 +3,11 @@ module github.com/colony-2/colony2/server/ops
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/llm v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/llm v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/shai v0.0.7
 	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
 	github.com/go-playground/validator/v10 v10.19.0
@@ -26,20 +26,23 @@ require (
 	cloud.google.com/go/auth v0.15.0 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
-	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/colony2/server/project v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/pgwf v0.0.0-20260312011640-5d59e213242e // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2 // indirect
-	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
+	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
+	github.com/cockroachdb/errors v1.11.3 // indirect
+	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
+	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.23 // indirect
@@ -57,6 +60,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/cel-go v0.26.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
@@ -70,6 +74,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
+	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/term v0.5.2 // indirect

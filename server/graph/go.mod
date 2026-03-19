@@ -2,4 +2,4 @@ module github.com/colony-2/colony2/server/graph
 
 go 1.25.5
 
-require github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8
+require github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882

@@ -6,8 +6,8 @@ cloud.google.com/go/compute/metadata v0.7.0 h1:PBWF+iiAerVNe8UCHxdOt6eHLVc3ydFeO
 cloud.google.com/go/compute/metadata v0.7.0/go.mod h1:j5MvL9PprKL39t166CoB1uVHfQMs4tFQZZcKwksXUjo=
 github.com/anthropics/anthropic-sdk-go v1.6.2 h1:oORA212y0/zAxe7OPvdgIbflnn/x5PGk5uwjF60GqXM=
 github.com/anthropics/anthropic-sdk-go v1.6.2/go.mod h1:3qSNQ5NrAmjC8A2ykuruSQttfqfdEYNZY5o8c0XSHB8=
-github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8 h1:QvX8Sg9Asur5CQl5GMr6H+FVABlgp7MaUWcPJpctEdY=
-github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
+github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 h1:qsj2von38Ak9Ju8EnHzzUxd3edpY23J//5Wcbvp8azM=
+github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=

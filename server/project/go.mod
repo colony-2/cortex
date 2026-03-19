@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/project
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 	gorm.io/driver/postgres v1.5.11
@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

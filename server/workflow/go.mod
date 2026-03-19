@@ -3,12 +3,12 @@ module github.com/colony-2/colony2/server/workflow
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/project v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/ticket v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
 	github.com/google/cel-go v0.26.0
@@ -20,12 +20,9 @@ require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8 // indirect
-	github.com/colony-2/pgwf v0.0.0-20260312011640-5d59e213242e // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2 // indirect
-	github.com/colony-2/shai v0.0.7 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
@@ -41,6 +38,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/lib/pq v1.10.9 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
@@ -59,7 +57,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.30.0 // indirect
 	gorm.io/plugin/optimisticlock v1.1.3 // indirect

@@ -3,23 +3,24 @@ module github.com/colony-2/colony2/server/api
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/ops v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/project v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/recipes v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/registry v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/ticket v0.0.0-20260211050417-1ddbb74988c8
-	github.com/colony-2/colony2/server/workflow v0.0.0-20260211050417-1ddbb74988c8
+	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/ops v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipes v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/registry v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/workflow v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
 	github.com/go-playground/validator/v10 v10.19.0
@@ -49,7 +50,6 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
@@ -58,9 +58,8 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260312011640-5d59e213242e // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260213035316-724d64c365c2 // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
