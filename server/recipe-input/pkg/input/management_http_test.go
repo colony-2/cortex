@@ -16,8 +16,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
-	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +42,7 @@ inputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 	g := gen{max: 1}
-	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	eng := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{
 		Engine: eng,
@@ -173,7 +171,7 @@ func TestMissingProjectIdParameter(t *testing.T) {
 	mgmtService := op.GetManagementService().(*inputManagementService)
 
 	g := gen{max: 1}
-	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	eng := newToyEngine(t, g.Generate)
 	wf := workflow.SWFWorkflowControl{Engine: eng}
 	deps := coreops.NewServiceDepsBuilder().
 		WithWorkflowControl(&wf).

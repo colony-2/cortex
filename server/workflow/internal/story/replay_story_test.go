@@ -26,6 +26,8 @@ type fakeReplayEngine struct {
 	taskScripts []fakeTaskScript
 	jobStartAt  time.Time
 	jobEndAt    time.Time
+
+	skipTaskStartOnMiss bool
 }
 
 func (e *fakeReplayEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRequest) (swf.JobData, error) {
@@ -40,10 +42,11 @@ func (e *fakeReplayEngine) ReplayJobRun(ctx context.Context, req swf.ReplayRunRe
 		obs.OnJobStart(swf.JobStartEvent{JobKey: req.JobKey, AttemptNumber: 1, Input: e.jobInput, At: e.jobStartAt})
 	}
 	jc := &fakeReplayJobContext{
-		jobKey:      req.JobKey,
-		observer:    obs,
-		nextOrdinal: 1,
-		scripts:     append([]fakeTaskScript{}, e.taskScripts...),
+		jobKey:              req.JobKey,
+		observer:            obs,
+		nextOrdinal:         1,
+		scripts:             append([]fakeTaskScript{}, e.taskScripts...),
+		skipTaskStartOnMiss: e.skipTaskStartOnMiss,
 	}
 	out, err := req.JobWorker.Run(jc, e.jobInput)
 	if obs != nil {
@@ -58,6 +61,8 @@ type fakeReplayJobContext struct {
 
 	nextOrdinal int64
 	scripts     []fakeTaskScript
+
+	skipTaskStartOnMiss bool
 }
 
 func (c *fakeReplayJobContext) GetJobKey() swf.JobKey { return c.jobKey }
@@ -111,7 +116,8 @@ func (c *fakeReplayJobContext) DoTask(_ swf.RunPolicy, taskType string, input sw
 		if attemptNum <= 0 {
 			attemptNum = 1
 		}
-		if c.observer != nil {
+		var miss swf.ReplayCacheMissError
+		if c.observer != nil && !(c.skipTaskStartOnMiss && errors.As(att.Err, &miss)) {
 			c.observer.OnTaskStart(swf.TaskStartEvent{
 				JobKey:        c.jobKey,
 				TaskType:      taskType,
@@ -453,6 +459,75 @@ outputs:
 	step := findFirstKind(opNode.Children, model.JobRunStoryNodeKindOpStep)
 	if step == nil || step.Status != model.JobRunStoryNodeStatusRunning {
 		t.Fatalf("expected step running on cache miss, got %#v", step)
+	}
+}
+
+func TestJobRunStoryReplay_CacheMissWithoutTaskStartSynthesizesRunningStep(t *testing.T) {
+	type in struct{}
+	type out struct {
+		Value string `json:"value"`
+	}
+
+	opType := "test_story_cache_miss_without_start"
+	coreops.Register(coreops.NewActivityMappedOpV2[in, out](coreops.OpMetadata{Type: opType}, func(_ coreops.OpDependencies, _ context.Context, _ in) (out, error) {
+		return out{Value: "ok"}, nil
+	}))
+
+	recipeYAML := `
+id: test
+version: "1.0.0"
+sequence:
+  - id: run
+    op: test_story_cache_miss_without_start
+outputs:
+  value: "{{ sequence.run.outputs.value }}"
+`
+	recipeArt := swf.NewArtifactFromBytes("test"+starter.RecipeArtifactSuffix, []byte(recipeYAML))
+	start := workflowctl.StartJob{RecipeName: "test", GitRef: "main", Inputs: map[string]any{}, JobContext: contextual.JobContext{}}
+	jobInput, err := swf.NewTaskData(start, recipeArt)
+	if err != nil {
+		t.Fatalf("NewTaskData(job start): %v", err)
+	}
+
+	engine := &fakeReplayEngine{
+		jobInput:            swf.JobData(jobInput),
+		skipTaskStartOnMiss: true,
+		taskScripts: []fakeTaskScript{{
+			Attempts: []fakeTaskAttempt{{
+				Attempt: 1,
+				Output:  nil,
+				Err: swf.ReplayCacheMissError{
+					JobKey:   swf.JobKey{TenantId: "tenant", JobId: "job"},
+					TaskType: opType + ":" + opType,
+					Ordinal:  1,
+					Attempt:  1,
+					Reason:   swf.ReplayCacheMissTaskResultMissing,
+				},
+			}},
+		}},
+	}
+
+	jobKey := swf.JobKey{TenantId: "tenant", JobId: "job"}
+	st, err := BuildJobRunStory(context.Background(), engine, jobKey, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildJobRunStory: %v", err)
+	}
+	if st.Status != model.WorkflowStatusRunning {
+		t.Fatalf("expected story status running, got %q", st.Status)
+	}
+
+	seq := findFirstKind(st.Root.Children, model.JobRunStoryNodeKindSequence)
+	opNode := findFirstKind(seq.Children, model.JobRunStoryNodeKindOp)
+	if opNode == nil || opNode.Status != model.JobRunStoryNodeStatusRunning {
+		t.Fatalf("expected op node running, got %#v", opNode)
+	}
+
+	step := findFirstKind(opNode.Children, model.JobRunStoryNodeKindOpStep)
+	if step == nil || step.Status != model.JobRunStoryNodeStatusRunning {
+		t.Fatalf("expected synthesized running step on cache miss, got %#v", step)
+	}
+	if step.StepID != opType {
+		t.Fatalf("expected synthesized step %q, got %#v", opType, step)
 	}
 }
 

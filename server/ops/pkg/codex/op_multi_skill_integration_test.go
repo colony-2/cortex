@@ -19,7 +19,6 @@ import (
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -93,7 +92,7 @@ outputs:
 	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	g := jobIDGen{max: 1}
-	engine := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	engine := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{Engine: engine}
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(&wf).Build()

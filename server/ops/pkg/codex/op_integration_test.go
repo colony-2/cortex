@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
@@ -16,7 +17,7 @@ import (
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,6 +32,22 @@ func (g *jobIDGen) Generate(tenantID string) (swf.JobKey, error) {
 		return swf.JobKey{}, fmt.Errorf("too many jobs")
 	}
 	return swf.JobKey{TenantId: tenantID, JobId: fmt.Sprintf("job-%d", g.count)}, nil
+}
+
+func newToyEngine(t *testing.T, gen func(string) (swf.JobKey, error)) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := make([]toyruntime.Option, 0, 1)
+	if gen != nil {
+		opts = append(opts, toyruntime.WithJobIDGenerator(gen))
+	}
+	engine, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New(opts...)).
+		BuildEngine()
+	require.NoError(t, err)
+	go engine.Run(ctx)
+	return engine
 }
 
 func TestCodexOpToyEngine(t *testing.T) {
@@ -76,7 +93,7 @@ inputs:
 	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	g := jobIDGen{max: 1}
-	engine := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	engine := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{Engine: engine}
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(&wf).Build()
@@ -98,6 +115,7 @@ inputs:
 
 	key, err := starter.StartRecipeJob(context.Background(), start, engine, *testRecipe)
 	require.NoError(t, err)
+	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 30*time.Second, key, engine))
 
 	res, err := engine.GetJobResult(context.Background(), key)
 	require.NoError(t, err)
@@ -142,7 +160,7 @@ inputs:
 	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	g := jobIDGen{max: 1}
-	engine := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	engine := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{Engine: engine}
 	deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(&wf).Build()
@@ -163,6 +181,7 @@ inputs:
 
 	key, err := starter.StartRecipeJob(context.Background(), start, engine, *testRecipe)
 	require.NoError(t, err)
+	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 30*time.Second, key, engine))
 
 	res, err := engine.GetJobResult(context.Background(), key)
 	require.NoError(t, err)

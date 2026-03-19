@@ -17,9 +17,9 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/impl"
 	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	directtestsupport "github.com/colony-2/swf-go/pkg/swf/runtime/direct/testsupport"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +35,22 @@ func (g *gen) Generate(tenantId string) (swf.JobKey, error) {
 		return swf.JobKey{}, fmt.Errorf("too many jobs")
 	}
 	return swf.JobKey{TenantId: tenantId, JobId: fmt.Sprintf("job-%d", g.count)}, nil
+}
+
+func newToyEngine(t *testing.T, gen func(string) (swf.JobKey, error)) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := make([]toyruntime.Option, 0, 1)
+	if gen != nil {
+		opts = append(opts, toyruntime.WithJobIDGenerator(gen))
+	}
+	eng, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New(opts...)).
+		BuildEngine()
+	require.NoError(t, err)
+	go eng.Run(ctx)
+	return eng
 }
 
 type EchoIn struct {
@@ -88,7 +104,7 @@ outputs:
 	registry, err := ops.NewActivityRegistry()
 	require.NoError(t, err)
 	g := gen{max: 1}
-	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	eng := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{
 		Engine: eng,
@@ -152,6 +168,10 @@ outputs:
 	}
 	err = <-errCh
 	require.NoError(t, err)
+	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 5*time.Second, swf.JobKey{
+		TenantId: "test-tenant",
+		JobId:    "job-1",
+	}, eng))
 
 	res3, err := eng.GetJobResult(context.Background(), swf.JobKey{TenantId: "test-tenant", JobId: "job-1"})
 	require.NoError(t, err)
@@ -196,16 +216,16 @@ inputs:
 	workSet, err := compiler.NewRecipeWorker(workerDeps, registry, nil)
 	require.NoError(t, err)
 
-	dsn, stopPG, err := impl.StartEmbeddedPostgres()
+	dsn, stopPG, err := directtestsupport.StartEmbeddedPostgres()
 	require.NoError(t, err)
 	defer stopPG()
 
 	sqlDB, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
 	defer sqlDB.Close()
-	require.NoError(t, impl.InstallPGWF(ctx, sqlDB))
+	require.NoError(t, directtestsupport.InstallPGWF(ctx, sqlDB))
 
-	strata, err := impl.StartEmbeddedStrata()
+	strata, err := directtestsupport.StartEmbeddedStrata()
 	require.NoError(t, err)
 	defer strata.Shutdown()
 

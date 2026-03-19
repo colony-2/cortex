@@ -18,7 +18,7 @@ require (
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260211050417-1ddbb74988c8
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260312021215-1ff66260c651
+	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1

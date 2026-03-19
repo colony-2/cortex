@@ -19,8 +19,8 @@ import (
 	workerwf "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/impl"
 	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
+	directtestsupport "github.com/colony-2/swf-go/pkg/swf/runtime/direct/testsupport"
 	"github.com/stretchr/testify/require"
 )
 
@@ -264,16 +264,16 @@ func startEmbeddedEngine(t *testing.T, ctx context.Context) swf.SWFEngine {
 	workSet, err := compiler.NewRecipeWorker(workerDeps, registry, nil)
 	require.NoError(t, err)
 
-	dsn, stopPG, err := impl.StartEmbeddedPostgres()
+	dsn, stopPG, err := directtestsupport.StartEmbeddedPostgres()
 	require.NoError(t, err)
 	t.Cleanup(stopPG)
 
 	sqlDB, err := sql.Open("postgres", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, impl.InstallPGWF(ctx, sqlDB))
+	require.NoError(t, directtestsupport.InstallPGWF(ctx, sqlDB))
 
-	strata, err := impl.StartEmbeddedStrata()
+	strata, err := directtestsupport.StartEmbeddedStrata()
 	require.NoError(t, err)
 	t.Cleanup(func() { strata.Shutdown() })
 

@@ -10,7 +10,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -18,9 +18,11 @@ import (
 
 type stubSSEManager struct{}
 
-func (s *stubSSEManager) Broadcast(coreops.SSEEvent)             {}
-func (s *stubSSEManager) Subscribe(string) <-chan coreops.SSEEvent { return make(chan coreops.SSEEvent) }
-func (s *stubSSEManager) Unsubscribe(string)                    {}
+func (s *stubSSEManager) Broadcast(coreops.SSEEvent) {}
+func (s *stubSSEManager) Subscribe(string) <-chan coreops.SSEEvent {
+	return make(chan coreops.SSEEvent)
+}
+func (s *stubSSEManager) Unsubscribe(string) {}
 
 var _ coreops.SSEManager = (*stubSSEManager)(nil)
 
@@ -31,8 +33,20 @@ func openTestDB(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
+func newToyEngine(t *testing.T) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	eng, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New()).
+		BuildEngine()
+	require.NoError(t, err)
+	go eng.Run(ctx)
+	return eng
+}
+
 func TestBuildServiceDependencies_ReusesProvidedValues(t *testing.T) {
-	eng := toy.NewToyEngine([]swf.WorkSet{})
+	eng := newToyEngine(t)
 
 	db := openTestDB(t, "primary")
 	fallbackDB := openTestDB(t, "fallback")
@@ -62,7 +76,7 @@ func TestBuildServiceDependencies_ReusesProvidedValues(t *testing.T) {
 }
 
 func TestBuildServiceDependencies_WiresWorkflowControlEngineAndRegistry(t *testing.T) {
-	eng := toy.NewToyEngine([]swf.WorkSet{})
+	eng := newToyEngine(t)
 
 	wantErr := errors.New("registry called")
 	registry := workerworkflow.RecipeProjectProvider(func(string, string) (*recipecore.Recipe, error) {
@@ -94,7 +108,7 @@ func TestBuildServiceDependencies_WiresWorkflowControlEngineAndRegistry(t *testi
 }
 
 func TestBuildServiceDependencies_UsesFallbackDBWhenMissing(t *testing.T) {
-	eng := toy.NewToyEngine([]swf.WorkSet{})
+	eng := newToyEngine(t)
 
 	fallbackDB := openTestDB(t, "fallback")
 	base := coreops.NewServiceDepsBuilder().Build()
@@ -108,7 +122,7 @@ func TestBuildServiceDependencies_UsesFallbackDBWhenMissing(t *testing.T) {
 }
 
 func TestBuildServiceDependencies_DefaultRegistryReturnsError(t *testing.T) {
-	eng := toy.NewToyEngine([]swf.WorkSet{})
+	eng := newToyEngine(t)
 
 	deps := buildServiceDependencies(EngineConfig{
 		PostgresDB:   openTestDB(t, "fallback"),

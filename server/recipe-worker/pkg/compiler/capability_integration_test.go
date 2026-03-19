@@ -22,7 +22,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,7 +121,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	require.True(t, foundSecond, "expected second step registration")
 
 	// Toy engine with our workset.
-	engine := toy.NewToyEngine([]swf.WorkSet{*ws})
+	engine := newToyEngineWithWorkSet(t, ws, nil)
 
 	repoPath, baseHash := makeTwoCommitRepo(t)
 	require.NoError(t, err)
@@ -177,7 +176,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	// Wait for the second step to become pending (disallowed as task).
 	var handles []swf.TaskHandle
 	for i := 0; i < 20; i++ {
-		handles, err = engine.FindTasksWaitingForCapability(context.Background(), starter.RecipeJobType, opType+":second", nil)
+		handles, err = engine.FindTasksWaitingForCapability(context.Background(), starter.RecipeJobType, opType+":second", []string{"test-tenant"})
 		require.NoError(t, err)
 		if len(handles) > 0 {
 			break

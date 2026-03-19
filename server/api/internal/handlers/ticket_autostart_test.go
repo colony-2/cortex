@@ -22,8 +22,8 @@ import (
 	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/impl"
 	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
+	directtestsupport "github.com/colony-2/swf-go/pkg/swf/runtime/direct/testsupport"
 	"github.com/stretchr/testify/require"
 	"log/slog"
 )
@@ -80,10 +80,10 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	// Install PGWF schema for workflow engine
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
-	require.NoError(t, impl.InstallPGWF(ctx, sqlDB))
+	require.NoError(t, directtestsupport.InstallPGWF(ctx, sqlDB))
 
 	// Start embedded Strata daemon
-	strata, err := impl.StartEmbeddedStrata()
+	strata, err := directtestsupport.StartEmbeddedStrata()
 	require.NoError(t, err)
 	defer strata.Shutdown()
 

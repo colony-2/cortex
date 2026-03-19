@@ -13,10 +13,10 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
+	"github.com/colony-2/pgwf-go/installer"
 	strataclient "github.com/colony-2/strata-go/pkg/client"
 	"github.com/colony-2/strata-go/pkg/daemon"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/impl"
 	directruntime "github.com/colony-2/swf-go/pkg/swf/runtime/direct"
 	"gorm.io/gorm"
 )
@@ -103,7 +103,12 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 
 	if cfg.InitializeDB {
 		cfg.Logger.Info("installing PGWF schema")
-		if err := impl.InstallPGWF(ctx, sqlDB); err != nil {
+		inst := installer.Installer{DB: sqlDB}
+		if err := inst.Apply(ctx); err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to install PGWF schema: %w", err)
+		}
+		if err := inst.Verify(ctx); err != nil {
 			cancel()
 			return nil, fmt.Errorf("failed to install PGWF schema: %w", err)
 		}

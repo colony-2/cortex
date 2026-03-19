@@ -12,7 +12,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -25,8 +25,46 @@ type CompilerTestSuite struct {
 	//eng *impl.EmbeddedEngine
 }
 
+func newToyEngine(t *testing.T, gen func(string) (swf.JobKey, error)) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := make([]toyruntime.Option, 0, 1)
+	if gen != nil {
+		opts = append(opts, toyruntime.WithJobIDGenerator(gen))
+	}
+	engine, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New(opts...)).
+		BuildEngine()
+	require.NoError(t, err)
+	go engine.Run(ctx)
+	return engine
+}
+
+func newToyEngineWithWorkSet(t *testing.T, ws *swf.WorkSet, gen func(string) (swf.JobKey, error)) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := make([]toyruntime.Option, 0, 1)
+	if gen != nil {
+		opts = append(opts, toyruntime.WithJobIDGenerator(gen))
+	}
+	builder := swf.NewEngineBuilder().WithRuntime(toyruntime.New(opts...))
+	if ws != nil {
+		taskWorkers := make([]swf.TaskWorker, 0, len(ws.TaskWorkers))
+		for _, tw := range ws.TaskWorkers {
+			taskWorkers = append(taskWorkers, tw)
+		}
+		builder.PlusWorkers(ws.JobWorker, taskWorkers...)
+	}
+	engine, err := builder.BuildEngine()
+	require.NoError(t, err)
+	go engine.Run(ctx)
+	return engine
+}
+
 func (s *CompilerTestSuite) SetupTest() {
-	s.eng = toy.NewToyEngine([]swf.WorkSet{})
+	s.eng = newToyEngine(s.T(), nil)
 
 	s.deps = ops2.NewOpDependenciesBuilder().Build()
 	//eng, err := impl.StartEmbeddedEngine(context.Background(), nil)
@@ -186,14 +224,13 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 
 	workSet, err := NewRecipeWorker(ops2.NewServiceDepsBuilder().Build(), registry, nil)
 	err = s.eng.RegisterWorkers(workSet)
-	stop := context.Background()
-	s.eng.Run(stop) // we start after worker registration.
 
 	require.NoError(s.T(), err)
 	jobCtx, gitCtx := GenerateTestContext()
 	in := map[string]interface{}{}
 
 	job := workflowctl.StartJob{
+		TenantId:   "test-tenant",
 		RecipeName: testRecipe.GetMetadata().ID,
 		Inputs:     in,
 		JobContext: jobCtx,

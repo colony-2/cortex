@@ -25,7 +25,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -51,6 +51,22 @@ type sseTestEnv struct {
 	testRecipe *recipe.Recipe
 	srv        *httptest.Server
 	cleanup    func()
+}
+
+func newToyEngine(t *testing.T, gen func(string) (swf.JobKey, error)) swf.SWFEngine {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	opts := make([]toyruntime.Option, 0, 1)
+	if gen != nil {
+		opts = append(opts, toyruntime.WithJobIDGenerator(gen))
+	}
+	eng, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New(opts...)).
+		BuildEngine()
+	require.NoError(t, err)
+	go eng.Run(ctx)
+	return eng
 }
 
 func setupSSETestEnv(t *testing.T) sseTestEnv {
@@ -79,7 +95,7 @@ func setupSSETestEnv(t *testing.T) sseTestEnv {
 	projID := string(testProject.ID)
 
 	g := jobIDGenerator{max: 10}
-	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	eng := newToyEngine(t, g.Generate)
 
 	wf := workflow.SWFWorkflowControl{
 		Engine: eng,
@@ -480,7 +496,7 @@ func TestUserInputsSSEFlushingWorks(t *testing.T) {
 
 	// Setup workflow engine
 	g := jobIDGenerator{max: 10}
-	eng := toy.NewToyEngine([]swf.WorkSet{}, toy.WithJobIDGenerator(g.Generate))
+	eng := newToyEngine(t, g.Generate)
 	wf := workflow.SWFWorkflowControl{Engine: eng}
 
 	depContainer := serverdepsops.NewDependencyContainer().

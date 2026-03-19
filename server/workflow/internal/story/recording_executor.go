@@ -1,6 +1,7 @@
 package story
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -192,6 +193,15 @@ func (e *recordingExecutor) ExecuteOp(ctx coreworkflow.Context, parentResolution
 	}
 
 	if err != nil {
+		e.ensureReplayMissStepNode(opNode, opID, err)
+		first := findFirstChildStep(opNode.Children)
+		last := findLastChildStep(opNode.Children)
+		if first != nil {
+			opNode.Input = first.Input
+		}
+		if last != nil {
+			opNode.Output = last.Output
+		}
 		opNode.Status = statusFromErr(err, opNode.Status)
 		e.tree.pop()
 		return err
@@ -237,4 +247,45 @@ func (e *recordingExecutor) ExecuteOp(ctx coreworkflow.Context, parentResolution
 
 	e.tree.pop()
 	return nil
+}
+
+func (e *recordingExecutor) ensureReplayMissStepNode(opNode *model.JobRunStoryNode, opID string, err error) {
+	if opNode == nil {
+		return
+	}
+
+	var miss swf.ReplayCacheMissError
+	if !errors.As(err, &miss) || miss.Reason != swf.ReplayCacheMissTaskResultMissing {
+		return
+	}
+
+	stepID := strings.TrimSpace(stepIDFromTaskType(opID, miss.TaskType))
+	if stepID == "" {
+		stepID = strings.TrimSpace(miss.TaskType)
+	}
+	if stepID == "" {
+		return
+	}
+
+	for _, ch := range opNode.Children {
+		if ch == nil || ch.Kind != model.JobRunStoryNodeKindOpStep {
+			continue
+		}
+		if ch.TaskOrdinal != nil && *ch.TaskOrdinal == miss.Ordinal {
+			applyTaskOutputToNode(ch, "", miss.TaskType, nil, miss)
+			return
+		}
+	}
+
+	stepNode := e.tree.newNode(model.JobRunStoryNodeKindOpStep, "step "+stepID)
+	stepNode.StepID = stepID
+	stepNode.StepType = "other"
+	if miss.Attempt > 0 {
+		stepNode.Attempt = miss.Attempt
+	}
+	ord := miss.Ordinal
+	stepNode.TaskOrdinal = &ord
+	stepNode.RestartFromOrdinal = &ord
+	applyTaskOutputToNode(stepNode, "", miss.TaskType, nil, miss)
+	opNode.Children = append(opNode.Children, stepNode)
 }

@@ -22,7 +22,7 @@ import (
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -642,7 +642,18 @@ func executeRecipeWithArtifacts(
 	capture := newArtifactCapture()
 	workset.TaskWorkers = wrapTaskWorkers(workset.TaskWorkers, capture)
 
-	engine := toy.NewToyEngine([]swf.WorkSet{*workset})
+	taskWorkers := make([]swf.TaskWorker, 0, len(workset.TaskWorkers))
+	for _, tw := range workset.TaskWorkers {
+		taskWorkers = append(taskWorkers, tw)
+	}
+	engine, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New()).
+		PlusWorkers(workset.JobWorker, taskWorkers...).
+		BuildEngine()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	go engine.Run(ctx)
 	control.Engine = engine
 	job := workflowctl.StartJob{
 		TenantId:   "default",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -13,7 +14,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/colony-2/swf-go/pkg/swf/toy"
+	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
 	"go.uber.org/zap"
 )
 
@@ -72,7 +73,18 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 		return nil, err
 	}
 
-	eng := toy.NewToyEngine([]swf.WorkSet{*workset})
+	taskWorkers := make([]swf.TaskWorker, 0, len(workset.TaskWorkers))
+	for _, tw := range workset.TaskWorkers {
+		taskWorkers = append(taskWorkers, tw)
+	}
+	eng, err := swf.NewEngineBuilder().
+		WithRuntime(toyruntime.New()).
+		PlusWorkers(workset.JobWorker, taskWorkers...).
+		BuildEngine()
+	if err != nil {
+		return nil, err
+	}
+	go eng.Run(ctx)
 	control.Engine = eng
 
 	job := workflowctl.StartJob{
@@ -85,6 +97,9 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 
 	jobKey, err := control.StartJob(ctx, job)
 	if err != nil {
+		return nil, err
+	}
+	if err := swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, eng); err != nil {
 		return nil, err
 	}
 	out, err := eng.GetJobResult(ctx, jobKey)
