@@ -66,8 +66,7 @@ func BuildJobRunStory(ctx context.Context, engine replayJobRunner, jobKey swf.Jo
 	if errors.Is(replayErr, swf.ErrWorkflowNotDeterministic) {
 		return story, replayErr
 	}
-	var miss swf.ReplayCacheMissError
-	if errors.As(replayErr, &miss) {
+	if isReplayCacheMissErr(replayErr) {
 		return story, nil
 	}
 	// Default: swallow runtime job errors and return the story.
@@ -78,8 +77,7 @@ func mapStoryStatusFromReplayErr(err error) model.WorkflowStatus {
 	if err == nil {
 		return model.WorkflowStatusCompleted
 	}
-	var miss swf.ReplayCacheMissError
-	if errors.As(err, &miss) {
+	if isReplayCacheMissErr(err) {
 		return model.WorkflowStatusRunning
 	}
 	var te swf.TimeoutError

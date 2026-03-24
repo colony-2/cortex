@@ -78,25 +78,28 @@ func (f *fakeSWFEngine) ListJobs(ctx context.Context, req swf.ListJobsRequest) (
 
 func (f *fakeSWFEngine) RegisterWorkers(*swf.WorkSet) error { return nil }
 func (f *fakeSWFEngine) Run(context.Context)                {}
-func (f *fakeSWFEngine) StartJob(context.Context, swf.StartJob) (swf.JobKey, error) {
+func (f *fakeSWFEngine) SubmitJob(context.Context, swf.SubmitJob) (swf.JobKey, error) {
 	return swf.JobKey{}, fmt.Errorf("not implemented")
 }
-func (f *fakeSWFEngine) RestartJob(context.Context, swf.RestartJob) (swf.JobKey, error) {
+func (f *fakeSWFEngine) SubmitRestartJob(context.Context, swf.SubmitRestartJob) (swf.JobKey, error) {
 	return swf.JobKey{}, fmt.Errorf("not implemented")
 }
 func (f *fakeSWFEngine) CancelJob(context.Context, swf.CancelJob) error {
 	return fmt.Errorf("not implemented")
 }
-func (f *fakeSWFEngine) CheckJobStatus(context.Context, swf.JobKey) (swf.JobStatus, error) {
-	return "", fmt.Errorf("not implemented")
-}
-func (f *fakeSWFEngine) GetJobResult(context.Context, swf.JobKey) (swf.TaskData, error) {
-	return nil, fmt.Errorf("not implemented")
+func (f *fakeSWFEngine) GetJob(context.Context, swf.JobKey) (swf.JobInfo, error) {
+	return swf.JobInfo{}, fmt.Errorf("not implemented")
 }
 func (f *fakeSWFEngine) FindTasksWaitingForCapability(context.Context, string, string, []string) ([]swf.TaskHandle, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (f *fakeSWFEngine) FindTasksWaiting(context.Context, swf.FindTasksWaitingRequest) ([]swf.TaskHandle, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 func (f *fakeSWFEngine) GetWaitingTask(context.Context, swf.JobKey) (swf.TaskHandle, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (f *fakeSWFEngine) GetJobLease(context.Context, swf.GetJobLeaseRequest) (swf.ExecutionLease, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 func (f *fakeSWFEngine) GetArtifact(string, swf.ArtifactKey) (swf.Artifact, error) {

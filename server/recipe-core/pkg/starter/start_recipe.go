@@ -12,6 +12,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type recipeJobSubmitter interface {
+	SubmitJob(ctx context.Context, job swf.SubmitJob) (swf.JobKey, error)
+}
+
+type recipeJobRestartSubmitter interface {
+	SubmitRestartJob(ctx context.Context, req swf.SubmitRestartJob) (swf.JobKey, error)
+}
+
 const (
 	RecipeJobType        = "recipe"
 	RecipeArtifactSuffix = ".recipe.yaml"
@@ -51,7 +59,7 @@ func JobMetadataFromStartJob(startJob workflowctl.StartJob) JobMetadata {
 	}
 }
 
-func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, recipes ...recipe.Recipe) (swf.JobKey, error) {
+func StartRecipeJob(ctx context.Context, startJob workflowctl.StartJob, engine recipeJobSubmitter, recipes ...recipe.Recipe) (swf.JobKey, error) {
 	return StartRecipeJobWithOptions(ctx, startJob, engine, StartRecipeJobOptions{}, recipes...)
 }
 
@@ -60,7 +68,7 @@ type StartRecipeJobOptions struct {
 	Prerequisites []swf.JobPrerequisite
 }
 
-func StartRecipeJobWithOptions(ctx context.Context, startJob workflowctl.StartJob, engine swf.SWFEngine, opts StartRecipeJobOptions, recipes ...recipe.Recipe) (swf.JobKey, error) {
+func StartRecipeJobWithOptions(ctx context.Context, startJob workflowctl.StartJob, engine recipeJobSubmitter, opts StartRecipeJobOptions, recipes ...recipe.Recipe) (swf.JobKey, error) {
 	recipeCount := len(recipes)
 	artifacts := make([]swf.Artifact, recipeCount+len(startJob.Artifacts))
 	for i, r := range recipes {
@@ -88,17 +96,16 @@ func StartRecipeJobWithOptions(ctx context.Context, startJob workflowctl.StartJo
 		return swf.JobKey{}, err
 	}
 
-	job := swf.StartJob{
+	job := swf.SubmitJob{
 		TenantId:      startJob.TenantId,
 		JobType:       RecipeJobType,
 		JobID:         opts.JobID,
-		SingletonKey:  startJob.SingletonKey,
 		Data:          inputData,
 		RunPolicy:     swf.DefaultRunPolicy(),
 		Metadata:      metaRaw,
 		Prerequisites: opts.Prerequisites,
 	}
-	return engine.StartJob(ctx, job)
+	return engine.SubmitJob(ctx, job)
 }
 
 // RestartRecipeJob restarts an existing recipe job from the provided step offset.
@@ -109,13 +116,13 @@ func StartRecipeJobWithOptions(ctx context.Context, startJob workflowctl.StartJo
 // If patch is non-nil, we inject a context patch envelope as the next chapter output to be replayed.
 // This intentionally causes a swf.TaskInputMismatchError at replay time, allowing the recipe worker
 // to detect and apply the patch before re-executing the task.
-func RestartRecipeJob(ctx context.Context, engine swf.SWFEngine, prior swf.JobKey, stepOffset int64, patch *task.ContextPatch) (swf.JobKey, error) {
+func RestartRecipeJob(ctx context.Context, engine recipeJobRestartSubmitter, prior swf.JobKey, stepOffset int64, patch *task.ContextPatch) (swf.JobKey, error) {
 	if stepOffset < 0 {
 		return swf.JobKey{}, fmt.Errorf("stepOffset must be >= 0, got %d", stepOffset)
 	}
 	lastToKeep := stepOffset - 1
 
-	req := swf.RestartJob{
+	req := swf.SubmitRestartJob{
 		PriorJobKey:    prior,
 		LastStepToKeep: lastToKeep,
 	}
@@ -141,5 +148,5 @@ func RestartRecipeJob(ctx context.Context, engine swf.SWFEngine, prior swf.JobKe
 		req.ExtraTaskOutput = out
 	}
 
-	return engine.RestartJob(ctx, req)
+	return engine.SubmitRestartJob(ctx, req)
 }

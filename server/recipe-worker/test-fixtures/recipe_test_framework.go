@@ -16,6 +16,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/executor"
@@ -670,7 +671,7 @@ func executeRecipeWithArtifacts(
 	if err := swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, engine); err != nil {
 		return nil, nil, nil, err
 	}
-	out, err := engine.GetJobResult(ctx, jobKey)
+	out, err := swfutil.JobResult(ctx, engine, jobKey)
 	if err != nil {
 		return nil, nil, nil, err
 	}

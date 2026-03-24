@@ -9,6 +9,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -102,7 +103,7 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 	if err := swf.WaitForJobToComplete(ctx, 30*time.Second, jobKey, eng); err != nil {
 		return nil, err
 	}
-	out, err := eng.GetJobResult(ctx, jobKey)
+	out, err := swfutil.JobResult(ctx, eng, jobKey)
 	if err != nil {
 		return nil, err
 	}

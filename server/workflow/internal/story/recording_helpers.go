@@ -46,11 +46,21 @@ func statusFromErr(err error, fallback model.JobRunStoryNodeStatus) model.JobRun
 	if err == nil {
 		return fallback
 	}
-	var miss swf.ReplayCacheMissError
-	if errors.As(err, &miss) {
+	if isReplayCacheMissErr(err) {
 		return model.JobRunStoryNodeStatusRunning
 	}
 	return model.JobRunStoryNodeStatusFailed
+}
+
+func isReplayCacheMissErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	var miss swf.ReplayCacheMissError
+	if errors.As(err, &miss) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "replay cache miss:")
 }
 
 func deriveContainerStatus(children []*model.JobRunStoryNode) model.JobRunStoryNodeStatus {

@@ -1,5 +1,5 @@
-github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8 h1:w2tZXl/2Fnv8+xmQ/PflPJPqi+UwLsKlpZzml1bx7/M=
-github.com/colony-2/colony2/server/git v0.0.0-20260211050417-1ddbb74988c8/go.mod h1:4mjO8O4zjWVgFKQBhoIyDs0pwA8VHEmGCaap+YMDqa0=
+github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 h1:GZ/fS6L6VZAvH7chMfuI/84LwAi5OJWrIzqLrzCluuU=
+github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882/go.mod h1:J0e0eEl4wGoQcMlH08EePBdCmeso25m12vaVXCwjndo=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

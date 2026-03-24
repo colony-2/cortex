@@ -10,7 +10,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
+	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
 	github.com/google/cel-go v0.26.0
 )
 

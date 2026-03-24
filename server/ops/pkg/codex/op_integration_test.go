@@ -12,6 +12,7 @@ import (
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -117,7 +118,7 @@ inputs:
 	require.NoError(t, err)
 	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 30*time.Second, key, engine))
 
-	res, err := engine.GetJobResult(context.Background(), key)
+	res, err := swfutil.JobResult(context.Background(), engine, key)
 	require.NoError(t, err)
 
 	raw, err := res.GetData()
@@ -183,7 +184,7 @@ inputs:
 	require.NoError(t, err)
 	require.NoError(t, swf.WaitForJobToComplete(context.Background(), 30*time.Second, key, engine))
 
-	res, err := engine.GetJobResult(context.Background(), key)
+	res, err := swfutil.JobResult(context.Background(), engine, key)
 	require.NoError(t, err)
 
 	raw, err := res.GetData()

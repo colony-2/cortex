@@ -2,7 +2,6 @@ package story
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"sort"
 	"strings"
@@ -323,6 +322,9 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 	recipeName := toRecipeNameFromIDFallback(recipeID, r.recipeNameFromStart)
 
 	status := mapStoryStatusFromReplayErr(replayErr)
+	if root != nil && root.Status == model.JobRunStoryNodeStatusRunning {
+		status = model.WorkflowStatusRunning
+	}
 	if status == model.WorkflowStatusRunning && root != nil {
 		root.Status = model.JobRunStoryNodeStatusRunning
 	}
@@ -435,8 +437,7 @@ func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType stri
 	}
 
 	if err != nil {
-		var miss swf.ReplayCacheMissError
-		if errors.As(err, &miss) {
+		if isReplayCacheMissErr(err) {
 			n.Status = model.JobRunStoryNodeStatusRunning
 			n.Error = &model.JobRunStoryError{Message: err.Error()}
 		} else {

@@ -9,6 +9,7 @@ import (
 	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -125,7 +126,7 @@ func (s *CompilerTestSuite) testRecipe(recipeYaml string, input map[string]inter
 	jobKey, err := starter.StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
 	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobKey, s.eng))
-	r, err := s.eng.GetJobResult(context.Background(), jobKey)
+	r, err := swfutil.JobResult(context.Background(), s.eng, jobKey)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
 	require.NoError(s.T(), err)
@@ -240,7 +241,7 @@ func (s *CompilerTestSuite) TestSequenceRecipeCompilation() {
 	jobId, err := starter.StartRecipeJob(context.Background(), job, s.eng, *testRecipe)
 	require.NoError(s.T(), err)
 	require.NoError(s.T(), swf.WaitForJobToComplete(context.Background(), 30*time.Second, jobId, s.eng))
-	r, err := s.eng.GetJobResult(context.Background(), jobId)
+	r, err := swfutil.JobResult(context.Background(), s.eng, jobId)
 	require.NoError(s.T(), err)
 	d, err := r.GetData()
 	require.NoError(s.T(), err)

@@ -46,7 +46,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6
+	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/cel-go v0.26.0 // indirect

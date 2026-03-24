@@ -18,6 +18,7 @@ import (
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -198,8 +199,8 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 		select {
 		case jr := <-jobCh:
 			require.NoError(t, jr.err)
-			status, _ = engine.CheckJobStatus(context.Background(), jr.key)
-			if result, err := engine.GetJobResult(context.Background(), jr.key); err == nil {
+			status, _ = swfutil.JobStatus(context.Background(), engine, jr.key)
+			if result, err := swfutil.JobResult(context.Background(), engine, jr.key); err == nil {
 				if raw, err := result.GetData(); err == nil {
 					rawResult = string(raw)
 					_ = json.Unmarshal(raw, &outputs)
@@ -251,7 +252,7 @@ func TestMultiStepWithCapabilityClaim(t *testing.T) {
 	t.Logf("post-completion: captured=%t runs=%d env=%+v workerDbg=%+v jobRuns=%d jobErr=%v", firstEnvelopeSet, workerRunCount, firstEnvelope, workerDebugInfo, jobRuns, jobErr)
 	jobRunsMu.Unlock()
 	firstEnvelopeMu.Unlock()
-	resultData, err := engine.GetJobResult(context.Background(), jobKey)
+	resultData, err := swfutil.JobResult(context.Background(), engine, jobKey)
 	require.NoError(t, err)
 	outRaw, err := resultData.GetData()
 	require.NoError(t, err)

@@ -343,10 +343,9 @@ func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequ
 				BaseRef:  gitRef,
 			},
 		},
-		GitRef:       gitRef,
-		SingletonKey: derefString(req.IdempotencyKey),
-		SubmittedAt:  &submittedAt,
-		InputHash:    inputHash,
+		GitRef:      gitRef,
+		SubmittedAt: &submittedAt,
+		InputHash:   inputHash,
 	}
 
 	jobKey, err := starter.StartRecipeJobWithOptions(ctx, start, s.engine, starter.StartRecipeJobOptions{

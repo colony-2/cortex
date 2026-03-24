@@ -19,15 +19,14 @@ type WorkflowControl interface {
 }
 
 type StartJob struct {
-	TenantId     string                 `json:"tenantId"`
-	RecipeName   string                 `json:"recipe"`
-	Inputs       map[string]interface{} `json:"inputs,omitempty"`
-	Artifacts    []swf.Artifact         `json:"artifacts,omitempty"`
-	JobContext   contextual.JobContext  `json:"context,omitempty"`
-	GitRef       string                 `json:"git,omitempty"`
-	SingletonKey string                 `json:"singleton_key,omitempty"`
-	SubmittedAt  *time.Time             `json:"submitted_at,omitempty"`
-	InputHash    string                 `json:"input_hash,omitempty"`
+	TenantId    string                 `json:"tenantId"`
+	RecipeName  string                 `json:"recipe"`
+	Inputs      map[string]interface{} `json:"inputs,omitempty"`
+	Artifacts   []swf.Artifact         `json:"artifacts,omitempty"`
+	JobContext  contextual.JobContext  `json:"context,omitempty"`
+	GitRef      string                 `json:"git,omitempty"`
+	SubmittedAt *time.Time             `json:"submitted_at,omitempty"`
+	InputHash   string                 `json:"input_hash,omitempty"`
 }
 
 type JobItem struct {

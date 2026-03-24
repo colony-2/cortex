@@ -15,7 +15,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
-	github.com/colony-2/swf-go v0.0.0-20260318205952-6215190fc4c6 // indirect
+	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

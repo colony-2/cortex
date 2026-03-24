@@ -12,6 +12,7 @@ import (
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/swfutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	inputop "github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
@@ -239,7 +240,7 @@ outputs:
 	jobKey := startRecipeJob(t, ctx, engine, rec, map[string]any{})
 
 	require.Eventually(t, func() bool {
-		st, err := engine.CheckJobStatus(ctx, jobKey)
+		st, err := swfutil.JobStatus(ctx, engine, jobKey)
 		require.NoError(t, err)
 		return st == swf.JobStatusCompleted
 	}, 30*time.Second, 100*time.Millisecond)
