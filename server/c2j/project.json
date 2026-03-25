@@ -1,0 +1,30 @@
+{
+  "name": "c2j",
+  "root": "server/c2j",
+  "projectType": "application",
+  "tags": ["backend", "go", "app"],
+  "targets": {
+    "build": {
+      "executor": "@nx-go/nx-go:build",
+      "options": {
+        "main": "./cmd/c2j/main.go",
+        "outputPath": "build/c2j",
+        "cwd": "server/c2j"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "go install ./cmd/c2j",
+        "cwd": "server/c2j"
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
+    }
+  }
+}

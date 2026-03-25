@@ -1,4 +1,4 @@
-package setup
+package colonycel
 
 import (
 	"fmt"
@@ -14,15 +14,11 @@ import (
 	"github.com/google/cel-go/common/types/traits"
 )
 
-func registerArtifactCELFunctions(b *funcregistry.Builder) {
-	// NOTE:
-	// These are advanced CEL-only registrations used by artifact helpers.
-	// For normal function integration, prefer funcregistry.AddZeroFuncWithContext /
-	// AddZeroFunc / AddUnaryFunc / AddBinaryFunc so functions are available in both CEL and Go templates.
-	// If one of these helpers must also be callable from Go templates, add a matching
-	// b.WithTemplateFunc(...) registration.
-	//
-	// Registered in cortex (not recipe-template) via the CELOptionsProvider extension point.
+func RegisterArtifactFunctions(b *funcregistry.Builder) {
+	if b == nil {
+		return
+	}
+
 	b.WithBuiltin("artifact_set", func(adapter types.Adapter, _ funcregistry.ContextProvider) cel.EnvOption {
 		return artifactSetLikeEnvOption(adapter, "artifact_set")
 	})
@@ -118,7 +114,6 @@ func registerArtifactCELFunctions(b *funcregistry.Builder) {
 }
 
 func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOption {
-	// cel-go doesn't support true varargs; provide the common arities plus a list-form.
 	return cel.Function(
 		fnName,
 		cel.Overload(
@@ -192,7 +187,6 @@ func appendArtifactKeys(fnName string, out *[]swf.ArtifactKey, v ref.Val) error 
 		return nil
 	}
 
-	// Prefer trait-based access so map/list elements are adapted consistently.
 	if l, ok := v.(traits.Lister); ok {
 		sizeVal := l.Size()
 		size, ok := sizeVal.(types.Int)
@@ -340,7 +334,6 @@ func parseArtifactFilterOpts(opts ref.Val) (artifactFilter, error) {
 	}
 	f := artifactFilter{}
 
-	// Strings
 	if s, ok := mapGetString(m, "name_prefix"); ok {
 		f.namePrefix = s
 	}
@@ -351,14 +344,13 @@ func parseArtifactFilterOpts(opts ref.Val) (artifactFilter, error) {
 		f.nameContains = s
 	}
 	if s, ok := mapGetString(m, "name_regex"); ok && strings.TrimSpace(s) != "" {
-		re, err := regexp.Compile(s) // RE2
+		re, err := regexp.Compile(s)
 		if err != nil {
 			return artifactFilter{}, fmt.Errorf("artifact_filter: invalid name_regex: %v", err)
 		}
 		f.nameRegex = re
 	}
 
-	// Ints
 	if i, ok := mapGetInt64(m, "min_size"); ok {
 		f.minSize = &i
 	}
@@ -386,7 +378,6 @@ func (f artifactFilter) match(k swf.ArtifactKey) bool {
 
 	size := k.SizeBytes
 	if f.minSize != nil {
-		// Unknown sizes (-1) fail min_size when min_size > -1.
 		if size < 0 && *f.minSize > -1 {
 			return false
 		}
@@ -395,7 +386,6 @@ func (f artifactFilter) match(k swf.ArtifactKey) bool {
 		}
 	}
 	if f.maxSize != nil {
-		// Unknown sizes pass max_size unless caller sets a negative bound explicitly.
 		if size >= 0 && size > *f.maxSize {
 			return false
 		}
@@ -410,7 +400,6 @@ func (f artifactFilter) match(k swf.ArtifactKey) bool {
 func dedupeArtifactKeys(keys []swf.ArtifactKey, by string) []swf.ArtifactKey {
 	out, err := dedupeArtifactKeysChecked(keys, by)
 	if err != nil {
-		// Shouldn't happen for internal/default usage; fall back to name.
 		out, _ = dedupeArtifactKeysChecked(keys, "name")
 	}
 	return out

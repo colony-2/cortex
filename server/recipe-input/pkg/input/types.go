@@ -123,6 +123,9 @@ type UserResponseSignal struct {
 // PendingInput represents a pending input request (OpenAPI-generated type).
 type PendingInput = openapi.PendingInput
 
+// UserInputDetails describes a pending input request in a transport-agnostic shape.
+type UserInputDetails = openapi.UserInputDetails
+
 // InputRequestSignal represents a signal sent by the activity to request user input
 type InputRequestSignal struct {
 	ActivityID string        `json:"activity_id"`

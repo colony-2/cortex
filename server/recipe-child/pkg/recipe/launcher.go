@@ -7,7 +7,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"gorm.io/gorm"
 )
 
 func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.WorkflowControl, recipe SingleRecipe, gitRef string) workflowctl.StartJob {
@@ -39,7 +38,7 @@ func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.Workflo
 
 // func(deps OpDependencies, ctx context.Context, in In)
 // Execute runs the activity with provided configuration and inputs
-func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowctl.WorkflowControl, recipes []SingleRecipe, gitRef string) ([]swf.JobKey, error) {
+func startJobs(ctx context.Context, tenantId string, ctl workflowctl.WorkflowControl, recipes []SingleRecipe, gitRef string) ([]swf.JobKey, error) {
 	if len(recipes) == 0 {
 		return nil, fmt.Errorf("no jobs to start")
 	}
@@ -56,33 +55,14 @@ func startJobs(ctx context.Context, db *gorm.DB, tenantId string, ctl workflowct
 		}
 		return []swf.JobKey{key}, nil
 	}
+
 	keys := make([]swf.JobKey, len(jobs))
-	if db == nil {
-		for i, job := range jobs {
-			key, err := ctl.StartJob(ctx, job)
-			if err != nil {
-				return nil, err
-			}
-			keys[i] = key
+	for i, job := range jobs {
+		key, err := ctl.StartJob(ctx, job)
+		if err != nil {
+			return nil, err
 		}
-		return keys, nil
-	}
-
-	err := db.Transaction(func(tx *gorm.DB) error {
-		txctx := swf.WithTx(ctx, tx)
-
-		for i, job := range jobs {
-			key, err := ctl.StartJob(txctx, job)
-			if err != nil {
-				tx.Rollback()
-				return err
-			}
-			keys[i] = key
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		keys[i] = key
 	}
 	return keys, nil
 }

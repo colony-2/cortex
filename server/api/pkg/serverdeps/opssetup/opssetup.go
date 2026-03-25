@@ -4,14 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
 	"github.com/colony-2/colony2/server/api/pkg/web"
-	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
-	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
-	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
-	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
-	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 )
 
 // NewDependencyContainer exposes the recipe-core builder so callers can compose dependencies fluently.
@@ -21,16 +16,7 @@ func NewDependencyContainer() *ops.ServiceDepsBuilder {
 
 // RegisterOps registers all known ops into the registry and returns the list.
 func RegisterOps() []ops.RegisterableOp {
-	ops.Clear()
-	impls := opsexport.GetAll()
-	impls = append(impls, workerexport.GetAll()...)
-	impls = append(impls, input.GetOp())
-	impls = append(impls, input.GetAutoFillOp())
-	impls = append(impls, recipe.GetOps()...)
-	impls = append(impls, gitexport.GetAll()...)
-	impls = append(impls, ticketop.GetOp())
-	ops.Register(impls...)
-	return impls
+	return opregistry.Register(opregistry.ProfileServer)
 }
 
 // SetupOps initializes management services for registered ops and returns routes + cleanup.

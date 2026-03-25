@@ -1,11 +1,12 @@
-# Nucleus `job run` Command Implementation Plan
+# C2J Command Implementation Plan
 
 ## Goal
 
-Add a new `nucleus` CLI command that can attach to an existing recipe job and try to advance it locally against an SWF remote runtime.
+Add a new `c2j` CLI that can submit a recipe job and execute an existing one locally against an SWF remote runtime.
 
-The command should:
+The primary focus of this plan is `c2j exec`. The command set should:
 
+- submit a recipe job for local testing and iteration with `c2j submit`
 - start from an existing job ID plus an SWF remote runtime URL
 - acquire work for that job with `swf.GetJobForRun`
 - execute the recipe job with the same `recipe-worker` runtime used elsewhere
@@ -37,7 +38,7 @@ Recommended approach:
 
 Do not hide this requirement inside runtime errors.
 
-### 2. `ops` + `recipe-worker` are not enough, and `nucleus` cannot assume a database
+### 2. `ops` + `recipe-worker` are not enough, and `c2j` cannot assume a database
 
 The `input` op is registered separately in [`recipe-input`](./recipe-input), not in [`ops`](./ops) or [`recipe-worker`](./recipe-worker):
 
@@ -64,13 +65,13 @@ More broadly, server execution parity currently comes from [`/src/server/api/pkg
 - `git`
 - `ticket`
 
-That full registration path is not appropriate for `nucleus`.
+That full registration path is not appropriate for `c2j`.
 
 This command path should be treated as a remote-execution client with no database connection of its own. It should operate through SWF runtime access and `workflowctl.WorkflowControl`, not through `deps.Database()`.
 
 That means:
 
-- do not construct or inject a DB handle for `nucleus`
+- do not construct or inject a DB handle for `c2j`
 - do not register ops whose execution path requires database access
 - do not register management/service wiring that assumes HTTP or DB-backed state
 - do not aim for blind "full server parity" if parity would pull in DB-coupled behavior
@@ -84,7 +85,7 @@ There are already concrete examples of DB-bound behavior in the current tree:
 Recommendation:
 
 - extract op registration out of `server/api`, but make it profile-based rather than a single "register everything" path
-- add a `nucleus` registration profile that includes only ops proven to work with SWF/workflow-control-only dependencies
+- add a `c2j` registration profile that includes only ops proven to work with SWF/workflow-control-only dependencies
 - keep the registry composition explicit and curated; unsupported DB-dependent ops should fail at startup because they were never registered, not later at runtime after partial execution
 
 For the new module, assume v1 direct dependencies include at least:
@@ -94,13 +95,13 @@ For the new module, assume v1 direct dependencies include at least:
 - `server/recipe-input`
 - `server/recipe-child`
 
-But dependency presence does not imply "register everything from this module." The `nucleus` profile should include only the subset that is safe without DB access.
+But dependency presence does not imply "register everything from this module." The `c2j` profile should include only the subset that is safe without DB access.
 
 ### 3. `recipe-child` multi-start should stop using DB transactions
 
 The multi-child recipe path currently tries to create all child jobs inside a DB transaction when a database handle is present.
 
-That is the wrong shape for `nucleus`, and it is also an unnecessary coupling for the longer-term op model we want here.
+That is the wrong shape for `c2j`, and it is also an unnecessary coupling for the longer-term op model we want here.
 
 Recommendation:
 
@@ -109,7 +110,7 @@ Recommendation:
 - accept partial creation semantics for now if the Nth child create fails after the first `N-1` succeeded
 - defer idempotency / compensating behavior to later follow-up work
 
-This change should be called out as part of the `nucleus` preparation work, because `recipe-child` is one of the ops we do want available in the remote/no-DB runtime profile.
+This change should be called out as part of the `c2j` preparation work, because `recipe-child` is one of the ops we do want available in the remote/no-DB runtime profile.
 
 ### 4. We already have a recipe-centric replay/story seam
 
@@ -128,14 +129,14 @@ Current CEL wiring is split:
 - artifact helper functions are still registered inside [`/src/server/cortex/internal/setup/artifact_cel_functions.go`](/src/server/cortex/internal/setup/artifact_cel_functions.go)
 - the builder assembly currently happens inside [`/src/server/cortex/internal/setup/setup.go`](/src/server/cortex/internal/setup/setup.go)
 
-That is the wrong ownership for `nucleus`, because it needs the same CEL behavior without depending on `server/cortex/internal/...`.
+That is the wrong ownership for `c2j`, because it needs the same CEL behavior without depending on `server/cortex/internal/...`.
 
 Recommendation:
 
 - create a shared package that assembles the canonical Colony CEL provider
 - move artifact CEL helper registration into that shared package
 - keep `funcregistry.NewBuilder().WithDefaults()` as the base so `jq` and the other default functions remain available everywhere
-- have both `cortex` and `nucleus` construct their `CELOptionsProvider` from the same shared package
+- have both `cortex` and `c2j` construct their `CELOptionsProvider` from the same shared package
 
 Suggested package shape:
 
@@ -156,21 +157,21 @@ Notes:
 
 - keep stateless helpers like artifact functions in the shared package unconditionally
 - keep context/service-backed helpers like `cells()` behind optional dependency injection
-- ensure `nucleus` uses this shared builder when creating its `CELOptionsProvider`
+- ensure `c2j` uses this shared builder when creating its `CELOptionsProvider`
 
 ## Proposed Module Layout
 
 Create a new module:
 
-- `/src/server/nucleus`
+- `/src/server/c2j`
 
 Initial structure:
 
 - `go.mod`
 - `project.json`
-- `cmd/nucleus/main.go`
+- `cmd/c2j/main.go`
 - `internal/cmd/root.go`
-- `internal/cmd/job_run.go`
+- `internal/cmd/exec.go`
 - `internal/runtime/remote.go`
 - `internal/runjob/service.go`
 - `internal/runjob/options.go`
@@ -184,8 +185,8 @@ Initial structure:
 
 Repo wiring:
 
-- add `./server/nucleus` to [`/src/go.work`](/src/go.work)
-- add `/src/server/nucleus/project.json` following the existing Go project pattern
+- add `./server/c2j` to [`/src/go.work`](/src/go.work)
+- add `/src/server/c2j/project.json` following the existing Go project pattern
 - add build/install targets for the new app
 
 ## Command Surface
@@ -193,17 +194,25 @@ Repo wiring:
 Recommended command shape:
 
 ```text
-nucleus job run --job-id <id> --swf-url <url> [flags]
+c2j submit --recipe <name> [flags]
+c2j exec --job-id <id> --swf-url <url> [flags]
 ```
 
-Required flags:
+`c2j submit` should support:
+
+- `--recipe <name>` or `--recipe-file <path>`
+- `--tenant-id` or `C2J_TENANT_ID`
+- `--swf-url` or `C2J_SWF_URL`
+- optional repo/cell/input flags used to construct the initial chapter/job
+
+`c2j exec` required flags:
 
 - `--job-id`
-- `--swf-url` or `NUCLEUS_SWF_URL`
+- `--swf-url` or `C2J_SWF_URL`
 
 Identity flags:
 
-- `--tenant-id` or `NUCLEUS_TENANT_ID`
+- `--tenant-id` or `C2J_TENANT_ID`
 - optionally `--job-url` as an alternative to `--job-id` + `--tenant-id`
 
 Runtime flags:
@@ -236,7 +245,7 @@ Output flags:
 ### Phase 1: Build the runtime and worker set
 
 1. Construct an SWF remote runtime with `swf/runtime/remote`.
-2. Register only the ops that are safe in the no-DB `nucleus` runtime profile.
+2. Register only the ops that are safe in the no-DB `c2j` runtime profile.
 3. Build the activity registry from `recipe-worker`.
 4. Build the shared Colony CEL provider and pass it into recipe execution.
 5. Build a recipe job worker with:
@@ -250,13 +259,13 @@ Recommended implementation:
 
 - move op registration out of `server/api/pkg/serverdeps/opssetup`
 - place it in a shared package with no HTTP/web dependency
-- make registration profile-based, for example `server` vs `nucleus-remote`
+- make registration profile-based, for example `server` vs `c2j-remote`
 - have `server/api` use the full server profile
-- have `server/nucleus` use the curated no-DB profile
+- have `server/c2j` use the curated no-DB profile
 - move cortex-only artifact CEL registration into the shared Colony CEL package
-- use the same shared CEL builder from both `server/cortex` and `server/nucleus`
+- use the same shared CEL builder from both `server/cortex` and `server/c2j`
 
-Runtime assumption for `nucleus`:
+Runtime assumption for `c2j`:
 
 - remote stateful coordination goes through SWF runtime access and `WorkflowControl`
 - local execution helpers such as artifact/job tooling and worktree support are available as needed for recipe execution
@@ -348,9 +357,9 @@ Recommended v1:
 Behavior requirements:
 
 - if the process crashes and is restarted, the next run should render the same progress tree the user saw previously, now marked as cached where appropriate, and then continue from the next durable step
-- if the job is already completed, `nucleus job run` should still render the full historical story as if it had been observed live the first time, except every displayed step is marked cached/replayed
+- if the job is already completed, `c2j exec` should still render the full historical story as if it had been observed live the first time, except every displayed step is marked cached/replayed
 
-This lets repeated `nucleus job run` invocations show where the job already is before doing new work, and makes completed jobs readable instead of returning a terse "already done" message.
+This lets repeated `c2j exec` invocations show where the job already is before doing new work, and makes completed jobs readable instead of returning a terse "already done" message.
 
 ## Non-Ready And Suspended Handling
 
@@ -424,7 +433,7 @@ Recommended extraction/refactor:
 - add exported helpers under `server/recipe-input/pkg/input`
 - or add a small subpackage like `server/recipe-input/pkg/inputruntime`
 - keep the transport-agnostic logic there
-- have both the HTTP management service and `nucleus` call into that shared implementation
+- have both the HTTP management service and `c2j` call into that shared implementation
 
 The reusable surface should accept:
 
@@ -568,7 +577,7 @@ Wraps extracted `recipe-input` helpers and presents:
 - wait-loop timeout and retry behavior
 - exit code mapping
 - JSON event rendering
-- op-profile selection excludes DB-dependent ops from the `nucleus` runtime
+- op-profile selection excludes DB-dependent ops from the `c2j` runtime
 - shared CEL builder includes defaults plus Colony-specific helpers
 
 ### Integration tests against remote runtime wrapping toy runtime
@@ -628,13 +637,13 @@ Define explicit exit codes instead of a single generic failure:
 
 ### Phase 1: bootstrap module and non-interactive run
 
-- create `server/nucleus`
+- create `server/c2j`
 - add Cobra app scaffold
 - add remote runtime bootstrap
 - add job key resolution
 - add env sourcing for `tenantId` and `swf-url`
 - add shared no-DB op registration profile
-- exclude DB-dependent ops from the `nucleus` profile
+- exclude DB-dependent ops from the `c2j` profile
 - update `recipe-child` multi-start to create children sequentially without DB transactions
 - extract and wire the shared Colony CEL builder
 - add `GetJobForRun` + `Run` path
@@ -698,8 +707,8 @@ Acceptance:
 3. Reuse `compiler.NewRecipeJobWorker` with an injected executor decorator for recipe-centric progress.
 4. Refactor `recipe-input` management logic into a shared local/non-HTTP core rather than copying or reimplementing the HTTP handler path.
 5. Use Bubble Tea v2 for v1 TUI, with a renderer interface so we can swap or augment later.
-6. Move the Colony-specific CEL builder and artifact helper registration into a shared package consumed by both `cortex` and `nucleus`.
-7. Treat `nucleus` as a no-DB runtime and register only ops that can run with SWF/workflow-control-only dependencies.
+6. Move the Colony-specific CEL builder and artifact helper registration into a shared package consumed by both `cortex` and `c2j`.
+7. Treat `c2j` as a no-DB runtime and register only ops that can run with SWF/workflow-control-only dependencies.
 8. Change multi-child recipe creation to sequential `StartJob` calls now; defer idempotency and transactional semantics work.
 9. Render a hierarchical story-shaped progress view, not a flat log, and use cached/replayed markers on restart/completed runs.
 10. Keep the CLI stateless and rely on SWF persistence for resume/retry behavior.
@@ -713,18 +722,18 @@ Acceptance:
 
 2. Is interactive input support required in v1, or can it land behind `--experimental-tui` after CI/non-interactive support is working?
 
-3. What exact op allowlist should ship in the first `nucleus` profile?
+3. What exact op allowlist should ship in the first `c2j` profile?
    - the direction is fixed: exclude DB-dependent ops
    - we still need to decide the initial safe subset within `ops`, `recipe-worker`, `recipe-input`, and `recipe-child`
 
-4. Do we want a separate `nucleus job watch` later, or should `job run` own both execution and progress watching indefinitely?
+4. Do we want a separate `c2j watch` later, or should `exec` own both execution and progress watching indefinitely?
 
 ## Suggested First PR
 
 Keep the first PR narrow:
 
-- bootstrap `server/nucleus`
-- add `nucleus job run`
+- bootstrap `server/c2j`
+- add `c2j exec`
 - remote runtime bootstrap
 - full job-key resolution
 - shared no-DB op registration profile

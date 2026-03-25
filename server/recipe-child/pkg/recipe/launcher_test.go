@@ -4,14 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 func TestStartJobsEmpty(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	_, err := startJobs(context.Background(), nil, "tenant", ctl, nil, "")
+	_, err := startJobs(context.Background(), "tenant", ctl, nil, "")
 	if err == nil {
 		t.Fatal("expected error for empty recipes")
 	}
@@ -20,7 +17,7 @@ func TestStartJobsEmpty(t *testing.T) {
 func TestStartJobsSingle(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
 	recipes := []SingleRecipe{{Name: "child", Inputs: map[string]interface{}{"value": "ok"}}}
-	keys, err := startJobs(context.Background(), nil, "tenant", ctl, recipes, "git-ref")
+	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "git-ref")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,14 +32,10 @@ func TestStartJobsSingle(t *testing.T) {
 	}
 }
 
-func TestStartJobsMultipleUsesTransaction(t *testing.T) {
+func TestStartJobsMultipleRunsSequentially(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite db: %v", err)
-	}
 	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), db, "tenant", ctl, recipes, "")
+	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,8 +43,8 @@ func TestStartJobsMultipleUsesTransaction(t *testing.T) {
 		t.Fatalf("expected 2 keys, got %d", len(keys))
 	}
 	for i, sawTx := range ctl.startSawTx {
-		if !sawTx {
-			t.Fatalf("expected transaction context for call %d", i)
+		if sawTx {
+			t.Fatalf("did not expect transaction context for call %d", i)
 		}
 	}
 }
@@ -60,12 +53,8 @@ func TestStartJobsMultipleErrorReturnsNoKeys(t *testing.T) {
 	ctl := &fakeWorkflowControl{
 		startErrs: []error{nil, errors.New("boom")},
 	}
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("failed to open sqlite db: %v", err)
-	}
 	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), db, "tenant", ctl, recipes, "")
+	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

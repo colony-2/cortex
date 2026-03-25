@@ -9,6 +9,7 @@ use (
 	./server/git
 	./server/graph
 	./server/llm
+	./server/c2j
 	./server/openapi
 	./server/ops
 	./server/pgembed

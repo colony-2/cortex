@@ -46,7 +46,7 @@ Each entry lists how the Moon project maps to Nx (`projectType`, executor, and t
 - `server/llm` (server/llm, lib): Go lib; add `integration` target (`nx:run-commands` `go test -v -tags=integration ./integration/...`, uncached, opt-in) plus default `build`/`test`.
 - `be-graph-workflow` family:
   - `recipe-core` (server/recipe-core, lib), `recipe-history` (server/recipe-history, lib), `recipe-worker` (server/recipe-worker, lib): Go libs with default `build`/`test`.
-- `be-nucleus` (server/nucleus, app): targets `build` (`go build -o build/nucleus ./cmd/nucleus`, outputs `build/nucleus`), `install` (`go install ./cmd/nucleus`), `integration` (`go test -v -tags=integration ./...`, uncached). Exclude from inherited `build` defaults as in Moon by setting `implicitDependencies: []` and explicit targets.
+- `be-c2j` (server/c2j, app): targets `build` (`go build -o build/c2j ./cmd/c2j`, outputs `build/c2j`), `install` (`go install ./cmd/c2j`), `integration` (`go test -v -tags=integration ./...`, uncached). Exclude from inherited `build` defaults as in Moon by setting `implicitDependencies: []` and explicit targets.
 - `cortex` (server/cortex, app): 
   - `npm-install` (`nx:run-commands` `npm install`, output `node_modules`).
   - `build-frontend-copy` (`nx:run-commands` rsync from `web/app/dist` into `internal/static/assets`, outputs `internal/static/assets`, `dependsOn: ["ui-app:build"]`).

@@ -16,7 +16,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	ops2 "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
-	"github.com/fatih/structs"
 	"github.com/gorilla/mux"
 )
 
@@ -25,6 +24,7 @@ type inputManagementService struct {
 	workflowType string
 	sse          ops.SSEManager
 	ctl          workflowctl.WorkflowControl
+	runtime      *Runtime
 }
 
 // newInputManagementService creates a new input management service
@@ -36,13 +36,13 @@ func newInputManagementService() *inputManagementService {
 
 // Initialize sets up the service with dependencies
 func (s *inputManagementService) Initialize(deps ops.ServiceDependencies2) error {
-	// Require a typed WorkflowControl; fail if not provided
-	s.ctl = deps.WorkflowControl()
-	s.sse = deps.SSEManager()
-
-	if s.ctl == nil {
-		return fmt.Errorf("workflow control must be provided")
+	runtime, err := NewRuntimeFromDeps(deps)
+	if err != nil {
+		return err
 	}
+	s.runtime = runtime
+	s.ctl = runtime.ctl
+	s.sse = runtime.sse
 	if s.sse == nil {
 		return fmt.Errorf("sse manager must be provided")
 	}
@@ -179,30 +179,17 @@ func (s *inputManagementService) getOutput(ctx context.Context, projectID string
 
 // GetDetails returns details about a specific input request
 func (s *inputManagementService) getDetails(ctx context.Context, projectID string, jobId string) result[*openapi.UserInputDetails] {
-	jobRes := s.findJob(ctx, projectID, jobId)
-	if jobRes.hasError() {
-		return result[*openapi.UserInputDetails]{err: jobRes.err, status: jobRes.status}
+	if s.runtime == nil {
+		return result[*openapi.UserInputDetails]{err: "workflow control unavailable"}
 	}
-
-	task, req, _, err := s.getOutput(ctx, projectID, jobId)
+	details, err := s.runtime.GetDetails(ctx, projectID, jobId)
 	if err != nil {
+		if errors.Is(err, ErrInputNotPending) {
+			return result[*openapi.UserInputDetails]{err: "not found", status: http.StatusNotFound}
+		}
 		return result[*openapi.UserInputDetails]{err: err.Error()}
 	}
-
-	form := InputForm{}
-	err = ops.DecodeWithJsonTags(req.OpOutput, &form)
-	if err != nil {
-		return result[*openapi.UserInputDetails]{err: err.Error()}
-	}
-
-	_ = task // retained for future: task.JobKey() can be useful for debugging
-
-	return result[*openapi.UserInputDetails]{value: &openapi.UserInputDetails{
-		JobId:     jobId,
-		Status:    "pending",
-		StartTime: jobRes.value.CreatedAt,
-		Form:      toOpenAPIInputFormConfig(form),
-	}}
+	return result[*openapi.UserInputDetails]{value: details}
 }
 
 func (s *inputManagementService) findJob(ctx context.Context, projectID string, jobId string) result[*workflowctl.JobItem] {
@@ -347,65 +334,12 @@ func (s *inputManagementService) SubmitResponse(w http.ResponseWriter, r *http.R
 // SubmitResponse handles user form submission
 func (s *inputManagementService) submitResponse(ctx context.Context, projectID string, jobId string, output FormResponse) result[bool] {
 	slog.Debug("submitResponse: starting", "project_id", projectID, "job_id", jobId)
-
-	task, req, artifacts, err := s.getOutput(ctx, projectID, jobId)
-	if err != nil {
+	if s.runtime == nil {
+		return result[bool]{err: "workflow control unavailable"}
+	}
+	if err := s.runtime.SubmitResponse(ctx, projectID, jobId, output); err != nil {
 		return result[bool]{err: err.Error()}
 	}
-	// Get user ID preference: body overrides header, fallback to default
-	userID := ""
-	if output.UserId != nil {
-		userID = *output.UserId
-	}
-	if userID == "" {
-		userID = "anonymous"
-		slog.Info("submitResponse: using anonymous user ID", "project_id", projectID, "job_id", jobId)
-	}
-
-	var response any
-	if output.Response != nil {
-		response = *output.Response
-	}
-
-	opOut := Output{
-		Response: response,
-		Fields:   output.Fields,
-		UserID:   userID,
-	}
-
-	sConv := structs.New(opOut)
-	sConv.TagName = "json"
-	opOutMap := sConv.Map()
-
-	out := ops2.ActivityInvocationOutput{
-		GitResult: req.GitResult,
-		OpOutput:  opOutMap,
-	}
-	env, err := coretask.NewOutputEnvelope(coretask.OutputKindActivityInvocationOutput, out)
-	if err != nil {
-		return result[bool]{err: err.Error()}
-	}
-	outData, err := swf.NewTaskData(env, artifacts...)
-	if err != nil {
-		return result[bool]{err: err.Error()}
-	}
-
-	err = task.Finish(ctx, outData)
-	if err != nil {
-		return result[bool]{err: err.Error()}
-	}
-
-	// Notify via SSE if available
-	if s.sse == nil {
-		slog.Warn("submitResponse: SSE subsystem missing", "project_id", projectID, "job_id", jobId)
-		return result[bool]{err: "sse subsystem missing"}
-	}
-	s.sse.Broadcast(ops.SSEEvent{
-		Type: "input_completed",
-		Data: map[string]interface{}{
-			"jobId": jobId,
-		},
-	})
 	slog.Info("submitResponse: successfully completed", "project_id", projectID, "job_id", jobId)
 	return result[bool]{value: true}
 }
@@ -451,7 +385,11 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 	}
 
 	slog.Info("cancel: attempting to cancel job", "project_id", projectID, "job_id", jobId, "reason", reason)
-	err := s.ctl.Cancel(r.Context(), swf.JobKey{TenantId: projectID, JobId: jobId})
+	if s.runtime == nil {
+		http.Error(w, "workflow control unavailable", http.StatusInternalServerError)
+		return
+	}
+	err := s.runtime.Cancel(r.Context(), projectID, jobId, reason)
 	if err != nil {
 		slog.Error("cancel: cancel failed",
 			"project_id", projectID,
@@ -461,18 +399,6 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	slog.Info("cancel: successfully cancelled job", "project_id", projectID, "job_id", jobId)
-
-	// Notify via SSE if available
-	if s.sse != nil {
-		s.sse.Broadcast(ops.SSEEvent{
-			Type: "input_cancelled",
-			Data: map[string]interface{}{
-				"jobId":  jobId,
-				"reason": reason,
-			},
-		})
-	}
-
 	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	ok := true
@@ -651,29 +577,10 @@ func (s *inputManagementService) SSEStream(w http.ResponseWriter, r *http.Reques
 const pendingStatusQuery = "InputStatus = \"pending\""
 
 func (s *inputManagementService) collectPendingInputs(ctx context.Context, projectID string) ([]PendingInput, error) {
-	// TODO: explore supporting pagination.
-	jobs, _, err := s.ctl.ListJobs(ctx, swf.ListJobsRequest{
-		Stores:    []swf.JobStore{swf.JobStoreActive},
-		TenantIds: []string{projectID},
-		Statuses:  []swf.JobStatus{swf.JobStatusReady},
-		JobTasks: []swf.JobTaskFilter{{
-			JobType:  "recipe",
-			TaskType: "input:collect_user_input",
-		}},
-		PageSize: 1000,
-	})
-
-	if err != nil {
-		return nil, err
+	if s.runtime == nil {
+		return nil, fmt.Errorf("workflow control unavailable")
 	}
-	out := make([]PendingInput, len(jobs))
-	for i, job := range jobs {
-		out[i] = PendingInput{
-			Id: job.JobKey.JobId,
-		}
-	}
-
-	return out, nil
+	return s.runtime.ListPendingInputs(ctx, projectID)
 }
 
 func toOpenAPIInputFormConfig(form InputForm) openapi.InputFormConfig {
