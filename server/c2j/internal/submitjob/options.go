@@ -7,12 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-)
 
-const (
-	defaultSWFEnv        = "C2J_SWF_URL"
-	defaultTenantEnv     = "C2J_TENANT_ID"
-	defaultRecipesDirEnv = "C2J_RECIPES_DIR"
+	"github.com/colony-2/colony2/server/c2j/internal/defaults"
 )
 
 type Options struct {
@@ -39,13 +35,19 @@ type Options struct {
 
 func (o *Options) Complete() {
 	if o.SWFURL == "" {
-		o.SWFURL = strings.TrimSpace(os.Getenv(defaultSWFEnv))
+		o.SWFURL = strings.TrimSpace(os.Getenv(defaults.SWFEnv))
+	}
+	if o.SWFURL == "" {
+		o.SWFURL = defaults.SWFURL
 	}
 	if o.TenantID == "" {
-		o.TenantID = strings.TrimSpace(os.Getenv(defaultTenantEnv))
+		o.TenantID = strings.TrimSpace(os.Getenv(defaults.TenantEnv))
+	}
+	if o.TenantID == "" {
+		o.TenantID = defaults.TenantID
 	}
 	if strings.TrimSpace(o.Recipe) != "" && strings.TrimSpace(o.RecipesDir) == "" {
-		o.RecipesDir = strings.TrimSpace(os.Getenv(defaultRecipesDirEnv))
+		o.RecipesDir = strings.TrimSpace(os.Getenv(defaults.RecipesDirEnv))
 		if o.RecipesDir == "" {
 			o.RecipesDir = "."
 		}
@@ -86,10 +88,10 @@ func (o *Options) Complete() {
 
 func (o Options) Validate() error {
 	if strings.TrimSpace(o.TenantID) == "" {
-		return fmt.Errorf("--tenant-id is required (or %s)", defaultTenantEnv)
+		return fmt.Errorf("--tenant-id is required (or %s)", defaults.TenantEnv)
 	}
 	if strings.TrimSpace(o.SWFURL) == "" {
-		return fmt.Errorf("--swf-url is required (or %s)", defaultSWFEnv)
+		return fmt.Errorf("--swf-url is required (or %s)", defaults.SWFEnv)
 	}
 	if strings.TrimSpace(o.Recipe) == "" && strings.TrimSpace(o.RecipeFile) == "" {
 		return fmt.Errorf("either --recipe or --recipe-file is required")

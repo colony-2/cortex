@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/colony-2/colony2/server/c2j/internal/defaults"
 	"github.com/colony-2/colony2/server/c2j/internal/submitjob"
 	"github.com/spf13/cobra"
 )
@@ -23,8 +24,8 @@ func newSubmitCmd() *cobra.Command {
 	}
 
 	flags := cmd.Flags()
-	flags.StringVar(&opts.TenantID, "tenant-id", "", "Tenant/project ID for the job")
-	flags.StringVar(&opts.SWFURL, "swf-url", "", "Base URL for the SWF remote runtime")
+	flags.StringVar(&opts.TenantID, "tenant-id", "", "Tenant/project ID for the job (defaults to "+defaults.TenantID+")")
+	flags.StringVar(&opts.SWFURL, "swf-url", "", "Base URL for the SWF remote runtime (defaults to "+defaults.SWFURL+")")
 	flags.StringVar(&opts.Recipe, "recipe", "", "Recipe name/reference to submit")
 	flags.StringVar(&opts.RecipeFile, "recipe-file", "", "Path to a recipe YAML file to submit")
 	flags.StringVar(&opts.RecipesDir, "recipes-dir", "", "Directory used to resolve --recipe locally (defaults to current directory when --recipe is used)")
