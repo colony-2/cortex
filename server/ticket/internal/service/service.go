@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -534,13 +533,6 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	}
 
 	recipeName := defaultRecipeName(cellRecord, projectRecord)
-	rec, err := s.recipes(string(ticket.ProjectID), recipeName)
-	if err != nil {
-		return "", err
-	}
-	if rec == nil {
-		return "", fmt.Errorf("ticket: recipe %q resolved to nil", recipeName)
-	}
 
 	repo := projectRecord.GitRepoPath
 	if cellRecord.GitRepoName != nil && strings.TrimSpace(*cellRecord.GitRepoName) != "" {
@@ -599,7 +591,7 @@ func (s *service) startTicketRecipe(ctx context.Context, st store.Store, ticket 
 	jobKey, err := starter.StartRecipeJobWithOptions(jobCtx, startJob, s.engine, starter.StartRecipeJobOptions{
 		JobID:         strings.TrimSpace(primaryJobID),
 		Prerequisites: prereqs,
-	}, *rec)
+	})
 	if err != nil {
 		return "", err
 	}

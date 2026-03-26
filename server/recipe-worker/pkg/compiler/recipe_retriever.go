@@ -24,6 +24,14 @@ type recipeRetriever struct {
 	mu sync.RWMutex
 }
 
+func (r *recipeRetriever) HasRecipe(name string) bool {
+	if r == nil {
+		return false
+	}
+	_, ok := r.artifactMap[name]
+	return ok
+}
+
 func (r *recipeRetriever) GetRecipe(name string) (recipe.Recipe, error) {
 	ctx := context.Background() // Or pass a context if appropriate
 

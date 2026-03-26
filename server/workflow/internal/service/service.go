@@ -21,6 +21,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	jobstory "github.com/colony-2/colony2/server/workflow/internal/story"
@@ -48,19 +49,21 @@ type Config struct {
 	Cells              cell.Service
 	Projects           project.Service
 	Recipes            RecipeProvider
+	RootSourceResolver compiler.RecipeSourceResolver
 	CELOptionsProvider template.CELOptionsProvider
 	Logger             *slog.Logger
 }
 
 type Service struct {
-	engine      swf.SWFEngine
-	strata      *client.Client
-	tickets     ticket.Service
-	cells       cell.Service
-	projects    project.Service
-	recipes     RecipeProvider
-	celProvider template.CELOptionsProvider
-	logger      *slog.Logger
+	engine       swf.SWFEngine
+	strata       *client.Client
+	tickets      ticket.Service
+	cells        cell.Service
+	projects     project.Service
+	recipes      RecipeProvider
+	rootResolver compiler.RecipeSourceResolver
+	celProvider  template.CELOptionsProvider
+	logger       *slog.Logger
 }
 
 type RecipeProvider func(projectID string, recipeRef string) (*recipe.Recipe, error)
@@ -74,14 +77,15 @@ func New(cfg Config) (*Service, error) {
 		logger = slog.Default()
 	}
 	return &Service{
-		engine:      cfg.Engine,
-		strata:      cfg.Strata,
-		tickets:     cfg.Tickets,
-		cells:       cfg.Cells,
-		projects:    cfg.Projects,
-		recipes:     cfg.Recipes,
-		celProvider: cfg.CELOptionsProvider,
-		logger:      logger,
+		engine:       cfg.Engine,
+		strata:       cfg.Strata,
+		tickets:      cfg.Tickets,
+		cells:        cfg.Cells,
+		projects:     cfg.Projects,
+		recipes:      cfg.Recipes,
+		rootResolver: cfg.RootSourceResolver,
+		celProvider:  cfg.CELOptionsProvider,
+		logger:       logger,
 	}, nil
 }
 
@@ -300,17 +304,6 @@ func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequ
 		return nil, ErrInvalidCell
 	}
 
-	if s.recipes == nil {
-		return nil, ErrRecipeNotFound
-	}
-	rec, err := s.recipes(projectID, recipeName)
-	if err != nil {
-		return nil, err
-	}
-	if rec == nil {
-		return nil, ErrRecipeNotFound
-	}
-
 	repo := strings.TrimSpace(projectRecord.GitRepoPath)
 	if repo == "" {
 		return nil, ErrInvalidProject
@@ -350,7 +343,7 @@ func (s *Service) StartWorkflow(ctx context.Context, req model.StartWorkflowRequ
 
 	jobKey, err := starter.StartRecipeJobWithOptions(ctx, start, s.engine, starter.StartRecipeJobOptions{
 		Prerequisites: req.Prerequisites,
-	}, *rec)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -615,7 +608,7 @@ func (s *Service) GetJobRunStory(ctx context.Context, req model.GetJobRunStoryRe
 	}
 
 	jobKey := swf.JobKey{TenantId: projectID, JobId: jobID}
-	st, err := jobstory.BuildJobRunStory(ctx, s.engine, jobKey, s.celProvider, s.logger)
+	st, err := jobstory.BuildJobRunStory(ctx, s.engine, jobKey, s.celProvider, s.logger, s.rootResolver)
 	if err != nil {
 		if errors.Is(err, swf.ErrJobNotFound) {
 			return nil, ErrNotFound

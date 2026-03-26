@@ -1,13 +1,16 @@
 package compiler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
@@ -24,15 +27,22 @@ type RecipeJobWorkerOptions struct {
 	// ExecutorFactory overrides Executor when provided, allowing per-run executors.
 	ExecutorFactory func() RecipeExecutor
 
+	// RootSourceResolver resolves non-embedded root recipe selectors at execution time.
+	RootSourceResolver RecipeSourceResolver
+
 	// OnRecipeLoaded is called after the recipe artifact has been loaded and parsed.
 	OnRecipeLoaded func(recipeName string)
+	// OnRecipeSourceResolved is called when a non-embedded root recipe selector is resolved.
+	OnRecipeSourceResolved func(RecipeSourceResolution)
 }
 
 type recipeJobWorker struct {
 	celProvider      template.CELOptionsProvider
 	executor         RecipeExecutor
 	executorFactory  func() RecipeExecutor
+	rootResolver     RecipeSourceResolver
 	onRecipeLoadedFn func(recipeName string)
+	onSourceResolved func(RecipeSourceResolution)
 }
 
 func NewRecipeJobWorker(opts RecipeJobWorkerOptions) swf.JobWorker {
@@ -40,7 +50,9 @@ func NewRecipeJobWorker(opts RecipeJobWorkerOptions) swf.JobWorker {
 		celProvider:      opts.CELOptionsProvider,
 		executor:         opts.Executor,
 		executorFactory:  opts.ExecutorFactory,
+		rootResolver:     opts.RootSourceResolver,
 		onRecipeLoadedFn: opts.OnRecipeLoaded,
+		onSourceResolved: opts.OnRecipeSourceResolved,
 	}
 }
 
@@ -49,8 +61,16 @@ func NewRecipeWorker(dependencies ops.ServiceDependencies2, activityRegistry *wo
 	if len(provider) > 0 {
 		opts.CELOptionsProvider = provider[0]
 	}
+	return NewRecipeWorkerWithOptions(dependencies, activityRegistry, opts)
+}
+
+func NewRecipeWorkerWithOptions(dependencies ops.ServiceDependencies2, activityRegistry *workerops.ActivityRegistry, opts RecipeJobWorkerOptions) (*swf.WorkSet, error) {
 	job := NewRecipeJobWorker(opts)
-	return swf.AsWorkSet(job, activityRegistry.GetTaskWorkers(dependencies)...)
+	taskWorkers := activityRegistry.GetTaskWorkers(dependencies)
+	if resolutionWorker := newRootSourceResolutionTaskWorker(opts.RootSourceResolver); resolutionWorker != nil {
+		taskWorkers = append(taskWorkers, resolutionWorker)
+	}
+	return swf.AsWorkSet(job, taskWorkers...)
 }
 
 func (j recipeJobWorker) Name() string {
@@ -110,7 +130,78 @@ func (j recipeJobWorker) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobDa
 		j.onRecipeLoadedFn(input.RecipeName)
 	}
 
-	r, err := recipes.GetRecipe(input.RecipeName)
+	resolution := RecipeSourceResolution{
+		SourceKind:        RecipeSourceKindArtifact,
+		SubmittedSelector: input.RecipeName,
+		ResolvedSelector:  input.RecipeName,
+		ArtifactName:      input.RecipeName + starter.RecipeArtifactSuffix,
+		WasAlreadyPinned:  true,
+	}
+	resolvedSource := ResolvedRecipeSource{RecipeSourceResolution: resolution}
+
+	if !recipes.HasRecipe(input.RecipeName) {
+		taskInput, err := swf.NewTaskData(rootSourceResolutionTaskInput{
+			ProjectID: strings.TrimSpace(input.TenantId),
+			Selector:  input.RecipeName,
+		})
+		if err != nil {
+			logger.Error("recipe job: failed to encode root recipe source resolution input",
+				"error", err,
+				"error_chain", logutil.ErrorChain(err),
+				"stacktrace", logutil.Stacktrace(5),
+			)
+			return nil, err
+		}
+
+		taskOutput, err := ctx.DoTask(swf.RunPolicy{}, RootSourceResolutionTaskType, taskInput)
+		if err != nil {
+			logger.Error("recipe job: root recipe source resolution task failed",
+				"error", err,
+				"error_chain", logutil.ErrorChain(err),
+				"stacktrace", logutil.Stacktrace(5),
+			)
+			return nil, err
+		}
+
+		parsedSource, err := ParseResolvedRecipeSourceTaskData(taskOutput)
+		if err != nil {
+			logger.Error("recipe job: failed to decode root recipe source resolution output",
+				"error", err,
+				"error_chain", logutil.ErrorChain(err),
+				"stacktrace", logutil.Stacktrace(5),
+			)
+			return nil, err
+		}
+		resolvedSource = *parsedSource
+		resolution = resolvedSource.RecipeSourceResolution
+
+		if j.onSourceResolved != nil {
+			j.onSourceResolved(resolution)
+		}
+		logger = logger.With(
+			"recipe_source_kind", resolution.SourceKind,
+			"recipe_source_selector", resolution.EffectiveSelector(),
+			"recipe_source_commit", resolution.ResolvedCommit,
+		)
+	}
+
+	var r recipe.Recipe
+	if resolution.SourceKind == RecipeSourceKindArtifact {
+		r, err = recipes.GetRecipe(input.RecipeName)
+	} else if strings.TrimSpace(resolvedSource.RecipeYAML) != "" {
+		r, err = resolvedSource.LoadRecipe()
+	} else {
+		if j.rootResolver == nil {
+			err = fmt.Errorf("recipe source resolver not configured to load non-artifact selector %q", resolution.EffectiveSelector())
+			logger.Error("recipe job: failed to load recipe",
+				"error", err,
+				"error_chain", logutil.ErrorChain(err),
+				"stacktrace", logutil.Stacktrace(5),
+			)
+			return nil, err
+		}
+		r, err = j.rootResolver.Load(context.Background(), strings.TrimSpace(input.TenantId), resolution)
+	}
 	if err != nil {
 		logger.Error("recipe job: failed to load recipe",
 			"error", err,

@@ -20,7 +20,7 @@ type replayJobRunner interface {
 
 // BuildJobRunStory replays a job using swf.ReplayJobRun and collects a recipe-centric story
 // by decorating the recipe executor + observing SWF replay events.
-func BuildJobRunStory(ctx context.Context, engine replayJobRunner, jobKey swf.JobKey, celProvider template.CELOptionsProvider, logger *slog.Logger) (*model.JobRunStory, error) {
+func BuildJobRunStory(ctx context.Context, engine replayJobRunner, jobKey swf.JobKey, celProvider template.CELOptionsProvider, logger *slog.Logger, rootResolvers ...compiler.RecipeSourceResolver) (*model.JobRunStory, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("engine is required")
 	}
@@ -31,12 +31,19 @@ func BuildJobRunStory(ctx context.Context, engine replayJobRunner, jobKey swf.Jo
 		logger = slog.Default()
 	}
 
+	var rootResolver compiler.RecipeSourceResolver
+	if len(rootResolvers) > 0 {
+		rootResolver = rootResolvers[0]
+	}
+
 	rec := newReplayStoryRecorder(jobKey, logger)
 	obs := &replayStoryObserver{rec: rec}
 
 	jobWorker := compiler.NewRecipeJobWorker(compiler.RecipeJobWorkerOptions{
-		CELOptionsProvider: celProvider,
-		OnRecipeLoaded:     rec.OnRecipeLoaded,
+		CELOptionsProvider:     celProvider,
+		OnRecipeLoaded:         rec.OnRecipeLoaded,
+		OnRecipeSourceResolved: rec.OnRecipeSourceResolved,
+		RootSourceResolver:     rootResolver,
 		ExecutorFactory: func() compiler.RecipeExecutor {
 			tree := rec.EnsureAttemptTree()
 			return newRecordingExecutor(compiler.DefaultRecipeExecutor{}, tree, rec)

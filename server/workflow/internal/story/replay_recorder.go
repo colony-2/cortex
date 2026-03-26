@@ -9,6 +9,7 @@ import (
 	"time"
 
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -29,6 +30,8 @@ type replayStoryRecorder struct {
 	attemptTrees      map[int]*treeBuilder
 	rootsByJobAttempt map[int]*model.JobRunStoryNode
 	attemptTiming     map[int]*jobAttemptTiming
+	resolvedSources   map[int]*compiler.ResolvedRecipeSource
+	sourceNodes       map[int]*rootSourceResolutionTracker
 
 	currentOpNode  *model.JobRunStoryNode
 	currentOpSteps map[int64]*ordinalStepTracker
@@ -48,6 +51,12 @@ type ordinalStepTracker struct {
 	byAttempt    map[int]*model.JobRunStoryNode
 }
 
+type rootSourceResolutionTracker struct {
+	node         *model.JobRunStoryNode
+	attemptNodes []*model.JobRunStoryNode
+	byAttempt    map[int]*model.JobRunStoryNode
+}
+
 func newReplayStoryRecorder(jobKey swf.JobKey, logger *slog.Logger) *replayStoryRecorder {
 	if logger == nil {
 		logger = slog.Default()
@@ -59,6 +68,8 @@ func newReplayStoryRecorder(jobKey swf.JobKey, logger *slog.Logger) *replayStory
 		attemptTrees:      make(map[int]*treeBuilder),
 		rootsByJobAttempt: make(map[int]*model.JobRunStoryNode),
 		attemptTiming:     make(map[int]*jobAttemptTiming),
+		resolvedSources:   make(map[int]*compiler.ResolvedRecipeSource),
+		sourceNodes:       make(map[int]*rootSourceResolutionTracker),
 	}
 }
 
@@ -135,6 +146,22 @@ func (r *replayStoryRecorder) OnRecipeLoaded(recipeName string) {
 	r.recipeNameFromStart = strings.TrimSpace(recipeName)
 }
 
+func (r *replayStoryRecorder) OnRecipeSourceResolved(resolution compiler.RecipeSourceResolution) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	att := r.currentJobAttempt
+	if att <= 0 {
+		att = 1
+		r.currentJobAttempt = att
+	}
+	if existing := r.resolvedSources[att]; existing != nil {
+		existing.RecipeSourceResolution = resolution
+		return
+	}
+	resolved := compiler.ResolvedRecipeSource{RecipeSourceResolution: resolution}
+	r.resolvedSources[att] = &resolved
+}
+
 func (r *replayStoryRecorder) SetRecipeMeta(id, version string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -182,9 +209,107 @@ func (r *replayStoryRecorder) SetCurrentOpNode(op *model.JobRunStoryNode) {
 	r.currentOpSteps = make(map[int64]*ordinalStepTracker)
 }
 
+func (r *replayStoryRecorder) ensureRootSourceResolutionTrackerLocked(attempt int) *rootSourceResolutionTracker {
+	if attempt <= 0 {
+		attempt = 1
+	}
+	if r.sourceNodes == nil {
+		r.sourceNodes = make(map[int]*rootSourceResolutionTracker)
+	}
+	if tracker, ok := r.sourceNodes[attempt]; ok && tracker != nil {
+		return tracker
+	}
+	tracker := &rootSourceResolutionTracker{
+		attemptNodes: make([]*model.JobRunStoryNode, 0, 2),
+		byAttempt:    make(map[int]*model.JobRunStoryNode),
+	}
+	r.sourceNodes[attempt] = tracker
+	return tracker
+}
+
+func (r *replayStoryRecorder) handleRootSourceResolutionTaskStartLocked(event swf.TaskStartEvent) {
+	attempt := r.currentJobAttempt
+	if attempt <= 0 {
+		attempt = 1
+		r.currentJobAttempt = attempt
+	}
+
+	tree := r.attemptTrees[attempt]
+	if tree == nil {
+		tree = newTreeBuilder()
+		r.attemptTrees[attempt] = tree
+	}
+
+	tracker := r.ensureRootSourceResolutionTrackerLocked(attempt)
+	if tracker.node == nil {
+		node := tree.newNode(model.JobRunStoryNodeKindRecipeSourceResolution, "recipe source resolution")
+		node.Status = model.JobRunStoryNodeStatusRunning
+		ord := event.Ordinal
+		node.RestartFromOrdinal = &ord
+		tracker.node = node
+	}
+
+	attNode := tree.newNode(model.JobRunStoryNodeKindRecipeSourceResolution, "recipe source resolution")
+	attNode.Status = model.JobRunStoryNodeStatusRunning
+	attNode.Attempt = event.AttemptNumber
+	ord := event.Ordinal
+	attNode.TaskOrdinal = &ord
+	if !event.At.IsZero() {
+		t := event.At
+		attNode.StartedAt = &t
+	}
+	applyTaskInputToNode(attNode, event.Input)
+	tracker.attemptNodes = append(tracker.attemptNodes, attNode)
+	tracker.byAttempt[event.AttemptNumber] = attNode
+}
+
+func (r *replayStoryRecorder) handleRootSourceResolutionTaskEndLocked(event swf.TaskEndEvent) {
+	attempt := r.currentJobAttempt
+	if attempt <= 0 {
+		attempt = 1
+		r.currentJobAttempt = attempt
+	}
+
+	tracker := r.sourceNodes[attempt]
+	if tracker == nil || tracker.node == nil || tracker.byAttempt == nil {
+		return
+	}
+
+	attNode := tracker.byAttempt[event.AttemptNumber]
+	if attNode == nil {
+		return
+	}
+	applyTaskOutputToNode(attNode, r.jobKey.JobId, event.TaskType, event.Output, event.Err)
+	if !event.At.IsZero() && attNode.FinishedAt == nil && isTerminal(attNode.Status) {
+		t := event.At
+		attNode.FinishedAt = &t
+	}
+
+	copyAttemptIntoStep(tracker.node, attNode)
+	prior := make([]*model.JobRunStoryNode, 0, len(tracker.attemptNodes))
+	for _, node := range tracker.attemptNodes {
+		if node == nil || node == attNode {
+			continue
+		}
+		prior = append(prior, node)
+	}
+	tracker.node.PriorAttempts = prior
+
+	if event.Err == nil {
+		if source := parseResolvedRecipeSource(event.Output); source != nil {
+			r.resolvedSources[attempt] = source
+		}
+	}
+}
+
 func (r *replayStoryRecorder) OnTaskStart(event swf.TaskStartEvent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if event.TaskType == compiler.RootSourceResolutionTaskType {
+		r.handleRootSourceResolutionTaskStartLocked(event)
+		return
+	}
 
 	op := r.currentOpNode
 	tree := r.attemptTrees[r.currentJobAttempt]
@@ -239,6 +364,11 @@ func (r *replayStoryRecorder) OnTaskEnd(event swf.TaskEndEvent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if event.TaskType == compiler.RootSourceResolutionTaskType {
+		r.handleRootSourceResolutionTaskEndLocked(event)
+		return
+	}
+
 	if r.currentOpSteps == nil {
 		return
 	}
@@ -292,17 +422,19 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 		}
 	}
 
+	rootsByAttempt := r.buildRootsWithSourceResolutionLocked()
+
 	latestAttempt := 0
-	for att := range r.rootsByJobAttempt {
+	for att := range rootsByAttempt {
 		if att > latestAttempt {
 			latestAttempt = att
 		}
 	}
-	root := r.rootsByJobAttempt[latestAttempt]
-	if root != nil && len(r.rootsByJobAttempt) > 1 {
+	root := rootsByAttempt[latestAttempt]
+	if root != nil && len(rootsByAttempt) > 1 {
 		// Attach past attempts in order.
-		keys := make([]int, 0, len(r.rootsByJobAttempt))
-		for k := range r.rootsByJobAttempt {
+		keys := make([]int, 0, len(rootsByAttempt))
+		for k := range rootsByAttempt {
 			keys = append(keys, k)
 		}
 		sort.Ints(keys)
@@ -311,8 +443,8 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 			if k == latestAttempt {
 				continue
 			}
-			if r.rootsByJobAttempt[k] != nil {
-				past = append(past, r.rootsByJobAttempt[k])
+			if rootsByAttempt[k] != nil {
+				past = append(past, rootsByAttempt[k])
 			}
 		}
 		root.PastAttempts = past
@@ -329,6 +461,28 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 		root.Status = model.JobRunStoryNodeStatusRunning
 	}
 
+	sourceKind := "jobStartArtifact"
+	sourceArtifact := recipeSourceArtifactName(r.recipeNameFromStart)
+	if r.sourceNodes[latestAttempt] != nil || r.resolvedSources[latestAttempt] != nil {
+		sourceKind = "jobStartRef"
+		sourceArtifact = ""
+	}
+
+	source := model.JobRunStoryRecipeSource{
+		Kind:         sourceKind,
+		ArtifactName: sourceArtifact,
+	}
+	if resolved := r.resolvedSources[latestAttempt]; resolved != nil {
+		source.SubmittedSelector = strings.TrimSpace(resolved.SubmittedSelector)
+		source.ResolvedSelector = strings.TrimSpace(resolved.ResolvedSelector)
+		source.ResolvedCommit = strings.TrimSpace(resolved.ResolvedCommit)
+		source.RecipeYAML = resolved.RecipeYAML
+	}
+	if sourceNode := r.resolutionNodeForAttemptLocked(latestAttempt); sourceNode != nil && sourceNode.TaskOrdinal != nil {
+		ord := *sourceNode.TaskOrdinal
+		source.ResolutionTaskOrdinal = &ord
+	}
+
 	story := &model.JobRunStory{
 		JobID:              r.jobKey.JobId,
 		InvocationSequence: 0,
@@ -336,10 +490,7 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 			ID:      recipeID,
 			Name:    recipeName,
 			Version: strings.TrimSpace(r.recipeVersion),
-			Source: model.JobRunStoryRecipeSource{
-				Kind:         "jobStartArtifact",
-				ArtifactName: recipeSourceArtifactName(r.recipeNameFromStart),
-			},
+			Source:  source,
 		},
 		Status:     status,
 		StartedAt:  earliestStart,
@@ -358,6 +509,92 @@ func (r *replayStoryRecorder) BuildStory(replayErr error) *model.JobRunStory {
 	inferFinishedTimes(story.Root, story.FinishedAt)
 
 	return story
+}
+
+func (r *replayStoryRecorder) buildRootsWithSourceResolutionLocked() map[int]*model.JobRunStoryNode {
+	roots := make(map[int]*model.JobRunStoryNode, len(r.rootsByJobAttempt))
+	for att, root := range r.rootsByJobAttempt {
+		roots[att] = root
+	}
+
+	for att := range r.sourceNodes {
+		if _, ok := roots[att]; !ok {
+			roots[att] = nil
+		}
+	}
+
+	for att, root := range roots {
+		sourceNode := r.resolutionNodeForAttemptLocked(att)
+		if sourceNode == nil {
+			continue
+		}
+		if root == nil {
+			root = r.syntheticRootForAttemptLocked(att, sourceNode)
+		} else {
+			root.Children = append([]*model.JobRunStoryNode{sourceNode}, root.Children...)
+		}
+		roots[att] = root
+	}
+
+	return roots
+}
+
+func (r *replayStoryRecorder) resolutionNodeForAttemptLocked(attempt int) *model.JobRunStoryNode {
+	tracker := r.sourceNodes[attempt]
+	if tracker == nil || tracker.node == nil {
+		return nil
+	}
+	return tracker.node
+}
+
+func (r *replayStoryRecorder) syntheticRootForAttemptLocked(attempt int, sourceNode *model.JobRunStoryNode) *model.JobRunStoryNode {
+	tree := r.attemptTrees[attempt]
+	if tree == nil {
+		tree = newTreeBuilder()
+		r.attemptTrees[attempt] = tree
+	}
+
+	recipeID := strings.TrimSpace(r.recipeID)
+	recipeName := toRecipeNameFromIDFallback(recipeID, r.recipeNameFromStart)
+	if recipeName == "" {
+		recipeName = "recipe"
+	}
+
+	root := tree.newNode(model.JobRunStoryNodeKindRecipe, "recipe "+recipeName)
+	root.RecipeID = recipeID
+	root.Status = sourceNode.Status
+	root.JobAttempt = attempt
+	root.Children = append(root.Children, sourceNode)
+	if root.StartedAt == nil && sourceNode.StartedAt != nil {
+		t := *sourceNode.StartedAt
+		root.StartedAt = &t
+	}
+	if root.FinishedAt == nil && sourceNode.FinishedAt != nil {
+		t := *sourceNode.FinishedAt
+		root.FinishedAt = &t
+	}
+	if tm := r.attemptTiming[attempt]; tm != nil {
+		if root.StartedAt == nil && tm.startedAt != nil {
+			t := *tm.startedAt
+			root.StartedAt = &t
+		}
+		if root.FinishedAt == nil && tm.finishedAt != nil {
+			t := *tm.finishedAt
+			root.FinishedAt = &t
+		}
+	}
+	return root
+}
+
+func parseResolvedRecipeSource(td swf.TaskData) *compiler.ResolvedRecipeSource {
+	if td == nil {
+		return nil
+	}
+	source, err := compiler.ParseResolvedRecipeSourceTaskData(td)
+	if err != nil {
+		return nil
+	}
+	return source
 }
 
 func copyAttemptIntoStep(dst, src *model.JobRunStoryNode) {
@@ -470,6 +707,11 @@ func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType stri
 					}
 				default:
 					n.Output = map[string]any{"kind": string(outEnv.Kind)}
+				}
+			} else {
+				var anyRaw any
+				if json.Unmarshal(raw, &anyRaw) == nil {
+					n.Output = anyRaw
 				}
 			}
 		}

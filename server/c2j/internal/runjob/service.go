@@ -55,6 +55,7 @@ func Run(ctx context.Context, opts Options) error {
 		livePrinter := newProgressPrinter(opts.Stdout, "live")
 		liveWorker := compiler.NewRecipeJobWorker(compiler.RecipeJobWorkerOptions{
 			CELOptionsProvider: deps.celProvider,
+			RootSourceResolver: deps.rootResolver,
 			ExecutorFactory: func() compiler.RecipeExecutor {
 				return newPrintingExecutor(livePrinter)
 			},
@@ -104,6 +105,7 @@ type runnerDeps struct {
 	engine       swf.SWFEngine
 	taskWorkers  []swf.TaskWorker
 	celProvider  template.CELOptionsProvider
+	rootResolver compiler.RecipeSourceResolver
 	inputRuntime *input.Runtime
 	stopRegistry func()
 }
@@ -121,14 +123,14 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 
 	opregistry.Register(opregistry.ProfileC2J)
 
-	recipeProvider, stopRegistry, err := jobutil.BuildRecipeProvider(opts.RecipesDir)
+	recipeSourceResolver, stopRegistry, err := jobutil.BuildRecipeSourceResolver(opts.RecipesDir)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	ctl := &workerworkflow.SWFWorkflowControl{
-		Engine:   engine,
-		Registry: recipeProvider,
+		Engine:                        engine,
+		PreferRuntimeRecipeResolution: true,
 	}
 	serviceDeps := coreops.NewServiceDepsBuilder().WithWorkflowControl(ctl).Build()
 
@@ -142,7 +144,10 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 	activityRegistry.SetDependencies(serviceDeps)
 
 	celProvider := colonycel.NewBuilder(colonycel.Options{})
-	workset, err := compiler.NewRecipeWorker(serviceDeps, activityRegistry, celProvider)
+	workset, err := compiler.NewRecipeWorkerWithOptions(serviceDeps, activityRegistry, compiler.RecipeJobWorkerOptions{
+		CELOptionsProvider: celProvider,
+		RootSourceResolver: recipeSourceResolver,
+	})
 	if err != nil {
 		if stopRegistry != nil {
 			stopRegistry()
@@ -167,8 +172,9 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 	deps := &runnerDeps{
 		runtime:      runtime,
 		engine:       engine,
-		taskWorkers:  activityRegistry.GetTaskWorkers(serviceDeps),
+		taskWorkers:  taskWorkersFromWorkSet(workset),
 		celProvider:  celProvider,
+		rootResolver: recipeSourceResolver,
 		inputRuntime: inputRuntime,
 		stopRegistry: stopRegistry,
 	}
@@ -177,6 +183,17 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 			deps.stopRegistry()
 		}
 	}, nil
+}
+
+func taskWorkersFromWorkSet(workset *swf.WorkSet) []swf.TaskWorker {
+	if workset == nil || len(workset.TaskWorkers) == 0 {
+		return nil
+	}
+	taskWorkers := make([]swf.TaskWorker, 0, len(workset.TaskWorkers))
+	for _, taskWorker := range workset.TaskWorkers {
+		taskWorkers = append(taskWorkers, taskWorker)
+	}
+	return taskWorkers
 }
 
 func replayCachedHistory(ctx context.Context, deps *runnerDeps, jobKey swf.JobKey, stdout io.Writer, stderr io.Writer) error {
@@ -195,6 +212,7 @@ func replayCachedHistory(ctx context.Context, deps *runnerDeps, jobKey swf.JobKe
 	cachedPrinter := newProgressPrinter(stdout, "cached")
 	replayWorker := compiler.NewRecipeJobWorker(compiler.RecipeJobWorkerOptions{
 		CELOptionsProvider: deps.celProvider,
+		RootSourceResolver: deps.rootResolver,
 		ExecutorFactory: func() compiler.RecipeExecutor {
 			return newPrintingExecutor(cachedPrinter)
 		},

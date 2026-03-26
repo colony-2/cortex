@@ -207,6 +207,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Create RecipeProjectProvider with fallback to embedded recipes.
 	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	recipeSourceResolver := serverdeps.NewRecipeSourceResolverWithFallback(recipeSvc, embeddedProvider)
 
 	// Create initial dependencies for engine setup
 	slog.Info("creating initial dependencies for engine")
@@ -225,7 +226,8 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		RecipeRegistry: workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
 			return recipeProviderWithFallback(projectID, recipeRef)
 		}),
-		InitializeDB: initializeDB,
+		RootSourceResolver: recipeSourceResolver,
+		InitializeDB:       initializeDB,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to setup workflow engine: %w", err)
@@ -280,8 +282,9 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 	})
 
 	wfc := workflow.SWFWorkflowControl{
-		Engine:   engineSetup.Engine(),
-		Registry: workflowRecipeProvider,
+		Engine:                        engineSetup.Engine(),
+		Registry:                      workflowRecipeProvider,
+		PreferRuntimeRecipeResolution: true,
 	}
 
 	slog.Info("creating strata client")
@@ -305,6 +308,7 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 		Recipes: workflowsvc.RecipeProvider(func(projectID string, recipeRef string) (*rec.Recipe, error) {
 			return recipeProviderWithFallback(projectID, recipeRef)
 		}),
+		RootSourceResolver: recipeSourceResolver,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create workflow service: %w", err)

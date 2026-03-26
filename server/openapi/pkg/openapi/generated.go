@@ -591,8 +591,18 @@ type JobRunStoryRecipe struct {
 type JobRunStoryRecipeSource struct {
 	ArtifactName string `json:"artifact_name"`
 
-	// Kind Currently always jobStartArtifact
+	// Kind jobStartArtifact|jobStartRef
 	Kind string `json:"kind"`
+
+	RecipeYaml *string `json:"recipe_yaml,omitempty"`
+
+	ResolvedCommit *string `json:"resolved_commit,omitempty"`
+
+	ResolvedSelector *string `json:"resolved_selector,omitempty"`
+
+	ResolutionTaskOrdinal *int64 `json:"resolution_task_ordinal,omitempty"`
+
+	SubmittedSelector *string `json:"submitted_selector,omitempty"`
 }
 
 // JobRunStoryTransitionDecision defines model for JobRunStoryTransitionDecision.

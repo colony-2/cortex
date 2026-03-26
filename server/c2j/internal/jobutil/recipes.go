@@ -8,6 +8,7 @@ import (
 
 	"github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
 )
@@ -58,4 +59,18 @@ func BuildRecipeProvider(recipesDir string) (workerworkflow.RecipeProjectProvide
 		return nil, fmt.Errorf("recipe %q not found locally or in embedded recipes; set --recipes-dir to a repository containing the referenced recipes", recipeRef)
 	}
 	return provider, stop, nil
+}
+
+func BuildRecipeSourceResolver(recipesDir string) (compiler.RecipeSourceResolver, func(), error) {
+	provider, stop, err := BuildRecipeProvider(recipesDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resolver := compiler.NewRecipeSourceResolver(compiler.RecipeSourceResolverOptions{
+		RecipeRefResolver: compiler.NewProviderBackedRecipeRefResolver(func(projectID string, recipeRef string) (*recipe.Recipe, error) {
+			return provider(projectID, recipeRef)
+		}),
+	})
+	return resolver, stop, nil
 }

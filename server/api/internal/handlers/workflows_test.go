@@ -351,8 +351,11 @@ func TestHandleGetJobRunStory_OK(t *testing.T) {
 				Name:    "recipes/demo",
 				Version: "v1",
 				Source: workflow.JobRunStoryRecipeSource{
-					Kind:         "jobStartArtifact",
-					ArtifactName: "chapter0.recipe.yaml",
+					Kind:              "jobStartRef",
+					SubmittedSelector: "recipes/demo",
+					ResolvedSelector:  "recipes/demo@abc123",
+					ResolvedCommit:    "abc123",
+					RecipeYAML:        "id: recipes/demo\nversion: v1\n",
 				},
 			},
 			Status:     workflow.WorkflowStatusCompleted,
@@ -392,6 +395,9 @@ func TestHandleGetJobRunStory_OK(t *testing.T) {
 	}
 	if body.Root.Kind != openapi.JobRunStoryNodeKind("recipe") {
 		t.Fatalf("unexpected root kind: %#v", body.Root.Kind)
+	}
+	if body.Recipe.Source.RecipeYaml == nil || *body.Recipe.Source.RecipeYaml != "id: recipes/demo\nversion: v1\n" {
+		t.Fatalf("expected recipe YAML in response, got %#v", body.Recipe.Source.RecipeYaml)
 	}
 }
 

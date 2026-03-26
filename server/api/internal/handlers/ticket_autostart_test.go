@@ -71,7 +71,12 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	}
 	deps := ops.NewServiceDepsBuilder().WithDatabase(db).Build()
 	registry.SetDependencies(deps)
-	workset, err := compiler.NewRecipeWorker(deps, registry, nil)
+	provider, err := serverdeps.NewEmbeddedProvider()
+	require.NoError(t, err)
+	rootResolver := serverdeps.NewRecipeSourceResolverWithFallback(nil, provider)
+	workset, err := compiler.NewRecipeWorkerWithOptions(deps, registry, compiler.RecipeJobWorkerOptions{
+		RootSourceResolver: rootResolver,
+	})
 	require.NoError(t, err)
 	if _, ok := workset.TaskWorkers["ticket.manage:ticket.manage"]; !ok {
 		t.Fatalf("workset missing ticket.manage:ticket.manage task, keys=%v", worksetTaskKeys(workset.TaskWorkers))
@@ -105,10 +110,6 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 
 	// Start worker loops
 	go engine.Run(ctx)
-
-	// Embedded recipe provider
-	provider, err := serverdeps.NewEmbeddedProvider()
-	require.NoError(t, err)
 
 	// Create a RecipeProjectProvider that uses the embedded provider
 	recipeProvider := func(projectId string, recipeRef string) (*recipe.Recipe, error) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/c2j/internal/runjob"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 	toyruntime "github.com/colony-2/swf-go/pkg/swf/runtime/toy"
@@ -126,6 +127,104 @@ outputs:
 	}
 	if strings.Contains(runStderr.String(), "warning: replay unavailable") {
 		t.Fatalf("unexpected replay warning:\n%s", runStderr.String())
+	}
+}
+
+func TestRun_SubmitsRecipeReferenceThatResolvesAtExecution(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	tenantID := "tenant-submit-ref-test"
+	recipeDir := t.TempDir()
+	recipeYAML := strings.TrimSpace(`
+id: nucleus_submit_ref_recipe
+desc: simple recipe used to verify c2j reference submission
+version: "1.0"
+sequence:
+  - id: echo
+    op: command_execution
+    inputs:
+      run: "echo hello-from-submit-ref"
+      working_directory: "."
+outputs:
+  result: "{{ sequence.echo.outputs.stdout }}"
+`) + "\n"
+
+	recipePath := filepath.Join(recipeDir, "nucleus_submit_ref_recipe.yaml")
+	if err := os.WriteFile(recipePath, []byte(recipeYAML), 0o644); err != nil {
+		t.Fatalf("write recipe: %v", err)
+	}
+
+	baseRepo, baseHash := createGitRepo(t)
+
+	underlying := toyruntime.New()
+	server := httptest.NewServer(remoteruntime.NewServer(underlying))
+	defer server.Close()
+
+	var submitStdout bytes.Buffer
+	if err := Run(ctx, Options{
+		TenantID:   tenantID,
+		SWFURL:     server.URL,
+		Recipe:     "nucleus_submit_ref_recipe",
+		RecipesDir: recipeDir,
+		RepoPath:   baseRepo,
+		GitRef:     baseHash,
+		CellPath:   ".",
+		CellName:   ".",
+		JSONOutput: true,
+		Stdout:     &submitStdout,
+	}); err != nil {
+		t.Fatalf("submit job: %v", err)
+	}
+
+	var submitted struct {
+		TenantID string `json:"tenant_id"`
+		JobID    string `json:"job_id"`
+		Recipe   string `json:"recipe"`
+	}
+	if err := json.Unmarshal(submitStdout.Bytes(), &submitted); err != nil {
+		t.Fatalf("decode submit output: %v", err)
+	}
+
+	var runStdout bytes.Buffer
+	var runStderr bytes.Buffer
+	if err := runjob.Run(ctx, runjob.Options{
+		JobID:        submitted.JobID,
+		TenantID:     tenantID,
+		SWFURL:       server.URL,
+		RecipesDir:   recipeDir,
+		WaitTimeout:  5 * time.Second,
+		PollInterval: 10 * time.Millisecond,
+		InputMode:    "fail",
+		Stdout:       &runStdout,
+		Stderr:       &runStderr,
+	}); err != nil {
+		t.Fatalf("run submitted job: %v\nstderr:\n%s", err, runStderr.String())
+	}
+
+	runtime, err := remoteruntime.New(server.URL, server.Client())
+	if err != nil {
+		t.Fatalf("create remote runtime: %v", err)
+	}
+	engine, err := swf.NewEngineBuilder().WithRuntime(runtime).BuildEngine()
+	if err != nil {
+		t.Fatalf("build engine: %v", err)
+	}
+
+	run, err := engine.GetJobRun(ctx, swf.GetJobRunRequest{
+		JobKey:         swf.JobKey{TenantId: tenantID, JobId: submitted.JobID},
+		IncludeOutputs: true,
+	})
+	if err != nil {
+		t.Fatalf("get job run: %v", err)
+	}
+	if len(run.Attempts) == 0 || len(run.Attempts[0].Tasks) == 0 {
+		t.Fatalf("expected recorded tasks in job run: %#v", run.Attempts)
+	}
+	if run.Attempts[0].Tasks[0].TaskType != compiler.RootSourceResolutionTaskType {
+		t.Fatalf("expected first task %q, got %q", compiler.RootSourceResolutionTaskType, run.Attempts[0].Tasks[0].TaskType)
 	}
 }
 

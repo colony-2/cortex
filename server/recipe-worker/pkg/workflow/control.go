@@ -16,8 +16,9 @@ import (
 type RecipeProjectProvider func(projectId string, recipeRef string) (*recipe.Recipe, error)
 
 type SWFWorkflowControl struct {
-	Engine   swf.SWFEngine
-	Registry RecipeProjectProvider
+	Engine                        swf.SWFEngine
+	Registry                      RecipeProjectProvider
+	PreferRuntimeRecipeResolution bool
 }
 
 func (s *SWFWorkflowControl) GetWaitingTask(ctx context.Context, jobKey swf.JobKey) (workflowctl.TaskHandle, error) {
@@ -92,6 +93,10 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey
 }
 
 func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobKey, error) {
+	if s.PreferRuntimeRecipeResolution || s.Registry == nil {
+		return starter.StartRecipeJob(ctx, req, s.Engine)
+	}
+
 	r, err := s.Registry(req.TenantId, req.RecipeName)
 	if err != nil {
 		return swf.JobKey{}, err

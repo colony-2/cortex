@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
@@ -223,6 +225,116 @@ outputs:
 	}
 	if outMap["missing"] != "" {
 		t.Fatalf("expected missing=%q, got %#v", "", outMap["missing"])
+	}
+}
+
+func TestJobRunStoryReplay_RecordsRootSourceResolutionNode(t *testing.T) {
+	type in struct{}
+	type out struct {
+		Value string `json:"value"`
+	}
+	const opType = "test_story_root_source"
+	coreops.Register(coreops.NewActivityMappedOpV2[in, out](coreops.OpMetadata{Type: opType}, func(_ coreops.OpDependencies, _ context.Context, _ in) (out, error) {
+		return out{Value: "ok"}, nil
+	}))
+
+	resolvedRecipeYAML := strings.TrimSpace(`
+id: story_ref_recipe
+version: "1.0.0"
+sequence:
+  - id: run
+    op: test_story_root_source
+outputs:
+  result: "{{ sequence.run.outputs.value }}"
+`) + "\n"
+
+	start := workflowctl.StartJob{
+		RecipeName: "story-ref",
+		GitRef:     "main",
+		Inputs:     map[string]any{},
+		JobContext: contextual.JobContext{
+			GitBase: contextual.GitBaseContext{BaseRepo: "/src", BaseRef: "main"},
+			Workflow: contextual.WorkflowContext{
+				CellPath: "server",
+				CellName: "test",
+			},
+		},
+	}
+	jobInput, err := swf.NewTaskData(start)
+	if err != nil {
+		t.Fatalf("NewTaskData(job start): %v", err)
+	}
+
+	resolutionOut, err := swf.NewTaskData(compiler.ResolvedRecipeSource{
+		RecipeSourceResolution: compiler.RecipeSourceResolution{
+			SourceKind:        compiler.RecipeSourceKindServerRef,
+			SubmittedSelector: "story-ref",
+			ResolvedSelector:  "story-ref@v1",
+			ResolvedCommit:    "v1",
+			WasAlreadyPinned:  false,
+		},
+		RecipeYAML: resolvedRecipeYAML,
+	})
+	if err != nil {
+		t.Fatalf("NewTaskData(resolution): %v", err)
+	}
+
+	env, err := coretasks.NewOutputEnvelope(coretasks.OutputKindActivityInvocationOutput, map[string]any{
+		"git":          map[string]any{},
+		"nextTaskType": "",
+		"output":       map[string]any{"value": "ok"},
+	})
+	if err != nil {
+		t.Fatalf("NewOutputEnvelope: %v", err)
+	}
+	outBytes, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal output: %v", err)
+	}
+	taskOut := &swf.SimpleTaskData{Data: json.RawMessage(outBytes)}
+
+	engine := &fakeReplayEngine{
+		jobInput: swf.JobData(jobInput),
+		taskScripts: []fakeTaskScript{
+			{Attempts: []fakeTaskAttempt{{Attempt: 1, Output: resolutionOut, Err: nil}}},
+			{Attempts: []fakeTaskAttempt{{Attempt: 1, Output: taskOut, Err: nil}}},
+		},
+	}
+
+	st, err := BuildJobRunStory(context.Background(), engine, swf.JobKey{TenantId: "tenant", JobId: "job"}, nil, nil)
+	if err != nil {
+		t.Fatalf("BuildJobRunStory: %v", err)
+	}
+	if st.Recipe.Source.Kind != "jobStartRef" {
+		t.Fatalf("expected jobStartRef source kind, got %q", st.Recipe.Source.Kind)
+	}
+	if st.Recipe.Source.SubmittedSelector != "story-ref" {
+		t.Fatalf("expected submitted selector story-ref, got %q", st.Recipe.Source.SubmittedSelector)
+	}
+	if st.Recipe.Source.ResolvedSelector != "story-ref@v1" {
+		t.Fatalf("expected resolved selector story-ref@v1, got %q", st.Recipe.Source.ResolvedSelector)
+	}
+	if st.Recipe.Source.RecipeYAML != resolvedRecipeYAML {
+		t.Fatalf("expected recipe YAML to be preserved, got %q", st.Recipe.Source.RecipeYAML)
+	}
+	if st.Recipe.Source.ResolutionTaskOrdinal == nil || *st.Recipe.Source.ResolutionTaskOrdinal != 1 {
+		t.Fatalf("expected resolution task ordinal 1, got %#v", st.Recipe.Source.ResolutionTaskOrdinal)
+	}
+	if st.Root == nil || len(st.Root.Children) == 0 {
+		t.Fatalf("expected root story with children, got %#v", st.Root)
+	}
+	if st.Root.Children[0].Kind != model.JobRunStoryNodeKindRecipeSourceResolution {
+		t.Fatalf("expected first child to be recipe source resolution, got %q", st.Root.Children[0].Kind)
+	}
+	outMap, ok := st.Root.Children[0].Output.(map[string]any)
+	if !ok {
+		t.Fatalf("expected resolution output map, got %T", st.Root.Children[0].Output)
+	}
+	if got := outMap["resolved_selector"]; got != "story-ref@v1" {
+		t.Fatalf("expected resolved selector story-ref@v1, got %#v", got)
+	}
+	if got := outMap["recipe_yaml"]; got != resolvedRecipeYAML {
+		t.Fatalf("expected recipe_yaml to be preserved, got %#v", got)
 	}
 }
 

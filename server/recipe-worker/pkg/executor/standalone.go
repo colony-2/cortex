@@ -59,8 +59,15 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 	gitRef string,
 	registry workflow.RecipeProjectProvider,
 ) (map[string]interface{}, error) {
+	rootResolver := compiler.NewRecipeSourceResolver(compiler.RecipeSourceResolverOptions{
+		RecipeRefResolver: compiler.NewProviderBackedRecipeRefResolver(func(projectID string, recipeRef string) (*recipe.Recipe, error) {
+			return registry(projectID, recipeRef)
+		}),
+	})
+
 	control := &workflow.SWFWorkflowControl{
-		Registry: registry,
+		Registry:                      registry,
+		PreferRuntimeRecipeResolution: true,
 	}
 
 	deps := ops2.NewServiceDepsBuilder().
@@ -69,7 +76,9 @@ func (e *StandaloneExecutor) ExecuteWithRegistry(
 		WithSSEManager(e.deps.SSEManager()).
 		Build()
 
-	workset, err := compiler.NewRecipeWorker(deps, e.registry, nil)
+	workset, err := compiler.NewRecipeWorkerWithOptions(deps, e.registry, compiler.RecipeJobWorkerOptions{
+		RootSourceResolver: rootResolver,
+	})
 	if err != nil {
 		return nil, err
 	}

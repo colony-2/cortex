@@ -534,10 +534,23 @@ func toOpenAPIJobRunStory(st workflow.JobRunStory) openapi.JobRunStory {
 		FinishedAt:         st.FinishedAt,
 		InvocationSequence: st.InvocationSequence,
 		JobId:              st.JobID,
-		Recipe:             openapi.JobRunStoryRecipe{Id: st.Recipe.ID, Name: st.Recipe.Name, Version: st.Recipe.Version, Source: openapi.JobRunStoryRecipeSource{Kind: st.Recipe.Source.Kind, ArtifactName: st.Recipe.Source.ArtifactName}},
-		Root:               root,
-		StartedAt:          st.StartedAt,
-		Status:             openapi.WorkflowStatus(st.Status),
+		Recipe: openapi.JobRunStoryRecipe{
+			Id:      st.Recipe.ID,
+			Name:    st.Recipe.Name,
+			Version: st.Recipe.Version,
+			Source: openapi.JobRunStoryRecipeSource{
+				Kind:                  st.Recipe.Source.Kind,
+				ArtifactName:          st.Recipe.Source.ArtifactName,
+				SubmittedSelector:     stringPtr(st.Recipe.Source.SubmittedSelector),
+				ResolvedSelector:      stringPtr(st.Recipe.Source.ResolvedSelector),
+				ResolvedCommit:        stringPtr(st.Recipe.Source.ResolvedCommit),
+				RecipeYaml:            stringPtr(st.Recipe.Source.RecipeYAML),
+				ResolutionTaskOrdinal: st.Recipe.Source.ResolutionTaskOrdinal,
+			},
+		},
+		Root:      root,
+		StartedAt: st.StartedAt,
+		Status:    openapi.WorkflowStatus(st.Status),
 	}
 }
 

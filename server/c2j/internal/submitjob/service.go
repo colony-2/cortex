@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
-	"github.com/colony-2/colony2/server/c2j/internal/jobutil"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 	"gopkg.in/yaml.v3"
@@ -37,7 +37,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	opregistry.Register(opregistry.ProfileC2J)
 
-	rec, cleanup, err := loadRecipe(opts)
+	recipeName, embeddedRecipe, cleanup, err := loadRecipeStart(opts)
 	if err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func Run(ctx context.Context, opts Options) error {
 	submittedAt := time.Now().UTC()
 	start := workflowctl.StartJob{
 		TenantId:   opts.TenantID,
-		RecipeName: rec.GetMetdata().ID,
+		RecipeName: recipeName,
 		Inputs:     inputs,
 		JobContext: contextual.JobContext{
 			Actor: contextual.ActorContext{
@@ -83,7 +83,12 @@ func Run(ctx context.Context, opts Options) error {
 		InputHash:   hashInputs(inputs),
 	}
 
-	jobKey, err := starter.StartRecipeJob(ctx, start, engine, *rec)
+	var jobKey swf.JobKey
+	if embeddedRecipe != nil {
+		jobKey, err = starter.StartRecipeJob(ctx, start, engine, *embeddedRecipe)
+	} else {
+		jobKey, err = starter.StartRecipeJob(ctx, start, engine)
+	}
 	if err != nil {
 		return fmt.Errorf("submit job: %w", err)
 	}
@@ -91,7 +96,7 @@ func Run(ctx context.Context, opts Options) error {
 	result := submitResult{
 		TenantID: opts.TenantID,
 		JobID:    jobKey.JobId,
-		Recipe:   rec.GetMetdata().ID,
+		Recipe:   recipeName,
 	}
 	if opts.JSONOutput {
 		return json.NewEncoder(opts.Stdout).Encode(result)
@@ -100,38 +105,31 @@ func Run(ctx context.Context, opts Options) error {
 	return err
 }
 
-func loadRecipe(opts Options) (*recipe.Recipe, func(), error) {
+func loadRecipeStart(opts Options) (string, *recipe.Recipe, func(), error) {
 	if recipeFile := strings.TrimSpace(opts.RecipeFile); recipeFile != "" {
 		absPath, err := filepath.Abs(recipeFile)
 		if err != nil {
-			return nil, nil, fmt.Errorf("resolve recipe file: %w", err)
+			return "", nil, nil, fmt.Errorf("resolve recipe file: %w", err)
 		}
 		f, err := os.Open(absPath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open recipe file: %w", err)
+			return "", nil, nil, fmt.Errorf("open recipe file: %w", err)
 		}
 		defer func() {
 			_ = f.Close()
 		}()
 		rec, err := recipe.LoadRecipeFromReader(f)
 		if err != nil {
-			return nil, nil, fmt.Errorf("load recipe file: %w", err)
+			return "", nil, nil, fmt.Errorf("load recipe file: %w", err)
 		}
-		return rec, func() {}, nil
+		return rec.GetMetdata().ID, rec, func() {}, nil
 	}
 
-	provider, stop, err := jobutil.BuildRecipeProvider(opts.RecipesDir)
-	if err != nil {
-		return nil, nil, err
+	selector := strings.TrimSpace(opts.Recipe)
+	if err := compiler.ValidateRecipeSelector(selector); err != nil {
+		return "", nil, nil, err
 	}
-	rec, err := provider(opts.TenantID, opts.Recipe)
-	if err != nil {
-		if stop != nil {
-			stop()
-		}
-		return nil, nil, err
-	}
-	return rec, stop, nil
+	return selector, nil, func() {}, nil
 }
 
 func loadInputs(opts Options) (map[string]interface{}, error) {

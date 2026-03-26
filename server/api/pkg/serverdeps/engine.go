@@ -44,6 +44,7 @@ type EngineConfig struct {
 	StoragePath           string
 	Dependencies          ops2.ServiceDependencies2
 	RecipeRegistry        workerworkflow.RecipeProjectProvider
+	RootSourceResolver    compiler.RecipeSourceResolver
 	Logger                *slog.Logger
 	MaxActive             int
 	AwaitRecycleThreshold time.Duration
@@ -198,7 +199,10 @@ func NewEngineSetup(cfg EngineConfig) (*EngineSetup, error) {
 	activityRegistry.SetDependencies(deps)
 
 	cfg.Logger.Info("creating recipe worker")
-	workset, err := compiler.NewRecipeWorker(deps, activityRegistry, cfg.CELOptionsProvider)
+	workset, err := compiler.NewRecipeWorkerWithOptions(deps, activityRegistry, compiler.RecipeJobWorkerOptions{
+		CELOptionsProvider: cfg.CELOptionsProvider,
+		RootSourceResolver: cfg.RootSourceResolver,
+	})
 	if err != nil {
 		cancel()
 		if strata != nil {
@@ -237,8 +241,9 @@ func buildServiceDependencies(cfg EngineConfig, engine swf.SWFEngine) ops2.Servi
 	ctl := base.WorkflowControl()
 	if ctl == nil {
 		ctl = &workerworkflow.SWFWorkflowControl{
-			Engine:   engine,
-			Registry: configuredRecipeRegistry(cfg),
+			Engine:                        engine,
+			Registry:                      configuredRecipeRegistry(cfg),
+			PreferRuntimeRecipeResolution: cfg.RootSourceResolver != nil,
 		}
 	} else if swfCtl, ok := ctl.(*workerworkflow.SWFWorkflowControl); ok {
 		registry := swfCtl.Registry
@@ -246,8 +251,9 @@ func buildServiceDependencies(cfg EngineConfig, engine swf.SWFEngine) ops2.Servi
 			registry = configuredRecipeRegistry(cfg)
 		}
 		ctl = &workerworkflow.SWFWorkflowControl{
-			Engine:   engine,
-			Registry: registry,
+			Engine:                        engine,
+			Registry:                      registry,
+			PreferRuntimeRecipeResolution: swfCtl.PreferRuntimeRecipeResolution || cfg.RootSourceResolver != nil,
 		}
 	}
 

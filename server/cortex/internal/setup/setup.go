@@ -113,6 +113,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
 	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	recipeSourceResolver := serverdeps.NewRecipeSourceResolverWithFallback(recipeSvc, embeddedProvider)
 	workflowRecipeProvider := workflow.RecipeProjectProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
 		return recipeProviderWithFallback(projectID, recipeRef)
 	})
@@ -129,6 +130,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		StoragePath:        cfg.StoragePath,
 		Dependencies:       tempDeps,
 		RecipeRegistry:     workflowRecipeProvider,
+		RootSourceResolver: recipeSourceResolver,
 		Logger:             logger,
 		StrataMode:         serverdeps.StrataMode(cfg.StrataMode),
 		StrataURL:          cfg.StrataURL,
@@ -176,8 +178,9 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	}
 
 	wfc := workflow.SWFWorkflowControl{
-		Engine:   engineSetup.Engine(),
-		Registry: workflowRecipeProvider,
+		Engine:                        engineSetup.Engine(),
+		Registry:                      workflowRecipeProvider,
+		PreferRuntimeRecipeResolution: true,
 	}
 
 	strataAPIKey := cfg.StrataAPIKey
@@ -202,6 +205,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 		Recipes: workflowsvc.RecipeProvider(func(projectID string, recipeRef string) (*recipecore.Recipe, error) {
 			return recipeProviderWithFallback(projectID, recipeRef)
 		}),
+		RootSourceResolver: recipeSourceResolver,
 		CELOptionsProvider: celFns,
 	})
 	if err != nil {

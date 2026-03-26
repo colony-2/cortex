@@ -32,21 +32,27 @@ type JobRunStoryRecipe struct {
 }
 
 type JobRunStoryRecipeSource struct {
-	Kind         string `json:"kind"` // jobStartArtifact
-	ArtifactName string `json:"artifact_name"`
+	Kind                  string `json:"kind"` // jobStartArtifact|jobStartRef
+	ArtifactName          string `json:"artifact_name,omitempty"`
+	SubmittedSelector     string `json:"submitted_selector,omitempty"`
+	ResolvedSelector      string `json:"resolved_selector,omitempty"`
+	ResolvedCommit        string `json:"resolved_commit,omitempty"`
+	RecipeYAML            string `json:"recipe_yaml,omitempty"`
+	ResolutionTaskOrdinal *int64 `json:"resolution_task_ordinal,omitempty"`
 }
 
 type JobRunStoryNodeKind string
 
 const (
-	JobRunStoryNodeKindRecipe         JobRunStoryNodeKind = "recipe"
-	JobRunStoryNodeKindSequence       JobRunStoryNodeKind = "sequence"
-	JobRunStoryNodeKindOp             JobRunStoryNodeKind = "op"
-	JobRunStoryNodeKindOpStep         JobRunStoryNodeKind = "opStep"
-	JobRunStoryNodeKindContextPatch   JobRunStoryNodeKind = "contextPatch"
-	JobRunStoryNodeKindStateMachine   JobRunStoryNodeKind = "stateMachine"
-	JobRunStoryNodeKindState          JobRunStoryNodeKind = "state"
-	JobRunStoryNodeKindTransitionEval JobRunStoryNodeKind = "transitionEval"
+	JobRunStoryNodeKindRecipe                 JobRunStoryNodeKind = "recipe"
+	JobRunStoryNodeKindRecipeSourceResolution JobRunStoryNodeKind = "recipeSourceResolution"
+	JobRunStoryNodeKindSequence               JobRunStoryNodeKind = "sequence"
+	JobRunStoryNodeKindOp                     JobRunStoryNodeKind = "op"
+	JobRunStoryNodeKindOpStep                 JobRunStoryNodeKind = "opStep"
+	JobRunStoryNodeKindContextPatch           JobRunStoryNodeKind = "contextPatch"
+	JobRunStoryNodeKindStateMachine           JobRunStoryNodeKind = "stateMachine"
+	JobRunStoryNodeKindState                  JobRunStoryNodeKind = "state"
+	JobRunStoryNodeKindTransitionEval         JobRunStoryNodeKind = "transitionEval"
 )
 
 type JobRunStoryNodeStatus string
