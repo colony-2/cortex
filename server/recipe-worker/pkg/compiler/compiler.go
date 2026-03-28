@@ -239,6 +239,7 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		for patchAttempts := 0; patchAttempts < 64; patchAttempts++ {
 			invocation := workerops.ActivityInvocationRequest{
 				Input:          stepInput,
+				Const:          resCtx.EffectiveConst,
 				GitTaskContext: *gitstate.NewGlobalGitTaskContext(resCtx.TaskExecutionContext()),
 				ArtifactKeys:   artifactKeys,
 				Artifacts:      resolvedArtifacts,

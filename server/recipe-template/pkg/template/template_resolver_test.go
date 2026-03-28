@@ -403,6 +403,31 @@ func TestNewChildContext(t *testing.T) {
 	assert.False(t, child.TemplateData.Scope.Timestamp.IsZero())
 }
 
+func TestEffectiveConstPropagation(t *testing.T) {
+	recipeCtx := newRecipeCtx(t, nil)
+	require.False(t, recipeCtx.EffectiveConst)
+
+	constSeq, err := recipeCtx.NewChildContext(ScopeSequence, recipe.NodeMetadata{ID: "checks", Const: true}, "", map[string]interface{}{})
+	require.NoError(t, err)
+	assert.True(t, constSeq.EffectiveConst)
+
+	constOp, err := constSeq.NewChildContext(ScopeOp, recipe.NodeMetadata{ID: "lint"}, "lint", nil)
+	require.NoError(t, err)
+	assert.True(t, constOp.EffectiveConst)
+
+	explicitFalseChild, err := constSeq.NewChildContext(ScopeOp, recipe.NodeMetadata{ID: "test", Const: false}, "test", nil)
+	require.NoError(t, err)
+	assert.True(t, explicitFalseChild.EffectiveConst)
+
+	mutableSeq := newSequenceCtx(t, recipeCtx, "mutable", map[string]interface{}{})
+	assert.False(t, mutableSeq.EffectiveConst)
+
+	stateMachine, err := recipeCtx.NewChildContext(ScopeStateMachine, recipe.NodeMetadata{ID: "sm", Const: true}, "", map[string]interface{}{})
+	require.NoError(t, err)
+	state := newStateCtx(t, stateMachine, "validate")
+	assert.True(t, state.EffectiveConst)
+}
+
 func TestResolveValue_Recursive(t *testing.T) {
 	recipeCtx := newRecipeCtx(t, nil)
 	seqCtx := newSequenceCtx(t, recipeCtx, "test", map[string]interface{}{

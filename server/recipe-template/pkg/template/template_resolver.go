@@ -59,6 +59,8 @@ type ResolutionContext struct {
 	// Scope type: "root", "sequence", "state_machine", "state"
 	ScopeType ScopeType
 	Options   ResolutionOptions
+	// EffectiveConst is inherited down the node tree and prevents git state advancement.
+	EffectiveConst bool
 
 	scopeId string
 
@@ -299,6 +301,7 @@ func (rc *ResolutionContext) NewChildContext(scopeType ScopeType, metadata recip
 	if err != nil {
 		return nil, err
 	}
+	child.EffectiveConst = rc.EffectiveConst || metadata.Const
 
 	// copy items from parents based on scope.
 	switch scopeType {

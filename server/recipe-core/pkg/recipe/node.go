@@ -208,6 +208,7 @@ func (n *NodeOp) isNode() {}
 type NodeMetadata struct {
 	ID        string                 `yaml:"id,omitempty"`
 	Desc      string                 `yaml:"desc,omitempty"`
+	Const     bool                   `yaml:"const,omitempty"`
 	Timeout   Duration               `yaml:"timeout,omitempty"`
 	Retry     *RetryPolicy           `yaml:"retry,omitempty"`
 	Inputs    map[string]interface{} `yaml:"inputs,omitempty"`

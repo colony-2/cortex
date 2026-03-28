@@ -27,6 +27,30 @@ type nextTaskOverride interface {
 	NextTaskType() (string, bool)
 }
 
+func unchangedGitResult(input gitstate.GlobalGitTaskContext) contextual.GitCommitContext {
+	if input.PersistHash != "" {
+		return contextual.GitCommitContext{
+			PersistHash: input.PersistHash,
+			ParentHash:  input.ParentHash,
+		}
+	}
+	return contextual.GitCommitContext{
+		ParentRef: input.BaseRef,
+	}
+}
+
+func currentGitResult(task *gitstate.GitTaskContext) contextual.GitCommitContext {
+	parentRef := ""
+	if task.PersistHash == "" {
+		parentRef = task.BaseRef
+	}
+	return contextual.GitCommitContext{
+		PersistHash: task.PersistHash,
+		ParentHash:  task.ParentHash,
+		ParentRef:   parentRef,
+	}
+}
+
 func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInvocationRequest, inputArtifacts []swf.Artifact) (output ActivityInvocationOutput, outputArtifacts []swf.Artifact, err error) {
 	deps := t.deps
 	controller := t.controller
@@ -99,6 +123,8 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 	}
 
 	defer removeWorkDir(worktreePath)
+
+	incomingGitContext := req.GitTaskContext
 
 	// Build full GitTaskContext for controller from global context + local worktree path
 	fullContext := &gitstate.GitTaskContext{
@@ -204,38 +230,44 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		return zero, outputArtifacts, err
 	}
 
+	if req.Const {
+		if thinPackArtifact != nil {
+			outputArtifacts = append(outputArtifacts, thinPackArtifact)
+		}
+		return ActivityInvocationOutput{
+			OpOutput:  outputData,
+			GitResult: unchangedGitResult(incomingGitContext),
+			NextTask:  nextTask,
+		}, outputArtifacts, nil
+	}
+
 	// Call PersistWithDiffs with full context
-	_, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), fullContext)
+	persistOutput, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), fullContext)
 	if err != nil {
 		return zero, outputArtifacts, err
 	}
 
+	gitResult := currentGitResult(fullContext)
+
 	// Handle artifact pass-through logic
-	if len(persistArtifacts) > 0 {
+	if persistOutput != nil && persistOutput.HasChanges {
 		// PersistWithDiffs created artifacts (changes were made)
 		// Append all artifacts (thin pack + diffs) to output
 		outputArtifacts = append(outputArtifacts, persistArtifacts...)
-	} else if thinPackArtifact != nil {
-		// No changes, but we had an input thin pack - pass through the SAME artifact
-		// This avoids re-uploading; SWF can reuse the existing artifact
-		outputArtifacts = append(outputArtifacts, thinPackArtifact)
-	}
-	// else: no input, no output - no artifacts to append
-
-	// Build response using fullContext (which has updated hashes from Persist)
-	parentRef := ""
-	if fullContext.PersistHash == "" {
-		parentRef = fullContext.BaseRef
+	} else {
+		// Preserve input git state for unchanged tasks so hash-mode never regresses to ref-mode.
+		gitResult = unchangedGitResult(incomingGitContext)
+		if thinPackArtifact != nil {
+			// No changes, but we had an input thin pack - pass through the SAME artifact
+			// This avoids re-uploading; SWF can reuse the existing artifact
+			outputArtifacts = append(outputArtifacts, thinPackArtifact)
+		}
 	}
 
 	return ActivityInvocationOutput{
-		OpOutput: outputData,
-		GitResult: contextual.GitCommitContext{
-			PersistHash: fullContext.PersistHash,
-			ParentHash:  fullContext.ParentHash,
-			ParentRef:   parentRef,
-		},
-		NextTask: nextTask,
+		OpOutput:  outputData,
+		GitResult: gitResult,
+		NextTask:  nextTask,
 	}, outputArtifacts, nil
 }
 

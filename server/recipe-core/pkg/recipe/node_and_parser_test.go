@@ -94,6 +94,30 @@ sequence:
 	require.Error(t, err)
 }
 
+func TestParser_Load_PreservesConstMetadata(t *testing.T) {
+	registerTestOp()
+
+	y := `version: 1.0
+sequence:
+  - id: checks
+    const: true
+    sequence:
+      - id: lint
+        op: echo
+        inputs: {message: hi}
+`
+
+	r, err := LoadRecipeFromString([]byte(y))
+	require.NoError(t, err)
+
+	outer := r.RecipeImpl.(*RecipeSequence)
+	require.Len(t, outer.Sequence, 1)
+	checks := outer.Sequence[0].NodeImpl.(*NodeSequence)
+	assert.True(t, checks.Const)
+	require.Len(t, checks.Sequence, 1)
+	assert.False(t, checks.Sequence[0].GetMetadata().Const, "children should retain declared metadata; inheritance is runtime-only")
+}
+
 // helper for strict YAML unmarshal through recipe's yaml v3
 func yamlUnmarshalStrict(s string, v interface{}) error {
 	return yamlv3.Unmarshal([]byte(s), v)

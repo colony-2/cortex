@@ -1398,6 +1398,92 @@ func TestWithGitWorkspace_PersistWithDiffs_PassThroughWhenNoChanges(t *testing.T
 
 	// Verify persist hash is empty
 	require.Empty(t, output.GitResult.PersistHash, "persist hash should be empty when no changes")
+	require.Equal(t, baseHash, output.GitResult.ParentRef, "ref-mode no-change should stay ref-backed")
+}
+
+func TestWithGitWorkspace_PersistWithDiffs_PreservesHashModeWhenNoChanges(t *testing.T) {
+	t.Parallel()
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				return map[string]interface{}{"result": "still-clean"}, nil
+			},
+		},
+	}
+
+	baseRepo, parentHash, persistHash := initTwoCommitRepo(t)
+
+	controller := gitstate.NewController(nil)
+	wrapped := opExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		GitTaskContext: gitstate.GlobalGitTaskContext{
+			BaseRepo:    baseRepo,
+			BaseRef:     persistHash,
+			PersistHash: persistHash,
+			ParentHash:  parentHash,
+			CellName:    "cells/test-cell",
+			CellPath:    "cells/test-cell",
+		},
+	}
+
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-14a"}
+	output, outputArts, err := wrapped(context.Background(), &jt{jobKey}, req, nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, "still-clean", output.OpOutput["result"])
+	require.Empty(t, outputArts, "no-change hash-mode should not emit new artifacts")
+	require.Equal(t, persistHash, output.GitResult.PersistHash, "hash-mode no-change should preserve the current hash")
+	require.Equal(t, parentHash, output.GitResult.ParentHash, "hash-mode no-change should preserve the original parent hash")
+	require.Empty(t, output.GitResult.ParentRef, "hash-mode result should stay in hash mode")
+}
+
+func TestWithGitWorkspace_ConstTreatsMutationsAsNoChange(t *testing.T) {
+	t.Parallel()
+
+	inputThinPack := &mockArtifact{name: gitstate.ThinPackArtifactName, data: []byte("existing thin pack data"), id: "input-thinpack-const"}
+
+	reg := ActivityRegistration{
+		Step: recipeops.TaskStep{
+			Invoke: func(deps recipeops.OpDependencies, ctx context.Context, input map[string]interface{}) (map[string]interface{}, error) {
+				worktreePath := deps.WorktreePath()
+				cellDir := filepath.Join(worktreePath, "cells", "test-cell")
+				require.NoError(t, os.MkdirAll(cellDir, 0o755))
+				constFile := filepath.Join(cellDir, "const_mutation.txt")
+				require.NoError(t, os.WriteFile(constFile, []byte("discard me\n"), 0o644))
+				return map[string]interface{}{"result": "mutated-but-const"}, nil
+			},
+		},
+	}
+
+	baseRepo, parentHash, persistHash := initTwoCommitRepo(t)
+
+	controller := gitstate.NewController(nil)
+	wrapped := opExecutor{deps: recipeops.NewServiceDepsBuilder().Build(), reg: reg, controller: controller}.do
+	req := ActivityInvocationRequest{
+		Input: map[string]interface{}{},
+		Const: true,
+		GitTaskContext: gitstate.GlobalGitTaskContext{
+			BaseRepo:    baseRepo,
+			BaseRef:     persistHash,
+			PersistHash: persistHash,
+			ParentHash:  parentHash,
+			CellName:    "cells/test-cell",
+			CellPath:    "cells/test-cell",
+		},
+	}
+
+	jobKey := swf.JobKey{TenantId: "test", JobId: "job-14b"}
+	output, outputArts, err := wrapped(context.Background(), &jt{jobKey}, req, []swf.Artifact{inputThinPack})
+
+	require.NoError(t, err)
+	assert.Equal(t, "mutated-but-const", output.OpOutput["result"])
+	require.Equal(t, persistHash, output.GitResult.PersistHash, "const should preserve incoming hash-mode state")
+	require.Equal(t, parentHash, output.GitResult.ParentHash, "const should preserve incoming parent hash")
+	require.Empty(t, output.GitResult.ParentRef, "const hash-mode should stay hash-backed")
+	require.Len(t, outputArts, 1, "const should only pass through the prior thin pack")
+	require.True(t, outputArts[0] == inputThinPack, "const should pass through the SAME thin pack artifact")
 }
 
 func TestWithGitWorkspace_PersistWithDiffs_DiffContent(t *testing.T) {

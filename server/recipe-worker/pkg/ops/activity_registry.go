@@ -19,6 +19,7 @@ const thinPackSentinel = gitstate.ThinPackArtifactName
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
 	Input          map[string]interface{}        `json:"input"`
+	Const          bool                          `json:"const,omitempty"`
 	GitTaskContext gitstate.GlobalGitTaskContext `json:"context"`
 	ArtifactKeys   []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
 	Artifacts      map[string]swf.ArtifactKey    `json:"artifacts,omitempty"`
