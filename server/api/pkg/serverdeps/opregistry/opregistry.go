@@ -3,9 +3,9 @@ package opregistry
 import (
 	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
 	"github.com/colony-2/colony2/server/ops/pkg/codex"
+	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
 	"github.com/colony-2/colony2/server/ops/pkg/extensions"
 	"github.com/colony-2/colony2/server/ops/pkg/llm"
-	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
 	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
@@ -22,9 +22,8 @@ const (
 
 // Register resets the global op registry and installs the requested profile.
 func Register(profile Profile) []coreops.RegisterableOp {
-	coreops.Clear()
 	impls := OpsForProfile(profile)
-	coreops.Register(impls...)
+	coreops.Replace(impls...)
 	return impls
 }
 

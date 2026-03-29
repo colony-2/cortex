@@ -46,6 +46,26 @@ func TestOps_Register_Get_List_Clear(t *testing.T) {
 	assert.Equal(t, 0, Size())
 }
 
+func TestOps_Replace(t *testing.T) {
+	Clear()
+
+	oldOp := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "old"}, func(_ OpDependencies, _ context.Context, in dummyIn) (dummyOut, error) {
+		return dummyOut{B: in.A}, nil
+	})
+	newOp := NewActivityMappedOpV2[dummyIn, dummyOut](OpMetadata{Type: "new"}, func(_ OpDependencies, _ context.Context, in dummyIn) (dummyOut, error) {
+		return dummyOut{B: in.A}, nil
+	})
+
+	Register(oldOp)
+	Replace(newOp)
+
+	_, ok := Get("old")
+	assert.False(t, ok)
+	got, ok := Get("new")
+	assert.True(t, ok)
+	assert.Equal(t, newOp, got)
+}
+
 func TestOps_ThreadSafety(t *testing.T) {
 	Clear()
 	// Concurrent operation registrations maintain data integrity [pkg/ops/ops.go]

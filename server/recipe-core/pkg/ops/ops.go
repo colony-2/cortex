@@ -6,7 +6,8 @@ import (
 
 // opsRegistry is our singleton instance
 type opsRegistry struct {
-	ops sync.Map // No manual locking needed!
+	mu  sync.RWMutex
+	ops map[string]RegisterableOp
 }
 
 // singleton instance
@@ -18,7 +19,7 @@ var (
 // getInstance returns the singleton instance of opsRegistry
 func getInstance() *opsRegistry {
 	once.Do(func() {
-		instance = &opsRegistry{}
+		instance = &opsRegistry{ops: map[string]RegisterableOp{}}
 	})
 	return instance
 }
@@ -26,54 +27,60 @@ func getInstance() *opsRegistry {
 // Register adds a new operatio(s)) to the registry
 func Register(ops ...RegisterableOp) {
 	registry := getInstance()
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.registerLocked(ops...)
+}
+
+// Replace atomically swaps the registry contents with the provided operations.
+func Replace(ops ...RegisterableOp) {
+	registry := getInstance()
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.ops = make(map[string]RegisterableOp, len(ops)*2)
+	registry.registerLocked(ops...)
+}
+
+func (r *opsRegistry) registerLocked(ops ...RegisterableOp) {
 	for _, op := range ops {
-		registry.ops.Store(op.GetName(), op)
-		registry.ops.Store(op.GetMetadata().Type, op)
+		r.ops[op.GetName()] = op
+		r.ops[op.GetMetadata().Type] = op
 	}
 }
 
 // Get retrieves an operation by name with existence check
 func Get(name string) (RegisterableOp, bool) {
 	registry := getInstance()
-
-	value, exists := registry.ops.Load(name)
-	if exists {
-		return value.(RegisterableOp), true
-	}
-	return nil, false
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	value, exists := registry.ops[name]
+	return value, exists
 }
 
 // List returns all registered operation names
 func List() []RegisterableOp {
 	registry := getInstance()
-
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
 	ops := make([]RegisterableOp, 0, 10)
-	registry.ops.Range(func(key, value any) bool {
-		ops = append(ops, value.(RegisterableOp))
-		return true // continue iteration
-	})
+	for _, op := range registry.ops {
+		ops = append(ops, op)
+	}
 	return ops
 }
 
 // Clear removes all operations from the registry
 func Clear() {
 	registry := getInstance()
-
-	// sync.Map doesn't have a Clear method, so we need to delete each key
-	registry.ops.Range(func(key, value any) bool {
-		registry.ops.Delete(key)
-		return true
-	})
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.ops = map[string]RegisterableOp{}
 }
 
 // Size returns the number of registered operations
 func Size() int {
 	registry := getInstance()
-
-	count := 0
-	registry.ops.Range(func(key, value any) bool {
-		count++
-		return true
-	})
-	return count
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	return len(registry.ops)
 }
