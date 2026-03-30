@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
@@ -115,12 +116,13 @@ func (s *stubService) ResetTicket(ctx context.Context, id ticket.ID, in ticket.T
 var _ ops.OpDependencies = (*stubDeps)(nil)
 
 type stubDeps struct {
-	db             *gorm.DB
-	inputArtifacts []swf.Artifact
-	outputs        []swf.Artifact
-	workflow       workflowctl.WorkflowControl
-	worktreePath   string
-	jobTool        ops.JobTool
+	db                *gorm.DB
+	inputArtifacts    []swf.Artifact
+	outputs           []swf.Artifact
+	externalArtifacts map[string]recipeartifacts.Ref
+	workflow          workflowctl.WorkflowControl
+	worktreePath      string
+	jobTool           ops.JobTool
 }
 
 func (d *stubDeps) SetNextTaskType(taskType string) {
@@ -134,8 +136,29 @@ func (d *stubDeps) AddOutputArtifact(a swf.Artifact) error {
 	d.outputs = append(d.outputs, a)
 	return nil
 }
+func (d *stubDeps) AddExternalArtifact(name string, url string, expand bool) error {
+	artifactRef := recipeartifacts.NewExternalRef(name, url, expand)
+	if err := artifactRef.Validate(); err != nil {
+		return err
+	}
+	if d.externalArtifacts == nil {
+		d.externalArtifacts = make(map[string]recipeartifacts.Ref)
+	}
+	d.externalArtifacts[name] = artifactRef
+	return nil
+}
 func (d *stubDeps) GetInputArtifacts() []swf.Artifact  { return d.inputArtifacts }
 func (d *stubDeps) GetOutputArtifacts() []swf.Artifact { return d.outputs }
+func (d *stubDeps) GetExternalArtifacts() map[string]recipeartifacts.Ref {
+	if len(d.externalArtifacts) == 0 {
+		return nil
+	}
+	out := make(map[string]recipeartifacts.Ref, len(d.externalArtifacts))
+	for name, artifactRef := range d.externalArtifacts {
+		out[name] = artifactRef
+	}
+	return out
+}
 func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }

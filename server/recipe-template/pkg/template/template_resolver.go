@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
@@ -77,8 +78,10 @@ type ResolutionContext struct {
 
 	tracker *invocationTracker
 
-	lastExecution map[string]interface{}
-	lastArtifacts []swf.Artifact
+	lastExecution    map[string]interface{}
+	lastArtifacts    []swf.Artifact
+	lastArtifactRefs []recipeartifacts.Ref
+	artifactCache    map[string]swf.Artifact
 }
 
 func (rc *ResolutionContext) UpdateGitState(commit contextual.GitCommitContext) {
@@ -129,6 +132,7 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 				GitCommit:  commitContext,
 			}),
 		},
+		artifactCache: make(map[string]swf.Artifact),
 	}
 
 	// Initialize CEL environment
@@ -158,6 +162,9 @@ func newResolutionContext(commitContext *contextual.GitCommitContext, tracker *i
 			reflect.TypeOf(contextual.TicketCreatorAgentContext{}),
 			reflect.TypeOf(contextual.TicketContext{}),
 			reflect.TypeOf(contextual.Invocation{}),
+			reflect.TypeOf(recipeartifacts.Ref{}),
+			reflect.TypeOf(recipeartifacts.StoredRef{}),
+			reflect.TypeOf(recipeartifacts.ExternalRef{}),
 			reflect.TypeOf(swf.ArtifactKey{}),
 			ext.ParseStructTag("json"),
 		),
@@ -418,15 +425,6 @@ func (rc *ResolutionContext) evaluateCELExpression(expr string) (interface{}, er
 	if _, ok := value.(structpb.NullValue); ok {
 		return nil, nil
 	}
-	if keyer, ok := value.(interface {
-		ArtifactKey() (swf.ArtifactKey, error)
-	}); ok {
-		key, err := keyer.ArtifactKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve artifact key: %w", err)
-		}
-		return key, nil
-	}
 	return value, nil
 }
 
@@ -439,16 +437,36 @@ func (rc *ResolutionContext) AddExecution(output map[string]interface{}) {
 	rc.AddExecutionWithArtifacts(output, nil)
 }
 
-func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interface{}, artifacts map[string]swf.Artifact) {
+func (rc *ResolutionContext) AddExecutionWithArtifactData(output map[string]interface{}, artifactRefs map[string]recipeartifacts.Ref, artifacts []swf.Artifact) {
 	rc.lastExecution = output
-	if artifacts == nil {
-		artifacts = map[string]swf.Artifact{}
+	if artifactRefs == nil {
+		artifactRefs = map[string]recipeartifacts.Ref{}
+	}
+	if len(artifacts) > 0 {
+		rc.RememberArtifacts(artifacts)
 	}
 
-	artList := make([]swf.Artifact, 0, len(artifacts))
-	for _, art := range artifacts {
-		artList = append(artList, art)
+	refList := make([]recipeartifacts.Ref, 0, len(artifactRefs))
+	capHint := len(artifactRefs)
+	if len(artifacts) > capHint {
+		capHint = len(artifacts)
 	}
+	artList := make([]swf.Artifact, 0, capHint)
+	for _, artifactRef := range artifactRefs {
+		refList = append(refList, artifactRef)
+	}
+	if len(artifacts) > 0 {
+		artList = append(artList, artifacts...)
+	} else {
+		for _, artifactRef := range artifactRefs {
+			if key, ok := artifactRef.StoredKey(); ok {
+				if artifact, found := rc.artifactCache[recipeartifacts.NewStoredRef(key).Identity()]; found {
+					artList = append(artList, artifact)
+				}
+			}
+		}
+	}
+	rc.lastArtifactRefs = refList
 	rc.lastArtifacts = artList
 
 	var container map[string]StepOutput
@@ -460,21 +478,26 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 	case ScopeStateMachine, ScopeState:
 		container = rc.TemplateData.States
 	case ScopeRecipe:
-		// no context storage other than last execution needed.
 		return
 	case ScopeOp:
 		switch rc.Parent.ScopeType {
 		case ScopeSequence:
 			container = rc.TemplateData.Sequence
+			rc.Parent.lastExecution = output
+			rc.Parent.lastArtifactRefs = append([]recipeartifacts.Ref(nil), refList...)
+			rc.Parent.lastArtifacts = append([]swf.Artifact(nil), artList...)
 		case ScopeStateMachine, ScopeState:
 			container = rc.TemplateData.States
-			// States are addressed by their state name (not the inner op type). When an op runs
-			// inside a state, attach its output to the owning state key so `states.<state>` works.
+			rc.Parent.lastExecution = output
+			rc.Parent.lastArtifactRefs = append([]recipeartifacts.Ref(nil), refList...)
+			rc.Parent.lastArtifacts = append([]swf.Artifact(nil), artList...)
 			if rc.Parent.ScopeType == ScopeState {
 				key = rc.Parent.scopeId
 			}
 		case ScopeRecipe:
 			rc.Parent.lastExecution = output
+			rc.Parent.lastArtifactRefs = append([]recipeartifacts.Ref(nil), refList...)
+			rc.Parent.lastArtifacts = append([]swf.Artifact(nil), artList...)
 			return
 		default:
 			panic(fmt.Sprintf("invalid parent scope type: %s", rc.Parent.ScopeType))
@@ -491,15 +514,32 @@ func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interfa
 			Timestamp: time.Now(),
 		})
 		existing.Outputs = output
-		existing.Artifacts = artifacts
+		existing.Artifacts = artifactRefs
 		container[key] = existing
 	} else {
 		container[key] = StepOutput{
 			Outputs:   output,
-			Artifacts: artifacts,
+			Artifacts: artifactRefs,
 			Runs:      []RunOutput{},
 		}
 	}
+}
+
+func (rc *ResolutionContext) RememberArtifacts(artifacts []swf.Artifact) {
+	for _, artifact := range artifacts {
+		if artifact == nil {
+			continue
+		}
+		key, err := artifact.ArtifactKey()
+		if err != nil {
+			continue
+		}
+		rc.artifactCache[recipeartifacts.NewStoredRef(key).Identity()] = artifact
+	}
+}
+
+func (rc *ResolutionContext) AddExecutionWithArtifacts(output map[string]interface{}, artifactRefs map[string]recipeartifacts.Ref) {
+	rc.AddExecutionWithArtifactData(output, artifactRefs, nil)
 }
 
 func (rc *ResolutionContext) GetLastExecution() map[string]interface{} {
@@ -508,6 +548,10 @@ func (rc *ResolutionContext) GetLastExecution() map[string]interface{} {
 
 func (rc *ResolutionContext) GetLastArtifacts() []swf.Artifact {
 	return rc.lastArtifacts
+}
+
+func (rc *ResolutionContext) GetLastArtifactRefs() []recipeartifacts.Ref {
+	return rc.lastArtifactRefs
 }
 
 // validateTemplateReferences validates all template references before execution

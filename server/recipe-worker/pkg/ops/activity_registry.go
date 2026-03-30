@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/activity"
@@ -18,26 +19,28 @@ const thinPackSentinel = gitstate.ThinPackArtifactName
 
 // ActivityInvocationRequest wraps the invocation metadata and original input payload.
 type ActivityInvocationRequest struct {
-	Input          map[string]interface{}        `json:"input"`
-	Const          bool                          `json:"const,omitempty"`
-	GitTaskContext gitstate.GlobalGitTaskContext `json:"context"`
-	ArtifactKeys   []swf.ArtifactKey             `json:"artifact_keys,omitempty"`
-	Artifacts      map[string]swf.ArtifactKey    `json:"artifacts,omitempty"`
-	Deps           ops.OpDependencies            `json:"-"`
+	Input          map[string]interface{}         `json:"input"`
+	Const          bool                           `json:"const,omitempty"`
+	GitTaskContext gitstate.GlobalGitTaskContext  `json:"context"`
+	ArtifactKeys   []swf.ArtifactKey              `json:"artifact_keys,omitempty"`
+	Artifacts      map[string]recipeartifacts.Ref `json:"artifacts,omitempty"`
+	Deps           ops.OpDependencies             `json:"-"`
 }
 
 // ActivityInvocationOutput wraps the raw op output alongside workspace results.
 type ActivityInvocationOutput struct {
-	GitResult contextual.GitCommitContext `json:"git,omitempty"`
-	NextTask  string                      `json:"nextTaskType,omitempty"`
-	OpOutput  map[string]interface{}      `json:"output"`
+	GitResult    contextual.GitCommitContext    `json:"git,omitempty"`
+	NextTask     string                         `json:"nextTaskType,omitempty"`
+	OpOutput     map[string]interface{}         `json:"output"`
+	ArtifactRefs map[string]recipeartifacts.Ref `json:"artifact_refs,omitempty"`
 }
 
 // variation of ActivityInvocationOutput that allows arbitrary output types to avoid double serialization
 type ActivityInvocationOutputRaw struct {
-	GitResult contextual.GitCommitContext `json:"git,omitempty"`
-	NextTask  string                      `json:"nextTaskType,omitempty"`
-	Output    any                         `json:"output"`
+	GitResult    contextual.GitCommitContext    `json:"git,omitempty"`
+	NextTask     string                         `json:"nextTaskType,omitempty"`
+	Output       any                            `json:"output"`
+	ArtifactRefs map[string]recipeartifacts.Ref `json:"artifact_refs,omitempty"`
 }
 
 // ActivityRegistration holds the activity step and its generated schemas.

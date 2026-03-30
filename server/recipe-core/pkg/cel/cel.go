@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
@@ -181,6 +182,9 @@ func compile(expression string) (cel.Program, error) {
 			reflect.TypeOf(contextual.TicketCreatorAgentContext{}),
 			reflect.TypeOf(contextual.TicketContext{}),
 			reflect.TypeOf(contextual.Invocation{}),
+			reflect.TypeOf(recipeartifacts.Ref{}),
+			reflect.TypeOf(recipeartifacts.StoredRef{}),
+			reflect.TypeOf(recipeartifacts.ExternalRef{}),
 			reflect.TypeOf(swf.ArtifactKey{}),
 			ext.ParseStructTag("json"),
 		),

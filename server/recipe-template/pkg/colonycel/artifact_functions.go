@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
@@ -33,7 +34,7 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 				[]*cel.Type{cel.DynType, cel.DynType},
 				cel.ListType(cel.DynType),
 				cel.BinaryBinding(func(arts ref.Val, opts ref.Val) ref.Val {
-					keys, err := normalizeArtifactKeys("artifact_filter", arts)
+					artifactRefs, err := normalizeArtifactRefs("artifact_filter", arts)
 					if err != nil {
 						return types.NewErr("%v", err)
 					}
@@ -42,10 +43,10 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 					if err != nil {
 						return types.NewErr("%v", err)
 					}
-					filtered := make([]swf.ArtifactKey, 0, len(keys))
-					for _, k := range keys {
-						if f.match(k) {
-							filtered = append(filtered, k)
+					filtered := make([]recipeartifacts.Ref, 0, len(artifactRefs))
+					for _, artifactRef := range artifactRefs {
+						if f.match(artifactRef) {
+							filtered = append(filtered, artifactRef)
 						}
 					}
 					return adapter.NativeToValue(filtered)
@@ -61,13 +62,13 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 				[]*cel.Type{cel.DynType},
 				cel.ListType(cel.StringType),
 				cel.UnaryBinding(func(arts ref.Val) ref.Val {
-					keys, err := normalizeArtifactKeys("artifact_names", arts)
+					artifactRefs, err := normalizeArtifactRefs("artifact_names", arts)
 					if err != nil {
 						return types.NewErr("%v", err)
 					}
-					out := make([]string, 0, len(keys))
-					for _, k := range keys {
-						out = append(out, k.Name)
+					out := make([]string, 0, len(artifactRefs))
+					for _, artifactRef := range artifactRefs {
+						out = append(out, artifactRef.NameValue())
 					}
 					return adapter.NativeToValue(out)
 				}),
@@ -82,11 +83,11 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 				[]*cel.Type{cel.DynType},
 				cel.ListType(cel.DynType),
 				cel.UnaryBinding(func(arts ref.Val) ref.Val {
-					keys, err := normalizeArtifactKeys("artifact_unique", arts)
+					artifactRefs, err := normalizeArtifactRefs("artifact_unique", arts)
 					if err != nil {
 						return types.NewErr("%v", err)
 					}
-					return adapter.NativeToValue(dedupeArtifactKeys(keys, "name"))
+					return adapter.NativeToValue(dedupeArtifactRefs(artifactRefs, "name"))
 				}),
 			),
 			cel.Overload(
@@ -94,7 +95,7 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 				[]*cel.Type{cel.DynType, cel.StringType},
 				cel.ListType(cel.DynType),
 				cel.BinaryBinding(func(arts ref.Val, byVal ref.Val) ref.Val {
-					keys, err := normalizeArtifactKeys("artifact_unique", arts)
+					artifactRefs, err := normalizeArtifactRefs("artifact_unique", arts)
 					if err != nil {
 						return types.NewErr("%v", err)
 					}
@@ -102,7 +103,7 @@ func RegisterArtifactFunctions(b *funcregistry.Builder) {
 					if !ok || strings.TrimSpace(by) == "" {
 						by = "name"
 					}
-					out, err := dedupeArtifactKeysChecked(keys, by)
+					out, err := dedupeArtifactRefsChecked(artifactRefs, by)
 					if err != nil {
 						return types.NewErr("artifact_unique: %v", err)
 					}
@@ -121,11 +122,11 @@ func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOptio
 			[]*cel.Type{cel.DynType},
 			cel.ListType(cel.DynType),
 			cel.UnaryBinding(func(a ref.Val) ref.Val {
-				keys, err := normalizeArtifactKeys(fnName, a)
+				artifactRefs, err := normalizeArtifactRefs(fnName, a)
 				if err != nil {
 					return types.NewErr("%v", err)
 				}
-				return adapter.NativeToValue(keys)
+				return adapter.NativeToValue(artifactRefs)
 			}),
 		),
 		cel.Overload(
@@ -133,11 +134,11 @@ func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOptio
 			[]*cel.Type{cel.DynType, cel.DynType},
 			cel.ListType(cel.DynType),
 			cel.BinaryBinding(func(a, b ref.Val) ref.Val {
-				var out []swf.ArtifactKey
-				if err := appendArtifactKeys(fnName, &out, a); err != nil {
+				var out []recipeartifacts.Ref
+				if err := appendArtifactRefs(fnName, &out, a); err != nil {
 					return types.NewErr("%v", err)
 				}
-				if err := appendArtifactKeys(fnName, &out, b); err != nil {
+				if err := appendArtifactRefs(fnName, &out, b); err != nil {
 					return types.NewErr("%v", err)
 				}
 				return adapter.NativeToValue(out)
@@ -148,9 +149,9 @@ func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOptio
 			[]*cel.Type{cel.DynType, cel.DynType, cel.DynType},
 			cel.ListType(cel.DynType),
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				var out []swf.ArtifactKey
+				var out []recipeartifacts.Ref
 				for _, a := range args {
-					if err := appendArtifactKeys(fnName, &out, a); err != nil {
+					if err := appendArtifactRefs(fnName, &out, a); err != nil {
 						return types.NewErr("%v", err)
 					}
 				}
@@ -162,9 +163,9 @@ func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOptio
 			[]*cel.Type{cel.DynType, cel.DynType, cel.DynType, cel.DynType},
 			cel.ListType(cel.DynType),
 			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
-				var out []swf.ArtifactKey
+				var out []recipeartifacts.Ref
 				for _, a := range args {
-					if err := appendArtifactKeys(fnName, &out, a); err != nil {
+					if err := appendArtifactRefs(fnName, &out, a); err != nil {
 						return types.NewErr("%v", err)
 					}
 				}
@@ -174,15 +175,15 @@ func artifactSetLikeEnvOption(adapter types.Adapter, fnName string) cel.EnvOptio
 	)
 }
 
-func normalizeArtifactKeys(fnName string, v ref.Val) ([]swf.ArtifactKey, error) {
-	out := []swf.ArtifactKey{}
-	if err := appendArtifactKeys(fnName, &out, v); err != nil {
+func normalizeArtifactRefs(fnName string, v ref.Val) ([]recipeartifacts.Ref, error) {
+	out := []recipeartifacts.Ref{}
+	if err := appendArtifactRefs(fnName, &out, v); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func appendArtifactKeys(fnName string, out *[]swf.ArtifactKey, v ref.Val) error {
+func appendArtifactRefs(fnName string, out *[]recipeartifacts.Ref, v ref.Val) error {
 	if v == nil || v == types.NullValue {
 		return nil
 	}
@@ -195,7 +196,7 @@ func appendArtifactKeys(fnName string, out *[]swf.ArtifactKey, v ref.Val) error 
 		}
 		for i := int64(0); i < int64(size); i++ {
 			item := l.Get(types.Int(i))
-			if err := appendArtifactKeys(fnName, out, item); err != nil {
+			if err := appendArtifactRefs(fnName, out, item); err != nil {
 				return err
 			}
 		}
@@ -216,19 +217,33 @@ func appendArtifactKeys(fnName string, out *[]swf.ArtifactKey, v ref.Val) error 
 		sort.Strings(keys)
 		for _, k := range keys {
 			val := m.Get(types.String(k))
-			if err := appendArtifactKeys(fnName, out, val); err != nil {
+			if err := appendArtifactRefs(fnName, out, val); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 
-	return appendArtifactKeysNative(fnName, out, v.Value())
+	return appendArtifactRefsNative(fnName, out, v.Value())
 }
 
-func appendArtifactKeysNative(fnName string, out *[]swf.ArtifactKey, native any) error {
+func appendArtifactRefsNative(fnName string, out *[]recipeartifacts.Ref, native any) error {
 	if native == nil {
 		return nil
+	}
+
+	switch v := native.(type) {
+	case recipeartifacts.Ref:
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", fnName, err)
+		}
+		*out = append(*out, v)
+		return nil
+	case *recipeartifacts.Ref:
+		if v == nil {
+			return nil
+		}
+		return appendArtifactRefsNative(fnName, out, *v)
 	}
 
 	if keyer, ok := native.(interface {
@@ -238,40 +253,87 @@ func appendArtifactKeysNative(fnName string, out *[]swf.ArtifactKey, native any)
 		if err != nil {
 			return fmt.Errorf("%s: %w", fnName, err)
 		}
-		*out = append(*out, key)
+		if err := key.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", fnName, err)
+		}
+		*out = append(*out, recipeartifacts.NewStoredRef(key))
 		return nil
 	}
 
 	switch v := native.(type) {
 	case swf.ArtifactKey:
-		*out = append(*out, v)
+		if err := v.Validate(); err != nil {
+			return fmt.Errorf("%s: %w", fnName, err)
+		}
+		*out = append(*out, recipeartifacts.NewStoredRef(v))
 		return nil
 	case *swf.ArtifactKey:
 		if v == nil {
 			return nil
 		}
-		*out = append(*out, *v)
+		return appendArtifactRefsNative(fnName, out, *v)
+	case []recipeartifacts.Ref:
+		for _, item := range v {
+			if err := appendArtifactRefsNative(fnName, out, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case []*recipeartifacts.Ref:
+		for _, item := range v {
+			if err := appendArtifactRefsNative(fnName, out, item); err != nil {
+				return err
+			}
+		}
 		return nil
 	case []swf.ArtifactKey:
-		*out = append(*out, v...)
+		for _, item := range v {
+			if err := appendArtifactRefsNative(fnName, out, item); err != nil {
+				return err
+			}
+		}
 		return nil
 	case []*swf.ArtifactKey:
 		for _, item := range v {
-			if item != nil {
-				*out = append(*out, *item)
+			if err := appendArtifactRefsNative(fnName, out, item); err != nil {
+				return err
 			}
 		}
 		return nil
 	case []interface{}:
 		for _, item := range v {
-			if err := appendArtifactKeysNative(fnName, out, item); err != nil {
+			if err := appendArtifactRefsNative(fnName, out, item); err != nil {
 				return err
 			}
 		}
 		return nil
 	case []ref.Val:
 		for _, item := range v {
-			if err := appendArtifactKeys(fnName, out, item); err != nil {
+			if err := appendArtifactRefs(fnName, out, item); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]recipeartifacts.Ref:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := appendArtifactRefsNative(fnName, out, v[k]); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]*recipeartifacts.Ref:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := appendArtifactRefsNative(fnName, out, v[k]); err != nil {
 				return err
 			}
 		}
@@ -283,7 +345,9 @@ func appendArtifactKeysNative(fnName string, out *[]swf.ArtifactKey, native any)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			*out = append(*out, v[k])
+			if err := appendArtifactRefsNative(fnName, out, v[k]); err != nil {
+				return err
+			}
 		}
 		return nil
 	case map[string]*swf.ArtifactKey:
@@ -293,8 +357,8 @@ func appendArtifactKeysNative(fnName string, out *[]swf.ArtifactKey, native any)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if v[k] != nil {
-				*out = append(*out, *v[k])
+			if err := appendArtifactRefsNative(fnName, out, v[k]); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -305,7 +369,7 @@ func appendArtifactKeysNative(fnName string, out *[]swf.ArtifactKey, native any)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if err := appendArtifactKeysNative(fnName, out, v[k]); err != nil {
+			if err := appendArtifactRefsNative(fnName, out, v[k]); err != nil {
 				return err
 			}
 		}
@@ -361,8 +425,8 @@ func parseArtifactFilterOpts(opts ref.Val) (artifactFilter, error) {
 	return f, nil
 }
 
-func (f artifactFilter) match(k swf.ArtifactKey) bool {
-	name := k.Name
+func (f artifactFilter) match(artifactRef recipeartifacts.Ref) bool {
+	name := artifactRef.NameValue()
 	if f.namePrefix != "" && !strings.HasPrefix(name, f.namePrefix) {
 		return false
 	}
@@ -376,7 +440,7 @@ func (f artifactFilter) match(k swf.ArtifactKey) bool {
 		return false
 	}
 
-	size := k.SizeBytes
+	size := artifactRef.SizeBytes()
 	if f.minSize != nil {
 		if size < 0 && *f.minSize > -1 {
 			return false
@@ -397,37 +461,38 @@ func (f artifactFilter) match(k swf.ArtifactKey) bool {
 	return true
 }
 
-func dedupeArtifactKeys(keys []swf.ArtifactKey, by string) []swf.ArtifactKey {
-	out, err := dedupeArtifactKeysChecked(keys, by)
+func dedupeArtifactRefs(refs []recipeartifacts.Ref, by string) []recipeartifacts.Ref {
+	out, err := dedupeArtifactRefsChecked(refs, by)
 	if err != nil {
-		out, _ = dedupeArtifactKeysChecked(keys, "name")
+		out, _ = dedupeArtifactRefsChecked(refs, "name")
 	}
 	return out
 }
 
-func dedupeArtifactKeysChecked(keys []swf.ArtifactKey, by string) ([]swf.ArtifactKey, error) {
+func dedupeArtifactRefsChecked(refs []recipeartifacts.Ref, by string) ([]recipeartifacts.Ref, error) {
 	switch by {
 	case "name", "":
 		seen := map[string]struct{}{}
-		out := make([]swf.ArtifactKey, 0, len(keys))
-		for _, k := range keys {
-			if _, ok := seen[k.Name]; ok {
+		out := make([]recipeartifacts.Ref, 0, len(refs))
+		for _, artifactRef := range refs {
+			name := artifactRef.NameValue()
+			if _, ok := seen[name]; ok {
 				continue
 			}
-			seen[k.Name] = struct{}{}
-			out = append(out, k)
+			seen[name] = struct{}{}
+			out = append(out, artifactRef)
 		}
 		return out, nil
 	case "key":
 		seen := map[string]struct{}{}
-		out := make([]swf.ArtifactKey, 0, len(keys))
-		for _, k := range keys {
-			id := fmt.Sprintf("%s:%d:%s", k.JobId, k.TaskOrdinal, k.Name)
+		out := make([]recipeartifacts.Ref, 0, len(refs))
+		for _, artifactRef := range refs {
+			id := artifactRef.Identity()
 			if _, ok := seen[id]; ok {
 				continue
 			}
 			seen[id] = struct{}{}
-			out = append(out, k)
+			out = append(out, artifactRef)
 		}
 		return out, nil
 	default:

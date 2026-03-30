@@ -69,7 +69,7 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 			return fmt.Errorf("failed to resolve state machine outputs: %w", err)
 		}
 
-		parentContext.AddExecutionWithArtifacts(resolvedOutputs, stateArtifacts(resCtx, lastStateName, lastStateDef))
+		parentContext.AddExecutionWithArtifactData(resolvedOutputs, stateArtifacts(resCtx, lastStateName, lastStateDef), resCtx.GetLastArtifacts())
 		return nil
 	}
 
@@ -117,7 +117,7 @@ func (d DefaultRecipeExecutor) ExecuteStateMachine(ctx workflow.Context, parentC
 		return fmt.Errorf("failed to resolve state machine outputs: %w", err)
 	}
 
-	parentContext.AddExecutionWithArtifacts(resolvedOutputs, stateArtifacts(resCtx, currentState, finalState))
+	parentContext.AddExecutionWithArtifactData(resolvedOutputs, stateArtifacts(resCtx, currentState, finalState), resCtx.GetLastArtifacts())
 
 	return nil
 }

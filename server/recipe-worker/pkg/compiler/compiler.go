@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
@@ -190,26 +191,32 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		}
 	}
 
-	resolvedNodeInputs, err := resCtx.ResolveMap(metadata.Inputs)
-	if err != nil {
-		return fmt.Errorf("failed to resolve templates op inputs: %w", err)
-	}
-
 	resolvedArtifacts, err := resolveArtifactBindings(resCtx, map[string]interface{}(metadata.Artifacts))
 	if err != nil {
 		return err
 	}
 
-	if len(chain) > 0 {
-		allowNulls := resCtx.Options.Mode == template.ModeValidate
-		if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
-			return fmt.Errorf("op input validation failed: %w", err)
+	resolveNormalizedInputs := func() (map[string]interface{}, []swf.ArtifactKey, error) {
+		resolvedNodeInputs, err := resCtx.ResolveMap(metadata.Inputs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve templates op inputs: %w", err)
 		}
+
+		normalizedInput, err := NormalizeOpInput(chain[0].InputType, resolvedNodeInputs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to normalize op inputs: %w", err)
+		}
+
+		allowNulls := resCtx.Options.Mode == template.ModeValidate
+		if err := validateOpInputType(chain[0].InputType, normalizedInput.Data, allowNulls); err != nil {
+			return nil, nil, fmt.Errorf("op input validation failed: %w", err)
+		}
+		return normalizedInput.Data, normalizedInput.StoredArtifactKeys, nil
 	}
 
-	artifactKeys, err := collectArtifactKeysFromInput(resolvedNodeInputs)
+	stepInput, artifactKeys, err := resolveNormalizedInputs()
 	if err != nil {
-		return fmt.Errorf("failed to collect artifact keys: %w", err)
+		return err
 	}
 	if len(resolvedArtifacts) > 0 {
 		artifactKeys = appendArtifactKeys(artifactKeys, resolvedArtifacts)
@@ -229,11 +236,10 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		runPolicy.TotalTimeout = &timeout
 	}
 
-	stepInput := resolvedNodeInputs
-
 	taskType := fmt.Sprintf("%s:%s", op, chain[0].Name)
 
-	var stepArtifacts map[string]swf.Artifact
+	var stepArtifacts map[string]recipeartifacts.Ref
+	var stepOutputArtifacts []swf.Artifact
 	for i := 0; i < 64; i++ { // guard against accidental loops
 		done := false
 		for patchAttempts := 0; patchAttempts < 64; patchAttempts++ {
@@ -293,7 +299,9 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 					if err != nil {
 						return err
 					}
-					stepArtifacts = artifactsToMap(outputArtifacts)
+					resCtx.RememberArtifacts(outputArtifacts)
+					stepOutputArtifacts = append([]swf.Artifact(nil), outputArtifacts...)
+					stepArtifacts = mergeArtifactRefs(artifactsToMap(outputArtifacts), decoded.Activity.ArtifactRefs)
 					done = true
 				} else {
 					taskType = decoded.Activity.NextTask
@@ -307,15 +315,9 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 
 				// Re-resolve inputs for the task based on the updated context.
 				if i == 0 {
-					resolvedNodeInputs, err = resCtx.ResolveMap(metadata.Inputs)
+					stepInput, artifactKeys, err = resolveNormalizedInputs()
 					if err != nil {
-						return fmt.Errorf("failed to resolve templates op inputs after patch: %w", err)
-					}
-					stepInput = resolvedNodeInputs
-
-					allowNulls := resCtx.Options.Mode == template.ModeValidate
-					if err := validateOpInputType(chain[0].InputType, resolvedNodeInputs, allowNulls); err != nil {
-						return fmt.Errorf("op input validation failed after patch: %w", err)
+						return err
 					}
 				}
 
@@ -323,10 +325,6 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 				resolvedArtifacts, err = resolveArtifactBindings(resCtx, map[string]interface{}(metadata.Artifacts))
 				if err != nil {
 					return err
-				}
-				artifactKeys, err = collectArtifactKeysFromInput(resolvedNodeInputs)
-				if err != nil {
-					return fmt.Errorf("failed to collect artifact keys: %w", err)
 				}
 				if len(resolvedArtifacts) > 0 {
 					artifactKeys = appendArtifactKeys(artifactKeys, resolvedArtifacts)
@@ -342,7 +340,7 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 			break
 		}
 	}
-	resCtx.AddExecutionWithArtifacts(stepInput, stepArtifacts)
+	resCtx.AddExecutionWithArtifactData(stepInput, stepArtifacts, stepOutputArtifacts)
 	return nil
 }
 
@@ -375,7 +373,7 @@ func (d DefaultRecipeExecutor) innerSequence(ctx workflow.Context, parentCtx *te
 	}
 
 	// add resolved output to parent context.
-	parentCtx.AddExecutionWithArtifacts(outputs, lastSequenceArtifacts(resCtx, sequence))
+	parentCtx.AddExecutionWithArtifactData(outputs, lastSequenceArtifacts(resCtx, sequence), resCtx.GetLastArtifacts())
 	return nil
 }
 

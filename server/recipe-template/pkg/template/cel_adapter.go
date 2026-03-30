@@ -5,7 +5,6 @@ import (
 	"reflect"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
@@ -28,16 +27,6 @@ func (a *resolutionTypeAdapter) NativeToValue(value interface{}) ref.Val {
 	// keys resolve to null instead of throwing "no such key" at compile time.
 	if dyn, ok := value.(DynamicOutputs); ok {
 		return newPermissiveMap(dyn, a)
-	}
-
-	if keyer, ok := value.(interface {
-		ArtifactKey() (swf.ArtifactKey, error)
-	}); ok {
-		key, err := keyer.ArtifactKey()
-		if err != nil {
-			return types.NewErr("failed to resolve artifact key: %v", err)
-		}
-		return a.base.NativeToValue(key)
 	}
 
 	if ctx, ok := value.(contextual.TaskExecutionContext); ok {

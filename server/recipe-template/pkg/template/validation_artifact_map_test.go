@@ -3,8 +3,8 @@ package template
 import (
 	"testing"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,14 +20,16 @@ func TestValidateMode_ArtifactLookupReturnsPlaceholderKey(t *testing.T) {
 	seqCtx := newSequenceCtx(t, root, "seq", map[string]interface{}{})
 	seqCtx.TemplateData.Sequence["write"] = StepOutput{
 		Outputs:   map[string]interface{}{},
-		Artifacts: map[string]swf.Artifact{},
+		Artifacts: map[string]recipeartifacts.Ref{},
 	}
 
 	val, err := seqCtx.resolveTemplate(`${{ sequence.write.artifacts["foo.txt"] }}`)
 	require.NoError(t, err)
 
-	key, ok := val.(swf.ArtifactKey)
-	require.True(t, ok, "expected swf.ArtifactKey, got %T", val)
+	artifactRef, ok := val.(recipeartifacts.Ref)
+	require.True(t, ok, "expected artifacts.Ref, got %T", val)
+	key, ok := artifactRef.StoredKey()
+	require.True(t, ok, "expected stored ref, got %v", artifactRef)
 	assert.Equal(t, validationArtifactPlaceholderJobID, key.JobId)
 	assert.Equal(t, validationArtifactPlaceholderTaskOrdinal, key.TaskOrdinal)
 	assert.Equal(t, "foo.txt", key.Name)

@@ -1,27 +1,45 @@
 package compiler
 
 import (
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
-func artifactsToMap(artifacts []swf.Artifact) map[string]swf.Artifact {
-	out := make(map[string]swf.Artifact, len(artifacts))
+func artifactsToMap(artifacts []swf.Artifact) map[string]recipeartifacts.Ref {
+	out := make(map[string]recipeartifacts.Ref, len(artifacts))
 	for _, artifact := range artifacts {
 		if artifact == nil {
 			continue
 		}
-		name := artifact.Name()
-		//if name == "" || name == gitstate.ThinPackArtifactName {
-		//	continue
-		//}
-		out[name] = artifact
+		artifactRef, err := recipeartifacts.RefFromArtifact(artifact)
+		if err != nil {
+			continue
+		}
+		out[artifactRef.NameValue()] = artifactRef
 	}
 	return out
 }
 
-func lastSequenceArtifacts(resCtx *template.ResolutionContext, sequence []recipe.Node) map[string]swf.Artifact {
+func mergeArtifactRefs(maps ...map[string]recipeartifacts.Ref) map[string]recipeartifacts.Ref {
+	total := 0
+	for _, refs := range maps {
+		total += len(refs)
+	}
+	if total == 0 {
+		return nil
+	}
+	out := make(map[string]recipeartifacts.Ref, total)
+	for _, refs := range maps {
+		for name, artifactRef := range refs {
+			out[name] = artifactRef
+		}
+	}
+	return out
+}
+
+func lastSequenceArtifacts(resCtx *template.ResolutionContext, sequence []recipe.Node) map[string]recipeartifacts.Ref {
 	if len(sequence) == 0 || resCtx == nil {
 		return nil
 	}
@@ -53,7 +71,7 @@ func lastSequenceArtifacts(resCtx *template.ResolutionContext, sequence []recipe
 	return step.Artifacts
 }
 
-func stateArtifacts(resCtx *template.ResolutionContext, stateName string, stateDef recipe.State) map[string]swf.Artifact {
+func stateArtifacts(resCtx *template.ResolutionContext, stateName string, stateDef recipe.State) map[string]recipeartifacts.Ref {
 	if resCtx == nil {
 		return nil
 	}

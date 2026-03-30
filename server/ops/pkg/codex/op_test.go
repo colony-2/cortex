@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -21,8 +22,9 @@ type capture struct {
 var _ ops.OpDependencies = (*fakeOpDependencies)(nil)
 
 type fakeOpDependencies struct {
-	inputArtifacts  []swf.Artifact
-	outputArtifacts []swf.Artifact
+	inputArtifacts    []swf.Artifact
+	outputArtifacts   []swf.Artifact
+	externalArtifacts map[string]recipeartifacts.Ref
 }
 
 func (f *fakeOpDependencies) SetNextTaskType(taskType string) {
@@ -46,12 +48,35 @@ func (f *fakeOpDependencies) AddOutputArtifact(artifact swf.Artifact) error {
 	return nil
 }
 
+func (f *fakeOpDependencies) AddExternalArtifact(name string, url string, expand bool) error {
+	artifactRef := recipeartifacts.NewExternalRef(name, url, expand)
+	if err := artifactRef.Validate(); err != nil {
+		return err
+	}
+	if f.externalArtifacts == nil {
+		f.externalArtifacts = make(map[string]recipeartifacts.Ref)
+	}
+	f.externalArtifacts[name] = artifactRef
+	return nil
+}
+
 func (f *fakeOpDependencies) GetInputArtifacts() []swf.Artifact {
 	return f.inputArtifacts
 }
 
 func (f *fakeOpDependencies) GetOutputArtifacts() []swf.Artifact {
 	return f.outputArtifacts
+}
+
+func (f *fakeOpDependencies) GetExternalArtifacts() map[string]recipeartifacts.Ref {
+	if len(f.externalArtifacts) == 0 {
+		return nil
+	}
+	out := make(map[string]recipeartifacts.Ref, len(f.externalArtifacts))
+	for name, artifactRef := range f.externalArtifacts {
+		out[name] = artifactRef
+	}
+	return out
 }
 
 func (f *fakeOpDependencies) Database() *gorm.DB {

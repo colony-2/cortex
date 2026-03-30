@@ -8,6 +8,7 @@ import (
 	"strings"
 	texttemplate "text/template"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -301,10 +302,18 @@ func flattenTemplateValue(value interface{}) map[string]interface{} {
 
 func isArtifactInterpolationValue(value interface{}) bool {
 	switch v := value.(type) {
+	case recipeartifacts.Ref:
+		return !v.IsZero()
+	case *recipeartifacts.Ref:
+		return v != nil && !v.IsZero()
 	case swf.ArtifactKey:
 		return true
 	case *swf.ArtifactKey:
 		return v != nil
+	case map[string]recipeartifacts.Ref:
+		return true
+	case map[string]*recipeartifacts.Ref:
+		return true
 	case map[string]swf.ArtifactKey:
 		return true
 	case map[string]*swf.ArtifactKey:
@@ -316,6 +325,8 @@ func isArtifactInterpolationValue(value interface{}) bool {
 			}
 		}
 		return false
+	case []recipeartifacts.Ref:
+		return true
 	case []swf.ArtifactKey:
 		return true
 	case []interface{}:

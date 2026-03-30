@@ -226,6 +226,7 @@ func (e *recordingExecutor) ExecuteOp(ctx coreworkflow.Context, parentResolution
 			opNode.Input = ch.Input
 			opNode.Output = ch.Output
 			opNode.ArtifactKeys = ch.ArtifactKeys
+			opNode.ArtifactRefs = ch.ArtifactRefs
 			opNode.TaskOrdinal = ch.TaskOrdinal
 			opNode.RestartFromOrdinal = ch.RestartFromOrdinal
 			opNode.StartedAt = ch.StartedAt

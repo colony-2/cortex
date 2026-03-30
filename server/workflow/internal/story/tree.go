@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -39,6 +40,7 @@ func (b *treeBuilder) newNode(kind model.JobRunStoryNodeKind, title string) *mod
 		Input:         nil,
 		Output:        nil,
 		ArtifactKeys:  make([]swf.ArtifactKey, 0),
+		ArtifactRefs:  make([]recipeartifacts.Ref, 0),
 		Children:      make([]*model.JobRunStoryNode, 0),
 	}
 }

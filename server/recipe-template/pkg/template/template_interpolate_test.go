@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -46,10 +47,12 @@ func TestInterpolateString(t *testing.T) {
 		Name:        "readme.md",
 		SizeBytes:   int64(len("data")),
 	})
+	readmeRef, err := recipeartifacts.RefFromArtifact(readme)
+	require.NoError(t, err)
 	ctx.TemplateData.Sequence["build"] = StepOutput{
 		Outputs: map[string]interface{}{},
-		Artifacts: map[string]swf.Artifact{
-			"readme.md": readme,
+		Artifacts: map[string]recipeartifacts.Ref{
+			"readme.md": readmeRef,
 		},
 	}
 
@@ -93,7 +96,7 @@ func TestInterpolateString(t *testing.T) {
 			name:     "single expression returns raw type - artifact",
 			template: "${{ sequence.build.artifacts[\"readme.md\"] }}",
 			mode:     ModeInterpolation,
-			expected: swf.ArtifactKey{JobId: "job", TaskOrdinal: 1, Name: "readme.md", SizeBytes: int64(len("data"))},
+			expected: readmeRef,
 			isString: false,
 		},
 
@@ -228,10 +231,12 @@ func TestInterpolateString_Errors(t *testing.T) {
 		Name:        "readme.md",
 		SizeBytes:   int64(len("data")),
 	})
+	readmeRef, err := recipeartifacts.RefFromArtifact(readme)
+	require.NoError(t, err)
 	ctx.TemplateData.Sequence["build"] = StepOutput{
 		Outputs: map[string]interface{}{},
-		Artifacts: map[string]swf.Artifact{
-			"readme.md": readme,
+		Artifacts: map[string]recipeartifacts.Ref{
+			"readme.md": readmeRef,
 		},
 	}
 

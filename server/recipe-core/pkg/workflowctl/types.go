@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
@@ -19,14 +20,15 @@ type WorkflowControl interface {
 }
 
 type StartJob struct {
-	TenantId    string                 `json:"tenantId"`
-	RecipeName  string                 `json:"recipe"`
-	Inputs      map[string]interface{} `json:"inputs,omitempty"`
-	Artifacts   []swf.Artifact         `json:"artifacts,omitempty"`
-	JobContext  contextual.JobContext  `json:"context,omitempty"`
-	GitRef      string                 `json:"git,omitempty"`
-	SubmittedAt *time.Time             `json:"submitted_at,omitempty"`
-	InputHash   string                 `json:"input_hash,omitempty"`
+	TenantId     string                 `json:"tenantId"`
+	RecipeName   string                 `json:"recipe"`
+	Inputs       map[string]interface{} `json:"inputs,omitempty"`
+	Artifacts    []swf.Artifact         `json:"artifacts,omitempty"`
+	ArtifactRefs []recipeartifacts.Ref  `json:"artifact_refs,omitempty"`
+	JobContext   contextual.JobContext  `json:"context,omitempty"`
+	GitRef       string                 `json:"git,omitempty"`
+	SubmittedAt  *time.Time             `json:"submitted_at,omitempty"`
+	InputHash    string                 `json:"input_hash,omitempty"`
 }
 
 type JobItem struct {

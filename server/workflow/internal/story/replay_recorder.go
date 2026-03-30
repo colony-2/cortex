@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
@@ -610,6 +611,7 @@ func copyAttemptIntoStep(dst, src *model.JobRunStoryNode) {
 	dst.Input = src.Input
 	dst.Output = src.Output
 	dst.ArtifactKeys = src.ArtifactKeys
+	dst.ArtifactRefs = src.ArtifactRefs
 	dst.TaskOrdinal = src.TaskOrdinal
 	dst.Error = src.Error
 	dst.InvokeSeq = src.InvokeSeq
@@ -695,6 +697,13 @@ func applyTaskOutputToNode(n *model.JobRunStoryNode, jobID string, taskType stri
 					var env ops.ActivityInvocationOutput
 					if outEnv.DecodePayload(&env) == nil {
 						n.Output = env.OpOutput
+						if len(env.ArtifactRefs) > 0 {
+							refs := make([]recipeartifacts.Ref, 0, len(env.ArtifactRefs))
+							for _, artifactRef := range env.ArtifactRefs {
+								refs = append(refs, artifactRef)
+							}
+							n.ArtifactRefs = refs
+						}
 					}
 				case coretasks.OutputKindContextPatch:
 					var patch coretasks.ContextPatch

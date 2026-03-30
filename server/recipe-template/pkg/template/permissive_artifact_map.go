@@ -3,6 +3,7 @@ package template
 import (
 	"reflect"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
@@ -19,12 +20,12 @@ const (
 // placeholder artifact key for unknown names.
 type permissiveArtifactMap struct {
 	adapter types.Adapter
-	data    map[string]swf.Artifact
+	data    map[string]recipeartifacts.Ref
 }
 
-func newPermissiveArtifactMap(data map[string]swf.Artifact, adapter types.Adapter) ref.Val {
+func newPermissiveArtifactMap(data map[string]recipeartifacts.Ref, adapter types.Adapter) ref.Val {
 	if data == nil {
-		data = map[string]swf.Artifact{}
+		data = map[string]recipeartifacts.Ref{}
 	}
 	return &permissiveArtifactMap{adapter: adapter, data: data}
 }
@@ -100,7 +101,7 @@ func (m *permissiveArtifactMap) placeholderFor(key ref.Val) ref.Val {
 		Name:        name,
 		SizeBytes:   -1,
 	}
-	return m.adapter.NativeToValue(placeholder)
+	return m.adapter.NativeToValue(recipeartifacts.NewStoredRef(placeholder))
 }
 
 func artifactNameFromMapKey(key ref.Val) string {

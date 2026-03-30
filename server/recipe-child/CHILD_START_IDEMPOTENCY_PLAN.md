@@ -59,7 +59,8 @@ Recommended shape:
 
 - canonicalize the tuple into a stable byte/string form
 - hash it with `sha256`
-- format a short, UUID-like job id such as `child_<hex>`
+- render the resulting deterministic bits in the same KSUID-style string format already used for job/project/etc IDs in this repo
+- do not introduce an ad hoc `child_<hex>` or other one-off child-only ID format
 
 Rules:
 
@@ -115,6 +116,7 @@ This also fixes partial fan-out:
   - keep fan-out ordering stable by recipe index
 - `recipe-child/pkg/recipe/op.go`
   - thread invocation-aware start context into single and multi-child starts
+- if the existing shared ID helpers are not directly usable from `recipe-child`, add or expose a small shared helper for KSUID-formatted deterministic IDs rather than importing another module’s `internal/idgen` package
 
 ### Optional follow-up
 
@@ -145,3 +147,4 @@ This also fixes partial fan-out:
 - This plan intentionally avoids parent-side “started child job” persistence. Deterministic child IDs plus idempotent duplicate-submit handling are enough to reconstruct the parent step output.
 - We do not need to reintroduce DB transactions around multi-child creation. Per-index idempotent resubmission is the correct recovery mechanism.
 - No `swf-go` code changes are assumed in this plan. The only runtime-specific follow-up left is future remote-runtime support if these ops ever need to run through that path.
+- Child job IDs should look like the existing KSUID-based identifiers already used elsewhere in the system; the deterministic identity rule changes the bytes behind the ID, not the outward format.

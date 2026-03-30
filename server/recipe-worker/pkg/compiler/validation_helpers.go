@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
-	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 func zeroOutputForOp(opName string) (map[string]interface{}, error) {
@@ -160,11 +160,11 @@ func placeholderStepOutput(outputs map[string]interface{}) template.StepOutput {
 	dyn := template.DynamicOutputs(wrapped)
 	return template.StepOutput{
 		Outputs:   dyn,
-		Artifacts: map[string]swf.Artifact{},
+		Artifacts: map[string]recipeartifacts.Ref{},
 		Runs: []template.RunOutput{
 			{
 				Outputs:   dyn,
-				Artifacts: map[string]swf.Artifact{},
+				Artifacts: map[string]recipeartifacts.Ref{},
 			},
 		},
 	}

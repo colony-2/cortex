@@ -3,6 +3,7 @@ package ops
 import (
 	"errors"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gorm.io/gorm"
@@ -13,7 +14,9 @@ type OpDependencies interface {
 	WorkflowControl() workflowctl.WorkflowControl
 	GetInputArtifacts() []swf.Artifact
 	AddOutputArtifact(swf.Artifact) error
+	AddExternalArtifact(name string, url string, expand bool) error
 	GetOutputArtifacts() []swf.Artifact
+	GetExternalArtifacts() map[string]recipeartifacts.Ref
 	WorktreePath() string
 	JobTool() JobTool
 	FindArtifact(key swf.ArtifactKey) (swf.Artifact, error)
@@ -40,14 +43,15 @@ func (j *TaskBasedJobTool) AwaitJobs(jobIds ...string) error {
 
 // opDepImpl holds the actual dependencies.
 type opDepImpl struct {
-	db              *gorm.DB
-	inputArtifacts  []swf.Artifact
-	outputArtifacts []swf.Artifact
-	workflowControl workflowctl.WorkflowControl
-	worktreePath    string
-	jobTool         JobTool
-	nextTaskType    string
-	nextTaskTypeSet bool
+	db                *gorm.DB
+	inputArtifacts    []swf.Artifact
+	outputArtifacts   []swf.Artifact
+	externalArtifacts map[string]recipeartifacts.Ref
+	workflowControl   workflowctl.WorkflowControl
+	worktreePath      string
+	jobTool           JobTool
+	nextTaskType      string
+	nextTaskTypeSet   bool
 }
 
 func (c *opDepImpl) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
@@ -70,6 +74,29 @@ func (c *opDepImpl) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
 func (c *opDepImpl) GetOutputArtifacts() []swf.Artifact {
 	out := make([]swf.Artifact, len(c.outputArtifacts))
 	copy(out, c.outputArtifacts)
+	return out
+}
+
+func (c *opDepImpl) AddExternalArtifact(name string, url string, expand bool) error {
+	artifactRef := recipeartifacts.NewExternalRef(name, url, expand)
+	if err := artifactRef.Validate(); err != nil {
+		return err
+	}
+	if c.externalArtifacts == nil {
+		c.externalArtifacts = make(map[string]recipeartifacts.Ref)
+	}
+	c.externalArtifacts[name] = artifactRef
+	return nil
+}
+
+func (c *opDepImpl) GetExternalArtifacts() map[string]recipeartifacts.Ref {
+	if len(c.externalArtifacts) == 0 {
+		return nil
+	}
+	out := make(map[string]recipeartifacts.Ref, len(c.externalArtifacts))
+	for name, artifactRef := range c.externalArtifacts {
+		out[name] = artifactRef
+	}
 	return out
 }
 
@@ -169,12 +196,13 @@ func (b *OpDependenciesBuilder) WithWorktreePath(path string) *OpDependenciesBui
 
 func (b *OpDependenciesBuilder) Build() OpDependencies {
 	deps := &opDepImpl{
-		db:              b.db,
-		inputArtifacts:  b.artifacts,
-		workflowControl: b.workflowControl,
-		worktreePath:    b.worktreePath,
-		outputArtifacts: make([]swf.Artifact, 0),
-		jobTool:         b.jobTool,
+		db:                b.db,
+		inputArtifacts:    b.artifacts,
+		workflowControl:   b.workflowControl,
+		worktreePath:      b.worktreePath,
+		outputArtifacts:   make([]swf.Artifact, 0),
+		externalArtifacts: make(map[string]recipeartifacts.Ref),
+		jobTool:           b.jobTool,
 	}
 
 	return deps

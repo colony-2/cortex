@@ -4,22 +4,28 @@ import (
 	"context"
 	"fmt"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.WorkflowControl, recipe SingleRecipe, gitRef string) workflowctl.StartJob {
-	artifacts := make([]swf.Artifact, len(recipe.Artifacts))
-	for i, artifact := range recipe.Artifacts {
-		artifacts[i] = ctl.GetArtifactLazy(ctx, tenantId, artifact)
+	artifacts := make([]swf.Artifact, 0, len(recipe.Artifacts))
+	for _, artifactRef := range recipe.Artifacts {
+		key, ok := artifactRef.StoredKey()
+		if !ok {
+			continue
+		}
+		artifacts = append(artifacts, ctl.GetArtifactLazy(ctx, tenantId, key))
 	}
 
 	return workflowctl.StartJob{
-		TenantId:   tenantId,
-		RecipeName: recipe.Name,
-		Inputs:     recipe.Inputs,
-		Artifacts:  artifacts,
+		TenantId:     tenantId,
+		RecipeName:   recipe.Name,
+		Inputs:       recipe.Inputs,
+		Artifacts:    artifacts,
+		ArtifactRefs: append([]recipeartifacts.Ref(nil), recipe.Artifacts...),
 		JobContext: contextual.JobContext{
 			Workflow: contextual.WorkflowContext{
 				CellName: recipe.CellName,
@@ -32,7 +38,7 @@ func recipeToStart(ctx context.Context, tenantId string, ctl workflowctl.Workflo
 				GitAuthor:        recipe.Git.Author,
 			},
 		},
-		GitRef:     gitRef,
+		GitRef: gitRef,
 	}
 }
 

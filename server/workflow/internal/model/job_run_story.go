@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
@@ -96,9 +97,10 @@ type JobRunStoryNode struct {
 	Attempt       int                `json:"attempt"`
 	PriorAttempts []*JobRunStoryNode `json:"prior_attempts"`
 
-	Input        any               `json:"input"`
-	Output       any               `json:"output"`
-	ArtifactKeys []swf.ArtifactKey `json:"artifact_keys"`
+	Input        any                   `json:"input"`
+	Output       any                   `json:"output"`
+	ArtifactKeys []swf.ArtifactKey     `json:"artifact_keys"`
+	ArtifactRefs []recipeartifacts.Ref `json:"artifact_refs,omitempty"`
 
 	// TaskOrdinal is the SWF chapter ordinal for this node's latest attempt (when applicable).
 	// This is the primary "restart cursor" surface for the frontend.

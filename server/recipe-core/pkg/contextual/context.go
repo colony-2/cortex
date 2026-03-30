@@ -3,7 +3,7 @@ package contextual
 import (
 	"time"
 
-	"github.com/colony-2/swf-go/pkg/swf"
+	"github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 )
 
 // WorktreePathSentinel is a placeholder value used during template resolution
@@ -161,15 +161,15 @@ type GitCommitContext struct {
 }
 
 type StepOutput struct {
-	Outputs   map[string]interface{}  `json:"outputs"`
-	Artifacts map[string]swf.Artifact `json:"artifacts"`
-	Runs      []RunOutput             `json:"runs"` // Previous runs (state loops)
+	Outputs   map[string]interface{}   `json:"outputs"`
+	Artifacts map[string]artifacts.Ref `json:"artifacts"`
+	Runs      []RunOutput              `json:"runs"` // Previous runs (state loops)
 }
 
 // RunOutput represents a single execution run
 type RunOutput struct {
-	Outputs   map[string]interface{}  `json:"outputs"`
-	Artifacts map[string]swf.Artifact `json:"artifacts"`
-	RunID     string                  `json:"run_id"`
-	Timestamp time.Time               `json:"timestamp"`
+	Outputs   map[string]interface{}   `json:"outputs"`
+	Artifacts map[string]artifacts.Ref `json:"artifacts"`
+	RunID     string                   `json:"run_id"`
+	Timestamp time.Time                `json:"timestamp"`
 }

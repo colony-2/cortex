@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -15,7 +16,7 @@ type SingleRecipe struct {
 	CellName  string                 `json:"cell_name,omitempty" default:"{{ context.workflow.cell }}"`
 	CellPath  string                 `json:"cell_path,omitempty" default:"{{ context.workflow.cell_path }}"`
 	Inputs    map[string]interface{} `json:"inputs"`
-	Artifacts []swf.ArtifactKey      `json:"artifacts"`
+	Artifacts []recipeartifacts.Ref  `json:"artifacts"`
 	Git       SingleRecipeGit        `json:"git"`
 }
 
@@ -123,12 +124,22 @@ func getRecipeOutput(deps ops.OpDependencies, ctx context.Context, input Started
 	}
 
 	outputs := map[string]interface{}{}
+	artifactRefs := map[string]recipeartifacts.Ref{}
 	if wrapped, ok := raw["output"]; ok {
 		if cast, ok := wrapped.(map[string]interface{}); ok {
 			outputs = cast
 		}
 	} else {
 		outputs = raw
+	}
+	if wrapped, ok := raw["artifact_refs"]; ok {
+		buf, err := json.Marshal(wrapped)
+		if err != nil {
+			return zero, err
+		}
+		if err := json.Unmarshal(buf, &artifactRefs); err != nil {
+			return zero, err
+		}
 	}
 
 	artifacts, err := data.GetArtifacts()
@@ -139,6 +150,14 @@ func getRecipeOutput(deps ops.OpDependencies, ctx context.Context, input Started
 	for _, a := range artifacts {
 		err = deps.AddOutputArtifact(a)
 		if err != nil {
+			return zero, err
+		}
+	}
+	for name, artifactRef := range artifactRefs {
+		if artifactRef.External == nil {
+			continue
+		}
+		if err := deps.AddExternalArtifact(name, artifactRef.External.URL, artifactRef.External.Expand); err != nil {
 			return zero, err
 		}
 	}

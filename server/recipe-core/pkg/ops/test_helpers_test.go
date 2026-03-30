@@ -1,6 +1,7 @@
 package ops
 
 import (
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"gorm.io/gorm"
@@ -23,7 +24,16 @@ func (d *testDeps) AddOutputArtifact(artifact swf.Artifact) error {
 	return nil
 }
 
+func (d *testDeps) AddExternalArtifact(name string, url string, expand bool) error {
+	_, _, _ = name, url, expand
+	return nil
+}
+
 func (d *testDeps) GetOutputArtifacts() []swf.Artifact {
+	return nil
+}
+
+func (d *testDeps) GetExternalArtifacts() map[string]recipeartifacts.Ref {
 	return nil
 }
 

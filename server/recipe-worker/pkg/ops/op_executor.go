@@ -1,17 +1,25 @@
 package ops
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -235,9 +243,10 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 			outputArtifacts = append(outputArtifacts, thinPackArtifact)
 		}
 		return ActivityInvocationOutput{
-			OpOutput:  outputData,
-			GitResult: unchangedGitResult(incomingGitContext),
-			NextTask:  nextTask,
+			OpOutput:     outputData,
+			GitResult:    unchangedGitResult(incomingGitContext),
+			NextTask:     nextTask,
+			ArtifactRefs: opDeps.GetExternalArtifacts(),
 		}, outputArtifacts, nil
 	}
 
@@ -265,9 +274,10 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 	}
 
 	return ActivityInvocationOutput{
-		OpOutput:  outputData,
-		GitResult: gitResult,
-		NextTask:  nextTask,
+		OpOutput:     outputData,
+		GitResult:    gitResult,
+		NextTask:     nextTask,
+		ArtifactRefs: opDeps.GetExternalArtifacts(),
 	}, outputArtifacts, nil
 }
 
@@ -322,31 +332,342 @@ func indexArtifactsByKey(artifacts []swf.Artifact) map[string]swf.Artifact {
 	return index
 }
 
-func materializeArtifactBindings(ctx context.Context, inbox string, bindings map[string]swf.ArtifactKey, artifactsByKey map[string]swf.Artifact) error {
-	for name, key := range bindings {
+func materializeArtifactBindings(ctx context.Context, inbox string, bindings map[string]recipeartifacts.Ref, artifactsByKey map[string]swf.Artifact) error {
+	for name, artifactRef := range bindings {
 		if err := validateBindingName(name); err != nil {
 			return fmt.Errorf("invalid artifact binding %q: %w", name, err)
 		}
-		artifact, ok := artifactsByKey[artifactKeyIdentity(key)]
-		if !ok {
-			return fmt.Errorf("artifact binding %q refers to missing artifact %s", name, artifactKeyIdentity(key))
+
+		if key, ok := artifactRef.StoredKey(); ok {
+			artifact, found := artifactsByKey[artifactKeyIdentity(key)]
+			if !found {
+				return fmt.Errorf("artifact binding %q refers to missing artifact %s", name, artifactKeyIdentity(key))
+			}
+			if err := materializeStoredArtifactBinding(ctx, inbox, name, artifact); err != nil {
+				return fmt.Errorf("artifact binding %q save failed: %w", name, err)
+			}
+			continue
 		}
 
-		destPath, err := bindingDestination(inbox, name, artifact.Name())
+		if artifactRef.External != nil {
+			if err := materializeExternalArtifactBinding(ctx, inbox, name, artifactRef); err != nil {
+				return fmt.Errorf("artifact binding %q materialization failed: %w", name, err)
+			}
+			continue
+		}
+
+		return fmt.Errorf("artifact binding %q has unsupported ref kind %q", name, artifactRef.Kind)
+	}
+	return nil
+}
+
+func materializeStoredArtifactBinding(ctx context.Context, inbox string, name string, artifact swf.Artifact) error {
+	destPath, err := bindingDestination(inbox, name, artifact.Name())
+	if err != nil {
+		return fmt.Errorf("invalid destination: %w", err)
+	}
+	if err := ensureDestinationAbsent(destPath); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir failed: %w", err)
+	}
+	if err := artifact.SaveToFile(ctx, destPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func materializeExternalArtifactBinding(ctx context.Context, inbox string, name string, artifactRef recipeartifacts.Ref) error {
+	if artifactRef.External == nil {
+		return fmt.Errorf("missing external payload")
+	}
+	parsed, err := url.Parse(artifactRef.External.URL)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+
+	switch parsed.Scheme {
+	case "file":
+		return materializeFileURLBinding(inbox, name, artifactRef, parsed)
+	case "http", "https":
+		return materializeHTTPBinding(ctx, inbox, name, artifactRef, parsed.String())
+	default:
+		return fmt.Errorf("unsupported url scheme %q", parsed.Scheme)
+	}
+}
+
+func materializeFileURLBinding(inbox string, name string, artifactRef recipeartifacts.Ref, parsed *url.URL) error {
+	sourcePath := parsed.Path
+	if sourcePath == "" {
+		return fmt.Errorf("file url path cannot be empty")
+	}
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+
+	if info.IsDir() {
+		destRoot, err := expandedBindingDestination(inbox, name)
 		if err != nil {
-			return fmt.Errorf("artifact binding %q invalid destination: %w", name, err)
+			return err
 		}
-		if _, err := os.Stat(destPath); err == nil {
-			return fmt.Errorf("artifact binding %q would overwrite %s", name, destPath)
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("artifact binding %q stat failed: %w", name, err)
+		if err := ensureDestinationAbsent(destRoot); err != nil {
+			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-			return fmt.Errorf("artifact binding %q mkdir failed: %w", name, err)
+		return copyDirectory(sourcePath, destRoot)
+	}
+
+	if artifactRef.External.Expand {
+		destRoot, err := expandedBindingDestination(inbox, name)
+		if err != nil {
+			return err
 		}
-		if err := artifact.SaveToFile(ctx, destPath); err != nil {
-			return fmt.Errorf("artifact binding %q save failed: %w", name, err)
+		if err := ensureDestinationAbsent(destRoot); err != nil {
+			return err
 		}
+		return extractArchive(sourcePath, destRoot)
+	}
+
+	destPath, err := bindingDestination(inbox, name, artifactRef.NameValue())
+	if err != nil {
+		return err
+	}
+	if err := ensureDestinationAbsent(destPath); err != nil {
+		return err
+	}
+	return copyFile(sourcePath, destPath)
+}
+
+func materializeHTTPBinding(ctx context.Context, inbox string, name string, artifactRef recipeartifacts.Ref, sourceURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	if artifactRef.External != nil && artifactRef.External.Expand {
+		tmpDir, err := os.MkdirTemp("", "external-artifact-*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmpDir)
+
+		tmpPath := filepath.Join(tmpDir, archiveTempName(artifactRef, sourceURL))
+		if err := copyReaderToFile(resp.Body, tmpPath); err != nil {
+			return err
+		}
+
+		destRoot, err := expandedBindingDestination(inbox, name)
+		if err != nil {
+			return err
+		}
+		if err := ensureDestinationAbsent(destRoot); err != nil {
+			return err
+		}
+		return extractArchive(tmpPath, destRoot)
+	}
+
+	destPath, err := bindingDestination(inbox, name, artifactRef.NameValue())
+	if err != nil {
+		return err
+	}
+	if err := ensureDestinationAbsent(destPath); err != nil {
+		return err
+	}
+	return copyReaderToFile(resp.Body, destPath)
+}
+
+func archiveTempName(artifactRef recipeartifacts.Ref, rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err == nil {
+		if base := path.Base(parsed.Path); base != "" && base != "." && base != "/" {
+			return base
+		}
+	}
+	name := strings.TrimSpace(artifactRef.NameValue())
+	if name == "" {
+		return "artifact.bin"
+	}
+	return name
+}
+
+func copyReaderToFile(r io.Reader, destPath string) error {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		return err
+	}
+	return nil
+}
+
+func copyFile(sourcePath string, destPath string) error {
+	in, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	return copyReaderToFile(in, destPath)
+}
+
+func copyDirectory(sourceRoot string, destRoot string) error {
+	if err := os.MkdirAll(destRoot, 0o755); err != nil {
+		return err
+	}
+	return filepath.WalkDir(sourceRoot, func(current string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(sourceRoot, current)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destRoot, rel)
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		return copyFile(current, target)
+	})
+}
+
+func extractArchive(sourcePath string, destRoot string) error {
+	lower := strings.ToLower(sourcePath)
+	switch {
+	case strings.HasSuffix(lower, ".zip"):
+		return extractZip(sourcePath, destRoot)
+	case strings.HasSuffix(lower, ".tar"):
+		return extractTarArchive(sourcePath, destRoot)
+	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
+		return extractTarGzArchive(sourcePath, destRoot)
+	default:
+		return fmt.Errorf("unsupported archive format: %s", filepath.Base(sourcePath))
+	}
+}
+
+func extractZip(sourcePath string, destRoot string) error {
+	r, err := zip.OpenReader(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	if err := os.MkdirAll(destRoot, 0o755); err != nil {
+		return err
+	}
+	for _, file := range r.File {
+		target, err := archiveTargetPath(destRoot, file.Name)
+		if err != nil {
+			return err
+		}
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			return err
+		}
+		err = copyReaderToFile(rc, target)
+		rc.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractTarArchive(sourcePath string, destRoot string) error {
+	f, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return extractTarStream(f, destRoot)
+}
+
+func extractTarGzArchive(sourcePath string, destRoot string) error {
+	f, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gzr.Close()
+	return extractTarStream(gzr, destRoot)
+}
+
+func extractTarStream(r io.Reader, destRoot string) error {
+	if err := os.MkdirAll(destRoot, 0o755); err != nil {
+		return err
+	}
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		target, err := archiveTargetPath(destRoot, hdr.Name)
+		if err != nil {
+			return err
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := copyReaderToFile(tr, target); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported tar entry type %d", hdr.Typeflag)
+		}
+	}
+}
+
+func archiveTargetPath(destRoot string, entryName string) (string, error) {
+	cleanName := filepath.Clean(entryName)
+	if cleanName == "." || cleanName == "" {
+		return destRoot, nil
+	}
+	target := filepath.Clean(filepath.Join(destRoot, cleanName))
+	if !strings.HasPrefix(target, destRoot+string(filepath.Separator)) && target != destRoot {
+		return "", fmt.Errorf("archive entry escapes destination")
+	}
+	return target, nil
+}
+
+func ensureDestinationAbsent(destPath string) error {
+	if _, err := os.Stat(destPath); err == nil {
+		return fmt.Errorf("would overwrite %s", destPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat failed: %w", err)
 	}
 	return nil
 }
@@ -375,6 +696,18 @@ func bindingDestination(inbox, name, artifactName string) (string, error) {
 		name = filepath.Join(trimmed, artifactName)
 	}
 	destPath := filepath.Clean(filepath.Join(inbox, name))
+	if !strings.HasPrefix(destPath, inbox+string(filepath.Separator)) && destPath != inbox {
+		return "", fmt.Errorf("destination escapes inbox")
+	}
+	return destPath, nil
+}
+
+func expandedBindingDestination(inbox string, name string) (string, error) {
+	trimmed := strings.TrimRight(name, "/\\")
+	if trimmed == "" {
+		return "", fmt.Errorf("name cannot be root")
+	}
+	destPath := filepath.Clean(filepath.Join(inbox, trimmed))
 	if !strings.HasPrefix(destPath, inbox+string(filepath.Separator)) && destPath != inbox {
 		return "", fmt.Errorf("destination escapes inbox")
 	}
