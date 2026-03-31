@@ -29,20 +29,31 @@ type actBackend struct{}
 
 func (b *actBackend) Run(ctx context.Context, req backendRequest) (backendResult, error) {
 	if err := ensureDockerAvailable(); err != nil {
-		return backendResult{}, fmt.Errorf("docker is required for backend %q: %w", backendAct, err)
+		return backendResult{}, fmt.Errorf("docker is required for backend %q: %w", backendLocal, err)
 	}
 
-	planner, err := actmodel.NewWorkflowPlanner(req.Workflow.Path, true, false)
+	isolatedWorktree, err := cloneGitWorktree(ctx, req.GitContext.WorktreePath)
+	if err != nil {
+		return backendResult{}, err
+	}
+	defer os.RemoveAll(isolatedWorktree)
+
+	workflowPath, err := localWorkflowPath(req.Workflow.Path, req.GitContext.WorktreePath, isolatedWorktree)
 	if err != nil {
 		return backendResult{}, err
 	}
 
-	plan, err := buildActPlan(planner, req.Input)
+	planner, err := actmodel.NewWorkflowPlanner(workflowPath, true, false)
+	if err != nil {
+		return backendResult{}, err
+	}
+
+	plan, err := buildActPlan(planner)
 	if err != nil {
 		return backendResult{}, err
 	}
 	if len(plan.Stages) == 0 {
-		return backendResult{}, fmt.Errorf("workflow %q has no runnable jobs for event %q", req.Workflow.Path, effectiveEvent(req.Input))
+		return backendResult{}, fmt.Errorf("workflow %q has no runnable jobs for event %q", workflowPath, workflowDispatchEvent)
 	}
 
 	artifactRoot, err := os.MkdirTemp("", "c2-gha-artifacts-*")
@@ -55,7 +66,9 @@ func (b *actBackend) Run(ctx context.Context, req backendRequest) (backendResult
 	}
 
 	runID := fmt.Sprintf("%d", time.Now().UnixNano())
-	eventPath, err := writeEventPayload(req)
+	localReq := req
+	localReq.GitContext.WorktreePath = isolatedWorktree
+	eventPath, err := writeEventPayload(localReq)
 	if err != nil {
 		return backendResult{}, err
 	}
@@ -76,11 +89,11 @@ func (b *actBackend) Run(ctx context.Context, req backendRequest) (backendResult
 
 	runnerConfig := &actrunner.Config{
 		Actor:              "colony2",
-		Workdir:            req.GitContext.WorktreePath,
-		EventName:          effectiveEvent(req.Input),
+		Workdir:            isolatedWorktree,
+		EventName:          workflowDispatchEvent,
 		EventPath:          eventPath,
-		DefaultBranch:      githubRefName(req.GitContext),
-		Env:                buildActEnv(req, runID),
+		DefaultBranch:      githubRefName(localReq.GitContext),
+		Env:                buildActEnv(localReq, runID),
 		Inputs:             stringifyInputs(req.Input.With),
 		Secrets:            copyStringMap(req.Input.Secrets),
 		Token:              strings.TrimSpace(req.Input.Secrets["GITHUB_TOKEN"]),
@@ -156,6 +169,8 @@ func ensureDockerAvailable() error {
 	return nil
 }
 
+const workflowDispatchEvent = "workflow_dispatch"
+
 type actJobLoggerFactory struct {
 	hook logrus.Hook
 }
@@ -186,18 +201,8 @@ func (h *lockedHook) Fire(entry *logrus.Entry) error {
 	return h.hook.Fire(entry)
 }
 
-func buildActPlan(planner actmodel.WorkflowPlanner, input RunInput) (*actmodel.Plan, error) {
-	if job := strings.TrimSpace(input.Job); job != "" {
-		return planner.PlanJob(job)
-	}
-	return planner.PlanEvent(effectiveEvent(input))
-}
-
-func effectiveEvent(input RunInput) string {
-	if event := strings.TrimSpace(input.Event); event != "" {
-		return event
-	}
-	return "push"
+func buildActPlan(planner actmodel.WorkflowPlanner) (*actmodel.Plan, error) {
+	return planner.PlanEvent(workflowDispatchEvent)
 }
 
 func stringifyInputs(with map[string]any) map[string]string {
@@ -304,10 +309,32 @@ func buildEventPayload(req backendRequest) map[string]interface{} {
 			"login": "colony2",
 		},
 	}
-	if effectiveEvent(req.Input) == "workflow_dispatch" && len(req.Input.With) > 0 {
+	if len(req.Input.With) > 0 {
 		event["inputs"] = stringifyInputs(req.Input.With)
 	}
 	return event
+}
+
+func localWorkflowPath(workflowPath string, sourceWorktree string, isolatedWorktree string) (string, error) {
+	if strings.TrimSpace(workflowPath) == "" {
+		return "", fmt.Errorf("workflow path is required")
+	}
+	sourceAbs, err := filepath.Abs(sourceWorktree)
+	if err != nil {
+		return "", err
+	}
+	workflowAbs, err := filepath.Abs(workflowPath)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(sourceAbs, workflowAbs)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return workflowAbs, nil
+	}
+	return filepath.Join(isolatedWorktree, rel), nil
 }
 
 func githubRef(gitCtx coreops.GitExecutionContext) string {

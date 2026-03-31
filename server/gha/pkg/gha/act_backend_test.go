@@ -13,12 +13,11 @@ import (
 func TestActBackendRunIntegration(t *testing.T) {
 	require.NoError(t, ensureDockerAvailable())
 
-	worktree := t.TempDir()
-	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
-	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
-	require.NoError(t, os.WriteFile(workflowPath, []byte(`
+	worktree := initGitRepoWithFiles(t, map[string]string{
+		".github/workflows/ci.yml": `
 name: ci
-on: push
+on:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -29,7 +28,10 @@ jobs:
       - name: Read file
         run: |
           cat output.txt
-`), 0o644))
+`,
+	})
+	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
+	outputPath := filepath.Join(worktree, "output.txt")
 
 	result, err := (&actBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
@@ -53,6 +55,8 @@ jobs:
 	require.Contains(t, result.Output.Jobs, "test")
 	require.Contains(t, result.ArtifactRefs, "gha-logs")
 	require.FileExists(t, result.ArtifactRefs["gha-logs"].Path)
+	_, err = os.Stat(outputPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestActBackendRunIntegrationWithCheckout(t *testing.T) {
@@ -61,7 +65,8 @@ func TestActBackendRunIntegrationWithCheckout(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
 		".github/workflows/ci.yml": `
 name: ci
-on: push
+on:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: ubuntu-latest

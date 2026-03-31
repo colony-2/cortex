@@ -10,7 +10,6 @@ import (
 func TestOpsForProfileC2JIncludesGHAOps(t *testing.T) {
 	names := opNames(OpsForProfile(ProfileC2J))
 	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.run_job")
 	require.Contains(t, names, "gha.runs")
 }
 
@@ -24,7 +23,6 @@ func TestRegisterProfileC2JInstallsGHAOps(t *testing.T) {
 
 	names := opNames(coreops.List())
 	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.run_job")
 	require.Contains(t, names, "gha.runs")
 }
 

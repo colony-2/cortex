@@ -2,6 +2,13 @@
 
 This plan turns the design in [github-actions-integration-patterns.md](github-actions-integration-patterns.md) into a staged implementation that fits the current server layout. It assumes `const` nodes and external artifact pointers are already available, and that the implementation should live as a dedicated Go project under `server/gha`. The delivery sequence still starts with local `act` execution for `gha.run`, with authenticated external workflow sources and the remote GitHub backend following in later phases.
 
+> Current implementation note:
+> - The shipped op surface is `gha.run` and `gha.runs`.
+> - The user-facing local backend name is `local`.
+> - Both backends use `workflow_dispatch`.
+> - Workflow mutations are discarded for both local and GitHub execution.
+> - References below to `gha.run_job`, event selection, or mutation persistence describe an earlier plan, not the current behavior.
+
 ## Goals
 
 1. Add `gha.run` as a first-class op that can execute a workflow against the per-op worktree already managed by `recipe-worker`.

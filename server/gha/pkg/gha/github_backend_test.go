@@ -36,28 +36,13 @@ func (f *fakeGitHubClient) ListWorkflowRunArtifacts(context.Context, string, str
 }
 
 type fakeGitHubGitRunner struct {
-	head         string
-	remoteHead   string
-	snapshotDir  string
 	pushedRemote string
 	deletedRef   string
-}
-
-func (f *fakeGitHubGitRunner) currentHead(context.Context, string) (string, error) {
-	return f.head, nil
 }
 
 func (f *fakeGitHubGitRunner) pushRef(_ context.Context, _ string, remoteURL, remoteRef string) error {
 	f.pushedRemote = remoteURL + " " + remoteRef
 	return nil
-}
-
-func (f *fakeGitHubGitRunner) branchTip(context.Context, string, string) (string, error) {
-	return f.remoteHead, nil
-}
-
-func (f *fakeGitHubGitRunner) cloneBranch(context.Context, string, string) (string, error) {
-	return f.snapshotDir, nil
 }
 
 func (f *fakeGitHubGitRunner) deleteRef(_ context.Context, _ string, remoteRef string) error {
@@ -128,7 +113,7 @@ func TestGitHubBackendRunRegistersArtifactURLs(t *testing.T) {
 			{Name: "test-results", ArchiveDownloadURL: "https://api.github.com/repos/col2test/ghatest/actions/artifacts/123/zip"},
 		},
 	}
-	fakeGit := &fakeGitHubGitRunner{head: "deadbeef", remoteHead: "deadbeef"}
+	fakeGit := &fakeGitHubGitRunner{}
 
 	origClientFactory := githubClientFactory
 	origGitOps := githubGitOps
@@ -175,16 +160,13 @@ func TestGitHubBackendRunRegistersArtifactURLs(t *testing.T) {
 	require.Equal(t, "refs/heads/c2/gha/invoke1234567890", fakeGit.deletedRef)
 }
 
-func TestGitHubBackendRunSyncsRemoteChangesIntoWorktree(t *testing.T) {
+func TestGitHubBackendLeavesLocalWorktreeUnchanged(t *testing.T) {
 	worktree := t.TempDir()
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	targetFile := filepath.Join(worktree, "result.txt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
 	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
 	require.NoError(t, os.WriteFile(targetFile, []byte("before"), 0o644))
-
-	snapshotDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(snapshotDir, "result.txt"), []byte("after"), 0o644))
 
 	fakeClient := &fakeGitHubClient{
 		dispatch: githubDispatchResult{RunID: 100},
@@ -194,11 +176,7 @@ func TestGitHubBackendRunSyncsRemoteChangesIntoWorktree(t *testing.T) {
 			Conclusion: "success",
 		},
 	}
-	fakeGit := &fakeGitHubGitRunner{
-		head:        "deadbeef",
-		remoteHead:  "feedface",
-		snapshotDir: snapshotDir,
-	}
+	fakeGit := &fakeGitHubGitRunner{}
 
 	origClientFactory := githubClientFactory
 	origGitOps := githubGitOps
@@ -232,22 +210,7 @@ func TestGitHubBackendRunSyncsRemoteChangesIntoWorktree(t *testing.T) {
 	require.NoError(t, err)
 	data, err := os.ReadFile(targetFile)
 	require.NoError(t, err)
-	require.Equal(t, "after", string(data))
-}
-
-func TestGitHubBackendRejectsSelectedJob(t *testing.T) {
-	_, err := (&githubBackend{}).Run(context.Background(), backendRequest{
-		Input: RunInput{
-			Job:     "test",
-			Backend: backendGitHub,
-			Secrets: map[string]string{"GITHUB_TOKEN": "token"},
-		},
-		Workflow: resolvedWorkflow{
-			Selector: "repo://.github/workflows/ci.yml",
-		},
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "does not support selecting a single job")
+	require.Equal(t, "before", string(data))
 }
 
 func TestGitHubBackendRejectsGitSelectors(t *testing.T) {

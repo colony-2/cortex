@@ -6,6 +6,13 @@ A new Colony2 op that executes GitHub Actions workflows as atomic steps within r
 
 Colony2 handles orchestration, state, durability, and data flow. GitHub Actions handles execution within its runner model. The boundary is clean: inputs go in, status and artifacts come out.
 
+> Current implementation note:
+> - Exposed ops are `gha.run` and `gha.runs`.
+> - Backend name is `local`, not `act`.
+> - Both backends execute as `workflow_dispatch`.
+> - Workflow mutations are always discarded; no changes are synced back into recipe git state.
+> - Older references to `gha.run_job`, backend `act`, event selection, or mutation persistence below are historical design notes and not the current contract.
+
 **Prerequisites:** This design depends on two general-purpose c2 enhancements that should be implemented first:
 - **`const` nodes** ([CONST_NODES.md](CONST_NODES.md)) — most `gha.run` usage requires `const` for correct validation semantics
 - **External artifact pointers** ([EXTERNAL_ARTIFACTS.md](EXTERNAL_ARTIFACTS.md)) — GHA artifacts and logs are exposed as lazy external pointers rather than eagerly downloaded

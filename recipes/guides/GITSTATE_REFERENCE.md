@@ -17,6 +17,7 @@ Defaults come from `context.git` (see `TASK_EXECUTION_CONTEXT_REFERENCE.md`).
 
 - A step that writes or rebases git history should return updated git metadata so downstream steps continue from the new base.
 - Ops that update history expose a `git_context_patch` output (see `ops/OP_THINPACKREBASE.md` and `ops/OP_SQUASHREBASEMERGE.md`). Treat this as the authoritative update after the step persists changes.
+- `gha.run` and `gha.runs` execute against disposable snapshots of the current worktree. Workflow file changes are discarded for both `backend: local` and `backend: github`, so these ops should be treated as non-persisting checks or automation runners.
 - Steps that only read git do not need to emit updates.
 
 Practical rule: if a step changes the base commit or persist hash, propagate its outputs into the next step’s git inputs (or into child recipe defaults).
@@ -64,6 +65,7 @@ This keeps the recipe stable during a run while still allowing explicit, persist
 
 - Git defaults and child recipe propagation: `ops/RUN_RECIPE.md`
 - History-changing op outputs: `ops/OP_THINPACKREBASE.md`, `ops/OP_SQUASHREBASEMERGE.md`
+- GitHub Actions workflow execution: `ops/OP_GITHUB_ACTIONS.md`
 
 ## End-to-end example (continue from a thin-pack rebase)
 

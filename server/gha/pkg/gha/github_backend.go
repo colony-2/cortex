@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,10 +29,7 @@ type githubRemoteRepo struct {
 }
 
 type githubGitRunner interface {
-	currentHead(ctx context.Context, repoPath string) (string, error)
 	pushRef(ctx context.Context, repoPath, remoteURL, remoteRef string) error
-	branchTip(ctx context.Context, remoteURL, remoteRef string) (string, error)
-	cloneBranch(ctx context.Context, remoteURL, branchName string) (string, error)
 	deleteRef(ctx context.Context, remoteURL, remoteRef string) error
 }
 
@@ -41,9 +37,6 @@ func (b *githubBackend) Run(ctx context.Context, req backendRequest) (backendRes
 	token := strings.TrimSpace(req.Input.Secrets["GITHUB_TOKEN"])
 	if token == "" {
 		return backendResult{}, fmt.Errorf("backend %q requires secrets.GITHUB_TOKEN", backendGitHub)
-	}
-	if strings.TrimSpace(req.Input.Job) != "" {
-		return backendResult{}, fmt.Errorf("backend %q does not support selecting a single job", backendGitHub)
 	}
 	if strings.HasPrefix(strings.TrimSpace(req.Workflow.Selector), "git+") {
 		return backendResult{}, fmt.Errorf("backend %q does not support git+ workflow selectors", backendGitHub)
@@ -62,11 +55,6 @@ func (b *githubBackend) Run(ctx context.Context, req backendRequest) (backendRes
 	remoteRef := "refs/heads/" + branchName
 
 	client, err := githubClientFactory(remote.Host, token)
-	if err != nil {
-		return backendResult{}, err
-	}
-
-	initialHead, err := githubGitOps.currentHead(ctx, req.GitContext.WorktreePath)
 	if err != nil {
 		return backendResult{}, err
 	}
@@ -109,23 +97,6 @@ func (b *githubBackend) Run(ctx context.Context, req backendRequest) (backendRes
 		}
 	}
 
-	if waitErr == nil {
-		remoteHead, err := githubGitOps.branchTip(ctx, remote.PushURL, remoteRef)
-		if err != nil {
-			return backendResult{}, err
-		}
-		if remoteHead != "" && remoteHead != initialHead {
-			snapshotDir, err := githubGitOps.cloneBranch(ctx, remote.PushURL, branchName)
-			if err != nil {
-				return backendResult{}, err
-			}
-			defer os.RemoveAll(snapshotDir)
-			if err := syncGitSnapshotIntoWorktree(snapshotDir, req.GitContext.WorktreePath); err != nil {
-				return backendResult{}, err
-			}
-		}
-	}
-
 	if err := githubGitOps.deleteRef(ctx, remote.PushURL, remoteRef); err != nil {
 		return backendResult{}, err
 	}
@@ -158,41 +129,9 @@ func (b *githubBackend) Run(ctx context.Context, req backendRequest) (backendRes
 
 type gitCLI struct{}
 
-func (gitCLI) currentHead(ctx context.Context, repoPath string) (string, error) {
-	output, err := runGit(ctx, repoPath, "rev-parse", "HEAD")
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(output), nil
-}
-
 func (gitCLI) pushRef(ctx context.Context, repoPath, remoteURL, remoteRef string) error {
 	_, err := runGit(ctx, repoPath, "push", remoteURL, "HEAD:"+remoteRef)
 	return err
-}
-
-func (gitCLI) branchTip(ctx context.Context, remoteURL, remoteRef string) (string, error) {
-	output, err := runGit(ctx, "", "ls-remote", remoteURL, remoteRef)
-	if err != nil {
-		return "", err
-	}
-	fields := strings.Fields(output)
-	if len(fields) == 0 {
-		return "", nil
-	}
-	return strings.TrimSpace(fields[0]), nil
-}
-
-func (gitCLI) cloneBranch(ctx context.Context, remoteURL, branchName string) (string, error) {
-	targetDir, err := os.MkdirTemp("", "c2-gha-remote-*")
-	if err != nil {
-		return "", err
-	}
-	if _, err := runGit(ctx, "", "clone", "--depth", "1", "--branch", branchName, remoteURL, targetDir); err != nil {
-		_ = os.RemoveAll(targetDir)
-		return "", err
-	}
-	return targetDir, nil
 }
 
 func (gitCLI) deleteRef(ctx context.Context, remoteURL, remoteRef string) error {
@@ -506,89 +445,4 @@ func githubArtifactRefs(run githubWorkflowRun, artifacts []githubWorkflowArtifac
 		refs[name] = externalFileRef{URL: artifact.ArchiveDownloadURL, Expand: true}
 	}
 	return refs
-}
-
-func syncGitSnapshotIntoWorktree(snapshotDir string, worktreePath string) error {
-	if err := clearWorktreeContents(worktreePath); err != nil {
-		return err
-	}
-	return copyDirectoryContents(snapshotDir, worktreePath)
-}
-
-func clearWorktreeContents(worktreePath string) error {
-	entries, err := os.ReadDir(worktreePath)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.Name() == ".git" {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(worktreePath, entry.Name())); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func copyDirectoryContents(srcDir string, dstDir string) error {
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.Name() == ".git" {
-			continue
-		}
-		srcPath := filepath.Join(srcDir, entry.Name())
-		dstPath := filepath.Join(dstDir, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		switch mode := info.Mode(); {
-		case mode.IsDir():
-			if err := os.MkdirAll(dstPath, mode.Perm()); err != nil {
-				return err
-			}
-			if err := copyDirectoryContents(srcPath, dstPath); err != nil {
-				return err
-			}
-		case mode&os.ModeSymlink != 0:
-			target, err := os.Readlink(srcPath)
-			if err != nil {
-				return err
-			}
-			if err := os.Symlink(target, dstPath); err != nil {
-				return err
-			}
-		default:
-			if err := copyFile(srcPath, dstPath, mode.Perm()); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func copyFile(srcPath string, dstPath string, perm os.FileMode) error {
-	srcFile, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
-		return err
-	}
-	dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, perm)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-	return nil
 }

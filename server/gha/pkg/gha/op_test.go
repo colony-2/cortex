@@ -113,7 +113,7 @@ func TestRunRegistersExternalArtifactsAndPassesResolvedWorkflowToBackend(t *test
 	}
 	origFactory := backendFactory
 	backendFactory = func(name string) (workflowBackend, error) {
-		require.Equal(t, backendAct, name)
+		require.Equal(t, backendLocal, name)
 		return fake, nil
 	}
 	t.Cleanup(func() {
@@ -132,7 +132,7 @@ func TestRunRegistersExternalArtifactsAndPassesResolvedWorkflowToBackend(t *test
 
 	output, err := run(deps, context.Background(), RunInput{
 		Workflow: "repo://.github/workflows/ci.yml",
-		Backend:  backendAct,
+		Backend:  backendLocal,
 	})
 	require.NoError(t, err)
 	require.Equal(t, statusSuccess, output.Status)
@@ -183,7 +183,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 
 	output, err := run(deps, context.Background(), RunInput{
 		Workflow: "repo://.github/workflows/ci.yml",
-		Backend:  backendAct,
+		Backend:  backendLocal,
 	})
 	require.Error(t, err)
 	require.Equal(t, statusFailure, output.Status)
@@ -191,7 +191,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 
 	output, err = run(deps, context.Background(), RunInput{
 		Workflow:        "repo://.github/workflows/ci.yml",
-		Backend:         backendAct,
+		Backend:         backendLocal,
 		ContinueOnError: true,
 	})
 	require.NoError(t, err)
@@ -230,7 +230,7 @@ func TestRunsFailureReturnsStructuredOutputWhenContinueOnErrorIsFalse(t *testing
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendAct}},
+			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
 		},
 	})
 	require.Error(t, err)
@@ -278,37 +278,11 @@ func TestRunSelectsGitHubBackend(t *testing.T) {
 	require.Equal(t, statusSuccess, output.Status)
 }
 
-func TestRunJobFlattensSelectedJob(t *testing.T) {
+func TestRunRejectsLegacyActBackendName(t *testing.T) {
 	worktree := t.TempDir()
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
 	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
-
-	origFactory := backendFactory
-	backendFactory = func(string) (workflowBackend, error) {
-		return &fakeBackend{
-			result: backendResult{
-				Output: RunOutput{
-					Status:   statusSuccess,
-					ExitCode: 0,
-					Workflow: WorkflowOutput{ResolvedSelector: "repo://.github/workflows/ci.yml"},
-					Jobs: map[string]WorkflowJobOutput{
-						"test": {
-							Status:          statusSuccess,
-							Conclusion:      statusSuccess,
-							DurationSeconds: 12,
-							Steps: []WorkflowStepOutput{
-								{Name: "Echo", Status: statusSuccess, Conclusion: statusSuccess, DurationSeconds: 12},
-							},
-						},
-					},
-				},
-			},
-		}, nil
-	}
-	t.Cleanup(func() {
-		backendFactory = origFactory
-	})
 
 	deps := coreops.NewOpDependenciesBuilder().
 		WithGitContext(coreops.GitExecutionContext{
@@ -318,15 +292,13 @@ func TestRunJobFlattensSelectedJob(t *testing.T) {
 		}).
 		Build()
 
-	output, err := runJob(deps, context.Background(), RunInput{
+	output, err := run(deps, context.Background(), RunInput{
 		Workflow: "repo://.github/workflows/ci.yml",
-		Backend:  backendAct,
-		Job:      "test",
+		Backend:  "act",
 	})
-	require.NoError(t, err)
-	require.Equal(t, statusSuccess, output.Status)
-	require.Equal(t, statusSuccess, output.Conclusion)
-	require.Len(t, output.Steps, 1)
+	require.Error(t, err)
+	require.Empty(t, output.Status)
+	require.Contains(t, err.Error(), `unsupported backend "act"`)
 }
 
 func TestRunsAggregatesResultsAndPrefixesArtifacts(t *testing.T) {
@@ -366,8 +338,8 @@ func TestRunsAggregatesResultsAndPrefixesArtifacts(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendAct}},
-			{ID: "lint", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendAct}},
+			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
+			{ID: "lint", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
@@ -411,8 +383,8 @@ func TestRunsContinueOnErrorCapturesPerWorkflowErrors(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "good", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendAct}},
-			{ID: "bad", RunInput: RunInput{Workflow: "repo://.github/workflows/missing.yml", Backend: backendAct}},
+			{ID: "good", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
+			{ID: "bad", RunInput: RunInput{Workflow: "repo://.github/workflows/missing.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
@@ -424,10 +396,11 @@ func TestRunsContinueOnErrorCapturesPerWorkflowErrors(t *testing.T) {
 	require.NotEmpty(t, output.Results["bad"].ErrorMessage)
 }
 
-func TestRunsRejectsMutatingWorkflows(t *testing.T) {
+func TestRunsDiscardsWorkflowMutations(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
 		".github/workflows/ci.yml": "name: ci\n",
 	})
+	mutatedPath := filepath.Join(worktree, "mutated.txt")
 
 	origFactory := backendFactory
 	backendFactory = func(string) (workflowBackend, error) {
@@ -451,23 +424,15 @@ func TestRunsRejectsMutatingWorkflows(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "mutating", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendAct}},
+			{ID: "mutating", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
 	require.NoError(t, err)
-	require.Equal(t, statusFailure, output.Status)
-	require.Contains(t, output.Results["mutating"].ErrorMessage, "does not support workflows that mutate the worktree")
-}
-
-func TestFlattenRunJobOutputFailsWhenJobIsMissing(t *testing.T) {
-	_, _, err := flattenRunJobOutput("missing", RunOutput{
-		Jobs: map[string]WorkflowJobOutput{
-			"other": {Status: statusSuccess},
-			"lint":  {Status: statusSuccess},
-		},
-	})
-	require.Error(t, err)
+	require.Equal(t, statusSuccess, output.Status)
+	require.Equal(t, statusSuccess, output.Results["mutating"].Status)
+	_, statErr := os.Stat(mutatedPath)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
 func TestBatchWorkflowKeyFallsBackWhenIDMissing(t *testing.T) {

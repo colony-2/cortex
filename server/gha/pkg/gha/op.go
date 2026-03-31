@@ -15,7 +15,7 @@ import (
 
 var backendFactory = func(name string) (workflowBackend, error) {
 	switch strings.TrimSpace(name) {
-	case "", backendAct:
+	case "", backendLocal:
 		return actBackendFactory(), nil
 	case backendGitHub:
 		return &githubBackend{}, nil
@@ -28,23 +28,11 @@ func GetOp() coreops.RegisterableOp {
 	return coreops.NewActivityMappedOpV2[RunInput, RunOutput](
 		coreops.OpMetadata{
 			Type:           "gha.run",
-			Description:    "Executes a GitHub Actions workflow against the current worktree",
+			Description:    "Executes a GitHub Actions workflow against an isolated snapshot of the current worktree",
 			Version:        "1.0.0",
 			DefaultTimeout: 30 * time.Minute,
 		},
 		run,
-	)
-}
-
-func GetRunJobOp() coreops.RegisterableOp {
-	return coreops.NewActivityMappedOpV2[RunInput, RunJobOutput](
-		coreops.OpMetadata{
-			Type:           "gha.run_job",
-			Description:    "Executes a single GitHub Actions workflow job against the current worktree",
-			Version:        "1.0.0",
-			DefaultTimeout: 30 * time.Minute,
-		},
-		runJob,
 	)
 }
 
@@ -69,39 +57,6 @@ func run(inv coreops.OpDependencies, ctx context.Context, input RunInput) (RunOu
 		return result.Output, err
 	}
 	return result.Output, nil
-}
-
-func runJob(inv coreops.OpDependencies, ctx context.Context, input RunInput) (RunJobOutput, error) {
-	if strings.TrimSpace(input.Job) == "" {
-		return RunJobOutput{}, workflow.NewNonRetryableApplicationError("job is required")
-	}
-
-	result, execErr := executeRun(ctx, input, currentGitContext(inv))
-	if execErr != nil && result.Output.Status == "" {
-		return RunJobOutput{}, execErr
-	}
-	if addErr := addExternalArtifactRefs(inv, result.ArtifactRefs); addErr != nil {
-		return RunJobOutput{}, addErr
-	}
-
-	jobOutput, conclusion, flattenErr := flattenRunJobOutput(input.Job, result.Output)
-	if flattenErr != nil {
-		return RunJobOutput{}, workflow.NewNonRetryableApplicationError("%s", flattenErr.Error())
-	}
-
-	output := RunJobOutput{
-		Status:          jobOutput.Status,
-		Conclusion:      conclusion,
-		ExitCode:        result.Output.ExitCode,
-		DurationSeconds: jobOutput.DurationSeconds,
-		ErrorMessage:    result.Output.ErrorMessage,
-		Workflow:        result.Output.Workflow,
-		Steps:           jobOutput.Steps,
-	}
-	if execErr != nil {
-		return output, execErr
-	}
-	return output, nil
 }
 
 func runs(inv coreops.OpDependencies, ctx context.Context, input RunsInput) (RunsOutput, error) {
@@ -156,22 +111,6 @@ func runs(inv coreops.OpDependencies, ctx context.Context, input RunsInput) (Run
 				for name, ref := range prefixedArtifacts {
 					artifactRefs[name] = ref
 				}
-				mu.Unlock()
-				recordBatchRunError(&firstErrMu, &firstErr, input.ContinueOnError, err)
-				return
-			}
-			dirty, err := gitWorktreeDirty(ctx, clonedWorktree)
-			if err != nil {
-				mu.Lock()
-				results[key] = failureOutputForError(RunOutput{}, err)
-				mu.Unlock()
-				recordBatchRunError(&firstErrMu, &firstErr, input.ContinueOnError, err)
-				return
-			}
-			if dirty {
-				err = workflow.NewNonRetryableApplicationError("gha.runs does not support workflows that mutate the worktree")
-				mu.Lock()
-				results[key] = failureOutputForError(RunOutput{}, err)
 				mu.Unlock()
 				recordBatchRunError(&firstErrMu, &firstErr, input.ContinueOnError, err)
 				return
@@ -268,21 +207,6 @@ func currentGitContext(inv coreops.OpDependencies) coreops.GitExecutionContext {
 	return gitCtx
 }
 
-func flattenRunJobOutput(jobID string, output RunOutput) (WorkflowJobOutput, string, error) {
-	jobID = strings.TrimSpace(jobID)
-	if jobID != "" {
-		if job, ok := output.Jobs[jobID]; ok {
-			return job, job.Conclusion, nil
-		}
-	}
-	if len(output.Jobs) == 1 {
-		for _, job := range output.Jobs {
-			return job, job.Conclusion, nil
-		}
-	}
-	return WorkflowJobOutput{}, "", fmt.Errorf("job %q was not found in workflow output", jobID)
-}
-
 func recordBatchRunError(mu *sync.Mutex, target *error, continueOnError bool, err error) {
 	if continueOnError || err == nil {
 		return
@@ -367,14 +291,6 @@ func cloneGitWorktree(ctx context.Context, src string) (string, error) {
 		return "", err
 	}
 	return dst, nil
-}
-
-func gitWorktreeDirty(ctx context.Context, worktreePath string) (bool, error) {
-	output, err := runGit(ctx, worktreePath, "status", "--porcelain")
-	if err != nil {
-		return false, err
-	}
-	return strings.TrimSpace(output) != "", nil
 }
 
 func parseTimeout(raw string) (time.Duration, error) {

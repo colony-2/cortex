@@ -16,9 +16,10 @@ Use this short path to get productive quickly, with direct links to the deeper d
 
 ## 3) Know your ops
 - The op catalog lives under `ops/`. Start with `ops/OP_COMMAND_EXECUTION.md` (general shell), `ops/OP_INPUT.md` (user prompts), `ops/OP_LLM_INFERENCE2.md` (LLM calls), and `ops/OP_CODEX_EXEC.md` (agentic execution).
+- For GitHub workflow reuse: see `ops/OP_GITHUB_ACTIONS.md` (`gha.run`, `gha.runs`).
 - For git history updates: see `ops/OP_THINPACKREBASE.md` and `ops/OP_SQUASHREBASEMERGE.md`.
 - For child recipes: see `ops/RUN_RECIPE.md` (starting, waiting, fetching child outputs).
-- For task lifecycle helpers: `ops/OP_SLEEP.md`, `ops/OP_EXTENSION_OPS.md` (extension runners), and `ops/TICKET_MANAGE_OP.md`.
+- For task lifecycle helpers: `ops/OP_SLEEP.md`, `ops/EXTENSION_OPS.md` (extension runners), and `ops/TICKET_MANAGE_OP.md`.
 
 ## 4) Author safely and validate early
 - Generate/validate against the schema exactly as described in `RECIPE_AUTHORING_GUIDE.md` before running anything.

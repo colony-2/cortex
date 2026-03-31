@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	backendAct    = "act"
+	backendLocal  = "local"
 	backendGitHub = "github"
 
 	statusSuccess   = "success"
@@ -18,8 +18,6 @@ const (
 
 type RunInput struct {
 	Workflow        string            `json:"workflow" validate:"required"`
-	Job             string            `json:"job,omitempty"`
-	Event           string            `json:"event,omitempty"`
 	With            map[string]any    `json:"with,omitempty"`
 	Env             map[string]string `json:"env,omitempty"`
 	Secrets         map[string]string `json:"secrets,omitempty"`
@@ -28,16 +26,6 @@ type RunInput struct {
 	Timeout         string            `json:"timeout,omitempty"`
 	ContinueOnError bool              `json:"continue_on_error,omitempty"`
 	Remote          *RemoteInput      `json:"remote,omitempty"`
-}
-
-type RunJobOutput struct {
-	Status          string               `json:"status"`
-	Conclusion      string               `json:"conclusion,omitempty"`
-	ExitCode        int                  `json:"exit_code"`
-	DurationSeconds int                  `json:"duration_seconds"`
-	ErrorMessage    string               `json:"error_message,omitempty"`
-	Workflow        WorkflowOutput       `json:"workflow"`
-	Steps           []WorkflowStepOutput `json:"steps,omitempty"`
 }
 
 type RunsInput struct {

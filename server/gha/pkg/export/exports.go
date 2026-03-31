@@ -9,7 +9,6 @@ import (
 func GetAll() []ops.RegisterableOp {
 	return []ops.RegisterableOp{
 		gha.GetOp(),
-		gha.GetRunJobOp(),
 		gha.GetRunsOp(),
 	}
 }
