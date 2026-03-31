@@ -104,12 +104,13 @@ func NewStepWithDeps[In any, Out any](fn ActivityHandlerV2[In, Out]) Step {
 			return nil, fmt.Errorf("error decoding input: %w", err)
 		}
 		objResult, err := fn(deps, ctx, input)
-		if err != nil {
-			return nil, fmt.Errorf("error executing step: %w", err)
-		}
 		s := structs.New(objResult)
 		s.TagName = "json"
-		return s.Map(), nil
+		output := s.Map()
+		if err != nil {
+			return output, fmt.Errorf("error executing step: %w", err)
+		}
+		return output, nil
 	}
 	return &stepImpl{
 		inputType: inputType, outputType: outputType, invokeFn: invoker,
@@ -289,12 +290,13 @@ func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, han
 				return nil, fmt.Errorf("error decoding input: %w", err)
 			}
 			objResult, err := handler(deps, ctx, input)
-			if err != nil {
-				return nil, fmt.Errorf("error executing step: %w", err)
-			}
 			s := structs.New(objResult)
 			s.TagName = "json"
-			return s.Map(), nil
+			output := s.Map()
+			if err != nil {
+				return output, fmt.Errorf("error executing step: %w", err)
+			}
+			return output, nil
 		}
 
 		step = &stepImpl{

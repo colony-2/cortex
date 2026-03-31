@@ -1,6 +1,7 @@
 package opregistry
 
 import (
+	ghaexport "github.com/colony-2/colony2/server/gha/pkg/export"
 	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
 	"github.com/colony-2/colony2/server/ops/pkg/codex"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
@@ -46,6 +47,7 @@ func serverOps() []coreops.RegisterableOp {
 	impls = append(impls, input.GetAutoFillOp())
 	impls = append(impls, recipe.GetOps()...)
 	impls = append(impls, gitexport.GetAll()...)
+	impls = append(impls, ghaexport.GetAll()...)
 	impls = append(impls, ticketop.GetOp())
 	return impls
 }
@@ -64,5 +66,6 @@ func c2jOps() []coreops.RegisterableOp {
 	impls = append(impls, input.GetAutoFillOp())
 	impls = append(impls, recipe.GetOps()...)
 	impls = append(impls, gitexport.GetAll()...)
+	impls = append(impls, ghaexport.GetAll()...)
 	return impls
 }

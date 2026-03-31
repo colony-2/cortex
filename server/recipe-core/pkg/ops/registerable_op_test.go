@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -41,6 +42,16 @@ func TestRegisterableOp_ErrorAndPanics(t *testing.T) {
 	out, err := actOnly.TaskChain()[0].Invoke(&testDeps{}, context.Background(), map[string]interface{}{"msg": "ok"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]interface{}{"echo": ""}, out)
+}
+
+func TestRegisterableOp_PreservesOutputOnError(t *testing.T) {
+	act := NewActivityMappedOpV2[rIn, rOut](OpMetadata{Type: "a3"}, func(_ OpDependencies, _ context.Context, in rIn) (rOut, error) {
+		return rOut{Echo: "partial:" + in.Msg}, errors.New("boom")
+	})
+
+	out, err := act.TaskChain()[0].Invoke(&testDeps{}, context.Background(), map[string]interface{}{"msg": "yo"})
+	require.Error(t, err)
+	assert.Equal(t, map[string]interface{}{"echo": "partial:yo"}, out)
 }
 
 func TestInvocation_HashDeterministic(t *testing.T) {

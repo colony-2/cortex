@@ -1,9 +1,10 @@
-go 1.25.5
+go 1.26
 
 use (
 	./cli
 	./server/api
 	./server/cell
+	./server/gha
 	./server/core
 	./server/cortex
 	./server/git

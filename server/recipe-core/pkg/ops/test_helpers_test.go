@@ -50,6 +50,8 @@ func (d *testDeps) WorkflowControl() workflowctl.WorkflowControl { return nil }
 
 func (d *testDeps) WorktreePath() string { return "" }
 
+func (d *testDeps) GitContext() GitExecutionContext { return GitExecutionContext{} }
+
 func (d *testDeps) SetNextTaskType(taskType string) {
 	_ = taskType
 }

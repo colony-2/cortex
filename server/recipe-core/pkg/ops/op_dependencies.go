@@ -18,6 +18,7 @@ type OpDependencies interface {
 	GetOutputArtifacts() []swf.Artifact
 	GetExternalArtifacts() map[string]recipeartifacts.Ref
 	WorktreePath() string
+	GitContext() GitExecutionContext
 	JobTool() JobTool
 	FindArtifact(key swf.ArtifactKey) (swf.Artifact, error)
 	SetNextTaskType(taskType string)
@@ -49,6 +50,7 @@ type opDepImpl struct {
 	externalArtifacts map[string]recipeartifacts.Ref
 	workflowControl   workflowctl.WorkflowControl
 	worktreePath      string
+	gitContext        GitExecutionContext
 	jobTool           JobTool
 	nextTaskType      string
 	nextTaskTypeSet   bool
@@ -134,6 +136,10 @@ func (c *opDepImpl) WorktreePath() string {
 	return c.worktreePath
 }
 
+func (c *opDepImpl) GitContext() GitExecutionContext {
+	return c.gitContext
+}
+
 func (c *opDepImpl) SetNextTaskType(taskType string) {
 	c.nextTaskType = taskType
 	c.nextTaskTypeSet = true
@@ -148,6 +154,7 @@ type OpDependenciesBuilder struct {
 	artifacts       []swf.Artifact
 	workflowControl workflowctl.WorkflowControl
 	worktreePath    string
+	gitContext      GitExecutionContext
 	jobTool         JobTool
 }
 
@@ -194,12 +201,21 @@ func (b *OpDependenciesBuilder) WithWorktreePath(path string) *OpDependenciesBui
 	return b
 }
 
+func (b *OpDependenciesBuilder) WithGitContext(ctx GitExecutionContext) *OpDependenciesBuilder {
+	b.gitContext = ctx
+	if b.worktreePath == "" {
+		b.worktreePath = ctx.WorktreePath
+	}
+	return b
+}
+
 func (b *OpDependenciesBuilder) Build() OpDependencies {
 	deps := &opDepImpl{
 		db:                b.db,
 		inputArtifacts:    b.artifacts,
 		workflowControl:   b.workflowControl,
 		worktreePath:      b.worktreePath,
+		gitContext:        b.gitContext,
 		outputArtifacts:   make([]swf.Artifact, 0),
 		externalArtifacts: make(map[string]recipeartifacts.Ref),
 		jobTool:           b.jobTool,

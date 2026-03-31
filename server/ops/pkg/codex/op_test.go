@@ -91,6 +91,10 @@ func (f *fakeOpDependencies) WorktreePath() string {
 	return ""
 }
 
+func (f *fakeOpDependencies) GitContext() ops.GitExecutionContext {
+	return ops.GitExecutionContext{}
+}
+
 func TestRunCodexActivitySuccess(t *testing.T) {
 	workdir := t.TempDir()
 	worktree := filepath.Join(workdir, "worktree")

@@ -122,6 +122,7 @@ type stubDeps struct {
 	externalArtifacts map[string]recipeartifacts.Ref
 	workflow          workflowctl.WorkflowControl
 	worktreePath      string
+	gitContext        ops.GitExecutionContext
 	jobTool           ops.JobTool
 }
 
@@ -163,6 +164,9 @@ func (d *stubDeps) WorkflowControl() workflowctl.WorkflowControl {
 	return d.workflow
 }
 func (d *stubDeps) WorktreePath() string { return d.worktreePath }
+func (d *stubDeps) GitContext() ops.GitExecutionContext {
+	return d.gitContext
+}
 func (d *stubDeps) JobTool() ops.JobTool { return d.jobTool }
 func (d *stubDeps) FindArtifact(key swf.ArtifactKey) (swf.Artifact, error) {
 	var found swf.Artifact

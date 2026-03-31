@@ -1,0 +1,21 @@
+{
+  "name": "server-gha",
+  "root": "server/gha",
+  "projectType": "library",
+  "tags": ["backend", "go"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "go build ./...",
+        "cwd": "server/gha"
+      }
+    },
+    "test": {
+      "executor": "@nx-go/nx-go:test"
+    },
+    "tidy": {
+      "executor": "@nx-go/nx-go:tidy"
+    }
+  }
+}

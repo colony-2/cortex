@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -197,6 +198,20 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		WithJobTool(jobTool).
 		WithDatabase(db).
 		WithWorkflowControl(deps.WorkflowControl()).
+		WithGitContext(ops.GitExecutionContext{
+			BaseRepo:         fullContext.GetBaseRepo(),
+			BaseRef:          fullContext.GetBaseRef(),
+			ResolvedBaseHash: fullContext.GetResolvedBaseHash(),
+			PersistHash:      fullContext.GetPersistHash(),
+			ParentHash:       fullContext.GetParentHash(),
+			CellName:         fullContext.GetCellName(),
+			CellPath:         fullContext.GetCellPath(),
+			GitAuthor:        fullContext.GetGitAuthor(),
+			NodePath:         fullContext.GetNodePath(),
+			InvokeSeq:        fullContext.GetInvokeSeq(),
+			InvokeHash:       req.GitTaskContext.InvokeHash,
+			WorktreePath:     fullContext.WorktreePath,
+		}).
 		WithWorktreePath(fullContext.WorktreePath).
 		Build()
 
@@ -207,10 +222,7 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 	}()
 
 	// Execute operation with HYDRATED input (sentinels replaced)
-	outputData, err := reg.Step.Invoke(opDeps, ctx, hydratedInput)
-	if err != nil {
-		return zero, outputArtifacts, err
-	}
+	outputData, stepErr := reg.Step.Invoke(opDeps, ctx, hydratedInput)
 	nextTask := reg.NextTaskType
 	if override, ok := opDeps.(nextTaskOverride); ok {
 		if overrideValue, set := override.NextTaskType(); set {
@@ -235,6 +247,13 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		outputArtifacts = append(outputArtifacts, artifact)
 		return nil
 	}); err != nil {
+		if stepErr != nil {
+			return ActivityInvocationOutput{
+				OpOutput:     outputData,
+				NextTask:     nextTask,
+				ArtifactRefs: opDeps.GetExternalArtifacts(),
+			}, outputArtifacts, errors.Join(stepErr, fmt.Errorf("collect outbox artifacts: %w", err))
+		}
 		return zero, outputArtifacts, err
 	}
 
@@ -242,17 +261,28 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		if thinPackArtifact != nil {
 			outputArtifacts = append(outputArtifacts, thinPackArtifact)
 		}
-		return ActivityInvocationOutput{
+		output = ActivityInvocationOutput{
 			OpOutput:     outputData,
 			GitResult:    unchangedGitResult(incomingGitContext),
 			NextTask:     nextTask,
 			ArtifactRefs: opDeps.GetExternalArtifacts(),
-		}, outputArtifacts, nil
+		}
+		if stepErr != nil {
+			return output, outputArtifacts, stepErr
+		}
+		return output, outputArtifacts, nil
 	}
 
 	// Call PersistWithDiffs with full context
 	persistOutput, persistArtifacts, err := controller.PersistWithDiffs(context.Background(), fullContext)
 	if err != nil {
+		if stepErr != nil {
+			return ActivityInvocationOutput{
+				OpOutput:     outputData,
+				NextTask:     nextTask,
+				ArtifactRefs: opDeps.GetExternalArtifacts(),
+			}, outputArtifacts, errors.Join(stepErr, fmt.Errorf("persist workspace changes: %w", err))
+		}
 		return zero, outputArtifacts, err
 	}
 
@@ -273,12 +303,16 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 		}
 	}
 
-	return ActivityInvocationOutput{
+	output = ActivityInvocationOutput{
 		OpOutput:     outputData,
 		GitResult:    gitResult,
 		NextTask:     nextTask,
 		ArtifactRefs: opDeps.GetExternalArtifacts(),
-	}, outputArtifacts, nil
+	}
+	if stepErr != nil {
+		return output, outputArtifacts, stepErr
+	}
+	return output, outputArtifacts, nil
 }
 
 // replaceSentinels recursively walks the input map and replaces sentinel values with actual worktree path

@@ -1,6 +1,6 @@
 type: shai-sandbox
 version: 1
-image: ghcr.io/colony-2/shai-mega
+image: ghcr.io/colony-2/shai-mega:dind-latest
 resources:
   default:
     vars:
@@ -8,6 +8,8 @@ resources:
       - source: MOON_TOOLCHAIN_FORCE_GLOBALS
       - source: ANTHROPIC_API_KEY
       - source: GEMINI_API_KEY
+    options:
+      privileged: true
     calls:
       - name: uname
         command: uname -a
@@ -25,7 +27,30 @@ resources:
         target: /src/.moon/cache
         mode: rw
     root-commands:
+      - |
+        socket="/var/run/docker.sock"
 
+        # Initial quick check
+        if [ ! -S "$socket" ]; then
+          sleep 0.2
+          if [ ! -S "$socket" ]; then
+            echo "Waiting for $socket..."
+
+            # Now loop for the remainder of the 2s (approx 1.7s left)
+            count=0
+            while [ ! -S "$socket" ] && [ $count -lt 18 ]; do
+              sleep 0.1
+              ((count++))
+            done
+          fi
+        fi
+
+        if [ -S "$socket" ]; then
+          chmod 666 "$socket"
+        else
+          echo "Docker socket not available within 2s" >&2
+          exit 1
+        fi
     http:
       - openai.com
       - api.openai.com

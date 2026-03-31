@@ -1,6 +1,6 @@
 # GitHub Actions Op Implementation Plan
 
-This plan turns the design in [github-actions-integration-patterns.md](github-actions-integration-patterns.md) into a staged implementation that fits the current server layout. It assumes we should ship value incrementally, starting with local `act` execution for `gha.run` and deferring the highest-risk pieces such as authenticated external workflow sources, lazy external artifact plumbing, and the remote GitHub backend behind explicit later phases.
+This plan turns the design in [github-actions-integration-patterns.md](github-actions-integration-patterns.md) into a staged implementation that fits the current server layout. It assumes `const` nodes and external artifact pointers are already available, and that the implementation should live as a dedicated Go project under `server/gha`. The delivery sequence still starts with local `act` execution for `gha.run`, with authenticated external workflow sources and the remote GitHub backend following in later phases.
 
 ## Goals
 
@@ -13,44 +13,49 @@ This plan turns the design in [github-actions-integration-patterns.md](github-ac
 
 1. The worker already creates and restores an isolated git workspace per op in `recipe-worker/pkg/ops/op_executor.go`; `gha.run` should reuse that workspace rather than create a second nested `git worktree`.
 2. Ops currently get `WorktreePath()` plus generic services, but `cell://` resolution and synthetic GitHub event payloads also need repo and cell metadata. We should expose a typed git execution context to ops instead of smuggling internal state through user-facing inputs.
-3. `workflowctl.GetArtifactLazy()` is already the right seam for lazy artifact materialization. External artifact pointers from [EXTERNAL_ARTIFACTS.md](EXTERNAL_ARTIFACTS.md) should surface there so existing inbox binding code can continue calling `artifact.SaveToFile(...)`.
+3. `workflowctl.GetArtifactLazy()` is already the right seam for lazy artifact materialization. Since external artifact pointers are implemented, `gha.run` should register artifacts and logs through that existing path instead of inventing a GHA-specific storage flow.
 4. Remote GitHub execution depends on authenticated git push/fetch and a GitHub API client. The current `server/git/pkg/git` public interface defines `AuthConfig`, but authenticated fetch/push is not actually wired through the exported repository methods yet, so `backend: github` should not be the first slice.
 5. `gha.runs` cannot safely run multiple mutating workflows against the same workspace in parallel. V1 should make it validation-only (`const: true`) or reject mutating configurations.
 
 ## Recommended Package Layout
 
-- New package: `ops/pkg/gha/`
-- `ops/pkg/gha/op.go`: registerable ops (`gha.run`, `gha.run_job`, later `gha.runs`)
-- `ops/pkg/gha/types.go`: input and output structs plus validation helpers
-- `ops/pkg/gha/selector.go`: workflow selector parsing and resolution
-- `ops/pkg/gha/normalize.go`: backend-agnostic output builders
-- `ops/pkg/gha/act_backend.go`: gitea/act integration
-- `ops/pkg/gha/artifacts.go`: artifact and log registration helpers
-- `ops/pkg/gha/github_backend.go`: remote backend, later phase
-- `ops/pkg/export/exports.go`: export the GHA ops
-- `ops/go.mod`: add `gitea/act` and later the GitHub API dependency
+- New Go module: `gha/`
+- `gha/go.mod`: add `gitea/act`, `google/go-github`, and later the chosen GitHub App auth helper
+- `gha/moon.yml`
+- `gha/project.json`
+- `gha/pkg/gha/op.go`: registerable ops (`gha.run`, `gha.run_job`, later `gha.runs`)
+- `gha/pkg/gha/types.go`: input and output structs plus validation helpers
+- `gha/pkg/gha/selector.go`: workflow selector parsing and resolution
+- `gha/pkg/gha/normalize.go`: backend-agnostic output builders
+- `gha/pkg/gha/act_backend.go`: gitea/act integration
+- `gha/pkg/gha/artifacts.go`: artifact and log registration helpers
+- `gha/pkg/gha/github_client.go`: thin wrapper around `google/go-github` for Actions REST calls
+- `gha/pkg/gha/github_backend.go`: remote backend, later phase
+- `gha/pkg/export/exports.go`: export the GHA ops for registry wiring
+- `api/pkg/serverdeps/opregistry/opregistry.go`: include `gha` exports in the runtime profiles that should expose the op family
 - `recipe-core/pkg/ops/op_dependencies.go` or a sibling file: add a typed git execution context accessor for `BaseRepo`, `BaseRef`, `ResolvedBaseHash`, `CellPath`, `CellName`, and `WorktreePath`
 - `recipe-worker/pkg/ops/op_executor.go`: populate the new git execution context into op dependencies
-- `workflow/...` and `recipe-core/pkg/workflowctl/...`: external artifact pointer plumbing, if not already landed by the prerequisite work
+- `workflow/...` and `recipe-core/pkg/workflowctl/...`: consume the already-landed external artifact pointer plumbing from the new op
 
 ## Delivery Plan
 
-### Phase 0: Prerequisites and Runtime Seams
+### Phase 0: New Project Scaffold and Runtime Seams
 
-1. Confirm or implement the external artifact pointer model from [EXTERNAL_ARTIFACTS.md](EXTERNAL_ARTIFACTS.md).
-2. Extend op dependencies with a typed git execution context instead of relying on hidden defaulted inputs.
-3. Decide the runtime dependency story for GitHub API access and git credentials. If that is not ready, explicitly scope V1 to `backend: act` only.
-4. Add a feature flag or registration guard so the op family can land incrementally without implying full backend parity on day one.
+1. Create a new `server/gha` module with `gha/go.mod`, `gha/moon.yml`, and `gha/project.json`.
+2. Add `gha/pkg/export/exports.go` and wire it into `api/pkg/serverdeps/opregistry/opregistry.go`.
+3. Extend op dependencies with a typed git execution context instead of relying on hidden defaulted inputs.
+4. Decide the runtime dependency story for GitHub API access and git credentials. If that is not ready, explicitly scope V1 to `backend: act` only.
+5. Add a feature flag or registration guard so the op family can land incrementally without implying full backend parity on day one.
 
 Acceptance criteria:
 
-1. An op can access repo root, cell path, base ref/hash, and worktree path without adding undocumented recipe fields.
-2. A lazy artifact returned by workflow control can still be materialized by existing inbox binding code via `SaveToFile`.
+1. The new `gha` project builds cleanly in the workspace and can be imported by the API runtime.
+2. An op can access repo root, cell path, base ref/hash, and worktree path without adding undocumented recipe fields.
 3. The V1 scope boundary (`act` only vs `act` and `github`) is encoded in code and docs, not left implicit.
 
 ### Phase 1: `gha.run` Contract and Selector Resolution
 
-1. Add `ops/pkg/gha` with the public input and output structs for `gha.run`.
+1. Add `gha/pkg/gha` with the public input and output structs for `gha.run`.
 2. Implement selector parsing for `repo://` and `cell://` first.
 3. Resolve `repo://` and `cell://` directly against the current op worktree.
 4. Return clear op-level errors for invalid selectors, missing files, directories, and path traversal.
@@ -64,7 +69,7 @@ Acceptance criteria:
 
 ### Phase 2: Local `act` Backend MVP
 
-1. Add gitea/act as a library dependency in `ops/go.mod`.
+1. Add gitea/act as a library dependency in `gha/go.mod`.
 2. Implement a local backend that reads the resolved workflow YAML, plans either the whole workflow or a filtered job, executes against `deps.WorktreePath()`, and honors `with`, `env`, `secrets`, `event`, `timeout`, and `continue_on_error`.
 3. Build the synthetic GitHub event/context payload from the current git execution context.
 4. Implement structured capture with a `logrus.Hook` and normalize it into the `gha.run` output schema.
@@ -80,7 +85,7 @@ Acceptance criteria:
 
 ### Phase 3: Artifact and Log Registration
 
-1. Register uploaded GHA artifacts and combined/per-job logs through the external artifact pointer mechanism.
+1. Register uploaded GHA artifacts and combined/per-job logs through the existing external artifact pointer mechanism.
 2. For local `act`, expose artifacts as `file://` pointers rooted at the act artifact directory.
 3. Decide whether logs are stored as generated files in the outbox or as lazy external artifacts. Prefer the same pointer model for both to keep recipe behavior consistent.
 4. Ensure API and workflow artifact retrieval paths can materialize or stream these artifacts without special-casing GHA consumers.
@@ -117,15 +122,17 @@ Acceptance criteria:
 
 ### Phase 6: Remote GitHub Backend
 
-1. Introduce a remote backend adapter that can push the current commit to a temporary ref, trigger the workflow, poll run status and jobs, register artifact/log pointers, and clean up the temporary ref.
-2. Keep this behind a flag until git auth and GitHub API auth are fully wired.
-3. For non-const workflows, define the exact fetch-back flow before implementation. If the remote workflow can produce more than one commit, the design must be tightened before coding.
+1. Build `gha/pkg/gha/github_client.go` around `google/go-github` for workflow dispatch, run lookup, job listing, and log/artifact URL discovery.
+2. Introduce a remote backend adapter that can push the current commit to a temporary ref, trigger the workflow, poll run status and jobs, register artifact/log pointers, and clean up the temporary ref.
+3. Keep this behind a flag until git auth and GitHub API auth are fully wired.
+4. For non-const workflows, define the exact fetch-back flow before implementation. If the remote workflow can produce more than one commit, the design must be tightened before coding.
 
 Acceptance criteria:
 
 1. `backend: github` produces the same normalized output shape as `backend: act`.
-2. Temporary refs are namespaced and cleaned on success, with GC fallback for failures.
-3. Mutating remote workflows either have a proven single-commit round-trip or remain unsupported.
+2. The remote backend uses a pinned `go-github` major version in `gha/go.mod` rather than ad hoc REST calls.
+3. Temporary refs are namespaced and cleaned on success, with GC fallback for failures.
+4. Mutating remote workflows either have a proven single-commit round-trip or remain unsupported.
 
 ### Phase 7: Recipe Adoption and Fallbacks
 
@@ -140,8 +147,8 @@ Acceptance criteria:
 
 ## Testing Plan
 
-- Unit tests in `ops/pkg/gha` for selector parsing, output normalization, timeout handling, `continue_on_error`, and artifact pointer registration metadata.
-- Integration tests in `ops/pkg/gha` that run a small fixture workflow with `act`, verify workspace mutations persist through the existing git decorator, and verify `repo://` versus `cell://` resolution.
+- Unit tests in `gha/pkg/gha` for selector parsing, output normalization, timeout handling, `continue_on_error`, and artifact pointer registration metadata.
+- Integration tests in `gha/pkg/gha` that run a small fixture workflow with `act`, verify workspace mutations persist through the existing git decorator, and verify `repo://` versus `cell://` resolution.
 - Recipe-worker integration tests with end-to-end fixtures under `recipe-worker/test-fixtures/recipes/` to verify outputs and artifacts flow through template interpolation and state-machine transitions.
 - Remote-backend tests using mocked GitHub APIs for polling and normalization, plus a gated live test only if the repo already supports secret-backed integration coverage.
 
@@ -153,20 +160,21 @@ Ship this first:
 2. `backend: act`
 3. `repo://` and `cell://`
 4. Structured outputs
-5. `continue_on_error`
-6. `timeout`
-7. Non-const mutation support through the existing worker git persistence
+5. Artifact and log registration via the existing external artifact infrastructure
+6. `continue_on_error`
+7. `timeout`
+8. Non-const mutation support through the existing worker git persistence
 
 Defer this until after MVP:
 
 1. `gha.runs`
 2. Remote GitHub backend
 3. Private external `git+ssh://` workflows
-4. Full lazy artifact/log pointer support if the prerequisite work is not already merged
+4. GitHub App and/or GHES-specific auth hardening beyond the initial supported auth path
 
 ## Open Questions
 
 1. Should resolved workflow metadata live in the op output, the execution record, or both?
 2. Should `actions/checkout` be a hard shim, or should we allow a limited pass-through for workflows that depend on custom checkout options?
 3. Is `gha.runs` meant to be true parallel execution or just ergonomic recipe sugar over multiple `gha.run` calls?
-4. What is the canonical credentials source for `backend: github` and private `git+` selectors in this codebase?
+4. Should `backend: github` start with PAT/OAuth token support, GitHub App installation auth, or both on day one?

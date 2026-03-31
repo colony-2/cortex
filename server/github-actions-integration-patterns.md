@@ -2,7 +2,7 @@
 
 ## Overview
 
-A new Colony2 op that executes GitHub Actions workflows as atomic steps within recipes. Colony2 dispatches the workflow to nektos/act (or a remote runner), waits for completion, and captures results. From Colony2's perspective, a GHA workflow is just another activity — like `codex.exec` is to agent work, `gha.run` is to CI/CD work.
+A new Colony2 op that executes GitHub Actions workflows as atomic steps within recipes. Colony2 dispatches the workflow to gitea/act (or a remote runner), waits for completion, and captures results. From Colony2's perspective, a GHA workflow is just another activity — like `codex.exec` is to agent work, `gha.run` is to CI/CD work.
 
 Colony2 handles orchestration, state, durability, and data flow. GitHub Actions handles execution within its runner model. The boundary is clean: inputs go in, status and artifacts come out.
 
@@ -736,7 +736,7 @@ What gitea/act provides (as a Go library):
 
 ## Act/Gitea Integration Details
 
-Colony2 uses **gitea/act** (gitea's fork of nektos/act) as a Go library rather than invoking act as a CLI. gitea/act is explicitly designed for library use — its README states it "cannot be used as command line tool anymore, but only as a library." This gives Colony2 direct programmatic control over workflow execution and result capture.
+Colony2 uses **gitea/act** (gitea's fork of nektos/act) as a Go library rather than invoking act as a CLI. gitea/act is explicitly designed for library use — its README states it "cannot be used as command line tool anymore, but only as a library." This gives Colony2 direct programmatic control over workflow execution and result capture. In Go code, imports still use the upstream `github.com/nektos/act/...` path and are redirected to gitea/act with a module `replace`.
 
 ### Structured Output
 
