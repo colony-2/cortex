@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
 
 func TestStartJobsEmpty(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	_, err := startJobs(context.Background(), "tenant", ctl, nil, "")
+	_, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{}, ctl, nil, "")
 	if err == nil {
 		t.Fatal("expected error for empty recipes")
 	}
@@ -17,7 +20,7 @@ func TestStartJobsEmpty(t *testing.T) {
 func TestStartJobsSingle(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
 	recipes := []SingleRecipe{{Name: "child", Inputs: map[string]interface{}{"value": "ok"}}}
-	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "git-ref")
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "git-ref")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -35,7 +38,7 @@ func TestStartJobsSingle(t *testing.T) {
 func TestStartJobsMultipleRunsSequentially(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
 	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "")
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +57,7 @@ func TestStartJobsMultipleErrorReturnsNoKeys(t *testing.T) {
 		startErrs: []error{nil, errors.New("boom")},
 	}
 	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), "tenant", ctl, recipes, "")
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

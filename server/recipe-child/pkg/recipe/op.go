@@ -166,8 +166,8 @@ func getRecipeOutput(deps ops.OpDependencies, ctx context.Context, input Started
 }
 
 func startSingleJob(deps ops.OpDependencies, ctx context.Context, input SingleRecipeWithRef) (StartedJob, error) {
-	tId := deps.JobTool().GetJobKey().TenantId
-	keys, err := startJobs(ctx, tId, deps.WorkflowControl(), []SingleRecipe{input.SingleRecipe}, input.GitRef)
+	parentJobKey := deps.JobTool().GetJobKey()
+	keys, err := startJobs(ctx, parentJobKey, currentInvocation(deps), deps.WorkflowControl(), []SingleRecipe{input.SingleRecipe}, input.GitRef)
 	if err != nil {
 		return StartedJob{}, err
 	}
@@ -175,12 +175,11 @@ func startSingleJob(deps ops.OpDependencies, ctx context.Context, input SingleRe
 }
 
 func startMultipleJobs(deps ops.OpDependencies, ctx context.Context, input MultipleRecipes) (StartedJobs, error) {
-	tId := deps.JobTool().GetJobKey().TenantId
 	resolved := make([]SingleRecipe, len(input.Recipes))
 	for i, recipe := range input.Recipes {
 		resolved[i] = recipe
 	}
-	keys, err := startJobs(ctx, tId, deps.WorkflowControl(), resolved, input.GitRef)
+	keys, err := startJobs(ctx, deps.JobTool().GetJobKey(), currentInvocation(deps), deps.WorkflowControl(), resolved, input.GitRef)
 	if err != nil {
 		return StartedJobs{}, err
 	}
@@ -190,4 +189,12 @@ func startMultipleJobs(deps ops.OpDependencies, ctx context.Context, input Multi
 		ids[i] = k.JobId
 	}
 	return StartedJobs{JobIDs: ids}, nil
+}
+
+func currentInvocation(deps ops.OpDependencies) contextual.Invocation {
+	gitContext := deps.GitContext()
+	return contextual.Invocation{
+		NodePath:  gitContext.NodePath,
+		InvokeSeq: gitContext.InvokeSeq,
+	}
 }

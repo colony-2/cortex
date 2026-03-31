@@ -94,7 +94,9 @@ func (s *SWFWorkflowControl) CompleteTask(ctx context.Context, jobKey swf.JobKey
 
 func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.StartJob) (swf.JobKey, error) {
 	if s.PreferRuntimeRecipeResolution || s.Registry == nil {
-		return starter.StartRecipeJob(ctx, req, s.Engine)
+		return starter.StartRecipeJobWithOptions(ctx, req, s.Engine, starter.StartRecipeJobOptions{
+			JobID: req.JobID,
+		})
 	}
 
 	r, err := s.Registry(req.TenantId, req.RecipeName)
@@ -102,7 +104,9 @@ func (s *SWFWorkflowControl) StartJob(ctx context.Context, req workflowctl.Start
 		return swf.JobKey{}, err
 	}
 
-	return starter.StartRecipeJob(ctx, req, s.Engine, *r)
+	return starter.StartRecipeJobWithOptions(ctx, req, s.Engine, starter.StartRecipeJobOptions{
+		JobID: req.JobID,
+	}, *r)
 }
 
 func (s *SWFWorkflowControl) Cancel(ctx context.Context, jobKey swf.JobKey) error {

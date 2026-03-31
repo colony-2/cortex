@@ -1,12 +1,23 @@
 package starter
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/swf-go/pkg/swf"
 )
+
+type captureSubmitter struct {
+	job swf.SubmitJob
+}
+
+func (c *captureSubmitter) SubmitJob(_ context.Context, job swf.SubmitJob) (swf.JobKey, error) {
+	c.job = job
+	return swf.JobKey{TenantId: job.TenantId, JobId: job.JobID}, nil
+}
 
 func TestJobMetadataFromStartJob_JSONFields(t *testing.T) {
 	start := workflowctl.StartJob{
@@ -56,5 +67,24 @@ func TestJobMetadataFromStartJob_JSONFields(t *testing.T) {
 	}
 	if got, _ := m[string(MetaFieldGitRef)].(string); got != "main" {
 		t.Fatalf("expected %q=%q, got %#v", MetaFieldGitRef, "main", m[string(MetaFieldGitRef)])
+	}
+}
+
+func TestStartRecipeJobWithOptions_ForwardsExplicitJobID(t *testing.T) {
+	engine := &captureSubmitter{}
+
+	_, err := StartRecipeJobWithOptions(context.Background(), workflowctl.StartJob{
+		TenantId:   "tenant",
+		JobID:      "child-job-id",
+		RecipeName: "recipe-name",
+	}, engine, StartRecipeJobOptions{
+		JobID: "child-job-id",
+	})
+	if err != nil {
+		t.Fatalf("StartRecipeJobWithOptions: %v", err)
+	}
+
+	if engine.job.JobID != "child-job-id" {
+		t.Fatalf("expected explicit job id to be forwarded, got %q", engine.job.JobID)
 	}
 }

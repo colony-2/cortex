@@ -21,6 +21,7 @@ type WorkflowControl interface {
 
 type StartJob struct {
 	TenantId     string                 `json:"tenantId"`
+	JobID        string                 `json:"job_id,omitempty"`
 	RecipeName   string                 `json:"recipe"`
 	Inputs       map[string]interface{} `json:"inputs,omitempty"`
 	Artifacts    []swf.Artifact         `json:"artifacts,omitempty"`
