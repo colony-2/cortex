@@ -28,66 +28,55 @@ func (f workflowBackendFunc) Run(ctx context.Context, req backendRequest) (backe
 	return f(ctx, req)
 }
 
-func TestResolveWorkflowSelectorRepoAndCell(t *testing.T) {
+func TestResolveWorkflowSelectorFileNameOnly(t *testing.T) {
 	worktree := t.TempDir()
 	repoWorkflow := filepath.Join(worktree, ".github", "workflows", "ci.yml")
-	cellWorkflow := filepath.Join(worktree, "cells", "alpha", "workflows", "cell.yml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(repoWorkflow), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Dir(cellWorkflow), 0o755))
-	require.NoError(t, os.WriteFile(repoWorkflow, []byte("name: repo\n"), 0o644))
-	require.NoError(t, os.WriteFile(cellWorkflow, []byte("name: cell\n"), 0o644))
+	require.NoError(t, os.WriteFile(repoWorkflow, []byte("name: repo\non:\n  workflow_dispatch:\n"), 0o644))
 
 	gitCtx := coreops.GitExecutionContext{
 		WorktreePath:     worktree,
-		CellPath:         filepath.ToSlash(filepath.Join("cells", "alpha")),
 		ResolvedBaseHash: "deadbeef",
 	}
 
-	resolvedRepo, err := resolveWorkflowSelector("repo://.github/workflows/ci.yml", gitCtx)
+	resolvedRepo, err := resolveWorkflowSelector("ci.yml", gitCtx)
 	require.NoError(t, err)
 	require.Equal(t, repoWorkflow, resolvedRepo.Path)
-	require.Equal(t, "repo://.github/workflows/ci.yml", resolvedRepo.Selector)
+	require.Equal(t, ".github/workflows/ci.yml", resolvedRepo.RepoPath)
+	require.Equal(t, "ci.yml", resolvedRepo.Selector)
 	require.NotEmpty(t, resolvedRepo.ContentHash)
+}
 
-	resolvedCell, err := resolveWorkflowSelector("cell://workflows/cell.yml", gitCtx)
-	require.NoError(t, err)
-	require.Equal(t, cellWorkflow, resolvedCell.Path)
+func TestResolveWorkflowSelectorRejectsUnsupportedNames(t *testing.T) {
+	worktree := t.TempDir()
+	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: repo\non:\n  workflow_dispatch:\n"), 0o644))
 
-	_, err = resolveWorkflowSelector("repo://../escape.yml", gitCtx)
+	gitCtx := coreops.GitExecutionContext{WorktreePath: worktree}
+
+	for _, input := range []string{
+		"repo://.github/workflows/ci.yml",
+		"cell://workflows/ci.yml",
+		"git+https://github.com/acme/repo.git//.github/workflows/ci.yml@main",
+		"nested/ci.yml",
+		`nested\ci.yml`,
+		"ci.txt",
+	} {
+		_, err := resolveWorkflowSelector(input, gitCtx)
+		require.Error(t, err, input)
+	}
+}
+
+func TestResolveWorkflowSelectorRequiresWorkflowDispatch(t *testing.T) {
+	worktree := t.TempDir()
+	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: repo\non:\n  push:\n"), 0o644))
+
+	_, err := resolveWorkflowSelector("ci.yml", coreops.GitExecutionContext{WorktreePath: worktree})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "escape")
-}
-
-func TestResolveWorkflowSelectorGitFile(t *testing.T) {
-	repo := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: external\n",
-	})
-	selector := "git+file://" + filepath.ToSlash(repo) + "//.github/workflows/ci.yml@HEAD"
-
-	resolved, err := resolveWorkflowSelector(selector, coreops.GitExecutionContext{})
-	require.NoError(t, err)
-	require.Equal(t, selector, resolved.Selector)
-	require.NotEmpty(t, resolved.ResolvedCommit)
-	require.NotEmpty(t, resolved.ContentHash)
-	data, err := os.ReadFile(resolved.Path)
-	require.NoError(t, err)
-	require.Equal(t, "name: external\n", string(data))
-}
-
-func TestReadFileWorkflowFromRemoteRepo(t *testing.T) {
-	repo := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: remote\n",
-	})
-
-	data, resolvedCommit, err := readFileWorkflowFromRemoteRepo(parsedGitWorkflowSelector{
-		Scheme:       "https",
-		RepoURL:      repo,
-		WorkflowPath: ".github/workflows/ci.yml",
-		Ref:          "HEAD",
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, resolvedCommit)
-	require.Equal(t, "name: remote\n", string(data))
+	require.Contains(t, err.Error(), "workflow_dispatch")
 }
 
 func TestRunRegistersExternalArtifactsAndPassesResolvedWorkflowToBackend(t *testing.T) {
@@ -95,7 +84,7 @@ func TestRunRegistersExternalArtifactsAndPassesResolvedWorkflowToBackend(t *test
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	logPath := filepath.Join(worktree, "gha.log")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
-	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\non:\n  workflow_dispatch:\n"), 0o644))
 	require.NoError(t, os.WriteFile(logPath, []byte("hello"), 0o644))
 
 	fake := &fakeBackend{
@@ -131,15 +120,16 @@ func TestRunRegistersExternalArtifactsAndPassesResolvedWorkflowToBackend(t *test
 		Build()
 
 	output, err := run(deps, context.Background(), RunInput{
-		Workflow: "repo://.github/workflows/ci.yml",
+		Workflow: "ci.yml",
 		Backend:  backendLocal,
 	})
 	require.NoError(t, err)
 	require.Equal(t, statusSuccess, output.Status)
-	require.Equal(t, "repo://.github/workflows/ci.yml", output.Workflow.ResolvedSelector)
+	require.Equal(t, "ci.yml", output.Workflow.ResolvedSelector)
 	require.Equal(t, "deadbeef", output.Workflow.ResolvedCommit)
 	require.NotEmpty(t, output.Workflow.ContentHash)
 	require.Equal(t, workflowPath, fake.request.Workflow.Path)
+	require.Equal(t, ".github/workflows/ci.yml", fake.request.Workflow.RepoPath)
 	require.Equal(t, "acme/widgets", fake.request.GitContext.BaseRepo)
 
 	refs := deps.GetExternalArtifacts()
@@ -153,7 +143,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 	worktree := t.TempDir()
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
-	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\non:\n  workflow_dispatch:\n"), 0o644))
 
 	fake := &fakeBackend{
 		result: backendResult{
@@ -182,7 +172,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 		Build()
 
 	output, err := run(deps, context.Background(), RunInput{
-		Workflow: "repo://.github/workflows/ci.yml",
+		Workflow: "ci.yml",
 		Backend:  backendLocal,
 	})
 	require.Error(t, err)
@@ -190,7 +180,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 	require.Contains(t, output.ErrorMessage, "workflow concluded with status")
 
 	output, err = run(deps, context.Background(), RunInput{
-		Workflow:        "repo://.github/workflows/ci.yml",
+		Workflow:        "ci.yml",
 		Backend:         backendLocal,
 		ContinueOnError: true,
 	})
@@ -201,7 +191,7 @@ func TestRunFailureAnnotatesOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 
 func TestRunsFailureReturnsStructuredOutputWhenContinueOnErrorIsFalse(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: ci\n",
+		".github/workflows/ci.yml": "name: ci\non:\n  workflow_dispatch:\n",
 	})
 
 	origFactory := backendFactory
@@ -230,7 +220,7 @@ func TestRunsFailureReturnsStructuredOutputWhenContinueOnErrorIsFalse(t *testing
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
+			{ID: "ci", RunInput: RunInput{Workflow: "ci.yml", Backend: backendLocal}},
 		},
 	})
 	require.Error(t, err)
@@ -244,7 +234,7 @@ func TestRunSelectsGitHubBackend(t *testing.T) {
 	worktree := t.TempDir()
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
-	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\non:\n  workflow_dispatch:\n"), 0o644))
 
 	fake := &fakeBackend{
 		result: backendResult{
@@ -271,7 +261,7 @@ func TestRunSelectsGitHubBackend(t *testing.T) {
 		Build()
 
 	output, err := run(deps, context.Background(), RunInput{
-		Workflow: "repo://.github/workflows/ci.yml",
+		Workflow: "ci.yml",
 		Backend:  backendGitHub,
 	})
 	require.NoError(t, err)
@@ -282,7 +272,7 @@ func TestRunRejectsLegacyActBackendName(t *testing.T) {
 	worktree := t.TempDir()
 	workflowPath := filepath.Join(worktree, ".github", "workflows", "ci.yml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(workflowPath), 0o755))
-	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
+	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\non:\n  workflow_dispatch:\n"), 0o644))
 
 	deps := coreops.NewOpDependenciesBuilder().
 		WithGitContext(coreops.GitExecutionContext{
@@ -293,7 +283,7 @@ func TestRunRejectsLegacyActBackendName(t *testing.T) {
 		Build()
 
 	output, err := run(deps, context.Background(), RunInput{
-		Workflow: "repo://.github/workflows/ci.yml",
+		Workflow: "ci.yml",
 		Backend:  "act",
 	})
 	require.Error(t, err)
@@ -303,7 +293,7 @@ func TestRunRejectsLegacyActBackendName(t *testing.T) {
 
 func TestRunsAggregatesResultsAndPrefixesArtifacts(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: ci\n",
+		".github/workflows/ci.yml": "name: ci\non:\n  workflow_dispatch:\n",
 	})
 	logPath := filepath.Join(t.TempDir(), "combined.log")
 	require.NoError(t, os.WriteFile(logPath, []byte("hello"), 0o644))
@@ -338,8 +328,8 @@ func TestRunsAggregatesResultsAndPrefixesArtifacts(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "ci", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
-			{ID: "lint", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
+			{ID: "ci", RunInput: RunInput{Workflow: "ci.yml", Backend: backendLocal}},
+			{ID: "lint", RunInput: RunInput{Workflow: "ci.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
@@ -356,7 +346,7 @@ func TestRunsAggregatesResultsAndPrefixesArtifacts(t *testing.T) {
 
 func TestRunsContinueOnErrorCapturesPerWorkflowErrors(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: ci\n",
+		".github/workflows/ci.yml": "name: ci\non:\n  workflow_dispatch:\n",
 	})
 
 	origFactory := backendFactory
@@ -383,8 +373,8 @@ func TestRunsContinueOnErrorCapturesPerWorkflowErrors(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "good", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
-			{ID: "bad", RunInput: RunInput{Workflow: "repo://.github/workflows/missing.yml", Backend: backendLocal}},
+			{ID: "good", RunInput: RunInput{Workflow: "ci.yml", Backend: backendLocal}},
+			{ID: "bad", RunInput: RunInput{Workflow: "missing.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
@@ -398,7 +388,7 @@ func TestRunsContinueOnErrorCapturesPerWorkflowErrors(t *testing.T) {
 
 func TestRunsDiscardsWorkflowMutations(t *testing.T) {
 	worktree := initGitRepoWithFiles(t, map[string]string{
-		".github/workflows/ci.yml": "name: ci\n",
+		".github/workflows/ci.yml": "name: ci\non:\n  workflow_dispatch:\n",
 	})
 	mutatedPath := filepath.Join(worktree, "mutated.txt")
 
@@ -424,7 +414,7 @@ func TestRunsDiscardsWorkflowMutations(t *testing.T) {
 
 	output, err := runs(deps, context.Background(), RunsInput{
 		Workflows: []RunsWorkflowInput{
-			{ID: "mutating", RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml", Backend: backendLocal}},
+			{ID: "mutating", RunInput: RunInput{Workflow: "ci.yml", Backend: backendLocal}},
 		},
 		ContinueOnError: true,
 	})
@@ -437,7 +427,7 @@ func TestRunsDiscardsWorkflowMutations(t *testing.T) {
 
 func TestBatchWorkflowKeyFallsBackWhenIDMissing(t *testing.T) {
 	key := batchWorkflowKey(RunsWorkflowInput{
-		RunInput: RunInput{Workflow: "repo://.github/workflows/ci.yml"},
+		RunInput: RunInput{Workflow: "ci.yml"},
 	}, 0)
 	require.Equal(t, "ci", key)
 }

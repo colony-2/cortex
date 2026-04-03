@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,24 +39,25 @@ func (b *githubBackend) Run(ctx context.Context, req backendRequest) (backendRes
 	if token == "" {
 		return backendResult{}, fmt.Errorf("backend %q requires secrets.GITHUB_TOKEN", backendGitHub)
 	}
-	if strings.HasPrefix(strings.TrimSpace(req.Workflow.Selector), "git+") {
-		return backendResult{}, fmt.Errorf("backend %q does not support git+ workflow selectors", backendGitHub)
-	}
 
 	remote, err := resolveGitHubRemote(req.Input, req.GitContext)
 	if err != nil {
 		return backendResult{}, err
 	}
-	workflowFileName, err := workflowFileNameForGitHub(req.Workflow.Path, req.GitContext.WorktreePath)
+	workflowRepoPath, err := workflowRepoPathForGitHub(req.Workflow, req.GitContext.WorktreePath)
 	if err != nil {
 		return backendResult{}, err
 	}
+	workflowFileName := path.Base(workflowRepoPath)
 
 	branchName := buildGitHubBranchName(req.Input, req.GitContext, req.Workflow)
 	remoteRef := "refs/heads/" + branchName
 
 	client, err := githubClientFactory(remote.Host, token)
 	if err != nil {
+		return backendResult{}, err
+	}
+	if err := ensureGitHubWorkflowDispatchable(ctx, client, remote, workflowRepoPath); err != nil {
 		return backendResult{}, err
 	}
 	if err := githubGitOps.pushRef(ctx, req.GitContext.WorktreePath, remote.PushURL, remoteRef); err != nil {
@@ -245,15 +247,18 @@ func splitOwnerRepo(pathValue string) (string, string, error) {
 	return owner, repo, nil
 }
 
-func workflowFileNameForGitHub(workflowPath string, worktreePath string) (string, error) {
-	if strings.TrimSpace(workflowPath) == "" || strings.TrimSpace(worktreePath) == "" {
+func workflowRepoPathForGitHub(workflow resolvedWorkflow, worktreePath string) (string, error) {
+	if strings.TrimSpace(workflow.RepoPath) != "" {
+		return filepath.ToSlash(filepath.Clean(workflow.RepoPath)), nil
+	}
+	if strings.TrimSpace(workflow.Path) == "" || strings.TrimSpace(worktreePath) == "" {
 		return "", fmt.Errorf("workflow path and worktree path are required")
 	}
 	baseAbs, err := filepath.Abs(worktreePath)
 	if err != nil {
 		return "", err
 	}
-	workflowAbs, err := filepath.Abs(workflowPath)
+	workflowAbs, err := filepath.Abs(workflow.Path)
 	if err != nil {
 		return "", err
 	}
@@ -262,9 +267,32 @@ func workflowFileNameForGitHub(workflowPath string, worktreePath string) (string
 		return "", err
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("workflow path %q is outside the worktree", workflowPath)
+		return "", fmt.Errorf("workflow path %q is outside the worktree", workflow.Path)
 	}
-	return filepath.Base(rel), nil
+	repoPath := filepath.ToSlash(rel)
+	if !strings.HasPrefix(repoPath, workflowDir+"/") {
+		return "", fmt.Errorf("workflow path %q must be under %s", workflow.Path, workflowDir)
+	}
+	return repoPath, nil
+}
+
+func ensureGitHubWorkflowDispatchable(ctx context.Context, client githubActionsClient, remote githubRemoteRepo, workflowRepoPath string) error {
+	defaultBranch, err := client.GetDefaultBranch(ctx, remote.Owner, remote.Repo)
+	if err != nil {
+		return err
+	}
+	defaultBranch = strings.TrimSpace(defaultBranch)
+	if defaultBranch == "" {
+		return fmt.Errorf("github repository %s/%s did not report a default branch", remote.Owner, remote.Repo)
+	}
+	exists, err := client.FileExistsAtRef(ctx, remote.Owner, remote.Repo, workflowRepoPath, defaultBranch)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("workflow %q must exist on default branch %q for backend %q", workflowRepoPath, defaultBranch, backendGitHub)
+	}
+	return nil
 }
 
 func buildGitHubBranchName(input RunInput, gitCtx coreops.GitExecutionContext, workflow resolvedWorkflow) string {

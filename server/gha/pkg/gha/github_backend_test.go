@@ -13,10 +13,12 @@ import (
 )
 
 type fakeGitHubClient struct {
-	dispatch  githubDispatchResult
-	run       githubWorkflowRun
-	jobs      []githubWorkflowJob
-	artifacts []githubWorkflowArtifact
+	dispatch      githubDispatchResult
+	run           githubWorkflowRun
+	jobs          []githubWorkflowJob
+	artifacts     []githubWorkflowArtifact
+	defaultBranch string
+	filesAtRef    map[string]map[string]bool
 }
 
 func (f *fakeGitHubClient) DispatchWorkflow(context.Context, string, string, string, string, map[string]any) (githubDispatchResult, error) {
@@ -33,6 +35,17 @@ func (f *fakeGitHubClient) ListWorkflowJobs(context.Context, string, string, int
 
 func (f *fakeGitHubClient) ListWorkflowRunArtifacts(context.Context, string, string, int64) ([]githubWorkflowArtifact, error) {
 	return f.artifacts, nil
+}
+
+func (f *fakeGitHubClient) GetDefaultBranch(context.Context, string, string) (string, error) {
+	return f.defaultBranch, nil
+}
+
+func (f *fakeGitHubClient) FileExistsAtRef(_ context.Context, _, _, path, ref string) (bool, error) {
+	if f.filesAtRef == nil {
+		return false, nil
+	}
+	return f.filesAtRef[ref][path], nil
 }
 
 type fakeGitHubGitRunner struct {
@@ -87,6 +100,12 @@ func TestGitHubBackendRunRegistersArtifactURLs(t *testing.T) {
 	require.NoError(t, os.WriteFile(workflowPath, []byte("name: ci\n"), 0o644))
 
 	fakeClient := &fakeGitHubClient{
+		defaultBranch: "main",
+		filesAtRef: map[string]map[string]bool{
+			"main": {
+				".github/workflows/ci.yml": true,
+			},
+		},
 		dispatch: githubDispatchResult{RunID: 99},
 		run: githubWorkflowRun{
 			ID:         99,
@@ -130,14 +149,15 @@ func TestGitHubBackendRunRegistersArtifactURLs(t *testing.T) {
 
 	result, err := (&githubBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
-			Workflow: "repo://.github/workflows/ci.yml",
+			Workflow: "ci.yml",
 			Backend:  backendGitHub,
 			Secrets:  map[string]string{"GITHUB_TOKEN": "token"},
 			Remote:   &RemoteInput{PushTo: "git@github.com:col2test/ghatest.git"},
 		},
 		Workflow: resolvedWorkflow{
-			Selector:       "repo://.github/workflows/ci.yml",
+			Selector:       "ci.yml",
 			Path:           workflowPath,
+			RepoPath:       ".github/workflows/ci.yml",
 			ContentHash:    "sha256:abc123",
 			ResolvedCommit: "deadbeef",
 		},
@@ -169,6 +189,12 @@ func TestGitHubBackendLeavesLocalWorktreeUnchanged(t *testing.T) {
 	require.NoError(t, os.WriteFile(targetFile, []byte("before"), 0o644))
 
 	fakeClient := &fakeGitHubClient{
+		defaultBranch: "main",
+		filesAtRef: map[string]map[string]bool{
+			"main": {
+				".github/workflows/ci.yml": true,
+			},
+		},
 		dispatch: githubDispatchResult{RunID: 100},
 		run: githubWorkflowRun{
 			ID:         100,
@@ -191,14 +217,15 @@ func TestGitHubBackendLeavesLocalWorktreeUnchanged(t *testing.T) {
 
 	_, err := (&githubBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
-			Workflow: "repo://.github/workflows/ci.yml",
+			Workflow: "ci.yml",
 			Backend:  backendGitHub,
 			Secrets:  map[string]string{"GITHUB_TOKEN": "token"},
 			Remote:   &RemoteInput{PushTo: "git@github.com:col2test/ghatest.git"},
 		},
 		Workflow: resolvedWorkflow{
-			Selector:       "repo://.github/workflows/ci.yml",
+			Selector:       "ci.yml",
 			Path:           workflowPath,
+			RepoPath:       ".github/workflows/ci.yml",
 			ContentHash:    "sha256:abc123",
 			ResolvedCommit: "deadbeef",
 		},
@@ -213,18 +240,40 @@ func TestGitHubBackendLeavesLocalWorktreeUnchanged(t *testing.T) {
 	require.Equal(t, "before", string(data))
 }
 
-func TestGitHubBackendRejectsGitSelectors(t *testing.T) {
+func TestGitHubBackendRequiresWorkflowOnDefaultBranch(t *testing.T) {
+	fakeClient := &fakeGitHubClient{
+		defaultBranch: "main",
+		filesAtRef: map[string]map[string]bool{
+			"main": {},
+		},
+	}
+	fakeGit := &fakeGitHubGitRunner{}
+
+	origClientFactory := githubClientFactory
+	origGitOps := githubGitOps
+	githubClientFactory = func(string, string) (githubActionsClient, error) {
+		return fakeClient, nil
+	}
+	githubGitOps = fakeGit
+	t.Cleanup(func() {
+		githubClientFactory = origClientFactory
+		githubGitOps = origGitOps
+	})
+
 	_, err := (&githubBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
-			Backend: backendGitHub,
-			Secrets: map[string]string{"GITHUB_TOKEN": "token"},
+			Workflow: "ci.yml",
+			Backend:  backendGitHub,
+			Secrets:  map[string]string{"GITHUB_TOKEN": "token"},
+			Remote:   &RemoteInput{PushTo: "git@github.com:col2test/ghatest.git"},
 		},
 		Workflow: resolvedWorkflow{
-			Selector: "git+file:///tmp/repo//.github/workflows/ci.yml@HEAD",
+			Selector: "ci.yml",
+			RepoPath: ".github/workflows/ci.yml",
 		},
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "does not support git+ workflow selectors")
+	require.Contains(t, err.Error(), "must exist on default branch")
 }
 
 func TestNormalizeGitHubExecutionState(t *testing.T) {

@@ -35,11 +35,12 @@ jobs:
 
 	result, err := (&actBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
-			Workflow: "repo://.github/workflows/ci.yml",
+			Workflow: "ci.yml",
 		},
 		Workflow: resolvedWorkflow{
-			Selector:       "repo://.github/workflows/ci.yml",
+			Selector:       "ci.yml",
 			Path:           workflowPath,
+			RepoPath:       ".github/workflows/ci.yml",
 			ContentHash:    contentHash([]byte("name: ci")),
 			ResolvedCommit: "deadbeef",
 		},
@@ -81,11 +82,12 @@ jobs:
 
 	result, err := (&actBackend{}).Run(context.Background(), backendRequest{
 		Input: RunInput{
-			Workflow: "repo://.github/workflows/ci.yml",
+			Workflow: "ci.yml",
 		},
 		Workflow: resolvedWorkflow{
-			Selector:       "repo://.github/workflows/ci.yml",
+			Selector:       "ci.yml",
 			Path:           workflowPath,
+			RepoPath:       ".github/workflows/ci.yml",
 			ContentHash:    contentHash([]byte("name: ci")),
 			ResolvedCommit: "deadbeef",
 		},

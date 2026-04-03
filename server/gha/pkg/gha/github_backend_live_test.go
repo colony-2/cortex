@@ -43,7 +43,7 @@ func TestGitHubBackendRunLive(t *testing.T) {
 
 	result, err := (&githubBackend{}).Run(ctx, backendRequest{
 		Input: RunInput{
-			Workflow: "repo://.github/workflows/c2-gha-live.yml",
+			Workflow: "c2-gha-live.yml",
 			Backend:  backendGitHub,
 			With: map[string]any{
 				"message": "hello-live",
@@ -57,8 +57,9 @@ func TestGitHubBackendRunLive(t *testing.T) {
 			},
 		},
 		Workflow: resolvedWorkflow{
-			Selector:       "repo://.github/workflows/c2-gha-live.yml",
+			Selector:       "c2-gha-live.yml",
 			Path:           workflowPath,
+			RepoPath:       ".github/workflows/c2-gha-live.yml",
 			ContentHash:    contentHash([]byte("live")),
 			ResolvedCommit: head,
 		},

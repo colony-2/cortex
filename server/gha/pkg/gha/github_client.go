@@ -2,6 +2,7 @@ package gha
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -59,6 +60,8 @@ type githubActionsClient interface {
 	GetWorkflowRun(ctx context.Context, owner, repo string, runID int64) (githubWorkflowRun, error)
 	ListWorkflowJobs(ctx context.Context, owner, repo string, runID int64) ([]githubWorkflowJob, error)
 	ListWorkflowRunArtifacts(ctx context.Context, owner, repo string, runID int64) ([]githubWorkflowArtifact, error)
+	GetDefaultBranch(ctx context.Context, owner, repo string) (string, error)
+	FileExistsAtRef(ctx context.Context, owner, repo, path, ref string) (bool, error)
 }
 
 func newGitHubActionsClient(host, token string) (githubActionsClient, error) {
@@ -193,6 +196,29 @@ func (c *goGitHubActionsClient) ListWorkflowRunArtifacts(ctx context.Context, ow
 		opts.Page = resp.NextPage
 	}
 	return out, nil
+}
+
+func (c *goGitHubActionsClient) GetDefaultBranch(ctx context.Context, owner, repo string) (string, error) {
+	repository, _, err := c.client.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(repository.GetDefaultBranch()), nil
+}
+
+func (c *goGitHubActionsClient) FileExistsAtRef(ctx context.Context, owner, repo, path, ref string) (bool, error) {
+	content, _, _, err := c.client.Repositories.GetContents(ctx, owner, repo, path, &gogithub.RepositoryContentGetOptions{
+		Ref: strings.TrimSpace(ref),
+	})
+	if err == nil {
+		return content != nil, nil
+	}
+
+	var responseErr *gogithub.ErrorResponse
+	if errors.As(err, &responseErr) && responseErr.Response != nil && responseErr.Response.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	return false, err
 }
 
 func timestampPtrTime(ts *gogithub.Timestamp) time.Time {

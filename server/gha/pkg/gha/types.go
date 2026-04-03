@@ -85,6 +85,7 @@ type WorkflowStepOutput struct {
 type resolvedWorkflow struct {
 	Selector       string
 	Path           string
+	RepoPath       string
 	ContentHash    string
 	ResolvedCommit string
 }

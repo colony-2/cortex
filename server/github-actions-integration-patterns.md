@@ -2,13 +2,15 @@
 
 ## Overview
 
-A new Colony2 op that executes GitHub Actions workflows as atomic steps within recipes. Colony2 dispatches the workflow to gitea/act (or a remote runner), waits for completion, and captures results. From Colony2's perspective, a GHA workflow is just another activity — like `codex.exec` is to agent work, `gha.run` is to CI/CD work.
+A new Colony2 op that executes GitHub Actions workflows as atomic steps within recipes. Colony2 dispatches the workflow to `nektos/act` locally or to GitHub remotely, waits for completion, and captures results. From Colony2's perspective, a GHA workflow is just another activity — like `codex.exec` is to agent work, `gha.run` is to CI/CD work.
 
 Colony2 handles orchestration, state, durability, and data flow. GitHub Actions handles execution within its runner model. The boundary is clean: inputs go in, status and artifacts come out.
 
 > Current implementation note:
 > - Exposed ops are `gha.run` and `gha.runs`.
 > - Backend name is `local`, not `act`.
+> - `workflow` is just a file name such as `ci.yml`, always resolved under `.github/workflows/`.
+> - `repo://`, `cell://`, and `git+...` selectors are not supported.
 > - Both backends execute as `workflow_dispatch`.
 > - Workflow mutations are always discarded; no changes are synced back into recipe git state.
 > - Older references to `gha.run_job`, backend `act`, event selection, or mutation persistence below are historical design notes and not the current contract.
