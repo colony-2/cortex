@@ -3,11 +3,10 @@ module github.com/colony-2/colony2/server/recipe-child
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
-	gorm.io/driver/sqlite v1.5.7
-	gorm.io/gorm v1.30.0
+	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/segmentio/ksuid v1.0.4
 )
 
 require (
@@ -25,6 +24,7 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -41,12 +41,10 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/swaggest/jsonschema-go v0.3.78 // indirect
@@ -63,4 +61,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250929231259-57b25ae835d4 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	gorm.io/gorm v1.30.0 // indirect
 )

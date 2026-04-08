@@ -5,8 +5,8 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
+	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
 	github.com/google/cel-go v0.26.0
 	github.com/itchyny/gojq v0.12.16
 	github.com/stretchr/testify v1.11.1
@@ -21,6 +21,9 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
@@ -46,4 +49,5 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.30.0 // indirect
+	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )

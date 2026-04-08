@@ -5,9 +5,9 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
+	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
 	github.com/fatih/structs v1.1.0
 	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.10.9
@@ -36,8 +36,8 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/pgwf v0.0.0-20260322202125-4a9450d5502e // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260322202536-e4196e94806e // indirect
+	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect

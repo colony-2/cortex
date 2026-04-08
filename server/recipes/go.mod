@@ -22,6 +22,7 @@ require (
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -46,7 +47,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
+	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/google/cel-go v0.26.0 // indirect

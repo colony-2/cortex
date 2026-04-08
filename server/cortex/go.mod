@@ -10,15 +10,15 @@ require (
 	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/ops v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipes v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260324035435-5943359f020b
+	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
 	github.com/google/cel-go v0.26.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
@@ -56,8 +56,8 @@ require (
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/registry v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/pgwf v0.0.0-20260322202125-4a9450d5502e // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260322202536-e4196e94806e // indirect
+	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
+	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/colony-2/shai v0.0.7 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
