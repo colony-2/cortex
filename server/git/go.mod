@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -14,7 +14,6 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dprotaso/go-yit v0.0.0-20220510233725-9ba8df137936 // indirect
 	github.com/fatih/structs v1.1.0 // indirect

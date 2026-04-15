@@ -7,7 +7,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/fatih/structs v1.1.0
 	github.com/gorilla/mux v1.8.1
 	github.com/lib/pq v1.10.9

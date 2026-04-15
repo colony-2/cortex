@@ -22,7 +22,7 @@ require (
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/gorilla/mux v1.8.1
 	github.com/oapi-codegen/runtime v1.1.2
@@ -118,7 +118,7 @@ require (
 	github.com/colony-2/colony2/server/gha v0.0.0
 	github.com/colony-2/colony2/server/llm v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
-	github.com/colony-2/shai v0.0.7 // indirect
+	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

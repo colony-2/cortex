@@ -116,12 +116,12 @@ github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 h1:l5/GoKzi6SBaTxX7R
 github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8/go.mod h1:QJKHOf9Ybwm9V+74tls15xhPVbcDLBwkZ2dcVNAkLuw=
 github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a h1:MQ3w/5TEgAsnnRM9GRoCL/QPv02/leEoagy9TVhgGXs=
 github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a/go.mod h1:CIOJuCmKvspsg16qE7dOCLFIynveIdJ/PGoJ/2JHEpE=
-github.com/colony-2/shai v0.0.7 h1:Tug4RK5vMvK/XT1xJ+lCBKU2LZUzoxKmmYKJitMVuaU=
-github.com/colony-2/shai v0.0.7/go.mod h1:NgdBnmMCmWslGxhHzvpl8PvyW+CvQI+TEmPdFmZ37uo=
+github.com/colony-2/shai v0.0.8 h1:lRngXUaKHm34PtWH+X1JpEQzpFtS3QanixxadNgM4/Y=
+github.com/colony-2/shai v0.0.8/go.mod h1:NgdBnmMCmWslGxhHzvpl8PvyW+CvQI+TEmPdFmZ37uo=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966 h1:e+MtgzMa1bTA95SZyf8EIMNPzC857pBhw0+pIO9pU1M=
 github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966/go.mod h1:4/4TnrosiT7QfXLQMzX84jJVV7+kmpCf9i2xcC/iVbU=
-github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0 h1:AGEtaO5MHw553mFKT8SFVsvwIihbqtz8VYr/JI0WRFo=
-github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0/go.mod h1:kRorlqC/6DVy2i70a8QoRs4gLolRVLetGRPgytqyPSY=
+github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399 h1:dA2X6CjgfNeQ5H29vLGED+8Qc9rUae0vT5KBVo9I6vo=
+github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399/go.mod h1:s9ABk1ChfUSW1ZeCtG5VvXH34PQpq/K7vggsX6333Jc=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
 github.com/containerd/errdefs v1.0.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=

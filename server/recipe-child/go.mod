@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/segmentio/ksuid v1.0.4
 )
 
@@ -24,7 +24,6 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect

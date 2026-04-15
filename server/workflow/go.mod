@@ -10,7 +10,7 @@ require (
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/google/cel-go v0.26.0
 )
 
@@ -23,7 +23,6 @@ require (
 	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
 	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect

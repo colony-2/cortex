@@ -22,8 +22,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.4 // indirect
-	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a // indirect
-	github.com/colony-2/swf-go v0.0.0-20260408181009-1b9b9fdcb2a0 // indirect
+	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
