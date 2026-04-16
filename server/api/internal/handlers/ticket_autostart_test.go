@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	serverdeps "github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
 	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
@@ -19,6 +18,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	"github.com/colony-2/colony2/server/runtime/pkg/internalrecipes"
 	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/swf-go/pkg/swf"
@@ -71,9 +71,9 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 	}
 	deps := ops.NewServiceDepsBuilder().WithDatabase(db).Build()
 	registry.SetDependencies(deps)
-	provider, err := serverdeps.NewEmbeddedProvider()
+	provider, err := internalrecipes.NewEmbeddedProvider()
 	require.NoError(t, err)
-	rootResolver := serverdeps.NewRecipeSourceResolverWithFallback(nil, provider)
+	rootResolver := internalrecipes.NewRecipeSourceResolverWithFallback(nil, provider)
 	workset, err := compiler.NewRecipeWorkerWithOptions(deps, registry, compiler.RecipeJobWorkerOptions{
 		RootSourceResolver: rootResolver,
 	})

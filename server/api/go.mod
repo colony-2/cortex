@@ -12,7 +12,7 @@ require (
 	github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
@@ -117,6 +117,7 @@ require (
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/gha v0.0.0
 	github.com/colony-2/colony2/server/llm v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/runtime v0.0.0
 	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
 	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -225,3 +226,5 @@ require (
 )
 
 replace github.com/colony-2/colony2/server/gha => ../gha
+
+replace github.com/colony-2/colony2/server/runtime => ../runtime

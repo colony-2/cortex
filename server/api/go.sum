@@ -96,8 +96,8 @@ github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882 h1
 github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882/go.mod h1:dLWiRo3mmK/n5v9hElBNiE9n0pb0i3y+oW9INnFFzXY=
 github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882 h1:zmFrsbdioDMZaiUONLLWmX5Ru2zdGBUs43sXhFsUsQM=
 github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882/go.mod h1:wHnFFI93yL2Mk0qCqzMIT1t/Ox5evnEJtbqA9U78JjM=
-github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882 h1:L5IT7CfC/GSOFhTwkVq6OXxgR4VqkP8iZHbSrperuME=
-github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882/go.mod h1:l3/nSPAcLJJoKwBczr+W//vEX1eg/S0TGBTMQPn5xIs=
+github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef h1:5wVWV6BfPEr6BHx9BIZsQYDU00DP6APbCCNCHDMe7uY=
+github.com/colony-2/colony2/server/recipe-core v0.0.0-20260403003617-3a350d3426ef/go.mod h1:85lJRAmG/O5jVxfs2lDmPrMvCePuhLtRoSzgyoCZzI0=
 github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882 h1:1yrHz/arLpUoLCwb/sIjnhCccQo2kWz6/Mn7cE+UbTg=
 github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882/go.mod h1:lF7+SFoqL8ZjLb9mmCyyY5pNvASczu4iahO9tLtJGDQ=
 github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 h1:ByjZUOTANTxjOWP/thqAeaQrIp9T2avM9JUVGtDp4ws=

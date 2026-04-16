@@ -27,6 +27,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
+	"github.com/colony-2/colony2/server/runtime/pkg/internalrecipes"
 	"github.com/colony-2/colony2/server/ticket/pkg/database"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	workflowsvc "github.com/colony-2/colony2/server/workflow/pkg/workflow"
@@ -199,15 +200,15 @@ func runServer(port int, corsOrigins []string, staticPath string, useMemory bool
 
 	// Create embedded provider for internal recipes.
 	slog.Info("creating embedded recipe provider")
-	embeddedProvider, err := serverdeps.NewEmbeddedProvider()
+	embeddedProvider, err := internalrecipes.NewEmbeddedProvider()
 	if err != nil {
 		return fmt.Errorf("failed to create embedded recipe provider: %w", err)
 	}
 	slog.Info("embedded recipe provider created", "elapsed", time.Since(startTime))
 
 	// Create RecipeProjectProvider with fallback to embedded recipes.
-	recipeProviderWithFallback := serverdeps.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
-	recipeSourceResolver := serverdeps.NewRecipeSourceResolverWithFallback(recipeSvc, embeddedProvider)
+	recipeProviderWithFallback := internalrecipes.NewRecipeProjectProviderWithFallback(recipeSvc, embeddedProvider)
+	recipeSourceResolver := internalrecipes.NewRecipeSourceResolverWithFallback(recipeSvc, embeddedProvider)
 
 	// Create initial dependencies for engine setup
 	slog.Info("creating initial dependencies for engine")

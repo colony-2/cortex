@@ -1,4 +1,4 @@
-package serverdeps
+package internalrecipes
 
 import (
 	"context"

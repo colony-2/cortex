@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
 	"github.com/colony-2/colony2/server/c2j/internal/jobutil"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
@@ -20,6 +19,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
+	"github.com/colony-2/colony2/server/runtime/pkg/c2jops"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 )
@@ -121,7 +121,7 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 		return nil, nil, fmt.Errorf("build engine: %w", err)
 	}
 
-	opregistry.Register(opregistry.ProfileC2J)
+	c2jops.Register()
 
 	recipeSourceResolver, stopRegistry, err := jobutil.BuildRecipeSourceResolver(opts.RecipesDir)
 	if err != nil {

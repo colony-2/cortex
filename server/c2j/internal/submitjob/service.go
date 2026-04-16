@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	"github.com/colony-2/colony2/server/runtime/pkg/c2jops"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 	"gopkg.in/yaml.v3"
@@ -35,7 +35,7 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	opregistry.Register(opregistry.ProfileC2J)
+	c2jops.Register()
 
 	recipeName, embeddedRecipe, cleanup, err := loadRecipeStart(opts)
 	if err != nil {

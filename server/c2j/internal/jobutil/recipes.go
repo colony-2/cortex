@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/colony-2/colony2/server/api/pkg/serverdeps"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
 	"github.com/colony-2/colony2/server/registry/pkg/registry"
+	"github.com/colony-2/colony2/server/runtime/pkg/internalrecipes"
 )
 
 func BuildRecipeProvider(recipesDir string) (workerworkflow.RecipeProjectProvider, func(), error) {
-	embedded, embeddedErr := serverdeps.NewEmbeddedProvider()
+	embedded, embeddedErr := internalrecipes.NewEmbeddedProvider()
 
 	var localRegistry *registry.Registry
 	var stop func()
