@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/registry
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/stretchr/testify v1.11.1
 )

@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/ops
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
 	github.com/invopop/jsonschema v0.13.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	gopkg.in/yaml.v3 v3.0.1

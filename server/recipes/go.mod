@@ -3,11 +3,11 @@ module github.com/colony-2/colony2/server/recipes
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/project v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 	gorm.io/gorm v1.30.0
@@ -16,7 +16,7 @@ require (
 require (
 	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -39,7 +39,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect

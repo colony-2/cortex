@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/recipe-template
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/google/cel-go v0.26.0
 	github.com/itchyny/gojq v0.12.16

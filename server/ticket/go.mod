@@ -3,11 +3,11 @@ module github.com/colony-2/colony2/server/ticket
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/cell v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/project v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/imdario/mergo v0.3.16
@@ -33,8 +33,8 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect

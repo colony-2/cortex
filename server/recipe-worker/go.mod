@@ -3,10 +3,10 @@ module github.com/colony-2/colony2/server/recipe-worker
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/invopop/jsonschema v0.13.0

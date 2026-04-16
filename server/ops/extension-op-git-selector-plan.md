@@ -758,6 +758,179 @@ The runtime should export at least:
 - `VIBETHIS_OP_NAME`
 - `VIBETHIS_INPUT_JSON`
 
+## `command_execution` Should Reuse The Same Sandbox Model
+
+As part of this change, the built-in `command_execution` op should support the same sandbox behaviors as selector-backed extension bundles.
+
+That means `command_execution` should gain the same conceptual sandbox surface:
+
+- `sandbox.type=host`
+- `sandbox.type=shai`
+- `sandbox.shai.source=inline`
+- `sandbox.shai.source=file`
+- `sandbox.shai.source=cell`
+
+Recommended reason:
+
+- users should not need two different sandbox concepts depending on whether they are running a built-in command op or a selector-backed extension bundle
+- implementation should share one internal host/Shai runner so behavior does not drift
+
+Suggested recipe shape:
+
+```yaml
+- id: run_tests
+  op: command_execution
+  inputs:
+    run: go test ./server/ops/...
+    sandbox:
+      type: shai
+      shai:
+        source: cell
+```
+
+Inline-config example:
+
+```yaml
+- id: run_scan
+  op: command_execution
+  inputs:
+    run: python3 scripts/scan.py
+    sandbox:
+      type: shai
+      shai:
+        source: inline
+        inline_config:
+          type: shai-sandbox
+          version: 1
+          image: ghcr.io/colony-2/shai-mega
+          apply:
+            - path: ./
+              resources:
+                - default
+```
+
+No-sandbox example:
+
+```yaml
+- id: local_echo
+  op: command_execution
+  inputs:
+    run: echo hello
+    sandbox:
+      type: host
+```
+
+Implementation note:
+
+- the `command_execution` op should not keep a one-off sandbox implementation
+- it should call the same reusable sandbox resolution + execution layer used by selector-backed extension bundles
+
+## Manifest Source: File Or Discovery Invocation
+
+The base proposal above assumes a bundle ships an `op.yaml` manifest file.
+
+That should remain the simplest and default model.
+
+However, there is a valid second mode worth supporting later:
+
+- instead of reading `op.yaml`, invoke the package/bundle to obtain its manifest
+
+This would help support execution-first install patterns such as:
+
+- `npx ...`
+- single binaries
+- packages that already know how to self-describe
+
+In that model, the invocation returns the same logical information that `op.yaml` would otherwise contain:
+
+- name
+- version
+- description
+- input schema
+- output schema
+- execution contract
+- sandbox defaults
+
+### Suggested shape
+
+The extension system can support two manifest sources:
+
+1. file manifest
+   - `op.yaml`
+2. discovery manifest
+   - a command that returns manifest JSON to stdout
+
+Conceptually:
+
+```yaml
+manifest:
+  source: file | command
+  command:
+    - npx
+    - -y
+    - some-package
+    - c2jschema
+```
+
+or, if the bundle itself provides the executable:
+
+```yaml
+manifest:
+  source: command
+  command: ["./run", "--c2-manifest-json"]
+```
+
+### Why this is plausible
+
+There is no single universal packaging standard for "CLI returns its own manifest," but there are several important protocol precedents where capabilities/schema are obtained by invocation rather than by reading a static manifest file:
+
+- MCP:
+  - clients call `initialize` and then `tools/list`
+  - tools are discovered dynamically from the running server, not from a checked-in manifest file
+  - servers can notify clients when the tool list changes
+- Terraform providers:
+  - Terraform calls provider schema RPCs such as `GetProviderSchema`
+  - the CLI also exposes `terraform providers schema -json`
+  - schema is surfaced by execution/protocol interaction, not by a standalone YAML manifest
+- LSP / DAP:
+  - clients send `initialize`
+  - servers respond with capabilities dynamically
+
+Those patterns are not the same as extension bundles, but they are strong evidence that "manifest by invocation" is a legitimate model.
+
+### Recommendation
+
+I would treat discovery invocation as an optional second mode, not the only mode.
+
+Recommended ordering:
+
+1. support `op.yaml` first
+2. add self-describing manifest-by-command after the base selector/cache/runtime model works
+
+Reason:
+
+- file manifests are easier to statically inspect, cache, diff, and debug
+- discovery commands are more flexible, but they add timeout, trust, and bootstrap questions
+
+### Guardrails for discovery invocation
+
+If this mode is added, it should be tightly constrained:
+
+- command output must be machine-readable JSON
+- command must have a strict timeout
+- output must validate against a stable manifest schema
+- resolved manifest should be cached by selector + resolved commit + manifest digest
+- discovery should run in a predictable environment, ideally with the same sandbox policy model
+
+### Practical outcome
+
+This gives you both:
+
+1. a simple bundle-native manifest path (`op.yaml`)
+2. a protocol-style self-description path (`c2jschema`, `--c2-manifest-json`, etc.)
+
+That second path is the better fit if you want to support existing execution-focused install patterns without forcing every package to reorganize itself around a static manifest file.
+
 ## Codex / LLM Migration Under This Model
 
 Under this design, `codex.exec`, `llm_inference`, and `llm_inference2` stop being statically registered names.
@@ -802,7 +975,8 @@ Must preserve:
 3. Add local cache under `~/.c2/cache/ops`.
 4. Add bundle materialization.
 5. Add generic host/Shai execution.
-6. Migrate `codex.exec` first.
+6. Apply the same sandbox runner to `command_execution`.
+7. Migrate `codex.exec` first.
 
 Why `codex.exec` first:
 
@@ -841,6 +1015,7 @@ Acceptance criteria:
 3. Implement host execution.
 4. Implement Shai execution.
 5. Export runtime env values.
+6. Reuse the same runner for `command_execution`.
 
 Acceptance criteria:
 
@@ -873,6 +1048,7 @@ Acceptance criteria:
 - allowlists / policy controls for approved selectors
 - cache pruning
 - migration of skill refs to the same canonical selector grammar
+- manifest-by-command discovery (`c2jschema`, `--c2-manifest-json`, etc.)
 
 ## Testing Plan
 
@@ -883,6 +1059,7 @@ Acceptance criteria:
 - commit-pinned resolution
 - cache key generation
 - cell-config Shai resolution
+- manifest-by-command output validation
 
 ### Integration tests
 
@@ -890,6 +1067,7 @@ Acceptance criteria:
 - `op: git+file://...//.colony2/ops/...@ref` works against local test repos
 - host execution
 - Shai execution
+- `command_execution` host/Shai parity
 - cache hit vs miss
 - codex bundle through selector-backed `op`
 
@@ -918,4 +1096,5 @@ This is done when:
 3. bundles are cached under `~/.c2/cache/ops`
 4. bundles execute without prior registration
 5. bundles can run in host mode or Shai mode
-6. `codex.exec`, `llm_inference`, and `llm_inference2` can all be consumed this way
+6. `command_execution` supports the same sandbox model
+7. `codex.exec`, `llm_inference`, and `llm_inference2` can all be consumed this way

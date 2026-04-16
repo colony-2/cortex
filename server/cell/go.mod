@@ -3,17 +3,17 @@ module github.com/colony-2/colony2/server/cell
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/graph v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/project v0.0.0-20260416210508-3591476f41eb
 	github.com/segmentio/ksuid v1.0.4
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/optimisticlock v1.1.3
 )
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

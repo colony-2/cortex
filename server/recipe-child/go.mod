@@ -3,8 +3,8 @@ module github.com/colony-2/colony2/server/recipe-child
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/segmentio/ksuid v1.0.4
 )
@@ -16,9 +16,9 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
