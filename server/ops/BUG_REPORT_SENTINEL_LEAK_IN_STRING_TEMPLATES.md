@@ -8,7 +8,7 @@ This causes runtime command/prompt failures even though template resolution succ
 ## Environment
 - Area: recipe-worker runtime input hydration
 - Observed on: February 22, 2026
-- Repro path: `/src/server/ops/test-fixtures/recipes/codex-inbox-git-outbox.yaml`
+- Repro path: `/src/server/llm/test-fixtures/recipes/codex-inbox-git-outbox.yaml`
 
 ## Reproduction
 1. Use any op input string that includes a sentinel-backed context value plus additional text, e.g.:

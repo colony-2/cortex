@@ -3,14 +3,15 @@ go 1.26
 use (
 	./cli
 	./server/api
+	./server/c2j
 	./server/cell
-	./server/gha
+	./server/cell-ops
 	./server/core
 	./server/cortex
+	./server/gha
 	./server/git
 	./server/graph
 	./server/llm
-	./server/c2j
 	./server/openapi
 	./server/ops
 	./server/pgembed
@@ -21,6 +22,7 @@ use (
 	./server/recipe-template
 	./server/recipe-worker
 	./server/recipes
+	./server/runtime
 	./server/registry
 	./server/ticket
 	./server/workflow

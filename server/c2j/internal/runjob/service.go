@@ -19,7 +19,7 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
-	"github.com/colony-2/colony2/server/runtime/pkg/c2jops"
+	"github.com/colony-2/colony2/server/c2j/pkg/c2jops"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 )

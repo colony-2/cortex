@@ -8,15 +8,14 @@ import (
 	"testing"
 	"time"
 
+	serveropregistry "github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/core/pkg/core"
-	opsexport "github.com/colony-2/colony2/server/ops/pkg/export"
 	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
-	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/colony2/server/runtime/pkg/internalrecipes"
 	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
@@ -60,9 +59,7 @@ func TestCreateTicketAutoStartsRecipe(t *testing.T) {
 
 	// Register ops for the worker.
 	ops.Clear()
-	ops.Register(opsexport.GetAll()...)
-	ops.Register(workerexport.GetAll()...)
-	ops.Register(ticketop.GetOp())
+	ops.Register(serveropregistry.OpsForProfile(serveropregistry.ProfileServer)...)
 	registry, err := workerops.NewActivityRegistry()
 	require.NoError(t, err)
 	all := registry.GetAll()

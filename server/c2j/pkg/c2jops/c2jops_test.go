@@ -11,6 +11,7 @@ func TestOpsIncludesGHAOps(t *testing.T) {
 	names := opNames(Ops())
 	require.Contains(t, names, "gha.run")
 	require.Contains(t, names, "gha.runs")
+	require.NotContains(t, names, "cells.list")
 }
 
 func TestRegisterInstallsGHAOps(t *testing.T) {
@@ -24,6 +25,7 @@ func TestRegisterInstallsGHAOps(t *testing.T) {
 	names := opNames(coreops.List())
 	require.Contains(t, names, "gha.run")
 	require.Contains(t, names, "gha.runs")
+	require.NotContains(t, names, "cells.list")
 }
 
 func opNames(ops []coreops.RegisterableOp) map[string]struct{} {

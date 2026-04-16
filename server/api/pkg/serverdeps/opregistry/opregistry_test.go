@@ -11,6 +11,12 @@ func TestOpsForProfileC2JIncludesGHAOps(t *testing.T) {
 	names := opNames(OpsForProfile(ProfileC2J))
 	require.Contains(t, names, "gha.run")
 	require.Contains(t, names, "gha.runs")
+	require.NotContains(t, names, "cells.list")
+}
+
+func TestOpsForProfileServerIncludesCellOps(t *testing.T) {
+	names := opNames(OpsForProfile(ProfileServer))
+	require.Contains(t, names, "cells.list")
 }
 
 func TestRegisterProfileC2JInstallsGHAOps(t *testing.T) {
@@ -24,6 +30,7 @@ func TestRegisterProfileC2JInstallsGHAOps(t *testing.T) {
 	names := opNames(coreops.List())
 	require.Contains(t, names, "gha.run")
 	require.Contains(t, names, "gha.runs")
+	require.NotContains(t, names, "cells.list")
 }
 
 func opNames(ops []coreops.RegisterableOp) map[string]struct{} {

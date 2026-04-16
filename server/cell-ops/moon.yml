@@ -1,0 +1,5 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: 'server/cell-ops'
+language: 'go'
+type: 'library'

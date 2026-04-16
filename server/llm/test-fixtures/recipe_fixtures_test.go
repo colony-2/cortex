@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/colony-2/colony2/server/ops/pkg/codex"
+	"github.com/colony-2/colony2/server/llm/pkg/codex"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
 	testfixtures "github.com/colony-2/colony2/server/recipe-worker/test-fixtures"
