@@ -439,7 +439,7 @@ state:
               required: false
 
     implement:
-      op: codex.exec
+      op: ./server/llm/pkg/codex/extension-codex-exec
       transitions:
         - to: pre_implementation_followup_review
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'
@@ -578,7 +578,7 @@ state:
           }}
 
     implement_resume:
-      op: codex.exec
+      op: ./server/llm/pkg/codex/extension-codex-exec
       transitions:
         - to: pre_implementation_followup_review
           when: 'has(outputs.incompleteCategory) && outputs.incompleteCategory == "needs_user_input"'

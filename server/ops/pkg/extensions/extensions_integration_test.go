@@ -18,7 +18,7 @@ import (
 func TestExtension_Discover_Schema_And_YAMLValidation(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Build .colony2/ops/example/op.yaml
+	// Build the legacy runtime-discovery path .colony2/ops/example/op.yaml.
 	opDir := filepath.Join(tmpDir, ".colony2", "ops", "example")
 	if err := os.MkdirAll(opDir, 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)

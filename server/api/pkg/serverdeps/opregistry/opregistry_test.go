@@ -7,10 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpsForProfileC2JIncludesGHAOps(t *testing.T) {
+func TestOpsForProfileC2JIncludesExtensionExecution(t *testing.T) {
 	names := opNames(OpsForProfile(ProfileC2J))
-	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.runs")
+	require.Contains(t, names, "extension_execution")
 	require.NotContains(t, names, "cells.list")
 }
 
@@ -19,7 +18,7 @@ func TestOpsForProfileServerIncludesCellOps(t *testing.T) {
 	require.Contains(t, names, "cells.list")
 }
 
-func TestRegisterProfileC2JInstallsGHAOps(t *testing.T) {
+func TestRegisterProfileC2JInstallsExtensionExecution(t *testing.T) {
 	original := coreops.List()
 	t.Cleanup(func() {
 		coreops.Replace(original...)
@@ -28,8 +27,7 @@ func TestRegisterProfileC2JInstallsGHAOps(t *testing.T) {
 	Register(ProfileC2J)
 
 	names := opNames(coreops.List())
-	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.runs")
+	require.Contains(t, names, "extension_execution")
 	require.NotContains(t, names, "cells.list")
 }
 

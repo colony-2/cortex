@@ -4,10 +4,18 @@
 
 Make extension ops directly referenceable from recipes without preregistration, while keeping the existing `op:` field.
 
+This change should cover:
+
+- `codex.exec`
+- `llm_inference`
+- `llm_inference2`
+- the GitHub Actions op
+
 Under this model, `op` can be either:
 
 1. a bare registered core op name
-2. an extension selector
+2. a same-repo local selector
+3. a canonical remote git selector
 
 Examples:
 
@@ -20,115 +28,34 @@ Examples:
 ```
 
 ```yaml
-- id: implement
-  op: git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@main
+- id: implement_local
+  op: ./server/llm/pkg/codex/extension-codex-exec
   inputs:
     prompt: "Implement the approved plan."
-    worktree_path: "{{ context.environment.worktree_path }}"
-    workdir_path: "{{ context.environment.workdir }}"
-    artifact_inbox_path: "{{ context.environment.inbox }}"
-    artifact_outbox_path: "{{ context.environment.outbox }}"
-    cell_relative_path: "{{ context.workflow.cell_path }}"
 ```
 
-This preserves the current recipe shape and reuses the selector conventions already appearing elsewhere in the system.
+```yaml
+- id: implement_remote
+  op: git+https://github.com/acme/platform-ops.git//tools/extensions/codex.exec@main
+  inputs:
+    prompt: "Implement the approved plan."
+```
 
-## Why This Is Better Than `uses:`
+## Why Keep `op:`
 
-I think this is the cleaner direction given your constraint.
-
-Reasons:
+This is cleaner than introducing `uses:` because:
 
 - it preserves the current recipe surface
-- it avoids adding a second reusable-execution syntax
-- it aligns with the fact that this system already uses git selectors in other places
-- it lets us parse `op` in a deterministic order:
+- it reuses the selector idea already present elsewhere in the system
+- it keeps parse behavior simple:
   1. exact registered op name
-  2. valid selector
-  3. otherwise error
+  2. local selector
+  3. canonical git selector
+  4. otherwise error
 
-The main tradeoff is that `op:` is no longer "registry-only." But that is a smaller conceptual shift than introducing a separate `uses:` node family.
+The tradeoff is that `op:` is no longer registry-only, but that is still simpler than adding another node family.
 
-## Recommended Selector Shape
-
-Because you said "we use git selectors elsewhere," I recommend using the existing canonical git-selector form as the primary remote syntax:
-
-`git+<scheme>://<repo-location>//<repo-relative-op-dir>@<git-ref>`
-
-Example:
-
-`git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@main`
-
-This is better than inventing a GitHub-only shorthand here because:
-
-1. the repo already has a real parser/resolver for canonical git selectors in recipe root loading
-2. it avoids ambiguity with bare op names
-3. it keeps the selector grammar uniform across features
-
-## Optional Local Selector
-
-If you want same-repo ergonomics later, it is safe to add:
-
-`./.colony2/ops/codex.exec`
-
-That can also live in `op:` because it does not overlap with bare registered names.
-
-But I would not block the initial implementation on local shorthand. The first version can be:
-
-- bare registered name
-- canonical git selector
-
-That gives a simpler parser and cleaner schema story.
-
-## Why Canonical `git+...` Helps the Schema
-
-This is an important advantage of your proposal.
-
-If extension selectors are canonical git selectors, the static recipe schema can still distinguish the two `op` cases:
-
-1. known registered op names
-2. strings beginning with `git+` (and later maybe `./`)
-
-That means the schema does not need to fall back to "any string."
-
-If we instead used GitHub-style shorthand like:
-
-`github.com/acme/platform-ops/.colony2/ops/codex.exec@v1`
-
-then `op` becomes much harder to distinguish from ordinary dotted op names at schema time.
-
-So if `op:` is going to multiplex bare names and selectors, canonical `git+...` is the safer design.
-
-## Current Constraint
-
-Today the recipe system assumes `op:` resolves through the global registry:
-
-- parse-time unknown-op validation comes from the registry
-- schema generation enumerates registered ops
-
-Relevant code:
-
-- [ops.go](/src/server/recipe-core/pkg/ops/ops.go)
-- [schema.go](/src/server/recipe-core/pkg/recipe/schema.go)
-- [node.go](/src/server/recipe-core/pkg/recipe/node.go:74)
-
-To support selector-backed `op:` values, that assumption needs to be widened to:
-
-1. `op` is a registered core op name, or
-2. `op` is a valid extension selector
-
-## Proposed Parse / Compile Semantics
-
-For each node:
-
-1. Read `op` as a string.
-2. If it exactly matches a registered op, keep the existing path.
-3. Else if it parses as a valid extension selector, resolve and load the extension bundle.
-4. Else return the current unknown-op style error.
-
-This keeps bare names as the fast path and makes selectors an extension of the existing field, not a replacement.
-
-## Supported `op` Forms
+## Supported Selector Forms
 
 ## 1. Bare registered core op
 
@@ -143,35 +70,81 @@ Semantics:
 - exact match against the current global registry
 - current behavior unchanged
 
-## 2. Canonical remote git selector
+## 2. Same-repo local selector
 
 Example:
 
 ```yaml
-op: git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@main
-```
-
-Semantics:
-
-- validate selector
-- resolve mutable ref to concrete commit
-- record resolved commit-pinned selector
-- materialize the target extension bundle
-
-## 3. Optional same-repo local selector
-
-Possible later form:
-
-```yaml
-op: ./.colony2/ops/codex.exec
+op: ./server/llm/pkg/codex/extension-codex-exec
 ```
 
 Semantics:
 
 - resolve relative to the caller repo root
 - bind to the same effective repo+commit as the caller recipe
+- materialize from that same commit, not from an arbitrary live checkout
 
-Again, I would treat this as optional after the canonical remote path works.
+This should be supported from the start.
+
+Reason:
+
+- it makes testing much easier
+- it allows extension bundle iteration inside the same repo
+- it matches the ergonomics of same-repo reusable building blocks in systems like GitHub Actions
+
+## 3. Canonical remote git selector
+
+Example:
+
+```yaml
+op: git+https://github.com/acme/platform-ops.git//tools/extensions/codex.exec@main
+```
+
+Canonical shape:
+
+`git+<scheme>://<repo-location>//<repo-relative-op-dir>@<git-ref>`
+
+Semantics:
+
+- validate selector
+- resolve mutable refs to concrete commits
+- record the resolved commit-pinned selector
+- materialize the target extension bundle
+
+I recommend using this canonical form as the remote syntax because:
+
+- the repo already has a real parser/resolver for canonical git selectors in recipe root loading
+- it avoids ambiguity with bare op names
+- it keeps selector grammar uniform across features
+
+## Current Constraint
+
+Today the recipe system assumes `op:` resolves through the global registry:
+
+- parse-time unknown-op validation comes from the registry
+- schema generation enumerates registered ops
+
+Relevant code:
+
+- [ops.go](/src/server/recipe-core/pkg/ops/ops.go)
+- [schema.go](/src/server/recipe-core/pkg/recipe/schema.go)
+- [node.go](/src/server/recipe-core/pkg/recipe/node.go:74)
+
+To support selector-backed `op:` values, that assumption needs to widen to:
+
+1. `op` is a registered core op name, or
+2. `op` is a valid local selector, or
+3. `op` is a valid remote selector
+
+## Proposed Parse / Compile Semantics
+
+For each node:
+
+1. Read `op` as a string.
+2. If it exactly matches a registered op, keep the existing path.
+3. Else if it starts with `./`, resolve it as a same-repo local selector.
+4. Else if it parses as a canonical `git+...//path@ref` selector, resolve it as a remote extension selector.
+5. Else return the current unknown-op style error.
 
 ## Bundle Layout
 
@@ -180,7 +153,7 @@ The selector points to an op directory.
 Recommended layout:
 
 ```text
-.colony2/ops/codex.exec/
+server/llm/pkg/codex/extension-codex-exec/
   op.yaml
   run
   ...
@@ -197,40 +170,75 @@ Recommended layout:
 - `timeout`
 - `input_schema`
 - `output_schema`
+
+Sandbox is intentionally not part of the bundle manifest.
+
+## Reserved Runtime Inputs
+
+Selector-backed extension ops should support reserved runtime inputs handled by the extension runtime rather than by the extension bundle itself.
+
+The first reserved runtime input should be:
+
 - `sandbox`
 
-Suggested sandbox block:
+Suggested shape:
 
 ```yaml
 sandbox:
-  type: host | shai
-  shai:
-    source: inline | file | cell
-    config_path: .shai/config.yaml
-    inline_config:
-      type: shai-sandbox
-      version: 1
-      image: ghcr.io/colony-2/shai-mega
+  type: none | shai
+  inline_config:
+    type: shai-sandbox
+    version: 1
+    image: ghcr.io/colony-2/shai-mega
 ```
+
+Semantics:
+
+- omitted `sandbox` means run on host
+- `sandbox.type=none` means run on host with no additional sandboxing
+- `sandbox.type=shai` means run in Shai
+- when running in Shai, the effective config is always:
+  - local config
+  - plus any `inline_config` overlay
+
+There is no `source` property in this model.
+
+Important validation rule:
+
+- the runtime must separate reserved runtime inputs like `sandbox` from extension-defined inputs before validating against the bundle's `input_schema`
+
+That way bundle authors do not need to repeat the sandbox schema in every manifest.
+
+## Local Shai Config Resolution
+
+When `sandbox.type=shai`, the runtime should resolve local config from the current execution context.
+
+Recommended lookup:
+
+1. use `deps.WorktreePath()` and `deps.GitContext().CellPath`
+2. check `<worktree>/<cell_path>/.shai/config.yaml`
+3. optionally walk upward toward repo root for nearest `.shai/config.yaml`
+4. fail clearly if none found
+
+The effective Shai config is:
+
+1. resolved local config
+2. merged with any `sandbox.inline_config`
 
 ## Complete Examples
 
-The examples below are intentionally complete enough to show:
+The examples below show:
 
 - what lives in the extension bundle
-- how `op.yaml` changes when sandboxing is absent or present
-- how the recipe refers to the extension directly through `op:`
-
-All examples assume the bundle lives in a repo that the recipe references with a canonical selector.
+- how sandboxing is chosen at invocation time through `inputs.sandbox`
+- how recipes refer to extensions through `op:`
 
 ## Example 1: Host execution, no sandbox
-
-This is the simplest case. Omitting `sandbox` means "run on the host" using the existing non-Shai execution path.
 
 Bundle layout:
 
 ```text
-.colony2/ops/text_stats/
+tools/extensions/text_stats/
   op.yaml
   main.py
 ```
@@ -271,43 +279,41 @@ import sys
 payload = json.load(sys.stdin)
 text = payload["text"]
 
-result = {
+print(json.dumps({
     "lines": len(text.splitlines()),
     "words": len(text.split()),
     "bytes": len(text.encode("utf-8")),
-}
-
-print(json.dumps(result))
+}))
 ```
 
 Recipe usage:
 
 ```yaml
 - id: summarize_text
-  op: git+https://github.com/acme/platform-ops.git//.colony2/ops/text_stats@v1
+  op: ./tools/extensions/text_stats
   inputs:
     text: |
       alpha
       beta gamma
 ```
 
-If you want to be explicit, this example could also include:
+Explicit no-sandbox variant:
 
 ```yaml
-sandbox:
-  type: host
+- id: summarize_text
+  op: ./tools/extensions/text_stats
+  inputs:
+    text: hello
+    sandbox:
+      type: none
 ```
 
-but omission is the cleaner default.
-
-## Example 2: Shai sandbox with inline config
-
-This example runs `go test` inside a Shai sandbox and writes a report artifact into the outbox.
+## Example 2: Shai sandbox with inline config overlay
 
 Bundle layout:
 
 ```text
-.colony2/ops/go_test/
+tools/extensions/go_test/
   op.yaml
   runner.py
 ```
@@ -316,36 +322,11 @@ Bundle layout:
 
 ```yaml
 name: go_test
-description: Run go test for a package inside a Shai sandbox.
+description: Run go test for a package.
 version: 1.0.0
 command: ["python3", "runner.py"]
 working_directory: .
 timeout: 10m
-sandbox:
-  type: shai
-  shai:
-    source: inline
-    inline_config:
-      type: shai-sandbox
-      version: 1
-      image: ghcr.io/colony-2/shai-mega
-      resources:
-        default:
-          mounts:
-            - source: ${{ env.HOME }}/.cache/go-build
-              target: /home/shai/go/pkg
-              mode: rw
-            - source: ${{ env.HOME }}/.cache/go-mod
-              target: /home/shai/go/mod
-              mode: rw
-          http:
-            - proxy.golang.org
-            - sum.golang.org
-            - go.dev
-      apply:
-        - path: ./
-          resources:
-            - default
 input_schema:
   type: object
   required: [package]
@@ -404,25 +385,42 @@ Recipe usage:
 
 ```yaml
 - id: run_go_tests
-  op: git+https://github.com/acme/platform-ops.git//.colony2/ops/go_test@v1
+  op: git+https://github.com/acme/platform-ops.git//tools/extensions/go_test
   inputs:
     package: ./server/ops/...
+    sandbox:
+      type: shai
+      inline_config:
+        type: shai-sandbox
+        version: 1
+        image: ghcr.io/colony-2/shai-mega
+        resources:
+          default:
+            mounts:
+              - source: ${{ env.HOME }}/.cache/go-build
+                target: /home/shai/go/pkg
+                mode: rw
+              - source: ${{ env.HOME }}/.cache/go-mod
+                target: /home/shai/go/mod
+                mode: rw
+            http:
+              - proxy.golang.org
+              - sum.golang.org
+              - go.dev
 ```
 
-This example shows the main difference when sandboxing is included:
+This means:
 
-- `sandbox.type=shai`
-- `sandbox.shai.source=inline`
-- the bundle carries the full sandbox definition with it
+- the invocation opts into Shai with `sandbox.type=shai`
+- the runtime resolves local config first
+- the runtime applies the inline overlay second
 
-## Example 3: Shai sandbox using the cell's config
-
-This is the same idea, but the bundle does not ship its own full Shai config. Instead it says "use the current cell's `.shai/config.yaml`."
+## Example 3: Shai sandbox using only local config
 
 Bundle layout:
 
 ```text
-.colony2/ops/cell_lint/
+tools/extensions/cell_lint/
   op.yaml
   runner.py
 ```
@@ -431,15 +429,11 @@ Bundle layout:
 
 ```yaml
 name: cell_lint
-description: Run the cell's lint command inside the cell's Shai sandbox.
+description: Run the cell's lint command.
 version: 1.0.0
 command: ["python3", "runner.py"]
 working_directory: .
 timeout: 10m
-sandbox:
-  type: shai
-  shai:
-    source: cell
 input_schema:
   type: object
   properties:
@@ -505,85 +499,27 @@ Recipe usage:
 
 ```yaml
 - id: lint_current_cell
-  op: git+https://github.com/acme/platform-ops.git//.colony2/ops/cell_lint@v1
+  op: ./tools/extensions/cell_lint
   inputs:
     command: ["bash", "-lc", "npm test"]
+    sandbox:
+      type: shai
 ```
 
-This example shows the "use the cell's Shai config" path clearly:
+This means:
 
-- the bundle still opts into sandboxing with `sandbox.type=shai`
-- but the actual sandbox definition comes from the active cell context, not from the bundle itself
-
-## Example 4: Shai sandbox using a config file shipped in the bundle
-
-If you want the bundle to carry a reusable sandbox definition without embedding it inline, the bundle can point at a config file.
-
-Bundle layout:
-
-```text
-.colony2/ops/repo_scan/
-  op.yaml
-  .shai/config.yaml
-  runner.py
-```
-
-`op.yaml`:
-
-```yaml
-name: repo_scan
-description: Run a repo scan in a bundle-provided Shai sandbox.
-version: 1.0.0
-command: ["python3", "runner.py"]
-sandbox:
-  type: shai
-  shai:
-    source: file
-    config_path: .shai/config.yaml
-```
-
-`runner.py`:
-
-```python
-import json
-import os
-import sys
-
-print(json.dumps({
-    "worktree": os.environ["VIBETHIS_WORKTREE_PATH"],
-    "cell_path": os.environ.get("VIBETHIS_CELL_PATH", ""),
-}))
-```
-
-`.shai/config.yaml`:
-
-```yaml
-type: shai-sandbox
-version: 1
-image: ghcr.io/colony-2/shai-mega
-resources:
-  default:
-    http:
-      - github.com
-apply:
-  - path: ./
-    resources:
-      - default
-```
-
-This is useful when:
-
-- multiple ops in the same repo should share one sandbox definition
-- the inline config would be too large or repetitive
+- the invocation opts into Shai
+- no inline override is provided
+- the runtime uses the locally resolved Shai config only
 
 ## Resolution Model
 
-## Remote canonical git selector
+## Remote selector
 
 For:
 
 ```yaml
-op: git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@main
+op: git+https://github.com/acme/platform-ops.git//tools/extensions/codex.exec@main
 ```
 
 Resolution should:
@@ -592,16 +528,16 @@ Resolution should:
 2. clone/fetch repo into cache
 3. resolve `@main` to a concrete commit
 4. compute the resolved selector:
-   - `git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@<commit>`
+   - `git+https://github.com/acme/platform-ops.git//tools/extensions/codex.exec@main@<commit>`
 5. materialize the target directory for that exact commit
 6. load `op.yaml`
 
-## Optional local selector
+## Local selector
 
 For:
 
 ```yaml
-op: ./.colony2/ops/codex.exec
+op: ./server/llm/pkg/codex/extension-codex-exec
 ```
 
 Resolution should:
@@ -664,11 +600,12 @@ Runtime flow:
 2. resolve selector to concrete commit
 3. materialize the bundle from cache or git
 4. load `op.yaml`
-5. validate `inputs` against `input_schema` if present
-6. export runtime env values
-7. execute in host mode or Shai mode
-8. parse stdout JSON
-9. validate against `output_schema` if present
+5. separate reserved runtime inputs from extension-defined inputs
+6. validate extension-defined inputs against `input_schema` if present
+7. export runtime env values
+8. execute on host or in Shai according to `inputs.sandbox`
+9. parse stdout JSON
+10. validate against `output_schema` if present
 
 ## Schema and Validation Changes
 
@@ -680,27 +617,27 @@ Instead, `op` should accept:
 
 - a known built-in op name
 - a canonical git selector string
-- optionally later, a `./...` local selector string
+- a `./...` local selector string
 
-The static schema can still be fairly strong because selector strings have recognizable prefixes.
+The static schema can still be strong because selector strings have recognizable prefixes.
 
 ## 2. Parse-time validation
 
 Validation becomes:
 
 1. if `op` matches a registered core op, validate as today
-2. else if `op` parses as a selector, continue to dynamic extension validation
-3. else error
+2. else if `op` starts with `./`, continue to local-selector extension validation
+3. else if `op` parses as a canonical `git+...//path@ref` selector, continue to remote-selector extension validation
+4. else error
 
 ## 3. Dynamic extension validation
 
 After selector resolution:
 
 1. load extension `input_schema`
-2. validate node `inputs`
-3. compile execution for that bundle
-
-This is the main behavior change.
+2. validate extension-defined `inputs`
+3. handle reserved runtime fields like `inputs.sandbox`
+4. compile execution for that bundle
 
 ## Shared Resolver
 
@@ -721,29 +658,7 @@ That gives:
 - one commit-resolution policy
 - one place for fetch/clone semantics
 
-## Shai Support
-
-Selector-backed extension bundles should support:
-
-- `sandbox.type=host`
-- `sandbox.type=shai`
-
-For Shai:
-
-- inline config
-- config file in the bundle
-- "use the cell's shai config"
-
-### Cell config resolution
-
-Recommended lookup:
-
-1. use `deps.WorktreePath()` and `deps.GitContext().CellPath`
-2. check `<worktree>/<cell_path>/.shai/config.yaml`
-3. optionally walk upward toward repo root for nearest `.shai/config.yaml`
-4. fail clearly if none found
-
-### Runtime env exported to extensions
+## Runtime Environment
 
 The runtime should export at least:
 
@@ -760,20 +675,14 @@ The runtime should export at least:
 
 ## `command_execution` Should Reuse The Same Sandbox Model
 
-As part of this change, the built-in `command_execution` op should support the same sandbox behaviors as selector-backed extension bundles.
+As part of this change, the built-in `command_execution` op should support the same sandbox behavior as selector-backed extension bundles.
 
-That means `command_execution` should gain the same conceptual sandbox surface:
+That means `command_execution` should support:
 
-- `sandbox.type=host`
+- omitted `sandbox` means host execution
+- `sandbox.type=none`
 - `sandbox.type=shai`
-- `sandbox.shai.source=inline`
-- `sandbox.shai.source=file`
-- `sandbox.shai.source=cell`
-
-Recommended reason:
-
-- users should not need two different sandbox concepts depending on whether they are running a built-in command op or a selector-backed extension bundle
-- implementation should share one internal host/Shai runner so behavior does not drift
+- optional `sandbox.inline_config`
 
 Suggested recipe shape:
 
@@ -784,8 +693,6 @@ Suggested recipe shape:
     run: go test ./server/ops/...
     sandbox:
       type: shai
-      shai:
-        source: cell
 ```
 
 Inline-config example:
@@ -797,19 +704,13 @@ Inline-config example:
     run: python3 scripts/scan.py
     sandbox:
       type: shai
-      shai:
-        source: inline
-        inline_config:
-          type: shai-sandbox
-          version: 1
-          image: ghcr.io/colony-2/shai-mega
-          apply:
-            - path: ./
-              resources:
-                - default
+      inline_config:
+        type: shai-sandbox
+        version: 1
+        image: ghcr.io/colony-2/shai-mega
 ```
 
-No-sandbox example:
+Explicit host example:
 
 ```yaml
 - id: local_echo
@@ -817,136 +718,28 @@ No-sandbox example:
   inputs:
     run: echo hello
     sandbox:
-      type: host
+      type: none
 ```
 
 Implementation note:
 
-- the `command_execution` op should not keep a one-off sandbox implementation
+- `command_execution` should not keep a one-off sandbox implementation
 - it should call the same reusable sandbox resolution + execution layer used by selector-backed extension bundles
 
-## Manifest Source: File Or Discovery Invocation
+## Codex / LLM / GHA Migration Under This Model
 
-The base proposal above assumes a bundle ships an `op.yaml` manifest file.
+Under this design, `codex.exec`, `llm_inference`, `llm_inference2`, and the GitHub Actions op stop being statically registered names.
 
-That should remain the simplest and default model.
-
-However, there is a valid second mode worth supporting later:
-
-- instead of reading `op.yaml`, invoke the package/bundle to obtain its manifest
-
-This would help support execution-first install patterns such as:
-
-- `npx ...`
-- single binaries
-- packages that already know how to self-describe
-
-In that model, the invocation returns the same logical information that `op.yaml` would otherwise contain:
-
-- name
-- version
-- description
-- input schema
-- output schema
-- execution contract
-- sandbox defaults
-
-### Suggested shape
-
-The extension system can support two manifest sources:
-
-1. file manifest
-   - `op.yaml`
-2. discovery manifest
-   - a command that returns manifest JSON to stdout
-
-Conceptually:
-
-```yaml
-manifest:
-  source: file | command
-  command:
-    - npx
-    - -y
-    - some-package
-    - c2jschema
-```
-
-or, if the bundle itself provides the executable:
-
-```yaml
-manifest:
-  source: command
-  command: ["./run", "--c2-manifest-json"]
-```
-
-### Why this is plausible
-
-There is no single universal packaging standard for "CLI returns its own manifest," but there are several important protocol precedents where capabilities/schema are obtained by invocation rather than by reading a static manifest file:
-
-- MCP:
-  - clients call `initialize` and then `tools/list`
-  - tools are discovered dynamically from the running server, not from a checked-in manifest file
-  - servers can notify clients when the tool list changes
-- Terraform providers:
-  - Terraform calls provider schema RPCs such as `GetProviderSchema`
-  - the CLI also exposes `terraform providers schema -json`
-  - schema is surfaced by execution/protocol interaction, not by a standalone YAML manifest
-- LSP / DAP:
-  - clients send `initialize`
-  - servers respond with capabilities dynamically
-
-Those patterns are not the same as extension bundles, but they are strong evidence that "manifest by invocation" is a legitimate model.
-
-### Recommendation
-
-I would treat discovery invocation as an optional second mode, not the only mode.
-
-Recommended ordering:
-
-1. support `op.yaml` first
-2. add self-describing manifest-by-command after the base selector/cache/runtime model works
-
-Reason:
-
-- file manifests are easier to statically inspect, cache, diff, and debug
-- discovery commands are more flexible, but they add timeout, trust, and bootstrap questions
-
-### Guardrails for discovery invocation
-
-If this mode is added, it should be tightly constrained:
-
-- command output must be machine-readable JSON
-- command must have a strict timeout
-- output must validate against a stable manifest schema
-- resolved manifest should be cached by selector + resolved commit + manifest digest
-- discovery should run in a predictable environment, ideally with the same sandbox policy model
-
-### Practical outcome
-
-This gives you both:
-
-1. a simple bundle-native manifest path (`op.yaml`)
-2. a protocol-style self-description path (`c2jschema`, `--c2-manifest-json`, etc.)
-
-That second path is the better fit if you want to support existing execution-focused install patterns without forcing every package to reorganize itself around a static manifest file.
-
-## Codex / LLM Migration Under This Model
-
-Under this design, `codex.exec`, `llm_inference`, and `llm_inference2` stop being statically registered names.
-
-Instead, recipes reference them directly via selector-backed `op:` values.
+Instead, recipes reference them directly through selector-backed `op:` values.
 
 Examples:
 
 ```yaml
-op: git+https://github.com/acme/platform-ops.git//.colony2/ops/codex.exec@main
+op: ./server/llm/pkg/codex/extension-codex-exec
 ```
 
-Potential later same-repo form:
-
 ```yaml
-op: ./.colony2/ops/codex.exec
+op: git+https://github.com/acme/platform-ops.git//tools/extensions/codex.exec@main
 ```
 
 The bundles should preserve current contracts.
@@ -968,13 +761,29 @@ Must preserve:
 - response-schema validation
 - file/tool behavior for `llm_inference2`
 
+### GHA bundle
+
+The GitHub Actions op should also shift to an extension bundle as part of this change.
+
+Must preserve:
+
+- current workflow invocation contract
+- current output/result shape expected by downstream recipes
+- current artifact and metadata behavior
+- selector-resolution behavior that remains specific to the GitHub Actions domain
+
+Important:
+
+- the GitHub Actions op becoming an extension bundle does not mean workflow selectors and extension selectors become the same thing
+- it means the outer op implementation is delivered as a selector-backed extension bundle, while its own internal workflow input semantics continue to do whatever the GHA feature needs
+
 ## Recommended First Slice
 
-1. Make `op:` accept canonical git selectors in addition to bare names.
+1. Make `op:` accept local selectors and canonical remote git selectors in addition to bare names.
 2. Reuse or extract the existing git-selector resolver.
 3. Add local cache under `~/.c2/cache/ops`.
 4. Add bundle materialization.
-5. Add generic host/Shai execution.
+5. Add generic host/Shai execution controlled by `inputs.sandbox`.
 6. Apply the same sandbox runner to `command_execution`.
 7. Migrate `codex.exec` first.
 
@@ -988,14 +797,15 @@ Why `codex.exec` first:
 
 ## Phase 1: `op:` selector support
 
-1. Widen recipe parsing so `op` can be a registered name or selector.
-2. Add selector detection for canonical `git+...//path@ref`.
-3. Optionally defer `./...` local shorthand to a later phase.
+1. Widen recipe parsing so `op` can be a registered name, a local selector, or a remote selector.
+2. Add selector detection for `./...`.
+3. Add selector detection for canonical `git+...//path@ref`.
 4. Add resolved-selector metadata where needed for traceability.
 
 Acceptance criteria:
 
 - `op: input` still works unchanged
+- `op: ./<repo-relative-op-dir>` is accepted and resolved
 - `op: git+...//path@ref` is accepted and resolved
 
 ## Phase 2: Cache and bundle resolution
@@ -1003,23 +813,27 @@ Acceptance criteria:
 1. Add repo cache under `~/.c2/cache/ops/repos`.
 2. Add bundle cache under `~/.c2/cache/ops/bundles`.
 3. Resolve refs to commits and materialize exact bundle directories.
+4. Bind local selectors to the same effective repo+commit as the caller.
 
 Acceptance criteria:
 
 - repeated use of the same resolved selector reuses cache
+- local selectors work cleanly in tests and in normal recipes
 
-## Phase 3: Dynamic schema validation and execution
+## Phase 3: Dynamic validation and execution
 
 1. Read `op.yaml`.
-2. Validate `inputs` against bundle schema.
-3. Implement host execution.
-4. Implement Shai execution.
-5. Export runtime env values.
-6. Reuse the same runner for `command_execution`.
+2. Separate reserved runtime inputs from extension-defined inputs.
+3. Validate extension-defined inputs against the bundle schema.
+4. Implement host execution.
+5. Implement Shai execution.
+6. Export runtime env values.
+7. Reuse the same runner for `command_execution`.
 
 Acceptance criteria:
 
 - selector-backed `op` values execute without prior registration
+- sandbox behavior is controlled by invocation inputs, not bundle metadata
 
 ## Phase 4: Codex migration
 
@@ -1032,44 +846,46 @@ Acceptance criteria:
 
 - codex behavior matches current behavior through selector-backed `op`
 
-## Phase 5: LLM migration
+## Phase 5: LLM and GHA migration
 
 1. Package `llm_inference` and `llm_inference2` as extension bundles.
 2. Invoke them through selector-backed `op:`.
-3. Preserve validation and execution behavior.
+3. Package the GitHub Actions op as an extension bundle.
+4. Preserve validation and execution behavior.
 
 Acceptance criteria:
 
-- llm bundles run correctly through selector-backed `op`
+- llm bundles and the GitHub Actions bundle run correctly through selector-backed `op`
 
 ## Optional Later Work
 
-- local `./...` selector support
 - allowlists / policy controls for approved selectors
 - cache pruning
 - migration of skill refs to the same canonical selector grammar
-- manifest-by-command discovery (`c2jschema`, `--c2-manifest-json`, etc.)
 
 ## Testing Plan
 
 ### Unit tests
 
 - selector detection vs bare-name detection
+- local selector parsing
 - canonical git-selector parsing
 - commit-pinned resolution
+- local-selector same-commit binding
 - cache key generation
-- cell-config Shai resolution
-- manifest-by-command output validation
+- local-config Shai resolution
 
 ### Integration tests
 
 - `op: input` still works
-- `op: git+file://...//.colony2/ops/...@ref` works against local test repos
+- `op: ./<repo-relative-op-dir>` works in-repo
+- `op: git+file://...//<repo-relative-op-dir>` works against local test repos
 - host execution
 - Shai execution
 - `command_execution` host/Shai parity
 - cache hit vs miss
 - codex bundle through selector-backed `op`
+- GHA bundle through selector-backed `op`
 
 ### Regression tests
 
@@ -1082,8 +898,9 @@ Acceptance criteria:
 I think this is the right direction:
 
 - keep `op:`
-- make it either a bare registered name or a git selector
-- prefer canonical `git+...//path@ref` syntax
+- make it either a bare registered name, a same-repo local selector, or a canonical git selector
+- support same-repo local selectors from the start
+- keep sandbox configuration on the invocation input, not in the bundle manifest
 
 That is more consistent with the existing system than adding `uses:`, and it avoids inventing another reusable-reference mechanism.
 
@@ -1091,10 +908,11 @@ That is more consistent with the existing system than adding `uses:`, and it avo
 
 This is done when:
 
-1. `op:` accepts either a registered core op name or a canonical git selector
+1. `op:` accepts either a registered core op name, a same-repo local selector, or a canonical git selector
 2. selector-backed `op` values resolve to commit-pinned extension bundles
-3. bundles are cached under `~/.c2/cache/ops`
-4. bundles execute without prior registration
-5. bundles can run in host mode or Shai mode
-6. `command_execution` supports the same sandbox model
-7. `codex.exec`, `llm_inference`, and `llm_inference2` can all be consumed this way
+3. local selectors bind to the caller's effective repo+commit
+4. bundles are cached under `~/.c2/cache/ops`
+5. bundles execute without prior registration
+6. bundle sandbox behavior is controlled through `inputs.sandbox`
+7. `command_execution` supports the same sandbox model
+8. `codex.exec`, `llm_inference`, `llm_inference2`, and the GitHub Actions op can all be consumed this way

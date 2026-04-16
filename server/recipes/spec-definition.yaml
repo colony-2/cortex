@@ -36,7 +36,7 @@ state:
         # Initial generation: only use the initial user prompt, no review or previous doc context
         - id: llm_initial
           when: "size(states.generate.runs) == 0 && size(states.review.runs) == 0"
-          op: llm_inference2
+          op: ./server/llm/pkg/llm/extension-llm-inference2
           inputs:
             default_provider: "{{ inputs.default_provider }}"
             default_model: "{{ inputs.default_model }}"
@@ -77,7 +77,7 @@ state:
         # Refinement generation: use review history and attach prior spec as file artifact
         - id: llm_refine
           when: "size(states.generate.runs) > 0 || size(states.review.runs) > 0"
-          op: llm_inference2
+          op: ./server/llm/pkg/llm/extension-llm-inference2
           inputs:
             default_provider: "{{ inputs.default_provider }}"
             default_model: "{{ inputs.default_model }}"

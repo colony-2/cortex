@@ -122,6 +122,22 @@ func getNodeSchema(r *jsonschema.Reflector) (*jsonschema.Schema, error) {
 		local.Title = op.GetName()
 		items = append(items, local)
 	}
+	selectorNode, err := cloneSchema(nmd)
+	if err != nil {
+		return nil, err
+	}
+	selectorNode.Type = "object"
+	selectorNode.Properties.Set("op", &jsonschema.Schema{
+		Type:    "string",
+		Pattern: `^(git\+.+|\./.+|\.\./.+)$`,
+	})
+	selectorNode.Properties.Set("inputs", &jsonschema.Schema{
+		Type:                 "object",
+		AdditionalProperties: &jsonschema.Schema{},
+	})
+	selectorNode.Required = append(selectorNode.Required, "op")
+	selectorNode.Title = "selector-op"
+	items = append(items, selectorNode)
 	seq := stripSchema(r.Reflect(NodeSequence{}))
 	seq.Title = "Sequence"
 	// Require presence of the sequence key to avoid oneOf ambiguity

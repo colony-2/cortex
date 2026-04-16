@@ -71,6 +71,9 @@ func (n *Node) UnmarshalYAML(node *yamlv3.Node) error {
 func checkOpInputs(opName string, inputs map[string]interface{}, line int, col int) error {
 	op, exists := ops.Get(opName)
 	if !exists {
+		if isSelectorOp(opName) {
+			return nil
+		}
 		return fmt.Errorf("unknown op: [%s] at [%d:%d]", opName, line, col)
 	}
 	// Unmarshal into a pointer to the concrete input value so that any
@@ -200,7 +203,23 @@ func (NodeOp) JSONSchema() *jsonschema.Schema {
 		}
 		items = append(items, inputStruct)
 	}
-	return oneOfSchema("op", items...)
+	schema := oneOfSchema("op", items...)
+	selectorProperties := jsonschema.NewProperties()
+	selectorProperties.Set("op", &jsonschema.Schema{
+		Type:    "string",
+		Pattern: `^(git\+.+|\./.+|\.\./.+)$`,
+	})
+	selectorProperties.Set("inputs", &jsonschema.Schema{
+		Type:                 "object",
+		AdditionalProperties: &jsonschema.Schema{},
+	})
+	schema.OneOf = append(schema.OneOf, &jsonschema.Schema{
+		Type:       "object",
+		Properties: selectorProperties,
+		Required:   []string{"op"},
+		Title:      "selector-op",
+	})
+	return schema
 }
 
 func (n *NodeOp) isNode() {}

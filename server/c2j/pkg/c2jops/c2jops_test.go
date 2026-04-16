@@ -7,14 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpsIncludesGHAOps(t *testing.T) {
+func TestOpsIncludesExtensionExecution(t *testing.T) {
 	names := opNames(Ops())
-	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.runs")
+	require.Contains(t, names, "extension_execution")
 	require.NotContains(t, names, "cells.list")
 }
 
-func TestRegisterInstallsGHAOps(t *testing.T) {
+func TestRegisterInstallsExtensionExecution(t *testing.T) {
 	original := coreops.List()
 	t.Cleanup(func() {
 		coreops.Replace(original...)
@@ -23,8 +22,7 @@ func TestRegisterInstallsGHAOps(t *testing.T) {
 	Register()
 
 	names := opNames(coreops.List())
-	require.Contains(t, names, "gha.run")
-	require.Contains(t, names, "gha.runs")
+	require.Contains(t, names, "extension_execution")
 	require.NotContains(t, names, "cells.list")
 }
 

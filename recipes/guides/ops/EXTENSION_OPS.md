@@ -1,7 +1,8 @@
-**Extension Ops (Runtime-Discovered)**
+**Extension Ops (Legacy Runtime Discovery)**
 
 - Goal: Allow projects to add custom operations without changing server code.
-- Where: Project-local directories under `.colony2/ops/<op_name>` discovered at runtime.
+- Preferred selector-backed model: Extension bundles can live anywhere in a repo and are referenced directly from `op:`.
+- This document describes the older runtime-discovered flow, which looks under `.colony2/ops/<op_name>`.
 
 **How It Works**
 

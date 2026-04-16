@@ -47,7 +47,7 @@ state:
       when: "true"
   states:
     continue_session:
-      op: codex.exec
+      op: ./server/llm/pkg/codex/extension-codex-exec
       transitions: []
       inputs:
         sessionId: "{{ inputs.session_id }}"
@@ -98,7 +98,7 @@ state:
           - Leave the workspace in a state where validation commands are likely to pass.
 
     new_session:
-      op: codex.exec
+      op: ./server/llm/pkg/codex/extension-codex-exec
       transitions: []
       inputs:
         worktree_path: "{{ context.environment.worktree_path }}"

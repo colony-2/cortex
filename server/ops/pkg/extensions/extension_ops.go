@@ -172,9 +172,9 @@ func parseDurationOrZero(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// DiscoverAndRegister finds extension ops under .colony2/ops and registers them.
-// The search ascends from startDir to root looking for a project root that contains
-// a .colony2/ops directory. If startDir is empty, os.Getwd() is used.
+// DiscoverAndRegister is the legacy runtime-discovery path for extension ops.
+// It looks under .colony2/ops while ascending from startDir to root.
+// Selector-backed extension ops are resolved separately and can live anywhere.
 func DiscoverAndRegister(startDir string) ([]ops.RegisterableOp, error) {
 	opsFound, err := Discover(startDir)
 	if err != nil {
@@ -186,7 +186,7 @@ func DiscoverAndRegister(startDir string) ([]ops.RegisterableOp, error) {
 	return opsFound, nil
 }
 
-// Discover returns extension ops discovered without registering them globally.
+// Discover returns legacy runtime-discovered extension ops without registering them globally.
 func Discover(startDir string) ([]ops.RegisterableOp, error) {
 	projectRoot, err := findProjectRoot(startDir)
 	if err != nil {

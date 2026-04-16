@@ -2,9 +2,7 @@ package opregistry
 
 import (
 	cellopsexport "github.com/colony-2/colony2/server/cell-ops/pkg/export"
-	ghaexport "github.com/colony-2/colony2/server/gha/pkg/export"
 	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
-	llmexport "github.com/colony-2/colony2/server/llm/pkg/export"
 	"github.com/colony-2/colony2/server/ops/pkg/extensions"
 	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -40,34 +38,23 @@ func OpsForProfile(profile Profile) []coreops.RegisterableOp {
 }
 
 func serverOps() []coreops.RegisterableOp {
-	impls := llmexport.GetAll()
+	impls := []coreops.RegisterableOp{extensions.GetExecutionOp()}
 	impls = append(impls, cellopsexport.GetAll()...)
-	impls = appendDiscoveredExtensions(impls)
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, input.GetOp())
 	impls = append(impls, input.GetAutoFillOp())
 	impls = append(impls, recipe.GetOps()...)
 	impls = append(impls, gitexport.GetAll()...)
-	impls = append(impls, ghaexport.GetAll()...)
 	impls = append(impls, ticketop.GetOp())
 	return impls
 }
 
 func c2jOps() []coreops.RegisterableOp {
-	impls := llmexport.GetAll()
-	impls = appendDiscoveredExtensions(impls)
+	impls := []coreops.RegisterableOp{extensions.GetExecutionOp()}
 	impls = append(impls, workerexport.GetAll()...)
 	impls = append(impls, input.GetOp())
 	impls = append(impls, input.GetAutoFillOp())
 	impls = append(impls, recipe.GetOps()...)
 	impls = append(impls, gitexport.GetAll()...)
-	impls = append(impls, ghaexport.GetAll()...)
-	return impls
-}
-
-func appendDiscoveredExtensions(impls []coreops.RegisterableOp) []coreops.RegisterableOp {
-	if discovered, err := extensions.Discover(""); err == nil && len(discovered) > 0 {
-		impls = append(impls, discovered...)
-	}
 	return impls
 }

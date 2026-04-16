@@ -58,7 +58,7 @@ sequence:
     inputs:
       form:
         question: "provide a user prompt"
-  - op: codex.exec
+  - op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       prompt: "{{ sequence.q2.outputs.response }}"
   - op: ticket.manage
@@ -78,7 +78,7 @@ sequence:
   - op: command_execution
     inputs:
       run: "cat {{ context.environment.worktree_path }}/{{ context.workflow.cell_path }}/README.md"
-  - op: codex.exec
+  - op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       prompt: update the readme to be more concise
 `))
@@ -98,7 +98,7 @@ sequence:
     inputs:
       form:
         question: "provide a user prompt"
-  - op: codex.exec
+  - op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       prompt: "{{ sequence.q1.outputs.response }}"
   - op: ticket.manage
@@ -118,7 +118,7 @@ sequence:
   - op: command_execution
     inputs:
       run: "cat {{ context.environment.worktree_path }}/{{ context.workflow.cell_path }}/README.md"
-  - op: codex.exec
+  - op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       prompt: update the readme to be more concise
 `))

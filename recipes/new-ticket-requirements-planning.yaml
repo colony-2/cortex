@@ -25,7 +25,7 @@ inputs:
   api_review_feedback: '${{ has(inputs.api_review_feedback) ? inputs.api_review_feedback : "" }}'
 sequence:
   - id: persist_plan_and_docs
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -92,7 +92,7 @@ sequence:
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
   - id: contrarian_api_review
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.persist_plan_and_docs.artifacts["requirements/plan.json"] }}'
     inputs:

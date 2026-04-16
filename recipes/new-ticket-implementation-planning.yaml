@@ -17,7 +17,7 @@ inputs:
   user_feedback: '${{ has(inputs.user_feedback) ? inputs.user_feedback : "" }}'
 sequence:
   - id: build_plan
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -89,7 +89,7 @@ sequence:
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
   - id: compat_review
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.build_plan.artifacts["implementation/plan.json"] }}'
     inputs:

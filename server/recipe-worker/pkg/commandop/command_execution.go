@@ -1,7 +1,6 @@
 package commandop
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	extops "github.com/colony-2/colony2/server/ops/pkg/extensions"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
@@ -25,12 +25,13 @@ type CommandExecutionConfig struct {
 
 // CommandExecutionInput defines the input for command execution activities - ALL fields MUST have json tags
 type CommandExecutionInput struct {
-	Run              string            `json:"run" validate:"required"`                                             // Required: command to execute
-	WorkingDirectory string            `json:"working_directory" default:"{{ context.environment.worktree_path }}"` // Optional: override working directory
-	Shell            string            `json:"shell" validate:"omitempty,oneof=bash sh powershell cmd"`             // Optional: override shell
-	Env              map[string]string `json:"env"`                                                                 // Optional: additional env vars
-	ContinueOnError  bool              `json:"continue_on_error"`                                                   // Optional: don't fail on non-zero exit
-	Timeout          string            `json:"timeout"`                                                             // Optional: timeout duration (e.g., "30s")
+	Run              string               `json:"run" validate:"required"`                                             // Required: command to execute
+	WorkingDirectory string               `json:"working_directory" default:"{{ context.environment.worktree_path }}"` // Optional: override working directory
+	Shell            string               `json:"shell" validate:"omitempty,oneof=bash sh powershell cmd"`             // Optional: override shell
+	Env              map[string]string    `json:"env"`                                                                 // Optional: additional env vars
+	Sandbox          *extops.SandboxInput `json:"sandbox,omitempty"`                                                   // Optional: sandbox execution mode
+	ContinueOnError  bool                 `json:"continue_on_error"`                                                   // Optional: don't fail on non-zero exit
+	Timeout          string               `json:"timeout"`                                                             // Optional: timeout duration (e.g., "30s")
 }
 
 // CommandExecutionOutput defines the output from command execution activities - ALL fields MUST have json tags
@@ -101,49 +102,26 @@ func execute(_ ops.OpDependencies, ctx context.Context, input CommandExecutionIn
 		shell = getDefaultShell()
 	}
 
-	// Build command based on shell
-	var cmd *exec.Cmd
-	switch shell {
-	case "bash":
-		cmd = exec.CommandContext(ctx, "bash", "-c", input.Run)
-	case "sh":
-		cmd = exec.CommandContext(ctx, "sh", "-c", input.Run)
-	case "powershell":
-		cmd = exec.CommandContext(ctx, "powershell", "-Command", input.Run)
-	case "cmd":
-		cmd = exec.CommandContext(ctx, "cmd", "/C", input.Run)
-	default:
-		// Try to use the shell as-is
-		cmd = exec.CommandContext(ctx, shell, "-c", input.Run)
-	}
-
-	// Set working directory
-	cmd.Dir = workingDir
-
-	// Merge environment variables
-	env := os.Environ()
-	// Add config env vars
+	env := map[string]string{}
 	for k, v := range config.Env {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
+		env[k] = v
 	}
-	// Add/override with input env vars
 	for k, v := range input.Env {
-		env = append(env, fmt.Sprintf("%s=%s", k, v))
+		env[k] = v
 	}
-	cmd.Env = env
-
-	// Capture output
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// Execute command
-	err := cmd.Run()
+	stdoutBytes, stderrBytes, err := extops.ExecuteProcess(ctx, extops.RunRequest{
+		WorkspaceRoot: workingDir,
+		WorkingDir:    workingDir,
+		Shell:         shell,
+		Run:           input.Run,
+		Env:           env,
+		Sandbox:       input.Sandbox,
+	})
 
 	// Prepare output
 	output := CommandExecutionOutput{
-		Stdout:   strings.TrimRight(stdout.String(), "\r\n"),
-		Stderr:   strings.TrimRight(stderr.String(), "\r\n"),
+		Stdout:   strings.TrimRight(string(stdoutBytes), "\r\n"),
+		Stderr:   strings.TrimRight(string(stderrBytes), "\r\n"),
 		ExitCode: 0,
 		Success:  true,
 		TimedOut: false,

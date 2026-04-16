@@ -12,6 +12,18 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+func mapifyOutput(value interface{}) map[string]interface{} {
+	if value == nil {
+		return map[string]interface{}{}
+	}
+	if mapped, ok := value.(map[string]interface{}); ok {
+		return mapped
+	}
+	s := structs.New(value)
+	s.TagName = "json"
+	return s.Map()
+}
+
 // RegisterableOp defines the contract for ops that can be consumed
 // by external systems like recipe-worker via YAML definitions.
 // Multi-step aware: execution happens per TaskStep in TaskChain.
@@ -104,9 +116,7 @@ func NewStepWithDeps[In any, Out any](fn ActivityHandlerV2[In, Out]) Step {
 			return nil, fmt.Errorf("error decoding input: %w", err)
 		}
 		objResult, err := fn(deps, ctx, input)
-		s := structs.New(objResult)
-		s.TagName = "json"
-		output := s.Map()
+		output := mapifyOutput(objResult)
 		if err != nil {
 			return output, fmt.Errorf("error executing step: %w", err)
 		}
@@ -290,9 +300,7 @@ func NewActivityMappedOpWithProviderV2[In any, Out any](metadata OpMetadata, han
 				return nil, fmt.Errorf("error decoding input: %w", err)
 			}
 			objResult, err := handler(deps, ctx, input)
-			s := structs.New(objResult)
-			s.TagName = "json"
-			output := s.Map()
+			output := mapifyOutput(objResult)
 			if err != nil {
 				return output, fmt.Errorf("error executing step: %w", err)
 			}

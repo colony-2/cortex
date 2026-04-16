@@ -2,7 +2,7 @@ id: skill-quality-smoke
 version: 0.2.0
 sequence:
   - id: triage_local
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -51,7 +51,7 @@ sequence:
         Final response must be ONLY the exact JSON object above.
 
   - id: triage_frontend
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -100,7 +100,7 @@ sequence:
         Final response must be ONLY the exact JSON object above.
 
   - id: requirements_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-
@@ -166,7 +166,7 @@ sequence:
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
   - id: requirements_review_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.requirements_good.artifacts["requirements/plan.json"] }}'
     inputs:
@@ -253,7 +253,7 @@ sequence:
         JSON
 
   - id: requirements_review_bad
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.requirements_bad_seed.artifacts["bad-requirements/plan.json"] }}'
     inputs:
@@ -298,7 +298,7 @@ sequence:
         Final response must be ONLY the exact review JSON object.
 
   - id: implementation_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       requirements/plan.json: '${{ sequence.requirements_good.artifacts["requirements/plan.json"] }}'
       requirements/index.md: '${{ sequence.requirements_good.artifacts["requirements/index.md"] }}'
@@ -374,7 +374,7 @@ sequence:
         Final response must be ONLY the exact `plan.json` object content (no markdown, no prose).
 
   - id: implementation_review_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.implementation_good.artifacts["implementation/plan.json"] }}'
     inputs:
@@ -441,7 +441,7 @@ sequence:
         JSON
 
   - id: implementation_review_bad
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.implementation_bad_seed.artifacts["bad-implementation/plan.json"] }}'
     inputs:
@@ -485,7 +485,7 @@ sequence:
         Final response must be ONLY the exact review JSON object.
 
   - id: outcome_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       requirements/plan.json: '${{ sequence.requirements_good.artifacts["requirements/plan.json"] }}'
       requirements/index.md: '${{ sequence.requirements_good.artifacts["requirements/index.md"] }}'
@@ -614,7 +614,7 @@ sequence:
           --argjson negative_present "$NEGATIVE_OK" \
           '{statement_files_exist:$statement_files_exist, statement_annotations_present:$statement_annotations_present, positive_present:$positive_present, negative_present:$negative_present}'
   - id: outcome_review_good
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.outcome_good.artifacts["outcome/plan.json"] }}'
       tests-index.md: '${{ sequence.outcome_good.artifacts["outcome/tests-index.md"] }}'
@@ -700,7 +700,7 @@ sequence:
         - The happy path succeeds.
         EOF_BAD
   - id: outcome_review_bad
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     artifacts:
       plan.json: '${{ sequence.outcome_bad_seed.artifacts["bad-outcome/plan.json"] }}'
       tests-index.md: '${{ sequence.outcome_bad_seed.artifacts["bad-outcome/tests-index.md"] }}'

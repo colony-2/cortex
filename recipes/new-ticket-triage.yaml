@@ -12,7 +12,7 @@ inputs:
   description: '{{ inputs.description }}'
 sequence:
   - id: assess_cell
-    op: codex.exec
+    op: ./server/llm/pkg/codex/extension-codex-exec
     inputs:
       worktree_path: "{{ context.environment.worktree_path }}"
       cell_relative_path: >-

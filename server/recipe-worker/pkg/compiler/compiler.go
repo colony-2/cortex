@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/git/pkg/gitstate"
+	extops "github.com/colony-2/colony2/server/ops/pkg/extensions"
 	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
@@ -175,19 +176,42 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		return fmt.Errorf("failed to create resolution context: %w", err)
 	}
 
-	// Inject defaults before template resolution
-	registeredOp, exists := ops.Get(op)
-	if !exists {
-		return fmt.Errorf("operation %s not found", op)
-	}
-	if artifactsDefined && !registeredOp.GetMetadata().AcceptsArtifacts {
-		return fmt.Errorf("operation %s does not accept artifacts", op)
-	}
-
-	chain := registeredOp.TaskChain()
-	if len(chain) > 0 {
-		if err := workerops.InjectDefaults(chain[0].InputType, metadata.Inputs); err != nil {
-			return fmt.Errorf("failed to inject defaults: %w", err)
+	var (
+		registeredOp ops.RegisterableOp
+		chain        []ops.TaskStep
+		taskPrefix   string
+		selectorOp   interface {
+			ValidateInvocationInputs(map[string]interface{}) error
+		}
+	)
+	if isSelectorOp(op) {
+		resolvedSelectorOp, selectorRegisteredOp, err := loadSelectorOp(op, extops.ResolveOptions{
+			BaseDir:          resCtx.TaskExecutionContext().Environment.WorktreePath,
+			RepositorySource: resCtx.TaskExecutionContext().RecipeSource.Repo,
+			RepositoryRef:    resCtx.TaskExecutionContext().RecipeSource.Ref,
+		})
+		if err != nil {
+			return err
+		}
+		registeredOp = selectorRegisteredOp
+		chain = registeredOp.TaskChain()
+		taskPrefix = registeredOp.GetMetadata().Type
+		selectorOp = resolvedSelectorOp
+	} else {
+		var exists bool
+		registeredOp, exists = ops.Get(op)
+		if !exists {
+			return fmt.Errorf("operation %s not found", op)
+		}
+		if artifactsDefined && !registeredOp.GetMetadata().AcceptsArtifacts {
+			return fmt.Errorf("operation %s does not accept artifacts", op)
+		}
+		chain = registeredOp.TaskChain()
+		taskPrefix = registeredOp.GetMetadata().Type
+		if len(chain) > 0 {
+			if err := workerops.InjectDefaults(chain[0].InputType, metadata.Inputs); err != nil {
+				return fmt.Errorf("failed to inject defaults: %w", err)
+			}
 		}
 	}
 
@@ -200,6 +224,26 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		resolvedNodeInputs, err := resCtx.ResolveMap(metadata.Inputs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to resolve templates op inputs: %w", err)
+		}
+
+		if selectorOp != nil {
+			if err := selectorOp.ValidateInvocationInputs(resolvedNodeInputs); err != nil {
+				return nil, nil, fmt.Errorf("failed to validate selector inputs: %w", err)
+			}
+			normalizedInput, err := NormalizeOpInput(chain[0].InputType, selectorInvocationInput(
+				op,
+				resolvedNodeInputs,
+				resCtx.TaskExecutionContext().RecipeSource.Repo,
+				resCtx.TaskExecutionContext().RecipeSource.Ref,
+			))
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to normalize selector op inputs: %w", err)
+			}
+			allowNulls := resCtx.Options.Mode == template.ModeValidate
+			if err := validateOpInputType(chain[0].InputType, normalizedInput.Data, allowNulls); err != nil {
+				return nil, nil, fmt.Errorf("op input validation failed: %w", err)
+			}
+			return normalizedInput.Data, normalizedInput.StoredArtifactKeys, nil
 		}
 
 		normalizedInput, err := NormalizeOpInput(chain[0].InputType, resolvedNodeInputs)
@@ -236,7 +280,7 @@ func (d DefaultRecipeExecutor) executeOp2(ctx workflow.Context, parentResolution
 		runPolicy.TotalTimeout = &timeout
 	}
 
-	taskType := fmt.Sprintf("%s:%s", op, chain[0].Name)
+	taskType := fmt.Sprintf("%s:%s", taskPrefix, chain[0].Name)
 
 	var stepArtifacts map[string]recipeartifacts.Ref
 	var stepOutputArtifacts []swf.Artifact

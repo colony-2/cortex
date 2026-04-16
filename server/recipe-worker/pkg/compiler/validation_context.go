@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	extops "github.com/colony-2/colony2/server/ops/pkg/extensions"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
@@ -70,6 +71,7 @@ func (v *validationJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf
 	if !exists {
 		return nil, fmt.Errorf("operation %s not found", opName)
 	}
+	taskPrefix := op.GetMetadata().Type
 	chain := op.TaskChain()
 	stepIndex := -1
 	var stepOutputType reflect.Type
@@ -108,7 +110,31 @@ func (v *validationJobContext) DoTask(_ swf.RunPolicy, taskType string, data swf
 
 	nextTask := ""
 	if stepIndex < len(chain)-1 {
-		nextTask = fmt.Sprintf("%s:%s", opName, chain[stepIndex+1].Name)
+		nextTask = fmt.Sprintf("%s:%s", taskPrefix, chain[stepIndex+1].Name)
+	}
+
+	if taskPrefix == "extension_execution" {
+		var invocation workerops.ActivityInvocationRequest
+		payload, err := data.GetData()
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(payload, &invocation); err != nil {
+			return nil, err
+		}
+		selector, _ := invocation.Input["selector"].(string)
+		if selector != "" {
+			repoSource, _ := invocation.Input["repository_source"].(string)
+			repoRef, _ := invocation.Input["repository_ref"].(string)
+			resolved, _, err := loadSelectorOp(selector, extops.ResolveOptions{
+				RepositorySource: repoSource,
+				RepositoryRef:    repoRef,
+			})
+			if err != nil {
+				return nil, err
+			}
+			zeroOutput = resolved.ZeroOutput()
+		}
 	}
 
 	envelope := workerops.ActivityInvocationOutput{

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	extops "github.com/colony-2/colony2/server/ops/pkg/extensions"
 	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
@@ -13,6 +14,13 @@ import (
 )
 
 func zeroOutputForOp(opName string) (map[string]interface{}, error) {
+	if isSelectorOp(opName) {
+		resolved, _, err := loadSelectorOp(opName, extops.ResolveOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return resolved.ZeroOutput(), nil
+	}
 	registeredOp, exists := ops.Get(opName)
 	if !exists {
 		return nil, fmt.Errorf("operation %s not found", opName)
