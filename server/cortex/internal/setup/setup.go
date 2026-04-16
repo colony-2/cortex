@@ -82,7 +82,7 @@ func InitializeDependencies(ctx context.Context, cfg config.Config) (web.Depende
 	if err != nil {
 		return web.Dependencies{}, nil, fmt.Errorf("failed to create recipe store: %w", err)
 	}
-	celFns := colonycel.NewBuilder(colonycel.Options{CellsService: cellSvc})
+	celFns := colonycel.NewBuilder(colonycel.Options{})
 
 	recipeSvc, err := recipesvc.NewService(recipesvc.ServiceConfig{
 		Store:        recipeStore,

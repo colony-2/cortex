@@ -91,10 +91,8 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/colony2/server/cell v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/ops v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210 // indirect

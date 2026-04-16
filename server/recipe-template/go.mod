@@ -3,8 +3,6 @@ module github.com/colony-2/colony2/server/recipe-template
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/google/cel-go v0.26.0
@@ -21,13 +19,13 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.3 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
@@ -48,5 +46,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.30.0 // indirect
-	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
