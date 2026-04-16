@@ -45,8 +45,6 @@ github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb h1:OH
 github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb/go.mod h1:oaue0tFHa0f03goyVidBqYyYhWSvUz7sxwSVB7pawvU=
 github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb h1:krCNDfkHwq520KM/auf2OLWZ8Wf1iR/U31dVz6ZMVxY=
 github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb/go.mod h1:ZEBdgWJOMZJ6OdA9DywZ0QeMBVRSZ4ao0BYucKMll2I=
-github.com/colony-2/colony2/server/openapi v0.0.0-20260416210508-3591476f41eb h1:7uUm7noJu/sNnef3K43tt3TyAox/GE+lAFD4x3oI2+g=
-github.com/colony-2/colony2/server/openapi v0.0.0-20260416210508-3591476f41eb/go.mod h1:gan/mxhmIGnbiFaFB9kjHcZdVDNivS/4KROuJzwLU7E=
 github.com/colony-2/colony2/server/ops v0.0.0-20260416210508-3591476f41eb h1:R4efeemes9UQCPCIWNQv44hTHSLcfqDkTQvM1Nsp4wk=
 github.com/colony-2/colony2/server/ops v0.0.0-20260416210508-3591476f41eb/go.mod h1:4SDC1LtsQ9uwNjNXX18Ckghd8JanlR4yv2AOWr0dBx0=
 github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416210508-3591476f41eb h1:ttu6IXPTxwlci6pylt0Y4GtpK3uwo01DTnQWvGpSPFg=

@@ -1,4 +1,4 @@
-package main
+package ops
 
 import (
 	"context"
@@ -9,78 +9,67 @@ import (
 	"strconv"
 	"strings"
 
-	ghaops "github.com/colony-2/colony2/server/gha/pkg/gha"
-	codexops "github.com/colony-2/colony2/server/llm/pkg/codex"
-	llmops "github.com/colony-2/colony2/server/llm/pkg/llm"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 
-func main() {
-	if len(os.Args) != 2 {
-		_, _ = fmt.Fprintln(os.Stderr, "usage: opshim <op-name>")
-		os.Exit(2)
+type commandExecutionEnvelope struct {
+	Output       map[string]interface{} `json:"output,omitempty"`
+	ArtifactRefs interface{}            `json:"artifact_refs,omitempty"`
+}
+
+// CommandMain executes a single-step RegisterableOp using the extension process contract.
+func CommandMain(op RegisterableOp) {
+	os.Exit(RunAsCommand(op))
+}
+
+// RunAsCommand executes a single-step RegisterableOp using JSON stdin/stdout and env-provided context.
+func RunAsCommand(op RegisterableOp) int {
+	if op == nil {
+		_, _ = fmt.Fprintln(os.Stderr, "op is required")
+		return 1
+	}
+	steps := op.TaskChain()
+	if len(steps) == 0 {
+		_, _ = fmt.Fprintf(os.Stderr, "op %q has no task steps\n", op.GetName())
+		return 1
 	}
 
 	input := map[string]interface{}{}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil && err.Error() != "EOF" {
 		_, _ = fmt.Fprintf(os.Stderr, "decode input: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
-	op, err := resolveOp(os.Args[1])
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(1)
-	}
-
-	deps := coreops.NewOpDependenciesBuilder().
+	deps := NewOpDependenciesBuilder().
 		WithWorktreePath(strings.TrimSpace(os.Getenv("VIBETHIS_WORKTREE_PATH"))).
-		WithGitContext(loadGitContext()).
+		WithGitContext(loadCommandGitContext()).
 		Build()
 
-	output, err := op.TaskChain()[0].Invoke(deps, context.Background(), input)
-	writeCapturedArtifacts(deps.GetOutputArtifacts(), outboxPath(input))
+	output, err := steps[0].Invoke(deps, context.Background(), input)
+	writeCommandArtifacts(deps.GetOutputArtifacts(), commandOutboxPath(input))
 
-	envelope := map[string]interface{}{
-		"output": output,
-	}
+	envelope := commandExecutionEnvelope{Output: output}
 	if refs := deps.GetExternalArtifacts(); len(refs) > 0 {
-		envelope["artifact_refs"] = refs
+		envelope.ArtifactRefs = refs
 	}
+
 	if err == nil {
 		if encodeErr := json.NewEncoder(os.Stdout).Encode(envelope); encodeErr != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "encode output: %v\n", encodeErr)
-			os.Exit(1)
+			return 1
 		}
-		return
+		return 0
 	}
-	if len(output) > 0 || len(deps.GetExternalArtifacts()) > 0 {
+
+	if len(output) > 0 || envelope.ArtifactRefs != nil {
 		_ = json.NewEncoder(os.Stdout).Encode(envelope)
 	}
 	_, _ = fmt.Fprintln(os.Stderr, err.Error())
-	os.Exit(1)
+	return 1
 }
 
-func resolveOp(name string) (coreops.RegisterableOp, error) {
-	switch strings.TrimSpace(name) {
-	case "codex.exec":
-		return codexops.GetOp(), nil
-	case "llm_inference":
-		return llmops.GetOp(), nil
-	case "llm_inference2":
-		return llmops.GetEnhancedOp(), nil
-	case "gha.run":
-		return ghaops.GetOp(), nil
-	case "gha.runs":
-		return ghaops.GetRunsOp(), nil
-	default:
-		return nil, fmt.Errorf("unsupported shim op %q", name)
-	}
-}
-
-func loadGitContext() coreops.GitExecutionContext {
-	ctx := coreops.GitExecutionContext{
+func loadCommandGitContext() GitExecutionContext {
+	ctx := GitExecutionContext{
 		BaseRepo:         strings.TrimSpace(os.Getenv("VIBETHIS_GIT_BASE_REPO")),
 		BaseRef:          strings.TrimSpace(os.Getenv("VIBETHIS_GIT_BASE_REF")),
 		ResolvedBaseHash: strings.TrimSpace(os.Getenv("VIBETHIS_GIT_RESOLVED_BASE_HASH")),
@@ -102,14 +91,14 @@ func loadGitContext() coreops.GitExecutionContext {
 	return ctx
 }
 
-func outboxPath(input map[string]interface{}) string {
+func commandOutboxPath(input map[string]interface{}) string {
 	if outbox, ok := input["artifact_outbox_path"].(string); ok && strings.TrimSpace(outbox) != "" {
 		return strings.TrimSpace(outbox)
 	}
 	return ""
 }
 
-func writeCapturedArtifacts(artifacts []swf.Artifact, outbox string) {
+func writeCommandArtifacts(artifacts []swf.Artifact, outbox string) {
 	if len(artifacts) == 0 || strings.TrimSpace(outbox) == "" {
 		return
 	}

@@ -1,9 +1,7 @@
 name: llm_inference2
 description: Runs the enhanced llm_inference2 Go implementation through the extension mechanism
-shell: bash
-run: |
-  cd "$VIBETHIS_PROJECT_ROOT"
-  exec go run ./server/ops/cmd/opshim llm_inference2
+working_directory: .
+command: ["go", "run", "./server/llm/cmd/llm-inference2-op"]
 timeout: 5m
 input_schema:
   type: object

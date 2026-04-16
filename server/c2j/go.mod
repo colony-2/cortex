@@ -4,7 +4,6 @@ go 1.26
 
 require (
 	github.com/colony-2/colony2/server/c2jconfig v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb

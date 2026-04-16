@@ -3,7 +3,7 @@ package input
 import (
 	"time"
 
-	openapi "github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	openapi "github.com/colony-2/colony2/server/recipe-input/pkg/openapi"
 )
 
 // FieldType represents the type of form field
@@ -95,6 +95,20 @@ type InputForm struct {
 
 // FormResponse represents the user's response to a form (OpenAPI-generated type).
 type FormResponse = openapi.FormResponse
+
+// APIFormField is the generated transport shape used by user-input clients.
+type APIFormField = openapi.FormField
+
+// APIOption is the generated transport shape for select options.
+type APIOption = openapi.Option
+
+// APIFieldType is the generated transport enum for form fields.
+type APIFieldType = openapi.FieldType
+
+const (
+	APIFieldTypeCheckboxes  = openapi.FieldTypeCheckboxes
+	APIFieldTypeLinearScale = openapi.FieldTypeLinearScale
+)
 
 // InputWorkflowParams represents parameters for the input collection workflow
 type InputWorkflowParams struct {

@@ -117,19 +117,38 @@ func (r *ResolvedOp) ZeroOutput() map[string]interface{} {
 }
 
 func resolveLocalSelector(selector string, opts ResolveOptions) (*ResolvedOp, error) {
-	baseDir, err := resolveLocalBaseDir(opts.BaseDir)
+	baseDirs, err := resolveLocalBaseDirs(opts.BaseDir)
 	if err != nil {
 		return nil, err
 	}
-	opDir := filepath.Clean(filepath.Join(baseDir, selector))
-	rel, err := filepath.Rel(baseDir, opDir)
-	if err != nil {
-		return nil, err
+	var firstErr error
+	for _, baseDir := range baseDirs {
+		opDir := filepath.Clean(filepath.Join(baseDir, selector))
+		rel, err := filepath.Rel(baseDir, opDir)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("local selector %q escapes base directory %q", selector, baseDir)
+			}
+			continue
+		}
+		resolved, err := loadResolvedOp(selector, "", "", baseDir, opDir)
+		if err == nil {
+			return resolved, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return nil, fmt.Errorf("local selector %q escapes base directory %q", selector, baseDir)
+	if firstErr != nil {
+		return nil, firstErr
 	}
-	return loadResolvedOp(selector, "", "", baseDir, opDir)
+	return nil, fmt.Errorf("failed to determine local selector base directory")
 }
 
 func resolveSameRepoSelector(ctx context.Context, selector string, opts ResolveOptions) (*ResolvedOp, error) {
@@ -148,7 +167,7 @@ func resolveSameRepoSelector(ctx context.Context, selector string, opts ResolveO
 	return resolveGitSelector(ctx, fmt.Sprintf("git+%s//%s@%s", repoURL, path.Clean(opPath), ref))
 }
 
-func resolveLocalBaseDir(baseDir string) (string, error) {
+func resolveLocalBaseDirs(baseDir string) ([]string, error) {
 	candidates := []string{}
 	if strings.TrimSpace(baseDir) != "" {
 		candidates = append(candidates, baseDir)
@@ -156,12 +175,14 @@ func resolveLocalBaseDir(baseDir string) (string, error) {
 	if envRoot := strings.TrimSpace(os.Getenv("VIBETHIS_PROJECT_ROOT")); envRoot != "" {
 		candidates = append(candidates, envRoot)
 	}
-	if found, err := findProjectRoot(""); err == nil && found != "" {
+	if found, err := findRepoRoot(""); err == nil && found != "" {
 		candidates = append(candidates, found)
 	}
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, wd)
 	}
+	seen := map[string]struct{}{}
+	baseDirs := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate == "" {
 			continue
@@ -170,9 +191,46 @@ func resolveLocalBaseDir(baseDir string) (string, error) {
 		if err != nil {
 			continue
 		}
-		return abs, nil
+		if _, ok := seen[abs]; ok {
+			continue
+		}
+		seen[abs] = struct{}{}
+		baseDirs = append(baseDirs, abs)
 	}
-	return "", fmt.Errorf("failed to determine local selector base directory")
+	if len(baseDirs) == 0 {
+		return nil, fmt.Errorf("failed to determine local selector base directory")
+	}
+	return baseDirs, nil
+}
+
+func findRepoRoot(startDir string) (string, error) {
+	if startDir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		startDir = wd
+	}
+
+	dir, err := filepath.Abs(startDir)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, nil
+		}
+		if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", nil
 }
 
 func resolveGitSelector(ctx context.Context, selector string) (*ResolvedOp, error) {

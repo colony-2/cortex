@@ -1,9 +1,7 @@
 name: gha.runs
 description: Runs the gha.runs Go implementation through the extension mechanism
-shell: bash
-run: |
-  cd "$VIBETHIS_PROJECT_ROOT"
-  exec go run ./server/ops/cmd/opshim gha.runs
+working_directory: .
+command: ["go", "run", "./server/gha/cmd/gha-runs-op"]
 timeout: 45m
 input_schema:
   type: object

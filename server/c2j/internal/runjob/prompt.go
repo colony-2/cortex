@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	openapi "github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 )
 
@@ -49,11 +48,11 @@ func promptForInput(stdin io.Reader, stdout io.Writer, details *input.UserInputD
 	return resp, nil
 }
 
-func promptField(reader *bufio.Reader, stdout io.Writer, field openapi.FormField) (interface{}, error) {
+func promptField(reader *bufio.Reader, stdout io.Writer, field input.APIFormField) (interface{}, error) {
 	return promptQuestion(reader, stdout, field.Question, string(field.Type), field.Options)
 }
 
-func promptQuestion(reader *bufio.Reader, stdout io.Writer, question string, fieldType string, options *[]openapi.Option) (interface{}, error) {
+func promptQuestion(reader *bufio.Reader, stdout io.Writer, question string, fieldType string, options *[]input.APIOption) (interface{}, error) {
 	fmt.Fprintf(stdout, "\n%s\n", strings.TrimSpace(question))
 	if options != nil && len(*options) > 0 {
 		for i, option := range *options {
@@ -78,7 +77,7 @@ func promptQuestion(reader *bufio.Reader, stdout io.Writer, question string, fie
 	return parsePromptValue(fieldType, raw), nil
 }
 
-func resolveOptionSelection(raw string, options []openapi.Option, fieldType string) (interface{}, bool) {
+func resolveOptionSelection(raw string, options []input.APIOption, fieldType string) (interface{}, bool) {
 	if raw == "" {
 		return nil, false
 	}
@@ -87,7 +86,7 @@ func resolveOptionSelection(raw string, options []openapi.Option, fieldType stri
 		return nil, false
 	}
 	selected := options[index-1].Value
-	if fieldType == string(openapi.FieldTypeCheckboxes) {
+	if fieldType == string(input.APIFieldTypeCheckboxes) {
 		return []string{selected}, true
 	}
 	return selected, true
@@ -95,7 +94,7 @@ func resolveOptionSelection(raw string, options []openapi.Option, fieldType stri
 
 func parsePromptValue(fieldType string, raw string) interface{} {
 	switch fieldType {
-	case string(openapi.FieldTypeCheckboxes):
+	case string(input.APIFieldTypeCheckboxes):
 		parts := strings.Split(raw, ",")
 		out := make([]string, 0, len(parts))
 		for _, part := range parts {
@@ -105,7 +104,7 @@ func parsePromptValue(fieldType string, raw string) interface{} {
 			}
 		}
 		return out
-	case string(openapi.FieldTypeLinearScale):
+	case string(input.APIFieldTypeLinearScale):
 		if n, err := strconv.Atoi(raw); err == nil {
 			return n
 		}

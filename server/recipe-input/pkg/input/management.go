@@ -10,10 +10,10 @@ import (
 	"sort"
 	"time"
 
-	openapi "github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	openapi "github.com/colony-2/colony2/server/recipe-input/pkg/openapi"
 	ops2 "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/gorilla/mux"
@@ -370,7 +370,7 @@ func (s *inputManagementService) Cancel(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Parse cancellation request (OpenAPI-generated type)
-	var cancelRequest openapi.PostApiProjectsProjectIdUserInputsJobIdCancelJSONBody
+	var cancelRequest openapi.CancelRequest
 
 	slog.Info("cancel: decoding cancellation request", "project_id", projectID, "job_id", jobId)
 	if err := json.NewDecoder(r.Body).Decode(&cancelRequest); err != nil {
