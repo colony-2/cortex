@@ -22,8 +22,6 @@ require (
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
-	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
@@ -98,7 +96,6 @@ require (
 	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/llm v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/ops v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -181,7 +178,5 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1 // indirect
-	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
 
-replace github.com/colony-2/colony2/server/c2jconfig => ../c2jconfig
