@@ -3,13 +3,13 @@ module github.com/colony-2/colony2/server/c2j
 go 1.26
 
 require (
-	github.com/colony-2/colony2/server/gha v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416174857-857e6179dd8b
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416174857-857e6179dd8b
-	github.com/colony-2/colony2/server/registry v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/gha v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/registry v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
@@ -91,16 +91,16 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/llm v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/ops v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipes v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/runtime v0.0.0
+	github.com/colony-2/colony2/server/cell v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/llm v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/ops v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipes v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/runtime v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect

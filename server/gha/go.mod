@@ -3,7 +3,7 @@ module github.com/colony-2/colony2/server/gha
 go 1.26
 
 require (
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
 	github.com/google/go-github/v84 v84.0.0
 	github.com/nektos/act v0.2.86
 	github.com/sirupsen/logrus v1.9.3

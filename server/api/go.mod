@@ -3,23 +3,25 @@ module github.com/colony-2/colony2/server/api
 go 1.26
 
 require (
-	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/graph v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/openapi v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/ops v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416174857-857e6179dd8b
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416174857-857e6179dd8b
-	github.com/colony-2/colony2/server/recipes v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/registry v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/ticket v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/workflow v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/cell v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/cell-ops v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/graph v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/llm v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/openapi v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/ops v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipes v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/registry v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/ticket v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/workflow v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/pgwf-go v0.0.0-20260324185252-7a5ae14f742a
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
@@ -35,15 +37,22 @@ require (
 )
 
 require (
+	cloud.google.com/go v0.118.3 // indirect
+	cloud.google.com/go/auth v0.15.0 // indirect
+	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
+	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
 	github.com/docker/cli v29.3.0+incompatible // indirect
+	github.com/docker/docker v28.3.0+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.8.2 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/fatih/color v1.18.0 // indirect
@@ -53,9 +62,15 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v84 v84.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
+	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.5 // indirect
+	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
@@ -71,7 +86,10 @@ require (
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
+	github.com/moby/term v0.5.2 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/nektos/act v0.2.86 // indirect
+	github.com/openai/openai-go v1.11.1 // indirect
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/rhysd/actionlint v1.7.11 // indirect
@@ -80,15 +98,20 @@ require (
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
+	github.com/tidwall/gjson v1.14.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/term v0.41.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
+	google.golang.org/genai v1.16.0 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	tags.cncf.io/container-device-interface v1.1.0 // indirect
 )
@@ -112,8 +135,8 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/gha v0.0.0
-	github.com/colony-2/colony2/server/runtime v0.0.0
+	github.com/colony-2/colony2/server/gha v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/runtime v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -197,10 +220,9 @@ require (
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
+	golang.org/x/text v0.36.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 )
-

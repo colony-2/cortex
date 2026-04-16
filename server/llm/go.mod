@@ -4,9 +4,9 @@ go 1.25.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.6.2
-	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416174857-857e6179dd8b
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416174857-857e6179dd8b
+	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/shai v0.0.8
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/go-playground/validator/v10 v10.30.2
@@ -34,8 +34,8 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/pebble/v2 v2.1.4 // indirect
-	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 // indirect
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210 // indirect
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect

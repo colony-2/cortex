@@ -1,7 +1,7 @@
-github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882 h1:GZ/fS6L6VZAvH7chMfuI/84LwAi5OJWrIzqLrzCluuU=
-github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882/go.mod h1:J0e0eEl4wGoQcMlH08EePBdCmeso25m12vaVXCwjndo=
-github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882 h1:JMcCi1fDFCd+Q41iUqc6PBCVJhR7c3PVF7CWETuLZa4=
-github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882/go.mod h1:hbIseQZ4NVEgsbG6FJIY0wtZpbq2iNQG20kc+uhFdYQ=
+github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210 h1:4xpUrbW9YrlzEiYRzNUqxuQerMonTVvehtkv1rtpWgg=
+github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210/go.mod h1:068+4YbOOg5N+awHJEZ72TELD3FDvH0CGNVCJJZNWaY=
+github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210 h1:8JoVroFhP6mQJf9iAb0A6nv5WFIYdpCk6ovFIgSrAQg=
+github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210/go.mod h1:+fOBM0/ZUM1m1N4FpudFYrGG2wL90Ux3RrKSw9xjHNg=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=

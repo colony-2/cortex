@@ -3,36 +3,30 @@ module github.com/colony-2/colony2/server/recipes
 go 1.25.5
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/pgembed v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/project v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260319012848-6225f21fa882
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/git v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
+	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
 	github.com/segmentio/ksuid v1.0.4
 	github.com/stretchr/testify v1.11.1
 	gorm.io/gorm v1.30.0
 )
 
 require (
-	github.com/DataDog/zstd v1.5.7 // indirect
-	github.com/RaduBerinde/axisds v0.0.0-20250419182453-5135a0650657 // indirect
-	github.com/cockroachdb/crlib v0.0.0-20241112164430-1264a2edc35b // indirect
-	github.com/cockroachdb/errors v1.11.3 // indirect
-	github.com/cockroachdb/redact v1.1.5 // indirect
-	github.com/cockroachdb/swiss v0.0.0-20251224182025-b0f6560f979b // indirect
-	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
-	github.com/colony-2/colony2/server/core v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/RaduBerinde/btreemap v0.0.0-20250419174037-3d62b7205d54 // indirect
+	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
+	github.com/colony-2/colony2/server/core v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.19.0 // indirect
-	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/itchyny/gojq v0.12.16 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
@@ -45,7 +39,7 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260319012848-6225f21fa882
+	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
