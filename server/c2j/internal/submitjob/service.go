@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/c2j/pkg/c2jops"
+	configpkg "github.com/colony-2/colony2/server/c2jconfig/pkg/config"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
@@ -29,6 +30,12 @@ type submitResult struct {
 	Recipe   string `json:"recipe"`
 }
 
+type targetCell struct {
+	RepositorySource string
+	DefaultRef       string
+	CellName         string
+}
+
 func Run(ctx context.Context, opts Options) error {
 	opts.Complete()
 	if err := opts.Validate(); err != nil {
@@ -37,7 +44,12 @@ func Run(ctx context.Context, opts Options) error {
 
 	c2jops.Register()
 
-	recipeName, embeddedRecipe, cleanup, err := loadRecipeStart(opts)
+	target, err := resolveTargetCell(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	recipeName, embeddedRecipe, cleanup, err := loadRecipeStart(opts, target)
 	if err != nil {
 		return err
 	}
@@ -69,16 +81,16 @@ func Run(ctx context.Context, opts Options) error {
 				ActorEmail: strings.TrimSpace(opts.ActorEmail),
 			},
 			Workflow: contextual.WorkflowContext{
-				CellName:  strings.TrimSpace(opts.CellName),
-				CellPath:  strings.TrimSpace(opts.CellPath),
+				CellName:  target.CellName,
+				CellPath:  ".",
 				ProjectId: opts.TenantID,
 			},
 			GitBase: contextual.GitBaseContext{
-				BaseRepo: strings.TrimSpace(opts.RepoPath),
-				BaseRef:  strings.TrimSpace(opts.GitRef),
+				BaseRepo: target.RepositorySource,
+				BaseRef:  target.DefaultRef,
 			},
 		},
-		GitRef:      strings.TrimSpace(opts.GitRef),
+		GitRef:      target.DefaultRef,
 		SubmittedAt: &submittedAt,
 		InputHash:   hashInputs(inputs),
 	}
@@ -105,9 +117,9 @@ func Run(ctx context.Context, opts Options) error {
 	return err
 }
 
-func loadRecipeStart(opts Options) (string, *recipe.Recipe, func(), error) {
+func loadRecipeStart(opts Options, target targetCell) (string, *recipe.Recipe, func(), error) {
 	if recipeFile := strings.TrimSpace(opts.RecipeFile); recipeFile != "" {
-		absPath, err := filepath.Abs(recipeFile)
+		absPath, err := absPathFromWorkingDir(opts.WorkingDir, recipeFile)
 		if err != nil {
 			return "", nil, nil, fmt.Errorf("resolve recipe file: %w", err)
 		}
@@ -126,6 +138,13 @@ func loadRecipeStart(opts Options) (string, *recipe.Recipe, func(), error) {
 	}
 
 	selector := strings.TrimSpace(opts.Recipe)
+	if !compiler.IsGitRecipeSelector(selector) {
+		builtSelector, err := compiler.BuildCellRecipeSelector(target.RepositorySource, selector, target.DefaultRef)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		selector = builtSelector
+	}
 	if err := compiler.ValidateRecipeSelector(selector); err != nil {
 		return "", nil, nil, err
 	}
@@ -142,7 +161,7 @@ func loadInputs(opts Options) (map[string]interface{}, error) {
 	case strings.TrimSpace(opts.InputsJSON) != "":
 		raw = []byte(opts.InputsJSON)
 	default:
-		absPath, err := filepath.Abs(opts.InputsFile)
+		absPath, err := absPathFromWorkingDir(opts.WorkingDir, opts.InputsFile)
 		if err != nil {
 			return nil, fmt.Errorf("resolve inputs file: %w", err)
 		}
@@ -173,4 +192,116 @@ func hashInputs(inputs map[string]interface{}) string {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+func resolveTargetCell(ctx context.Context, opts Options) (targetCell, error) {
+	if opts.Self {
+		return resolveSelfTarget(ctx, opts.WorkingDir)
+	}
+	return resolveExplicitTarget(opts.WorkingDir, opts.Cell)
+}
+
+func resolveSelfTarget(ctx context.Context, workingDir string) (targetCell, error) {
+	cfg, err := configpkg.LoadProjectConfig(workingDir)
+	if err != nil {
+		if err == configpkg.ErrConfigNotFound {
+			return targetCell{}, fmt.Errorf("--self requires %s/%s", ".c2j", "config.yaml")
+		}
+		return targetCell{}, err
+	}
+
+	canonicalRepo, err := cfg.CanonicalRepo(ctx)
+	if err != nil {
+		return targetCell{}, err
+	}
+	canonicalRepo = strings.TrimSpace(canonicalRepo)
+	if canonicalRepo == "" {
+		return targetCell{}, fmt.Errorf("--self requires canonical_repo to resolve from %s", cfg.Path())
+	}
+
+	defaultRef, err := cfg.DefaultRef(ctx)
+	if err != nil {
+		return targetCell{}, err
+	}
+	defaultRef = strings.TrimSpace(defaultRef)
+	if defaultRef == "" {
+		defaultRef = compiler.DefaultRecipeRef
+	}
+
+	repositorySource, err := compiler.NormalizeGitRepositorySource(canonicalRepo)
+	if err != nil {
+		return targetCell{}, err
+	}
+
+	cellName := compiler.RepositoryNameFromSource(canonicalRepo)
+	if cellName == "" {
+		cellName = compiler.RepositoryNameFromSource(repositorySource)
+	}
+
+	return targetCell{
+		RepositorySource: repositorySource,
+		DefaultRef:       defaultRef,
+		CellName:         cellName,
+	}, nil
+}
+
+func resolveExplicitTarget(workingDir string, cell string) (targetCell, error) {
+	cell = strings.TrimSpace(cell)
+	if cell == "" {
+		return targetCell{}, fmt.Errorf("--cell is required")
+	}
+
+	resolvedCell, err := resolveRepositoryInput(workingDir, cell)
+	if err != nil {
+		return targetCell{}, err
+	}
+
+	repositorySource, err := compiler.NormalizeGitRepositorySource(resolvedCell)
+	if err != nil {
+		return targetCell{}, err
+	}
+
+	cellName := compiler.RepositoryNameFromSource(cell)
+	if cellName == "" {
+		cellName = compiler.RepositoryNameFromSource(repositorySource)
+	}
+
+	return targetCell{
+		RepositorySource: repositorySource,
+		DefaultRef:       compiler.DefaultRecipeRef,
+		CellName:         cellName,
+	}, nil
+}
+
+func absPathFromWorkingDir(workingDir string, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("path is required")
+	}
+	if filepath.IsAbs(value) {
+		return value, nil
+	}
+	return filepath.Abs(filepath.Join(workingDir, value))
+}
+
+func resolveRepositoryInput(workingDir string, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("repository source is required")
+	}
+	if compiler.IsGitRecipeSelector(value) {
+		return "", fmt.Errorf("repository source %q must be a git repository, not a recipe selector", value)
+	}
+	if strings.Contains(value, "://") || strings.HasPrefix(value, "git@") {
+		return value, nil
+	}
+	if filepath.IsAbs(value) || value == "." || value == ".." || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") {
+		return absPathFromWorkingDir(workingDir, value)
+	}
+
+	candidate := filepath.Join(workingDir, value)
+	if _, err := os.Stat(candidate); err == nil {
+		return filepath.Abs(candidate)
+	}
+	return value, nil
 }

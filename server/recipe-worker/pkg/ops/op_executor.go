@@ -202,6 +202,8 @@ func (t opExecutor) do(ctx context.Context, jobTool ops.JobTool, req ActivityInv
 			BaseRepo:         fullContext.GetBaseRepo(),
 			BaseRef:          fullContext.GetBaseRef(),
 			ResolvedBaseHash: fullContext.GetResolvedBaseHash(),
+			RecipeSourceRepo: fullContext.GetRecipeSourceRepo(),
+			RecipeSourceRef:  fullContext.GetRecipeSourceRef(),
 			PersistHash:      fullContext.GetPersistHash(),
 			ParentHash:       fullContext.GetParentHash(),
 			CellName:         fullContext.GetCellName(),

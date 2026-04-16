@@ -14,7 +14,6 @@ type Options struct {
 	JobID          string
 	TenantID       string
 	SWFURL         string
-	RecipesDir     string
 	WorkerID       string
 	OnNotReady     string
 	InputMode      string
@@ -40,9 +39,6 @@ func (o *Options) Complete() {
 	}
 	if o.TenantID == "" {
 		o.TenantID = defaults.TenantID
-	}
-	if o.RecipesDir == "" {
-		o.RecipesDir = strings.TrimSpace(os.Getenv(defaults.RecipesDirEnv))
 	}
 	if o.WaitTimeout == 0 {
 		o.WaitTimeout = 15 * time.Minute

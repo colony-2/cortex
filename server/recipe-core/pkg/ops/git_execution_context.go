@@ -6,6 +6,8 @@ type GitExecutionContext struct {
 	BaseRepo         string `json:"base_repo,omitempty"`
 	BaseRef          string `json:"base_ref,omitempty"`
 	ResolvedBaseHash string `json:"resolved_base_hash,omitempty"`
+	RecipeSourceRepo string `json:"recipe_source_repo,omitempty"`
+	RecipeSourceRef  string `json:"recipe_source_ref,omitempty"`
 	PersistHash      string `json:"persist_hash,omitempty"`
 	ParentHash       string `json:"parent_hash,omitempty"`
 	CellName         string `json:"cell_name,omitempty"`

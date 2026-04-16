@@ -41,8 +41,14 @@ func TestStartSingleJobPassesDeterministicJobID(t *testing.T) {
 		Build()
 
 	out, err := startSingleJob(deps, context.Background(), SingleRecipeWithRef{
-		SingleRecipe: SingleRecipe{Name: "child-recipe"},
-		GitRef:       "main",
+		SingleRecipe: SingleRecipe{
+			Name: "child-recipe",
+			Git: SingleRecipeGit{
+				BaseRepo: "github.com/acme/demo",
+				BaseRef:  "main",
+			},
+		},
+		GitRef: "main",
 	})
 	if err != nil {
 		t.Fatalf("startSingleJob: %v", err)
@@ -71,8 +77,20 @@ func TestStartMultipleJobsReusesSameIDsAcrossReruns(t *testing.T) {
 	input := MultipleRecipes{
 		GitRef: "main",
 		Recipes: []SingleRecipe{
-			{Name: "child-a"},
-			{Name: "child-b"},
+			{
+				Name: "child-a",
+				Git: SingleRecipeGit{
+					BaseRepo: "github.com/acme/demo",
+					BaseRef:  "main",
+				},
+			},
+			{
+				Name: "child-b",
+				Git: SingleRecipeGit{
+					BaseRepo: "github.com/acme/demo",
+					BaseRef:  "main",
+				},
+			},
 		},
 	}
 
@@ -97,5 +115,49 @@ func TestStartMultipleJobsReusesSameIDsAcrossReruns(t *testing.T) {
 	}
 	if ctl.startRequests[0].JobID == ctl.startRequests[1].JobID {
 		t.Fatal("expected different fan-out indices to use different child job ids")
+	}
+}
+
+func TestStartSingleJobBareNameUsesRecipeSourceForLookup(t *testing.T) {
+	ctl := &fakeWorkflowControl{}
+	deps := coreops.NewOpDependenciesBuilder().
+		WithWorkflowControl(ctl).
+		WithJobTool(&fakeJobTool{key: swf.JobKey{TenantId: "tenant", JobId: "parent-job"}}).
+		WithGitContext(coreops.GitExecutionContext{
+			BaseRepo:         "https://github.com/acme/self.git",
+			BaseRef:          "main",
+			RecipeSourceRepo: "https://github.com/acme/templates.git",
+			RecipeSourceRef:  "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+			NodePath:         "workflow/steps/start",
+			InvokeSeq:        3,
+		}).
+		Build()
+
+	_, err := startSingleJob(deps, context.Background(), SingleRecipeWithRef{
+		SingleRecipe: SingleRecipe{
+			Name: "child-recipe",
+			Git: SingleRecipeGit{
+				BaseRepo: "https://github.com/acme/self.git",
+				BaseRef:  "main",
+			},
+		},
+		GitRef: "main",
+	})
+	if err != nil {
+		t.Fatalf("startSingleJob: %v", err)
+	}
+	if len(ctl.startRequests) != 1 {
+		t.Fatalf("expected one child start, got %d", len(ctl.startRequests))
+	}
+
+	start := ctl.startRequests[0]
+	if start.RecipeName != "git+https://github.com/acme/templates.git//.c2j/recipes/child-recipe.yaml@deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" {
+		t.Fatalf("RecipeName = %q", start.RecipeName)
+	}
+	if start.JobContext.GitBase.BaseRepo != "https://github.com/acme/self.git" {
+		t.Fatalf("child job base repo = %q", start.JobContext.GitBase.BaseRepo)
+	}
+	if start.JobContext.GitBase.BaseRef != "main" {
+		t.Fatalf("child job base ref = %q", start.JobContext.GitBase.BaseRef)
 	}
 }

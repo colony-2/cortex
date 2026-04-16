@@ -4,6 +4,7 @@ use (
 	./cli
 	./server/api
 	./server/c2j
+	./server/c2jconfig
 	./server/cell
 	./server/cell-ops
 	./server/core

@@ -3,6 +3,7 @@ package recipe
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
 	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
@@ -167,7 +168,8 @@ func getRecipeOutput(deps ops.OpDependencies, ctx context.Context, input Started
 
 func startSingleJob(deps ops.OpDependencies, ctx context.Context, input SingleRecipeWithRef) (StartedJob, error) {
 	parentJobKey := deps.JobTool().GetJobKey()
-	keys, err := startJobs(ctx, parentJobKey, currentInvocation(deps), deps.WorkflowControl(), []SingleRecipe{input.SingleRecipe}, input.GitRef)
+	recipeSourceRepo, recipeSourceRef := currentRecipeSource(deps)
+	keys, err := startJobs(ctx, parentJobKey, currentInvocation(deps), deps.WorkflowControl(), recipeSourceRepo, recipeSourceRef, []SingleRecipe{input.SingleRecipe}, input.GitRef)
 	if err != nil {
 		return StartedJob{}, err
 	}
@@ -179,7 +181,8 @@ func startMultipleJobs(deps ops.OpDependencies, ctx context.Context, input Multi
 	for i, recipe := range input.Recipes {
 		resolved[i] = recipe
 	}
-	keys, err := startJobs(ctx, deps.JobTool().GetJobKey(), currentInvocation(deps), deps.WorkflowControl(), resolved, input.GitRef)
+	recipeSourceRepo, recipeSourceRef := currentRecipeSource(deps)
+	keys, err := startJobs(ctx, deps.JobTool().GetJobKey(), currentInvocation(deps), deps.WorkflowControl(), recipeSourceRepo, recipeSourceRef, resolved, input.GitRef)
 	if err != nil {
 		return StartedJobs{}, err
 	}
@@ -197,4 +200,20 @@ func currentInvocation(deps ops.OpDependencies) contextual.Invocation {
 		NodePath:  gitContext.NodePath,
 		InvokeSeq: gitContext.InvokeSeq,
 	}
+}
+
+func currentRecipeSource(deps ops.OpDependencies) (string, string) {
+	gitContext := deps.GitContext()
+
+	repo := strings.TrimSpace(gitContext.RecipeSourceRepo)
+	if repo == "" {
+		repo = strings.TrimSpace(gitContext.BaseRepo)
+	}
+
+	ref := strings.TrimSpace(gitContext.RecipeSourceRef)
+	if ref == "" {
+		ref = strings.TrimSpace(gitContext.BaseRef)
+	}
+
+	return repo, ref
 }

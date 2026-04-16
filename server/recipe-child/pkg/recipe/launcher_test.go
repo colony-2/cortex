@@ -11,7 +11,7 @@ import (
 
 func TestStartJobsEmpty(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	_, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{}, ctl, nil, "")
+	_, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{}, ctl, "github.com/acme/demo", "main", nil, "")
 	if err == nil {
 		t.Fatal("expected error for empty recipes")
 	}
@@ -19,8 +19,15 @@ func TestStartJobsEmpty(t *testing.T) {
 
 func TestStartJobsSingle(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	recipes := []SingleRecipe{{Name: "child", Inputs: map[string]interface{}{"value": "ok"}}}
-	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "git-ref")
+	recipes := []SingleRecipe{{
+		Name:   "child",
+		Inputs: map[string]interface{}{"value": "ok"},
+		Git: SingleRecipeGit{
+			BaseRepo: "github.com/acme/demo",
+			BaseRef:  "main",
+		},
+	}}
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, "github.com/acme/demo", "main", recipes, "git-ref")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,12 +40,30 @@ func TestStartJobsSingle(t *testing.T) {
 	if ctl.startSawTx[0] {
 		t.Fatal("did not expect transaction for single job")
 	}
+	if got := ctl.startRequests[0].RecipeName; got != "git+https://github.com/acme/demo.git//.c2j/recipes/child.yaml@main" {
+		t.Fatalf("RecipeName = %q", got)
+	}
 }
 
 func TestStartJobsMultipleRunsSequentially(t *testing.T) {
 	ctl := &fakeWorkflowControl{}
-	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "")
+	recipes := []SingleRecipe{
+		{
+			Name: "child-a",
+			Git: SingleRecipeGit{
+				BaseRepo: "github.com/acme/demo",
+				BaseRef:  "main",
+			},
+		},
+		{
+			Name: "child-b",
+			Git: SingleRecipeGit{
+				BaseRepo: "github.com/acme/demo",
+				BaseRef:  "main",
+			},
+		},
+	}
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, "github.com/acme/demo", "main", recipes, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,8 +81,23 @@ func TestStartJobsMultipleErrorReturnsNoKeys(t *testing.T) {
 	ctl := &fakeWorkflowControl{
 		startErrs: []error{nil, errors.New("boom")},
 	}
-	recipes := []SingleRecipe{{Name: "child-a"}, {Name: "child-b"}}
-	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, recipes, "")
+	recipes := []SingleRecipe{
+		{
+			Name: "child-a",
+			Git: SingleRecipeGit{
+				BaseRepo: "github.com/acme/demo",
+				BaseRef:  "main",
+			},
+		},
+		{
+			Name: "child-b",
+			Git: SingleRecipeGit{
+				BaseRepo: "github.com/acme/demo",
+				BaseRef:  "main",
+			},
+		},
+	}
+	keys, err := startJobs(context.Background(), swf.JobKey{TenantId: "tenant", JobId: "parent-job"}, contextual.Invocation{NodePath: "node", InvokeSeq: 1}, ctl, "github.com/acme/demo", "main", recipes, "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

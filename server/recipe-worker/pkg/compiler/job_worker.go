@@ -212,6 +212,7 @@ func (j recipeJobWorker) Run(ctx swf.JobContext, jobData swf.JobData) (swf.JobDa
 	}
 
 	runContext := input.JobContext
+	applyRootRecipeSource(&runContext, resolution)
 	err = ensureSentinel(&runContext.Environment.WorktreePath, contextual.WorktreePathSentinel, "worktree path")
 	if err != nil {
 		logger.Error("recipe job: invalid worktree sentinel",
@@ -304,3 +305,25 @@ func ensureSentinel(field *string, sentinel string, name string) error {
 }
 
 var _ swf.JobWorker = &recipeJobWorker{}
+
+func applyRootRecipeSource(runContext *contextual.JobContext, resolution RecipeSourceResolution) {
+	if runContext == nil {
+		return
+	}
+	if resolution.SourceKind != RecipeSourceKindGit {
+		runContext.RecipeSource = contextual.RecipeSourceContext{}
+		return
+	}
+
+	parsed, err := parseGitRecipeSelector(resolution.EffectiveSelector())
+	if err != nil {
+		return
+	}
+
+	runContext.RecipeSource = contextual.RecipeSourceContext{
+		Repo:     parsed.RepositoryURL,
+		Ref:      parsed.Ref,
+		Path:     parsed.RecipePath,
+		Selector: resolution.EffectiveSelector(),
+	}
+}

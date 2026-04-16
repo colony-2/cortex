@@ -92,7 +92,6 @@ outputs:
 		JobID:        jobKey.JobId,
 		TenantID:     tenantID,
 		SWFURL:       server.URL,
-		RecipesDir:   recipeDir,
 		WaitTimeout:  5 * time.Second,
 		PollInterval: 10 * time.Millisecond,
 		InputMode:    "fail",
@@ -140,7 +139,6 @@ outputs:
 		JobID:        jobKey.JobId,
 		TenantID:     tenantID,
 		SWFURL:       server.URL,
-		RecipesDir:   recipeDir,
 		WaitTimeout:  5 * time.Second,
 		PollInterval: 10 * time.Millisecond,
 		InputMode:    "fail",
@@ -170,7 +168,7 @@ func createGitRepo(t *testing.T) (string, string) {
 		return strings.TrimSpace(string(out))
 	}
 
-	run("git", "init")
+	run("git", "init", "-b", "main")
 	run("git", "config", "user.email", "c2j-test@example.com")
 	run("git", "config", "user.name", "Nucleus Test")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("c2j\n"), 0o644); err != nil {

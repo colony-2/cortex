@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/colony-2/colony2/server/c2j/internal/jobutil"
+	"github.com/colony-2/colony2/server/c2j/pkg/c2jops"
 	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
 	"github.com/colony-2/colony2/server/recipe-template/pkg/colonycel"
@@ -19,7 +20,6 @@ import (
 	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	workerops "github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
 	workerworkflow "github.com/colony-2/colony2/server/recipe-worker/pkg/workflow"
-	"github.com/colony-2/colony2/server/c2j/pkg/c2jops"
 	"github.com/colony-2/swf-go/pkg/swf"
 	remoteruntime "github.com/colony-2/swf-go/pkg/swf/runtime/remote"
 )
@@ -123,7 +123,7 @@ func buildDeps(ctx context.Context, opts Options) (*runnerDeps, func(), error) {
 
 	c2jops.Register()
 
-	recipeSourceResolver, stopRegistry, err := jobutil.BuildRecipeSourceResolver(opts.RecipesDir)
+	recipeSourceResolver, stopRegistry, err := jobutil.BuildRecipeSourceResolver()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -235,7 +235,7 @@ func replayCachedHistory(ctx context.Context, deps *runnerDeps, jobKey swf.JobKe
 	if errors.As(err, &cacheMiss) {
 		return nil
 	}
-	if strings.Contains(err.Error(), "leaseId is required") {
+	if strings.Contains(err.Error(), "leaseId is required") || strings.Contains(err.Error(), "lease is required") {
 		return nil
 	}
 

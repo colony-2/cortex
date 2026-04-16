@@ -38,6 +38,13 @@ type GitBaseContext struct {
 	GitAuthor        string `json:"author,omitempty"`
 }
 
+type RecipeSourceContext struct {
+	Repo     string `json:"repo,omitempty"`
+	Ref      string `json:"ref,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Selector string `json:"selector,omitempty"`
+}
+
 // WorkflowContext provides high-level workflow/session identifiers.
 type WorkflowContext struct {
 	CellID    string `json:"cell_id,omitempty"`
@@ -76,11 +83,12 @@ type TicketContext struct {
 
 // ExecutionContext holds typed workflow context available to templates. It is created per task.
 type JobContext struct {
-	Actor       ActorContext       `json:"actor,omitempty"`
-	Ticket      TicketContext      `json:"ticket,omitempty"`
-	Environment EnvironmentContext `json:"environment,omitempty"`
-	Workflow    WorkflowContext    `json:"workflow,omitempty"`
-	GitBase     GitBaseContext     `json:"git,omitempty"`
+	Actor        ActorContext        `json:"actor,omitempty"`
+	Ticket       TicketContext       `json:"ticket,omitempty"`
+	Environment  EnvironmentContext  `json:"environment,omitempty"`
+	Workflow     WorkflowContext     `json:"workflow,omitempty"`
+	GitBase      GitBaseContext      `json:"git,omitempty"`
+	RecipeSource RecipeSourceContext `json:"recipe_source,omitempty"`
 }
 
 type TaskContext struct {
@@ -91,10 +99,11 @@ type TaskContext struct {
 
 func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionContext {
 	return TaskExecutionContext{
-		Actor:       ctx.Actor,
-		Ticket:      ctx.Ticket,
-		Environment: ctx.Environment,
-		Workflow:    ctx.Workflow,
+		Actor:        ctx.Actor,
+		Ticket:       ctx.Ticket,
+		Environment:  ctx.Environment,
+		Workflow:     ctx.Workflow,
+		RecipeSource: ctx.RecipeSource,
 		GitTask: GitTask{
 			BaseRepo:         ctx.GitBase.BaseRepo,
 			BaseRef:          ctx.GitBase.BaseRef,
@@ -114,12 +123,13 @@ func NewTaskExecutionContext(ctx JobContext, ctx2 TaskContext) TaskExecutionCont
 
 type TaskExecutionContext struct {
 	// embed these directly from task and job contexts for easier resolution.
-	Actor       ActorContext       `json:"actor,omitempty"`
-	Ticket      TicketContext      `json:"ticket,omitempty"`
-	Environment EnvironmentContext `json:"environment,omitempty"`
-	Workflow    WorkflowContext    `json:"workflow,omitempty"`
-	GitTask     GitTask            `json:"git,omitempty"`
-	Invocation  InvocationCtx      `json:"invocation,omitempty"`
+	Actor        ActorContext        `json:"actor,omitempty"`
+	Ticket       TicketContext       `json:"ticket,omitempty"`
+	Environment  EnvironmentContext  `json:"environment,omitempty"`
+	Workflow     WorkflowContext     `json:"workflow,omitempty"`
+	RecipeSource RecipeSourceContext `json:"recipe_source,omitempty"`
+	GitTask      GitTask             `json:"git,omitempty"`
+	Invocation   InvocationCtx       `json:"invocation,omitempty"`
 }
 
 type GitTask struct {
@@ -150,6 +160,7 @@ func (t TaskExecutionContext) JobContext() JobContext {
 			ResolvedBaseHash: t.GitTask.ResolvedBaseHash,
 			GitAuthor:        t.GitTask.GitAuthor,
 		},
+		RecipeSource: t.RecipeSource,
 	}
 }
 

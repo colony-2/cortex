@@ -8,6 +8,8 @@ type GlobalGitTaskContext struct {
 	BaseRepo         string
 	BaseRef          string
 	ResolvedBaseHash string
+	RecipeSourceRepo string
+	RecipeSourceRef  string
 	PersistHash      string
 	ParentHash       string
 	TicketID         string
@@ -25,6 +27,8 @@ func NewGlobalGitTaskContext(tec contextual.TaskExecutionContext) *GlobalGitTask
 		BaseRepo:         tec.GitTask.BaseRepo,
 		BaseRef:          tec.GitTask.BaseRef,
 		ResolvedBaseHash: tec.GitTask.ResolvedBaseHash,
+		RecipeSourceRepo: tec.RecipeSource.Repo,
+		RecipeSourceRef:  tec.RecipeSource.Ref,
 		GitAuthor:        tec.GitTask.GitAuthor,
 		PersistHash:      tec.GitTask.PersistHash,
 		ParentHash:       tec.GitTask.ParentHash,
@@ -55,6 +59,8 @@ func NewGitTaskContext(tec contextual.TaskExecutionContext) *GitTaskContext {
 func (c *GitTaskContext) GetBaseRepo() string         { return c.GlobalGitTaskContext.BaseRepo }
 func (c *GitTaskContext) GetBaseRef() string          { return c.GlobalGitTaskContext.BaseRef }
 func (c *GitTaskContext) GetResolvedBaseHash() string { return c.GlobalGitTaskContext.ResolvedBaseHash }
+func (c *GitTaskContext) GetRecipeSourceRepo() string { return c.GlobalGitTaskContext.RecipeSourceRepo }
+func (c *GitTaskContext) GetRecipeSourceRef() string  { return c.GlobalGitTaskContext.RecipeSourceRef }
 func (c *GitTaskContext) GetPersistHash() string      { return c.GlobalGitTaskContext.PersistHash }
 func (c *GitTaskContext) GetParentHash() string       { return c.GlobalGitTaskContext.ParentHash }
 func (c *GitTaskContext) GetWorktreePath() string     { return c.WorktreePath }

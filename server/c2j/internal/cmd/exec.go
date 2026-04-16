@@ -29,7 +29,6 @@ func newExecCmd() *cobra.Command {
 	flags.StringVar(&opts.JobID, "job-id", "", "Job ID to execute")
 	flags.StringVar(&opts.TenantID, "tenant-id", "", "Tenant/project ID for the job (defaults to "+defaults.TenantID+")")
 	flags.StringVar(&opts.SWFURL, "swf-url", "", "Base URL for the SWF remote runtime (defaults to "+defaults.SWFURL+")")
-	flags.StringVar(&opts.RecipesDir, "recipes-dir", "", "Optional directory used to resolve recipes locally for child-job starts")
 	flags.DurationVar(&opts.WaitTimeout, "wait-timeout", 15*time.Minute, "How long to wait on external blocking work before exiting")
 	flags.DurationVar(&opts.PollInterval, "poll-interval", 5*time.Second, "Polling interval while waiting on external blocking work")
 	flags.DurationVar(&opts.LeaseDuration, "lease-duration", 60*time.Second, "Lease duration requested from SWF")

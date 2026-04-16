@@ -3,13 +3,13 @@ module github.com/colony-2/colony2/server/c2j
 go 1.26
 
 require (
+	github.com/colony-2/colony2/server/c2jconfig v0.0.0
 	github.com/colony-2/colony2/server/gha v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/registry v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
@@ -22,6 +22,8 @@ require (
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
+	github.com/colony-2/colony2/server/cell v0.0.0-20260319012848-6225f21fa882 // indirect
+	github.com/colony-2/colony2/server/graph v0.0.0-20260211050417-1ddbb74988c8 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
@@ -72,6 +74,7 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
+	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
@@ -97,8 +100,6 @@ require (
 	github.com/colony-2/colony2/server/ops v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/colony2/server/project v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416181618-7654417d7210
-	github.com/colony-2/colony2/server/recipes v0.0.0-20260416181618-7654417d7210 // indirect
-	github.com/colony-2/colony2/server/runtime v0.0.0-20260416181618-7654417d7210
 	github.com/colony-2/shai v0.0.8 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
@@ -108,7 +109,6 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/getkin/kin-openapi v0.133.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.2 // indirect
@@ -183,3 +183,5 @@ require (
 	gorm.io/gorm v1.31.1 // indirect
 	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
+
+replace github.com/colony-2/colony2/server/c2jconfig => ../c2jconfig
