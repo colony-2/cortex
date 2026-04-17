@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/colony-2/c2j/pkg/contextual"
+	coreops "github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/template/funcregistry"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/stretchr/testify/require"
 )
 

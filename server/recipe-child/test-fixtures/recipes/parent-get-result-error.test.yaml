@@ -1,4 +1,0 @@
-tests:
-  - name: get_result_missing_job_errors
-    inputs: {}
-    wantErr: true

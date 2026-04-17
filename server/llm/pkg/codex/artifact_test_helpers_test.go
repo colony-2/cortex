@@ -111,6 +111,9 @@ func filterIgnorableCodexStderr(stderr []byte) []byte {
 		if strings.HasPrefix(trimmed, "WARNING: proceeding, even though we could not update PATH: Refusing to create helper binaries under temporary dir") {
 			continue
 		}
+		if trimmed == "Reading additional input from stdin..." {
+			continue
+		}
 		filtered = append(filtered, line)
 	}
 	if len(filtered) == 0 {

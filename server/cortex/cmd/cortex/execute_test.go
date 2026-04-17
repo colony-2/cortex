@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	recipe "github.com/colony-2/c2j/pkg/recipe"
 	"github.com/colony-2/colony2/server/cortex/internal/shared"
-	recipe "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

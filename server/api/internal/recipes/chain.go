@@ -3,7 +3,7 @@ package recipes
 import (
 	"fmt"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/recipe"
 )
 
 // ChainedProvider tries multiple recipe providers in order, returning the first successful result.

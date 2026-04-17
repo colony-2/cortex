@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	coretasks "github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
-	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/gorilla/mux"

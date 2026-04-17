@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	f2 "github.com/colony-2/c2j/pkg/file"
 )
 
 // MockAdapter implements all adapter interfaces for testing

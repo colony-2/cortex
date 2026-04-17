@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 # Kill any existing cortex processes that might be holding the database lock
 echo "Cleaning up any existing cortex processes..."
 pkill -f "cortex-test" 2>/dev/null || true
-pkill -f "cortex -n" 2>/dev/null || true
+pkill -f "cmd/playwrightserver" 2>/dev/null || true
+pkill -f "cmd/cortex" 2>/dev/null || true
 sleep 1
 
 # First run Go tests (fall back if gotestsum is not available)
@@ -16,10 +17,6 @@ else
   echo "gotestsum not found; falling back to 'go test -v ./...'"
   go test -v ./...
 fi
-
-# Build the server first to avoid issues with go run
-echo "Building cortex server..."
-go build -o ./build/cortex-test ./cmd/cortex
 
 # Function to cleanup on exit
 cleanup() {
@@ -41,10 +38,6 @@ cleanup() {
     echo "Warning: Server did not stop gracefully after 5 seconds"
     # Don't use SIGKILL per user request
   fi
-  # Remove temporary DB directory if created
-  if [ -n "$DB_TMP_DIR" ] && [ -d "$DB_TMP_DIR" ]; then
-    rm -rf "$DB_TMP_DIR"
-  fi
 }
 
 # Set up trap to ensure cleanup on exit
@@ -52,17 +45,14 @@ trap cleanup EXIT
 
 # Start cortex server in the background for integration tests
 echo "Starting cortex server for integration tests..."
-# Create a temporary DB directory and point cortex to it
-DB_TMP_DIR="$(mktemp -d)"
-export VIBETHIS_DB_DIR="$DB_TMP_DIR"
-./build/cortex-test -n ../../ &
+go run ./cmd/playwrightserver --port 8080 &
 SERVER_PID=$!
 
 # Wait for server to be ready
 echo "Waiting for server to start (PID: $SERVER_PID)..."
 READY=false
 for i in {1..30}; do
-  if curl -s http://localhost:8080/api/graph >/dev/null 2>&1; then
+  if curl -s http://localhost:8080/api/projects >/dev/null 2>&1; then
     echo "Server is ready!"
     READY=true
     break

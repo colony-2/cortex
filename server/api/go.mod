@@ -3,20 +3,13 @@ module github.com/colony-2/colony2/server/api
 go 1.26
 
 require (
+	github.com/colony-2/c2j v0.0.0-20260417010415-dda5172308dd
 	github.com/colony-2/colony2/server/cell v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/cell-ops v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/graph v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/ops v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/pgembed v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/project v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/recipes v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/registry v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260416210508-3591476f41eb
@@ -26,8 +19,8 @@ require (
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/gorilla/mux v1.8.1
-	github.com/oapi-codegen/runtime v1.1.2
-	github.com/spf13/cobra v1.10.1
+	github.com/oapi-codegen/runtime v1.4.0
+	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
@@ -36,11 +29,38 @@ require (
 )
 
 require (
+	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/Microsoft/go-winio v0.4.14 // indirect
+	github.com/colony-2/shai v0.0.8 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/errdefs/pkg v0.3.0 // indirect
+	github.com/distribution/reference v0.6.0 // indirect
+	github.com/docker/docker v28.3.0+incompatible // indirect
+	github.com/docker/go-connections v0.5.0 // indirect
+	github.com/docker/go-units v0.5.0 // indirect
+	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
+	github.com/moby/docker-image-spec v1.3.1 // indirect
+	github.com/moby/term v0.5.2 // indirect
+	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
+	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0 // indirect
+	go.opentelemetry.io/otel v1.43.0 // indirect
+	go.opentelemetry.io/otel/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
+)
+
+require (
 	cel.dev/expr v0.25.1 // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 // indirect
-	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -67,16 +87,16 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
-	github.com/google/cel-go v0.26.0 // indirect
+	github.com/google/cel-go v0.28.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
-	github.com/itchyny/gojq v0.12.16 // indirect
-	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/itchyny/gojq v0.12.19 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -88,7 +108,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
+	github.com/lib/pq v1.12.3 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
@@ -109,9 +129,8 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/swaggest/jsonschema-go v0.3.78 // indirect
+	github.com/swaggest/jsonschema-go v0.3.79 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.9-0.20240815153524-6ea36470d1bd // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect

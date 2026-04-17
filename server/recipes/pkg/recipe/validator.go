@@ -1,7 +1,7 @@
 package recipe
 
 import (
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coreops "github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/service"
 )
 

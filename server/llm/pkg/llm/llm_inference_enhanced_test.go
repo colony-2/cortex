@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	f2 "github.com/colony-2/c2j/pkg/file"
+	recipeops "github.com/colony-2/c2j/pkg/ops"
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
-	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

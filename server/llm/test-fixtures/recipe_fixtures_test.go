@@ -5,10 +5,11 @@ import (
 	"sync"
 	"testing"
 
+	coreops "github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/ops/extensions"
+	"github.com/colony-2/c2j/pkg/worker/commandop"
+	testfixtures "github.com/colony-2/c2j/pkg/worker/test-fixtures"
 	"github.com/colony-2/colony2/server/llm/pkg/codex"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/commandop"
-	testfixtures "github.com/colony-2/colony2/server/recipe-worker/test-fixtures"
 )
 
 var registerOpsOnce sync.Once
@@ -25,6 +26,7 @@ func ensureCodexAvailable(t *testing.T) {
 
 func registerFixtureOps() {
 	registerOpsOnce.Do(func() {
+		coreops.Register(extensions.GetExecutionOp())
 		coreops.Register(commandop.GetOp())
 		coreops.Register(codex.GetOp())
 	})

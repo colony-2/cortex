@@ -1,3 +1,2 @@
 id: 'server/runtime'
 language: 'go'
-type: 'library'

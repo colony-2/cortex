@@ -1,3 +1,2 @@
 id: 'server/workflow'
 language: 'go'
-type: 'library'

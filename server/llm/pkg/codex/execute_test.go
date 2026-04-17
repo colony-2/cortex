@@ -279,21 +279,31 @@ func indexOf(haystack []string, needle string) int {
 	return -1
 }
 
-func TestInstallConfiguredSkillsIfExistsCopiesIntoAgentsSkills(t *testing.T) {
+func TestInstallSkillSourcesIfExistsCopiesWorktreeAndConfiguredSkillsIntoAgentsSkills(t *testing.T) {
 	workdir := t.TempDir()
+	worktree := filepath.Join(workdir, "worktree")
 	configuredSkills := filepath.Join(workdir, ".codex-skill-inputs", "skills")
 	codexHome := filepath.Join(workdir, codexHomeDirName)
+	worktreeSkills := filepath.Join(worktree, ".agents", "skills")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
 	require.NoError(t, os.MkdirAll(configuredSkills, 0o755))
 	require.NoError(t, os.MkdirAll(codexHome, 0o755))
 
+	localShared := filepath.Join(worktreeSkills, "shared-skill", "SKILL.md")
+	localOnly := filepath.Join(worktreeSkills, "local-only-skill", "SKILL.md")
 	configuredShared := filepath.Join(configuredSkills, "shared-skill", "SKILL.md")
 	configuredOnly := filepath.Join(configuredSkills, "configured-only-skill", "SKILL.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(localShared), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(localOnly), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Dir(configuredShared), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Dir(configuredOnly), 0o755))
+	require.NoError(t, os.WriteFile(localShared, []byte("local-shared"), 0o644))
+	require.NoError(t, os.WriteFile(localOnly, []byte("local-only"), 0o644))
 	require.NoError(t, os.WriteFile(configuredShared, []byte("configured-shared"), 0o644))
 	require.NoError(t, os.WriteFile(configuredOnly, []byte("configured-only"), 0o644))
 
-	err := installConfiguredSkillsIfExists(Options{
+	err := installSkillSourcesIfExists(Options{
+		WorktreeRoot:        worktree,
 		ConfiguredSkillDirs: []string{configuredSkills},
 		CodexHome:           codexHome,
 	})
@@ -302,6 +312,10 @@ func TestInstallConfiguredSkillsIfExistsCopiesIntoAgentsSkills(t *testing.T) {
 	sharedPayload, err := os.ReadFile(filepath.Join(codexHome, ".agents", "skills", "shared-skill", "SKILL.md"))
 	require.NoError(t, err)
 	require.Equal(t, "configured-shared", string(sharedPayload))
+
+	localOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, ".agents", "skills", "local-only-skill", "SKILL.md"))
+	require.NoError(t, err)
+	require.Equal(t, "local-only", string(localOnlyPayload))
 
 	configuredOnlyPayload, err := os.ReadFile(filepath.Join(codexHome, ".agents", "skills", "configured-only-skill", "SKILL.md"))
 	require.NoError(t, err)

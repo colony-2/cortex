@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
+	"github.com/colony-2/c2j/pkg/template/funcregistry"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/ext"

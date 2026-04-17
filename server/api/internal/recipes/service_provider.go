@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	recipecore "github.com/colony-2/c2j/pkg/recipe"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	recipecore "github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 )
 

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/colony-2/c2j/pkg/ops"
 	cell "github.com/colony-2/colony2/server/cell/pkg/cell"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )

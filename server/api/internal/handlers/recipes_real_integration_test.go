@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
-	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/c2j/pkg/git"
+	recipeops "github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
+	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 	"github.com/stretchr/testify/require"
 )

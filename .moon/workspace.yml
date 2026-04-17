@@ -7,12 +7,6 @@ projects:
   - web/*/moon.yml
   - api/*/moon.yml
 
-# Runner configuration
-runner:
-  archivableTargets:
-    - ':build'
-  cacheLifetime: '7 days'
-
 # VCS configuration
 vcs:
   provider: 'github'

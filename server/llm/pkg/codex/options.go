@@ -14,8 +14,9 @@ var (
 )
 
 const (
-	codexHomeDirName             = ".codex"
-	codexSessionsArtifactDirName = "codex-sessions"
+	codexHomeDirName              = ".codex"
+	codexHomeStateArtifactDirName = "codex-home-state"
+	codexSessionsArtifactDirName  = "codex-sessions"
 )
 
 func (o *Options) validate() error {
@@ -109,8 +110,43 @@ func (o Options) codexSessionsOutboxPath() string {
 	return filepath.Join(o.ArtifactOutbox, codexSessionsArtifactDirName)
 }
 
+func (o Options) codexHomeStateInboxPath() string {
+	return filepath.Join(o.ArtifactInbox, codexHomeStateArtifactDirName)
+}
+
+func (o Options) codexHomeStateOutboxPath() string {
+	return filepath.Join(o.ArtifactOutbox, codexHomeStateArtifactDirName)
+}
+
 func (o Options) codexAgentsSkillsPath() string {
 	return filepath.Join(o.CodexHome, ".agents", "skills")
+}
+
+func (o Options) worktreeAgentsSkillsPath() string {
+	return filepath.Join(o.WorktreeRoot, ".agents", "skills")
+}
+
+func (o Options) skillSourceDirs() []string {
+	seen := make(map[string]struct{}, 1+len(o.ConfiguredSkillDirs))
+	dirs := make([]string, 0, 1+len(o.ConfiguredSkillDirs))
+	appendDir := func(dir string) {
+		dir = filepath.Clean(strings.TrimSpace(dir))
+		if dir == "" {
+			return
+		}
+		if _, ok := seen[dir]; ok {
+			return
+		}
+		seen[dir] = struct{}{}
+		dirs = append(dirs, dir)
+	}
+
+	appendDir(o.worktreeAgentsSkillsPath())
+	for _, dir := range o.ConfiguredSkillDirs {
+		appendDir(dir)
+	}
+
+	return dirs
 }
 
 func (o Options) stdoutPath(dir string) string {

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/c2j/pkg/git"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -144,4 +144,3 @@ func CreateGitRepo(ctx context.Context, dir string) error {
 	}
 	return ConfigureGitUser(ctx, dir)
 }
-

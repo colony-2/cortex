@@ -1,8 +1,0 @@
-tests:
-- name: basic_output
-  description: Test state machine outputs
-  inputs:
-    message: 'world'
-  want:
-    result: 'world'
-  wantErr: false

@@ -7,16 +7,41 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
-	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/c2j/pkg/core"
 )
 
-// MoonGraph represents the moon project-graph JSON output
+// MoonGraph represents the moon project-graph JSON output.
+// Moon 2.x can emit either embedded node objects in graph.nodes or
+// integer references with the node payloads stored in the top-level data map.
 type MoonGraph struct {
 	Graph struct {
 		Nodes []MoonNode `json:"nodes"`
 	} `json:"graph"`
+}
+
+type rawMoonGraph struct {
+	Graph struct {
+		Nodes json.RawMessage `json:"nodes"`
+	} `json:"graph"`
+	Data map[string]MoonNode `json:"data"`
+}
+
+func (g *MoonGraph) UnmarshalJSON(data []byte) error {
+	var raw rawMoonGraph
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	nodes, err := parseMoonNodes(raw.Graph.Nodes, raw.Data)
+	if err != nil {
+		return err
+	}
+
+	g.Graph.Nodes = nodes
+	return nil
 }
 
 // MoonDependency can be either a string or an object
@@ -42,6 +67,57 @@ type MoonNode struct {
 		DependsOn json.RawMessage `json:"dependsOn"`
 	} `json:"config"`
 	Dependencies []MoonDependency `json:"dependencies"`
+}
+
+func parseMoonNodes(rawNodes json.RawMessage, indexedNodes map[string]MoonNode) ([]MoonNode, error) {
+	if len(rawNodes) == 0 || string(rawNodes) == "null" {
+		return nil, nil
+	}
+
+	var embedded []MoonNode
+	if err := json.Unmarshal(rawNodes, &embedded); err == nil {
+		return embedded, nil
+	}
+
+	var refs []json.RawMessage
+	if err := json.Unmarshal(rawNodes, &refs); err != nil {
+		return nil, fmt.Errorf("decode moon graph nodes: %w", err)
+	}
+
+	nodes := make([]MoonNode, 0, len(refs))
+	for _, ref := range refs {
+		var embeddedNode MoonNode
+		if err := json.Unmarshal(ref, &embeddedNode); err == nil && embeddedNode.ID != "" {
+			nodes = append(nodes, embeddedNode)
+			continue
+		}
+
+		key, err := parseMoonNodeRef(ref)
+		if err != nil {
+			return nil, err
+		}
+		node, ok := indexedNodes[key]
+		if !ok {
+			return nil, fmt.Errorf("missing moon node payload for ref %q", key)
+		}
+		nodes = append(nodes, node)
+	}
+
+	return nodes, nil
+}
+
+func parseMoonNodeRef(rawRef json.RawMessage) (string, error) {
+	var intRef int
+	if err := json.Unmarshal(rawRef, &intRef); err == nil {
+		return strconv.Itoa(intRef), nil
+	}
+
+	var stringRef string
+	if err := json.Unmarshal(rawRef, &stringRef); err == nil && strings.TrimSpace(stringRef) != "" {
+		return stringRef, nil
+	}
+
+	return "", fmt.Errorf("unsupported moon node reference: %s", string(rawRef))
 }
 
 // Builder handles graph construction from the filesystem

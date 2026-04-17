@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
+	"github.com/colony-2/c2j/pkg/contextual"
+	"github.com/colony-2/c2j/pkg/template"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -9,16 +9,33 @@ const sampleProject = {
   updatedAt: new Date().toISOString(),
 };
 
-const sampleGraph = {
-  cells: [
-    { id: 'cell-a', name: 'Cell A', path: '/a', type: 'service', dependencies: ['cell-b'] },
-    { id: 'cell-b', name: 'Cell B', path: '/b', type: 'library', dependencies: [] },
-  ],
-  edges: [{ id: 'edge-1', source: 'cell-a', target: 'cell-b' }],
-};
+const sampleCells = [
+  {
+    id: 'cell-a',
+    name: 'Cell A',
+    workingPath: '/a',
+    updatedAt: new Date().toISOString(),
+    dependencies: ['cell-b'],
+  },
+  {
+    id: 'cell-b',
+    name: 'Cell B',
+    workingPath: '/b',
+    updatedAt: new Date().toISOString(),
+    dependencies: [],
+  },
+];
 
 test.describe('Console cleanliness', () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
+    await context.addCookies([
+      {
+        name: 'colony2:user:email',
+        value: 'test@example.com',
+        url: 'http://localhost:5173',
+      },
+    ]);
+
     // Stub EventSource to avoid SSE errors in test
     await page.addInitScript(() => {
       (window as any).EventSource = class {
@@ -39,27 +56,24 @@ test.describe('Console cleanliness', () => {
       });
     });
 
-    // Mock graph
-    await page.route('**/api/projects/proj1/graph', async (route) => {
+    await page.route('**/api/projects/proj1/cells', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(sampleGraph),
+        body: JSON.stringify(sampleCells),
       });
     });
 
-    // Mock user input endpoints
-    await page.route('**/api/user-inputs/**', async (route) => {
-      const url = route.request().url();
-      if (url.includes('/pending')) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
-      } else {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
-      }
+    await page.route('**/api/projects/proj1/user-inputs/pending', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      });
     });
   });
 
-  test('loads graph view with no console errors', async ({ page }) => {
+  test('loads the cells list with no console errors', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -69,10 +83,14 @@ test.describe('Console cleanliness', () => {
 
     await page.goto('/project/proj1/cells');
 
-    await expect(page.locator('.react-flow__node')).toHaveCount(2, { timeout: 5000 });
-    await expect(page.locator('.react-flow__edge')).toHaveCount(1, { timeout: 5000 });
+    await expect(page).toHaveTitle(/Test Project/);
+    await expect(page.getByRole('heading', { name: 'Cells' })).toBeVisible();
+    await expect(page.locator('.ant-table-tbody > tr')).toHaveCount(2, { timeout: 5000 });
+    await expect(page.getByText('Cell A')).toBeVisible();
+    await expect(page.getByText('Cell B')).toBeVisible();
+    await expect(page.getByText('/a')).toBeVisible();
+    await expect(page.getByText('/b')).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });
 });
-

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/colony-2/c2j/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 )
 

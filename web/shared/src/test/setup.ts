@@ -28,6 +28,17 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+const baseGetComputedStyle = window.getComputedStyle.bind(window);
+Object.defineProperty(window, 'getComputedStyle', {
+  writable: true,
+  value: vi.fn().mockImplementation((element: Element, pseudoElt?: string) => {
+    if (pseudoElt) {
+      return baseGetComputedStyle(element);
+    }
+    return baseGetComputedStyle(element);
+  }),
+});
+
 // Mock ResizeObserver for Ant Design components
 global.ResizeObserver = class ResizeObserver {
   observe() {}

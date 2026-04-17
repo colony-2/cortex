@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
-	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/ops"
+	recipeartifacts "github.com/colony-2/c2j/pkg/artifacts"
+	coretasks "github.com/colony-2/c2j/pkg/task"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
+	"github.com/colony-2/c2j/pkg/worker/ops"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )

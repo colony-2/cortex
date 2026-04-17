@@ -113,7 +113,7 @@ export default function CellsList({ projectId }: CellsListProps) {
         </Space>
       }
       style={{ height: '100%' }}
-      bodyStyle={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column' } }}
     >
       {loading ? (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

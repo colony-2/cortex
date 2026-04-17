@@ -3,7 +3,7 @@ package story
 import (
 	"strings"
 
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 )
 

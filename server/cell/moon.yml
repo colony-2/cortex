@@ -1,3 +1,2 @@
 id: 'server-cell'
 language: 'go'
-type: 'library'

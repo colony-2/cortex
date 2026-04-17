@@ -1,3 +1,2 @@
 id: 'server/project'
 language: 'go'
-type: 'library'

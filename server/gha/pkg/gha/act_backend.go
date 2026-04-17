@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coreops "github.com/colony-2/c2j/pkg/ops"
 	actcommon "github.com/nektos/act/pkg/common"
 	actmodel "github.com/nektos/act/pkg/model"
 	actrunner "github.com/nektos/act/pkg/runner"

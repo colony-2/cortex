@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/colony-2/c2j/pkg/contextual"
+	"github.com/colony-2/c2j/pkg/template/funcregistry"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
 	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 )

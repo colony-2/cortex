@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	f2 "github.com/colony-2/c2j/pkg/file"
+	"github.com/colony-2/c2j/pkg/ops"
 	llmadapters "github.com/colony-2/colony2/server/llm/adapters"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/mitchellh/mapstructure"
 	jsonschemav6 "github.com/santhosh-tekuri/jsonschema/v6"
 )

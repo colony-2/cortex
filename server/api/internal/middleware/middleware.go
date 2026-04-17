@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/colony2/server/core/pkg/logutil"
+	"github.com/colony-2/c2j/pkg/logutil"
 	"github.com/gorilla/mux"
 )
 

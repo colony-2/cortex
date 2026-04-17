@@ -1,5 +1,4 @@
 id: 'be-openapi'
-type: 'library'
 language: 'go'
 
 project:

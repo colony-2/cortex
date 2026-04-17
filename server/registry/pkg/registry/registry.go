@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/recipe"
 	"github.com/fsnotify/fsnotify"
 )
 

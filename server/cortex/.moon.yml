@@ -8,7 +8,6 @@ project:
   channel: '#backend'
 
 language: 'go'
-type: 'application'
 
 tags:
   - 'go'
@@ -25,7 +24,6 @@ tasks:
       - pnpm-lock.yaml
     outputs:
       - node_modules
-    platform: system
     options:
       runInCI: true
       outputStyle: buffer-only-failure
@@ -61,7 +59,6 @@ tasks:
       - internal/static/assets/
     deps:
       - 'ui-app:build'
-    platform: system
     options:
       runInCI: true
       outputStyle: buffer-only-failure
@@ -72,14 +69,13 @@ tasks:
   serve:
     script: |
       set -e
-      go run ./cmd/cortex/*.go -n ../../
+      go run ./cmd/cortex --new
     deps:
       - '~:build-frontend-copy'
     env:
       PORT: '8080'
-    local: true         # never runs in CI
-    platform: system
-
+    options:
+      runInCI: false
   # ─────────────────────────────────────────────────────────────
   # Production install (includes front-end)
   # ─────────────────────────────────────────────────────────────
@@ -90,7 +86,6 @@ tasks:
     deps:
       - '~:build'
       - '~:build-frontend-copy'
-    platform: system
     options:
       runInCI: true
       outputStyle: buffer-only-failure
@@ -115,7 +110,6 @@ tasks:
       - 'tests/**/*.spec.ts'
       - 'package.json'
       - 'playwright.config.ts'
-    platform: 'system'
     options:
       runInCI: true
   playwright-install:
@@ -124,7 +118,6 @@ tasks:
       pnpm exec playwright install chromium
     deps:
       - '~:pnpm-install'
-    platform: system
     options:
       runInCI: true
       outputStyle: buffer-only-failure

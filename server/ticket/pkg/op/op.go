@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colony-2/colony2/server/core/pkg/core"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/c2j/pkg/core"
+	"github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/workflow"
 	"github.com/colony-2/colony2/server/ticket/internal/model"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	yamlv3 "gopkg.in/yaml.v3"

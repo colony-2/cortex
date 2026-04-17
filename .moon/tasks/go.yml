@@ -8,7 +8,6 @@ tasks:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
-    platform: 'system'
     deps:
       - "^:build"
     options:
@@ -23,7 +22,6 @@ tasks:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
-    platform: 'system'
     options:
       runInCI: true
       outputStyle: buffer-only-failure
@@ -32,7 +30,6 @@ tasks:
     command: 'go vet ./...'
     inputs:
       - '**/*.go'
-    platform: 'system'
     options:
       runInCI: true
   tidy:
@@ -43,7 +40,6 @@ tasks:
       - '**/*.go'
       - 'go.mod'
       - 'go.sum'
-    platform: 'system'
     options:
       runInCI: true
       outputStyle: buffer-only-failure

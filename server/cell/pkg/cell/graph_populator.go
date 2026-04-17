@@ -3,7 +3,7 @@ package cell
 import (
 	"context"
 
-	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/c2j/pkg/core"
 	"github.com/colony-2/colony2/server/graph/pkg/graph"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 )

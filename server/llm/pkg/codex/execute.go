@@ -1,7 +1,10 @@
 package codex
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -27,6 +30,17 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 	}
 	if err := ensureExecutionPaths(opts); err != nil {
 		return Result{}, "", "", "", err
+	}
+	activeOpts := opts
+	if useDirectCodex() {
+		activeCodexHome, err := resolveDirectCodexHome(opts)
+		if err != nil {
+			return Result{}, "", "", "", err
+		}
+		activeOpts.CodexHome = activeCodexHome
+		if err := os.MkdirAll(activeOpts.CodexHome, 0o755); err != nil {
+			return Result{}, "", "", "", fmt.Errorf("create active codex home path: %w", err)
+		}
 	}
 
 	artifactDir, err := os.MkdirTemp("", "codex-artifacts-*")
@@ -66,12 +80,19 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 
 	collector := newOutputCollector(stdoutFile, stderrFile)
 
-	runErr := runCodexExec(ctx, opts, schemaPath, opts.StructuredSchema, collector)
-	if sanitizeErr := sanitizeCodexHomeOutput(opts); sanitizeErr != nil {
+	runErr := runCodexExec(ctx, activeOpts, schemaPath, activeOpts.StructuredSchema, collector)
+	if sanitizeErr := sanitizeCodexHomeOutput(activeOpts); sanitizeErr != nil {
 		if runErr == nil {
 			runErr = fmt.Errorf("sanitize codex home output: %w", sanitizeErr)
 		} else {
 			runErr = fmt.Errorf("%v; sanitize codex home output: %w", runErr, sanitizeErr)
+		}
+	}
+	if persistErr := persistCodexHomeState(activeOpts.codexHomeStateOutboxPath(), activeOpts.CodexHome); persistErr != nil {
+		if runErr == nil {
+			runErr = fmt.Errorf("persist codex home state: %w", persistErr)
+		} else {
+			runErr = fmt.Errorf("%v; persist codex home state: %w", runErr, persistErr)
 		}
 	}
 	if closeErr := stdoutFile.Close(); closeErr != nil {
@@ -104,26 +125,85 @@ func Execute(ctx context.Context, opts Options) (Result, string, string, string,
 	if result.SessionID == "" {
 		if parseRes.sessionID != "" {
 			result.SessionID = parseRes.sessionID
-		} else if opts.SessionID != "" {
-			result.SessionID = opts.SessionID
+		} else if activeOpts.SessionID != "" {
+			result.SessionID = activeOpts.SessionID
+		}
+	}
+	if sessionID := strings.TrimSpace(result.SessionID); sessionID != "" {
+		if rolloutErr := materializeSessionRolloutFiles(activeOpts.CodexHome, sessionID, stdoutPath); rolloutErr != nil {
+			if runErr == nil {
+				runErr = fmt.Errorf("materialize session rollout files: %w", rolloutErr)
+			} else {
+				runErr = fmt.Errorf("%v; materialize session rollout files: %w", runErr, rolloutErr)
+			}
+		}
+		if mappingErr := persistSessionCodexHomePath(sessionID, activeOpts.CodexHome); mappingErr != nil {
+			if runErr == nil {
+				runErr = fmt.Errorf("persist session codex home path: %w", mappingErr)
+			} else {
+				runErr = fmt.Errorf("%v; persist session codex home path: %w", runErr, mappingErr)
+			}
+		}
+		if cacheErr := persistCodexHomeState(sessionCodexHomeStatePath(sessionID), activeOpts.CodexHome); cacheErr != nil {
+			if runErr == nil {
+				runErr = fmt.Errorf("persist session codex home state: %w", cacheErr)
+			} else {
+				runErr = fmt.Errorf("%v; persist session codex home state: %w", runErr, cacheErr)
+			}
 		}
 	}
 
 	return result, stdoutPath, stderrPath, artifactDir, nil
 }
 
+func resolveDirectCodexHome(opts Options) (string, error) {
+	sessionID := strings.TrimSpace(opts.SessionID)
+	if sessionID == "" {
+		return opts.CodexHome, nil
+	}
+
+	resolvedPath, err := loadSessionCodexHomePath(sessionID)
+	if err != nil {
+		return "", fmt.Errorf("load session codex home path: %w", err)
+	}
+	if strings.TrimSpace(resolvedPath) == "" {
+		return opts.CodexHome, nil
+	}
+	return resolvedPath, nil
+}
+
 func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPayload []byte, collector *outputCollector) error {
+	if err := restoreCodexHomeStateIfExists(opts.codexHomeStateInboxPath(), opts.CodexHome); err != nil {
+		return fmt.Errorf("restore codex home state: %w", err)
+	}
+	if sessionID := strings.TrimSpace(opts.SessionID); sessionID != "" {
+		mappedHome, err := loadSessionCodexHomePath(sessionID)
+		if err != nil {
+			return fmt.Errorf("load session codex home path: %w", err)
+		}
+		if filepath.Clean(mappedHome) != filepath.Clean(opts.CodexHome) {
+			if err := restoreCodexHomeStateIfExists(sessionCodexHomeStatePath(sessionID), opts.CodexHome); err != nil {
+				return fmt.Errorf("restore session codex home state: %w", err)
+			}
+		}
+	}
 	if useDirectCodex() {
 		if err := prepareDirectCodexHome(opts); err != nil {
 			return fmt.Errorf("prepare codex home: %w", err)
 		}
 		cmdArgs := buildCommand(opts, schemaPath)
 		cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+		nullStdin, err := os.Open(os.DevNull)
+		if err != nil {
+			return fmt.Errorf("open null stdin: %w", err)
+		}
+		defer nullStdin.Close()
 		cmd.Env = os.Environ()
 		for k, v := range buildEnv(opts) {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 		cmd.Dir = opts.WorktreeRoot
+		cmd.Stdin = nullStdin
 		cmd.Stdout = collector.stdoutWriter()
 		cmd.Stderr = collector.stderrWriter()
 		return cmd.Run()
@@ -165,8 +245,9 @@ func runCodexExec(ctx context.Context, opts Options, schemaPath string, schemaPa
 	if err != nil {
 		return fmt.Errorf("resolve codex sessions outbox path: %w", err)
 	}
-	skillDirTargets := make([]string, 0, len(opts.ConfiguredSkillDirs))
-	for _, dir := range opts.ConfiguredSkillDirs {
+	skillSourceDirs := opts.skillSourceDirs()
+	skillDirTargets := make([]string, 0, len(skillSourceDirs))
+	for _, dir := range skillSourceDirs {
 		target, targetErr := opts.containerPath(dir)
 		if targetErr != nil {
 			return fmt.Errorf("resolve skill dir container path: %w", targetErr)
@@ -301,7 +382,6 @@ func removeSensitiveCodexFiles(codexHomeDir string) error {
 func buildCodexHomeRootCommand(codexHomeTarget string, inboxSessionsTarget string, outboxSessionsTarget string, hostCodexHomeTarget string) string {
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(codexHomeTarget))
-	fmt.Fprintf(&builder, "find %s -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true\n", shellQuote(codexHomeTarget))
 	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(outboxSessionsTarget))
 	fmt.Fprintf(&builder, "find %s -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null || true\n", shellQuote(outboxSessionsTarget))
 	fmt.Fprintf(&builder, "if [ -d %s ]; then cp -a %s/. %s/; fi\n",
@@ -310,6 +390,7 @@ func buildCodexHomeRootCommand(codexHomeTarget string, inboxSessionsTarget strin
 		shellQuote(outboxSessionsTarget),
 	)
 	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(filepath.ToSlash(filepath.Join(codexHomeTarget, ".agents"))))
+	fmt.Fprintf(&builder, "rm -rf %s\n", shellQuote(filepath.ToSlash(filepath.Join(codexHomeTarget, "sessions"))))
 	fmt.Fprintf(&builder, "ln -s %s %s\n",
 		shellQuote(outboxSessionsTarget),
 		shellQuote(filepath.ToSlash(filepath.Join(codexHomeTarget, "sessions"))),
@@ -342,16 +423,10 @@ func hostCodexHomeMountable(path string) bool {
 }
 
 func prepareDirectCodexHome(opts Options) error {
-	if err := resetCodexHomeContents(opts.CodexHome); err != nil {
+	if err := ensureCodexHomeExists(opts.CodexHome); err != nil {
 		return err
 	}
-	if err := bootstrapCodexSessions(opts.codexSessionsInboxPath(), opts.codexSessionsOutboxPath()); err != nil {
-		return err
-	}
-	if err := linkCodexHomeSessions(opts.CodexHome, opts.codexSessionsOutboxPath()); err != nil {
-		return err
-	}
-	if err := installConfiguredSkillsIfExists(opts); err != nil {
+	if err := installSkillSourcesIfExists(opts); err != nil {
 		return err
 	}
 	if err := seedCodexCredentialsIfNeeded(opts.HostCodexHome, opts.CodexHome); err != nil {
@@ -360,9 +435,12 @@ func prepareDirectCodexHome(opts Options) error {
 	return nil
 }
 
-func installConfiguredSkillsIfExists(opts Options) error {
+func installSkillSourcesIfExists(opts Options) error {
 	targetDir := opts.codexAgentsSkillsPath()
-	for _, sourceDir := range opts.ConfiguredSkillDirs {
+	if err := os.RemoveAll(targetDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reset codex skills %q: %w", targetDir, err)
+	}
+	for _, sourceDir := range opts.skillSourceDirs() {
 		if err := copyDirContentsIfExists(sourceDir, targetDir); err != nil {
 			return err
 		}
@@ -370,18 +448,9 @@ func installConfiguredSkillsIfExists(opts Options) error {
 	return nil
 }
 
-func resetCodexHomeContents(codexHomeDir string) error {
+func ensureCodexHomeExists(codexHomeDir string) error {
 	if err := os.MkdirAll(codexHomeDir, 0o755); err != nil {
 		return fmt.Errorf("create codex home %q: %w", codexHomeDir, err)
-	}
-	entries, err := os.ReadDir(codexHomeDir)
-	if err != nil {
-		return fmt.Errorf("read codex home %q: %w", codexHomeDir, err)
-	}
-	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(codexHomeDir, entry.Name())); err != nil {
-			return fmt.Errorf("reset codex home entry %q: %w", entry.Name(), err)
-		}
 	}
 	return nil
 }
@@ -405,6 +474,147 @@ func bootstrapCodexSessions(inboxSessionsDir string, outboxSessionsDir string) e
 	return nil
 }
 
+func restoreCodexHomeStateIfExists(sourceStateDir string, codexHomeDir string) error {
+	return copyDirContentsIfExists(sourceStateDir, codexHomeDir)
+}
+
+func persistCodexHomeState(targetStateDir string, codexHomeDir string) error {
+	if err := os.RemoveAll(targetStateDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reset codex home state %q: %w", targetStateDir, err)
+	}
+	return copyDirContentsIfExists(codexHomeDir, targetStateDir)
+}
+
+func sessionCodexHomeStatePath(sessionID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(sessionID)))
+	return filepath.Join(os.TempDir(), "colony2-codex-session-state", hex.EncodeToString(sum[:]))
+}
+
+func sessionCodexHomePathRecord(sessionID string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(sessionID)))
+	return filepath.Join(os.TempDir(), "colony2-codex-session-homes", hex.EncodeToString(sum[:]), "path.txt")
+}
+
+func persistSessionCodexHomePath(sessionID string, codexHome string) error {
+	recordPath := sessionCodexHomePathRecord(sessionID)
+	if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
+		return fmt.Errorf("create session codex home record dir: %w", err)
+	}
+	return os.WriteFile(recordPath, []byte(strings.TrimSpace(codexHome)), 0o644)
+}
+
+func loadSessionCodexHomePath(sessionID string) (string, error) {
+	recordPath := sessionCodexHomePathRecord(sessionID)
+	data, err := os.ReadFile(recordPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read session codex home record: %w", err)
+	}
+	path := strings.TrimSpace(string(data))
+	if path == "" {
+		return "", nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("stat session codex home: %w", err)
+	}
+	if !info.IsDir() {
+		return "", nil
+	}
+	return path, nil
+}
+
+func materializeSessionRolloutFiles(codexHomeDir string, sessionID string, stdoutPath string) error {
+	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(stdoutPath) == "" {
+		return nil
+	}
+	paths, err := discoverSessionRolloutPaths(codexHomeDir, sessionID)
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("stat rollout path %q: %w", path, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return fmt.Errorf("create rollout dir %q: %w", filepath.Dir(path), err)
+		}
+		if err := copyRegularFile(stdoutPath, path, 0o644); err != nil {
+			return fmt.Errorf("copy rollout file %q: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func discoverSessionRolloutPaths(codexHomeDir string, sessionID string) ([]string, error) {
+	patterns := []string{
+		filepath.Join(codexHomeDir, "state_*.sqlite"),
+		filepath.Join(codexHomeDir, "state_*.sqlite-*"),
+	}
+	seenFiles := map[string]struct{}{}
+	seenPaths := map[string]struct{}{}
+	paths := make([]string, 0)
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("glob state dbs %q: %w", pattern, err)
+		}
+		for _, match := range matches {
+			if _, ok := seenFiles[match]; ok {
+				continue
+			}
+			seenFiles[match] = struct{}{}
+			data, err := os.ReadFile(match)
+			if err != nil {
+				return nil, fmt.Errorf("read state db %q: %w", match, err)
+			}
+			for _, chunk := range bytes.Split(data, []byte{0}) {
+				candidate := extractRolloutPathCandidate(string(chunk), sessionID)
+				if candidate == "" {
+					continue
+				}
+				if _, ok := seenPaths[candidate]; ok {
+					continue
+				}
+				seenPaths[candidate] = struct{}{}
+				paths = append(paths, candidate)
+			}
+		}
+	}
+	return paths, nil
+}
+
+func extractRolloutPathCandidate(raw string, sessionID string) string {
+	idx := strings.Index(raw, string(filepath.Separator))
+	if idx == -1 {
+		return ""
+	}
+	raw = raw[idx:]
+	if !strings.Contains(raw, sessionID) {
+		return ""
+	}
+	sessionFragment := string(filepath.Separator) + ".codex" + string(filepath.Separator) + "sessions" + string(filepath.Separator)
+	if !strings.Contains(raw, sessionFragment) {
+		return ""
+	}
+	end := strings.Index(raw, ".jsonl")
+	if end == -1 {
+		return ""
+	}
+	candidate := raw[:end+len(".jsonl")]
+	if !filepath.IsAbs(candidate) {
+		return ""
+	}
+	return candidate
+}
+
 func linkCodexHomeSessions(codexHomeDir string, outboxSessionsDir string) error {
 	agentsDir := filepath.Join(codexHomeDir, ".agents")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
@@ -423,6 +633,7 @@ func linkCodexHomeSessions(codexHomeDir string, outboxSessionsDir string) error 
 func buildConfiguredSkillsRootCommand(codexHomeTarget string, skillDirTargets []string) string {
 	var builder strings.Builder
 	codexHomeSkillsTarget := filepath.ToSlash(filepath.Join(codexHomeTarget, ".agents", "skills"))
+	fmt.Fprintf(&builder, "rm -rf %s\n", shellQuote(codexHomeSkillsTarget))
 	fmt.Fprintf(&builder, "mkdir -p %s\n", shellQuote(codexHomeSkillsTarget))
 	for _, dirTarget := range skillDirTargets {
 		fmt.Fprintf(&builder, "if [ -d %s ]; then cp -a %s/. %s/; fi\n",
@@ -462,6 +673,9 @@ func copyDirContents(sourceDir string, targetDir string) error {
 	for _, entry := range entries {
 		sourcePath := filepath.Join(sourceDir, entry.Name())
 		targetPath := filepath.Join(targetDir, entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
 
 		info, err := entry.Info()
 		if err != nil {

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/core"
+	"github.com/colony-2/c2j/pkg/logutil"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
-	"github.com/colony-2/colony2/server/core/pkg/core"
-	"github.com/colony-2/colony2/server/core/pkg/logutil"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"

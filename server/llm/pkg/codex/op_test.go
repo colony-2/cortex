@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	recipeartifacts "github.com/colony-2/c2j/pkg/artifacts"
+	"github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/workflowctl"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

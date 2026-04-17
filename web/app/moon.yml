@@ -15,7 +15,6 @@ tasks:
       - tests/**/*
       - playwright.config.ts
       - '@group(lockfile)'
-    platform: node
     options:
       runInCI: true
       outputStyle: buffer-only-failure
@@ -24,5 +23,5 @@ tasks:
   serve:
     command: vite
     args: [dev]
-    local: true
-    platform: node
+    options:
+      runInCI: false

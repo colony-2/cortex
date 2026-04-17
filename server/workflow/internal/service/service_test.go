@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
+	"github.com/colony-2/c2j/pkg/starter"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/strata-go/pkg/client/story"
 	"github.com/colony-2/swf-go/pkg/swf"

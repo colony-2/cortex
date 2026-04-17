@@ -6,7 +6,7 @@ import (
 
 	"time"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	"github.com/colony-2/c2j/pkg/ops"
 )
 
 // LLMConfig defines the configuration for LLM activities - ALL fields MUST have json tags

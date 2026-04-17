@@ -1,13 +1,13 @@
 package opregistry
 
 import (
+	gitexport "github.com/colony-2/c2j/pkg/git/export"
+	"github.com/colony-2/c2j/pkg/input"
+	coreops "github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/ops/extensions"
+	"github.com/colony-2/c2j/pkg/ops/recipe"
+	workerexport "github.com/colony-2/c2j/pkg/worker/export"
 	cellopsexport "github.com/colony-2/colony2/server/cell-ops/pkg/export"
-	gitexport "github.com/colony-2/colony2/server/git/pkg/export"
-	"github.com/colony-2/colony2/server/ops/pkg/extensions"
-	"github.com/colony-2/colony2/server/recipe-child/pkg/recipe"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-input/pkg/input"
-	workerexport "github.com/colony-2/colony2/server/recipe-worker/pkg/export"
 	ticketop "github.com/colony-2/colony2/server/ticket/pkg/op"
 )
 

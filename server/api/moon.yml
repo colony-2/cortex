@@ -3,7 +3,6 @@ $schema: '../../.moon/cache/schemas/project.json'
 
 id: 'be-api'
 language: 'go'
-type: 'library'
 
 project:
   description: 'Web server handlers and middleware'
@@ -18,7 +17,6 @@ tasks:
       - '-o'
       - 'build/testserver'
       - './cmd/testserver'
-    platform: 'system'
     outputs:
       - 'build/testserver'
     options:
@@ -31,6 +29,5 @@ tasks:
     args:
       - 'run'
       - './cmd/testserver'
-    platform: 'system'
     options:
       runInCI: false

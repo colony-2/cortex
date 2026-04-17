@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/colony-2/colony2/server/git/pkg/git"
+	"github.com/colony-2/c2j/pkg/git"
 	"github.com/colony-2/colony2/server/project/pkg/project"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"

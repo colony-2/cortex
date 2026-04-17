@@ -3,7 +3,7 @@ package shared
 import (
 	"encoding/json"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/recipe"
 )
 
 // SchemaManager provides JSON Schema generation helpers for cortex

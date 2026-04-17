@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/colony-2/c2j/pkg/contextual"
+	coreops "github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
+	"github.com/colony-2/c2j/pkg/workflow"
 	opssetup "github.com/colony-2/colony2/server/api/pkg/serverdeps/opssetup"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/stretchr/testify/require"
 )

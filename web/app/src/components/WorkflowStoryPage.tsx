@@ -946,7 +946,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
         </Card>
 
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <Card title="Story" style={{ flex: 1, minWidth: 420 }} bodyStyle={{ padding: 12 }}>
+          <Card title="Story" style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12 } }}>
             {!story?.root ? (
               <Empty description="No story available yet" />
             ) : (
@@ -980,7 +980,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
             )}
           </Card>
 
-          <Card title={detailsHeader} style={{ flex: 1.2, minWidth: 520 }} bodyStyle={{ padding: 12 }}>
+          <Card title={detailsHeader} style={{ flex: 1.2, minWidth: 520 }} styles={{ body: { padding: 12 } }}>
             {!selectedNode ? (
               <Empty description="Select a node from the story tree" />
             ) : (

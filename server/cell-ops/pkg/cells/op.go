@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/ops"
 	cell "github.com/colony-2/colony2/server/cell/pkg/cell"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"gorm.io/gorm"
 )
 

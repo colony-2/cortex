@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/contextual"
+	"github.com/colony-2/c2j/pkg/starter"
+	"github.com/colony-2/c2j/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/openapi/pkg/openapi"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/workflow/pkg/workflow"
 	"github.com/colony-2/strata-go/pkg/client"
 	"github.com/colony-2/swf-go/pkg/swf"

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
+	"github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/workflow"
 	"github.com/colony-2/swf-go/pkg/swf"
 	"github.com/google/uuid"
 )

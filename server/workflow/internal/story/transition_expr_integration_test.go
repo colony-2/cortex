@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
-	coretasks "github.com/colony-2/colony2/server/recipe-core/pkg/task"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/workflowctl"
+	"github.com/colony-2/c2j/pkg/contextual"
+	coreops "github.com/colony-2/c2j/pkg/ops"
+	"github.com/colony-2/c2j/pkg/starter"
+	coretasks "github.com/colony-2/c2j/pkg/task"
+	"github.com/colony-2/c2j/pkg/workflowctl"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )

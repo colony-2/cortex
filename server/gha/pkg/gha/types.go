@@ -3,7 +3,7 @@ package gha
 import (
 	"context"
 
-	coreops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
+	coreops "github.com/colony-2/c2j/pkg/ops"
 )
 
 const (

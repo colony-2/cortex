@@ -1,5 +1,4 @@
 id: 'api-openapi'
-type: 'unknown'
 language: 'openapi'
 project:
   name: 'api-openapi'

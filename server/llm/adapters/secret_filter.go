@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	f2 "github.com/colony-2/c2j/pkg/file"
 )
 
 // SecretFilter removes sensitive information

@@ -1,6 +1,0 @@
-tests:
-- name: basic_test
-  description: Basic minimal state test
-  inputs: {}
-  want: {}
-  wantErr: false

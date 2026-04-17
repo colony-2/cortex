@@ -1,3 +1,2 @@
 id: 'server/registry'
 language: 'go'
-type: 'library'

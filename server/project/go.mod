@@ -12,7 +12,6 @@ require (
 )
 
 require (
-	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fergusstrange/embedded-postgres v1.32.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

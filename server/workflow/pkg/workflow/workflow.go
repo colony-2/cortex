@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/colony-2/c2j/pkg/template"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
 	"github.com/colony-2/colony2/server/cell/pkg/cell"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
 	"github.com/colony-2/colony2/server/ticket/pkg/ticket"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/colony2/server/workflow/internal/service"

@@ -1,6 +1,6 @@
 package model
 
-import coretask "github.com/colony-2/colony2/server/recipe-core/pkg/task"
+import coretask "github.com/colony-2/c2j/pkg/task"
 
 // RestartRecipeJobRequest requests a restart of an existing recipe job at a particular SWF step offset.
 //

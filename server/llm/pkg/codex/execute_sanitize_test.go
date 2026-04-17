@@ -66,24 +66,28 @@ func TestSanitizeCodexHomeOutputWithoutInboxKeepsNonSensitiveFiles(t *testing.T)
 	require.FileExists(t, filepath.Join(codexHome, "session.json"))
 }
 
-func TestPrepareDirectCodexHomeLinksSessionsIntoOutbox(t *testing.T) {
+func TestPrepareDirectCodexHomePreservesSessionsAndInstallsSkills(t *testing.T) {
 	workdir := t.TempDir()
 	inbox := filepath.Join(workdir, "inbox")
 	outbox := filepath.Join(workdir, "outbox")
+	worktree := filepath.Join(workdir, "worktree")
 	codexHome := filepath.Join(workdir, codexHomeDirName)
 	stagedSkills := filepath.Join(workdir, ".codex-skill-inputs", "skills")
-	require.NoError(t, os.MkdirAll(filepath.Join(inbox, codexSessionsArtifactDirName, "nested"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(outbox, codexSessionsArtifactDirName), 0o755))
+	repoSkills := filepath.Join(worktree, ".agents", "skills")
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.MkdirAll(outbox, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(repoSkills, "repo-skill"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(stagedSkills, "platform-skill"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(inbox, codexSessionsArtifactDirName, "nested", "session.json"), []byte("session"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repoSkills, "repo-skill", "SKILL.md"), []byte("repo-skill"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(stagedSkills, "platform-skill", "SKILL.md"), []byte("skill"), 0o644))
-	require.NoError(t, os.MkdirAll(codexHome, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "stale.txt"), []byte("stale"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(codexHome, "sessions", "2026", "04", "17"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "state.sqlite"), []byte("state"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "sessions", "2026", "04", "17", "rollout.jsonl"), []byte("session"), 0o644))
 
 	err := prepareDirectCodexHome(Options{
 		Prompt:              "test",
 		WorkDirRoot:         workdir,
-		WorktreeRoot:        filepath.Join(workdir, "worktree"),
+		WorktreeRoot:        worktree,
 		ArtifactInbox:       inbox,
 		ArtifactOutbox:      outbox,
 		CodexHome:           codexHome,
@@ -91,12 +95,26 @@ func TestPrepareDirectCodexHomeLinksSessionsIntoOutbox(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoFileExists(t, filepath.Join(codexHome, "stale.txt"))
+	require.FileExists(t, filepath.Join(codexHome, "state.sqlite"))
+	require.DirExists(t, filepath.Join(codexHome, ".agents", "skills", "repo-skill"))
+	require.FileExists(t, filepath.Join(codexHome, ".agents", "skills", "repo-skill", "SKILL.md"))
 	require.DirExists(t, filepath.Join(codexHome, ".agents", "skills", "platform-skill"))
 	require.FileExists(t, filepath.Join(codexHome, ".agents", "skills", "platform-skill", "SKILL.md"))
-	require.FileExists(t, filepath.Join(outbox, codexSessionsArtifactDirName, "nested", "session.json"))
+	require.FileExists(t, filepath.Join(codexHome, "sessions", "2026", "04", "17", "rollout.jsonl"))
+}
 
-	linkTarget, err := os.Readlink(filepath.Join(codexHome, "sessions"))
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join(outbox, codexSessionsArtifactDirName), linkTarget)
+func TestPersistCodexHomeStateCopiesFilesAndSkipsSessionSymlink(t *testing.T) {
+	workdir := t.TempDir()
+	codexHome := filepath.Join(workdir, codexHomeDirName)
+	targetState := filepath.Join(workdir, "outbox", codexHomeStateArtifactDirName)
+	require.NoError(t, os.MkdirAll(filepath.Join(codexHome, "nested"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "state.sqlite"), []byte("state"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(codexHome, "nested", "memory.json"), []byte("memory"), 0o644))
+	require.NoError(t, os.Symlink(filepath.Join(workdir, "sessions"), filepath.Join(codexHome, "sessions")))
+
+	require.NoError(t, persistCodexHomeState(targetState, codexHome))
+
+	require.FileExists(t, filepath.Join(targetState, "state.sqlite"))
+	require.FileExists(t, filepath.Join(targetState, "nested", "memory.json"))
+	require.NoFileExists(t, filepath.Join(targetState, "sessions"))
 }

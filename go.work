@@ -3,25 +3,15 @@ go 1.26
 use (
 	./cli
 	./server/api
-	./server/c2j
-	./server/c2jconfig
 	./server/cell
 	./server/cell-ops
-	./server/core
 	./server/cortex
 	./server/gha
-	./server/git
 	./server/graph
 	./server/llm
 	./server/openapi
-	./server/ops
 	./server/pgembed
 	./server/project
-	./server/recipe-child
-	./server/recipe-core
-	./server/recipe-input
-	./server/recipe-template
-	./server/recipe-worker
 	./server/recipes
 	./server/runtime
 	./server/registry

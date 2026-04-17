@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	recipeops "github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/colony2/server/pgembed/pkg/pgembed"
 	"github.com/colony-2/colony2/server/project/pkg/project"
-	recipeops "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 	"github.com/colony-2/colony2/server/recipes/internal/model"
 	"github.com/colony-2/colony2/server/recipes/internal/store"
 	"github.com/colony-2/colony2/server/recipes/internal/testutil"

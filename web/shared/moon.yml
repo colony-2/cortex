@@ -14,7 +14,6 @@ workspace:
     exclude: ['build']
 
 language: 'typescript'
-type: 'library'
 
 tags:
   - 'frontend'
@@ -33,7 +32,6 @@ tasks:
   compile:
     command: pnpm
     args: [exec, tsc]
-    platform: node
     inputs:
       - 'src/**/*'
       - 'tsconfig.json'
@@ -63,7 +61,6 @@ tasks:
     command: 'eslint'
     args:
       - 'src'
-    platform: 'node'
     options:
       runInCI: true
       outputStyle: buffer-only-failure

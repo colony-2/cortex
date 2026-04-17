@@ -10,8 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
+	"github.com/colony-2/c2j/pkg/contextual"
+	"github.com/colony-2/c2j/pkg/template/funcregistry"
 	recipesvc "github.com/colony-2/colony2/server/recipes/pkg/recipe"
 )
 

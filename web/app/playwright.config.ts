@@ -26,20 +26,11 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: [
-    {
-      command: 'moon run ui-app:serve',
-      port: 5173,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
-      cwd: '../..',
-    },
-    {
-      command: 'server/api/build/testserver -n .example -p 8080 --cors-origins http://localhost:5173',
-      port: 8080,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120 * 1000,
-      cwd: '../..',
-    }
-  ],
+  webServer: {
+    command: 'pnpm exec vite --host 127.0.0.1 --port 5173',
+    port: 5173,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+    cwd: '.',
+  },
 });

@@ -4,11 +4,11 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/contextual"
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
-	coreworkflow "github.com/colony-2/colony2/server/recipe-core/pkg/workflow"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	"github.com/colony-2/c2j/pkg/contextual"
+	"github.com/colony-2/c2j/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/template"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
+	coreworkflow "github.com/colony-2/c2j/pkg/workflow"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )

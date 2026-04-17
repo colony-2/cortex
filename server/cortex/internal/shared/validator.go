@@ -3,7 +3,7 @@ package shared
 import (
 	"fmt"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/recipe"
+	"github.com/colony-2/c2j/pkg/recipe"
 )
 
 // RecipeValidator validates basic recipe structure and inputs

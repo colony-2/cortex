@@ -1,5 +1,4 @@
 id: 'fe-openapi'
-type: 'library'
 language: 'typescript'
 
 project:
@@ -8,7 +7,6 @@ project:
 
 tasks:
   build:
-    platform: system
     script: |
       set -e
       rm -rf src/generated dist tsconfig.tsbuildinfo
@@ -26,4 +24,3 @@ tasks:
 
   test:
     command: 'true'
-

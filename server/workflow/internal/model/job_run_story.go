@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	recipeartifacts "github.com/colony-2/colony2/server/recipe-core/pkg/artifacts"
+	recipeartifacts "github.com/colony-2/c2j/pkg/artifacts"
 	"github.com/colony-2/swf-go/pkg/swf"
 )
 

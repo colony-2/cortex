@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { TicketDetailModal } from './TicketDetailModal';
 import { TicketsService } from '@colony2/openapi-client';
 import type { Ticket } from '@colony2/openapi-client';
@@ -29,6 +30,18 @@ describe('TicketDetailModal', () => {
         validUntil: '9999-12-31T23:59:59Z',
     };
 
+    const renderModal = (ticket: Ticket | null = mockTicket) =>
+        render(
+            <MemoryRouter>
+                <TicketDetailModal
+                    visible={true}
+                    onClose={() => {}}
+                    ticket={ticket}
+                    projectId="proj-1"
+                />
+            </MemoryRouter>
+        );
+
     beforeEach(() => {
         vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue([]);
     });
@@ -39,14 +52,7 @@ describe('TicketDetailModal', () => {
     });
 
     it('renders ticket details', async () => {
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
-        );
+        renderModal();
 
         expect(screen.getByText('[test-cell] Test Ticket')).toBeInTheDocument();
         expect(screen.getByText('ticket-123')).toBeInTheDocument();
@@ -72,16 +78,10 @@ describe('TicketDetailModal', () => {
         ];
         vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue(mockEvents);
 
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
-        );
+        renderModal();
 
         await waitFor(() => {
+            expect(TicketsService.getApiProjectsTicketsEvents).toHaveBeenCalledWith('proj-1', 'ticket-123');
             expect(screen.getByText('Workflow completed')).toBeInTheDocument();
         });
     });
@@ -89,14 +89,7 @@ describe('TicketDetailModal', () => {
     it('shows error message on fetch failure', async () => {
         vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockRejectedValue(new Error('Network error'));
 
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
-        );
+        renderModal();
 
         await waitFor(() => {
             expect(screen.getByText(/Failed to load ticket events/i)).toBeInTheDocument();
@@ -106,12 +99,14 @@ describe('TicketDetailModal', () => {
     it('calls onClose when modal is closed', async () => {
         const onClose = vi.fn();
         render(
-            <TicketDetailModal
-                visible={true}
-                onClose={onClose}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
+            <MemoryRouter>
+                <TicketDetailModal
+                    visible={true}
+                    onClose={onClose}
+                    ticket={mockTicket}
+                    projectId="proj-1"
+                />
+            </MemoryRouter>
         );
 
         const closeButton = screen.getByRole('button', { name: /close/i });
@@ -122,12 +117,14 @@ describe('TicketDetailModal', () => {
 
     it('does not render when ticket is null', () => {
         const { container } = render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={null}
-                projectId="proj-1"
-            />
+            <MemoryRouter>
+                <TicketDetailModal
+                    visible={true}
+                    onClose={() => {}}
+                    ticket={null}
+                    projectId="proj-1"
+                />
+            </MemoryRouter>
         );
 
         expect(container.firstChild).toBeNull();
@@ -136,14 +133,7 @@ describe('TicketDetailModal', () => {
     it('shows empty state when no events exist', async () => {
         vi.mocked(TicketsService.getApiProjectsTicketsEvents).mockResolvedValue([]);
 
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={mockTicket}
-                projectId="proj-1"
-            />
-        );
+        renderModal();
 
         await waitFor(() => {
             expect(screen.getByText(/No events found for this ticket/i)).toBeInTheDocument();
@@ -156,14 +146,7 @@ describe('TicketDetailModal', () => {
             completedAt: '2024-01-03T00:00:00Z',
         };
 
-        render(
-            <TicketDetailModal
-                visible={true}
-                onClose={() => {}}
-                ticket={completedTicket}
-                projectId="proj-1"
-            />
-        );
+        renderModal(completedTicket);
 
         expect(screen.getByText('Completed')).toBeInTheDocument();
     });

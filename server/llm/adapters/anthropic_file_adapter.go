@@ -8,7 +8,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
-	f2 "github.com/colony-2/colony2/server/core/pkg/file"
+	f2 "github.com/colony-2/c2j/pkg/file"
 )
 
 // Ensure AnthropicAdapter implements FileAdapter

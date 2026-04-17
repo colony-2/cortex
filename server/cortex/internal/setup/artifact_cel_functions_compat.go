@@ -1,8 +1,8 @@
 package setup
 
 import (
-	"github.com/colony-2/colony2/server/recipe-template/pkg/colonycel"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/funcregistry"
+	"github.com/colony-2/c2j/pkg/template/colonycel"
+	"github.com/colony-2/c2j/pkg/template/funcregistry"
 )
 
 func registerArtifactCELFunctions(builder *funcregistry.Builder) {

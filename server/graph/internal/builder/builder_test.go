@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/colony-2/colony2/server/core/pkg/core"
+	"github.com/colony-2/c2j/pkg/core"
+	"github.com/stretchr/testify/require"
 )
 
 // MockMoonExecutor allows us to mock moon command execution for testing
@@ -457,6 +458,60 @@ func TestBuildGraphFromStaticMoonOutput(t *testing.T) {
 			t.Errorf("Expected edge from %s to %s not found", ee.source, ee.target)
 		}
 	}
+}
+
+func TestParseMoonGraphWithIndexedNodes(t *testing.T) {
+	staticMoonOutput := `{
+		"graph": {
+			"nodes": [0, 1]
+		},
+		"data": {
+			"0": {
+				"id": "example-api",
+				"source": "moon.yml",
+				"root": "/workspace/api",
+				"language": "typescript",
+				"config": {
+					"id": "example-api",
+					"language": "typescript",
+					"project": {
+						"description": "API service"
+					},
+					"dependsOn": ["example-database"]
+				},
+				"dependencies": [
+					{
+						"id": "example-database",
+						"scope": "production",
+						"source": "explicit"
+					}
+				]
+			},
+			"1": {
+				"id": "example-database",
+				"source": "moon.yml",
+				"root": "/workspace/database",
+				"language": "unknown",
+				"config": {
+					"id": "example-database",
+					"language": "unknown",
+					"project": {
+						"description": "Database service"
+					},
+					"dependsOn": []
+				},
+				"dependencies": []
+			}
+		}
+	}`
+
+	var moonGraph MoonGraph
+	require.NoError(t, json.Unmarshal([]byte(staticMoonOutput), &moonGraph))
+	require.Len(t, moonGraph.Graph.Nodes, 2)
+	require.Equal(t, "example-api", moonGraph.Graph.Nodes[0].ID)
+	require.Equal(t, "example-database", moonGraph.Graph.Nodes[1].ID)
+	require.Len(t, moonGraph.Graph.Nodes[0].Dependencies, 1)
+	require.Equal(t, "example-database", moonGraph.Graph.Nodes[0].Dependencies[0].ID)
 }
 
 // TestBuildGraphWithCurrentProject tests that we can parse the moon output

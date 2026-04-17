@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/colony-2/colony2/server/recipe-core/pkg/starter"
-	"github.com/colony-2/colony2/server/recipe-template/pkg/template"
-	"github.com/colony-2/colony2/server/recipe-worker/pkg/compiler"
+	"github.com/colony-2/c2j/pkg/starter"
+	"github.com/colony-2/c2j/pkg/template"
+	"github.com/colony-2/c2j/pkg/worker/compiler"
 	"github.com/colony-2/colony2/server/workflow/internal/model"
 	"github.com/colony-2/swf-go/pkg/swf"
 )

@@ -3,27 +3,22 @@ module github.com/colony-2/colony2/server/cortex
 go 1.26
 
 require (
+	github.com/colony-2/c2j v0.0.0-20260417010415-dda5172308dd
 	github.com/colony-2/colony2/server/api v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/cell v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/core v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/git v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/graph v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/project v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-core v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-input v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-template v0.0.0-20260416210508-3591476f41eb
-	github.com/colony-2/colony2/server/recipe-worker v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/recipes v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/ticket v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/colony2/server/workflow v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/strata-go v0.0.0-20260120043346-c4b58c0cd966
 	github.com/colony-2/swf-go v0.0.0-20260413043057-cd8d41023399
-	github.com/google/cel-go v0.26.0
+	github.com/google/cel-go v0.28.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
-	github.com/spf13/cobra v1.10.1
+	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -32,9 +27,11 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
+	github.com/clipperhouse/stringish v0.1.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
+	github.com/colony-2/colony2/server/cell-ops v0.0.0-20260416181618-7654417d7210 // indirect
 	github.com/colony-2/colony2/server/gha v0.0.0-20260416210508-3591476f41eb // indirect
-	github.com/colony-2/colony2/server/ops v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
@@ -57,7 +54,7 @@ require (
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-runewidth v0.0.17 // indirect
+	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mattn/go-shellwords v1.0.12 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/moby/api v1.54.0 // indirect
@@ -70,7 +67,6 @@ require (
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/pjbgf/sha1cd v0.3.2 // indirect
 	github.com/rhysd/actionlint v1.7.11 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
@@ -97,7 +93,7 @@ require (
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.6.2 // indirect
-	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -112,7 +108,6 @@ require (
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/colony-2/colony2/server/llm v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/colony-2/colony2/server/openapi v0.0.0-20260416210508-3591476f41eb // indirect
-	github.com/colony-2/colony2/server/recipe-child v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/colony-2/colony2/server/registry v0.0.0-20260416210508-3591476f41eb // indirect
 	github.com/colony-2/colony2/server/runtime v0.0.0-20260416210508-3591476f41eb
 	github.com/colony-2/pgwf v0.0.0-20260324185146-00a58a45f7d8 // indirect
@@ -140,7 +135,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.2 // indirect
-	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.5-0.20231225225746-43d5d4cd4e0e // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -152,8 +147,8 @@ require (
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
-	github.com/itchyny/gojq v0.12.16 // indirect
-	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/itchyny/gojq v0.12.19 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.2 // indirect
@@ -165,7 +160,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.10.9 // indirect
+	github.com/lib/pq v1.12.3 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 // indirect
@@ -176,7 +171,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oapi-codegen/nullable v1.1.0 // indirect
-	github.com/oapi-codegen/runtime v1.1.2 // indirect
+	github.com/oapi-codegen/runtime v1.4.0 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/openai/openai-go v1.11.1 // indirect
@@ -186,15 +181,14 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.21.0 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
+	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/swaggest/jsonschema-go v0.3.78 // indirect
+	github.com/swaggest/jsonschema-go v0.3.79 // indirect
 	github.com/swaggest/refl v1.4.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -214,16 +208,15 @@ require (
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
-	golang.org/x/time v0.12.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genai v1.16.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
-	google.golang.org/grpc v1.79.2 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gorm.io/driver/postgres v1.5.11 // indirect
 	gorm.io/driver/sqlite v1.6.0 // indirect
 	gorm.io/gorm v1.31.1 // indirect
 	gorm.io/plugin/optimisticlock v1.1.3 // indirect
 )
-

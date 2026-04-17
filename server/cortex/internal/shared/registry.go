@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	ops2 "github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/colony2/server/api/pkg/serverdeps/opregistry"
 	"github.com/colony-2/colony2/server/api/pkg/web"
-	ops2 "github.com/colony-2/colony2/server/recipe-core/pkg/ops"
 )
 
 // RegisterOps registers all ops with the ops registry

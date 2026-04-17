@@ -48,7 +48,7 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     const lastCellKey = useMemo(() => `${LAST_CELL_KEY_PREFIX}:${projectId}`, [projectId]);
 
     useEffect(() => {
-        if (!projectId) {
+        if (!open || !projectId) {
             setCells([]);
             return;
         }
@@ -189,10 +189,10 @@ export const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             title="New Ticket"
             open={open}
             onCancel={onClose}
-            destroyOnClose
+            destroyOnHidden
             style={{ top: 24 }}
             width="90vw"
-            bodyStyle={{ maxHeight: '80vh', overflowY: 'auto' }}
+            styles={{ body: { maxHeight: '80vh', overflowY: 'auto' } }}
             footer={
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Button onClick={handleClearDraft} disabled={!hasDraft}>
