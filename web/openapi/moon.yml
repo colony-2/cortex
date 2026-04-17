@@ -23,4 +23,13 @@ tasks:
       - 'dist/**'
 
   test:
-    command: 'true'
+    command: 'pnpm'
+    args: ['exec', 'vitest', 'run']
+    inputs:
+      - 'src/**/*'
+      - 'tests/**/*'
+      - 'package.json'
+      - 'tsconfig.json'
+    options:
+      runInCI: true
+      outputStyle: buffer-only-failure
