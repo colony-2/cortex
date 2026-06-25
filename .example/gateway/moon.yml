@@ -1,8 +1,0 @@
-id: example-gateway
-language: unknown
-project:
-  description: API gateway for example application
-dependsOn:
-  - example-frontend
-  - example-api
-  - example-monitoring

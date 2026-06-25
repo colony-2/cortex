@@ -1,7 +1,0 @@
-id: example-database
-language: unknown
-project:
-  description: Database service for example application
-dependsOn:
-  - example-logger
-  - example-config

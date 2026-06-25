@@ -1,7 +1,0 @@
-id: example-config
-language: unknown
-project:
-  description: Configuration service for example application
-dependsOn:
-  - example-logger
-  - example-shared-utils

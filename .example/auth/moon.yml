@@ -1,8 +1,0 @@
-id: example-auth
-language: unknown
-project:
-  description: Authentication service for example application
-dependsOn:
-  - example-database
-  - example-cache
-  - example-logger

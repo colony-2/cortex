@@ -1,6 +1,0 @@
-id: example-logger
-language: unknown
-project:
-  description: Logging service for example application
-dependsOn:
-  - example-shared-utils

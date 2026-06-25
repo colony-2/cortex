@@ -1,7 +1,0 @@
-id: example-service-c
-language: unknown
-project:
-  description: Service C for example application
-dependsOn:
-  - example-auth
-  - example-logger

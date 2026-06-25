@@ -1,8 +1,0 @@
-id: example-frontend
-language: unknown
-project:
-  description: Frontend application for example
-dependsOn:
-  - example-api
-  - example-auth
-  - example-config

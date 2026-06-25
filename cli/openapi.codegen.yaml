@@ -1,7 +1,0 @@
-package: openapi
-generate:
-  models: true
-  embedded-spec: true
-  client: true
-output-options:
-  skip-prune: true

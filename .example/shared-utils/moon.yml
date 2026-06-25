@@ -1,5 +1,0 @@
-id: example-shared-utils
-language: unknown
-project:
-  description: Shared utilities for example application
-dependsOn: []

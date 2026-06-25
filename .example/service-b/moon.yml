@@ -1,7 +1,0 @@
-id: example-service-b
-language: unknown
-project:
-  description: Service B for example application
-dependsOn:
-  - example-database
-  - example-cache

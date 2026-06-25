@@ -1,9 +1,0 @@
-id: example-api
-language: unknown
-project:
-  description: API service for example application
-dependsOn:
-  - example-service-a
-  - example-service-b
-  - example-service-c
-  - example-auth

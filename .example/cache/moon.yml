@@ -1,6 +1,0 @@
-id: example-cache
-language: unknown
-project:
-  description: Caching service for example application
-dependsOn:
-  - example-shared-utils
