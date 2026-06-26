@@ -232,7 +232,7 @@ class InputActivityService extends EventEmitter {
         }
       });
 
-      this.eventSource.addEventListener('heartbeat', (event) => {
+      this.eventSource.addEventListener('heartbeat', () => {
         // Heartbeat - can be used for connection monitoring
       });
 

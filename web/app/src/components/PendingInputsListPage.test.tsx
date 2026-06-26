@@ -61,7 +61,7 @@ describe('PendingInputsListPage', () => {
       expect(screen.getByText('No pending inputs')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Pending input requests from workflows will appear here')).toBeInTheDocument();
+    expect(screen.getByText('Pending input requests from jobs will appear here')).toBeInTheDocument();
   });
 
   it('should display list of pending inputs', async () => {
@@ -115,7 +115,7 @@ describe('PendingInputsListPage', () => {
 
     await waitFor(
       () => {
-        const viewButtons = screen.getAllByRole('button', { name: /open in workflow/i });
+        const viewButtons = screen.getAllByRole('button', { name: /open job/i });
         expect(viewButtons).toHaveLength(1);
       },
       { timeout: 3000 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -23,7 +23,6 @@ import {
 import type { DataNode } from 'antd/es/tree';
 import {
   ArrowLeftOutlined,
-  BranchesOutlined,
   DownloadOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
@@ -113,7 +112,7 @@ interface StoryNode {
   decision?: TransitionDecision;
 }
 
-interface WorkflowStoryResponse {
+interface JobStoryResponse {
   job_id: string;
   invocation_sequence?: number;
   recipe?: any;
@@ -286,7 +285,7 @@ function buildContextPatch(jobLines: PatchLine[], scopeLines: ScopePatchLine[]) 
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-async function fetchStory(projectId: string, jobId: string): Promise<WorkflowStoryResponse> {
+async function fetchStory(projectId: string, jobId: string): Promise<JobStoryResponse> {
   const response = await fetch(
     `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/story`
   );
@@ -432,17 +431,17 @@ function unionKeys(a: string[], b: string[]): string[] {
   return Array.from(set);
 }
 
-interface WorkflowStoryPageProps {
+interface JobStoryPageProps {
   projectId: string;
 }
 
-export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps) {
-  const { workflowId } = useParams<{ workflowId: string }>();
+export default function JobStoryPage({ projectId }: JobStoryPageProps) {
+  const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { pendingInputs, refresh: refreshPendingInputs } = useInputActivity();
 
-  const [story, setStory] = useState<WorkflowStoryResponse | null>(null);
+  const [story, setStory] = useState<JobStoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -471,7 +470,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   const [pendingInputError, setPendingInputError] = useState<string | null>(null);
   const [pendingInputSubmitting, setPendingInputSubmitting] = useState(false);
 
-  const jobId = workflowId || '';
+  const jobId = routeJobId || '';
 
   const wantInput = searchParams.get('input') === '1';
   const taskOrdinalParamRaw = searchParams.get('taskOrdinal');
@@ -500,11 +499,11 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   const selectedNode = selectedRef?.type === 'node' ? selectedRef.node : null;
 
   const load = async (opts?: { preserveSelection?: boolean }) => {
-    if (!workflowId) return;
+    if (!jobId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchStory(projectId, workflowId);
+      const data = await fetchStory(projectId, jobId);
       const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
         buildTree(data.root);
       setStory(data);
@@ -538,8 +537,8 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
         setExpandedKeys((prev) => unionKeys(prev, ancestors));
       }
     } catch (e) {
-      console.error('Failed to load workflow story', e);
-      setError(e instanceof Error ? e.message : 'Failed to load workflow story');
+      console.error('Failed to load job story', e);
+      setError(e instanceof Error ? e.message : 'Failed to load job story');
     } finally {
       setLoading(false);
     }
@@ -548,10 +547,10 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, workflowId]);
+  }, [projectId, jobId]);
 
   useEffect(() => {
-    const shouldLoadDetails = !!workflowId && (isPendingInput || wantInput);
+    const shouldLoadDetails = !!jobId && (isPendingInput || wantInput);
     if (!shouldLoadDetails) {
       setPendingInputDetails(null);
       setPendingInputError(null);
@@ -564,7 +563,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     setPendingInputError(null);
 
     inputActivityService
-      .getInputDetails(projectId, workflowId)
+      .getInputDetails(projectId, jobId)
       .then((d) => {
         if (cancelled) return;
         setPendingInputDetails(d);
@@ -583,7 +582,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     return () => {
       cancelled = true;
     };
-  }, [projectId, workflowId, isPendingInput, wantInput]);
+  }, [projectId, jobId, isPendingInput, wantInput]);
 
   useEffect(() => {
     if (!focusTaskOrdinal || !story?.root) return;
@@ -628,7 +627,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, refreshIntervalMs, story?.status, projectId, workflowId, selectedKey]);
+  }, [autoRefresh, refreshIntervalMs, story?.status, projectId, jobId, selectedKey]);
 
   const openArtifact = async (artifact: ArtifactKey) => {
     setSelectedArtifact(artifact);
@@ -690,7 +689,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
   };
 
   const submitRestart = async () => {
-    if (!workflowId || !selectedNode) return;
+    if (!jobId || !selectedNode) return;
     const stepOffset = selectedNode.restart_from_ordinal;
     if (stepOffset === null || stepOffset === undefined) return;
 
@@ -699,13 +698,13 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     setRestartSubmitting(true);
     try {
       const response = await fetch(
-        `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(workflowId)}/restart`,
+        `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             step_offset: stepOffset,
-            ...(contextPatch ? { context_patch: contextPatch } : {}),
+            ...(contextPatch ? { patch: contextPatch } : {}),
           }),
         }
       );
@@ -716,10 +715,10 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       }
 
       const data = (await response.json()) as { job_id: string };
-      message.success('Restarted workflow');
+      message.success('Restarted job');
       setRestartOpen(false);
       resetRestartState();
-      navigate(`/project/${projectId}/workflows/${data.job_id}/story`);
+      navigate(`/project/${projectId}/jobs/${data.job_id}/story`);
     } catch (e) {
       console.error('Restart failed', e);
       message.error(e instanceof Error ? e.message : 'Restart failed');
@@ -773,10 +772,10 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
     selectedNode?.task_ordinal === focusTaskOrdinal;
 
   const submitPendingInput = async (response: FormResponse) => {
-    if (!workflowId) return;
+    if (!jobId) return;
     setPendingInputSubmitting(true);
     try {
-      await inputActivityService.submitResponse(projectId, workflowId, response);
+      await inputActivityService.submitResponse(projectId, jobId, response);
       message.success('Response submitted');
       await refreshPendingInputs();
       setSearchParams((prev) => {
@@ -801,20 +800,15 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project/${projectId}/workflows`)}>
-              Back to Workflows
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project/${projectId}/jobs`)}>
+              Back to Jobs
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Workflow Story
+              Job Story
             </Title>
             {story?.job_id ? <Text code>{story.job_id.slice(-12)}</Text> : null}
           </Space>
           <Space>
-            {workflowId ? (
-              <Link to={`/project/${projectId}/workflows/${workflowId}`}>
-                <Button icon={<BranchesOutlined />}>Open old workflow detail</Button>
-              </Link>
-            ) : null}
             {story?.status === 'running' ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
@@ -841,7 +835,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
           <Alert
             type="error"
             showIcon
-            message="Failed to load workflow story"
+            message="Failed to load job story"
             description={error}
             action={
               <Button size="small" onClick={() => load()}>
@@ -872,7 +866,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
             message="Pending input required"
             description={
               <div>
-                This workflow is waiting for input.
+                This job is waiting for input.
                 {focusTaskOrdinal !== null ? (
                   <>
                     {' '}Task ordinal: <Text code>{focusTaskOrdinal}</Text>.
@@ -1339,7 +1333,7 @@ export default function WorkflowStoryPage({ projectId }: WorkflowStoryPageProps)
       </Modal>
 
       <Modal
-        title="Restart Workflow"
+        title="Restart Job"
         open={restartOpen}
         onCancel={() => {
           setRestartOpen(false);

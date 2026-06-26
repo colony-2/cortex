@@ -1,45 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button, Card, Empty, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
-import { syncCells } from '@colony2/shared';
-
-type ManagedCell = {
-  id: string;
-  name: string;
-  workingPath: string;
-  populator?: string;
-  populatorId?: string;
-  updatedAt: string;
-  dependencies?: string[];
-};
+import { Empty, Input, Space, Spin, Table, Tag, Typography, message } from 'antd';
+import { listCells } from '@colony2/shared/api';
+import type { CortexCell } from '@colony2/shared/types';
 
 interface CellsListProps {
   projectId: string;
 }
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
-const { Title, Text } = Typography;
+const { Text, Title } = Typography;
 
 export default function CellsList({ projectId }: CellsListProps) {
-  const [cells, setCells] = useState<ManagedCell[]>([]);
+  const [cells, setCells] = useState<CortexCell[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`);
-        if (!response.ok) {
-          const text = await response.text().catch(() => '');
-          throw new Error(text || 'Failed to load cells');
-        }
-        const data = await response.json();
-        setCells(data || []);
+        setCells(await listCells(projectId));
       } catch (err) {
         console.error('Failed to load cells', err);
         const messageText = err instanceof Error ? err.message : 'Failed to load cells';
@@ -55,135 +36,78 @@ export default function CellsList({ projectId }: CellsListProps) {
     }
   }, [projectId]);
 
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      await syncCells(projectId);
-      message.success('Cells synced successfully');
-      // Reload cells after sync
-      const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`);
-      if (response.ok) {
-        const data = await response.json();
-        setCells(data || []);
-      }
-    } catch (err) {
-      console.error('Failed to sync cells', err);
-      const messageText = err instanceof Error ? err.message : 'Failed to sync cells';
-      message.error(messageText);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const filteredCells = useMemo(() => {
-    if (!search) {
-      return cells;
-    }
+    if (!search) return cells;
     const needle = search.toLowerCase();
     return cells.filter(
       (cell) =>
         cell.name.toLowerCase().includes(needle) ||
-        cell.workingPath.toLowerCase().includes(needle) ||
-        (cell.populator && cell.populator.toLowerCase().includes(needle)),
+        cell.repository_source.toLowerCase().includes(needle) ||
+        cell.kind.toLowerCase().includes(needle),
     );
   }, [cells, search]);
 
   return (
-    <Card
-      title={
-        <Space direction="vertical" size={4}>
-          <Title level={4} style={{ margin: 0 }}>
-            Cells
-          </Title>
-          <Text type="secondary">Browse managed cells in this project</Text>
-        </Space>
-      }
-      extra={
-        <Space>
-          <Button type="primary" onClick={handleSync} loading={syncing}>
-            Sync
-          </Button>
+    <div style={{ padding: 24 }}>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
+          <div>
+            <Title level={3} style={{ margin: 0 }}>
+              Cells
+            </Title>
+            <Text type="secondary">This cell and its c2j-discovered dependents</Text>
+          </div>
           <Input.Search
-            placeholder="Search by name, path, or populator"
+            placeholder="Search cells"
             allowClear
             onSearch={setSearch}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
             style={{ width: 320 }}
           />
-        </Space>
-      }
-      style={{ height: '100%' }}
-      styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column' } }}
-    >
-      {loading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Spin size="large" />
         </div>
-      ) : error ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+        {loading ? (
+          <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin size="large" />
+          </div>
+        ) : error ? (
           <Empty description={error} />
-        </div>
-      ) : filteredCells.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Empty description="No cells found" />
-        </div>
-      ) : (
-        <Table
-          rowKey="id"
-          dataSource={filteredCells}
-          pagination={{ pageSize: 10 }}
-          onRow={(record) => ({
-            onClick: (e) => {
-              // Allow Ctrl/Cmd-click to open in new tab
-              if (e.ctrlKey || e.metaKey) return;
-              if (record) navigate(`/project/${projectId}/cell/${record.id}`);
-            },
-            style: { cursor: 'pointer' },
-          })}
-          columns={[
-            {
-              title: 'Name',
-              dataIndex: 'name',
-              key: 'name',
-              render: (text: string) => <Text strong>{text}</Text>,
-            },
-            {
-              title: 'Path',
-              dataIndex: 'workingPath',
-              key: 'workingPath',
-              render: (text: string) => <Text code>{text}</Text>,
-            },
-            {
-              title: 'Populator',
-              dataIndex: 'populator',
-              key: 'populator',
-              render: (populator?: string, record?: ManagedCell) =>
-                populator ? (
-                  <Space size="small">
-                    <Tag color="purple">{populator}</Tag>
-                    {record?.populatorId && <Text type="secondary">#{record.populatorId}</Text>}
+        ) : (
+          <Table
+            rowKey="id"
+            dataSource={filteredCells}
+            pagination={false}
+            locale={{ emptyText: 'No cells found' }}
+            columns={[
+              {
+                title: 'Name',
+                dataIndex: 'name',
+                key: 'name',
+                width: 180,
+                render: (name: string, cell: CortexCell) => (
+                  <Space>
+                    <Text strong>{name}</Text>
+                    <Tag color={cell.kind === 'self' ? 'blue' : 'default'}>{cell.kind}</Tag>
                   </Space>
-                ) : (
-                  <Text type="secondary">—</Text>
                 ),
-            },
-            {
-              title: 'Dependencies',
-              dataIndex: 'dependencies',
-              key: 'dependencies',
-              render: (deps?: string[]) => <Text>{deps?.length || 0}</Text>,
-              width: 140,
-            },
-            {
-              title: 'Updated',
-              dataIndex: 'updatedAt',
-              key: 'updatedAt',
-              render: (value: string) => <Text type="secondary">{new Date(value).toLocaleString()}</Text>,
-              width: 200,
-            },
-          ]}
-        />
-      )}
-    </Card>
+              },
+              {
+                title: 'Repository',
+                dataIndex: 'repository_source',
+                key: 'repository_source',
+                render: (repo: string) => <Text code>{repo}</Text>,
+              },
+              {
+                title: 'Ref',
+                dataIndex: 'git_ref',
+                key: 'git_ref',
+                width: 140,
+                render: (ref?: string) => ref || <Text type="secondary">-</Text>,
+              },
+            ]}
+          />
+        )}
+      </Space>
+    </div>
   );
 }

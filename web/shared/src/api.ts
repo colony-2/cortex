@@ -1,6 +1,13 @@
-import type { Project, RelationshipGraph } from './types';
+import type {
+  CortexCell,
+  ListRecipeJobsResponse,
+  Project,
+  RecipeJob,
+  RecipeJobStatus,
+  RelationshipGraph,
+  SubmitRecipeJobRequest,
+} from './types';
 
-// Use relative URLs in production, localhost in development
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
 
 async function handleResponse(response: Response, operation: string) {
@@ -11,61 +18,64 @@ async function handleResponse(response: Response, operation: string) {
   return response;
 }
 
-export async function fetchGraph(projectId: string): Promise<RelationshipGraph> {
-  try {
-    const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/graph`);
-    await handleResponse(response, 'Fetch graph');
-    return response.json();
-  } catch (error) {
-    console.error('Graph fetch error:', error);
-    throw new Error(`Failed to load graph data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-export async function listProjects(): Promise<Project[]> {
-  const response = await fetch(`${API_BASE}/projects`);
+export async function listProjects(tenantId = '1'): Promise<Project[]> {
+  const response = await fetch(`${API_BASE}/projects?tenantId=${encodeURIComponent(tenantId)}`);
   await handleResponse(response, 'List projects');
   return response.json();
 }
 
-export async function createProject(input: { name: string; gitRepoPath: string }): Promise<Project> {
-  const response = await fetch(`${API_BASE}/projects`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  await handleResponse(response, 'Create project');
+export async function listCells(projectId: string): Promise<CortexCell[]> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells`);
+  await handleResponse(response, 'List cells');
   return response.json();
 }
 
-export async function syncCells(projectId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/cells/sync`, {
-    method: 'POST',
-  });
-  await handleResponse(response, 'Sync cells');
-}
-
-export async function updateProject(
+export async function listJobs(
   projectId: string,
-  input: {
-    name?: string;
-    gitRepoPath?: string;
-    gitRepoBranch?: string;
-    defaultTicketRecipe?: string;
+  options: {
+    status?: RecipeJobStatus[];
+    cell?: string;
+    pageSize?: number;
+    pageToken?: string;
+  } = {},
+): Promise<ListRecipeJobsResponse> {
+  const params = new URLSearchParams();
+  for (const status of options.status || []) {
+    params.append('status', status);
   }
-): Promise<Project> {
-  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-  await handleResponse(response, 'Update project');
+  if (options.cell) params.set('cell', options.cell);
+  if (options.pageSize) params.set('pageSize', String(options.pageSize));
+  if (options.pageToken) params.set('pageToken', options.pageToken);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs${query ? `?${query}` : ''}`,
+  );
+  await handleResponse(response, 'List jobs');
   return response.json();
 }
 
-export async function deleteProject(projectId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
-    method: 'DELETE',
+export async function getJob(projectId: string, jobId: string): Promise<RecipeJob> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}`,
+  );
+  await handleResponse(response, 'Get job');
+  return response.json();
+}
+
+export async function submitJob(projectId: string, input: SubmitRecipeJobRequest): Promise<RecipeJob> {
+  const response = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   });
-  await handleResponse(response, 'Delete project');
+  await handleResponse(response, 'Submit job');
+  return response.json();
+}
+
+export async function fetchGraph(_projectId: string): Promise<RelationshipGraph> {
+  return { cells: [], edges: [] };
+}
+
+export async function syncCells(_projectId: string): Promise<void> {
+  return undefined;
 }

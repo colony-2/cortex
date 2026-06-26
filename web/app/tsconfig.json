@@ -15,6 +15,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
+    "baseUrl": ".",
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
@@ -26,32 +27,8 @@
       "@colony2/shared": [
         "../shared/src/index.ts"
       ],
-      "@colony2/flowchart": [
-        "../flowchart/src/index.ts"
-      ],
-      "@colony2/kanban": [
-        "../kanban/src/index.ts"
-      ],
-      "@colony2/notebook": [
-        "../notebook/src/index.ts"
-      ],
       "@colony2/shared/*": [
         "../shared/src/*"
-      ],
-      "@colony2/flowchart/*": [
-        "../flowchart/src/*"
-      ],
-      "@colony2/kanban/*": [
-        "../kanban/src/*"
-      ],
-      "@colony2/notebook/*": [
-        "../notebook/src/*"
-      ],
-      "@colony2/openapi-client/*": [
-        "../openapi/src/*"
-      ],
-      "@colony2/openapi-client": [
-        "../openapi/src/index.ts"
       ]
     }
   },
@@ -61,23 +38,10 @@
   "exclude": [
     "dist",
     "node_modules",
-    "tests"
+    "tests",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test/**"
   ],
-  "references": [
-    {
-      "path": "../flowchart"
-    },
-    {
-      "path": "../kanban"
-    },
-    {
-      "path": "../openapi"
-    },
-    {
-      "path": "../shared"
-    },
-    {
-      "path": "../notebook"
-    }
-  ]
+  "references": []
 }

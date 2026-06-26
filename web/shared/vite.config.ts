@@ -13,7 +13,7 @@ export default defineConfig({
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'antd', '@ant-design/icons', '@colony2/openapi-client', 'dayjs'],
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
       output: {
         globals: {
           react: 'React',

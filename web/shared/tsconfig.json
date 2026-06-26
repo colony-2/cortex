@@ -16,6 +16,7 @@
     "declarationDir": "dist",
     "emitDeclarationOnly": true,
     "outDir": "dist",
+    "rootDir": "src",
     "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
@@ -25,15 +26,7 @@
     "types": [
       "vite/client"
     ],
-    "composite": true,
-    "paths": {
-      "@colony2/openapi-client": [
-        "../openapi/src/index.ts"
-      ],
-      "@colony2/openapi-client/*": [
-        "../openapi/src/*"
-      ]
-    }
+    "composite": true
   },
   "include": [
     "src"
@@ -43,9 +36,5 @@
     "src/**/*.test.tsx",
     "src/test/**"
   ],
-  "references": [
-    {
-      "path": "../openapi"
-    }
-  ]
+  "references": []
 }

@@ -157,7 +157,7 @@ describe('InputActivityService', () => {
   describe('getInputDetails', () => {
     it('should fetch input details for a job', async () => {
       const mockDetails = {
-        jobId: 'wf1',
+        jobId: 'job-1',
         status: 'pending',
         form: {
           title: 'Test Form',
@@ -167,7 +167,7 @@ describe('InputActivityService', () => {
       };
 
       ((globalThis as any).fetch as any).mockImplementation((url: string) => {
-        if (url.includes(`/projects/${projectId}/user-inputs/wf1`)) {
+        if (url.includes(`/projects/${projectId}/user-inputs/job-1`)) {
           return Promise.resolve({
             ok: true,
             json: async () => mockDetails
@@ -176,17 +176,17 @@ describe('InputActivityService', () => {
         return Promise.reject(new Error('Unexpected URL'));
       });
 
-      const result = await inputActivityService.getInputDetails(projectId, 'wf1');
+      const result = await inputActivityService.getInputDetails(projectId, 'job-1');
       
       expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/wf1`
+        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1`
       );
       expect(result).toEqual(mockDetails);
     });
   });
 
   describe('submitResponse', () => {
-    it('should submit a response for a workflow', async () => {
+    it('should submit a response for a job', async () => {
       const mockResponse = {
         fields: { field1: 'value1' },
         submitted_at: '2024-01-01T00:00:00Z',
@@ -196,10 +196,10 @@ describe('InputActivityService', () => {
         ok: true
       });
 
-      await inputActivityService.submitResponse(projectId, 'wf1', mockResponse);
+      await inputActivityService.submitResponse(projectId, 'job-1', mockResponse);
       
       expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/wf1/respond`,
+        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1/respond`,
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -210,7 +210,7 @@ describe('InputActivityService', () => {
       );
     });
 
-    it('should add submittedAt timestamp to metadata', async () => {
+    it('should send submitted_at timestamp', async () => {
       const mockResponse = {
         fields: { field1: 'value1' },
         submitted_at: '2024-01-01T00:00:00Z',
@@ -220,7 +220,7 @@ describe('InputActivityService', () => {
         ok: true
       });
 
-      await inputActivityService.submitResponse(projectId, 'wf1', mockResponse);
+      await inputActivityService.submitResponse(projectId, 'job-1', mockResponse);
       
       const callArgs = ((globalThis as any).fetch as any).mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
@@ -230,15 +230,15 @@ describe('InputActivityService', () => {
   });
 
   describe('cancelInput', () => {
-    it('should cancel an input for a workflow', async () => {
+    it('should cancel an input for a job', async () => {
       ((globalThis as any).fetch as any).mockResolvedValueOnce({
         ok: true
       });
 
-      await inputActivityService.cancelInput(projectId, 'wf1');
+      await inputActivityService.cancelInput(projectId, 'job-1');
       
       expect((globalThis as any).fetch).toHaveBeenCalledWith(
-        `http://localhost:8080/api/projects/${projectId}/user-inputs/wf1/cancel`,
+        `http://localhost:8080/api/projects/${projectId}/user-inputs/job-1/cancel`,
         expect.objectContaining({
           method: 'POST'
         })

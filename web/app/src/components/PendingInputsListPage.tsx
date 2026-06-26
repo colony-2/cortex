@@ -24,7 +24,7 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
   };
 
   const handleViewInput = (jobId: string) => {
-    navigate(`/project/${projectId}/workflows/${jobId}/story?input=1`);
+    navigate(`/project/${projectId}/jobs/${jobId}/story?input=1`);
   };
 
   if (!isConnected) {
@@ -58,7 +58,7 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
               style={{ padding: '48px 0' }}
             >
               <Text type="secondary">
-                Pending input requests from workflows will appear here
+                Pending input requests from jobs will appear here
               </Text>
             </Empty>
           </Card>
@@ -83,7 +83,7 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
                     </Text>
                   </Space>
                   <Button type="primary" onClick={() => handleViewInput(input.id)}>
-                    Open in Workflow
+                    Open Job
                   </Button>
                 </div>
               </Card>

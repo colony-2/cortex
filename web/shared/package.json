@@ -4,6 +4,11 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
@@ -16,17 +21,8 @@
     "vite": "^5.4.0",
     "vitest": "^3.2.4"
   },
-  "pnpm": {"onlyBuiltDependencies"
-  : [
-    "esbuild"
-  ]
-  },
   "dependencies": {
-    "@colony2/openapi-client": "file:../openapi",
-    "antd": "^6.1.2",
-    "dayjs": "^1.11.19",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
+    "react-dom": "^18.3.1"
   }
 }

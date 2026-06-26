@@ -82,11 +82,7 @@ export default function InputFormRenderer({
     
     const response: FormResponse = {
       fields: transformedValues,
-      metadata: {
-        submittedAt: new Date().toISOString(),
-        formId: form.id,
-        formTitle: form.title,
-      },
+      submitted_at: new Date().toISOString(),
     };
     
     onSubmit(response);

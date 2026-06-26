@@ -6,6 +6,7 @@ server-build:
 	go build ./server/cmd/api ./server/cmd/uitestserver ./server/cmd/cortex
 
 web-build:
+	pnpm --filter @colony2/shared build
 	pnpm --filter @colony2/app build
 
 cortex: web-build
@@ -16,10 +17,12 @@ cortex: web-build
 
 test:
 	go test ./server/...
+	pnpm --filter @colony2/shared test
 	pnpm --filter @colony2/app test
 
 fmt:
 	gofmt -w server
+	pnpm --filter @colony2/shared typecheck
 	pnpm --filter @colony2/app typecheck
 
 clean:

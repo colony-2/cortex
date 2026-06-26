@@ -1,2 +1,5 @@
 packages:
-  - "web/*"
+  - "web/app"
+  - "web/shared"
+onlyBuiltDependencies:
+  - esbuild

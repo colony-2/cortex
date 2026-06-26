@@ -6,7 +6,7 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { InputActivityProvider, inputActivityService } from '@colony2/shared';
 import PendingInputsListPage from './PendingInputsListPage';
-import WorkflowStoryPage from './WorkflowStoryPage';
+import JobStoryPage from './JobStoryPage';
 import {
   inputApiHandlers,
   resetMockInputStore,
@@ -36,13 +36,13 @@ vi.mock('react-router-dom', async () => {
  * End-to-End Integration Test
  *
  * Simulates the complete flow from TestSimpleInput:
- * 1. Workflow creates input request
+ * 1. Job creates input request
  * 2. User sees pending input in list
  * 3. User clicks to view details
  * 4. User fills out form
  * 5. User submits response
  * 6. Input is removed from list
- * 7. Workflow receives response and completes
+ * 7. Job receives response and completes
  */
 describe('Input Flow - Complete E2E Integration', () => {
   const projectId = 'test-project-123';
@@ -64,7 +64,7 @@ describe('Input Flow - Complete E2E Integration', () => {
     vi.clearAllMocks();
   });
 
-  it('should complete full input workflow from start to finish', async () => {
+  it('should complete full input job from start to finish', async () => {
     const user = userEvent.setup();
 
     server.use(
@@ -130,7 +130,7 @@ describe('Input Flow - Complete E2E Integration', () => {
       })
     );
 
-    // Step 1 & 2: Start with one pending input (simulating workflow created it)
+    // Step 1 & 2: Start with one pending input (simulating job created it)
     const inputDetails = createMockSingleQuestionDetails(jobId);
     const pendingInput = createMockPendingInput(jobId);
     mockPendingInputsStore.set(projectId, [pendingInput]);
@@ -154,24 +154,24 @@ describe('Input Flow - Complete E2E Integration', () => {
       expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
     });
 
-    // Step 4: User clicks Open in Workflow button
-    const openButton = screen.getByRole('button', { name: /open in workflow/i });
+    // Step 4: User clicks Open Job button
+    const openButton = screen.getByRole('button', { name: /open job/i });
     await user.click(openButton);
 
-    // Should navigate to workflow story with prompt open
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story?input=1`);
+    // Should navigate to job story with prompt open
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story?input=1`);
 
-    // Cleanup and render workflow story page
+    // Cleanup and render job story page
     unmount();
 
     // Step 5-6: Render story page with form
     render(
-      <MemoryRouter initialEntries={[`/project/${projectId}/workflows/${jobId}/story?input=1`]}>
+      <MemoryRouter initialEntries={[`/project/${projectId}/jobs/${jobId}/story?input=1`]}>
         <InputActivityProvider>
           <Routes>
             <Route
-              path="/project/:projectId/workflows/:workflowId/story"
-              element={<WorkflowStoryPage projectId={projectId} />}
+              path="/project/:projectId/jobs/:jobId/story"
+              element={<JobStoryPage projectId={projectId} />}
             />
           </Routes>
         </InputActivityProvider>
@@ -200,14 +200,14 @@ describe('Input Flow - Complete E2E Integration', () => {
       expect(mockInputDetailsStore.has(key)).toBe(false);
     });
 
-    // Workflow is now complete (tested list → story → submit)
+    // Job is now complete (tested list → story → submit)
   });
 
-  it('should handle concurrent inputs from multiple workflows', async () => {
+  it('should handle concurrent inputs from multiple jobs', async () => {
     const user = userEvent.setup();
-    const jobId1 = 'job-workflow-1';
-    const jobId2 = 'job-workflow-2';
-    const jobId3 = 'job-workflow-3';
+    const jobId1 = 'job-1';
+    const jobId2 = 'job-2';
+    const jobId3 = 'job-3';
 
     // Setup three pending inputs
     setupMockInputs(
@@ -282,10 +282,10 @@ describe('Input Flow - Complete E2E Integration', () => {
     expect(screen.getByText(`Job ID: ${jobId}`)).toBeInTheDocument();
 
     // Click open should still work
-    const openButton = screen.getByRole('button', { name: /open in workflow/i });
+    const openButton = screen.getByRole('button', { name: /open job/i });
     await user.click(openButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/workflows/${jobId}/story?input=1`);
+    expect(mockNavigate).toHaveBeenCalledWith(`/project/${projectId}/jobs/${jobId}/story?input=1`);
     unmount();
   });
 

@@ -24,7 +24,7 @@ describe('InputFormRenderer', () => {
   };
 
   const context: FormContext = {
-    workflowName: 'Test Workflow',
+    jobName: 'Test Job',
     activityName: 'Test Activity',
   };
 
@@ -225,11 +225,7 @@ describe('InputFormRenderer', () => {
           fields: {
             field1: 'Test value',
           },
-          metadata: expect.objectContaining({
-            formId: 'form1',
-            formTitle: 'Test Form',
-            submittedAt: expect.any(String),
-          }),
+          submitted_at: expect.any(String),
         })
       );
     });

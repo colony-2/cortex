@@ -10,7 +10,7 @@ The test suite provides comprehensive coverage of the Pending Inputs feature, in
 - Real-time SSE updates
 - Multi-field forms
 - Error handling
-- End-to-end workflow
+- End-to-end job
 
 ## Test Files
 
@@ -117,11 +117,11 @@ Tests for error scenarios.
 - ✅ Rapid project switching
 
 ### 8. `InputFlow.integration.test.tsx`
-End-to-end integration tests simulating complete workflows.
+End-to-end integration tests simulating complete jobs.
 
 **Coverage:**
-- ✅ Complete workflow from start to finish (mirrors TestSimpleInput)
-- ✅ Concurrent inputs from multiple workflows
+- ✅ Complete job from start to finish (mirrors TestSimpleInput)
+- ✅ Concurrent inputs from multiple jobs
 - ✅ Form state persistence during SSE reconnection
 - ✅ Real-time count badge updates
 
@@ -152,19 +152,19 @@ npm test -- --watch src/components/InputDetailPage.test.tsx
 
 ### Go Test (TestSimpleInput)
 ```
-1. Start workflow with input op
+1. Start job with input op
 2. Wait 300ms for activity to start
 3. collectPendingInputs() -> verify 1 input
 4. getDetails() -> verify form.Question
 5. submitResponse() with answer
-6. Wait for workflow completion
-7. Verify workflow output contains answer
+6. Wait for job completion
+7. Verify job output contains answer
 ```
 
 ### TypeScript Integration Test (InputFlow.integration.test)
 ```
 1. Start with empty list
-2. Emit SSE event for new input (simulates workflow start)
+2. Emit SSE event for new input (simulates job start)
 3. Verify input appears in list
 4. Click View button
 5. Navigate to detail page
