@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright} playwright test",
+    "test:e2e": "../../scripts/ensure-playwright-browsers.sh && PLAYWRIGHT_BROWSERS_PATH=${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright} playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
