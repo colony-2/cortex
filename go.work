@@ -1,20 +1,6 @@
 go 1.26
 
 use (
-	./cli
-	./server/api
-	./server/cell
-	./server/cell-ops
-	./server/cortex
-	./server/gha
-	./server/graph
-	./server/llm
-	./server/openapi
-	./server/pgembed
-	./server/project
-	./server/recipes
-	./server/runtime
-	./server/registry
-	./server/ticket
-	./server/workflow
+	./server
+	/c2j
 )

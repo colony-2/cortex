@@ -1,0 +1,15 @@
+{
+  "name": "@colony2/cortex",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "go run ./server/cmd/api",
+    "dev:web": "pnpm --filter @colony2/app dev",
+    "test:api": "go test ./server/...",
+    "test:web": "pnpm --filter @colony2/app test",
+    "test:e2e": "pnpm --filter @colony2/app test:e2e",
+    "typecheck:web": "pnpm --filter @colony2/app typecheck",
+    "build:web": "pnpm --filter @colony2/app build"
+  },
+  "packageManager": "pnpm@10.0.0"
+}
