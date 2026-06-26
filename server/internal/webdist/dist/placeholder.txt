@@ -1,0 +1,1 @@
+Build the React app and run `make cortex` to embed production UI assets here.

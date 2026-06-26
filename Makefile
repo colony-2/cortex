@@ -9,8 +9,8 @@ web-build:
 	pnpm --filter @colony2/app build
 
 cortex: web-build
-	rm -rf server/internal/webdist/dist
 	mkdir -p server/internal/webdist/dist
+	find server/internal/webdist/dist -mindepth 1 ! -name placeholder.txt -exec rm -rf {} +
 	cp -R web/app/dist/. server/internal/webdist/dist/
 	go build -o build/cortex ./server/cmd/cortex
 
@@ -23,4 +23,5 @@ fmt:
 	pnpm --filter @colony2/app typecheck
 
 clean:
-	rm -rf build server/internal/webdist/dist
+	rm -rf build
+	find server/internal/webdist/dist -mindepth 1 ! -name placeholder.txt -exec rm -rf {} +

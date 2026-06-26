@@ -9,6 +9,8 @@ web/dist/
 web/.cache/
 build/
 server/static/dist/
+server/internal/webdist/dist/*
+!server/internal/webdist/dist/placeholder.txt
 *.exe
 *.dll
 *.so
