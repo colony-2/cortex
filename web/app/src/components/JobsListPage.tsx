@@ -254,7 +254,7 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
         onCancel={() => setSubmitOpen(false)}
         onOk={submit}
         okButtonProps={{ loading: submitting }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={{ inputs: '{}' }}>
           <Form.Item label="Cell" name="cell">

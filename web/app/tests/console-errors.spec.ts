@@ -103,9 +103,10 @@ test.describe('Console cleanliness', () => {
     await page.getByRole('link', { name: 'Cells' }).click();
 
     await expect(page.getByRole('heading', { name: 'Cells' })).toBeVisible();
-    await expect(page.locator('.ant-table-tbody > tr')).toHaveCount(2, { timeout: 5000 });
-    await expect(page.getByText('platform')).toBeVisible();
-    await expect(page.getByText('https://github.com/colony-2/api.git')).toBeVisible();
+    const rows = page.locator('.ant-table-tbody > tr');
+    await expect(rows).toHaveCount(2, { timeout: 5000 });
+    await expect(rows.first().getByText('platform', { exact: true })).toBeVisible();
+    await expect(page.getByRole('table').getByText('https://github.com/colony-2/api.git')).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });

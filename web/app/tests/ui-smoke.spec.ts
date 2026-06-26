@@ -99,7 +99,7 @@ test.describe('UI smoke (mocked API)', () => {
     await expect(page).toHaveTitle(/cortex: tenant 1/);
     await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
     await expect(page.getByText('job-smoke-1')).toBeVisible();
-    await expect(page.getByText('ACTIVE')).toBeVisible();
+    await expect(page.getByRole('table').getByText('ACTIVE')).toBeVisible();
 
     await page.getByRole('link', { name: 'Cells' }).click();
 
@@ -109,8 +109,8 @@ test.describe('UI smoke (mocked API)', () => {
     await page.getByPlaceholder('Search cells').fill('platform');
 
     await expect(rows).toHaveCount(1, { timeout: 5000 });
-    await expect(page.getByText('platform')).toBeVisible();
-    await expect(page.getByText('api')).toHaveCount(0);
+    await expect(rows.first().getByText('platform', { exact: true })).toBeVisible();
+    await expect(page.getByRole('table').getByText('api', { exact: true })).toHaveCount(0);
 
     expect(consoleErrors).toEqual([]);
   });
