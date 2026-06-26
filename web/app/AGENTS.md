@@ -1,185 +1,41 @@
-# VibethisUI Main Application
+# Cortex Web App
 
-## Overview
-React-based graph visualization application that provides an interactive interface for exploring dependency graphs and handling workflow inputs. Built with Ant Design components and integrates shared/flowchart modules for a streamlined experience.
+This package is the React UI for Cortex. It is intentionally scoped to the
+new decomponentized model:
 
-## Architecture
+- projects in routes are JobDB tenant IDs, defaulting to tenant `1`
+- jobs are the primary work item
+- cells are the current cell plus c2j-discovered dependents
+- pending inputs are job input requests
 
-### Core Application Structure
-**Framework**: React 18 with TypeScript, Vite build system
-**UI Library**: Ant Design (antd) with @ant-design/icons
-**Routing**: React Router v6 for SPA navigation and deep linking
-**State**: URL-based state management with component-level useState hooks
+Do not reintroduce removed legacy work-item screens, recipe management screens,
+project editing/admin pages, graph traversal UI, old task-runner commands, or
+the retired auxiliary UI packages.
 
-### Component Hierarchy
-```
-App (BrowserRouter + InputActivityProvider)
-│   ├── Project selector (header)
-├── MainView (Split layout)
-│   ├── GraphFlow (Left panel - from @colony2/flowchart)
-│   └── SidePanel (Right panel - contextual tabs)
-│       └── InputFormsTab (Workflow input management)
-└── InputFormRenderer (Dynamic form generation)
-```
+## Commands
 
-### Module Dependencies
-- `@colony2/shared`: Core types, API layer, and utilities
-- `@colony2/flowchart`: Graph visualization with ReactFlow
+Run commands from `/src`:
 
-## Key Interfaces
-
-### Core Types (from @colony2/shared)
-```typescript
-interface DependencyCell {
-  id: string;
-  name: string;
-  path: string;
-  type: string;
-  dependencies: string[];
-}
-
-interface RelationshipGraph {
-  cells: DependencyCell[];
-  edges: DependencyEdge[];
-}
-
-interface PendingInput {
-  workflowId: string;
-  formTitle: string;
-  status: 'pending' | 'completed';
-  createdAt: string;
-  expiresAt: string;
-}
-```
-
-### Main Component Props
-```typescript
-// MainView.tsx
-interface MainViewProps {
-  // Uses URL params: cellId, tab, subtab
-  // Manages selectedCell state and navigation
-}
-
-// SidePanel.tsx
-interface SidePanelProps {
-  selectedCell: DependencyCell | null;
-}
-
-// InputFormRenderer.tsx
-interface InputFormRendererProps {
-  form: InputForm;
-  context?: FormContext;
-  onSubmit: (response: FormResponse) => void;
-  onCancel?: () => void;
-  loading?: boolean;
-}
-```
-
-### API Layer
-```typescript
-// API functions in @colony2/shared
-async function fetchGraph(projectId: string): Promise<RelationshipGraph>
-async function listProjects(): Promise<Project[]>
-async function createProject(input: { name: string; gitRepoPath: string }): Promise<Project>
-```
-
-## Usage Examples
-
-### Basic Application Setup
-```typescript
-// App.tsx - Main routing configuration
-function App() {
-  return (
-    <BrowserRouter>
-      <InputActivityProvider>
-        <Routes>
-          <Route path="/cells" element={<MainView />} />
-          <Route path="/cell/:cellId" element={<MainView />} />
-          <Route path="/cell/:cellId/:tab" element={<MainView />} />
-          <Route path="/cell/:cellId/:tab/:subtab" element={<MainView />} />
-        </Routes>
-      </InputActivityProvider>
-    </BrowserRouter>
-  );
-}
-```
-
-### Cell Selection and Navigation
-```typescript
-// MainView.tsx - Handle cell selection
-const handleCellSelect = useCallback((cell: DependencyCell | null) => {
-  setSelectedCell(cell);
-  if (cell) {
-    const path = navigateToPath({ projectId, cellId: cell.id, tab: tab || 'inputs' });
-    navigate(path);
-  }
-}, [navigate, projectId, tab]);
-```
-
-### Form Rendering with Validation
-```typescript
-// InputFormRenderer.tsx - Dynamic form field generation
-const renderField = (field: InputField) => {
-  switch (field.type) {
-    case 'short_answer':
-      return <Input placeholder={field.placeholder} />;
-    case 'multiple_choice':
-      return (
-        <Radio.Group>
-          {field.options?.map(option => 
-            <Radio key={option} value={option}>{option}</Radio>
-          )}
-        </Radio.Group>
-      );
-    // Additional field types: paragraph_text, checkboxes, dropdown, 
-    // linear_scale, date, time, file_upload
-  }
-};
-```
-
-## Configuration
-
-### Development Server
 ```bash
-# Start development server
-npm run dev  # or moon run ui-app:serve
-# Runs on http://localhost:5173
+pnpm --filter @colony2/app dev
+pnpm --filter @colony2/app typecheck
+pnpm --filter @colony2/app test
+pnpm --filter @colony2/app build
 ```
 
-### Build Configuration (vite.config.ts)
-```typescript
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@colony2/shared': resolve(__dirname, '../shared/src/index.ts'),
-      '@colony2/flowchart': resolve(__dirname, '../flowchart/src/index.ts'),
-      // Other module aliases
-    }
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor': ['react', 'react-dom', 'antd'],
-          'monaco': ['@monaco-editor/react']
-        }
-      }
-    }
-  }
-});
-```
+The production build is bundled into the Go `cortex` executable by the root
+`Makefile`.
 
-### API Configuration
-```typescript
-// Environment-based API configuration
-const API_BASE = import.meta.env.DEV 
-  ? 'http://localhost:8080/api' 
-  : '/api';
-```
+## Routing
 
-### Testing Setup
-- **E2E Testing**: Playwright with headless mode
-- **Unit Testing**: Vitest with jsdom environment  
-- **Test Commands**: `npm run test` (unit), `npm run test:e2e` (playwright)
-- **Coverage**: Source maps enabled for debugging
+The app starts on tenant `1`. A different tenant can be selected through the
+header control or by passing `?tenantId=<id>`.
+
+Primary routes:
+
+- `/project/:projectId/jobs`
+- `/project/:projectId/jobs/:jobId/story`
+- `/project/:projectId/inputs`
+- `/project/:projectId/cells`
+
+Use `@colony2/shared` for API calls and input activity state.

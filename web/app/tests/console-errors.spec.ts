@@ -1,30 +1,45 @@
 import { test, expect } from '@playwright/test';
 
-const sampleProject = {
-  id: 'proj1',
-  name: 'Test Project',
-  gitRepoPath: '/tmp/repo',
-  version: 1,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
 const sampleCells = [
   {
-    id: 'cell-a',
-    name: 'Cell A',
-    workingPath: '/a',
-    updatedAt: new Date().toISOString(),
-    dependencies: ['cell-b'],
+    id: 'self',
+    project_id: '1',
+    tenant_id: '1',
+    name: 'platform',
+    repo: 'https://github.com/colony-2/platform.git',
+    repository_source: 'https://github.com/colony-2/platform.git',
+    git_ref: 'main',
+    kind: 'self',
   },
   {
-    id: 'cell-b',
-    name: 'Cell B',
-    workingPath: '/b',
-    updatedAt: new Date().toISOString(),
-    dependencies: [],
+    id: 'dependent-api',
+    project_id: '1',
+    tenant_id: '1',
+    name: 'api',
+    repo: 'https://github.com/colony-2/api.git',
+    repository_source: 'https://github.com/colony-2/api.git',
+    git_ref: 'main',
+    kind: 'dependent',
   },
 ];
+
+const sampleJobs = {
+  jobs: [
+    {
+      tenant_id: '1',
+      job_id: 'job-console-1',
+      status: 'READY',
+      store: 'ACTIVE',
+      job_type: 'recipe',
+      recipe: 'default',
+      repo: 'https://github.com/colony-2/platform.git',
+      cell_name: 'platform',
+      git_ref: 'main',
+      created_at: new Date().toISOString(),
+      available_at: new Date().toISOString(),
+    },
+  ],
+};
 
 test.describe('Console cleanliness', () => {
   test.beforeEach(async ({ page, context }) => {
@@ -36,7 +51,6 @@ test.describe('Console cleanliness', () => {
       },
     ]);
 
-    // Stub EventSource to avoid SSE errors in test
     await page.addInitScript(() => {
       (window as any).EventSource = class {
         readyState = 1;
@@ -47,16 +61,7 @@ test.describe('Console cleanliness', () => {
       } as any;
     });
 
-    // Mock projects
-    await page.route('**/api/projects', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([sampleProject]),
-      });
-    });
-
-    await page.route('**/api/projects/proj1/cells', async (route) => {
+    await page.route(/\/api\/projects\/[^/]+\/cells$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -64,7 +69,15 @@ test.describe('Console cleanliness', () => {
       });
     });
 
-    await page.route('**/api/projects/proj1/user-inputs/pending', async (route) => {
+    await page.route(/\/api\/projects\/[^/]+\/jobs(\?.*)?$/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(sampleJobs),
+      });
+    });
+
+    await page.route(/\/api\/projects\/[^/]+\/user-inputs\/pending$/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -73,7 +86,7 @@ test.describe('Console cleanliness', () => {
     });
   });
 
-  test('loads the cells list with no console errors', async ({ page }) => {
+  test('loads jobs and cells with no console errors', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
@@ -81,15 +94,18 @@ test.describe('Console cleanliness', () => {
       }
     });
 
-    await page.goto('/project/proj1/cells');
+    await page.goto('/project/1/jobs');
 
-    await expect(page).toHaveTitle(/Test Project/);
+    await expect(page).toHaveTitle(/cortex: tenant 1/);
+    await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
+    await expect(page.getByText('job-console-1')).toBeVisible();
+
+    await page.getByRole('link', { name: 'Cells' }).click();
+
     await expect(page.getByRole('heading', { name: 'Cells' })).toBeVisible();
     await expect(page.locator('.ant-table-tbody > tr')).toHaveCount(2, { timeout: 5000 });
-    await expect(page.getByText('Cell A')).toBeVisible();
-    await expect(page.getByText('Cell B')).toBeVisible();
-    await expect(page.getByText('/a')).toBeVisible();
-    await expect(page.getByText('/b')).toBeVisible();
+    await expect(page.getByText('platform')).toBeVisible();
+    await expect(page.getByText('https://github.com/colony-2/api.git')).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });

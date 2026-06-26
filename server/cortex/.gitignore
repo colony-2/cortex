@@ -1,9 +1,0 @@
-internal/static/assets/**
-static/assets/**
-build/**
-build/cortex-test
-node_modules/
-test-results/
-playwright-report/
-cortex
-.colony2/strata
