@@ -28,13 +28,11 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
-import { inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
+import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 
 const { Title, Text } = Typography;
-
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
 
 function newId(): string {
   try {

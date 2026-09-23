@@ -186,14 +186,30 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, job)
 }
 
+// Verify tenant-scoped existence before replay/control calls. Remote replay can
+// return an empty story for a missing job instead of a typed not-found error.
+func (s *Server) requireJob(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{
+			TenantID: s.tenantID(r),
+			JobID:    mux.Vars(r)["jobId"],
+		})
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 	var req restartJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.StepOffset < 0 {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("step_offset must be >= 0"))
+	if req.StepOffset < 1 {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("step_offset must be >= 1 to preserve the job start chapter"))
 		return
 	}
 	resp, err := s.story.RestartRecipeJob(r.Context(), story.RestartRecipeJobRequest{

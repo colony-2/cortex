@@ -13,7 +13,7 @@ describe('LoginPage', () => {
     const onLogin = vi.fn();
     render(<LoginPage onLogin={onLogin} />);
 
-    expect(screen.getByText('colony2')).toBeInTheDocument();
+    expect(screen.getByText('cortex')).toBeInTheDocument();
     expect(screen.getByText('Enter your email to continue')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Email address')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();

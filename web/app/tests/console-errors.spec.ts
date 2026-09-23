@@ -42,12 +42,12 @@ const sampleJobs = {
 };
 
 test.describe('Console cleanliness', () => {
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page, context, baseURL }) => {
     await context.addCookies([
       {
         name: 'colony2:user:email',
         value: 'test@example.com',
-        url: 'http://localhost:5173',
+        url: baseURL!,
       },
     ]);
 

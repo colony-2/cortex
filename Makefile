@@ -1,9 +1,11 @@
-.PHONY: build test fmt server-build web-build cortex clean
+.PHONY: build test test-e2e typecheck fmt server-build web-build cortex clean
+
+GO := bash scripts/go.sh
 
 build: cortex
 
 server-build:
-	go build ./server/cmd/api ./server/cmd/uitestserver ./server/cmd/cortex
+	$(GO) build ./server/cmd/api ./server/cmd/uitestserver ./server/cmd/cortex
 
 web-build:
 	pnpm --filter @colony2/shared build
@@ -13,17 +15,22 @@ cortex: web-build
 	mkdir -p server/internal/webdist/dist
 	find server/internal/webdist/dist -mindepth 1 ! -name placeholder.txt -exec rm -rf {} +
 	cp -R web/app/dist/. server/internal/webdist/dist/
-	go build -o build/cortex ./server/cmd/cortex
+	$(GO) build -o build/cortex ./server/cmd/cortex
 
 test:
-	go test ./server/...
+	$(GO) test ./server/...
 	pnpm --filter @colony2/shared test
 	pnpm --filter @colony2/app test
 
 fmt:
 	gofmt -w server
+
+typecheck:
 	pnpm --filter @colony2/shared typecheck
 	pnpm --filter @colony2/app typecheck
+
+test-e2e:
+	pnpm test:e2e
 
 clean:
 	rm -rf build

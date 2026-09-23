@@ -1,6 +1,8 @@
 # Pending Inputs - Integration Testing Guide
 
-This document describes the integration test suite for the Pending Inputs feature.
+This document describes the mocked component integration tests for Pending Inputs.
+Real browser/API and SSE coverage is in `web/app/tests/api-integration.spec.ts`;
+run it from the repository root with `pnpm test:e2e`.
 
 ## Overview
 
@@ -130,22 +132,22 @@ End-to-end integration tests simulating complete jobs.
 ### Run all input tests
 ```bash
 cd /src/web/app
-npm test -- --run src/components/*Input*.test.tsx
+pnpm exec vitest run src/components/*Input*.test.tsx
 ```
 
 ### Run specific test file
 ```bash
-npm test -- --run src/components/PendingInputsListPage.test.tsx
+pnpm exec vitest run src/components/PendingInputsListPage.test.tsx
 ```
 
 ### Run with coverage
 ```bash
-npm test -- --coverage --run src/components/*Input*.test.tsx
+pnpm exec vitest run --coverage src/components/*Input*.test.tsx
 ```
 
 ### Run in watch mode
 ```bash
-npm test -- --watch src/components/InputDetailPage.test.tsx
+pnpm exec vitest src/components/InputDetailPage.test.tsx
 ```
 
 ## Test Flow Comparison

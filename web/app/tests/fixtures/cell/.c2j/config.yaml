@@ -1,0 +1,9 @@
+pattern: 'github.com/cortex-test/${{ cell }}'
+self:
+  repo: github.com/cortex-test/platform
+  ref: main
+root:
+  repo: github.com/cortex-test/platform
+  ref: main
+dependents:
+  - github.com/cortex-test/api

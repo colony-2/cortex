@@ -3,6 +3,7 @@ export * from './types';
 
 // Export API functions
 export * from './api';
+export * from './apiBase';
 
 // Export URL state utilities
 export * from './urlState';

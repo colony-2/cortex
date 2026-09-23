@@ -3,9 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:api": "go run ./server/cmd/api",
+    "dev:api": "bash scripts/go.sh run ./server/cmd/api",
+    "dev:test-api": "bash scripts/go.sh run ./server/cmd/uitestserver",
     "dev:web": "pnpm --filter @colony2/app dev",
-    "test:api": "go test ./server/...",
+    "test:api": "bash scripts/go.sh test ./server/...",
+    "test": "bash scripts/run-all-tests.sh",
     "test:web": "pnpm --filter @colony2/shared test && pnpm --filter @colony2/app test",
     "test:e2e": "pnpm --filter @colony2/app test:e2e",
     "typecheck:web": "pnpm --filter @colony2/shared typecheck && pnpm --filter @colony2/app typecheck",

@@ -1,22 +1,3 @@
-export interface DependencyCell {
-  id: string;
-  name: string;
-  path: string;
-  type: string;
-  dependencies: string[];
-}
-
-export interface DependencyEdge {
-  id: string;
-  source: string;
-  target: string;
-}
-
-export interface RelationshipGraph {
-  cells: DependencyCell[];
-  edges: DependencyEdge[];
-}
-
 export interface Project {
   id: string;
   name: string;
@@ -62,8 +43,23 @@ export interface RecipeJob {
   archived_at?: string;
   lease_expires_at?: string;
   expires_at?: string;
-  next_need?: string;
-  task_wait_next?: string;
+  next_route?: { jobType: string; taskType?: string };
+  task_wait?: {
+    inputOrdinal: number;
+    outputOrdinal: number;
+    inputHash: string;
+    resumeJobType: string;
+  };
+  client_payload?: unknown;
+  client_payload_revision?: number;
+  execution?: {
+    status: string;
+    source: string;
+    published: boolean;
+    diagnostic?: string;
+    demand?: Record<string, unknown>;
+    initial?: Record<string, unknown>;
+  };
   wait_for?: string[];
   cancel_requested?: boolean;
 }

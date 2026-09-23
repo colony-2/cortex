@@ -28,7 +28,9 @@ function App() {
   );
 }
 
-function initialTenantId(search: string): string {
+function initialTenantId(search: string, pathname: string): string {
+  const fromPath = pathname.match(/^\/project\/([^/]+)/)?.[1];
+  if (fromPath) return decodeURIComponent(fromPath);
   const fromQuery = new URLSearchParams(search).get('tenantId');
   if (fromQuery?.trim()) return fromQuery.trim();
   return localStorage.getItem('cortex:tenantId') || defaultTenantId;
@@ -38,17 +40,17 @@ function AppShell() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const location = useLocation();
   const navigate = useNavigate();
-  const [tenantId, setTenantId] = useState(() => initialTenantId(location.search));
+  const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
   const { pendingCount, setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {
-    const queryTenant = new URLSearchParams(location.search).get('tenantId');
-    if (queryTenant?.trim() && queryTenant.trim() !== tenantId) {
-      setTenantId(queryTenant.trim());
-      setTenantDraft(queryTenant.trim());
+    const selectedTenant = initialTenantId(location.search, location.pathname);
+    if (selectedTenant !== tenantId) {
+      setTenantId(selectedTenant);
+      setTenantDraft(selectedTenant);
     }
-  }, [location.search, tenantId]);
+  }, [location.search, location.pathname, tenantId]);
 
   useEffect(() => {
     localStorage.setItem('cortex:tenantId', tenantId);
@@ -86,6 +88,7 @@ function AppShell() {
             <Typography.Text strong>cortex</Typography.Text>
             <Typography.Text type="secondary">Tenant</Typography.Text>
             <Input.Search
+              aria-label="Tenant ID"
               value={tenantDraft}
               onChange={(event) => setTenantDraft(event.target.value)}
               onSearch={applyTenant}

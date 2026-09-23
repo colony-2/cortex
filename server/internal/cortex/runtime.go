@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/colony-2/c2j/pkg/jobdbschema"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/toy"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
@@ -27,7 +28,7 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewServer(cfg, engine)
+	return NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
 }
 
 func NewUITestServer(cfg Config) (*Server, error) {
@@ -37,5 +38,5 @@ func NewUITestServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewServer(cfg, engine)
+	return NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
 }

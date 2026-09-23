@@ -5,8 +5,13 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
-    open: true
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: process.env.CORTEX_API_URL || 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',
@@ -34,6 +39,7 @@ export default defineConfig({
     include: ['@ant-design/icons', 'antd']
   },
   test: {
+    env: { VITE_CORTEX_API_BASE: 'http://localhost:8080/api' },
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['tests/**', 'node_modules/**', 'dist/**']

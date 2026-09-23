@@ -34,7 +34,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
       <Card style={{ width: 400, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <Title level={2} style={{ marginBottom: 8 }}>
-            colony2
+            cortex
           </Title>
           <Text type="secondary">Enter your email to continue</Text>
         </div>

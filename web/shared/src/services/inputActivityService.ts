@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
+import { API_BASE } from '../apiBase';
 
 // Simple EventEmitter implementation for browser
 class EventEmitter {

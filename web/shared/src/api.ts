@@ -4,11 +4,10 @@ import type {
   Project,
   RecipeJob,
   RecipeJobStatus,
-  RelationshipGraph,
   SubmitRecipeJobRequest,
 } from './types';
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
+import { API_BASE } from './apiBase';
 
 async function handleResponse(response: Response, operation: string) {
   if (!response.ok) {
@@ -70,12 +69,4 @@ export async function submitJob(projectId: string, input: SubmitRecipeJobRequest
   });
   await handleResponse(response, 'Submit job');
   return response.json();
-}
-
-export async function fetchGraph(_projectId: string): Promise<RelationshipGraph> {
-  return { cells: [], edges: [] };
-}
-
-export async function syncCells(_projectId: string): Promise<void> {
-  return undefined;
 }

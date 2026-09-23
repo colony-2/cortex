@@ -23,6 +23,7 @@ export default defineConfig({
     }
   },
   test: {
+    env: { VITE_CORTEX_API_BASE: 'http://localhost:8080/api' },
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/tests/**'],

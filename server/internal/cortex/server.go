@@ -79,10 +79,10 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleListJobs).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs", s.handleSubmitJob).Methods(http.MethodPost, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}", s.handleGetJob).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.handleRestartJob).Methods(http.MethodPost, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.handleJobStory).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.handleJobOutcome).Methods(http.MethodGet, http.MethodOptions)
-	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.handleArtifactByOrdinal).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/restart", s.requireJob(s.handleRestartJob)).Methods(http.MethodPost, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/story", s.requireJob(s.handleJobStory)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)
 
 	for _, route := range inputService.GetRoutes() {
 		r.HandleFunc(route.Path, route.Handler).Methods(route.Method, http.MethodOptions)
