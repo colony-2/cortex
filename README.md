@@ -1,127 +1,137 @@
 # Cortex
 
-Cortex is a Go API and React web application for c2j recipe jobs. It submits and
-lists jobs, displays execution stories and artifacts, restarts jobs, and collects
-human input. JobDB tenants appear as projects (default `1`); cells are the current
-Git repository and its c2j-configured dependents. Workers run separately.
+Cortex is a web interface for [c2j](https://github.com/colony-2/c2j) recipe jobs.
+Submit and inspect jobs, read execution stories and artifacts, restart jobs, and
+respond to human input requests. The `cortex` command serves the Go API and the
+embedded React UI from one executable.
 
-## Setup
+Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
+Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
+tenants; cells are the current Git repository and its c2j-configured dependents.
 
-Install Node.js 22 or newer, pnpm 10, Git, Make, and Go with toolchain download
-support. Then run:
+## Install and run
+
+Releases provide Linux and macOS binaries for x86_64 and ARM64. Install through
+npm (Node.js 14 or newer and `tar` required):
+
+```sh
+npm install -g @colony2/cortex
+cortex version
+cortex --jobdb-url http://127.0.0.1:9047 --working-dir /path/to/cell
+```
+
+The npm installer downloads the matching binary from
+[GitHub Releases](https://github.com/colony-2/cortex/releases) and verifies its
+SHA-256 checksum. You can also download and extract an archive directly; those
+binaries do not require Node.js. Each archive contains the built web UI inside
+the executable.
+
+Open `http://localhost:8080`. The working directory should be a Git checkout
+with a c2j cell configuration; see the
+[minimal fixture](web/app/tests/fixtures/cell/.c2j/config.yaml).
+
+| Option | Environment variable | Default |
+| --- | --- | --- |
+| `--addr` | `CORTEX_ADDR` | `:8080` |
+| `--jobdb-url` | `JOBDB_URL` | Required |
+| `--working-dir` | `CORTEX_WORKING_DIR` | Current directory |
+| `--tenant-id` | `CORTEX_TENANT_ID` | `1` |
+| `--cors-origins` | `CORTEX_CORS_ORIGINS` | Empty; comma-separated origins |
+
+Use `cortex --help` for command options and `cortex version` or `cortex --version`
+to identify the release. Source builds report `dev`.
+
+Select a tenant in the header, use `/?tenantId=42`, or open a tenant route such as
+`/project/42/jobs`. The email screen records an identity cookie; it does not
+provide server-side authentication.
+
+## Build from source
+
+Install Git, Make, Node.js 22 or newer, pnpm 10, and Go with automatic toolchain
+downloads enabled. The Go wrapper selects the version in [`.go-version`](.go-version).
 
 ```sh
 pnpm install --frozen-lockfile
 bash scripts/go.sh -C server mod download
+make build
+./build/cortex --jobdb-url http://127.0.0.1:9047 --working-dir /path/to/cell
 ```
 
-The Go commands in Make and package scripts use Go **1.26.7**, recorded in
-`.go-version`. The wrapper downloads it automatically if needed. Current c2j
-transitive dependencies do not support Go 1.27; `GOTOOLCHAIN` can explicitly
-override the wrapper when testing another toolchain.
-
-Cortex pins **c2j v0.0.53** (`ef65f00019724f17069d318845b0bc75ddc0dc98`,
-verified against upstream main on 2026-09-23), and the JobDB version required by
-that release. No sibling checkout is required. To develop against a local c2j
-checkout, run `bash scripts/go.sh work use ../c2j`; remove that workspace entry when finished.
+`make build` builds the web packages, copies their output into the Go embed
+directory, and produces `build/cortex`. A plain `go build` does not build the UI.
+Go dependencies are pinned in [`server/go.mod`](server/go.mod); no sibling
+checkout is required.
 
 ## Development
 
-Start an API connected to a running remote JobDB server:
+Start the API and web dev server in separate terminals:
 
 ```sh
 JOBDB_URL=http://127.0.0.1:9047 CORTEX_WORKING_DIR=/path/to/cell pnpm dev:api
-```
-
-In another terminal:
-
-```sh
 pnpm dev:web
 ```
 
-Open `http://localhost:3000`. Vite proxies `/api` to `http://127.0.0.1:8080`.
-Set `CORTEX_API_URL` when starting Vite to use another API address. Browser API
-calls use the same origin by default; `VITE_CORTEX_API_BASE` overrides their base.
+Open `http://localhost:3000`. Vite proxies `/api` to `http://127.0.0.1:8080`;
+set `CORTEX_API_URL` to use another API address. Browser requests use the same
+origin unless `VITE_CORTEX_API_BASE` is set at build time.
 
-For UI development without a JobDB process:
+For UI development with in-memory jobs, replace the API command with:
 
 ```sh
 pnpm dev:test-api --addr 127.0.0.1:8080 --working-dir web/app/tests/fixtures/cell
 ```
 
-The test API stores jobs in memory and does not run workers. Submitted jobs can
-be listed and inspected, but will not execute until a separate worker is used
-with a shared remote JobDB runtime.
+The test API does not execute recipes. Use remote JobDB and separate c2j workers
+when you need job execution.
 
-Choose a tenant in the header or open `/?tenantId=42`. Deep links such as
-`/project/42/jobs` select the route's tenant for navigation and input activity.
-The last selected tenant is retained in browser storage. The email screen stores
-an identity cookie; it is not server-side authentication.
-
-## Production
-
-```sh
-make build
-./build/cortex --jobdb-url http://127.0.0.1:9047 --working-dir /path/to/cell
-```
-
-The executable embeds the built UI and serves it and `/api` on port 8080.
-It requires remote JobDB and never starts JobDB or c2j workers. c2j's schema-aware
-engine registers the recipe schema on first submission in each tenant.
-
-Options are `--addr`, `--jobdb-url`, `--working-dir`, `--tenant-id`, and
-`--cors-origins`. Their environment equivalents are `CORTEX_ADDR`, `JOBDB_URL`,
-`CORTEX_WORKING_DIR`, `CORTEX_TENANT_ID`, and `CORTEX_CORS_ORIGINS`.
-
-The cell directory supplies `.c2j/config.yaml`; see
-[`web/app/tests/fixtures/cell/.c2j/config.yaml`](web/app/tests/fixtures/cell/.c2j/config.yaml)
-for a minimal example. Recipe resolution and execution belong to c2j.
-
-## Components
-
-| Path | Responsibility |
+| Directory | Purpose |
 | --- | --- |
-| `server/cmd/api` | API connected to remote JobDB |
-| `server/cmd/uitestserver` | In-memory test API; `--jobdb-only` exposes the test JobDB over HTTP |
 | `server/cmd/cortex` | Production API and embedded UI |
-| `server/internal/cortex` | HTTP routes, tenant/cell mapping, c2j composition |
-| `server/internal/webdist` | Embedded Vite build |
-| `web/app` | React, TypeScript, Ant Design, and Vite UI |
-| `web/shared` | API client, types, identity helpers, and input SSE state |
+| `server/cmd/api` | Development API using remote JobDB |
+| `server/cmd/uitestserver` | In-memory test API and HTTP test JobDB |
+| `server/internal/cortex` | Routes, tenant/cell mapping, and c2j integration |
+| `server/internal/webdist` | Embedded production web assets |
+| `web/app` | React application |
+| `web/shared` | API client, types, identity, and input event state |
+| `npm/cortex` | npm launcher and release binary installer |
 
-The API includes health, tenant metadata, current/dependent cells, job
-submit/list/detail/story/restart/outcome/artifacts, and c2j pending-input,
-respond/cancel, and SSE routes. `projectId` in URLs is a JobDB tenant ID.
-The web client is maintained directly alongside these handlers. Legacy project
-administration, tickets, recipe management, graph UI, generated OpenAPI clients,
-and Moon packages have been retired.
-
-## Validation
+## Test
 
 ```sh
-pnpm test             # Go tests, type checks, web tests, production build, browser tests
-pnpm test:api         # Go integration tests with toy and HTTP remote JobDB
+pnpm test             # Go tests, type checks, web tests, build, browser tests
+pnpm test:api         # Go tests, including remote JobDB integration
 pnpm typecheck:web
 pnpm test:web
-pnpm test:e2e         # builds Cortex and runs browser tests with managed servers
-make build
+pnpm test:e2e         # Browser tests against development and embedded production UI
+node --test npm/cortex/test/*.test.cjs
 ```
 
-Playwright installs its headless Chromium browser if missing. On a fresh Linux
-host, install its OS dependencies with
+Playwright installs Chromium if missing. On a fresh Linux host, first run
 `pnpm --filter @colony2/app exec playwright install-deps chromium`.
-`CORTEX_PLAYWRIGHT_BROWSERS_PATH` selects the browser cache directory (default
-`$HOME/.cache/ms-playwright`).
+The suite manages its own servers on ports 15173 and 18081–18083 and uses an
+isolated fixture cell. It covers submission, stories, tenants, cells, and input
+events without running recipe workers. Reports are in `web/app/playwright-report`.
 
-The browser suite uses dedicated ports **15173** (Vite), **18081** (test API),
-**18082** (test JobDB), and **18083** (production Cortex). It refuses to reuse
-existing servers and uses an isolated fixture cell. Real API tests exercise login,
-job submission, repository filtering, story retrieval, tenant switching/isolation,
-cells, pending inputs, and a real SSE connection. These run both against the dev
-UI/test API and against the embedded production UI with HTTP remote JobDB.
-Mocked browser tests separately check rendering and console cleanliness.
-The suite runs six browser tests and no recipe workers. Reports are in
-`web/app/playwright-report`.
+## Releases
 
-See [the migration status](MONOLITH_REHAB_PLAN.md) and
-[the historical package migration map](c2j_migration.md) for background.
+The [release workflow](.github/workflows/release.yaml) follows
+[c2j's release pipeline](https://github.com/colony-2/c2j/blob/main/.github/workflows/release.yaml):
+
+1. A push to `main` runs the test suite on Linux x86_64, Linux ARM64, and macOS.
+2. Passing tests allow automatic version tagging (`vMAJOR.MINOR.PATCH`, patch by
+   default, using `anothrNick/github-tag-action`).
+3. The workflow builds the UI, embeds it into four Go binaries, and injects the
+   release version, commit, and build date.
+4. Optional Apple signing and notarization run before packaging. GitHub Releases
+   receive `cortex_<version>_<Linux|Darwin>_<x86_64|arm64>.tar.gz`, checksums, and
+   generated release notes.
+5. The workflow packs and installs `@colony2/cortex` to smoke-test the published
+   download, then publishes it to npm.
+
+GitHub Actions needs permission to write repository contents and npm publishing
+access: configure `NPM_TOKEN` or an npm trusted publisher for this repository's
+`release.yaml` workflow. `READ_ALL_C2_REPOS` supplies private Go module access
+when needed. For macOS signing, configure all five secrets: `MACOS_SIGN_P12`,
+`MACOS_SIGN_PASSWORD`, `APPLE_API_ISSUER`, `APPLE_API_KEY_ID`, and `APPLE_API_KEY`.
+With none configured, macOS binaries are unsigned; a partial configuration fails
+the release. These secret names match c2j.

@@ -1,0 +1,47 @@
+{
+  "name": "@colony2/cortex",
+  "version": "0.0.0-development",
+  "description": "Web interface for c2j recipe jobs",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/colony-2/cortex",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colony-2/cortex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/colony-2/cortex/issues"
+  },
+  "author": {
+    "name": "Colony 2",
+    "email": "noreply@colony2.com"
+  },
+  "keywords": [
+    "cortex",
+    "c2j",
+    "jobs",
+    "cli"
+  ],
+  "bin": {
+    "cortex": "bin/cli.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE.c2j"
+  ]
+}

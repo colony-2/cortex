@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04-arm, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    env:
+      READ_ALL_REPOS_TOKEN: ${{ secrets.READ_ALL_C2_REPOS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: .go-version
+          cache-dependency-path: server/go.sum
+
+      - name: Configure private module access
+        shell: bash
+        run: |
+          set -euo pipefail
+          go env -w GOPRIVATE=github.com/colony-2/*
+          if [ -n "${READ_ALL_REPOS_TOKEN:-}" ]; then
+            git config --global url."https://x-access-token:${READ_ALL_REPOS_TOKEN}@github.com/".insteadOf "https://github.com/"
+          fi
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser dependencies
+        run: pnpm --filter @colony2/app exec playwright install-deps chromium
+
+      - name: Run tests and build embedded application
+        run: pnpm test
+
+      - name: Test npm installer
+        run: node --test npm/cortex/test/*.test.cjs

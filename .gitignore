@@ -8,6 +8,11 @@ web/build/
 web/dist/
 web/.cache/
 build/
+/dist/
+/npm/cortex/vendor/
+/npm/cortex/*.tgz
+/npm/cortex/README.md
+/npm/cortex/LICENSE.c2j
 server/static/dist/
 server/internal/webdist/dist/*
 !server/internal/webdist/dist/placeholder.txt

@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e typecheck fmt server-build web-build cortex clean
+.PHONY: build test test-e2e typecheck fmt server-build web-build web-embed cortex clean
 
 GO := bash scripts/go.sh
 
@@ -11,10 +11,12 @@ web-build:
 	pnpm --filter @colony2/shared build
 	pnpm --filter @colony2/app build
 
-cortex: web-build
+web-embed: web-build
 	mkdir -p server/internal/webdist/dist
 	find server/internal/webdist/dist -mindepth 1 ! -name placeholder.txt -exec rm -rf {} +
 	cp -R web/app/dist/. server/internal/webdist/dist/
+
+cortex: web-embed
 	$(GO) build -o build/cortex ./server/cmd/cortex
 
 test:
