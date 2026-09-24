@@ -1,3 +1,4 @@
+jobdb: http://127.0.0.1:18082/c2
 pattern: 'github.com/cortex-test/${{ cell }}'
 self:
   repo: github.com/cortex-test/platform

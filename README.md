@@ -70,7 +70,8 @@ URI or a server-only URL with `--tenant-id`. Legacy `JOBDB_URL` is used only whe
 neither a connection flag nor `C2J_JOBDB` is set, before consulting the config.
 `CORTEX_TENANT_ID` applies only to legacy server-only URLs (default `1`).
 
-Select a tenant in the header, use `/?tenantId=42`, or open a tenant route such as
+Opening the UI uses the tenant in your configured JobDB URI. To override it,
+select a tenant in the header, use `/?tenantId=42`, or open a tenant route such as
 `/project/42/jobs`. The email screen records an identity cookie; it does not
 provide server-side authentication.
 

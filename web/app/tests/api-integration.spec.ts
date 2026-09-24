@@ -81,3 +81,20 @@ test('keeps deep-linked tenant, navigation, and live input activity in sync', as
   expect(jobs.ok()).toBeTruthy();
   expect((await jobs.json()).jobs).toEqual([]);
 });
+
+test('opens the tenant from the server connection config without a URL override', async ({ page, context, baseURL }, testInfo) => {
+  const tenant = testInfo.project.name === 'production' ? 'c2' : '1';
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  // A previous Cortex instance may have left a different tenant in storage.
+  await page.addInitScript(() => localStorage.setItem('cortex:tenantId', 'stale-tenant'));
+  const jobs = page.waitForResponse(r => new URL(r.url()).pathname === `/api/projects/${tenant}/jobs`);
+  const stream = page.waitForResponse(r => r.url().endsWith(`/api/projects/${tenant}/user-inputs/stream`));
+  await page.goto('/');
+  expect((await jobs).status()).toBe(200);
+  expect((await stream).status()).toBe(200);
+  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
+  await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
+  await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Pending Inputs' }).click();
+  await expect(page.getByText('No pending inputs')).toBeVisible();
+});

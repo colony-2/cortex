@@ -17,8 +17,9 @@ async function handleResponse(response: Response, operation: string) {
   return response;
 }
 
-export async function listProjects(tenantId = '1'): Promise<Project[]> {
-  const response = await fetch(`${API_BASE}/projects?tenantId=${encodeURIComponent(tenantId)}`);
+export async function listProjects(tenantId?: string): Promise<Project[]> {
+  const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+  const response = await fetch(`${API_BASE}/projects${query}`);
   await handleResponse(response, 'List projects');
   return response.json();
 }

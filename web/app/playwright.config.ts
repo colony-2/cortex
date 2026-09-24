@@ -44,8 +44,9 @@ export default defineConfig({
       cwd: '../..',
     },
     {
-      command: 'make build test-worker && exec ./build/cortex --addr 127.0.0.1:18083 --jobdb-url http://127.0.0.1:18082 --working-dir web/app/tests/fixtures/cell',
+      command: 'make build test-worker && exec ./build/cortex serve --addr 127.0.0.1:18083 --working-dir web/app/tests/fixtures/cell',
       url: 'http://127.0.0.1:18083/api/health',
+      env: { C2J_JOBDB: '', JOBDB_URL: '', CORTEX_TENANT_ID: '' },
       reuseExistingServer: false,
       timeout: 180_000,
       cwd: '../..',

@@ -3,7 +3,7 @@
 This package is the React UI for Cortex. It is intentionally scoped to the
 new decomponentized model:
 
-- projects in routes are JobDB tenant IDs, defaulting to tenant `1`
+- projects in routes are JobDB tenant IDs, defaulting to the tenant in the configured JobDB URI
 - jobs are the primary work item
 - cells are the current cell plus c2j-discovered dependents
 - pending inputs are job input requests
@@ -28,8 +28,9 @@ The production build is bundled into the Go `cortex` executable by the root
 
 ## Routing
 
-The app starts on tenant `1`. A different tenant can be selected through the
-header control or by passing `?tenantId=<id>`.
+The app reads its initial tenant from `/api/projects`, using the server’s configured
+JobDB URI. A URL tenant overrides that default. A different tenant can be selected
+through the header control or by passing `?tenantId=<id>`.
 
 Primary routes:
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { FormOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Badge, Button, Empty, Input, Layout, Menu, Space, Typography } from 'antd';
+import { Alert, Badge, Button, Empty, Input, Layout, Menu, Space, Spin, Typography } from 'antd';
 import {
   InputActivityProvider,
   clearUserEmail,
   isAuthenticated,
+  listProjects,
   useInputActivity,
 } from '@colony2/shared';
 import CellsList from './components/CellsList';
@@ -16,44 +17,58 @@ import JobStoryPage from './components/JobStoryPage';
 import LoginPage from './components/LoginPage';
 
 const { Header, Content, Sider } = Layout;
-const defaultTenantId = '1';
 
 function App() {
+  const [defaultTenantId, setDefaultTenantId] = useState<string>();
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    listProjects().then(projects => {
+      const tenant = projects[0]?.tenant_id;
+      if (!tenant) throw new Error('The server did not provide a default tenant');
+      if (active) setDefaultTenantId(tenant);
+    }).catch(error => {
+      if (active) setError(error instanceof Error ? error.message : 'Could not load Cortex configuration');
+    });
+    return () => { active = false; };
+  }, []);
+
+  if (error) return <Alert type="error" showIcon message="Could not load Cortex configuration" description={error} />;
+  if (!defaultTenantId) return <Spin fullscreen tip="Loading Cortex…" />;
   return (
     <BrowserRouter>
       <InputActivityProvider>
-        <AppShell />
+        <AppShell defaultTenantId={defaultTenantId} />
       </InputActivityProvider>
     </BrowserRouter>
   );
 }
 
-function initialTenantId(search: string, pathname: string): string {
+function initialTenantId(search: string, pathname: string, defaultTenantId: string): string {
   const fromPath = pathname.match(/^\/project\/([^/]+)/)?.[1];
   if (fromPath) return decodeURIComponent(fromPath);
   const fromQuery = new URLSearchParams(search).get('tenantId');
   if (fromQuery?.trim()) return fromQuery.trim();
-  return localStorage.getItem('cortex:tenantId') || defaultTenantId;
+  return defaultTenantId;
 }
 
-function AppShell() {
+function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const location = useLocation();
   const navigate = useNavigate();
-  const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname));
+  const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
   const { pendingCount, setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {
-    const selectedTenant = initialTenantId(location.search, location.pathname);
+    const selectedTenant = initialTenantId(location.search, location.pathname, defaultTenantId);
     if (selectedTenant !== tenantId) {
       setTenantId(selectedTenant);
       setTenantDraft(selectedTenant);
     }
-  }, [location.search, location.pathname, tenantId]);
+  }, [location.search, location.pathname, tenantId, defaultTenantId]);
 
   useEffect(() => {
-    localStorage.setItem('cortex:tenantId', tenantId);
     setCurrentProjectId(tenantId);
     document.title = `cortex: tenant ${tenantId}`;
   }, [tenantId, setCurrentProjectId]);
