@@ -151,6 +151,7 @@ export type InputSSEEventType =
   | 'connected'
   | 'input_pending'
   | 'input_cancelled'
+  | 'input_completed'
   | 'heartbeat'
   | 'error';
 
@@ -297,6 +298,7 @@ class InputActivityService extends EventEmitter {
     // Invalidate cache BEFORE emitting event so listeners get fresh data
     if (this.currentProjectId) {
       this.invalidatePendingInputsCache();
+      this.formDetailsCache.delete(`${this.currentProjectId}:${data.id}`);
     }
     this.emit('input_pending', data);
   }

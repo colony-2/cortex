@@ -1,0 +1,19 @@
+id: browser-input
+version: "1.0"
+input_schema: {}
+sequence:
+  - id: first
+    op: input
+    inputs:
+      form:
+        question: What should the recipe publish?
+        type: short_answer
+  - id: second
+    op: input
+    inputs:
+      form:
+        question: Who should review the release?
+        type: short_answer
+outputs:
+  answer: "${{ sequence.first.outputs.response }}"
+  reviewer: "${{ sequence.second.outputs.response }}"

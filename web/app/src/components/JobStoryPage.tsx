@@ -580,7 +580,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [projectId, jobId, isPendingInput, wantInput]);
+  }, [projectId, jobId, isPendingInput, wantInput, pendingInputs]);
 
   useEffect(() => {
     if (!focusTaskOrdinal || !story?.root) return;

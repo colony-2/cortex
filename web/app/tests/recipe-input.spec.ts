@@ -171,3 +171,36 @@ test('cancellation removes a pending prompt in open tabs and rejects late answer
   startWorker();
   await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json()).toMatchObject({ status: 'canceled' });
 });
+
+test.describe('sequential prompts', () => {
+  test.use({ recipeFixture: 'browser-input-sequential' });
+  test('announces each prompt in the same job and preserves both answers', async ({ page, request, recipeRun }) => {
+    const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
+    const answer = `release-${randomUUID()}`;
+    const reviewer = `reviewer-${randomUUID()}`;
+    await page.getByRole('link', { name: jobID, exact: true }).click();
+
+    for (const [question, value] of [
+      ['What should the recipe publish?', answer],
+      ['Who should review the release?', reviewer],
+    ]) {
+      await expect(observer.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
+      await stopWorker();
+      await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+      await expect(page.getByLabel(question)).toHaveValue('');
+      await page.getByLabel(question).fill(value);
+      const responded = page.waitForResponse(r => r.url().endsWith(`/user-inputs/${jobID}/respond`) && r.request().method() === 'POST');
+      await page.getByRole('button', { name: 'Submit', exact: true }).click();
+      expect((await responded).status()).toBe(200);
+      await expect(observer.getByText('No pending inputs')).toBeVisible();
+      await expect(page.getByLabel(question)).not.toBeVisible();
+      startWorker();
+    }
+
+    await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json(), {
+      timeout: 30_000,
+    }).toMatchObject({ status: 'completed', output: { answer, reviewer } });
+    await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
+    await expect(observer.getByText('No pending inputs')).toBeVisible();
+  });
+});

@@ -89,6 +89,8 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/outcome", s.requireJob(s.handleJobOutcome)).Methods(http.MethodGet, http.MethodOptions)
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)
 
+	api.HandleFunc("/projects/{projectId}/user-inputs/stream", s.handleInputStream).Methods(http.MethodGet, http.MethodOptions)
+
 	for _, route := range inputService.GetRoutes() {
 		r.HandleFunc(route.Path, route.Handler).Methods(route.Method, http.MethodOptions)
 	}

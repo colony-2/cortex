@@ -73,6 +73,18 @@ describe('InputActivityService', () => {
       }
     });
 
+    it('fetches a fresh form when the same job requests another input', async () => {
+      inputActivityService.connect(projectId);
+      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'First?' } }) } as Response);
+      await inputActivityService.getInputDetails(projectId, 'job-1');
+      const source = EventSourceMock.mock.results[0].value;
+      const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_pending')[1];
+      listener({ data: JSON.stringify({ id: 'job-1', task_ordinal: 9 }) });
+      vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ form: { question: 'Second?' } }) } as Response);
+      expect(await inputActivityService.getInputDetails(projectId, 'job-1')).toMatchObject({ form: { question: 'Second?' } });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should create an EventSource connection when connect is called', () => {
       inputActivityService.connect(projectId);
       expect(EventSourceMock).toHaveBeenCalledWith(
