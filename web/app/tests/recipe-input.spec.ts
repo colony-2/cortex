@@ -204,3 +204,41 @@ test.describe('sequential prompts', () => {
     await expect(observer.getByText('No pending inputs')).toBeVisible();
   });
 });
+
+test.describe('input timeout', () => {
+  test.use({ recipeFixture: 'browser-input-timeout' });
+  test('expires an unanswered input and clears open browser prompts', async ({ page, request, recipeRun }) => {
+    const { tenant, jobID, observer } = recipeRun;
+    await page.getByRole('link', { name: jobID, exact: true }).click();
+    await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+    await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
+
+    // Let the real c2j/JobDB task deadline expire; do not advance a browser clock
+    // or synthesize an SSE event. Neither tab may need a refresh.
+    let stillPending = false;
+    try {
+      await expect.poll(async () => {
+        stillPending = false;
+        const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+        const outcome = await response.json();
+        stillPending = response.status() === 202 && outcome.status === 'pending';
+        return outcome;
+      }, { timeout: 45_000 }).toMatchObject({ status: 'failed', error: expect.anything() });
+    } catch (error) {
+      // JobDB v0.0.19 reschedules external tasks before checking their total
+      // deadline (worker_runner.go DoTask's !local branch). Only the confirmed
+      // still-pending deadline failure is expected; setup/browser errors are not.
+      test.fail(stillPending, 'Pinned JobDB does not expire unanswered external input tasks');
+      throw error;
+    }
+    const outcome = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json();
+    expect(JSON.stringify(outcome.error)).toMatch(/timeout|timed out|deadline/i);
+    await expect(observer.getByText('No pending inputs')).toBeVisible();
+    await expect(page.getByLabel('What should the recipe publish?')).not.toBeVisible();
+    expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
+    const lateAnswer = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/respond`, {
+      data: { fields: { response: 'too late' }, response: 'too late' },
+    });
+    expect(lateAnswer.ok()).toBe(false);
+  });
+});

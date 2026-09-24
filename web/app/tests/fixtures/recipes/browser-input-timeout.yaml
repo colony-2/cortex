@@ -1,0 +1,13 @@
+id: browser-input
+version: "1.0"
+timeout: 20s
+input_schema: {}
+sequence:
+  - id: approval
+    op: input
+    inputs:
+      form:
+        question: What should the recipe publish?
+        type: short_answer
+outputs:
+  answer: "${{ sequence.approval.outputs.response }}"

@@ -117,11 +117,20 @@ The recipe-input tests build the pinned c2j command and execute real Git-backed
 recipes with single-question and multi-field input requests. They submit jobs
 through the browser, observe pending requests in a second tab over SSE, check
 required fields and page reloads, submit answers while the worker is stopped,
-and restart it to verify the exact recipe output and completed story. Each test
-has a separate tenant and temporary Git repository; the fixture cell's Git URL
+and restart it to verify the exact recipe output and completed story. They also
+cover cancellation from another client, rejected late answers, and consecutive
+prompts in one job without reloading either tab. Each test has a separate tenant
+and temporary Git repository; the fixture cell's Git URL
 is mapped to that repository in the worker's environment. No API or EventSource
 mocks are used in these tests. Worker logs and recipe outcomes are attached to
 the Playwright report in `web/app/playwright-report`.
+
+The timeout regression also runs against the real worker. It currently records
+an **expected failure**: with c2j v0.0.53 / JobDB v0.0.19, an unanswered external
+input task remains pending past its recipe deadline. Step deadlines have the
+same limitation. The test first verifies that the prompt appears, then marks
+only a confirmed still-pending outcome after the deadline as expected; setup
+and other failures still fail CI. Timeout handling needs an upstream JobDB fix.
 
 ## Releases
 
