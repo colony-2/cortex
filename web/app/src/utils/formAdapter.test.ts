@@ -17,6 +17,7 @@ describe('adaptInputFormConfig', () => {
       expect(result).toEqual({
         id: jobId,
         title: 'What is your name?',
+        responseField: 'response',
         description: undefined,
         fields: [
           {
@@ -45,6 +46,7 @@ describe('adaptInputFormConfig', () => {
       expect(result).toEqual({
         id: jobId,
         title: 'provide a user prompt',
+        responseField: 'response',
         description: undefined,
         fields: [
           {

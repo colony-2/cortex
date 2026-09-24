@@ -50,6 +50,29 @@ describe('InputActivityService', () => {
   });
 
   describe('SSE Connection', () => {
+    it('refreshes cached requests and details when another tab completes an input', async () => {
+      inputActivityService.connect(projectId);
+      const completed = vi.fn();
+      inputActivityService.on('input_completed', completed);
+      try {
+        vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [{ id: 'job-1' }] } as Response);
+        await inputActivityService.getPendingInputs(projectId);
+        await inputActivityService.getInputDetails(projectId, 'job-1');
+
+        const source = EventSourceMock.mock.results[0].value;
+        const listener = source.addEventListener.mock.calls.find(([name]: [string]) => name === 'input_completed')[1];
+        listener({ data: JSON.stringify({ jobId: 'job-1' }) });
+        expect(completed).toHaveBeenCalledWith({ jobId: 'job-1' });
+
+        vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => [] } as Response);
+        expect(await inputActivityService.getPendingInputs(projectId)).toEqual([]);
+        await inputActivityService.getInputDetails(projectId, 'job-1');
+        expect(fetch).toHaveBeenCalledTimes(4);
+      } finally {
+        inputActivityService.off('input_completed', completed);
+      }
+    });
+
     it('should create an EventSource connection when connect is called', () => {
       inputActivityService.connect(projectId);
       expect(EventSourceMock).toHaveBeenCalledWith(

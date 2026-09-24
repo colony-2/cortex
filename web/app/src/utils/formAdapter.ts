@@ -16,6 +16,7 @@ export function adaptInputFormConfig(
     return {
       id: jobId,
       title: config.question,
+      responseField: 'response',
       description: undefined,
       fields: [
         {

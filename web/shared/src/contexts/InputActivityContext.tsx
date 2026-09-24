@@ -77,8 +77,8 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
       loadPendingInputs(currentProjectId);
     };
 
-    const handleInputCancelled = () => {
-      // Reload pending inputs when input is cancelled
+    const handleInputFinished = () => {
+      // Reload when any tab completes or cancels an input request.
       loadPendingInputs(currentProjectId);
     };
 
@@ -86,7 +86,8 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     inputActivityService.on('disconnected', handleDisconnected);
     inputActivityService.on('connection_failed', handleConnectionFailed);
     inputActivityService.on('input_pending', handleInputPending);
-    inputActivityService.on('input_cancelled', handleInputCancelled);
+    inputActivityService.on('input_cancelled', handleInputFinished);
+    inputActivityService.on('input_completed', handleInputFinished);
 
     // Load initial data
     if (inputActivityService.getConnectionState() === 'open') {
@@ -99,7 +100,8 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
       inputActivityService.off('disconnected', handleDisconnected);
       inputActivityService.off('connection_failed', handleConnectionFailed);
       inputActivityService.off('input_pending', handleInputPending);
-      inputActivityService.off('input_cancelled', handleInputCancelled);
+      inputActivityService.off('input_cancelled', handleInputFinished);
+      inputActivityService.off('input_completed', handleInputFinished);
     };
   }, [currentProjectId]);
 

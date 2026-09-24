@@ -24,7 +24,7 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine, err := jobworkflow.NewEngineBuilder().WithRuntime(runtime).BuildEngine()
+	engine, err := jobworkflow.NewEngineBuilder().WithRuntime(runtime).WithWorkerTenantId(cfg.DefaultTenantID).BuildEngine()
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +34,7 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 func NewUITestServer(cfg Config) (*Server, error) {
 	cfg = normalizeConfig(cfg)
 	runtime := toy.New()
-	engine, err := jobworkflow.NewEngineBuilder().WithRuntime(runtime).BuildEngine()
+	engine, err := jobworkflow.NewEngineBuilder().WithRuntime(runtime).WithWorkerTenantId(cfg.DefaultTenantID).BuildEngine()
 	if err != nil {
 		return nil, err
 	}

@@ -102,6 +102,8 @@ export interface InputForm {
   title: string;
   description?: string;
   fields: InputField[];
+  // Single-question forms return this field as c2j's top-level response.
+  responseField?: string;
 }
 
 export interface InputField {
@@ -232,6 +234,19 @@ class InputActivityService extends EventEmitter {
         }
       });
 
+      this.eventSource.addEventListener('input_completed', (event) => {
+        try {
+          const data = JSON.parse((event as MessageEvent).data);
+          if (this.currentProjectId) {
+            this.invalidatePendingInputsCache();
+            this.formDetailsCache.delete(`${this.currentProjectId}:${data.jobId}`);
+          }
+          this.emit('input_completed', data);
+        } catch (error) {
+          console.error('Failed to parse input_completed event:', error);
+        }
+      });
+
       this.eventSource.addEventListener('heartbeat', () => {
         // Heartbeat - can be used for connection monitoring
       });
@@ -290,7 +305,7 @@ class InputActivityService extends EventEmitter {
     // Invalidate cache BEFORE emitting event so listeners get fresh data
     if (this.currentProjectId) {
       this.invalidatePendingInputsCache();
-      this.formDetailsCache.delete(data.jobId);
+      this.formDetailsCache.delete(`${this.currentProjectId}:${data.jobId}`);
     }
     this.emit('input_cancelled', data);
   }

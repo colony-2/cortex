@@ -9,6 +9,7 @@ import (
 	"github.com/colony-2/c2j/pkg/input"
 	"github.com/colony-2/c2j/pkg/ops"
 	"github.com/colony-2/c2j/pkg/story"
+	"github.com/colony-2/c2j/pkg/template/colonycel"
 	workerworkflow "github.com/colony-2/c2j/pkg/worker/workflow"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
@@ -21,6 +22,9 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("workflow engine is required")
 	}
+	if err := configureReplay(engine); err != nil {
+		return nil, fmt.Errorf("configure recipe story replay: %w", err)
+	}
 
 	cells := &cellCatalog{
 		workingDir:       cfg.WorkingDir,
@@ -29,9 +33,10 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 	}
 	projects := &tenantProjectService{cells: cells, defaultTenantID: cfg.DefaultTenantID}
 	storySvc, err := story.New(story.ServiceConfig{
-		Engine:   engine,
-		Cells:    cells,
-		Projects: projects,
+		Engine:             engine,
+		Cells:              cells,
+		Projects:           projects,
+		CELOptionsProvider: colonycel.NewBuilder(colonycel.Options{}),
 	})
 	if err != nil {
 		return nil, err

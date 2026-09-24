@@ -1,0 +1,26 @@
+id: browser-input
+version: "1.0"
+input_schema: {}
+sequence:
+  - id: approval
+    op: input
+    inputs:
+      form:
+        title: Release approval
+        fields:
+          - id: message
+            question: Release note
+            type: paragraph_text
+            required: true
+          - id: decision
+            question: Decision
+            type: dropdown
+            required: true
+            options:
+              - value: approve
+                label: Approve
+              - value: reject
+                label: Reject
+outputs:
+  answer: "${{ sequence.approval.outputs.fields.message }}"
+  decision: "${{ sequence.approval.outputs.fields.decision }}"

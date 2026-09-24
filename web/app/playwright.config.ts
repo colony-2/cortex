@@ -26,24 +26,25 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: 'recipe-input.spec.ts',
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'production',
-      testMatch: 'api-integration.spec.ts',
+      testMatch: ['api-integration.spec.ts', 'recipe-input.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:18083' },
     },
   ],
   webServer: [
     {
-      command: 'bash scripts/go.sh run ./server/cmd/uitestserver --jobdb-only --addr 127.0.0.1:18082',
+      command: 'bash scripts/go.sh run ./server/cmd/uitestserver --jobdb-only --sqlite --addr 127.0.0.1:18082',
       port: 18082,
       reuseExistingServer: false,
       timeout: 180_000,
       cwd: '../..',
     },
     {
-      command: 'make build && exec ./build/cortex --addr 127.0.0.1:18083 --jobdb-url http://127.0.0.1:18082 --working-dir web/app/tests/fixtures/cell',
+      command: 'make build test-worker && exec ./build/cortex --addr 127.0.0.1:18083 --jobdb-url http://127.0.0.1:18082 --working-dir web/app/tests/fixtures/cell',
       url: 'http://127.0.0.1:18083/api/health',
       reuseExistingServer: false,
       timeout: 180_000,

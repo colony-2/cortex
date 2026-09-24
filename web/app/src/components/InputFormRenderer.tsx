@@ -84,6 +84,9 @@ export default function InputFormRenderer({
       fields: transformedValues,
       submitted_at: new Date().toISOString(),
     };
+    if (form.responseField) {
+      response.response = transformedValues[form.responseField];
+    }
     
     onSubmit(response);
   };

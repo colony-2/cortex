@@ -36,6 +36,22 @@ describe('InputFormRenderer', () => {
     cleanup();
   });
 
+  it.each([true, false])('preserves c2j response semantics (single question: %s)', async (singleQuestion) => {
+    render(<InputFormRenderer form={{
+      id: 'response-contract',
+      title: 'Approval',
+      responseField: singleQuestion ? 'response' : undefined,
+      fields: [{ id: 'response', label: 'Answer', type: 'short_answer', required: true }],
+    }} onSubmit={mockOnSubmit} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Answer'), 'approved');
+    await user.click(screen.getByRole('button', { name: 'Submit', exact: true }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledTimes(1));
+    const response = mockOnSubmit.mock.calls[0][0];
+    expect(response.fields).toEqual({ response: 'approved' });
+    expect(response.response).toBe(singleQuestion ? 'approved' : undefined);
+  });
+
   it('should render form description when provided', () => {
     render(
       <InputFormRenderer

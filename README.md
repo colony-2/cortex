@@ -88,7 +88,7 @@ when you need job execution.
 | --- | --- |
 | `server/cmd/cortex` | Production API and embedded UI |
 | `server/cmd/api` | Development API using remote JobDB |
-| `server/cmd/uitestserver` | In-memory test API and HTTP test JobDB |
+| `server/cmd/uitestserver` | In-memory test API and HTTP test JobDB; `--jobdb-only --sqlite` uses temporary SQLite storage |
 | `server/internal/cortex` | Routes, tenant/cell mapping, and c2j integration |
 | `server/internal/webdist` | Embedded production web assets |
 | `web/app` | React application |
@@ -103,14 +103,25 @@ pnpm test:api         # Go tests, including remote JobDB integration
 pnpm typecheck:web
 pnpm test:web
 pnpm test:e2e         # Browser tests against development and embedded production UI
+pnpm --filter @colony2/app test:e2e --project=production recipe-input.spec.ts
 node --test npm/cortex/test/*.test.cjs
 ```
 
 Playwright installs Chromium if missing. On a fresh Linux host, first run
 `pnpm --filter @colony2/app exec playwright install-deps chromium`.
-The suite manages its own servers on ports 15173 and 18081–18083 and uses an
-isolated fixture cell. It covers submission, stories, tenants, cells, and input
-events without running recipe workers. Reports are in `web/app/playwright-report`.
+The suite manages its own servers on ports 15173 and 18081–18083. It covers
+submission, stories, tenants, cells, and input events. The production tests use
+HTTP JobDB backed by temporary SQLite storage.
+
+The recipe-input tests build the pinned c2j command and execute real Git-backed
+recipes with single-question and multi-field input requests. They submit jobs
+through the browser, observe pending requests in a second tab over SSE, check
+required fields and page reloads, submit answers while the worker is stopped,
+and restart it to verify the exact recipe output and completed story. Each test
+has a separate tenant and temporary Git repository; the fixture cell's Git URL
+is mapped to that repository in the worker's environment. No API or EventSource
+mocks are used in these tests. Worker logs and recipe outcomes are attached to
+the Playwright report in `web/app/playwright-report`.
 
 ## Releases
 
