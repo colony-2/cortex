@@ -17,7 +17,7 @@ npm (Node.js 14 or newer and `tar` required):
 ```sh
 npm install -g @colony2/cortex
 cortex version
-cortex --jobdb-url http://127.0.0.1:9047 --working-dir /path/to/cell
+cortex --jobdb http://127.0.0.1:9047/c2 --working-dir /path/to/cell
 ```
 
 The npm installer downloads the matching binary from
@@ -33,13 +33,42 @@ with a c2j cell configuration; see the
 | Option | Environment variable | Default |
 | --- | --- | --- |
 | `--addr` | `CORTEX_ADDR` | `:8080` |
-| `--jobdb-url` | `JOBDB_URL` | Required |
+| `--jobdb` | `C2J_JOBDB` | `jobdb` from `.c2j/config.yaml` |
 | `--working-dir` | `CORTEX_WORKING_DIR` | Current directory |
-| `--tenant-id` | `CORTEX_TENANT_ID` | `1` |
 | `--cors-origins` | `CORTEX_CORS_ORIGINS` | Empty; comma-separated origins |
 
-Use `cortex --help` for command options and `cortex version` or `cortex --version`
-to identify the release. Source builds report `dev`.
+Cortex uses Cobra, like c2j: long flags use `--` (`--jobdb`, `--addr`) and
+short flags use `-` (`-h` for help). `cortex serve` explicitly starts the server;
+`cortex` with the same flags is equivalent. Use `cortex version` or
+`cortex --version` to identify the release. Source builds report `dev`.
+
+The JobDB URI includes the tenant, just like c2j:
+
+```sh
+cortex serve --jobdb http://localhost:9047/c2
+# Or share the same environment setting with c2j:
+C2J_JOBDB=http://localhost:9047/c2 cortex
+```
+
+Resolution follows `--jobdb`, then `C2J_JOBDB`, then the nearest ancestor
+`.c2j/config.yaml`. Cortex calls c2j's `pkg/config.LoadProjectConfig` and
+`ProjectConfig.JobDBURI` directly, including support for command-valued settings:
+
+```yaml
+jobdb: http://localhost:9047/c2
+# Alternatively:
+# jobdb:
+#   command: your-command-that-prints-a-jobdb-uri
+```
+
+Run `cortex` from that cell or a subdirectory, or select the discovery directory
+with `--working-dir`. Cortex requires a remote HTTP(S) JobDB server; `embed:///`
+is not supported.
+
+For migration, `--jobdb-url` remains a deprecated alias accepting either the new
+URI or a server-only URL with `--tenant-id`. Legacy `JOBDB_URL` is used only when
+neither a connection flag nor `C2J_JOBDB` is set, before consulting the config.
+`CORTEX_TENANT_ID` applies only to legacy server-only URLs (default `1`).
 
 Select a tenant in the header, use `/?tenantId=42`, or open a tenant route such as
 `/project/42/jobs`. The email screen records an identity cookie; it does not
@@ -54,7 +83,7 @@ downloads enabled. The Go wrapper selects the version in [`.go-version`](.go-ver
 pnpm install --frozen-lockfile
 bash scripts/go.sh -C server mod download
 make build
-./build/cortex --jobdb-url http://127.0.0.1:9047 --working-dir /path/to/cell
+./build/cortex --jobdb http://127.0.0.1:9047/c2 --working-dir /path/to/cell
 ```
 
 `make build` builds the web packages, copies their output into the Go embed
@@ -67,7 +96,7 @@ checkout is required.
 Start the API and web dev server in separate terminals:
 
 ```sh
-JOBDB_URL=http://127.0.0.1:9047 CORTEX_WORKING_DIR=/path/to/cell pnpm dev:api
+C2J_JOBDB=http://127.0.0.1:9047/c2 CORTEX_WORKING_DIR=/path/to/cell pnpm dev:api
 pnpm dev:web
 ```
 
