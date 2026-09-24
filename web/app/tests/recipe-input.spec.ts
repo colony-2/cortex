@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,13 +7,20 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 // Real production Cortex, HTTP JobDB, pinned c2j CLI, Git recipe, and browser SSE.
-// The only disposable state is the local Git repository and the test JobDB.
-for (const multiField of [false, true]) {
-  test(`answers a ${multiField ? 'multi-field' : 'single-question'} recipe input and resumes the worker to completion`, async ({ page, context, request }, testInfo) => {
-    test.setTimeout(90_000);
+const test = base.extend<{
+  recipeFixture: string;
+  recipeRun: {
+    tenant: string;
+    jobID: string;
+    observer: Page;
+    startWorker: () => void;
+    stopWorker: () => Promise<void>;
+  };
+}>({
+  recipeFixture: ['browser-input', { option: true }],
+  recipeRun: async ({ page, context, request, recipeFixture }, use, testInfo) => {
     const tenant = `input-${randomUUID()}`;
     const jobID = `recipe-${randomUUID()}`;
-    const answer = `approved-${randomUUID()}`;
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
     const workerPath = resolve('../../build/c2j-test-worker');
     let worker: ChildProcess | undefined;
@@ -50,7 +57,7 @@ for (const multiField of [false, true]) {
 
     try {
       mkdirSync(join(repo, '.c2j/recipes'), { recursive: true });
-      copyFileSync(resolve(`tests/fixtures/recipes/${multiField ? 'browser-input-fields' : 'browser-input'}.yaml`), join(repo, '.c2j/recipes/browser-input.yaml'));
+      copyFileSync(resolve(`tests/fixtures/recipes/${recipeFixture}.yaml`), join(repo, '.c2j/recipes/browser-input.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
       git('init', '-b', 'main');
       git('add', '.');
@@ -81,6 +88,29 @@ for (const multiField of [false, true]) {
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
+      await use({ tenant, jobID, observer, startWorker, stopWorker });
+      expect(errors).toEqual([]);
+    } finally {
+      await stopWorker();
+      try {
+        await testInfo.attach('c2j-worker.log', { body: workerLog, contentType: 'text/plain' });
+        const outcome = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+        await testInfo.attach('recipe-outcome.json', { body: await outcome.body(), contentType: 'application/json' });
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    }
+  },
+});
+
+test.beforeEach(() => test.setTimeout(90_000));
+
+for (const multiField of [false, true]) {
+  test.describe(multiField ? 'multi-field' : 'single-question', () => {
+    test.use({ recipeFixture: multiField ? 'browser-input-fields' : 'browser-input' });
+    test('answers recipe input and resumes the worker to completion', async ({ page, request, recipeRun }) => {
+      const { tenant, jobID, observer, startWorker, stopWorker } = recipeRun;
+      const answer = `approved-${randomUUID()}`;
       // Kill the worker while the request is pending: the answer must survive
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
       await stopWorker();
@@ -114,16 +144,30 @@ for (const multiField of [false, true]) {
         output: multiField ? { answer, decision: 'approve' } : { answer },
       });
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
-      expect(errors).toEqual([]);
-    } finally {
-      await stopWorker();
-      try {
-        await testInfo.attach('c2j-worker.log', { body: workerLog, contentType: 'text/plain' });
-        const outcome = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
-        await testInfo.attach('recipe-outcome.json', { body: await outcome.body(), contentType: 'application/json' });
-      } finally {
-        rmSync(repo, { recursive: true, force: true });
-      }
-    }
+    });
   });
 }
+
+test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }) => {
+  const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
+  await page.getByRole('link', { name: jobID, exact: true }).click();
+  await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
+  await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
+  await stopWorker();
+
+  // Cancellation can originate outside this browser. Both tabs must react to SSE.
+  const cancelled = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/cancel`, {
+    data: { reason: 'Browser integration cancellation' },
+  });
+  expect(cancelled.status(), await cancelled.text()).toBe(200);
+  await expect(observer.getByText('No pending inputs')).toBeVisible();
+  await expect(page.getByLabel('What should the recipe publish?')).not.toBeVisible();
+  expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toEqual([]);
+
+  const lateAnswer = await request.post(`/api/projects/${tenant}/user-inputs/${jobID}/respond`, {
+    data: { fields: { response: 'too late' }, response: 'too late' },
+  });
+  expect(lateAnswer.ok()).toBe(false);
+  startWorker();
+  await expect.poll(async () => (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json()).toMatchObject({ status: 'canceled' });
+});
