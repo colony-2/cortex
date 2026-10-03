@@ -15,6 +15,7 @@ export function adaptInputFormConfig(
 
     return {
       id: jobId,
+      kind: config.kind,
       title: config.question,
       responseField: 'response',
       description: undefined,
@@ -25,6 +26,7 @@ export function adaptInputFormConfig(
           type: fieldType,
           required: true,
           options: config.options?.map((o) => (typeof o === 'string' ? o : o.value)),
+          optionLabels: config.kind === 'review' ? Object.fromEntries((config.options || []).map(o => [o.value, o.label || o.value])) : undefined,
           min: config.scale?.min,
           max: config.scale?.max,
           placeholder: undefined,
@@ -42,6 +44,7 @@ export function adaptInputFormConfig(
       type: field.type,
       required: field.required || false,
       options: field.options?.map((o) => (typeof o === 'string' ? o : o.value)),
+      optionLabels: config.kind === 'review' ? Object.fromEntries((field.options || []).map(o => [o.value, o.label || o.value])) : undefined,
       min: field.scale?.min,
       max: field.scale?.max,
       placeholder: field.placeholder,
@@ -55,6 +58,7 @@ export function adaptInputFormConfig(
 
   return {
     id: jobId,
+    kind: config.kind,
     title: config.title || 'Input Request',
     description: undefined,
     fields,

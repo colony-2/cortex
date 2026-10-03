@@ -8,11 +8,14 @@ const { Title, Text } = Typography;
 
 interface PendingInputsListPageProps {
   projectId: string;
+  reviews?: boolean;
 }
 
-export default function PendingInputsListPage({ projectId }: PendingInputsListPageProps) {
+export default function PendingInputsListPage({ projectId, reviews = false }: PendingInputsListPageProps) {
   const navigate = useNavigate();
   const { pendingInputs, isConnected, refresh, setCurrentProjectId } = useInputActivity();
+
+  const items = pendingInputs.filter(input => (input.kind === 'review') === reviews);
 
   useEffect(() => {
     // Set current project for SSE connection
@@ -24,7 +27,7 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
   };
 
   const handleViewInput = (jobId: string) => {
-    navigate(`/project/${projectId}/jobs/${jobId}/story?input=1`);
+    navigate(reviews ? `/project/${projectId}/reviews/${jobId}` : `/project/${projectId}/jobs/${jobId}/story?input=1`);
   };
 
   if (!isConnected) {
@@ -43,29 +46,29 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={3} style={{ margin: 0 }}>
-            Pending Inputs
+            {reviews ? 'Reviews' : 'Pending Inputs'}
           </Title>
           <Button icon={<ReloadOutlined />} onClick={handleRefresh}>
             Refresh
           </Button>
         </div>
 
-        {pendingInputs.length === 0 ? (
+        {items.length === 0 ? (
           <Card>
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="No pending inputs"
+              description={reviews ? 'No pending reviews' : 'No pending inputs'}
               style={{ padding: '48px 0' }}
             >
               <Text type="secondary">
-                Pending input requests from jobs will appear here
+                {reviews ? 'Document reviews from jobs will appear here' : 'Pending input requests from jobs will appear here'}
               </Text>
             </Empty>
           </Card>
         ) : (
           <List
-            dataSource={pendingInputs}
-            renderItem={(input: { id: string }) => (
+            dataSource={items}
+            renderItem={(input) => (
               <Card
                 key={input.id}
                 style={{ marginBottom: 16 }}
@@ -76,14 +79,14 @@ export default function PendingInputsListPage({ projectId }: PendingInputsListPa
                     <Space direction="vertical" size="small">
                       <Space>
                         <FormOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-                      <Text strong>Input Request</Text>
+                      <Text strong>{reviews ? input.title || 'Review' : 'Input Request'}</Text>
                     </Space>
                     <Text type="secondary" style={{ fontSize: 13 }}>
-                      Job ID: {input.id}
+                      Job ID: {input.id}{reviews ? ` · ${input.document_count || 0} documents` : ''}
                     </Text>
                   </Space>
                   <Button type="primary" onClick={() => handleViewInput(input.id)}>
-                    Open Job
+                    {reviews ? 'Open Review' : 'Open Job'}
                   </Button>
                 </div>
               </Card>

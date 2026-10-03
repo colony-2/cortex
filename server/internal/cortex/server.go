@@ -55,7 +55,13 @@ func NewServer(cfg Config, engine jobworkflow.Engine) (*Server, error) {
 		return nil, err
 	}
 
+	runtime, err := input.NewRuntime(ctl, sse)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Server{
+		inputs:  runtime,
 		cfg:     cfg,
 		engine:  engine,
 		story:   storySvc,
@@ -90,6 +96,10 @@ func (s *Server) buildRouter(inputService ops.ManagementService) http.Handler {
 	api.HandleFunc("/projects/{projectId}/jobs/{jobId}/tasks/{taskOrdinal}/artifacts/{artifactName:.+}", s.requireJob(s.handleArtifactByOrdinal)).Methods(http.MethodGet, http.MethodOptions)
 
 	api.HandleFunc("/projects/{projectId}/user-inputs/stream", s.handleInputStream).Methods(http.MethodGet, http.MethodOptions)
+
+	api.HandleFunc("/projects/{projectId}/user-inputs/pending", s.handlePendingInputs).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/reviews/{jobId}/documents", s.handleReviewDocument).Methods(http.MethodGet, http.MethodOptions)
+	api.HandleFunc("/projects/{projectId}/reviews/{jobId}/respond", s.handleReviewResponse).Methods(http.MethodPost, http.MethodOptions)
 
 	for _, route := range inputService.GetRoutes() {
 		r.HandleFunc(route.Path, route.Handler).Methods(route.Method, http.MethodOptions)

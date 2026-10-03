@@ -1,9 +1,11 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { inputActivityService, type PendingInput } from '../services/inputActivityService';
 
 interface InputActivityContextValue {
   pendingInputs: PendingInput[];
   pendingCount: number;
+  pendingReviews: PendingInput[];
+  reviewCount: number;
   isConnected: boolean;
   connectionError: boolean;
   currentProjectId: string | null;
@@ -23,23 +25,27 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
-  const setCurrentProjectId = (projectId: string | null) => {
+  const setCurrentProjectId = useCallback((projectId: string | null) => {
     setCurrentProjectIdState(projectId);
-  };
+  }, []);
+  const projectRef = useRef(currentProjectId);
+  projectRef.current = currentProjectId;
+  const loadVersion = useRef(0);
 
-  const loadPendingInputs = async (projectId: string) => {
+  const loadPendingInputs = async (projectId: string, force = false) => {
+    const version = ++loadVersion.current;
     try {
-      const inputs = await inputActivityService.getPendingInputs(projectId);
-      setPendingInputs(inputs);
+      const inputs = await inputActivityService.getPendingInputs(projectId, force);
+      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs(inputs);
     } catch (error) {
       console.error('Failed to load pending inputs:', error);
-      setPendingInputs([]);
+      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs([]);
     }
   };
 
   const refresh = async () => {
     if (currentProjectId) {
-      await loadPendingInputs(currentProjectId);
+      await loadPendingInputs(currentProjectId, true);
     }
   };
 
@@ -52,6 +58,8 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
       return;
     }
 
+    setPendingInputs([]);
+    setIsConnected(false);
     // Connect to SSE for current project
     inputActivityService.connect(currentProjectId);
 
@@ -105,13 +113,16 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     };
   }, [currentProjectId]);
 
-  const pendingCount = pendingInputs.length;
+  const pendingReviews = pendingInputs.filter(input => input.kind === 'review');
+  const pendingCount = pendingInputs.length - pendingReviews.length;
 
   return (
     <InputActivityContext.Provider
       value={{
         pendingInputs,
         pendingCount,
+        pendingReviews,
+        reviewCount: pendingReviews.length,
         isConnected,
         connectionError,
         currentProjectId,

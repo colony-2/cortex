@@ -34,15 +34,28 @@ describe('PendingInputsListPage', () => {
     vi.clearAllMocks();
   });
 
-  const renderComponent = () => {
+  const renderComponent = (reviews = false) => {
     return render(
       <BrowserRouter>
         <InputActivityProvider>
-          <PendingInputsListPage projectId={projectId} />
+          <PendingInputsListPage projectId={projectId} reviews={reviews} />
         </InputActivityProvider>
       </BrowserRouter>
     );
   };
+
+  it.each([false, true])('separates reviews from ordinary inputs (reviews: %s)', async (reviews) => {
+    setupMockInputs(projectId, [
+      { id: 'ordinary' },
+      { id: 'review', kind: 'review', title: 'Review the design', document_count: 2 },
+    ], []);
+    renderComponent(reviews);
+    const sse = await waitForSSEConnection();
+    sse.emitConnected();
+    await screen.findByText(reviews ? 'Review the design' : 'Input Request');
+    expect(screen.queryByText(reviews ? 'Input Request' : 'Review the design')).not.toBeInTheDocument();
+    expect(screen.queryByText(reviews ? 'Job ID: ordinary' : 'Job ID: review · 2 documents')).not.toBeInTheDocument();
+  });
 
   it('should show loading state initially', () => {
     renderComponent();

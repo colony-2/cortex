@@ -19,6 +19,7 @@ const test = base.extend<{
 }>({
   recipeFixture: ['browser-input', { option: true }],
   recipeRun: async ({ page, context, request, recipeFixture }, use, testInfo) => {
+    const review = recipeFixture === 'browser-review';
     const tenant = `input-${randomUUID()}`;
     const jobID = `recipe-${randomUUID()}`;
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
@@ -71,8 +72,8 @@ const test = base.extend<{
 
       // This second tab must update through SSE, without refresh or navigation.
       const observer = await context.newPage();
-      await observer.goto(`/project/${tenant}/inputs`);
-      await expect(observer.getByText('No pending inputs')).toBeVisible();
+      await observer.goto(`/project/${tenant}/${review ? 'reviews' : 'inputs'}`);
+      await expect(observer.getByText(review ? 'No pending reviews' : 'No pending inputs')).toBeVisible();
 
       await page.getByRole('button', { name: 'Submit Job' }).click();
       const dialog = page.getByRole('dialog');
@@ -84,7 +85,7 @@ const test = base.extend<{
       await expect(dialog).not.toBeVisible();
       startWorker();
 
-      await expect(observer.getByText(`Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
+      await expect(observer.getByText(review ? `Job ID: ${jobID} · 2 documents` : `Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
@@ -240,5 +241,63 @@ test.describe('input timeout', () => {
       data: { fields: { response: 'too late' }, response: 'too late' },
     });
     expect(lateAnswer.ok()).toBe(false);
+  });
+});
+
+
+test.describe('document reviews', () => {
+  test.use({ recipeFixture: 'browser-review' });
+  test('reviews render immutable Markdown and submit through c2j', async ({ page, request, recipeRun }) => {
+    const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
+    await stopWorker();
+    await page.getByRole('link', { name: 'Pending Inputs', exact: true }).click();
+    await expect(page.getByText('No pending inputs')).toBeVisible();
+    await page.getByRole('link', { name: 'Reviews', exact: true }).click();
+    await page.getByRole('button', { name: 'Open Review', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+    await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
+    await page.getByText('Markdown', { exact: true }).click();
+    await expect(page.getByLabel('Markdown source')).toContainText('**Immutable original**');
+    await page.getByTitle('design · design.md', { exact: true }).click();
+    await page.getByTitle('rollout · rollout.md', { exact: true }).click();
+    await expect(page.getByLabel('Markdown source')).toContainText('# Rollout');
+    await page.getByText('Rendered', { exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
+    await expect(page.getByRole('checkbox')).toBeDisabled();
+
+    const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
+    const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
+      data: { request_id: 'old-request', submission_id: randomUUID(), fields: { decision: 'approve' } },
+    });
+    expect(stale.status()).toBe(400);
+    const invalid = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
+      data: { request_id: details.form.request_id, submission_id: randomUUID(), fields: { decision: 'unknown' } },
+    });
+    expect(invalid.status()).toBe(400);
+    expect((await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json())).toHaveLength(1);
+
+    await page.getByRole('button', { name: 'Submit', exact: true }).click();
+    await expect(page.getByText('How should we proceed? is required')).toBeVisible();
+    await page.getByLabel('Approve', { exact: true }).check();
+    await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
+    const responded = page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Submit', exact: true }).click();
+    const response = await responded;
+    expect(response.status(), await response.text()).toBe(200);
+    await expect(page.getByText('No pending reviews')).toBeVisible();
+    await expect(observer.getByText('No pending reviews')).toBeVisible();
+    startWorker();
+    await expect.poll(async () => {
+      const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+      return response.status() === 200 ? response.json() : null;
+    }, { timeout: 30_000 }).toMatchObject({ status: 'completed', output: {
+      answers: { decision: 'approve', annotation: { kind: 'stored', name: 'feedback.md' } },
+      receipt: { request_id: details.form.request_id, actor: { id: 'browser@example.com', kind: 'human' } },
+    } });
+    const original = details.form.documents.design.stored.key;
+    const originalResponse = await request.get(`/api/projects/${tenant}/jobs/${original.jobId}/tasks/${original.taskOrdinal}/artifacts/${original.name}`);
+    expect(await originalResponse.text()).toContain('**Immutable original**');
   });
 });

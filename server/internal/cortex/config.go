@@ -30,6 +30,7 @@ type Server struct {
 	engine  jobworkflow.Engine
 	router  http.Handler
 	story   storyService
+	inputs  inputRuntime
 	cells   *cellCatalog
 	logger  *slog.Logger
 	started time.Time

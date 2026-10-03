@@ -24,6 +24,7 @@ class EventEmitter {
 
 // Types matching OpenAPI spec
 export type FieldType =
+  | 'boolean'
   | 'short_answer'
   | 'paragraph_text'
   | 'multiple_choice'
@@ -81,7 +82,16 @@ export interface FormContext {
   artifacts_glob?: GlobPattern[];
 }
 
+export interface ReviewDocument {
+  kind: 'stored';
+  name?: string;
+  stored: { key: { jobId: string; taskOrdinal: number; name: string; sizeBytes: number } };
+}
+
 export interface InputFormConfig {
+  kind?: string;
+  request_id?: string;
+  documents?: Record<string, ReviewDocument>;
   // Single question format
   question?: string;
   type?: FieldType;
@@ -98,6 +108,7 @@ export interface InputFormConfig {
 
 // Component-friendly form structure (for InputFormRenderer)
 export interface InputForm {
+  kind?: string;
   id: string;
   title: string;
   description?: string;
@@ -112,6 +123,7 @@ export interface InputField {
   type: FieldType;
   required: boolean;
   options?: string[];
+  optionLabels?: Record<string, string>;
   min?: number;
   max?: number;
   placeholder?: string;
@@ -122,6 +134,7 @@ export interface InputField {
 }
 
 export interface FormResponse {
+  attachments?: Record<string, File>;
   fields: Record<string, any>;
   activity_id?: string;
   user_id?: string;
@@ -134,6 +147,10 @@ export interface FormResponse {
 // API response types
 export interface PendingInput {
   id: string;  // jobId
+  kind?: string;
+  title?: string;
+  request_id?: string;
+  document_count?: number;
 }
 
 export interface UserInputDetails {
@@ -335,9 +352,9 @@ class InputActivityService extends EventEmitter {
     }
   }
 
-  async getPendingInputs(projectId: string): Promise<PendingInput[]> {
+  async getPendingInputs(projectId: string, force = false): Promise<PendingInput[]> {
     // Check cache first
-    if (this.pendingInputsCache.has(projectId)) {
+    if (!force && this.pendingInputsCache.has(projectId)) {
       return this.pendingInputsCache.get(projectId)!;
     }
 
@@ -403,6 +420,33 @@ class InputActivityService extends EventEmitter {
       console.error('Failed to submit response:', error);
       throw error;
     }
+  }
+
+  reviewDocumentURL(projectId: string, jobId: string, requestId: string, documentId: string): string {
+    const query = new URLSearchParams({ request_id: requestId, document_id: documentId });
+    return `${API_BASE}/projects/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}/documents?${query}`;
+  }
+
+  async submitReview(projectId: string, jobId: string, requestId: string, response: FormResponse): Promise<void> {
+    const submission = {
+      request_id: requestId,
+      submission_id: crypto.randomUUID(),
+      fields: Object.fromEntries(Object.entries(response.fields).filter(([, value]) => value != null)),
+      response: response.response,
+    };
+    const body = new FormData();
+    body.append('submission', JSON.stringify(submission));
+    for (const [field, file] of Object.entries(response.attachments || {})) body.append(field, file);
+    const result = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/reviews/${encodeURIComponent(jobId)}/respond`, {
+      method: 'POST', body,
+    });
+    if (!result.ok) {
+      const error = await result.json().catch(() => null);
+      throw new Error(error?.error || 'Failed to submit review. Reload if this review has changed.');
+    }
+    this.formDetailsCache.delete(`${projectId}:${jobId}`);
+    this.pendingInputsCache.delete(projectId);
+    this.emit('input_completed', { jobId });
   }
 
   async cancelInput(projectId: string, jobId: string, reason?: string): Promise<void> {

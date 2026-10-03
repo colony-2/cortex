@@ -48,12 +48,14 @@ export default function InputFormRenderer({
   const handleFinish = (values: any) => {
     // Transform values based on field types
     const transformedValues: Record<string, any> = {};
+    const attachments: Record<string, File> = {};
+    const review = form.kind === 'review';
     
     form.fields.forEach((field: InputField) => {
       const value = values[field.id];
       
       if (value === undefined || value === null) {
-        transformedValues[field.id] = null;
+        if (!review) transformedValues[field.id] = null;
         return;
       }
       
@@ -65,6 +67,12 @@ export default function InputFormRenderer({
           transformedValues[field.id] = value ? (value as Dayjs).format('HH:mm:ss') : null;
           break;
         case 'file_upload':
+          if (review) {
+            const file = fileList[field.id]?.[0];
+            const raw = file?.originFileObj || file;
+            if (raw instanceof File) attachments[field.id] = raw;
+            break;
+          }
           transformedValues[field.id] = fileList[field.id]?.map(file => ({
             name: file.name,
             size: file.size,
@@ -84,6 +92,7 @@ export default function InputFormRenderer({
       fields: transformedValues,
       submitted_at: new Date().toISOString(),
     };
+    if (review) response.attachments = attachments;
     if (form.responseField) {
       response.response = transformedValues[form.responseField];
     }
@@ -107,6 +116,8 @@ export default function InputFormRenderer({
     }
     
     switch (field.type) {
+      case 'boolean':
+        return <Form.Item key={field.id} name={field.id} label={field.label} rules={rules}><Radio.Group options={[{ label: 'Yes', value: true }, { label: 'No', value: false }]} /></Form.Item>;
       case 'short_answer':
         return (
           <Form.Item
@@ -147,7 +158,7 @@ export default function InputFormRenderer({
             <Radio.Group>
               {field.options?.map((option: string) => (
                 <Radio key={option} value={option}>
-                  {option}
+                  {field.optionLabels?.[option] || option}
                 </Radio>
               ))}
             </Radio.Group>
@@ -165,7 +176,7 @@ export default function InputFormRenderer({
             <Checkbox.Group>
               {field.options?.map((option: string) => (
                 <Checkbox key={option} value={option}>
-                  {option}
+                  {field.optionLabels?.[option] || option}
                 </Checkbox>
               ))}
             </Checkbox.Group>
@@ -183,7 +194,7 @@ export default function InputFormRenderer({
             <Select placeholder={field.placeholder || 'Select an option'}>
               {field.options?.map((option: string) => (
                 <Select.Option key={option} value={option}>
-                  {option}
+                  {field.optionLabels?.[option] || option}
                 </Select.Option>
               ))}
             </Select>
@@ -255,12 +266,13 @@ export default function InputFormRenderer({
             }}
           >
             <Upload
+              maxCount={form.kind === 'review' ? 1 : undefined}
               beforeUpload={(file) => {
                 // Store file locally, don't auto-upload
                 const fieldFiles = fileList[field.id] || [];
                 setFileList({
                   ...fileList,
-                  [field.id]: [...fieldFiles, file],
+                  [field.id]: form.kind === 'review' ? [file] : [...fieldFiles, file],
                 });
                 return false;
               }}

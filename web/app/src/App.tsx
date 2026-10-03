@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { FormOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { FileSearchOutlined, FormOutlined, LogoutOutlined, OrderedListOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Alert, Badge, Button, Empty, Input, Layout, Menu, Space, Spin, Typography } from 'antd';
 import {
   InputActivityProvider,
@@ -58,7 +58,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
   const navigate = useNavigate();
   const [tenantId, setTenantId] = useState(() => initialTenantId(location.search, location.pathname, defaultTenantId));
   const [tenantDraft, setTenantDraft] = useState(tenantId);
-  const { pendingCount, setCurrentProjectId } = useInputActivity();
+  const { pendingCount, reviewCount, setCurrentProjectId } = useInputActivity();
 
   useEffect(() => {
     const selectedTenant = initialTenantId(location.search, location.pathname, defaultTenantId);
@@ -75,6 +75,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
 
   const navKey = useMemo(() => {
     const path = location.pathname;
+    if (path.includes('/reviews')) return 'reviews';
     if (path.includes('/inputs')) return 'inputs';
     if (path.includes('/cells')) return 'cells';
     return 'jobs';
@@ -137,6 +138,11 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
                 icon: <FormOutlined />,
               },
               {
+                key: 'reviews',
+                label: <Badge count={reviewCount} offset={[10, 0]} size="small"><Link to={`/project/${tenantId}/reviews`}>Reviews</Link></Badge>,
+                icon: <FileSearchOutlined />,
+              },
+              {
                 key: 'cells',
                 label: <Link to={`/project/${tenantId}/cells`}>Cells</Link>,
                 icon: <OrderedListOutlined />,
@@ -154,6 +160,9 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/inputs" element={<PendingInputsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/inputs" element={<InputsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/inputs/:jobId" element={<InputRoute fallbackProjectId={tenantId} />} />
+            <Route path="/reviews" element={<PendingInputsListPage projectId={tenantId} reviews />} />
+            <Route path="/project/:projectId/reviews" element={<ReviewsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/reviews/:jobId" element={<InputRoute fallbackProjectId={tenantId} reviews />} />
             <Route path="/cells" element={<CellsList projectId={tenantId} />} />
             <Route path="/project/:projectId/cells" element={<CellsRoute fallbackProjectId={tenantId} />} />
             <Route path="*" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
@@ -177,8 +186,12 @@ function InputsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
   return <PendingInputsListPage projectId={useRouteProjectId(fallbackProjectId)} />;
 }
 
-function InputRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
-  return <InputDetailPage projectId={useRouteProjectId(fallbackProjectId)} />;
+function ReviewsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
+  return <PendingInputsListPage projectId={useRouteProjectId(fallbackProjectId)} reviews />;
+}
+
+function InputRoute({ fallbackProjectId, reviews = false }: { fallbackProjectId: string; reviews?: boolean }) {
+  return <InputDetailPage projectId={useRouteProjectId(fallbackProjectId)} reviews={reviews} />;
 }
 
 function CellsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {

@@ -9,6 +9,20 @@ Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
 Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
 tenants; cells are the current Git repository and its c2j-configured dependents.
 
+## Document reviews
+
+The **Reviews** navigation item lists pending input forms marked `kind: review`.
+Reviews are excluded from **Pending Inputs**, and each section has its own count.
+Open a review to switch between its documents, view Markdown rendered or as its
+exact source, and answer the recipe's questions. Original documents are read only;
+file-upload questions attach separate response documents (one file per question,
+32 MiB total HTTP request limit). Other document formats can be downloaded.
+
+Responses use c2j's request identity, validation, and receipts. A job's story links
+to its review. Completed reviews leave the pending list; historical review lookup
+is not available yet. See the [recipe author guide](GUIDE-Review-Recipe-Authors.md)
+and [c2j API follow-up requirements](docs/C2J-Review-API-Requirements.md).
+
 ## Install and run
 
 Releases provide Linux and macOS binaries for x86_64 and ARM64. Install through
@@ -144,7 +158,9 @@ submission, stories, tenants, cells, and input events. The production tests use
 HTTP JobDB backed by temporary SQLite storage.
 
 The recipe-input tests build the pinned c2j command and execute real Git-backed
-recipes with single-question and multi-field input requests. They submit jobs
+recipes with single-question and multi-field input requests, plus document
+reviews. The review test covers rendered/source Markdown, multiple documents,
+stale and invalid responses, separate response attachments, and receipts. They submit jobs
 through the browser, observe pending requests in a second tab over SSE, check
 required fields and page reloads, submit answers while the worker is stopped,
 and restart it to verify the exact recipe output and completed story. They also
@@ -156,7 +172,7 @@ mocks are used in these tests. Worker logs and recipe outcomes are attached to
 the Playwright report in `web/app/playwright-report`.
 
 The timeout regression also runs against the real worker. It currently records
-an **expected failure**: with c2j v0.0.53 / JobDB v0.0.19, an unanswered external
+an **expected failure**: with the pinned c2j / JobDB versions, an unanswered external
 input task remains pending past its recipe deadline. Step deadlines have the
 same limitation. The test first verifies that the prompt appears, then marks
 only a confirmed still-pending outcome after the deadline as expected; setup

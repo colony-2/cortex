@@ -108,3 +108,37 @@ body {
 .ant-tabs-left > .ant-tabs-content-holder {
   overflow: auto;
 }
+.review-document-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.review-markdown, .review-markdown-source {
+  margin: 0;
+  padding: 24px;
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fff;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.review-markdown-source, .review-markdown pre {
+  background: #fafafa;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+.review-markdown pre { padding: 16px; overflow: auto; }
+.review-markdown code { background: #f6f8fa; border-radius: 3px; padding: 2px 4px; }
+.review-markdown table { border-collapse: collapse; display: block; overflow: auto; }
+.review-markdown th, .review-markdown td { border: 1px solid #d9d9d9; padding: 8px 12px; }
+.review-markdown blockquote { margin-left: 0; padding-left: 16px; border-left: 4px solid #d9d9d9; color: #595959; }
+.review-markdown img { max-width: 100%; }
+.review-markdown > :first-child { margin-top: 0; }

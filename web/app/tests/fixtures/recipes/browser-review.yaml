@@ -1,0 +1,38 @@
+id: browser-input
+version: "1.0"
+input_schema: {}
+sequence:
+  - id: draft
+    op: command_execution
+    inputs:
+      working_directory: "{{ context.environment.op.outbox }}"
+      run: |
+        printf '# Design\n\n**Immutable original**\n\n| Choice | Result |\n| --- | --- |\n| Approve | Continue |\n' > design.md
+        printf '# Rollout\n\n- [ ] Verify recovery\n' > rollout.md
+  - id: review
+    op: input
+    inputs:
+      form:
+        kind: review
+        title: Review the release
+        documents:
+          design: '${{ sequence.draft.artifacts["design.md"] }}'
+          rollout: '${{ sequence.draft.artifacts["rollout.md"] }}'
+        fields:
+          - id: decision
+            type: multiple_choice
+            question: How should we proceed?
+            required: true
+            options:
+              - {value: approve, label: Approve}
+              - {value: revise, label: Request changes}
+          - id: feedback
+            type: paragraph_text
+            question: What should change?
+          - id: annotation
+            type: file_upload
+            question: Attach feedback document
+outputs:
+  answers: "${{ sequence.review.outputs.fields }}"
+  receipt: "${{ sequence.review.outputs.receipt }}"
+  artifact_refs: "${{ sequence.review.outputs.artifact_refs }}"

@@ -52,6 +52,8 @@ github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 h1:zuQyyAK
 github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06/go.mod h1:7nc4anLGjupUW/PeY5qiNYsdNXj7zopG+eqsS7To5IQ=
 github.com/colony-2/c2j v0.0.53 h1:yfn4K7v9WuVxfOMv/iqJaXzG1htg5mVrpYmHA8SE03s=
 github.com/colony-2/c2j v0.0.53/go.mod h1:LSe7bLgsLyXQ7MGP2lpXDTytwNBTm2CJ0I/Hu8E7MtU=
+github.com/colony-2/c2j v0.0.56-0.20260930003717-614bfac82f15 h1:TEP3BIR+xYQLnI3BzySGata4Kgu0/ujQZjxghSQMH3U=
+github.com/colony-2/c2j v0.0.56-0.20260930003717-614bfac82f15/go.mod h1:8BR0vTA6e90i+YwiA279+y8UasS6FXhqBZUufn6pZRI=
 github.com/colony-2/jobdb v0.0.19-0.20260919034646-71b6668a65db h1:fScF/bZd6IYir9buoJCqYBjkkN0SWpj4EL0oOPjfjQA=
 github.com/colony-2/jobdb v0.0.19-0.20260919034646-71b6668a65db/go.mod h1:p2FeWO2+PRfngsjJPKFn8puFa2QxmCQZ7KElqXP+s4E=
 github.com/colony-2/shai v0.0.8 h1:lRngXUaKHm34PtWH+X1JpEQzpFtS3QanixxadNgM4/Y=

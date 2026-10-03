@@ -1099,10 +1099,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     ? [
                         {
                           key: 'pending_input',
-                          label: 'Pending Input',
+                          label: pendingInputDetails.form.kind === 'review' ? 'Review' : 'Pending Input',
                           children: (
                             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                              <Card size="small" title="Input Request">
+                              <Card size="small" title={pendingInputDetails.form.kind === 'review' ? 'Review' : 'Input Request'}>
                                 <Descriptions column={1} bordered size="small">
                                   <Descriptions.Item label="Status">
                                     <Tag color="magenta">{pendingInputDetails.status}</Tag>
@@ -1127,7 +1127,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                                 />
                               ) : null}
 
-                              {pendingInputForm ? (
+                              {pendingInputDetails.form.kind === 'review' ? (
+                                <Card title={pendingInputDetails.form.title || 'Review'} size="small">
+                                  <Button type="primary" href={`/project/${projectId}/reviews/${jobId}`}>Open Review</Button>
+                                </Card>
+                              ) : pendingInputForm ? (
                                 <Card title={pendingInputForm.title} size="small">
                                   <InputFormRenderer
                                     form={pendingInputForm}
