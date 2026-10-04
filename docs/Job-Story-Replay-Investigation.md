@@ -1,11 +1,13 @@
 # Job story replay investigation — 2026-10-03
 
 Update, 2026-10-04: Cortex now pins c2j
-`v0.0.59-0.20261004003418-6af179613628`, incorporating fixes for timed-form
-retrieval and terminal outcome status. JobDB remains at v0.0.23. See the
-[timed-input report](bugs/timed-input-v0.0.58.md) for the resolution. The
-observations below describe the original database investigation against v0.0.58;
-the separate story-summary issue is not claimed resolved by these changes.
+`v0.0.60-0.20261004014304-252b251f9f74` and JobDB v0.0.24. This includes the
+timed-input fixes and the later historical-replay fixes. The observations below
+describe the original database investigation against v0.0.58.
+
+Further investigation found why historical steps disappear after the original
+job deadline and why the root can remain `running`: see the
+[JobDB replay bug report and resolution](bugs/jobdb-story-replay-after-deadline.md).
 
 ## Reproduction and dependency upgrade
 

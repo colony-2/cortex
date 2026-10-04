@@ -62,6 +62,7 @@ type NodeStatus =
 
 type StoryKind =
   | 'recipe'
+  | 'recipeSourceResolution'
   | 'sequence'
   | 'op'
   | 'opStep'
@@ -101,7 +102,10 @@ interface StoryNode {
   artifact_keys?: ArtifactKey[];
   children?: StoryNode[];
   attempt?: number;
+  job_attempt?: number;
+  past_attempts?: StoryNode[];
   prior_attempts?: StoryNode[];
+  error?: { message: string; code?: string } | null;
   task_ordinal?: number | null;
   restart_from_ordinal?: number | null;
 
@@ -121,15 +125,15 @@ interface JobStoryResponse {
 }
 
 type NodeRef =
-  | { type: 'node'; node: StoryNode; key: string; attempt: number }
-  | { type: 'priorAttemptsGroup'; parent: StoryNode; key: string };
+  | { type: 'node'; node: StoryNode; key: string; attempt: number; jobAttempt: number }
+  | { type: 'priorAttemptsGroup' | 'pastAttemptsGroup'; parent: StoryNode; key: string };
 
 function nodeAttempt(node: StoryNode): number {
   return node.attempt ?? 1;
 }
 
-function nodeKey(node: StoryNode): string | null {
-  return node.id ?? null;
+function nodeKey(node: StoryNode, jobAttempt: number): string | null {
+  return node.id ? `jobAttempt:${jobAttempt}|${node.id}` : null;
 }
 
 function formatTimestamp(ts?: string | null): string {
@@ -203,6 +207,8 @@ function kindLabel(kind: StoryKind): string {
   switch (kind) {
     case 'recipe':
       return 'Recipe';
+    case 'recipeSourceResolution':
+      return 'Recipe Source';
     case 'sequence':
       return 'Sequence';
     case 'op':
@@ -308,8 +314,8 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
   const legacyKeyToKey = new Map<string, string>();
   let syntheticCounter = 0;
 
-  const keyForNode = (node: StoryNode): string => {
-    const k = nodeKey(node);
+  const keyForNode = (node: StoryNode, jobAttempt: number): string => {
+    const k = nodeKey(node, jobAttempt);
     if (k) return k;
     syntheticCounter += 1;
     return `synthetic:${syntheticCounter}`;
@@ -322,12 +328,15 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
   const buildNode = (
     node: StoryNode,
     parentKey: string | null,
+    parentJobAttempt: number,
     nodeOpts?: { forceAttemptBadge?: boolean }
   ): DataNode => {
     const attempt = nodeAttempt(node);
-    const key = keyForNode(node);
-    keyToRef.set(key, { type: 'node', node, key, attempt });
+    const jobAttempt = node.job_attempt ?? parentJobAttempt;
+    const key = keyForNode(node, jobAttempt);
+    keyToRef.set(key, { type: 'node', node, key, attempt, jobAttempt });
     keyToParent.set(key, parentKey);
+    if (node.id) maybeSetLegacyKey(node.id, key);
     maybeSetLegacyKey(`${node.path.join('/')}|attempt:${attempt}`, key);
 
     const children: DataNode[] = [];
@@ -344,13 +353,26 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
           </Text>
         ),
         children: node.prior_attempts.map((pa) => {
-          return buildNode(pa, groupKey, { forceAttemptBadge: true });
+          return buildNode(pa, groupKey, jobAttempt, { forceAttemptBadge: true });
         }),
       });
     }
 
     if (node.children && node.children.length > 0) {
-      children.push(...node.children.map((child) => buildNode(child, key)));
+      children.push(...node.children.map((child) => buildNode(child, key, jobAttempt)));
+    }
+
+    // Node IDs are local to each replayed job attempt. Keep older attempts
+    // distinct so selecting or linking a failure cannot open another attempt.
+    if (node.past_attempts?.length) {
+      const groupKey = `pastAttemptsGroup:${key}`;
+      keyToRef.set(groupKey, { type: 'pastAttemptsGroup', parent: node, key: groupKey });
+      keyToParent.set(groupKey, key);
+      children.push({
+        key: groupKey,
+        title: <Text type="secondary">Previous job attempts ({node.past_attempts.length})</Text>,
+        children: node.past_attempts.map((past, index) => buildNode(past, groupKey, past.job_attempt ?? index + 1)),
+      });
     }
 
     const attemptBadge =
@@ -398,6 +420,7 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
           <Text type="secondary">{kindLabel(node.kind)}</Text>
           <Text strong>{node.title}</Text>
           <Tag color={statusTagColor(node.status)}>{node.status.toUpperCase()}</Tag>
+          {node.kind === 'recipe' && <Tag>Job attempt {jobAttempt}</Tag>}
           {attemptBadge}
           {artifactBadge}
           {restartBadge}
@@ -409,7 +432,7 @@ function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskO
     };
   };
 
-  const treeData = root ? [buildNode(root, null)] : [];
+  const treeData = root ? [buildNode(root, null, root.job_attempt ?? 1)] : [];
   return { treeData, keyToRef, keyToParent, legacyKeyToKey };
 }
 
@@ -521,6 +544,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       let nextSelectedKey: string | null = null;
       if (urlNodeId && nextKeyToRef.has(urlNodeId)) {
         nextSelectedKey = urlNodeId;
+      } else if (urlNodeId && nextLegacyKeyToKey.has(urlNodeId)) {
+        nextSelectedKey = nextLegacyKeyToKey.get(urlNodeId)!;
       } else if (legacyResolvedKey && nextKeyToRef.has(legacyResolvedKey)) {
         nextSelectedKey = legacyResolvedKey;
       } else if (opts?.preserveSelection && selectedKey && nextKeyToRef.has(selectedKey)) {
@@ -532,7 +557,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       if (nextSelectedKey && nextKeyToRef.has(nextSelectedKey)) {
         setSelectedKey(nextSelectedKey);
         const ancestors = ancestorKeysForKey(nextSelectedKey, nextKeyToParent);
-        setExpandedKeys((prev) => unionKeys(prev, ancestors));
+        setExpandedKeys((prev) => opts?.preserveSelection
+          ? unionKeys(prev, ancestors)
+          : Array.from(nextKeyToRef.keys()));
       }
     } catch (e) {
       console.error('Failed to load job story', e);
@@ -596,7 +623,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     setActiveDetailsTab(wantInput ? 'pending_input' : 'overview');
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (ref.node.id) next.set('nodeId', ref.node.id);
+      next.set('nodeId', key);
       next.set('path', ref.node.path.join('/'));
       next.set('attempt', String(ref.attempt));
       next.set('taskOrdinal', String(focusTaskOrdinal));
@@ -660,7 +687,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   };
 
   const setSelectedFromNode = (node: StoryNode) => {
-    const key = nodeKey(node);
+    const key = Array.from(keyToRef.values()).find((ref) => ref.type === 'node' && ref.node === node)?.key;
     if (!key) return;
     setSelectedKey(key);
     const ancestors = ancestorKeysForKey(key, keyToParent);
@@ -938,9 +965,15 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         </Card>
 
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <Card title="Story" style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12 } }}>
+          <Card title="Story" style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12, overflowX: 'auto' } }}
+            extra={<Space>
+              <Button size="small" onClick={() => setExpandedKeys(Array.from(keyToRef.keys()))}>Expand all</Button>
+              <Button size="small" onClick={() => setExpandedKeys([])}>Collapse all</Button>
+            </Space>}>
             {!story?.root ? (
-              <Empty description="No story available yet" />
+              <Empty description={story && story.status !== 'running'
+                ? 'The story API returned no steps for this finished job.'
+                : 'No story available yet'} />
             ) : (
               <Tree
                 showLine
@@ -959,7 +992,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     setSelectedKey(key);
                     setSearchParams((prev) => {
                       const next = new URLSearchParams(prev);
-                      if (ref.node.id) next.set('nodeId', ref.node.id);
+                      next.set('nodeId', key);
                       next.set('path', ref.node.path.join('/'));
                       next.set('attempt', String(ref.attempt));
                       return next;
@@ -985,6 +1018,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     label: 'Overview',
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                        {selectedNode.error && (
+                          <Alert type="error" showIcon message={selectedNode.error.code || 'Task failure'}
+                            description={<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{selectedNode.error.message}</pre>} />
+                        )}
                         <Descriptions column={1} bordered size="small">
                           <Descriptions.Item label="Kind">
                             {kindLabel(selectedNode.kind)}
@@ -997,7 +1034,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                               {selectedNode.status.toUpperCase()}
                             </Tag>
                           </Descriptions.Item>
-                          <Descriptions.Item label="Attempt">
+                          <Descriptions.Item label="Job Attempt">
+                            {selectedRef?.type === 'node' ? selectedRef.jobAttempt : '-'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Task Attempt">
                             {nodeAttempt(selectedNode)}
                           </Descriptions.Item>
                           <Descriptions.Item label="Task Ordinal">

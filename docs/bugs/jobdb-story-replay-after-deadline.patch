@@ -1,0 +1,149 @@
+diff --git a/pkg/workflow/worker_runner.go b/pkg/workflow/worker_runner.go
+--- a/pkg/workflow/worker_runner.go
++++ b/pkg/workflow/worker_runner.go
+@@ -238,6 +238,12 @@
+ }
+ 
+ func (r *workerRunner) awaitUntil(wakeAt time.Time, ordinal int64, attempt int, kind string, inputRef *InputReference, invocationDeadline time.Time, totalDeadline time.Time, invocationLimit time.Duration, totalLimit time.Duration) error {
++	if r.replay {
++		if wakeAt.IsZero() || !wakeAt.After(time.Now()) {
++			return nil
++		}
++		return ReplayCacheMissError{JobKey: r.GetJobKey(), Ordinal: ordinal, Attempt: attempt, Reason: ReplayCacheMissAwaitNotReady}
++	}
+ 	now := time.Now()
+ 	if !totalDeadline.IsZero() && now.After(totalDeadline) {
+ 		return NewTimeoutError(kind, totalLimit, TimeoutScopeTotal, inputRef, false)
+@@ -253,14 +259,6 @@
+ 	}
+ 	if wakeAt.IsZero() || !wakeAt.After(now) {
+ 		return nil
+-	}
+-	if r.replay {
+-		return ReplayCacheMissError{
+-			JobKey:  r.GetJobKey(),
+-			Ordinal: ordinal,
+-			Attempt: attempt,
+-			Reason:  ReplayCacheMissAwaitNotReady,
+-		}
+ 	}
+ 	wait := time.Until(wakeAt)
+ 	threshold := r.awaitThreshold
+@@ -452,6 +450,12 @@
+ 	retryCfg := r.jobPolicy.Retry
+ 	invocationTimeout := durationPtrToDuration(r.jobPolicy.InvocationTimeout)
+ 	totalTimeout := durationPtrToDuration(r.jobPolicy.TotalTimeout)
++	// Historical replay consumes recorded outcomes; wall-clock deadlines
++	// must not skip task chapters or interrupt replay of a completed attempt.
++	if r.replay {
++		invocationTimeout = 0
++		totalTimeout = 0
++	}
+ 	inputHash, err := computeInputHash(ctx, inputData)
+ 	if err != nil {
+ 		return jobExecutionConfig{}, fmt.Errorf("failed to hash job input: %w", err)
+@@ -740,7 +744,7 @@
+ 	}
+ 
+ 	if !isRetryable(payloadErr, retryCfg) || priorAttempt >= int(retryCfg.MaximumAttempts) {
+-		return nil, nextAttempt, true, true, payloadErr, payloadErr, &endAt, &endAt
++		return nil, nextAttempt, true, true, payloadErr, nil, &endAt, &endAt
+ 	}
+ 
+ 	backoff := computeBackoff(retryCfg, priorAttempt)
+diff --git a/pkg/workflow/replay_history_deadline_test.go b/pkg/workflow/replay_history_deadline_test.go
+new file mode 100644
+--- /dev/null
++++ b/pkg/workflow/replay_history_deadline_test.go
+@@ -0,0 +1,91 @@
++package workflow
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"sync/atomic"
++	"testing"
++	"time"
++)
++
++func TestReplayHistoryAfterDeadlinePreservesTaskAttempts(t *testing.T) {
++	for _, failed := range []bool{false, true} {
++		name := "success"
++		if failed {
++			name = "failed-retries"
++		}
++		t.Run(name, func(t *testing.T) {
++			runtime := newRunnerTestRuntime()
++			key := JobKey{TenantId: "tenant", JobId: name}
++			var runs atomic.Int32
++			failAttempts := int32(0)
++			if failed {
++				failAttempts = 100
++			}
++			job := singleTaskJob{name: "history", taskType: "task"}
++			task := failThenSucceedTask{name: "task", counter: &runs, failAttempts: failAttempts}
++			ws := mustWorkSetForRunnerTest(t, job, task)
++			budget := Duration(time.Minute)
++			policy := RunPolicy{TotalTimeout: &budget, InvocationTimeout: &budget, Retry: RetryPolicy{MaximumAttempts: 3, InitialInterval: Duration(time.Millisecond), BackoffCoefficient: 1}}
++			seedJobStartForTest(t, runtime, key, job.Name(), NewTaskDataOrPanic(map[string]int{"n": 1}), policy)
++			lease := &fakeExecutionLease{runtime: runtime, job: JobHandle{JobKey: key}, route: Route{JobType: job.Name()}, payload: json.RawMessage(`{}`)}
++			runner := newWorkerRunner(runtime, ws, lease, workerRunnerOptions{JobPolicy: policy})
++			_, runErr := runner.DoJob(context.Background())
++			if (runErr != nil) != failed {
++				t.Fatalf("initial error: %v", runErr)
++			}
++			wantTasks, wantJobs := 1, 1
++			if failed {
++				wantTasks, wantJobs = 9, 3
++			}
++			if int(runs.Load()) != wantTasks {
++				t.Fatalf("initial task runs %d, want %d", runs.Load(), wantTasks)
++			}
++			// Move the completed history into the past without sleeping or changing its
++			// payloads, policies, hashes, relative timing, or recorded outcomes.
++			for ordinal, ch := range runtime.chapters[key] {
++				meta, err := chapterMetaFromChapter(ch)
++				if err != nil {
++					t.Fatal(err)
++				}
++				ch.CreatedAt = ch.CreatedAt.Add(-time.Hour)
++				meta.CreatedAt = meta.CreatedAt.Add(-time.Hour)
++				if meta.StartedAt != nil {
++					at := meta.StartedAt.Add(-time.Hour)
++					meta.StartedAt = &at
++				}
++				if meta.FinishedAt != nil {
++					at := meta.FinishedAt.Add(-time.Hour)
++					meta.FinishedAt = &at
++				}
++				raw, err := json.Marshal(meta)
++				if err != nil {
++					t.Fatal(err)
++				}
++				ch.Metadata = mustChapterMetadataForRunnerTest(t, raw)
++				runtime.chapters[key][ordinal] = ch
++			}
++			var writes atomic.Int32
++			runtime.putChapterHook = func(PutChapterRequest) error { writes.Add(1); return errors.New("unexpected replay write") }
++			engine, err := newWorkerEngine(runtime, []WorkSet{*ws}, RuntimeBuildOptions{PollTenantId: key.TenantId})
++			if err != nil {
++				t.Fatal(err)
++			}
++			observer := &replayObserverRecorder{}
++			_, err = engine.ReplayJobRun(context.Background(), ReplayRunRequest{JobKey: key, Observer: observer})
++			if (err != nil) != failed {
++				t.Fatalf("replay error: %v", err)
++			}
++			if failed && err.Error() != runErr.Error() {
++				t.Fatalf("replay replaced recorded error: %v", err)
++			}
++			if len(observer.jobStarts) != wantJobs || len(observer.jobEnds) != wantJobs || len(observer.taskStarts) != wantTasks || len(observer.taskEnds) != wantTasks {
++				t.Fatalf("events: job starts/ends %d/%d (want %d), task starts/ends %d/%d (want %d)", len(observer.jobStarts), len(observer.jobEnds), wantJobs, len(observer.taskStarts), len(observer.taskEnds), wantTasks)
++			}
++			if int(runs.Load()) != wantTasks || writes.Load() != 0 {
++				t.Fatalf("replay executed task or wrote: runs=%d writes=%d", runs.Load(), writes.Load())
++			}
++		})
++	}
++}
