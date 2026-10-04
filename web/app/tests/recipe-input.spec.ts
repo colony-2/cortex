@@ -188,6 +188,23 @@ for (const multiField of [false, true]) {
         output: multiField ? { answer, decision: 'approve' } : { answer },
       });
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
+      await page.goto(`/project/${tenant}/jobs`);
+      await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: jobID, exact: true })).toHaveCount(0);
+      const allStatuses = page.waitForResponse(r => {
+        const url = new URL(r.url());
+        return url.pathname === `/api/projects/${tenant}/jobs` && url.searchParams.get('status') === 'all';
+      });
+      await page.locator('.ant-select').first().hover();
+      await page.locator('.ant-select-clear').first().click();
+      const jobs = await (await allStatuses).json();
+      expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({
+        status: 'COMPLETED', completion_status: 'success',
+      });
+      const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: jobID, exact: true }) });
+      await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
+      await row.getByRole('button', { name: 'Expand row' }).click();
+      await expect(page.getByText('All job data', { exact: true })).toBeVisible();
     });
   });
 }

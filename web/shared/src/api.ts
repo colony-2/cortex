@@ -40,6 +40,8 @@ export async function listJobs(
   } = {},
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
+  // An explicitly cleared filter means all statuses; omitted options retain API defaults.
+  if (options.status?.length === 0) params.set('status', 'all');
   for (const status of options.status || []) {
     params.append('status', status);
   }

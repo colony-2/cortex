@@ -23,6 +23,8 @@ import type {
 } from '@colony2/shared/types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
+import JobListDetails, { jobTime } from './JobListDetails';
 
 dayjs.extend(relativeTime);
 
@@ -35,17 +37,6 @@ const activeStatuses: RecipeJobStatus[] = [
   'ACTIVE',
   'CRASH_CONCERN',
 ];
-
-const statusColors: Record<string, string> = {
-  READY: 'blue',
-  PENDING_JOBS: 'gold',
-  AWAITING_FUTURE: 'cyan',
-  ACTIVE: 'purple',
-  CRASH_CONCERN: 'orange',
-  EXPIRED: 'default',
-  CANCELLED: 'default',
-  COMPLETED: 'green',
-};
 
 interface JobsListPageProps {
   projectId: string;
@@ -158,36 +149,45 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 150,
-      render: (status: RecipeJobStatus) => <Tag color={statusColors[status] || 'default'}>{status}</Tag>,
+      width: 190,
+      render: (_: RecipeJobStatus, job) => {
+        const status = jobStatus(job);
+        return <Tag color={status.color} style={{ whiteSpace: 'normal' }}>{status.label}</Tag>;
+      },
+    },
+    {
+      title: 'Details',
+      key: 'details',
+      width: 320,
+      render: (_, job) => <Space direction="vertical" size={0} style={{ width: '100%', overflowWrap: 'anywhere' }}>
+        {job.completion_detail && <Typography.Paragraph
+          type={job.completion_status?.startsWith('failed_') ? 'danger' : undefined}
+          ellipsis={{ rows: 2, expandable: true, symbol: 'Show more' }}
+          style={{ margin: 0, whiteSpace: 'pre-wrap' }}
+        >{job.completion_detail}</Typography.Paragraph>}
+        {job.status === 'PENDING_JOBS' && job.wait_for?.length ?
+          <Text type="secondary">Waiting for {job.wait_for.length} job{job.wait_for.length === 1 ? '' : 's'}</Text> : null}
+        {job.status === 'AWAITING_FUTURE' && jobTime(job.available_at) &&
+          <Text type="secondary">Available {jobTime(job.available_at)}</Text>}
+        {job.store === 'ACTIVE' && job.next_route?.taskType &&
+          <Text type="secondary">Task: {job.next_route.taskType}</Text>}
+        {!job.completion_detail && job.status !== 'PENDING_JOBS' && job.status !== 'AWAITING_FUTURE' &&
+          !(job.store === 'ACTIVE' && job.next_route?.taskType) && <Text type="secondary">—</Text>}
+      </Space>,
     },
     {
       title: 'Recipe',
       dataIndex: 'recipe',
       key: 'recipe',
-      width: 180,
+      width: 140,
       render: (recipe?: string) => recipe || <Text type="secondary">default</Text>,
     },
     {
       title: 'Cell',
       dataIndex: 'cell_name',
       key: 'cell_name',
-      width: 140,
-      render: (cell?: string) => cell || <Text type="secondary">self</Text>,
-    },
-    {
-      title: 'Repository',
-      dataIndex: 'repo',
-      key: 'repo',
-      ellipsis: true,
-      render: (repo?: string) => repo ? <Text code>{repo}</Text> : <Text type="secondary">-</Text>,
-    },
-    {
-      title: 'Ref',
-      dataIndex: 'git_ref',
-      key: 'git_ref',
       width: 120,
-      render: (ref?: string) => ref || <Text type="secondary">-</Text>,
+      render: (cell?: string) => cell || <Text type="secondary">self</Text>,
     },
     {
       title: 'Created',
@@ -208,15 +208,16 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
           <Space wrap>
             <Select
               mode="multiple"
+              aria-label="Status filter"
               value={filters.status}
               options={[
-                ...activeStatuses.map((status) => ({ value: status, label: status })),
-                { value: 'EXPIRED', label: 'EXPIRED' },
-                { value: 'CANCELLED', label: 'CANCELLED' },
-                { value: 'COMPLETED', label: 'COMPLETED' },
+                ...activeStatuses.map((status) => ({ value: status, label: schedulingStatuses[status].label })),
+                { value: 'EXPIRED', label: 'Expired' },
+                { value: 'CANCELLED', label: 'Cancelled' },
+                { value: 'COMPLETED', label: 'Finished (all outcomes)' },
               ]}
               style={{ minWidth: 320 }}
-              placeholder="Status"
+              placeholder="All statuses"
               maxTagCount="responsive"
               onChange={(status) => setFilters((current) => ({ ...current, status }))}
               allowClear
@@ -244,6 +245,12 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
           columns={columns}
           dataSource={jobs}
           loading={loading}
+          scroll={{ x: 1200 }}
+          expandable={{
+            expandedRowRender: (job) => <JobListDetails job={job} projectId={projectId} />,
+            columnTitle: 'Info',
+            columnWidth: 64,
+          }}
           pagination={{ pageSize: 25, showSizeChanger: true }}
         />
       </Space>

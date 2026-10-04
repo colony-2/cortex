@@ -29,6 +29,8 @@ export interface RecipeJob {
   tenant_id: string;
   job_id: string;
   status: RecipeJobStatus;
+  completion_status?: string;
+  completion_detail?: string;
   store: 'ACTIVE' | 'ARCHIVED';
   job_type: string;
   recipe: string;
@@ -37,6 +39,20 @@ export interface RecipeJob {
   cell_name?: string;
   git_ref?: string;
   input_hash?: string;
+  parent?: {
+    tenant_id?: string;
+    job_id?: string;
+    job_type?: string;
+    op_type?: string;
+    op_step?: string;
+    op_task_type?: string;
+    cell_name?: string;
+    repo?: string;
+    git_ref?: string;
+    invocation_path?: string;
+    invocation_seq?: number;
+    invocation_hash?: string;
+  };
   submitted_at?: string;
   created_at: string;
   available_at: string;

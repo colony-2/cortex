@@ -135,7 +135,8 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	defer lease.StopKeepAlive()
 	artifact := jobdb.NewArtifactFromBytes("result.txt", []byte("test result"))
 	err = lease.Complete(ctx, jobdb.CompleteExecutionRequest{
-		Status: "completed",
+		Status: "success",
+		Detail: "Finished successfully",
 		Chapter: &jobdb.Chapter{
 			Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(),
 			Metadata: jobdb.ChapterMetadata{Fields: map[string]jobdb.ChapterMetadataValue{
@@ -149,6 +150,20 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Completion information must survive c2j projections and remote transport.
+	completed := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1")
+	if completed["completion_status"] != "success" || completed["completion_detail"] != "Finished successfully" {
+		t.Fatalf("completion fields missing: %#v", completed)
+	}
+	all := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cell=alpha&status=all")
+	allJobs := all["jobs"].([]interface{})
+	if len(allJobs) != 1 || allJobs[0].(map[string]interface{})["completion_status"] != "success" {
+		t.Fatalf("all statuses must include completion data for archived jobs: %#v", all)
+	}
+	active := getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs?cell=alpha&status=READY")
+	if len(active["jobs"].([]interface{})) != 0 {
+		t.Fatalf("ready filter included archived job: %#v", active)
 	}
 	artifactResponse, err := http.Get(ts.URL + "/api/projects/42/jobs/job-alpha-1/tasks/1/artifacts/result.txt")
 	if err != nil {
