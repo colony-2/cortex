@@ -1,0 +1,149 @@
+diff --git a/pkg/input/test-fixtures/timed_input_regression_test.go b/pkg/input/test-fixtures/timed_input_regression_test.go
+new file mode 100644
+index 0000000..606137d
+--- /dev/null
++++ b/pkg/input/test-fixtures/timed_input_regression_test.go
+@@ -0,0 +1,143 @@
++package test_fixtures_test
++
++import (
++	"context"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/colony-2/c2j/pkg/input"
++	"github.com/colony-2/c2j/pkg/jobdbschema"
++	coreops "github.com/colony-2/c2j/pkg/ops"
++	"github.com/colony-2/c2j/pkg/recipe"
++	"github.com/colony-2/c2j/pkg/starter"
++	"github.com/colony-2/c2j/pkg/story"
++	"github.com/colony-2/c2j/pkg/worker/compiler"
++	workerops "github.com/colony-2/c2j/pkg/worker/ops"
++	"github.com/colony-2/c2j/pkg/worker/workflow"
++	"github.com/colony-2/c2j/pkg/workflowctl"
++	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
++	"github.com/colony-2/jobdb/pkg/jobdb/runtime/sqlite"
++	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++// Exercise the public input and story APIs, not just TaskHandle.Finish: the
++// latter can complete a wait without ever reading the prepared form.
++func TestTimedInputPublicAPIs(t *testing.T) {
++	ensureFixtureOps()
++	for _, scope := range []string{"untimed", "recipe", "runtime-recipe", "op"} {
++		t.Run(scope, func(t *testing.T) {
++			ctx := context.Background()
++			source := `id: timed-input-regression
++version: "1.0.0"
++sequence:
++  - id: decision
++    op: input
++    inputs:
++      form:
++        question: Proceed?
++        type: short_answer
++outputs:
++  answer: '${{ sequence.decision.outputs.response }}'
++`
++			const budget = 3 * time.Second
++			if scope == "recipe" || scope == "runtime-recipe" {
++				source = strings.Replace(source, "sequence:", "timeout: 3s\nsequence:", 1)
++			}
++			if scope == "op" {
++				source = strings.Replace(source, "    op: input", "    op: input\n    timeout: 3s", 1)
++			}
++			primary := filepath.Join(t.TempDir(), "timed-input-regression.yaml")
++			require.NoError(t, os.WriteFile(primary, []byte(source), 0600))
++			repo, hash := createFixtureRepo(t, primary, nil)
++			rec, err := recipe.LoadRecipeFromString([]byte(source))
++			require.NoError(t, err)
++			ctl := &workflow.SWFWorkflowControl{PreferRuntimeRecipeResolution: true}
++			ctl.Registry, err = buildRecipeRegistry(primary, rec, nil, repo, hash)
++			require.NoError(t, err)
++			resolver := compiler.NewRecipeSourceResolver(compiler.RecipeSourceResolverOptions{RecipeRefResolver: compiler.NewProviderBackedRecipeRefResolver(func(tenant, ref string) (*recipe.Recipe, error) { return ctl.Registry(tenant, ref) })})
++			deps := coreops.NewServiceDepsBuilder().WithWorkflowControl(ctl).Build()
++			registry, err := workerops.NewActivityRegistry()
++			require.NoError(t, err)
++			workers, err := compiler.NewRecipeWorkerWithOptions(deps, registry, compiler.RecipeJobWorkerOptions{RootSourceResolver: resolver})
++			require.NoError(t, err)
++			var tasks []jobworkflow.TaskWorker
++			for _, w := range workers.TaskWorkers {
++				tasks = append(tasks, w)
++			}
++			store, err := sqlite.NewFromConfig(ctx, sqlite.Config{DBPath: filepath.Join(t.TempDir(), "jobs.db")})
++			require.NoError(t, err)
++			t.Cleanup(func() { _ = store.Close(ctx) })
++			server := httptest.NewServer(remote.NewServer(store))
++			t.Cleanup(server.Close)
++			rt, err := remote.New(server.URL, server.Client())
++			require.NoError(t, err)
++			engine, err := jobworkflow.NewEngineBuilder().WithRuntime(rt).BuildEngine()
++			require.NoError(t, err)
++			engine = jobdbschema.WorkflowEngine{Engine: engine, Registry: rt}
++			ctl.Engine = engine
++			jobCtx, gitCtx := generateTestContext(repo, hash, nil, nil)
++			embedded := []recipe.Recipe{*rec}
++			if scope == "runtime-recipe" {
++				embedded = nil
++			}
++			key, err := starter.StartRecipeJob(ctx, workflowctl.StartJob{TenantId: "timed-input", RecipeName: rec.GetMetadata().ID, JobContext: jobCtx, GitRef: gitCtx.ParentRef}, engine, embedded...)
++			require.NoError(t, err)
++			run := func() jobworkflow.JobRunOutcome {
++				runnable, err := jobworkflow.GetJobForRun(ctx, rt, jobworkflow.GetJobForRunRequest{JobKey: key, JobWorker: workers.JobWorker, TaskWorkers: tasks, WorkerID: "fresh-worker", LeaseDuration: time.Minute})
++				require.NoError(t, err)
++				out, err := runnable.Run(nil)
++				require.NoError(t, err)
++				return out
++			}
++			require.Equal(t, jobworkflow.JobRunSuspended, run().Status)
++			suspendedAt := time.Now()
++			client, err := input.NewRuntime(ctl, nil)
++			require.NoError(t, err)
++			info, err := rt.GetJob(ctx, key)
++			require.NoError(t, err)
++			t.Logf("waiting task: %+v", info.ExecutionState.TaskWait)
++			form, formErr := client.GetForm(ctx, key.TenantId, key.JobId)
++			assert.NoError(t, formErr, "pending form must remain readable within a timeout scope")
++			if formErr == nil {
++				assert.Equal(t, "Proceed?", form.Question)
++			}
++			_, err = client.ListPendingInputsPage(ctx, key.TenantId, input.PendingInputOptions{})
++			assert.NoError(t, err, "discovery must not fail the whole tenant page")
++			if scope == "untimed" {
++				var answer any = "approved"
++				require.NoError(t, client.SubmitResponse(ctx, key.TenantId, key.JobId, input.FormResponse{Response: &answer}))
++				require.Equal(t, jobworkflow.JobRunCompleted, run().Status)
++				return
++			}
++			// No background worker is running. A fresh invocation after the original
++			// budget must record expiry, independently of whether form decoding worked.
++			time.Sleep(time.Until(suspendedAt.Add(budget + 100*time.Millisecond)))
++			final := run()
++			require.Equal(t, jobworkflow.JobRunFailed, final.Status, "%+v", final)
++			require.ErrorContains(t, final.JobError, "timed out")
++			t.Logf("internal terminal outcome: %s, error: %v", final.Status, final.JobError)
++			pending, err := client.ListPendingInputsPage(ctx, key.TenantId, input.PendingInputOptions{})
++			require.NoError(t, err)
++			assert.Empty(t, pending.Inputs)
++			var late any = "too late"
++			assert.Error(t, client.SubmitResponse(ctx, key.TenantId, key.JobId, input.FormResponse{Response: &late}))
++			service, err := story.New(story.ServiceConfig{Engine: engine, RootSourceResolver: resolver})
++			require.NoError(t, err)
++			outcome, err := service.GetWorkflowOutcome(ctx, story.GetWorkflowOutcomeRequest{ProjectID: key.TenantId, JobID: key.JobId})
++			require.NoError(t, err)
++			require.NotNil(t, outcome.Error)
++			t.Logf("public terminal outcome: status=%s error=%s", outcome.Status, *outcome.Error)
++			assert.Equal(t, story.WorkflowStatusFailed, outcome.Status, "archived timeout must not be reported as completed")
++			replay, err := service.GetJobRunStory(ctx, story.GetJobRunStoryRequest{ProjectID: key.TenantId, JobID: key.JobId})
++			require.NoError(t, err)
++			t.Logf("public story status: %s", replay.Status)
++			assert.Equal(t, story.WorkflowStatusFailed, replay.Status, "archived timeout story must report failure")
++		})
++	}
++}

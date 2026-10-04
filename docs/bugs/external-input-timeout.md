@@ -1,5 +1,14 @@
 **Unanswered external input tasks remain pending past recipe and step deadlines**
 
+Update, 2026-10-04: the expiry problem below is historical. With c2j v0.0.58
+and JobDB v0.0.23, independent API tests confirm that these waits expire and
+reject responses after terminal completion. Two different bugs now block the
+browser test at v0.0.58: unreadable timed forms and incorrect terminal outcome status.
+See [the current investigation and upstream reproduction](timed-input-v0.0.58.md).
+The old expected-failure allowance has been removed from the browser test.
+Both replacement bugs have since been fixed upstream and incorporated in
+Cortex's c2j pin `v0.0.59-0.20261004003418-6af179613628`.
+
 A c2j recipe waiting for user input does not terminate when its configured
 timeout elapses. We reproduced this with a real c2j worker and SQLite-backed
 JobDB over HTTP. A recipe with `timeout: 20s` was still pending after polling

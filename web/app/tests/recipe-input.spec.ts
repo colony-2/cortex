@@ -26,6 +26,7 @@ const test = base.extend<{
     const workerPath = resolve('../../build/c2j-test-worker');
     let worker: ChildProcess | undefined;
     let workerLog = '';
+    let fixtureFailed = false;
     const errors: string[] = [];
     context.on('page', browserPage => browserPage.on('pageerror', error => errors.push(error.message)));
     page.on('pageerror', error => errors.push(error.message));
@@ -85,18 +86,60 @@ const test = base.extend<{
       await expect(dialog).not.toBeVisible();
       startWorker();
 
+      // Check the backend separately so a broken persisted form reports its
+      // HTTP error instead of looking like a browser/SSE visibility timeout.
+      let pendingReadFailure: { status: number; body: unknown } | undefined;
+      await expect.poll(async () => {
+        if (pendingReadFailure) return pendingReadFailure;
+        const response = await request.get(`/api/projects/${tenant}/user-inputs/pending`);
+        const result = { status: response.status(), body: await response.json() };
+        if (response.status() >= 500) {
+          pendingReadFailure = result;
+          await testInfo.attach('pending-input-error.json', {
+            body: JSON.stringify(result, null, 2), contentType: 'application/json',
+          });
+        }
+        return result;
+      }, { timeout: 30_000, message: 'The worker must publish a readable pending input' }).toMatchObject({
+        status: 200,
+        body: expect.arrayContaining([expect.objectContaining({ id: jobID })]),
+      });
       await expect(observer.getByText(review ? `Job ID: ${jobID} · 2 documents` : `Job ID: ${jobID}`, { exact: true })).toBeVisible({ timeout: 30_000 });
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
       await use({ tenant, jobID, observer, startWorker, stopWorker });
       expect(errors).toEqual([]);
+    } catch (error) {
+      fixtureFailed = true;
+      throw error;
     } finally {
       await stopWorker();
       try {
         await testInfo.attach('c2j-worker.log', { body: workerLog, contentType: 'text/plain' });
         const outcome = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
         await testInfo.attach('recipe-outcome.json', { body: await outcome.body(), contentType: 'application/json' });
+        if (fixtureFailed || testInfo.status !== testInfo.expectedStatus) {
+          for (const [name, path] of [
+            ['pending-inputs', 'user-inputs/pending'],
+            ['input-details', `user-inputs/${jobID}`],
+            ['job-metadata', `jobs/${jobID}`],
+          ]) {
+            try {
+              const response = await request.get(`/api/projects/${tenant}/${path}`);
+              await testInfo.attach(`${name}.json`, {
+                body: JSON.stringify({ status: response.status(), body: await response.text() }, null, 2),
+                contentType: 'application/json',
+              });
+            } catch (error) {
+              // Diagnostics must preserve the original failure, including
+              // when an expired input is gone or a server has stopped.
+              await testInfo.attach(`${name}-error.txt`, {
+                body: String(error), contentType: 'text/plain',
+              });
+            }
+          }
+        }
       } finally {
         rmSync(repo, { recursive: true, force: true });
       }
@@ -216,22 +259,10 @@ test.describe('input timeout', () => {
 
     // Let the real c2j/JobDB task deadline expire; do not advance a browser clock
     // or synthesize an SSE event. Neither tab may need a refresh.
-    let stillPending = false;
-    try {
-      await expect.poll(async () => {
-        stillPending = false;
-        const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
-        const outcome = await response.json();
-        stillPending = response.status() === 202 && outcome.status === 'pending';
-        return outcome;
-      }, { timeout: 45_000 }).toMatchObject({ status: 'failed', error: expect.anything() });
-    } catch (error) {
-      // JobDB v0.0.19 reschedules external tasks before checking their total
-      // deadline (worker_runner.go DoTask's !local branch). Only the confirmed
-      // still-pending deadline failure is expected; setup/browser errors are not.
-      test.fail(stillPending, 'Pinned JobDB does not expire unanswered external input tasks');
-      throw error;
-    }
+    await expect.poll(async () => {
+      const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+      return response.json();
+    }, { timeout: 45_000 }).toMatchObject({ status: 'failed', error: expect.anything() });
     const outcome = await (await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`)).json();
     expect(JSON.stringify(outcome.error)).toMatch(/timeout|timed out|deadline/i);
     await expect(observer.getByText('No pending inputs')).toBeVisible();

@@ -1,5 +1,12 @@
 # Job story replay investigation — 2026-10-03
 
+Update, 2026-10-04: Cortex now pins c2j
+`v0.0.59-0.20261004003418-6af179613628`, incorporating fixes for timed-form
+retrieval and terminal outcome status. JobDB remains at v0.0.23. See the
+[timed-input report](bugs/timed-input-v0.0.58.md) for the resolution. The
+observations below describe the original database investigation against v0.0.58;
+the separate story-summary issue is not claimed resolved by these changes.
+
 ## Reproduction and dependency upgrade
 
 The supplied `problemdb/jobdb.db` contains tenant `c2`, job
@@ -12,7 +19,7 @@ commit.
 Cortex was using c2j `v0.0.56-0.20260930003717-614bfac82f15` and JobDB
 `v0.0.19-0.20260919034646-71b6668a65db`. Upstream HEAD and latest c2j release were
 both `c944978fc9e169b03284efb0d1e936e18497828c`, tagged `v0.0.58`.
-Cortex now pins c2j v0.0.58 and its JobDB dependency v0.0.23.
+The initial upgrade pinned c2j v0.0.58 and its JobDB dependency v0.0.23.
 
 | Request against the same database | Previous dependencies | Upgraded dependencies |
 | --- | --- | --- |
@@ -120,10 +127,17 @@ and timeout budget. Do not recover by scanning for an arbitrary previous form or
 by bypassing `SubmitFormResponse` validation. Test ordinary inputs and reviews
 inside recipe/op timeouts, worker replacement, response submission, and expiry.
 
-This is an unresolved upstream regression with the latest dependency. The timeout
-test remains failing and has not been weakened or marked as a newly expected
-failure. The older expected-failure branch applied only to an input that stayed
+This was an unresolved upstream regression with v0.0.58. The timeout test was
+left failing without being weakened or marked as a newly expected failure.
+The older expected-failure branch applied only to an input that stayed
 pending beyond its deadline; this failure happens earlier during discovery.
+
+Follow-up on 2026-10-04: [independent c2j API tests](bugs/timed-input-v0.0.58.md)
+confirm that expiry now works for preloaded recipes, runtime-resolved recipes,
+and input-step timeouts. Each fails form retrieval and reports its terminal
+outcome as `completed` despite an internal `FAILED` result. The old
+expected-failure allowance has now been removed. The follow-up includes a
+regression-test patch for c2j and explains the upstream test coverage gap.
 
 ## Read-only reproduction commands
 
