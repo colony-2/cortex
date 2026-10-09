@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 
@@ -47,20 +47,21 @@ function mount(search = '', response: unknown = story) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('job story history', () => {
-  it('shows every job and task attempt on load, and displays the selected failure', async () => {
+  it('keeps historical job attempts in Retries and preserves inspected failures across refresh', async () => {
     const fetchMock = mount();
-    await screen.findByText('Previous job attempts (2)');
-    for (const job of [1, 2, 3]) {
-      expect(screen.getByText(`Job attempt ${job}`)).toBeVisible();
-      for (const attempt of [1, 2, 3]) expect(screen.getByText(`Task ${job}.${attempt}`)).toBeVisible();
-    }
-    fireEvent.click(screen.getByText('Task 1.2'));
+    await screen.findByText('Development.Design.Task 3.2');
+    const mainTree = screen.getByRole('tree');
+    expect(within(mainTree).queryByText(/Task 1/)).not.toBeInTheDocument();
+    expect(within(mainTree).queryByText(/Previous job attempts/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Job retries (2)' }));
+    expect(await screen.findByText('Job attempt 1')).toBeVisible();
+    fireEvent.click(screen.getByText('Development.Design.Task 1.2'));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
     expect(screen.getByTestId('location').textContent).toContain('nodeId=jobAttempt%3A1%7Cn_38');
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Failure 1.2: temporary directory missing')).toBeVisible();
-    fireEvent.click(screen.getByText('Task 3.2'));
+    fireEvent.click(within(mainTree).getByText('Development.Design.Task 3.2'));
     expect(await screen.findByText('Failure 3.2: temporary directory missing')).toBeVisible();
     expect(screen.queryByText('Failure 1.2: temporary directory missing')).not.toBeInTheDocument();
   });
@@ -74,9 +75,9 @@ describe('job story history', () => {
     mount('?nodeId=n_40');
     expect(await screen.findByText('Failure 3.3: temporary directory missing')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
-    await waitFor(() => expect(screen.queryByText('Task 1.1')).not.toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('tree')).queryByText('Development.Design.Task 3.1')).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
-    expect(await screen.findByText('Task 1.1')).toBeVisible();
+    expect(await screen.findByText('Development.Design.Task 3.1')).toBeVisible();
   });
 
   it('also shows failures represented as prior task attempts', async () => {
@@ -84,8 +85,34 @@ describe('job story history', () => {
     const tasks = root.children[0].children[0].children;
     const response = { ...story, root: { ...root, children: [{ ...tasks[2], prior_attempts: tasks.slice(0, 2) }] } };
     mount('', response);
-    await screen.findByText('Prior attempts (2)');
-    fireEvent.click(screen.getByText('Task 1.1'));
+    await within(await screen.findByRole('tree')).findByText('Task 1.3');
+    fireEvent.click(within(screen.getByRole('tree')).getByText('Task 1.3'));
+    expect(within(screen.getByRole('tree')).queryByText('Task 1.1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Retries (2)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect attempt 1' }));
     expect(await screen.findByText('Failure 1.1: temporary directory missing')).toBeVisible();
   });
+  it('shows a short scoped operation name and keeps source and restart in Overview', async () => {
+    const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
+    mount('', { ...story, root: {
+      id: 'root', kind: 'recipe', title: 'recipe build', path: [], status: 'failed', children: [{
+        id: 'machine', kind: 'stateMachine', title: 'stateMachine agent', path: [], status: 'failed', children: [{
+          id: 'state', kind: 'state', title: 'state run', path: [], status: 'failed', children: [{
+            id: 'op', kind: 'op', title: `op ${source}`, op_id: source, path: [], status: 'failed', children: [{
+              id: 'task', kind: 'opStep', title: 'step extension_execution', path: [], status: 'failed',
+              restart_from_ordinal: 12, task_ordinal: 14, error: { message: 'command failed' },
+            }],
+          }],
+        }],
+      }],
+    } });
+    fireEvent.click(await screen.findByText('agent.run.codex'));
+    const tree = screen.getByRole('tree');
+    expect(within(tree).getAllByRole('treeitem')).toHaveLength(2);
+    expect(tree).not.toHaveTextContent('Restart');
+    expect(tree).not.toHaveTextContent('git+');
+    expect(screen.getByText(source, { exact: true })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Restart from here' })).toBeVisible();
+  });
+
 });

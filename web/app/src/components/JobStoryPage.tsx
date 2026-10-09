@@ -30,6 +30,7 @@ import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
 import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
+import { buildStoryTree, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 
 const { Title, Text } = Typography;
@@ -51,68 +52,6 @@ type JobStatus =
   | 'timed_out'
   | 'unknown';
 
-type NodeStatus =
-  | 'pending'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'canceled'
-  | 'skipped'
-  | 'unknown';
-
-type StoryKind =
-  | 'recipe'
-  | 'recipeSourceResolution'
-  | 'sequence'
-  | 'op'
-  | 'opStep'
-  | 'stateMachine'
-  | 'state'
-  | 'transitionEval'
-  | 'contextPatch';
-
-interface ArtifactKey {
-  jobId: string;
-  taskOrdinal: number;
-  name: string;
-  sizeBytes?: number;
-}
-
-type TransitionDecision =
-  | { kind: 'state'; to_state_id: string }
-  | { kind: 'fallthrough' };
-
-interface TransitionEvaluation {
-  expression: string;
-  result: boolean;
-  to_state_id: string;
-}
-
-interface StoryNode {
-  id?: string;
-  kind: StoryKind;
-  title: string;
-  status: NodeStatus;
-  started_at?: string | null;
-  finished_at?: string | null;
-  path: string[];
-  invoke_seq?: number;
-  input?: unknown | null;
-  output?: unknown | null;
-  artifact_keys?: ArtifactKey[];
-  children?: StoryNode[];
-  attempt?: number;
-  job_attempt?: number;
-  past_attempts?: StoryNode[];
-  prior_attempts?: StoryNode[];
-  error?: { message: string; code?: string } | null;
-  task_ordinal?: number | null;
-  restart_from_ordinal?: number | null;
-
-  // transitionEval-only
-  evaluations?: TransitionEvaluation[];
-  decision?: TransitionDecision;
-}
 
 interface JobStoryResponse {
   job_id: string;
@@ -124,17 +63,12 @@ interface JobStoryResponse {
   root?: StoryNode | null;
 }
 
-type NodeRef =
-  | { type: 'node'; node: StoryNode; key: string; attempt: number; jobAttempt: number }
-  | { type: 'priorAttemptsGroup' | 'pastAttemptsGroup'; parent: StoryNode; key: string };
+type NodeRef = StoryNodeRef;
 
 function nodeAttempt(node: StoryNode): number {
   return node.attempt ?? 1;
 }
 
-function nodeKey(node: StoryNode, jobAttempt: number): string | null {
-  return node.id ? `jobAttempt:${jobAttempt}|${node.id}` : null;
-}
 
 function formatTimestamp(ts?: string | null): string {
   if (!ts) return '-';
@@ -309,131 +243,19 @@ function keyForTaskOrdinal(taskOrdinal: number, keyToRef: Map<string, NodeRef>):
 }
 
 function buildTree(root: StoryNode | null | undefined, treeOpts?: { pendingTaskOrdinal?: number | null }) {
-  const keyToRef = new Map<string, NodeRef>();
-  const keyToParent = new Map<string, string | null>();
-  const legacyKeyToKey = new Map<string, string>();
-  let syntheticCounter = 0;
-
-  const keyForNode = (node: StoryNode, jobAttempt: number): string => {
-    const k = nodeKey(node, jobAttempt);
-    if (k) return k;
-    syntheticCounter += 1;
-    return `synthetic:${syntheticCounter}`;
-  };
-
-  const maybeSetLegacyKey = (legacyKey: string, key: string) => {
-    if (!legacyKeyToKey.has(legacyKey)) legacyKeyToKey.set(legacyKey, key);
-  };
-
-  const buildNode = (
-    node: StoryNode,
-    parentKey: string | null,
-    parentJobAttempt: number,
-    nodeOpts?: { forceAttemptBadge?: boolean }
-  ): DataNode => {
-    const attempt = nodeAttempt(node);
-    const jobAttempt = node.job_attempt ?? parentJobAttempt;
-    const key = keyForNode(node, jobAttempt);
-    keyToRef.set(key, { type: 'node', node, key, attempt, jobAttempt });
-    keyToParent.set(key, parentKey);
-    if (node.id) maybeSetLegacyKey(node.id, key);
-    maybeSetLegacyKey(`${node.path.join('/')}|attempt:${attempt}`, key);
-
-    const children: DataNode[] = [];
-
-    if (node.prior_attempts && node.prior_attempts.length > 0) {
-      const groupKey = `priorAttemptsGroup:${key}`;
-      keyToRef.set(groupKey, { type: 'priorAttemptsGroup', parent: node, key: groupKey });
-      keyToParent.set(groupKey, key);
-      children.push({
-        key: groupKey,
-        title: (
-          <Text type="secondary">
-            Prior attempts ({node.prior_attempts.length})
-          </Text>
-        ),
-        children: node.prior_attempts.map((pa) => {
-          return buildNode(pa, groupKey, jobAttempt, { forceAttemptBadge: true });
-        }),
-      });
-    }
-
-    if (node.children && node.children.length > 0) {
-      children.push(...node.children.map((child) => buildNode(child, key, jobAttempt)));
-    }
-
-    // Node IDs are local to each replayed job attempt. Keep older attempts
-    // distinct so selecting or linking a failure cannot open another attempt.
-    if (node.past_attempts?.length) {
-      const groupKey = `pastAttemptsGroup:${key}`;
-      keyToRef.set(groupKey, { type: 'pastAttemptsGroup', parent: node, key: groupKey });
-      keyToParent.set(groupKey, key);
-      children.push({
-        key: groupKey,
-        title: <Text type="secondary">Previous job attempts ({node.past_attempts.length})</Text>,
-        children: node.past_attempts.map((past, index) => buildNode(past, groupKey, past.job_attempt ?? index + 1)),
-      });
-    }
-
-    const attemptBadge =
-      nodeOpts?.forceAttemptBadge ||
-      (node.prior_attempts && node.prior_attempts.length > 0) ||
-      attempt > 1 ? (
-        <Tag style={{ marginInlineStart: 8 }}>Attempt {attempt}</Tag>
-      ) : null;
-
-    const artifactCount = node.artifact_keys?.length ?? 0;
-    const artifactBadge =
-      artifactCount > 0 ? (
-        <Tag color="processing" style={{ marginInlineStart: 8 }}>
-          Artifacts: {artifactCount}
-        </Tag>
-      ) : null;
-
-    const restartBadge =
-      node.kind !== 'contextPatch' && node.restart_from_ordinal !== null && node.restart_from_ordinal !== undefined ? (
-        <Tag color="purple" style={{ marginInlineStart: 8 }}>
-          Restart
-        </Tag>
-      ) : null;
-
-    const pendingInputBadge =
-      treeOpts?.pendingTaskOrdinal !== null &&
-      treeOpts?.pendingTaskOrdinal !== undefined &&
-      node.task_ordinal === treeOpts.pendingTaskOrdinal ? (
-        <Tag color="magenta" style={{ marginInlineStart: 8 }}>
-          INPUT
-        </Tag>
-      ) : null;
-
-    const d = durationSeconds(node.started_at ?? null, node.finished_at ?? null);
-    const durationText = d !== null ? (
-      <Text type="secondary" style={{ marginInlineStart: 8 }}>
-        {formatDuration(node.started_at ?? null, node.finished_at ?? null)}
-      </Text>
-    ) : null;
-
-    return {
-      key,
-      title: (
-        <Space size={6}>
-          <Text type="secondary">{kindLabel(node.kind)}</Text>
-          <Text strong>{node.title}</Text>
-          <Tag color={statusTagColor(node.status)}>{node.status.toUpperCase()}</Tag>
-          {node.kind === 'recipe' && <Tag>Job attempt {jobAttempt}</Tag>}
-          {attemptBadge}
-          {artifactBadge}
-          {restartBadge}
-          {pendingInputBadge}
-          {durationText}
-        </Space>
-      ),
-      children,
-    };
-  };
-
-  const treeData = root ? [buildNode(root, null, root.job_attempt ?? 1)] : [];
-  return { treeData, keyToRef, keyToParent, legacyKeyToKey };
+  const model = buildStoryTree(root);
+  const renderNodes = (nodes: typeof model.nodes): DataNode[] => nodes.map(({ key, node, label, children }) => ({
+    key,
+    title: <Space size={6} wrap>
+      <Text strong>{label}</Text>
+      <Tag color={statusTagColor(node.status)}>{node.status}</Tag>
+      {node.task_ordinal != null && node.task_ordinal === treeOpts?.pendingTaskOrdinal && <Tag color="magenta">INPUT</Tag>}
+      {durationSeconds(node.started_at, node.finished_at) !== null &&
+        <Text type="secondary">{formatDuration(node.started_at, node.finished_at)}</Text>}
+    </Space>,
+    children: renderNodes(children),
+  }));
+  return { ...model, treeData: renderNodes(model.nodes), renderNodes };
 }
 
 function ancestorKeysForKey(key: string, keyToParent: Map<string, string | null>): string[] {
@@ -507,7 +329,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const focusTaskOrdinal = taskOrdinalParam !== null && Number.isFinite(taskOrdinalParam) ? taskOrdinalParam : pendingTaskOrdinal;
 
-  const { treeData, keyToRef, keyToParent } = useMemo(
+  const { treeData, keyToRef, keyToParent, keyFor, ancestorsByKey, retriesByKey, currentByRetryKey,
+    projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = useMemo(
     () => buildTree(story?.root, { pendingTaskOrdinal: focusTaskOrdinal }),
     [story?.root, focusTaskOrdinal]
   );
@@ -518,6 +341,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   }, [keyToRef, selectedKey]);
 
   const selectedNode = selectedRef?.type === 'node' ? selectedRef.node : null;
+  const selectedAncestors = selectedKey ? ancestorsByKey.get(selectedKey) || [] : [];
+  const taskRetries = selectedKey ? retriesByKey.get(selectedKey) || [] : [];
+  const jobRetries = selectedNode?.past_attempts || [];
+  const retryOwner = selectedKey ? keyToRef.get(currentByRetryKey.get(selectedKey) || '') : undefined;
+  const operation = selectedNode?.kind === 'op' ? selectedNode : [...selectedAncestors].reverse().find(n => n.kind === 'op');
+  const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
+
 
   const load = async (opts?: { preserveSelection?: boolean }) => {
     if (!jobId) return;
@@ -690,6 +520,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     const key = Array.from(keyToRef.values()).find((ref) => ref.type === 'node' && ref.node === node)?.key;
     if (!key) return;
     setSelectedKey(key);
+    setActiveDetailsTab('overview');
     const ancestors = ancestorKeysForKey(key, keyToParent);
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSearchParams((prev) => {
@@ -774,7 +605,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       </Space>
       {selectedNode ? (
         <Text type="secondary">
-          {kindLabel(selectedNode.kind)} · {selectedNode.title}
+          {projectionByKey.get(selectedKey || '')?.[0]?.label || storyNodeName(selectedNode)}
         </Text>
       ) : (
         <Text type="secondary">Select a node to inspect input/output, artifacts, and retries.</Text>
@@ -949,8 +780,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           </Descriptions>
 
           {story?.recipe ? (
-            <div style={{ marginTop: 12 }}>
-              <Text type="secondary">Recipe metadata</Text>
+            <details style={{ marginTop: 12 }}>
+              <summary>Recipe metadata</summary>
               <div style={{ marginTop: 8 }}>
                 <ReactJson
                   src={story.recipe}
@@ -960,14 +791,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   theme="rjv-default"
                 />
               </div>
-            </div>
+            </details>
           ) : null}
         </Card>
 
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
           <Card title="Story" style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12, overflowX: 'auto' } }}
             extra={<Space>
-              <Button size="small" onClick={() => setExpandedKeys(Array.from(keyToRef.keys()))}>Expand all</Button>
+              {!!story?.root?.past_attempts?.length && <Button size="small" onClick={() => {
+                setSelectedFromNode(story.root!);
+                setActiveDetailsTab('retries');
+              }}>Job retries ({story.root.past_attempts.length})</Button>}
+              <Button size="small" onClick={() => setExpandedKeys(Array.from(keyToParent.keys()))}>Expand all</Button>
               <Button size="small" onClick={() => setExpandedKeys([])}>Collapse all</Button>
             </Space>}>
             {!story?.root ? (
@@ -979,7 +814,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                 showLine
                 treeData={treeData}
                 expandedKeys={expandedKeys}
-                selectedKeys={selectedKey ? [selectedKey] : []}
+                selectedKeys={selectedKey ? [visibleKeyByKey.get(selectedKey) || selectedKey] : []}
                 onExpand={(keys) => setExpandedKeys(keys as string[])}
                 onSelect={(keys) => {
                   const key = (keys?.[0] as string) || null;
@@ -990,6 +825,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     const ancestors = ancestorKeysForKey(key, keyToParent);
                     setExpandedKeys((prev) => unionKeys(prev, ancestors));
                     setSelectedKey(key);
+                    setActiveDetailsTab('overview');
                     setSearchParams((prev) => {
                       const next = new URLSearchParams(prev);
                       next.set('nodeId', key);
@@ -1005,7 +841,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             )}
           </Card>
 
-          <Card title={detailsHeader} style={{ flex: 1.2, minWidth: 520 }} styles={{ body: { padding: 12 } }}>
+          <Card title={detailsHeader} style={{ flex: 1.2, minWidth: 400 }} styles={{ body: { padding: 12, overflowWrap: 'anywhere' } }}>
             {!selectedNode ? (
               <Empty description="Select a node from the story tree" />
             ) : (
@@ -1018,17 +854,23 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     label: 'Overview',
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                        {retryOwner && <Alert type="info" showIcon
+                          message={`Viewing ${selectedRef?.jobAttempt !== keyToRef.get(keyFor.get(story?.root!) || '')?.jobAttempt ? `job attempt ${selectedRef?.jobAttempt}` : `attempt ${nodeAttempt(selectedNode)}`}`}
+                          action={<Button size="small" onClick={() => setSelectedFromNode(retryOwner.node)}>Back to latest</Button>} />}
                         {selectedNode.error && (
                           <Alert type="error" showIcon message={selectedNode.error.code || 'Task failure'}
                             description={<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{selectedNode.error.message}</pre>} />
                         )}
-                        <Descriptions column={1} bordered size="small">
+                        <Descriptions column={1} bordered size="small" styles={{ label: { minWidth: 130, width: 150 }, content: { wordBreak: 'break-word' } }}>
                           <Descriptions.Item label="Kind">
                             {kindLabel(selectedNode.kind)}
                           </Descriptions.Item>
                           <Descriptions.Item label="Title">
                             {selectedNode.title}
                           </Descriptions.Item>
+                          {operation && <Descriptions.Item label="Operation source">
+                            <Text style={{ overflowWrap: 'anywhere' }}>{operation.op_id || operation.title.replace(/^op /, '')}</Text>
+                          </Descriptions.Item>}
                           <Descriptions.Item label="Status">
                             <Tag color={statusTagColor(selectedNode.status)}>
                               {selectedNode.status.toUpperCase()}
@@ -1062,6 +904,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                             <Text code>{selectedNode.path.join(' / ')}</Text>
                           </Descriptions.Item>
                         </Descriptions>
+
+                        {contextNodes.length > 0 && <details>
+                          <summary>Execution context ({contextNodes.length})</summary>
+                          <List size="small" dataSource={contextNodes} renderItem={node => <List.Item
+                            actions={[<Button key="inspect" size="small" onClick={() => setSelectedFromNode(node)}>Inspect</Button>]}>
+                            <Text style={{ overflowWrap: 'anywhere' }}>{node.title}</Text>
+                          </List.Item>} />
+                        </details>}
 
                         {restartable ? (
                           <Card size="small" title="Restart">
@@ -1278,33 +1128,29 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   },
                   {
                     key: 'retries',
-                    label: `Retries (${selectedNode.prior_attempts?.length ?? 0})`,
-                    children: selectedNode.prior_attempts && selectedNode.prior_attempts.length > 0 ? (
-                      <List
-                        dataSource={selectedNode.prior_attempts}
-                        renderItem={(pa) => (
-                          <List.Item
-                            actions={[
-                              <Button key="inspect" size="small" onClick={() => setSelectedFromNode(pa)}>
-                                Inspect
-                              </Button>,
-                            ]}
-                          >
-                            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                              <Space direction="vertical" size={0}>
-                                <Text strong>Attempt {nodeAttempt(pa)}</Text>
-                                <Text type="secondary">
-                                  {formatTimestamp(pa.started_at)} → {formatTimestamp(pa.finished_at)} · {formatDuration(pa.started_at ?? null, pa.finished_at ?? null)}
-                                </Text>
-                              </Space>
-                              <Tag color={statusTagColor(pa.status)}>{pa.status.toUpperCase()}</Tag>
-                            </Space>
-                          </List.Item>
-                        )}
-                      />
-                    ) : (
-                      <Empty description="No prior attempts" />
-                    ),
+                    label: `Retries (${taskRetries.length + jobRetries.length})`,
+                    children: taskRetries.length + jobRetries.length > 0 ? <Space direction="vertical" style={{ width: '100%' }}>
+                      {taskRetries.length > 0 && <List style={{ width: '100%' }}
+                        dataSource={taskRetries}
+                        renderItem={pa => <List.Item actions={[
+                          <Button key="inspect" size="small" onClick={() => setSelectedFromNode(pa)}>Inspect attempt {nodeAttempt(pa)}</Button>,
+                        ]}>
+                          <Space direction="vertical" size={4}>
+                            <Space><Text strong>Attempt {nodeAttempt(pa)}</Text><Tag color={statusTagColor(pa.status)}>{pa.status}</Tag></Space>
+                            <Text type="secondary">{formatTimestamp(pa.started_at)} · {formatDuration(pa.started_at, pa.finished_at)}</Text>
+                            {pa.error && <Text type="danger" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{pa.error.message}</Text>}
+                          </Space>
+                        </List.Item>} />}
+                      {jobRetries.map((past, i) => <Card size="small" style={{ width: '100%' }} key={keyFor.get(past)}
+                        title={`Job attempt ${past.job_attempt || i + 1}`}
+                        extra={<Button size="small" onClick={() => setSelectedFromNode(past)}>Inspect job attempt {past.job_attempt || i + 1}</Button>}>
+                        <Tree defaultExpandAll treeData={renderNodes(projectionByKey.get(keyFor.get(past)!) || [])}
+                          onSelect={keys => {
+                            const ref = keyToRef.get(String(keys[0]));
+                            if (ref) setSelectedFromNode(ref.node);
+                          }} />
+                      </Card>)}
+                    </Space> : <Empty description="No prior attempts" />,
                   },
                 ]}
               />
