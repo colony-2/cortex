@@ -142,3 +142,13 @@ body {
 .review-markdown blockquote { margin-left: 0; padding-left: 16px; border-left: 4px solid #d9d9d9; color: #595959; }
 .review-markdown img { max-width: 100%; }
 .review-markdown > :first-child { margin-top: 0; }
+/* Keep the attempt selector compact and allow the inspector to shrink beside it. */
+.attempt-tabs > .ant-tabs-nav .ant-tabs-tab {
+  padding: 8px 12px;
+}
+.attempt-tabs > .ant-tabs-content-holder {
+  min-width: 0;
+}
+.attempt-tabs.ant-tabs-right > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  padding-right: 12px;
+}

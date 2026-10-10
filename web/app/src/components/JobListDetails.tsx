@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Alert, Descriptions, Space, Typography } from 'antd';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { RecipeJob } from '@colony2/shared/types';
 import dayjs from 'dayjs';
+import { jobFilterSearch } from '../utils/jobFilters';
 
 const { Text } = Typography;
 
@@ -12,6 +13,7 @@ export function jobTime(value?: string) {
 }
 
 export default function JobListDetails({ job, projectId }: { job: RecipeJob; projectId: string }) {
+  const [searchParams] = useSearchParams();
   const items: { key: string; label: string; children: ReactNode }[] = [];
   const add = (label: string, value: ReactNode) => {
     if (value !== undefined && value !== null && value !== '') {
@@ -19,7 +21,7 @@ export default function JobListDetails({ job, projectId }: { job: RecipeJob; pro
     }
   };
   const jobLink = (id: string, tenant = projectId) => (
-    <Link key={id} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story`}>{id}</Link>
+    <Link key={id} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story${tenant === projectId ? jobFilterSearch(searchParams) : ''}`}>{id}</Link>
   );
   add('Created', jobTime(job.created_at));
   add('Submitted', jobTime(job.submitted_at));

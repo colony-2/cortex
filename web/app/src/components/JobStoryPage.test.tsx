@@ -47,20 +47,25 @@ function mount(search = '', response: unknown = story) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('job story history', () => {
-  it('keeps historical job attempts in Retries and preserves inspected failures across refresh', async () => {
+  it('uses descending job attempt tabs and preserves inspected failures across refresh', async () => {
     const fetchMock = mount();
     await screen.findByText('Development.Design.Task 3.2');
     const mainTree = screen.getByRole('tree');
     expect(within(mainTree).queryByText(/Task 1/)).not.toBeInTheDocument();
     expect(within(mainTree).queryByText(/Previous job attempts/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Job retries (2)' }));
-    expect(await screen.findByText('Job attempt 1')).toBeVisible();
+    expect(screen.getAllByRole('tab', { name: /^Job attempt / }).map(tab => tab.textContent)).toEqual(['3', '2', '1']);
+    expect(screen.getByRole('tab', { name: 'Job attempt 3' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tab', { name: /Retries/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Job attempt 1' }));
+    expect(screen.getByRole('tab', { name: 'Job attempt 1' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByText('Development.Design.Task 1.2'));
     expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
     expect(screen.getByTestId('location').textContent).toContain('nodeId=jobAttempt%3A1%7Cn_38');
     fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(screen.getByText('Failure 1.2: temporary directory missing')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Job attempts' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Job attempt 3' }));
     fireEvent.click(within(mainTree).getByText('Development.Design.Task 3.2'));
     expect(await screen.findByText('Failure 3.2: temporary directory missing')).toBeVisible();
     expect(screen.queryByText('Failure 1.2: temporary directory missing')).not.toBeInTheDocument();
@@ -88,9 +93,21 @@ describe('job story history', () => {
     await within(await screen.findByRole('tree')).findByText('Task 1.3');
     fireEvent.click(within(screen.getByRole('tree')).getByText('Task 1.3'));
     expect(within(screen.getByRole('tree')).queryByText('Task 1.1')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: 'Retries (2)' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect attempt 1' }));
+    expect(screen.getAllByRole('tab', { name: /^Attempt / }).map(tab => tab.textContent)).toEqual(['3', '2', '1']);
+    expect(screen.getByRole('tab', { name: 'Attempt 3' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Attempt 1' }));
+    expect(screen.getByRole('tab', { name: 'Attempt 1' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByText('Failure 1.1: temporary directory missing')).toBeVisible();
+    fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Attempt 2' }));
+    expect(screen.getByRole('tab', { name: 'Output', exact: true })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview', exact: true }));
+    expect(await screen.findByText('Failure 1.2: temporary directory missing')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Refresh/ })).not.toHaveClass('ant-btn-loading'));
+    expect(screen.getByRole('tab', { name: 'Attempt 2' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(within(screen.getByRole('tree')).getByText('Task 1.3'));
+    expect(screen.getByRole('tab', { name: 'Attempt 3' })).toHaveAttribute('aria-selected', 'true');
   });
   it('shows a short scoped operation name and keeps source and restart in Overview', async () => {
     const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
@@ -113,6 +130,7 @@ describe('job story history', () => {
     expect(tree).not.toHaveTextContent('git+');
     expect(screen.getByText(source, { exact: true })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Restart from here' })).toBeVisible();
+    expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
 });

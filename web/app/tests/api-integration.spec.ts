@@ -44,6 +44,12 @@ test('submits, filters, and opens a c2j job from the browser', async ({ page, re
   expect(otherCell.ok()).toBeTruthy();
   expect((await otherCell.json()).jobs).toEqual([]);
 
+  await page.getByRole('combobox', { name: 'Status filter' }).click();
+  await page.getByTitle('Ready', { exact: true }).click();
+  await page.getByRole('combobox', { name: 'Status filter' }).press('Escape');
+  await page.getByRole('combobox', { name: 'Cell filter' }).click();
+  await page.getByTitle('root (self)', { exact: true }).click();
+  const filteredURL = page.url();
   const storyResponse = page.waitForResponse(response => response.url().endsWith(`/jobs/${jobID}/story`));
   await page.getByRole('link', { name: jobID, exact: true }).click();
   const story = await storyResponse;
@@ -51,6 +57,14 @@ test('submits, filters, and opens a c2j job from the browser', async ({ page, re
   expect(await story.json()).toMatchObject({ job_id: jobID });
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
   await expect(page.getByText('Failed to load job story')).toHaveCount(0);
+  // List filters survive selection changes in the story and a full browser reload.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Jobs' }).click();
+  await expect(page).toHaveURL(filteredURL);
+  await expect(page.getByRole('link', { name: jobID, exact: true })).toBeVisible();
+  await expect(page.getByTitle('Ready', { exact: true })).toBeVisible();
+  await expect(page.getByTitle('root (self)', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

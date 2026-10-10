@@ -190,6 +190,10 @@ for (const multiField of [false, true]) {
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
       await page.goto(`/project/${tenant}/jobs`);
       await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: jobID, exact: true })).toBeVisible();
+      await page.getByRole('combobox', { name: 'Status filter' }).click();
+      await page.getByTitle('Ready', { exact: true }).click();
+      await page.getByRole('combobox', { name: 'Status filter' }).press('Escape');
       await expect(page.getByRole('link', { name: jobID, exact: true })).toHaveCount(0);
       const allStatuses = page.waitForResponse(r => {
         const url = new URL(r.url());

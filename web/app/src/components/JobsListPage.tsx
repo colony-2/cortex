@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Button,
   Form,
@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
 import JobListDetails, { jobTime } from './JobListDetails';
+import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
 
 dayjs.extend(relativeTime);
 
@@ -55,9 +56,21 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [filters, setFilters] = useState<{ status?: RecipeJobStatus[]; cell?: string }>({
-    status: activeStatuses,
-  });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => readJobFilters(searchParams), [searchParams]);
+  const filterSearch = jobFilterSearch(searchParams);
+  const setFilters = (patch: Partial<typeof filters>) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (patch.status !== undefined) {
+      next.delete('status');
+      for (const status of patch.status) next.append('status', status);
+    }
+    if ('cell' in patch) {
+      next.delete('cell');
+      if (patch.cell) next.set('cell', patch.cell);
+    }
+    return next;
+  }, { replace: true });
   const [form] = Form.useForm<SubmitJobForm>();
 
   const load = async () => {
@@ -140,7 +153,7 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
       key: 'job_id',
       width: 180,
       render: (jobId: string) => (
-        <Link to={`/project/${projectId}/jobs/${encodeURIComponent(jobId)}/story`}>
+        <Link to={`/project/${projectId}/jobs/${encodeURIComponent(jobId)}/story${filterSearch}`}>
           <Text code>{jobId}</Text>
         </Link>
       ),
@@ -219,15 +232,16 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
               style={{ minWidth: 320 }}
               placeholder="All statuses"
               maxTagCount="responsive"
-              onChange={(status) => setFilters((current) => ({ ...current, status }))}
+              onChange={(status) => setFilters({ status })}
               allowClear
             />
             <Select
+              aria-label="Cell filter"
               value={filters.cell}
               options={cellOptions}
               style={{ minWidth: 220 }}
               placeholder="Cell"
-              onChange={(cell) => setFilters((current) => ({ ...current, cell }))}
+              onChange={(cell) => setFilters({ cell })}
               allowClear
               showSearch
             />

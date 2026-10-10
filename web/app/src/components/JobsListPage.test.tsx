@@ -1,8 +1,15 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type { RecipeJob } from '@colony2/shared/types';
 import JobsListPage from './JobsListPage';
+import JobStoryPage from './JobStoryPage';
+
+vi.mock('@colony2/shared', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@colony2/shared')>(),
+  useInputActivity: () => ({ pendingInputs: [], refresh: vi.fn() }),
+}));
+vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -40,4 +47,45 @@ it('shows a combined status and list-supplied details without fetching individua
   fireEvent.click(screen.getByText('All job data'));
   expect(screen.getByText(/saved payload/)).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(2);
+  const jobsURL = fetch.mock.calls.map(([url]) => new URL(url, 'http://localhost')).find(url => url.pathname.endsWith('/jobs'))!;
+  expect(jobsURL.searchParams.getAll('status')).toEqual(['all']);
+});
+
+function Location() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}{location.search}</output>;
+}
+
+it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filters through story navigation: %s', async (query) => {
+  const listReads: URL[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+    const url = new URL(input, 'http://localhost');
+    let data: unknown;
+    if (url.pathname.endsWith('/story')) {
+      data = { job_id: 'job', status: 'completed', root: { id: 'root', kind: 'recipe', title: 'recipe build', status: 'succeeded', path: [] } };
+    } else if (url.pathname.endsWith('/jobs')) {
+      listReads.push(url);
+      data = { jobs: [{ job_id: 'job', status: 'READY', recipe: 'build', store: 'ACTIVE' }] };
+    } else data = [];
+    return { ok: true, json: async () => data };
+  }));
+  render(<MemoryRouter initialEntries={[`/project/tenant/jobs${query}`]}>
+    <Location />
+    <Routes>
+      <Route path="/project/:projectId/jobs" element={<JobsListPage projectId="tenant" />} />
+      <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
+    </Routes>
+  </MemoryRouter>);
+  const link = await screen.findByRole('link', { name: 'job', exact: true });
+  expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story${query}`);
+  fireEvent.click(link);
+  await screen.findByText('Run Summary');
+  fireEvent.click(screen.getByRole('button', { name: /Back to Jobs/ }));
+  await screen.findByRole('link', { name: 'job', exact: true });
+  expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
+  await waitFor(() => expect(listReads).toHaveLength(2));
+  for (const url of listReads) {
+    expect(url.searchParams.getAll('status')).toEqual(query ? ['ACTIVE', 'READY'] : ['all']);
+    expect(url.searchParams.get('cell')).toBe(query ? 'platform' : null);
+  }
 });

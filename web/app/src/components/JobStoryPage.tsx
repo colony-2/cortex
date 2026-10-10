@@ -30,7 +30,9 @@ import dayjs from 'dayjs';
 import ReactJson from 'react-json-view';
 import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
-import { buildStoryTree, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
+import AttemptTabs from './AttemptTabs';
+import { jobFilterSearch } from '../utils/jobFilters';
+import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 
 const { Title, Text } = Typography;
@@ -329,11 +331,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const focusTaskOrdinal = taskOrdinalParam !== null && Number.isFinite(taskOrdinalParam) ? taskOrdinalParam : pendingTaskOrdinal;
 
-  const { treeData, keyToRef, keyToParent, keyFor, ancestorsByKey, retriesByKey, currentByRetryKey,
-    projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = useMemo(
+  const treeModel = useMemo(
     () => buildTree(story?.root, { pendingTaskOrdinal: focusTaskOrdinal }),
     [story?.root, focusTaskOrdinal]
   );
+
+  const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
+  const filterSearch = jobFilterSearch(searchParams);
 
   const selectedRef = useMemo(() => {
     if (!selectedKey) return null;
@@ -342,9 +346,12 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const selectedNode = selectedRef?.type === 'node' ? selectedRef.node : null;
   const selectedAncestors = selectedKey ? ancestorsByKey.get(selectedKey) || [] : [];
-  const taskRetries = selectedKey ? retriesByKey.get(selectedKey) || [] : [];
-  const jobRetries = selectedNode?.past_attempts || [];
-  const retryOwner = selectedKey ? keyToRef.get(currentByRetryKey.get(selectedKey) || '') : undefined;
+  const attempts = storyAttempts(treeModel, selectedKey);
+  const latestAttempt = attempts[0];
+  const jobRoots = story?.root ? [story.root, ...(story.root.past_attempts || [])] : [];
+  const displayedRoot = jobRoots.find(root => (root.job_attempt || 1) === selectedRef?.jobAttempt) || story?.root;
+  const treeData = displayedRoot ? renderNodes(projectionByKey.get(keyFor.get(displayedRoot)!) || []) : [];
+  const isPastJob = !!story?.root && selectedRef?.jobAttempt !== (story.root.job_attempt || 1);
   const operation = selectedNode?.kind === 'op' ? selectedNode : [...selectedAncestors].reverse().find(n => n.kind === 'op');
   const contextNodes = selectedNode ? [...selectedAncestors, ...(childrenByNode.get(selectedNode) || [])] : [];
 
@@ -516,11 +523,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     document.body.removeChild(link);
   };
 
-  const setSelectedFromNode = (node: StoryNode) => {
+  const setSelectedFromNode = (node: StoryNode, preserveTab = false) => {
     const key = Array.from(keyToRef.values()).find((ref) => ref.type === 'node' && ref.node === node)?.key;
     if (!key) return;
     setSelectedKey(key);
-    setActiveDetailsTab('overview');
+    if (!preserveTab) setActiveDetailsTab('overview');
     const ancestors = ancestorKeysForKey(key, keyToParent);
     setExpandedKeys((prev) => unionKeys(prev, ancestors));
     setSearchParams((prev) => {
@@ -574,7 +581,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       message.success('Restarted job');
       setRestartOpen(false);
       resetRestartState();
-      navigate(`/project/${projectId}/jobs/${data.job_id}/story`);
+      navigate(`/project/${projectId}/jobs/${data.job_id}/story${filterSearch}`);
     } catch (e) {
       console.error('Restart failed', e);
       message.error(e instanceof Error ? e.message : 'Restart failed');
@@ -608,7 +615,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           {projectionByKey.get(selectedKey || '')?.[0]?.label || storyNodeName(selectedNode)}
         </Text>
       ) : (
-        <Text type="secondary">Select a node to inspect input/output, artifacts, and retries.</Text>
+        <Text type="secondary">Select a node to inspect input/output, artifacts, and attempts.</Text>
       )}
     </Space>
   );
@@ -656,7 +663,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project/${projectId}/jobs`)}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project/${projectId}/jobs${filterSearch}`)}>
               Back to Jobs
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -796,12 +803,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         </Card>
 
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <Card title="Story" style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12, overflowX: 'auto' } }}
+          <Card title={isPastJob ? `Story · job attempt ${selectedRef?.jobAttempt}` : 'Story'} style={{ flex: 1, minWidth: 420 }} styles={{ body: { padding: 12, overflowX: 'auto' } }}
             extra={<Space>
               {!!story?.root?.past_attempts?.length && <Button size="small" onClick={() => {
-                setSelectedFromNode(story.root!);
-                setActiveDetailsTab('retries');
-              }}>Job retries ({story.root.past_attempts.length})</Button>}
+                setSelectedFromNode(displayedRoot || story.root!);
+              }}>Job attempts</Button>}
               <Button size="small" onClick={() => setExpandedKeys(Array.from(keyToParent.keys()))}>Expand all</Button>
               <Button size="small" onClick={() => setExpandedKeys([])}>Collapse all</Button>
             </Space>}>
@@ -814,11 +820,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                 showLine
                 treeData={treeData}
                 expandedKeys={expandedKeys}
-                selectedKeys={selectedKey ? [visibleKeyByKey.get(selectedKey) || selectedKey] : []}
+                selectedKeys={selectedNode?.kind === 'recipe' && selectedKey ? [selectedKey]
+                  : latestAttempt ? [visibleKeyByKey.get(latestAttempt.key) || latestAttempt.key] : []}
                 onExpand={(keys) => setExpandedKeys(keys as string[])}
-                onSelect={(keys) => {
-                  const key = (keys?.[0] as string) || null;
-                  if (!key) return;
+                onSelect={(_, info) => {
+                  const key = String(info.node.key);
                   const ref = keyToRef.get(key);
                   if (!ref) return;
                   if (ref.type === 'node') {
@@ -845,6 +851,15 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             {!selectedNode ? (
               <Empty description="Select a node from the story tree" />
             ) : (
+              <AttemptTabs
+                attempts={attempts.map(ref => ({ key: ref.key, number: selectedNode.kind === 'recipe' ? ref.jobAttempt : ref.attempt }))}
+                activeKey={selectedKey}
+                kind={selectedNode.kind === 'recipe' ? 'Job attempt' : 'Attempt'}
+                onChange={key => {
+                  const ref = keyToRef.get(key);
+                  if (ref) setSelectedFromNode(ref.node, true);
+                }}
+              >
               <Tabs
                 activeKey={activeDetailsTab}
                 onChange={setActiveDetailsTab}
@@ -854,9 +869,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                     label: 'Overview',
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                        {retryOwner && <Alert type="info" showIcon
-                          message={`Viewing ${selectedRef?.jobAttempt !== keyToRef.get(keyFor.get(story?.root!) || '')?.jobAttempt ? `job attempt ${selectedRef?.jobAttempt}` : `attempt ${nodeAttempt(selectedNode)}`}`}
-                          action={<Button size="small" onClick={() => setSelectedFromNode(retryOwner.node)}>Back to latest</Button>} />}
                         {selectedNode.error && (
                           <Alert type="error" showIcon message={selectedNode.error.code || 'Task failure'}
                             description={<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', margin: 0 }}>{selectedNode.error.message}</pre>} />
@@ -1126,34 +1138,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                       </>
                     ),
                   },
-                  {
-                    key: 'retries',
-                    label: `Retries (${taskRetries.length + jobRetries.length})`,
-                    children: taskRetries.length + jobRetries.length > 0 ? <Space direction="vertical" style={{ width: '100%' }}>
-                      {taskRetries.length > 0 && <List style={{ width: '100%' }}
-                        dataSource={taskRetries}
-                        renderItem={pa => <List.Item actions={[
-                          <Button key="inspect" size="small" onClick={() => setSelectedFromNode(pa)}>Inspect attempt {nodeAttempt(pa)}</Button>,
-                        ]}>
-                          <Space direction="vertical" size={4}>
-                            <Space><Text strong>Attempt {nodeAttempt(pa)}</Text><Tag color={statusTagColor(pa.status)}>{pa.status}</Tag></Space>
-                            <Text type="secondary">{formatTimestamp(pa.started_at)} · {formatDuration(pa.started_at, pa.finished_at)}</Text>
-                            {pa.error && <Text type="danger" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{pa.error.message}</Text>}
-                          </Space>
-                        </List.Item>} />}
-                      {jobRetries.map((past, i) => <Card size="small" style={{ width: '100%' }} key={keyFor.get(past)}
-                        title={`Job attempt ${past.job_attempt || i + 1}`}
-                        extra={<Button size="small" onClick={() => setSelectedFromNode(past)}>Inspect job attempt {past.job_attempt || i + 1}</Button>}>
-                        <Tree defaultExpandAll treeData={renderNodes(projectionByKey.get(keyFor.get(past)!) || [])}
-                          onSelect={keys => {
-                            const ref = keyToRef.get(String(keys[0]));
-                            if (ref) setSelectedFromNode(ref.node);
-                          }} />
-                      </Card>)}
-                    </Space> : <Empty description="No prior attempts" />,
-                  },
+
                 ]}
               />
+              </AttemptTabs>
             )}
           </Card>
         </div>

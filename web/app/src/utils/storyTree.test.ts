@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStoryTree, storyNodeName, type StoryNode, type StoryTreeNode } from './storyTree';
+import { buildStoryTree, storyAttempts, storyNodeName, type StoryNode, type StoryTreeNode } from './storyTree';
 
 let id = 0;
 function node(kind: StoryNode['kind'], title: string, children: StoryNode[] = [], extra: Partial<StoryNode> = {}): StoryNode {
@@ -40,6 +40,8 @@ describe('compact execution tree', () => {
     expect(rows[1].node.restart_from_ordinal).toBe(30);
     expect(rows[1].node.artifact_keys?.[0].name).toBe('stderr.txt');
     expect(model.retriesByKey.get(rows[1].key)).toEqual([prior]);
+    expect(storyAttempts(model, model.keyFor.get(prior)!).map(ref => ref.attempt)).toEqual([2, 1]);
+    expect(storyAttempts(model, model.keyFor.get(op)!)).toHaveLength(1);
     expect(model.keyToRef.get(model.keyFor.get(prior)!)?.node.error?.message).toBe('first failure');
     expect(root.children).toHaveLength(2); // Projection never mutates the response.
     expect(op.children).toHaveLength(3);
@@ -78,6 +80,8 @@ describe('compact execution tree', () => {
     expect(flat(model.nodes).map(n => n.label)).toEqual(['build', 'new']);
     expect(model.keyToRef.get('jobAttempt:1|root')?.node).toBe(past);
     expect(model.legacyKeyToKey.get('root')).toBe('jobAttempt:2|root');
+    expect(storyAttempts(model, 'jobAttempt:1|root').map(ref => ref.jobAttempt)).toEqual([2, 1]);
+    expect(storyAttempts(model, model.keyFor.get(past.children![0])!)).toHaveLength(1);
   });
 
   it('uses explicit names, shortening only qualified source selectors', () => {

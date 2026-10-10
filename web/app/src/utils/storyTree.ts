@@ -224,9 +224,45 @@ export function buildStoryTree(root?: StoryNode | null) {
     }
   };
   connect(nodes, null);
+  for (const past of root?.past_attempts || []) connect(projectionByKey.get(keyFor.get(past)!) || [], null);
   for (const [key, projected] of projectionByKey) {
     if (!visibleKeyByKey.has(key) && projected[0]) visibleKeyByKey.set(key, projected[0].key);
   }
   return { nodes, keyToRef, keyToParent, legacyKeyToKey, keyFor, ancestorsByKey,
     retriesByKey, currentByRetryKey, projectionByKey, visibleKeyByKey, childrenByNode };
+}
+
+export function storyAttempts(model: ReturnType<typeof buildStoryTree>, selectedKey: string | null): StoryNodeRef[] {
+  const selected = selectedKey ? model.keyToRef.get(selectedKey) : undefined;
+  if (!selected) return [];
+  let latest = selected;
+  const visited = new Set<string>();
+  while (!visited.has(latest.key)) {
+    visited.add(latest.key);
+    const owner = model.keyToRef.get(model.currentByRetryKey.get(latest.key) || '');
+    // An old job's operation still has its own task attempts; its job root is
+    // a separate attempt selector, not another attempt of this operation.
+    if (!owner || (owner.node.kind === 'recipe' && selected.node.kind !== 'recipe')) break;
+    latest = owner;
+  }
+  if (latest.node.kind === 'op' && selected.node.kind === 'opStep') {
+    const projected = model.projectionByKey.get(latest.key);
+    if (projected?.length === 1 && projected[0].node.kind === 'opStep') {
+      latest = model.keyToRef.get(projected[0].key)!;
+    }
+  }
+  const jobAttempts = latest.node.kind === 'recipe';
+  const refs = new Map<number, StoryNodeRef>();
+  const collect = (ref: StoryNodeRef) => {
+    const number = jobAttempts ? ref.jobAttempt : ref.attempt;
+    if (refs.has(number)) return;
+    refs.set(number, ref);
+    for (const prior of jobAttempts ? ref.node.past_attempts || [] : model.retriesByKey.get(ref.key) || []) {
+      const previous = model.keyToRef.get(model.keyFor.get(prior)!);
+      if (previous) collect(previous);
+    }
+  };
+  collect(latest);
+  refs.set(jobAttempts ? selected.jobAttempt : selected.attempt, selected);
+  return [...refs.entries()].sort(([a], [b]) => b - a).map(([, ref]) => ref);
 }
