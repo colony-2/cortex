@@ -119,7 +119,6 @@ describe('Input Flow - Complete E2E Integration', () => {
                     output: null,
                     artifact_keys: [],
                     task_ordinal: 12,
-                    restart_from_ordinal: 12,
                     children: [],
                   },
                 ],

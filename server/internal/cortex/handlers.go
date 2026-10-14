@@ -42,8 +42,8 @@ type submitJobResponse struct {
 }
 
 type restartJobRequest struct {
-	StepOffset int64                  `json:"step_offset"`
-	Patch      *coretask.ContextPatch `json:"patch,omitempty"`
+	ScopeID string                 `json:"scope_id"`
+	Patch   *coretask.ContextPatch `json:"patch,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -208,15 +208,15 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.StepOffset < 1 {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("step_offset must be >= 1 to preserve the job start chapter"))
+	if strings.TrimSpace(req.ScopeID) == "" {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("scope_id is required"))
 		return
 	}
 	resp, err := s.story.RestartRecipeJob(r.Context(), story.RestartRecipeJobRequest{
-		ProjectID:  s.tenantID(r),
-		JobID:      mux.Vars(r)["jobId"],
-		StepOffset: req.StepOffset,
-		Patch:      req.Patch,
+		ProjectID: s.tenantID(r),
+		JobID:     mux.Vars(r)["jobId"],
+		ScopeID:   req.ScopeID,
+		Patch:     req.Patch,
 	})
 	if err != nil {
 		writeError(w, err)

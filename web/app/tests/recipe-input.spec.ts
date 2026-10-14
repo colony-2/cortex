@@ -13,7 +13,7 @@ const test = base.extend<{
     tenant: string;
     jobID: string;
     observer: Page;
-    startWorker: () => void;
+    startWorker: (jobID?: string) => void;
     stopWorker: () => Promise<void>;
   };
 }>({
@@ -25,30 +25,46 @@ const test = base.extend<{
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
     const workerPath = resolve('../../build/c2j-test-worker');
     let worker: ChildProcess | undefined;
+    let workerTimer: ReturnType<typeof setTimeout> | undefined;
+    let workerStopped = true;
     let workerLog = '';
     let fixtureFailed = false;
     const errors: string[] = [];
     context.on('page', browserPage => browserPage.on('pageerror', error => errors.push(error.message)));
     page.on('pageerror', error => errors.push(error.message));
 
-    const startWorker = () => {
-      worker = spawn(workerPath, ['run', 'loop', '--jobdb', `http://127.0.0.1:18082/${tenant}`], {
-        cwd: repo,
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: '0',
-          // Resolve the existing test cell to a real local checkout without network access.
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: `url.${pathToFileURL(repo).href}.insteadOf`,
-          GIT_CONFIG_VALUE_0: 'https://github.com/cortex-test/platform.git',
-        },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      worker.stdout!.on('data', data => { workerLog += data.toString(); });
-      worker.stderr!.on('data', data => { workerLog += data.toString(); });
-      worker.on('error', error => { workerLog += error.stack; });
+    const startWorker = (targetJobID = jobID) => {
+      workerStopped = false;
+      const launch = () => {
+        worker = spawn(workerPath, [
+          'run', 'one', '--job-id', targetJobID, '--input-mode', 'ops',
+          '--poll-interval', '100ms', '--jobdb', `http://127.0.0.1:18082/${tenant}`,
+        ], {
+          cwd: repo,
+          env: {
+            ...process.env,
+            GIT_TERMINAL_PROMPT: '0',
+            // Resolve the existing test cell to a real local checkout without network access.
+            GIT_CONFIG_COUNT: '1',
+            GIT_CONFIG_KEY_0: `url.${pathToFileURL(repo).href}.insteadOf`,
+            GIT_CONFIG_VALUE_0: 'https://github.com/cortex-test/platform.git',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        worker.stdout!.on('data', data => { workerLog += data.toString(); });
+        worker.stderr!.on('data', data => { workerLog += data.toString(); });
+        worker.on('error', error => { workerLog += error.stack; });
+        worker.on('close', code => {
+          // run one exits with 3 while awaiting external input. Continue polling
+          // so browser answers and input deadlines resume the same job.
+          if (!workerStopped && code === 3) workerTimer = setTimeout(launch, 500);
+        });
+      };
+      launch();
     };
     const stopWorker = async () => {
+      workerStopped = true;
+      clearTimeout(workerTimer);
       if (!worker?.pid || worker.exitCode !== null || worker.signalCode !== null) return;
       const stopped = new Promise<void>(done => worker!.once('close', () => done()));
       worker.kill('SIGTERM');
@@ -209,6 +225,31 @@ for (const multiField of [false, true]) {
       await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
       await row.getByRole('button', { name: 'Expand row' }).click();
       await expect(page.getByText('All job data', { exact: true })).toBeVisible();
+
+      if (!multiField) {
+        await stopWorker();
+        const storyResponse = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/story`));
+        await page.getByRole('link', { name: jobID, exact: true }).click();
+        const story = await (await storyResponse).json();
+        expect(story.restart_scopes.length).toBeGreaterThan(0);
+        await page.getByRole('button', { name: 'Restart job', exact: true }).click();
+        const restartDialog = page.getByRole('dialog');
+        await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
+        const restartPoint = restartDialog.getByRole('combobox', { name: 'Restart point' });
+        await restartPoint.click();
+        await restartPoint.press('Home');
+        await restartPoint.press('Enter');
+        const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
+        await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
+        const restartResponse = await restarted;
+        expect(restartResponse.status(), await restartResponse.text()).toBe(201);
+        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: story.restart_scopes[0].scope_id });
+        const newJobID = (await restartResponse.json()).job_id;
+        expect(newJobID).not.toBe(jobID);
+        await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story$`));
+        startWorker(newJobID);
+        await expect(observer.getByText(`Job ID: ${newJobID}`, { exact: true })).toBeVisible();
+      }
     });
   });
 }

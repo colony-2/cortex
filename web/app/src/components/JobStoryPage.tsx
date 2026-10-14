@@ -56,6 +56,7 @@ type JobStatus =
 
 
 interface JobStoryResponse {
+  restart_scopes?: { scope_id: string; started_at: string }[];
   job_id: string;
   invocation_sequence?: number;
   recipe?: any;
@@ -305,6 +306,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
 
   const [restartOpen, setRestartOpen] = useState(false);
+  const [restartScopeID, setRestartScopeID] = useState<string>();
   const [restartSubmitting, setRestartSubmitting] = useState(false);
   const [jobPatchLines, setJobPatchLines] = useState<PatchLine[]>([]);
   const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
@@ -539,22 +541,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     });
   };
 
-  const restartable =
-    !!selectedNode &&
-    selectedNode.kind !== 'contextPatch' &&
-    selectedNode.restart_from_ordinal !== null &&
-    selectedNode.restart_from_ordinal !== undefined;
+  const restartScopes = story?.restart_scopes || [];
+  const restartable = restartScopes.some(scope => scope.scope_id === restartScopeID);
 
   const resetRestartState = () => {
+    setRestartScopeID(undefined);
     setApplyPatch(false);
     setJobPatchLines([]);
     setScopePatchLines([]);
   };
 
   const submitRestart = async () => {
-    if (!jobId || !selectedNode) return;
-    const stepOffset = selectedNode.restart_from_ordinal;
-    if (stepOffset === null || stepOffset === undefined) return;
+    if (!jobId || !restartable) return;
 
     const contextPatch = applyPatch ? buildContextPatch(jobPatchLines, scopePatchLines) : null;
 
@@ -566,7 +564,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            step_offset: stepOffset,
+            scope_id: restartScopeID,
             ...(contextPatch ? { patch: contextPatch } : {}),
           }),
         }
@@ -897,9 +895,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                           <Descriptions.Item label="Task Ordinal">
                             {selectedNode.task_ordinal ?? '-'}
                           </Descriptions.Item>
-                          <Descriptions.Item label="Restart From Ordinal">
-                            {selectedNode.restart_from_ordinal ?? '-'}
-                          </Descriptions.Item>
                           <Descriptions.Item label="Invoke Seq">
                             {selectedNode.invoke_seq ?? '-'}
                           </Descriptions.Item>
@@ -925,15 +920,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                           </List.Item>} />
                         </details>}
 
-                        {restartable ? (
+                        {restartScopes.length > 0 ? (
                           <Card size="small" title="Restart">
                             <Space direction="vertical" style={{ width: '100%' }}>
                               <Text type="secondary">
-                                Restarts create a new job and resume from step offset{' '}
-                                <Text code>{selectedNode.restart_from_ordinal}</Text>.
+                                Create a new job from a recorded restart point.
                               </Text>
                               <Button type="primary" onClick={() => setRestartOpen(true)}>
-                                Restart from here
+                                Restart job
                               </Button>
                             </Space>
                           </Card>
@@ -1228,10 +1222,23 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               message="This will create a new job"
               description={
                 <div>
-                  Restarting from <Text strong>{selectedNode.title}</Text> (step offset{' '}
-                  <Text code>{selectedNode.restart_from_ordinal ?? '-'}</Text>).
+                  Choose where to resume execution. Completed work before that point is retained.
                 </div>
               }
+            />
+
+            <Select
+              aria-label="Restart point"
+              placeholder="Choose a restart point"
+              style={{ width: '100%' }}
+              value={restartScopeID}
+              onChange={setRestartScopeID}
+              options={restartScopes.map(scope => ({
+                value: scope.scope_id,
+                label: `${scope.scope_id} · ${formatTimestamp(scope.started_at)}`,
+              }))}
+              showSearch
+              optionFilterProp="label"
             />
 
             <Card title="Context Patching" size="small">

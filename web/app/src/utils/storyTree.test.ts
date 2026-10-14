@@ -13,7 +13,7 @@ function operation() {
     attempt: 1, task_ordinal: 30, status: 'failed', error: { message: 'first failure' },
   });
   const latest = node('opStep', 'step extension_execution', [], {
-    attempt: 2, task_ordinal: 31, restart_from_ordinal: 30, status: 'failed',
+    attempt: 2, task_ordinal: 31, status: 'failed',
     error: { message: 'second failure' }, artifact_keys: [{ jobId: 'job', taskOrdinal: 31, name: 'stderr.txt' }],
   });
   const op = node('op', `op ${selector}`, [
@@ -37,7 +37,7 @@ describe('compact execution tree', () => {
     const rows = flat(model.nodes);
     expect(rows.map(n => n.label)).toEqual(['build', 'development-agent.run.codex']);
     expect(rows[1].node).toBe(latest);
-    expect(rows[1].node.restart_from_ordinal).toBe(30);
+    expect(rows[1].node.task_ordinal).toBe(31);
     expect(rows[1].node.artifact_keys?.[0].name).toBe('stderr.txt');
     expect(model.retriesByKey.get(rows[1].key)).toEqual([prior]);
     expect(storyAttempts(model, model.keyFor.get(prior)!).map(ref => ref.attempt)).toEqual([2, 1]);

@@ -111,13 +111,17 @@ describe('job story history', () => {
   });
   it('shows a short scoped operation name and keeps source and restart in Overview', async () => {
     const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
-    mount('', { ...story, root: {
+    const scopeID = 'root/scope:"op:codex"#1';
+    const fetchMock = mount('', { ...story, restart_scopes: [
+      { scope_id: 'root', started_at: '2026-10-14T05:00:00Z' },
+      { scope_id: scopeID, started_at: '2026-10-14T05:01:00Z' },
+    ], root: {
       id: 'root', kind: 'recipe', title: 'recipe build', path: [], status: 'failed', children: [{
         id: 'machine', kind: 'stateMachine', title: 'stateMachine agent', path: [], status: 'failed', children: [{
           id: 'state', kind: 'state', title: 'state run', path: [], status: 'failed', children: [{
             id: 'op', kind: 'op', title: `op ${source}`, op_id: source, path: [], status: 'failed', children: [{
               id: 'task', kind: 'opStep', title: 'step extension_execution', path: [], status: 'failed',
-              restart_from_ordinal: 12, task_ordinal: 14, error: { message: 'command failed' },
+              task_ordinal: 14, error: { message: 'command failed' },
             }],
           }],
         }],
@@ -129,8 +133,24 @@ describe('job story history', () => {
     expect(tree).not.toHaveTextContent('Restart');
     expect(tree).not.toHaveTextContent('git+');
     expect(screen.getByText(source, { exact: true })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Restart from here' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
+    fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
+    fireEvent.click(await screen.findByText(text => text.startsWith(`${scopeID} ·`)));
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'restarted' }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/jobs/job/restart'),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ scope_id: scopeID }) }),
+    ));
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
+  });
+
+  it('does not offer restarts without recorded scopes', async () => {
+    mount();
+    await screen.findByText('Development.Design.Task 3.2');
+    expect(screen.queryByRole('button', { name: 'Restart job' })).not.toBeInTheDocument();
   });
 
 });

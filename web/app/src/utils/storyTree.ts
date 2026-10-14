@@ -54,7 +54,6 @@ export interface StoryNode {
   prior_attempts?: StoryNode[];
   error?: { message: string; code?: string } | null;
   task_ordinal?: number | null;
-  restart_from_ordinal?: number | null;
 
   op_id?: string;
   step_id?: string;
@@ -190,7 +189,7 @@ export function buildStoryTree(root?: StoryNode | null) {
     } else if (node.kind === 'op' && children.length === 1 && children[0].node.kind === 'opStep' &&
         node.status === children[0].node.status && (!node.error || children[0].node.error)) {
       // The task is the useful inspection target: it owns errors, artifacts,
-      // retry history and the restart cursor. Its enclosing op supplies its name.
+      // retry history. Its enclosing op supplies its name.
       const leaf = children[0];
       leaf.label = operationLabel(node, ancestors);
       retriesByKey.set(leaf.key, [...new Set([...(node.prior_attempts || []), ...(retriesByKey.get(leaf.key) || [])])]);

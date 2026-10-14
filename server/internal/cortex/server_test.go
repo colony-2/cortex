@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/colony-2/c2j/pkg/jobdbschema"
 	"github.com/colony-2/jobdb/pkg/jobdb"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/remote"
 	"github.com/colony-2/jobdb/pkg/jobdb/runtime/toy"
@@ -109,16 +110,18 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		}
 		doJSON[errorResponse](t, req, http.StatusNotFound)
 	}
-	missingRestart, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/1/jobs/job-alpha-1/restart", bytes.NewBufferString(`{"step_offset":0}`))
+	missingRestart, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/1/jobs/job-alpha-1/restart", bytes.NewBufferString(`{"scope_id":"scope-test"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	doJSON[errorResponse](t, missingRestart, http.StatusNotFound)
-	invalidRestart, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", bytes.NewBufferString(`{"step_offset":0}`))
-	if err != nil {
-		t.Fatal(err)
+	for _, body := range []string{`{}`, `{"scope_id":" "}`, `{"step_offset":1}`} {
+		invalidRestart, err := http.NewRequest(http.MethodPost, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		doJSON[errorResponse](t, invalidRestart, http.StatusBadRequest)
 	}
-	doJSON[errorResponse](t, invalidRestart, http.StatusBadRequest)
 	// Seed a recorded outcome using the runtime API; Cortex itself runs no workers.
 	ctx := context.Background()
 	lease, err := srv.engine.GetJobLease(ctx, jobdb.GetJobLeaseRequest{
@@ -133,12 +136,35 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		t.Fatal("expected a job lease")
 	}
 	defer lease.StopKeepAlive()
+	// New restarts require a recorded execution header and a named scope.
+	runtime := srv.engine.(jobdbschema.WorkflowEngine).Registry.(jobdb.WorkflowRuntime)
+	leaseToken := ""
+	if tokenLease, ok := lease.(interface{ LeaseToken() string }); ok {
+		leaseToken = tokenLease.LeaseToken()
+	}
+	for i, record := range []jobdb.ExecutionRecord{
+		{Version: jobdb.ExecutionPatternVersion, Kind: "header", Versions: &jobdb.ExecutionVersions{ExecutionPatternVersion: jobdb.ExecutionPatternVersion, JobDBVersion: "test"}},
+		{Version: jobdb.ExecutionPatternVersion, Kind: "scope", ID: "scope-test", Descriptor: json.RawMessage(`{"restart":true}`)},
+	} {
+		raw, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ordinal := int64(i + 1)
+		if err := runtime.PutChapter(ctx, jobdb.PutChapterRequest{
+			LeaseID: lease.LeaseID(), LeaseToken: leaseToken,
+			Ref:     jobdb.ChapterRef{JobKey: jobdb.JobKey{TenantId: "42", JobId: "job-alpha-1"}, Ordinal: ordinal},
+			Chapter: jobdb.Chapter{Ordinal: ordinal, TaskType: "__execution__", CreatedAt: time.Now().UTC(), Body: jobdb.ExecutionChapter{Record: raw}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	artifact := jobdb.NewArtifactFromBytes("result.txt", []byte("test result"))
 	err = lease.Complete(ctx, jobdb.CompleteExecutionRequest{
 		Status: "success",
 		Detail: "Finished successfully",
 		Chapter: &jobdb.Chapter{
-			Ordinal: 1, TaskType: "recipe", CreatedAt: time.Now().UTC(),
+			Ordinal: 3, TaskType: "recipe", CreatedAt: time.Now().UTC(),
 			Metadata: jobdb.ChapterMetadata{Fields: map[string]jobdb.ChapterMetadataValue{
 				"attempt": {Kind: jobdb.ChapterMetadataInt, Int: 1},
 			}},
@@ -165,7 +191,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if len(active["jobs"].([]interface{})) != 0 {
 		t.Fatalf("ready filter included archived job: %#v", active)
 	}
-	artifactResponse, err := http.Get(ts.URL + "/api/projects/42/jobs/job-alpha-1/tasks/1/artifacts/result.txt")
+	artifactResponse, err := http.Get(ts.URL + "/api/projects/42/jobs/job-alpha-1/tasks/3/artifacts/result.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,12 +203,22 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if artifactResponse.StatusCode != http.StatusOK || string(content) != "test result" {
 		t.Fatalf("artifact status=%d body=%s", artifactResponse.StatusCode, content)
 	}
-	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"step_offset": 1})
+	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"scope_id": "scope-test", "patch": map[string]interface{}{"job": map[string]interface{}{"answer": "patched"}}})
 	newID, ok := newJob["job_id"].(string)
 	if !ok || newID == "" || newID == "job-alpha-1" {
 		t.Fatalf("restart = %#v", newJob)
 	}
 	getJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/"+newID)
+	run, err := srv.engine.GetJobRun(ctx, jobdb.GetJobRunRequest{JobKey: jobdb.JobKey{TenantId: "42", JobId: newID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range run.Execution {
+		if entry.Record.Kind == "restart" && entry.Record.ID == "scope-test" && string(entry.Record.Payload) == `{"job":{"answer":"patched"}}` {
+			return
+		}
+	}
+	t.Fatalf("restart scope and patch missing from new job: %#v", run.Execution)
 }
 
 func TestRemoteServerRequiresJobDBURL(t *testing.T) {
