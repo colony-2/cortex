@@ -75,6 +75,17 @@ describe('InputFormRenderer', () => {
     }
   });
 
+  it('keeps the review action accessible by the same name while submitting and after failure', () => {
+    const form: InputForm = { id: 'review', title: 'Review', kind: 'review', fields: [
+      { id: 'decision', type: 'multiple_choice', required: true, label: 'Proceed?',
+        options: ['revise'], optionLabels: { revise: 'Revise the plan' } },
+    ] };
+    const { rerender } = render(<InputFormRenderer form={form} onSubmit={mockOnSubmit} loading />);
+    expect(screen.getByRole('button', { name: 'Revise the plan', exact: true })).toBeDisabled();
+    rerender(<InputFormRenderer form={form} onSubmit={mockOnSubmit} loading={false} />);
+    expect(screen.getByRole('button', { name: 'Revise the plan', exact: true })).toBeEnabled();
+  });
+
   it.each([true, false])('preserves c2j response semantics (single question: %s)', async (singleQuestion) => {
     render(<InputFormRenderer form={{
       id: 'response-contract',

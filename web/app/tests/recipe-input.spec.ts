@@ -395,16 +395,32 @@ for (const clarification of [false, true]) {
       if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
 
       // A rejected request must remain actionable, with the draft preserved.
-      await page.route(`**/reviews/${jobID}/respond`, route => route.fulfill({
-        status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Review service temporarily unavailable' }),
-      }), { times: 1 });
-      await action.click();
+      let releaseFailure!: () => void;
+      const failureGate = new Promise<void>(resolve => { releaseFailure = resolve; });
+      await page.route(`**/reviews/${jobID}/respond`, async route => {
+        await failureGate;
+        await route.fulfill({
+          status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Review service temporarily unavailable' }),
+        });
+      }, { times: 1 });
+      try {
+        await action.click();
+        // Keep the request in flight until we observe the loading state. The
+        // spinner must not change the action's accessible name or allow duplicates.
+        await expect(action).toHaveAttribute('aria-busy', 'true');
+        await expect(action).toBeDisabled();
+      } finally {
+        releaseFailure();
+      }
       await expect(page.getByRole('alert').filter({ hasText: 'Review service temporarily unavailable' })).toBeVisible();
+      await expect(action).toHaveAttribute('aria-busy', 'false');
+      await expect(action).toBeEnabled();
       await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
       expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
-      const responded = page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST');
-      await action.click();
-      const response = await responded;
+      const [response] = await Promise.all([
+        page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST'),
+        action.click(),
+      ]);
       expect(response.status(), await response.text()).toBe(200);
       await expect(page.getByText('No pending reviews')).toBeVisible();
       await expect(observer.getByText('No pending reviews')).toBeVisible();

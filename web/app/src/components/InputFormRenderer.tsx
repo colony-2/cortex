@@ -332,14 +332,16 @@ export default function InputFormRenderer({
               Cancel
             </Button>
           )}
+          {/* Keep action names stable while Ant Design animates its loading icon. */}
           {actionField ? actionField.options!.map(option => (
-            <Button key={option} type="primary" loading={loading} onClick={() => {
+            <Button key={option} type="primary" loading={loading}
+              aria-label={actionField.optionLabels?.[option] || option} aria-busy={loading} onClick={() => {
               antForm.setFieldValue(actionField.id, option);
               antForm.submit();
             }}>
               {actionField.optionLabels?.[option] || option}
             </Button>
-          )) : <Button type="primary" htmlType="submit" loading={loading}>
+          )) : <Button type="primary" htmlType="submit" loading={loading} aria-label="Submit" aria-busy={loading}>
             Submit
           </Button>}
         </Space>
