@@ -57,3 +57,14 @@ jobs:
 
       - name: Test npm installer
         run: node --test npm/cortex/test/*.test.cjs
+
+      - name: Upload Playwright failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-${{ matrix.os }}-attempt-${{ github.run_attempt }}
+          path: |
+            web/app/test-results/
+            web/app/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
