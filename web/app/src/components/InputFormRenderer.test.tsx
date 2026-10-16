@@ -36,6 +36,45 @@ describe('InputFormRenderer', () => {
     cleanup();
   });
 
+  it.each([
+    { id: 'decision', options: ['revise'], value: 'revise', label: 'Revise the plan' },
+    { id: 'decision', options: ['approve', 'revise'], value: 'revise', label: 'Revise the plan' },
+    { id: 'disposition', options: ['accept', 'return'], value: 'return', label: 'Send back for discussion' },
+  ])('submits review action $id=$value with exact values', async ({ id, options, value, label }) => {
+    const form: InputForm = { id: 'review', title: 'Review', kind: 'review', fields: [
+      { id, type: 'multiple_choice', required: true, label: 'Agent summary and open questions',
+        options, optionLabels: { [value]: label } },
+      { id: 'feedback', type: 'paragraph_text', required: true, label: 'Feedback' },
+    ] };
+    render(<InputFormRenderer form={form} onSubmit={mockOnSubmit} />);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Submit' })).toBeNull();
+    expect(screen.getByText('Agent summary and open questions')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: label }));
+    await screen.findByText('Feedback is required');
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText('Feedback'), 'Please clarify ownership.');
+    await user.click(screen.getByRole('button', { name: label }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      fields: { [id]: value, feedback: 'Please clarify ownership.' },
+    })));
+  });
+
+  it.each(['optional', 'multiple'])('keeps %s review choice questions as ordinary form fields', async kind => {
+    const field = { id: 'choice', type: 'multiple_choice' as const, required: kind !== 'optional',
+      label: 'Which version?', options: ['A', 'B'] };
+    render(<InputFormRenderer form={{ id: 'review', title: 'Review', kind: 'review', fields: kind === 'optional'
+      ? [field] : [field, { ...field, id: 'second', label: 'Which environment?' }],
+    }} onSubmit={mockOnSubmit} />);
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(kind === 'optional' ? 2 : 4);
+    if (kind === 'optional') {
+      await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ fields: {} })));
+    }
+  });
+
   it.each([true, false])('preserves c2j response semantics (single question: %s)', async (singleQuestion) => {
     render(<InputFormRenderer form={{
       id: 'response-contract',

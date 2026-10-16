@@ -47,6 +47,25 @@ describe('InputActivityService', () => {
 
   afterEach(() => {
     inputActivityService.disconnect();
+    vi.unstubAllGlobals();
+  });
+
+  it('submits reviews without randomUUID, preserving the request and generating distinct IDs', async () => {
+    vi.stubGlobal('crypto', { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) });
+    vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+    const response = { fields: { decision: 'revise', feedback: 'Please clarify the rollout.' } };
+    await inputActivityService.submitReview(projectId, 'job', 'request', response);
+    await inputActivityService.submitReview(projectId, 'job', 'request', response);
+    const submissions = vi.mocked(fetch).mock.calls.map(([url, init]) => {
+      expect(url).toContain(`/projects/${projectId}/reviews/job/respond`);
+      expect(init?.method).toBe('POST');
+      return JSON.parse((init?.body as FormData).get('submission') as string);
+    });
+    for (const submission of submissions) {
+      expect(submission).toMatchObject({ request_id: 'request', fields: response.fields });
+      expect(submission.submission_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(submissions[0].submission_id).not.toBe(submissions[1].submission_id);
   });
 
   describe('SSE Connection', () => {

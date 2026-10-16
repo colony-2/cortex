@@ -29,6 +29,7 @@ sequence:
           - id: feedback
             type: paragraph_text
             question: What should change?
+            required: true
           - id: annotation
             type: file_upload
             question: Attach feedback document

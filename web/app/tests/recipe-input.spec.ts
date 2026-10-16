@@ -19,7 +19,11 @@ const test = base.extend<{
 }>({
   recipeFixture: ['browser-input', { option: true }],
   recipeRun: async ({ page, context, request, recipeFixture }, use, testInfo) => {
-    const review = recipeFixture === 'browser-review';
+    const review = recipeFixture.startsWith('browser-review');
+    if (review) {
+      // Match browsers serving Cortex over HTTP outside localhost.
+      await context.addInitScript(() => Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined }));
+    }
     const tenant = `input-${randomUUID()}`;
     const jobID = `recipe-${randomUUID()}`;
     const repo = mkdtempSync(join(tmpdir(), 'cortex-input-'));
@@ -338,59 +342,86 @@ test.describe('input timeout', () => {
 });
 
 
-test.describe('document reviews', () => {
-  test.use({ recipeFixture: 'browser-review' });
-  test('reviews render immutable Markdown and submit through c2j', async ({ page, request, recipeRun }) => {
-    const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
-    await stopWorker();
-    await page.getByRole('link', { name: 'Pending Inputs', exact: true }).click();
-    await expect(page.getByText('No pending inputs')).toBeVisible();
-    await page.getByRole('link', { name: 'Reviews', exact: true }).click();
-    await page.getByRole('button', { name: 'Open Review', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
-    await expect(page.getByRole('table')).toBeVisible();
-    await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
-    await page.getByText('Markdown', { exact: true }).click();
-    await expect(page.getByLabel('Markdown source')).toContainText('**Immutable original**');
-    await page.getByTitle('design · design.md', { exact: true }).click();
-    await page.getByTitle('rollout · rollout.md', { exact: true }).click();
-    await expect(page.getByLabel('Markdown source')).toContainText('# Rollout');
-    await page.getByText('Rendered', { exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
-    await expect(page.getByRole('checkbox')).toBeDisabled();
+for (const clarification of [false, true]) {
+  test.describe(clarification ? 'clarification review' : 'document review', () => {
+    test.use({ recipeFixture: clarification ? 'browser-review-clarification' : 'browser-review' });
+    test('reviews render immutable Markdown and submit through c2j', async ({ page, request, recipeRun }) => {
+      const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
+      expect(await page.evaluate(() => typeof globalThis.crypto.randomUUID)).toBe('undefined');
+      await stopWorker();
+      await page.getByRole('link', { name: 'Pending Inputs', exact: true }).click();
+      await expect(page.getByText('No pending inputs')).toBeVisible();
+      await page.getByRole('link', { name: 'Reviews', exact: true }).click();
+      await page.getByRole('button', { name: 'Open Review', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Review the release' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
+      await expect(page.getByRole('table')).toBeVisible();
+      await expect(page.locator('[contenteditable=true]')).toHaveCount(0);
+      await page.getByText('Markdown', { exact: true }).click();
+      await expect(page.getByLabel('Markdown source')).toContainText('**Immutable original**');
+      await page.getByTitle('design · design.md', { exact: true }).click();
+      await page.getByTitle('rollout · rollout.md', { exact: true }).click();
+      await expect(page.getByLabel('Markdown source')).toContainText('# Rollout');
+      await page.getByText('Rendered', { exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Rollout', exact: true })).toBeVisible();
+      await expect(page.getByRole('checkbox')).toBeDisabled();
 
-    const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
-    const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
-      data: { request_id: 'old-request', submission_id: randomUUID(), fields: { decision: 'approve' } },
-    });
-    expect(stale.status()).toBe(400);
-    const invalid = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
-      data: { request_id: details.form.request_id, submission_id: randomUUID(), fields: { decision: 'unknown' } },
-    });
-    expect(invalid.status()).toBe(400);
-    expect((await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json())).toHaveLength(1);
+      const details = await (await request.get(`/api/projects/${tenant}/user-inputs/${jobID}`)).json();
+      const stale = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
+        data: { request_id: 'old-request', submission_id: randomUUID(), fields: { decision: 'approve' } },
+      });
+      expect(stale.status()).toBe(400);
+      const invalid = await page.request.post(`/api/projects/${tenant}/reviews/${jobID}/respond`, {
+        data: { request_id: details.form.request_id, submission_id: randomUUID(), fields: { decision: 'unknown' } },
+      });
+      expect(invalid.status()).toBe(400);
+      expect((await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json())).toHaveLength(1);
 
-    await page.getByRole('button', { name: 'Submit', exact: true }).click();
-    await expect(page.getByText('How should we proceed? is required')).toBeVisible();
-    await page.getByLabel('Approve', { exact: true }).check();
-    await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
-    const responded = page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST');
-    await page.getByRole('button', { name: 'Submit', exact: true }).click();
-    const response = await responded;
-    expect(response.status(), await response.text()).toBe(200);
-    await expect(page.getByText('No pending reviews')).toBeVisible();
-    await expect(observer.getByText('No pending reviews')).toBeVisible();
-    startWorker();
-    await expect.poll(async () => {
-      const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
-      return response.status() === 200 ? response.json() : null;
-    }, { timeout: 30_000 }).toMatchObject({ status: 'completed', output: {
-      answers: { decision: 'approve', annotation: { kind: 'stored', name: 'feedback.md' } },
-      receipt: { request_id: details.form.request_id, actor: { id: 'browser@example.com', kind: 'human' } },
-    } });
-    const original = details.form.documents.design.stored.key;
-    const originalResponse = await request.get(`/api/projects/${tenant}/jobs/${original.jobId}/tasks/${original.taskOrdinal}/artifacts/${original.name}`);
-    expect(await originalResponse.text()).toContain('**Immutable original**');
+      const prompt = page.getByRole('region', { name: 'Review context', exact: true });
+      await expect(prompt).toHaveText(details.form.fields[0].question);
+      expect(await prompt.evaluate(element => Boolean(element.compareDocumentPosition(
+        Array.from(document.querySelectorAll('.ant-card-head-title')).find(node => node.textContent === 'Your response')!
+      ) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+      await expect(page.getByRole('radio', { name: /Approve|Revise the plan|Request changes/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Submit', exact: true })).toHaveCount(0);
+      const action = page.getByRole('button', { name: clarification ? 'Revise the plan' : 'Approve', exact: true });
+      const feedback = page.getByLabel(clarification
+        ? 'Feedback or answers to open questions. Select a revision decision to request changes.' : 'What should change?', { exact: true });
+      if (!clarification) {
+        await action.click();
+        await expect(page.getByText('What should change? is required')).toBeVisible();
+      }
+      await feedback.fill('Please use the proposed mandate and clarify the ownership boundary.');
+      if (!clarification) await page.locator('input[type=file]').setInputFiles({ name: 'feedback.md', mimeType: 'text/markdown', buffer: Buffer.from('# Feedback from browser') });
+
+      // A rejected request must remain actionable, with the draft preserved.
+      await page.route(`**/reviews/${jobID}/respond`, route => route.fulfill({
+        status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Review service temporarily unavailable' }),
+      }), { times: 1 });
+      await action.click();
+      await expect(page.getByRole('alert').filter({ hasText: 'Review service temporarily unavailable' })).toBeVisible();
+      await expect(feedback).toHaveValue('Please use the proposed mandate and clarify the ownership boundary.');
+      expect(await (await request.get(`/api/projects/${tenant}/user-inputs/pending`)).json()).toHaveLength(1);
+      const responded = page.waitForResponse(r => r.url().endsWith(`/reviews/${jobID}/respond`) && r.request().method() === 'POST');
+      await action.click();
+      const response = await responded;
+      expect(response.status(), await response.text()).toBe(200);
+      await expect(page.getByText('No pending reviews')).toBeVisible();
+      await expect(observer.getByText('No pending reviews')).toBeVisible();
+      startWorker();
+      await expect.poll(async () => {
+        const response = await request.get(`/api/projects/${tenant}/jobs/${jobID}/outcome`);
+        return response.status() === 200 ? response.json() : null;
+      }, { timeout: 30_000 }).toMatchObject({ status: 'completed', output: {
+        answers: { decision: clarification ? 'revise' : 'approve',
+          feedback: 'Please use the proposed mandate and clarify the ownership boundary.',
+          ...(!clarification ? { annotation: { kind: 'stored', name: 'feedback.md' } } : {}),
+        },
+        receipt: { request_id: details.form.request_id, actor: { id: 'browser@example.com', kind: 'human' } },
+      } });
+      const original = details.form.documents.design.stored.key;
+      const originalResponse = await request.get(`/api/projects/${tenant}/jobs/${original.jobId}/tasks/${original.taskOrdinal}/artifacts/${original.name}`);
+      expect(await originalResponse.text()).toContain('**Immutable original**');
+    });
   });
-});
+}

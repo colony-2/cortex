@@ -11,11 +11,13 @@ import {
   Upload, 
   Button, 
   Space, 
+  Alert,
 } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
 import type { Rule } from 'antd/es/form';
 import type { Dayjs } from 'dayjs';
+import { reviewActionField } from '../utils/reviewForm';
 import type { 
   InputForm, 
   InputField, 
@@ -31,6 +33,7 @@ interface InputFormRendererProps {
   onSubmit: (response: FormResponse) => void;
   onCancel?: () => void;
   loading?: boolean;
+  reviewPromptShown?: boolean;
 }
 
 export default function InputFormRenderer({ 
@@ -38,14 +41,18 @@ export default function InputFormRenderer({
   context,
   onSubmit, 
   onCancel, 
-  loading = false 
+  loading = false,
+  reviewPromptShown = false,
 }: InputFormRendererProps) {
   // Context is accepted for future use (display/telemetry) even if not rendered currently.
   void context;
   const [antForm] = Form.useForm();
   const [fileList, setFileList] = useState<Record<string, UploadFile[]>>({});
+  const [validationError, setValidationError] = useState(false);
+  const actionField = reviewActionField(form);
 
   const handleFinish = (values: any) => {
+    setValidationError(false);
     // Transform values based on field types
     const transformedValues: Record<string, any> = {};
     const attachments: Record<string, File> = {};
@@ -300,26 +307,41 @@ export default function InputFormRenderer({
       form={antForm}
       layout="vertical"
       onFinish={handleFinish}
+      onFinishFailed={() => {
+        setValidationError(true);
+        if (actionField) antForm.setFieldValue(actionField.id, undefined);
+      }}
+      scrollToFirstError
       disabled={loading}
     >
+      {actionField && !reviewPromptShown && <div style={{ whiteSpace: 'pre-wrap', marginBottom: 24 }}>{actionField.label}</div>}
       {form.description && (
         <div style={{ marginBottom: '24px', color: '#666' }}>
           {form.description}
         </div>
       )}
       
-      {form.fields.map((field: InputField) => renderField(field))}
+      {form.fields.filter(field => field !== actionField).map((field: InputField) => renderField(field))}
+      {actionField && <Form.Item name={actionField.id} hidden rules={[{ required: true }]}><Input /></Form.Item>}
+      {validationError && <Alert type="error" showIcon message="Please complete the required fields and correct any errors before submitting." />}
       
       <Form.Item style={{ marginTop: '32px' }}>
-        <Space>
+        <Space wrap>
           {onCancel && (
             <Button onClick={onCancel} disabled={loading}>
               Cancel
             </Button>
           )}
-          <Button type="primary" htmlType="submit" loading={loading}>
+          {actionField ? actionField.options!.map(option => (
+            <Button key={option} type="primary" loading={loading} onClick={() => {
+              antForm.setFieldValue(actionField.id, option);
+              antForm.submit();
+            }}>
+              {actionField.optionLabels?.[option] || option}
+            </Button>
+          )) : <Button type="primary" htmlType="submit" loading={loading}>
             Submit
-          </Button>
+          </Button>}
         </Space>
       </Form.Item>
     </Form>
