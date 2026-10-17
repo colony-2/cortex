@@ -238,16 +238,24 @@ for (const multiField of [false, true]) {
         expect(story.restart_scopes.length).toBeGreaterThan(0);
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         const restartDialog = page.getByRole('dialog');
-        await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
-        const restartPoint = restartDialog.getByRole('combobox', { name: 'Restart point' });
-        await restartPoint.click();
-        await restartPoint.press('Home');
-        await restartPoint.press('Enter');
+        await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
+        await restartDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+        // Inspect a real task, then restart at that task's recorded boundary.
+        const taskNodes = (node: any): any[] => [node, ...(node.children || []).flatMap(taskNodes)];
+        const task = taskNodes(story.root).filter(node => node.kind === 'opStep' && node.invocation_id).at(-1);
+        expect(task).toBeTruthy();
+        const expectedScope = story.restart_scopes.filter((scope: { scope_id: string }) =>
+          task.invocation_id.startsWith(`${scope.scope_id}/`)
+        ).sort((a: { scope_id: string }, b: { scope_id: string }) => b.scope_id.length - a.scope_id.length)[0].scope_id;
+        await page.goto(`/project/${tenant}/jobs/${jobID}/story?nodeId=${encodeURIComponent(task.id)}`);
+        await page.getByRole('button', { name: 'Restart job', exact: true }).click();
+        await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
+        await expect(restartDialog.getByText(`${expectedScope} ·`, { exact: false })).toBeVisible();
         const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
         expect(restartResponse.status(), await restartResponse.text()).toBe(201);
-        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: story.restart_scopes[0].scope_id });
+        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
         await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story$`));

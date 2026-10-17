@@ -37,6 +37,7 @@ interface TransitionEvaluation {
 
 export interface StoryNode {
   id?: string;
+  invocation_id?: string;
   kind: StoryKind;
   title: string;
   status: NodeStatus;

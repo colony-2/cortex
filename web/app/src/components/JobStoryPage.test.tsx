@@ -121,6 +121,7 @@ describe('job story history', () => {
           id: 'state', kind: 'state', title: 'state run', path: [], status: 'failed', children: [{
             id: 'op', kind: 'op', title: `op ${source}`, op_id: source, path: [], status: 'failed', children: [{
               id: 'task', kind: 'opStep', title: 'step extension_execution', path: [], status: 'failed',
+              invocation_id: `${scopeID}/attempt:1/task:"run"#1/attempt:1`,
               task_ordinal: 14, error: { message: 'command failed' },
             }],
           }],
@@ -135,9 +136,18 @@ describe('job story history', () => {
     expect(screen.getByText(source, { exact: true })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
+    expect(within(dialog).getByText(text => text.startsWith(`${scopeID} ·`))).toBeVisible();
+    // A manually chosen boundary must not leak into the next opening.
     fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
-    fireEvent.click(await screen.findByText(text => text.startsWith(`${scopeID} ·`)));
+    fireEvent.click(await screen.findByText(text => text.startsWith('root ·')));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
+    expect(within(dialog).getByText(text => text.startsWith(`${scopeID} ·`))).toBeVisible();
+    fireEvent.click(within(dialog).getByRole('switch'));
+    expect(within(dialog).getByText('Context before patching')).toBeVisible();
+    expect(within(dialog).getByText('Full context is unavailable for this restart point.')).toBeVisible();
+    expect(within(dialog).queryByText('Patch Preview')).not.toBeInTheDocument();
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'restarted' }) });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -151,6 +161,17 @@ describe('job story history', () => {
     mount();
     await screen.findByText('Development.Design.Task 3.2');
     expect(screen.queryByRole('button', { name: 'Restart job' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['?nodeId=n_5', 'No recorded restart point could be identified for this node. Choose a restart point below.'],
+    ['?nodeId=jobAttempt%3A2%7Cn_3', 'You are viewing a previous job attempt. Choose a restart point from the current execution.'],
+  ])('does not silently select an unrelated restart point for %s', async (search, explanation) => {
+    mount(search, { ...story, restart_scopes: [{ scope_id: 'root', started_at: '2026-10-17T00:00:00Z' }] });
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(explanation)).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
   });
 
 });

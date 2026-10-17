@@ -34,6 +34,7 @@ import AttemptTabs from './AttemptTabs';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
+import { restartScopeForNode, type RestartScope } from '../utils/restartScope';
 
 const { Title, Text } = Typography;
 
@@ -56,7 +57,7 @@ type JobStatus =
 
 
 interface JobStoryResponse {
-  restart_scopes?: { scope_id: string; started_at: string }[];
+  restart_scopes?: RestartScope[];
   job_id: string;
   invocation_sequence?: number;
   recipe?: any;
@@ -551,6 +552,13 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
     setScopePatchLines([]);
   };
 
+  const openRestart = () => {
+    resetRestartState();
+    // restart_scopes belongs to the current execution, not a historical job attempt.
+    setRestartScopeID(isPastJob ? undefined : restartScopeForNode(selectedNode, restartScopes));
+    setRestartOpen(true);
+  };
+
   const submitRestart = async () => {
     if (!jobId || !restartable) return;
 
@@ -926,7 +934,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                               <Text type="secondary">
                                 Create a new job from a recorded restart point.
                               </Text>
-                              <Button type="primary" onClick={() => setRestartOpen(true)}>
+                              <Button type="primary" onClick={openRestart}>
                                 Restart job
                               </Button>
                             </Space>
@@ -1227,6 +1235,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               }
             />
 
+            {!restartScopeID && <Alert type="info" showIcon message={isPastJob
+              ? 'You are viewing a previous job attempt. Choose a restart point from the current execution.'
+              : 'No recorded restart point could be identified for this node. Choose a restart point below.'} />}
             <Select
               aria-label="Restart point"
               placeholder="Choose a restart point"
@@ -1449,7 +1460,11 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                       </div>
                     </Card>
 
-                    <Card size="small" title="Patch Preview">
+                    <Card size="small" title="Context before patching">
+                      <Alert type="info" showIcon message="Full context is unavailable for this restart point."
+                        description="The patch payload below contains only your changes; it is not the current context or the resulting context." />
+                    </Card>
+                    <Card size="small" title="Patch payload">
                       <ReactJson
                         src={buildContextPatch(jobPatchLines, scopePatchLines) ?? {}}
                         collapsed={2}
