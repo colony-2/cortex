@@ -27,10 +27,10 @@ func cleanEnv(t *testing.T) {
 func configDir(t *testing.T, config string) string {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".c2j"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".c2"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".c2j", "config.yaml"), []byte(config), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".c2", "config.yaml"), []byte(config), 0644); err != nil {
 		t.Fatal(err)
 	}
 	return root

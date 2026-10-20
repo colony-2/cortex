@@ -42,12 +42,12 @@ the executable.
 
 Open `http://localhost:8080`. The working directory should be a Git checkout
 with a c2j cell configuration; see the
-[minimal fixture](web/app/tests/fixtures/cell/.c2j/config.yaml).
+[minimal fixture](web/app/tests/fixtures/cell/.c2/config.yaml).
 
 | Option | Environment variable | Default |
 | --- | --- | --- |
 | `--addr` | `CORTEX_ADDR` | `:8080` |
-| `--jobdb` | `C2J_JOBDB` | `jobdb` from `.c2j/config.yaml` |
+| `--jobdb` | `C2J_JOBDB` | `jobdb` from `.c2/config.yaml` |
 | `--working-dir` | `CORTEX_WORKING_DIR` | Current directory |
 | `--cors-origins` | `CORTEX_CORS_ORIGINS` | Empty; comma-separated origins |
 
@@ -65,7 +65,7 @@ C2J_JOBDB=http://localhost:9047/c2 cortex
 ```
 
 Resolution follows `--jobdb`, then `C2J_JOBDB`, then the nearest ancestor
-`.c2j/config.yaml`. Cortex calls c2j's `pkg/config.LoadProjectConfig` and
+`.c2/config.yaml`. Cortex calls c2j's `pkg/config.LoadProjectConfig` and
 `ProjectConfig.JobDBURI` directly, including support for command-valued settings:
 
 ```yaml
@@ -74,6 +74,9 @@ jobdb: http://localhost:9047/c2
 # jobdb:
 #   command: your-command-that-prints-a-jobdb-uri
 ```
+
+If your project still uses `.c2j/config.yaml`, move it to `.c2/config.yaml`;
+c2j no longer discovers configuration in the old directory.
 
 Run `cortex` from that cell or a subdirectory, or select the discovery directory
 with `--working-dir`. Cortex requires a remote HTTP(S) JobDB server; `embed:///`

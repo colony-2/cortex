@@ -78,13 +78,13 @@ const test = base.extend<{
     };
 
     try {
-      mkdirSync(join(repo, '.c2j/recipes'), { recursive: true });
-      copyFileSync(resolve(`tests/fixtures/recipes/${recipeFixture}.yaml`), join(repo, '.c2j/recipes/browser-input.yaml'));
+      mkdirSync(join(repo, '.c2/recipes'), { recursive: true });
+      copyFileSync(resolve(`tests/fixtures/recipes/${recipeFixture}.yaml`), join(repo, '.c2/recipes/browser-input.yaml'));
       const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
       git('init', '-b', 'main');
       git('add', '.');
       git('-c', 'user.name=Cortex Browser Test', '-c', 'user.email=browser@example.com', '-c', 'commit.gpgsign=false', 'commit', '-m', 'Input recipe fixture');
-      const recipe = `git+${pathToFileURL(repo).href}//.c2j/recipes/browser-input.yaml@main`;
+      const recipe = `git+${pathToFileURL(repo).href}//.c2/recipes/browser-input.yaml@main`;
 
       await page.goto(`/?tenantId=${tenant}`);
       await page.getByPlaceholder('Email address').fill('browser@example.com');

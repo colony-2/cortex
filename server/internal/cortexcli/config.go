@@ -41,7 +41,7 @@ func resolveConnection(ctx context.Context, cfg cortex.Config, explicit, legacy 
 		}
 	}
 	if raw == "" {
-		return cfg, fmt.Errorf("JobDB URI is required: use --jobdb, C2J_JOBDB, or jobdb in .c2j/config.yaml")
+		return cfg, fmt.Errorf("JobDB URI is required: use --jobdb, C2J_JOBDB, or jobdb in .c2/config.yaml")
 	}
 	target, err := url.Parse(raw)
 	if err != nil {
