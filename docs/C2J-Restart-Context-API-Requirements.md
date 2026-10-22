@@ -1,5 +1,18 @@
 # c2j APIs needed for restart selection and context inspection
 
+## Status: implemented
+
+c2j main commit `9ffc54b1ccb2c1c21df3f01de0f3f12fdd7703b8` provides the
+authoritative mapping and context inspection requested here. Cortex now uses
+`restart_chapter_ordinal` directly, including historical attempts, and calls
+`GetRestartContext` for the full before-state. It no longer infers targets from
+invocation prefixes. See [the integration guide](../GUIDE-Restart-Context.md).
+
+The sections below preserve the original requirements and the gap observed before
+that implementation. The delivered API identifies boundaries by source job and
+chapter ordinal, so it needs no separate revision token. After-state preview is
+not part of the delivered API.
+
 ## User request
 
 When a user clicks **Restart job** while inspecting a story node, Cortex should
@@ -7,10 +20,27 @@ preselect the restart point corresponding to that location. When patching contex
 the dialog should show the full context **before** the proposed patch, including
 unchanged values. A JSON object containing only patch changes is not that context.
 
-## Current gap
+## Historical gap
 
-Inspected c2j `v0.0.79`, main commit
-`6a25847a90d0303f700bbade1bda7f67d858ce48`, on 2026-10-17.
+Rechecked c2j main commit `94484c909de14a2fe2b2a62dfbd82d31595b5b75`
+on 2026-10-21. The gaps originally reported against `v0.0.79` remain.
+
+### Concrete invocation loss
+
+In `pkg/story/live/recorder.go`, `OnTaskStart` assigns `InvocationID` to task
+steps and attempts. The single-step collapse in `recordingExecutor.ExecuteOp`
+copies the child step's task ordinal, attempts, input/output, timing, path, and
+status into the operation and then removes the child. It does **not** copy
+`InvocationID`. The resulting displayed operation has no invocation identity,
+even though the discarded child had one. `copyAttemptIntoStep` also omits this
+field (including for recipe-source resolution).
+
+Please preserve these identities and expose the explicit node-to-restart-scope
+association below. Copying invocation IDs alone does not define restart targets
+for sequences, states, state machines, or historical attempts. Cortex should not
+reverse engineer scope identities from display paths, ordinals, timestamps, or
+execution-record layouts. This is blocking reliable restart preselection for
+every displayed location; the existing manual selector remains the fallback.
 
 - `pkg/story/internal/model/job_run_story.go`: `RestartScope` exposes only
   `scope_id` and `started_at`. `JobRunStoryNode` exposes `invocation_id` on some

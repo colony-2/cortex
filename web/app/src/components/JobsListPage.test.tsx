@@ -13,6 +13,57 @@ vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre
 
 afterEach(() => vi.unstubAllGlobals());
 
+it.each(['cancel', 'delete'] as const)('confirms selected jobs and keeps failed %s operations available for retry', async action => {
+  const jobs = ['first', 'second', 'unselected'].map(job_id => ({ job_id, status: 'READY', store: 'ACTIVE' }));
+  const changes: string[] = [];
+  let failSecond = true;
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    const path = new URL(input, 'http://localhost').pathname;
+    if (init?.method === 'POST' || init?.method === 'DELETE') {
+      changes.push(path);
+      if (path.includes('/second') && failSecond) return { ok: false, status: 503, statusText: 'Unavailable', text: async () => 'Please retry' };
+      return { ok: true, status: 204 };
+    }
+    return { ok: true, json: async () => path.endsWith('/cells') ? [] : { jobs } };
+  }));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job first' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select job second' }));
+  const verb = action === 'cancel' ? 'Cancel' : 'Delete';
+  fireEvent.click(screen.getByRole('button', { name: `${verb} selected` }));
+  let dialog = screen.getByRole('dialog');
+  expect(changes).toEqual([]);
+  expect(within(dialog).queryByText('unselected')).not.toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Keep jobs' }));
+  expect(changes).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: `${verb} selected` }));
+  dialog = screen.getByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: `${verb} 2 jobs` }));
+  expect(await within(dialog).findByText('1 job operation failed')).toBeVisible();
+  await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Select job first' })).not.toBeChecked());
+  expect(screen.getByRole('checkbox', { name: 'Select job second' })).toBeChecked();
+  const suffix = action === 'cancel' ? '/cancel' : '';
+  expect(changes).toEqual([`/api/projects/tenant/jobs/first${suffix}`, `/api/projects/tenant/jobs/second${suffix}`]);
+  failSecond = false;
+  fireEvent.click(within(dialog).getByRole('button', { name: `${verb} job`, exact: true }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(changes.at(-1)).toBe(`/api/projects/tenant/jobs/second${suffix}`);
+  expect(changes).toHaveLength(3);
+  expect(screen.getByText('0 selected')).toBeVisible();
+});
+
+it('clears job selections when switching tenants', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => ({ ok: true, json: async () =>
+    input.includes('/cells') ? [] : { jobs: [{ job_id: 'same-id', status: 'READY', store: 'ACTIVE' }] },
+  })));
+  const { rerender } = render(<MemoryRouter><JobsListPage projectId="first-tenant" /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select job same-id' }));
+  expect(screen.getByText('1 selected')).toBeVisible();
+  rerender(<MemoryRouter><JobsListPage projectId="other-tenant" /></MemoryRouter>);
+  expect(await screen.findByRole('checkbox', { name: 'Select job same-id' })).not.toBeChecked();
+  expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
+});
+
 it('shows a combined status and list-supplied details without fetching individual jobs or stories', async () => {
   const job: RecipeJob = {
     tenant_id: 'tenant', job_id: 'failed-job', job_type: 'recipe', recipe: 'build',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Button,
@@ -26,6 +26,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
 import JobListDetails, { jobTime } from './JobListDetails';
 import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
+import JobActionDialog, { type JobAction } from './JobActionDialog';
 
 dayjs.extend(relativeTime);
 
@@ -51,11 +52,18 @@ interface SubmitJobForm {
 }
 
 export default function JobsListPage({ projectId }: JobsListPageProps) {
+  return <JobsList key={projectId} projectId={projectId} />;
+}
+
+function JobsList({ projectId }: JobsListPageProps) {
   const [jobs, setJobs] = useState<RecipeJob[]>([]);
   const [cells, setCells] = useState<CortexCell[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
+  const loadVersion = useRef(0);
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readJobFilters(searchParams), [searchParams]);
   const filterSearch = jobFilterSearch(searchParams);
@@ -74,6 +82,7 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
   const [form] = Form.useForm<SubmitJobForm>();
 
   const load = async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     try {
       const [cellData, jobData] = await Promise.all([
@@ -84,18 +93,25 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
           pageSize: 100,
         }),
       ]);
+      if (version !== loadVersion.current) return;
+      const nextJobs = jobData.jobs || [];
       setCells(cellData);
-      setJobs(jobData.jobs || []);
+      setJobs(nextJobs);
+      setSelectedIds(previous => previous.filter(id => nextJobs.some(job => job.job_id === id)));
     } catch (error) {
+      if (version !== loadVersion.current) return;
       console.error('Failed to load jobs', error);
       message.error(error instanceof Error ? error.message : 'Failed to load jobs');
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    setSelectedIds([]);
+    setOperation(null);
     load();
+    return () => { loadVersion.current++; };
   }, [projectId, filters.status, filters.cell]);
 
   const cellOptions = useMemo(
@@ -254,11 +270,23 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
           </Space>
         </div>
 
+        <Space wrap>
+          <Text>{selectedIds.length} selected</Text>
+          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: [...selectedIds] })}>Cancel selected</Button>
+          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: [...selectedIds] })}>Delete selected</Button>
+          {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
+        </Space>
+
         <Table
           rowKey="job_id"
           columns={columns}
           dataSource={jobs}
           loading={loading}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: keys => setSelectedIds(keys.map(String)),
+            getCheckboxProps: job => ({ 'aria-label': `Select job ${job.job_id}`, disabled: loading }),
+          }}
           scroll={{ x: 1200 }}
           expandable={{
             expandedRowRender: (job) => <JobListDetails job={job} projectId={projectId} />,
@@ -268,6 +296,12 @@ export default function JobsListPage({ projectId }: JobsListPageProps) {
           pagination={{ pageSize: 25, showSizeChanger: true }}
         />
       </Space>
+
+      {operation && <JobActionDialog projectId={projectId} {...operation}
+        onClose={() => setOperation(null)} onComplete={async succeeded => {
+          setSelectedIds(previous => previous.filter(id => !succeeded.includes(id)));
+          await load();
+        }} />}
 
       <Modal
         title="Submit Job"

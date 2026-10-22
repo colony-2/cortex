@@ -169,6 +169,36 @@ const test = base.extend<{
 
 test.beforeEach(() => test.setTimeout(90_000));
 
+test.describe('cancel review job', () => {
+  test.use({ recipeFixture: 'browser-review-clarification' });
+  test('confirms cancellation without submitting a review response and clears open tabs', async ({ page, request, recipeRun }) => {
+    const { tenant, jobID, observer, stopWorker } = recipeRun;
+    await stopWorker();
+    const mutations: string[] = [];
+    page.on('request', req => { if (req.method() === 'POST') mutations.push(req.url()); });
+    await page.goto(`/project/${tenant}/reviews/${jobID}`);
+    const feedback = page.getByLabel('Feedback or answers to open questions. Select a revision decision to request changes.');
+    await feedback.fill('Keep this draft if I dismiss cancellation.');
+    await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(jobID, { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Keep jobs' }).click();
+    expect(mutations).toEqual([]);
+    await expect(feedback).toHaveValue('Keep this draft if I dismiss cancellation.');
+    await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
+    const [response] = await Promise.all([
+      page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/cancel`) && r.request().method() === 'POST'),
+      dialog.getByRole('button', { name: 'Cancel job', exact: true }).click(),
+    ]);
+    expect(response.status()).toBe(204);
+    await expect(page).toHaveURL(new RegExp(`/project/${tenant}/reviews$`));
+    await expect(page.getByText('No pending reviews')).toBeVisible();
+    await expect(observer.getByText('No pending reviews')).toBeVisible();
+    expect((await (await request.get(`/api/projects/${tenant}/jobs/${jobID}`)).json()).status).toBe('CANCELLED');
+    expect(mutations).toEqual([response.url()]);
+  });
+});
+
 for (const multiField of [false, true]) {
   test.describe(multiField ? 'multi-field' : 'single-question', () => {
     test.use({ recipeFixture: multiField ? 'browser-input-fields' : 'browser-input' });
@@ -242,20 +272,38 @@ for (const multiField of [false, true]) {
         await restartDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         // Inspect a real task, then restart at that task's recorded boundary.
         const taskNodes = (node: any): any[] => [node, ...(node.children || []).flatMap(taskNodes)];
-        const task = taskNodes(story.root).filter(node => node.kind === 'opStep' && node.invocation_id).at(-1);
+        const task = taskNodes(story.root).filter(node => ['op', 'opStep'].includes(node.kind) && node.restart_chapter_ordinal != null).at(-1);
         expect(task).toBeTruthy();
-        const expectedScope = story.restart_scopes.filter((scope: { scope_id: string }) =>
-          task.invocation_id.startsWith(`${scope.scope_id}/`)
-        ).sort((a: { scope_id: string }, b: { scope_id: string }) => b.scope_id.length - a.scope_id.length)[0].scope_id;
+        const expectedChapter = task.restart_chapter_ordinal;
+        expect(story.restart_scopes.some((scope: { chapter_ordinal: number }) => scope.chapter_ordinal === expectedChapter)).toBe(true);
         await page.goto(`/project/${tenant}/jobs/${jobID}/story?nodeId=${encodeURIComponent(task.id)}`);
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
-        await expect(restartDialog.getByText(`${expectedScope} ·`, { exact: false })).toBeVisible();
+        await expect(restartDialog.getByText(`· Chapter ${expectedChapter} ·`, { exact: false })).toBeVisible();
+        const inspected = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`));
+        await restartDialog.getByRole('switch').click();
+        const contextResponse = await inspected;
+        expect(contextResponse.status(), await contextResponse.text()).toBe(200);
+        const before = await contextResponse.json();
+        expect(before).toMatchObject({ project_id: tenant, job_id: jobID, chapter_ordinal: expectedChapter });
+        expect(Object.keys(before.job).length).toBeGreaterThan(0);
+        expect(before.visible).toHaveProperty('context');
+        const beforeView = restartDialog.getByRole('region', { name: 'Context before patching' });
+        await expect(beforeView).toBeVisible();
+        const beforeText = await beforeView.innerText();
+        await restartDialog.getByRole('button', { name: 'Add line', exact: true }).first().click();
+        await restartDialog.getByPlaceholder('e.g. git.author').fill('browser_note');
+        await restartDialog.getByPlaceholder('e.g. "james@example.com"').fill('patched');
+        expect(await beforeView.innerText()).toBe(beforeText);
+        // Invalid selectors and cross-tenant reads must never become snapshots.
+        expect((await request.get(`/api/projects/other-${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`)).status()).toBe(404);
+        expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=0`)).status()).toBe(400);
+        expect((await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { chapter_ordinal: expectedChapter, scope_id: 'also-supplied' } })).status()).toBe(400);
         const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
         expect(restartResponse.status(), await restartResponse.text()).toBe(201);
-        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope });
+        expect(restartResponse.request().postDataJSON()).toEqual({ chapter_ordinal: expectedChapter, patch: { job: { browser_note: 'patched' } } });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
         await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story$`));

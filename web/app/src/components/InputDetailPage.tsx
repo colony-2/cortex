@@ -7,6 +7,7 @@ import ReviewDocuments from './ReviewDocuments';
 import InputFormRenderer from './InputFormRenderer';
 import { adaptInputFormConfig } from '../utils/formAdapter';
 import { reviewActionField } from '../utils/reviewForm';
+import CancelJobButton from './CancelJobButton';
 
 const { Title, Text } = Typography;
 
@@ -21,6 +22,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
   const [details, setDetails] = useState<UserInputDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -101,9 +103,13 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
   return (
     <div style={{ padding: 24 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
-          {reviews ? 'Back to Reviews' : 'Back to Inputs'}
-        </Button>
+        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
+            {reviews ? 'Back to Reviews' : 'Back to Inputs'}
+          </Button>
+          {reviews && <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
+            disabled={submitting} onBusyChange={setCancelling} onCancelled={handleCancel} />}
+        </Space>
 
         <Card>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -133,7 +139,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
           requestId={details.form.request_id!} documents={details.form.documents || {}} />}
         <Card title={reviews ? 'Your response' : form.title}>
           {error && <Alert type="error" showIcon message={error} closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />}
-          <InputFormRenderer key={details.form.request_id || jobId} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting} />
+          <InputFormRenderer key={details.form.request_id || jobId} form={form} reviewPromptShown={!!reviewPrompt} onSubmit={handleSubmit} onCancel={handleCancel} loading={submitting || cancelling} />
         </Card>
       </Space>
     </div>

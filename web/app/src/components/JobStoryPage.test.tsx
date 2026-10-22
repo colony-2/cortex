@@ -113,15 +113,15 @@ describe('job story history', () => {
     const source = 'git+https://github.com/colony-2/c2ops.git//codex@abc123';
     const scopeID = 'root/scope:"op:codex"#1';
     const fetchMock = mount('', { ...story, restart_scopes: [
-      { scope_id: 'root', started_at: '2026-10-14T05:00:00Z' },
-      { scope_id: scopeID, started_at: '2026-10-14T05:01:00Z' },
+      { chapter_ordinal: 4, title: 'Recipe body', scope_id: 'root', started_at: '2026-10-14T05:00:00Z' },
+      { chapter_ordinal: 12, title: 'Run codex', scope_id: scopeID, started_at: '2026-10-14T05:01:00Z' },
     ], root: {
       id: 'root', kind: 'recipe', title: 'recipe build', path: [], status: 'failed', children: [{
         id: 'machine', kind: 'stateMachine', title: 'stateMachine agent', path: [], status: 'failed', children: [{
           id: 'state', kind: 'state', title: 'state run', path: [], status: 'failed', children: [{
             id: 'op', kind: 'op', title: `op ${source}`, op_id: source, path: [], status: 'failed', children: [{
               id: 'task', kind: 'opStep', title: 'step extension_execution', path: [], status: 'failed',
-              invocation_id: `${scopeID}/attempt:1/task:"run"#1/attempt:1`,
+              restart_chapter_ordinal: 12, restart_relationship: 'containing',
               task_ordinal: 14, error: { message: 'command failed' },
             }],
           }],
@@ -137,22 +137,49 @@ describe('job story history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
-    expect(within(dialog).getByText(text => text.startsWith(`${scopeID} ·`))).toBeVisible();
+    expect(within(dialog).getByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
     // A manually chosen boundary must not leak into the next opening.
     fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
-    fireEvent.click(await screen.findByText(text => text.startsWith('root ·')));
+    fireEvent.click(await screen.findByText(text => text.startsWith('Recipe body · Chapter 4 ·')));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Restart job' }));
-    expect(within(dialog).getByText(text => text.startsWith(`${scopeID} ·`))).toBeVisible();
+    expect(within(dialog).getByText(text => text.startsWith('Run codex · Chapter 12 ·'))).toBeVisible();
+    expect(within(dialog).getByText('This restarts the containing scope, including its work before this task.')).toBeVisible();
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+      project_id: 'tenant', job_id: 'job', chapter_ordinal: 12, scope_id: scopeID,
+      job: { existing: 'unchanged', secret: '[REDACTED]' }, visible: { vars: { example: 'available' } }, redacted_paths: ['/job/secret'],
+    }) });
     fireEvent.click(within(dialog).getByRole('switch'));
-    expect(within(dialog).getByText('Context before patching')).toBeVisible();
-    expect(within(dialog).getByText('Full context is unavailable for this restart point.')).toBeVisible();
+    const before = await within(dialog).findByRole('region', { name: 'Context before patching' });
+    expect(before).toHaveTextContent('unchanged');
+    expect(before).toHaveTextContent('/job/secret');
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Add line' })[0]);
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. git.author'), { target: { value: 'answer' } });
+    fireEvent.change(within(dialog).getByPlaceholderText('e.g. "james@example.com"'), { target: { value: 'patched' } });
+    expect(before).toHaveTextContent('unchanged');
+    expect(before).not.toHaveTextContent('patched');
+    expect(within(dialog).queryByText('Full context is unavailable for this restart point.')).not.toBeInTheDocument();
+    // Changing targets preserves edits, even if inspection fails. The old
+    // snapshot must disappear and retry must inspect the newly selected chapter.
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 422, statusText: 'Unprocessable Entity', text: async () => 'History unavailable' });
+    fireEvent.mouseDown(within(dialog).getByRole('combobox', { name: 'Restart point' }));
+    fireEvent.click(await screen.findByText(text => text.startsWith('Recipe body · Chapter 4 ·')));
+    expect(await within(dialog).findByText(/History unavailable/)).toBeVisible();
+    expect(within(dialog).queryByRole('region', { name: 'Context before patching' })).not.toBeInTheDocument();
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('patched');
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({
+      project_id: 'tenant', job_id: 'job', chapter_ordinal: 4, scope_id: 'root',
+      job: { existing: 'earlier value' }, visible: {}, redacted_paths: [],
+    }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry context' }));
+    expect(await within(dialog).findByRole('region', { name: 'Context before patching' })).toHaveTextContent('earlier value');
+    expect(within(dialog).getByPlaceholderText('e.g. "james@example.com"')).toHaveValue('patched');
     expect(within(dialog).queryByText('Patch Preview')).not.toBeInTheDocument();
     fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'restarted' }) });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/jobs/job/restart'),
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ scope_id: scopeID }) }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ chapter_ordinal: 4, patch: { job: { answer: 'patched' } } }) }),
     ));
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
@@ -163,15 +190,36 @@ describe('job story history', () => {
     expect(screen.queryByRole('button', { name: 'Restart job' })).not.toBeInTheDocument();
   });
 
-  it.each([
-    ['?nodeId=n_5', 'No recorded restart point could be identified for this node. Choose a restart point below.'],
-    ['?nodeId=jobAttempt%3A2%7Cn_3', 'You are viewing a previous job attempt. Choose a restart point from the current execution.'],
-  ])('does not silently select an unrelated restart point for %s', async (search, explanation) => {
-    mount(search, { ...story, restart_scopes: [{ scope_id: 'root', started_at: '2026-10-17T00:00:00Z' }] });
+  it('shows c2j’s unavailable reason instead of inferring a target', async () => {
+    mount('?nodeId=root', { ...story, root: {
+      id: 'root', kind: 'recipeSourceResolution', title: 'Resolve recipe', status: 'failed', path: [],
+      invocation_id: 'root/task:resolve', task_ordinal: 4, restart_unavailable_reason: 'Recipe source resolution has no recipe scope.',
+    }, restart_scopes: [{ chapter_ordinal: 4, scope_id: 'root', started_at: '' }] });
     fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText(explanation)).toBeVisible();
+    expect(within(dialog).getByText('Recipe source resolution has no recipe scope.')).toBeVisible();
     expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeDisabled();
+  });
+
+  it('uses the recorded historical chapter even when the current attempt has the same scope ID', async () => {
+    const fetchMock = mount('?nodeId=jobAttempt%3A2%7Cn_3', { ...story,
+      root: { ...jobAttempt(3), restart_chapter_ordinal: 30, past_attempts: [
+        { ...jobAttempt(2), restart_chapter_ordinal: 14, restart_relationship: 'body' },
+      ] },
+      restart_scopes: [
+        { chapter_ordinal: 30, scope_id: 'same-scope', title: 'Current body', started_at: '' },
+        { chapter_ordinal: 14, scope_id: 'same-scope', title: 'Previous body', started_at: '' },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Previous body · Chapter 14/)).toBeVisible();
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'new-job' }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/jobs/job/restart'),
+      expect.objectContaining({ body: JSON.stringify({ chapter_ordinal: 14 }) }),
+    ));
   });
 
 });

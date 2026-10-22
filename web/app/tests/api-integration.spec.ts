@@ -1,4 +1,55 @@
 import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+
+test('confirms cancellation on job details and bulk cancel/delete for selected jobs', async ({ page, request, context, baseURL }) => {
+  const tenant = `actions-${randomUUID()}`;
+  const base = `/api/projects/${tenant}/jobs`;
+  for (const job_id of ['detail-job', 'bulk-one', 'bulk-two', 'untouched']) {
+    const response = await request.post(base, { data: { job_id, recipe: 'smoke' } });
+    expect(response.status(), await response.text()).toBe(201);
+  }
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  const mutations: string[] = [];
+  page.on('request', request => {
+    if (['POST', 'DELETE'].includes(request.method())) mutations.push(new URL(request.url()).pathname);
+  });
+  await page.goto(`/project/${tenant}/jobs/detail-job/story`);
+  await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
+  let dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('detail-job', { exact: true })).toBeVisible();
+  expect(mutations).toEqual([]);
+  await dialog.getByRole('button', { name: 'Keep jobs' }).click();
+  expect(mutations).toEqual([]);
+  await page.getByRole('button', { name: 'Cancel job', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Cancel job', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect((await (await request.get(`${base}/detail-job`)).json()).status).toBe('CANCELLED');
+  await page.getByRole('button', { name: 'Back to Jobs' }).click();
+  await page.getByRole('checkbox', { name: 'Select job bulk-one', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'Select job bulk-two', exact: true }).check();
+  await page.getByRole('button', { name: 'Cancel selected' }).click();
+  dialog = page.getByRole('dialog');
+  expect(mutations).toEqual([`${base}/detail-job/cancel`]);
+  await dialog.getByRole('button', { name: 'Cancel 2 jobs', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  for (const id of ['bulk-one', 'bulk-two']) {
+    expect((await (await request.get(`${base}/${id}`)).json()).status).toBe('CANCELLED');
+    await page.getByRole('checkbox', { name: `Select job ${id}`, exact: true }).check();
+  }
+  await page.getByRole('button', { name: 'Delete selected' }).click();
+  await expect(dialog.getByText(/JobDB retains history and artifacts/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Keep jobs' }).click();
+  expect((await (await request.get(`${base}?status=all`)).json()).jobs).toHaveLength(4);
+  await page.getByRole('button', { name: 'Delete selected' }).click();
+  await dialog.getByRole('button', { name: 'Delete 2 jobs', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('link', { name: 'bulk-one', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'bulk-two', exact: true })).toHaveCount(0);
+  const remaining = (await (await request.get(`${base}?status=all`)).json()).jobs;
+  expect(remaining.map((job: { job_id: string }) => job.job_id).sort()).toEqual(['detail-job', 'untouched']);
+  expect(remaining.find((job: { job_id: string }) => job.job_id === 'untouched').status).toBe('READY');
+  expect(mutations).toHaveLength(5);
+});
 
 // Run against both the test API and the production binary with remote JobDB.
 // No route interception or EventSource replacement: HTTP and SSE cross the API.

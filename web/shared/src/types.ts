@@ -92,3 +92,21 @@ export interface SubmitRecipeJobRequest {
   inputs?: Record<string, unknown>;
   job_id?: string;
 }
+
+export interface RestartScope {
+  chapter_ordinal: number;
+  scope_id: string;
+  started_at: string;
+  title?: string;
+  path?: string[];
+}
+
+export interface RestartContext {
+  project_id: string;
+  job_id: string;
+  chapter_ordinal: number;
+  scope_id: string;
+  job: Record<string, unknown>;
+  visible: Record<string, unknown>;
+  redacted_paths: string[] | null;
+}

@@ -42,8 +42,9 @@ type submitJobResponse struct {
 }
 
 type restartJobRequest struct {
-	ScopeID string                 `json:"scope_id"`
-	Patch   *coretask.ContextPatch `json:"patch,omitempty"`
+	ScopeID        string                 `json:"scope_id,omitempty"`
+	ChapterOrdinal *int64                 `json:"chapter_ordinal,omitempty"`
+	Patch          *coretask.ContextPatch `json:"patch,omitempty"`
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -208,21 +209,66 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, err)
 		return
 	}
-	if strings.TrimSpace(req.ScopeID) == "" {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("scope_id is required"))
+	if (strings.TrimSpace(req.ScopeID) == "") == (req.ChapterOrdinal == nil) {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("provide exactly one of chapter_ordinal or scope_id"))
 		return
 	}
 	resp, err := s.story.RestartRecipeJob(r.Context(), story.RestartRecipeJobRequest{
-		ProjectID: s.tenantID(r),
-		JobID:     mux.Vars(r)["jobId"],
-		ScopeID:   req.ScopeID,
-		Patch:     req.Patch,
+		ProjectID:      s.tenantID(r),
+		JobID:          mux.Vars(r)["jobId"],
+		ScopeID:        req.ScopeID,
+		ChapterOrdinal: req.ChapterOrdinal,
+		Patch:          req.Patch,
 	})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, resp)
+}
+
+func (s *Server) handleRestartContext(w http.ResponseWriter, r *http.Request) {
+	ordinal, err := strconv.ParseInt(r.URL.Query().Get("chapter_ordinal"), 10, 64)
+	if err != nil {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("chapter_ordinal must be an integer"))
+		return
+	}
+	resp, err := s.story.GetRestartContext(r.Context(), story.GetRestartContextRequest{
+		ProjectID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], ChapterOrdinal: ordinal,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	err := s.engine.CancelJob(r.Context(), jobdb.CancelJob{
+		JobKey: jobdb.JobKey{TenantId: s.tenantID(r), JobId: mux.Vars(r)["jobId"]},
+		Reason: "Cancelled from Cortex",
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	if s.jobDeletion == nil {
+		writeHTTPError(w, http.StatusNotImplemented, jobdb.ErrJobDeletionUnsupported)
+		return
+	}
+	_, err := s.jobDeletion.DeleteJobs(r.Context(), jobdb.DeleteJobsRequest{
+		TenantID: s.tenantID(r), JobIDs: []string{mux.Vars(r)["jobId"]},
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleJobStory(w http.ResponseWriter, r *http.Request) {
@@ -374,6 +420,12 @@ func writeHTTPError(w http.ResponseWriter, status int, err error) {
 
 func writeError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, story.ErrInvalidRestartBoundary), errors.Is(err, story.ErrInvalidProject):
+		writeHTTPError(w, http.StatusBadRequest, err)
+	case errors.Is(err, story.ErrRestartContextUnavailable):
+		writeHTTPError(w, http.StatusUnprocessableEntity, err)
+	case errors.Is(err, jobdb.ErrJobDeletionUnsupported):
+		writeHTTPError(w, http.StatusNotImplemented, err)
 	case errors.Is(err, recipejob.ErrJobNotFound), errors.Is(err, jobdb.ErrJobNotFound), story.IsNotFound(err):
 		writeHTTPError(w, http.StatusNotFound, err)
 	case errors.Is(err, jobdb.ErrConflict), jobdb.IsConflict(err):

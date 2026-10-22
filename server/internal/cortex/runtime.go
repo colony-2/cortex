@@ -28,7 +28,11 @@ func NewRemoteServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
+	server, err := NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
+	if err == nil {
+		server.jobDeletion = runtime
+	}
+	return server, err
 }
 
 func NewUITestServer(cfg Config) (*Server, error) {
@@ -38,5 +42,9 @@ func NewUITestServer(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
+	server, err := NewServer(cfg, jobdbschema.WorkflowEngine{Engine: engine, Registry: runtime})
+	if err == nil {
+		server.jobDeletion = runtime
+	}
+	return server, err
 }

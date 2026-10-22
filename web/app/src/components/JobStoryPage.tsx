@@ -31,10 +31,12 @@ import ReactJson from 'react-json-view';
 import { API_BASE, inputActivityService, type UserInputDetails, type FormResponse, useInputActivity } from '@colony2/shared';
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
+import CancelJobButton from './CancelJobButton';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
-import { restartScopeForNode, type RestartScope } from '../utils/restartScope';
+import type { RestartScope } from '@colony2/shared';
+import RestartContextPreview from './RestartContextPreview';
 
 const { Title, Text } = Typography;
 
@@ -307,7 +309,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
 
   const [restartOpen, setRestartOpen] = useState(false);
-  const [restartScopeID, setRestartScopeID] = useState<string>();
+  const [restartChapterOrdinal, setRestartChapterOrdinal] = useState<number>();
   const [restartSubmitting, setRestartSubmitting] = useState(false);
   const [jobPatchLines, setJobPatchLines] = useState<PatchLine[]>([]);
   const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
@@ -543,10 +545,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   };
 
   const restartScopes = story?.restart_scopes || [];
-  const restartable = restartScopes.some(scope => scope.scope_id === restartScopeID);
+  const restartable = restartScopes.some(scope => scope.chapter_ordinal === restartChapterOrdinal);
 
   const resetRestartState = () => {
-    setRestartScopeID(undefined);
+    setRestartChapterOrdinal(undefined);
     setApplyPatch(false);
     setJobPatchLines([]);
     setScopePatchLines([]);
@@ -554,8 +556,8 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const openRestart = () => {
     resetRestartState();
-    // restart_scopes belongs to the current execution, not a historical job attempt.
-    setRestartScopeID(isPastJob ? undefined : restartScopeForNode(selectedNode, restartScopes));
+    // c2j supplies the authoritative scope-entry chapter, including historical attempts.
+    setRestartChapterOrdinal(selectedNode?.restart_chapter_ordinal ?? undefined);
     setRestartOpen(true);
   };
 
@@ -572,7 +574,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            scope_id: restartScopeID,
+            chapter_ordinal: restartChapterOrdinal,
             ...(contextPatch ? { patch: contextPatch } : {}),
           }),
         }
@@ -697,6 +699,9 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             <Button icon={<ReloadOutlined />} onClick={() => load({ preserveSelection: true })}>
               Refresh
             </Button>
+            <CancelJobButton key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId}
+              disabled={!jobId || ['completed', 'failed', 'canceled', 'terminated', 'timed_out'].includes(story?.status || '')}
+              onCancelled={async () => { await Promise.all([load({ preserveSelection: true }), refreshPendingInputs()]); }} />
           </Space>
         </div>
 
@@ -1230,23 +1235,27 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               message="This will create a new job"
               description={
                 <div>
-                  Choose where to resume execution. Completed work before that point is retained.
+                  Choose where to resume execution. Completed work before that point is retained. The source job is not cancelled. A new patch replaces any previous patch at this same restart point.
                 </div>
               }
             />
 
-            {!restartScopeID && <Alert type="info" showIcon message={isPastJob
-              ? 'You are viewing a previous job attempt. Choose a restart point from the current execution.'
-              : 'No recorded restart point could be identified for this node. Choose a restart point below.'} />}
+            {!restartable && <Alert type="info" showIcon
+              message={selectedNode.restart_unavailable_reason || 'No recorded restart point is available for this node.'}
+              description="Choose a restart point below." />}
+            {restartChapterOrdinal === selectedNode.restart_chapter_ordinal && selectedNode.restart_relationship === 'containing' &&
+              <Alert type="info" showIcon message="This restarts the containing scope, including its work before this task." />}
+            {restartChapterOrdinal === selectedNode.restart_chapter_ordinal && selectedNode.restart_relationship === 'body' &&
+              <Text type="secondary">Restart from the recipe’s executable body.</Text>}
             <Select
               aria-label="Restart point"
               placeholder="Choose a restart point"
               style={{ width: '100%' }}
-              value={restartScopeID}
-              onChange={setRestartScopeID}
+              value={restartChapterOrdinal}
+              onChange={setRestartChapterOrdinal}
               options={restartScopes.map(scope => ({
-                value: scope.scope_id,
-                label: `${scope.scope_id} · ${formatTimestamp(scope.started_at)}`,
+                value: scope.chapter_ordinal,
+                label: `${scope.title || scope.path?.join(" / ") || "Restart point"} · Chapter ${scope.chapter_ordinal} · ${formatTimestamp(scope.started_at)}`,
               }))}
               showSearch
               optionFilterProp="label"
@@ -1268,6 +1277,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   <Text type="secondary">No context patch will be applied.</Text>
                 ) : (
                   <Space direction="vertical" style={{ width: '100%' }} size="large">
+                    <RestartContextPreview projectId={projectId} jobId={jobId} chapterOrdinal={restartable ? restartChapterOrdinal : undefined} />
                     <Card
                       size="small"
                       title="Job Patch (global)"
@@ -1460,10 +1470,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                       </div>
                     </Card>
 
-                    <Card size="small" title="Context before patching">
-                      <Alert type="info" showIcon message="Full context is unavailable for this restart point."
-                        description="The patch payload below contains only your changes; it is not the current context or the resulting context." />
-                    </Card>
                     <Card size="small" title="Patch payload">
                       <ReactJson
                         src={buildContextPatch(jobPatchLines, scopePatchLines) ?? {}}

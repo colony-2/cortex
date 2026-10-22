@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/colony-2/jobdb/pkg/jobdb"
 	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 )
 
@@ -26,14 +27,15 @@ type Config struct {
 }
 
 type Server struct {
-	cfg     Config
-	engine  jobworkflow.Engine
-	router  http.Handler
-	story   storyService
-	inputs  inputRuntime
-	cells   *cellCatalog
-	logger  *slog.Logger
-	started time.Time
+	cfg         Config
+	engine      jobworkflow.Engine
+	jobDeletion jobdb.JobDeletionRuntime
+	router      http.Handler
+	story       storyService
+	inputs      inputRuntime
+	cells       *cellCatalog
+	logger      *slog.Logger
+	started     time.Time
 }
 
 func normalizeConfig(cfg Config) Config {
