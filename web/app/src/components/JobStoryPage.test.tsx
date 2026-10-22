@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
 
@@ -44,9 +44,39 @@ function mount(search = '', response: unknown = story) {
   </MemoryRouter>);
   return fetchMock;
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
+  it('keeps auto-refresh off after an in-flight poll or a manual refresh finishes', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const running = { ...story, status: 'running' };
+    const fetchMock = mount('', running);
+    const toggle = await screen.findByRole('switch', { name: 'Auto-refresh' });
+    expect(toggle).toBeChecked();
+
+    let finishPoll!: (response: unknown) => void;
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishPoll = resolve; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    await act(async () => { finishPoll({ ok: true, json: async () => running }); });
+    expect(toggle).not.toBeChecked();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Refresh/ })); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(toggle).not.toBeChecked();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(toggle);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(toggle).toBeChecked();
+  });
+
   it('uses descending job attempt tabs and preserves inspected failures across refresh', async () => {
     const fetchMock = mount();
     await screen.findByText('Development.Design.Task 3.2');

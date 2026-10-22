@@ -299,7 +299,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState<number>(5000);
   const refreshTimerRef = useRef<number | null>(null);
 
@@ -370,10 +370,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       const { treeData: nextTreeData, keyToRef: nextKeyToRef, keyToParent: nextKeyToParent, legacyKeyToKey: nextLegacyKeyToKey } =
         buildTree(data.root);
       setStory(data);
-
-      if (data.status === 'running') {
-        setAutoRefresh((prev) => prev || true);
-      }
 
       const urlNodeId = searchParams.get('nodeId');
       const urlPath = searchParams.get('path');
@@ -683,7 +679,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             {story?.status === 'running' ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>
-                <Switch checked={autoRefresh} onChange={setAutoRefresh} />
+                <Switch aria-label="Auto-refresh" checked={autoRefresh} onChange={setAutoRefresh} />
                 <Select
                   value={refreshIntervalMs}
                   onChange={setRefreshIntervalMs}
