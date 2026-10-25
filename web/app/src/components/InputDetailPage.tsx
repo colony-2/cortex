@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { inputActivityService, type UserInputDetails, type FormResponse } from '@colony2/shared';
@@ -19,6 +19,7 @@ interface InputDetailPageProps {
 export default function InputDetailPage({ projectId, reviews = false }: InputDetailPageProps) {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [details, setDetails] = useState<UserInputDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -96,7 +97,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
   }
 
   const isReview = details.form.kind === 'review';
-  if (isReview !== reviews) return <Navigate to={`/project/${projectId}/${isReview ? 'reviews' : 'inputs'}/${jobId}`} replace />;
+  if (isReview !== reviews) return <Navigate to={`/project/${projectId}/${isReview ? 'reviews' : 'inputs'}/${jobId}${location.search}`} state={location.state} replace />;
   const form = adaptInputFormConfig(details.form, jobId);
   const reviewPrompt = reviewActionField(form)?.label;
 

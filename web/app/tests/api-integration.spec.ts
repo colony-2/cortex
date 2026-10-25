@@ -53,70 +53,54 @@ test('confirms cancellation on job details and bulk cancel/delete for selected j
 
 // Run against both the test API and the production binary with remote JobDB.
 // No route interception or EventSource replacement: HTTP and SSE cross the API.
-test('submits, filters, and opens a c2j job from the browser', async ({ page, request }) => {
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => {
-    if (message.type() === 'error') errors.push(message.text());
-  });
-
-  const tenant = 'browser-submit';
-  const jobID = `browser-job-${Date.now()}`;
-  await page.goto(`/?tenantId=${tenant}`);
-  await page.getByPlaceholder('Email address').fill('browser@example.com');
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
-  await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
-
-  await page.getByRole('button', { name: 'Submit Job' }).click();
+test('creates a prompt-only goal and restores expanded list state through navigation, reload, back and forward', async ({ page, context, baseURL, request }) => {
+  const tenant = `goals-${randomUUID()}`;
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await page.goto(`/project/${tenant}/goals`);
+  await page.getByRole('button', { name: 'New goal', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Job ID').fill(jobID);
-  await dialog.getByLabel('Recipe').fill('smoke');
-  await dialog.getByLabel('Inputs').fill('{"message":"from browser"}');
-  const submission = page.waitForResponse(response =>
-    response.url().endsWith(`/api/projects/${tenant}/jobs`) && response.request().method() === 'POST',
-  );
-  await dialog.getByRole('button', { name: 'OK', exact: true }).click();
-  const response = await submission;
+  await expect(dialog.getByLabel('Recipe')).toHaveCount(0);
+  await expect(dialog.getByLabel('Job ID')).toHaveCount(0);
+  const prompt = Array.from({ length: 85 }, (_, i) => `word${i}`).join(' ');
+  await dialog.getByLabel('Prompt').fill(prompt);
+  const submitted = page.waitForResponse(r => r.url().endsWith(`/projects/${tenant}/jobs`) && r.request().method() === 'POST');
+  await dialog.getByRole('button', { name: 'Create goal', exact: true }).click();
+  const response = await submitted;
   expect(response.status(), await response.text()).toBe(201);
-  expect(await response.json()).toMatchObject({
-    job_id: jobID, tenant_id: tenant, recipe: 'smoke', status: 'READY',
-    repo: 'https://github.com/cortex-test/platform.git',
-    next_route: { jobType: 'recipe' },
-  });
-  await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole('link', { name: jobID, exact: true })).toBeVisible();
-
-  // The same persisted record must be returned by c2j's repository filter.
-  const filtered = await request.get(`/api/projects/${tenant}/jobs?cell=platform&status=READY`);
-  expect(filtered.ok()).toBeTruthy();
-  expect((await filtered.json()).jobs.map((job: { job_id: string }) => job.job_id)).toContain(jobID);
-  const otherCell = await request.get(`/api/projects/${tenant}/jobs?cell=api&status=READY`);
-  expect(otherCell.ok()).toBeTruthy();
-  expect((await otherCell.json()).jobs).toEqual([]);
-
-  await page.getByRole('combobox', { name: 'Status filter' }).click();
-  await page.getByTitle('Ready', { exact: true }).click();
-  await page.getByRole('combobox', { name: 'Status filter' }).press('Escape');
-  await page.getByRole('combobox', { name: 'Cell filter' }).click();
-  await page.getByTitle('root (self)', { exact: true }).click();
-  const filteredURL = page.url();
-  const storyResponse = page.waitForResponse(response => response.url().endsWith(`/jobs/${jobID}/story`));
-  await page.getByRole('link', { name: jobID, exact: true }).click();
-  const story = await storyResponse;
-  expect(story.status(), await story.text()).toBe(200);
-  expect(await story.json()).toMatchObject({ job_id: jobID });
+  const job = await response.json();
+  expect(job).toMatchObject({ prompt, recipe: 'build', tenant_id: tenant, status: 'READY' });
+  expect(job.goal_id).toBeTruthy();
+  await expect(page).toHaveURL(new RegExp(`/goals/${job.goal_id}$`));
+  const goalURL = page.url();
+  const abbreviated = `${prompt.split(' ').slice(0, 75).join(' ')}…`;
+  await expect(page.getByRole('link', { name: abbreviated, exact: true })).toBeVisible();
+  const row = page.getByRole('link', { name: `Job ${job.job_id}: Ready`, exact: true }).locator('xpath=ancestor::tr');
+  await row.getByRole('button', { name: 'Expand row', exact: true }).click();
+  const expandedURL = page.url();
+  await page.getByText('Execution requirements', { exact: true }).click();
+  const detailURL = page.url();
+  await page.getByRole('link', { name: job.job_id, exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
-  await expect(page.getByText('Failed to load job story')).toHaveCount(0);
-  // List filters survive selection changes in the story and a full browser reload.
+  await page.goBack();
+  await expect(page).toHaveURL(detailURL);
+  await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toHaveAttribute('open', '');
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Job Story' })).toBeVisible();
   await page.getByRole('button', { name: 'Back to Jobs' }).click();
-  await expect(page).toHaveURL(filteredURL);
-  await expect(page.getByRole('link', { name: jobID, exact: true })).toBeVisible();
-  await expect(page.getByTitle('Ready', { exact: true })).toBeVisible();
-  await expect(page.getByTitle('root (self)', { exact: true })).toBeVisible();
-  expect(errors).toEqual([]);
+  await expect(page).toHaveURL(detailURL);
+  await page.reload();
+  await expect(page.getByText('Execution requirements', { exact: true }).locator('..')).toHaveAttribute('open', '');
+  // Navigating to the same goal without its query must not lose the prior entry.
+  await page.getByRole('link', { name: job.goal_id, exact: true }).click();
+  await expect(page).toHaveURL(goalURL);
+  await expect(page.getByText('Execution requirements', { exact: true })).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(detailURL);
+  await expect(page.getByText('Execution requirements', { exact: true })).toBeVisible();
+  expect(expandedURL).toContain('expanded=');
+  const listed = await request.get(`/api/projects/${tenant}/jobs?status=all&goal=${job.goal_id}`);
+  expect((await listed.json()).jobs).toHaveLength(1);
 });
 
 test('keeps deep-linked tenant, navigation, and live input activity in sync', async ({ page, context, baseURL, request }) => {
@@ -159,7 +143,7 @@ test('opens the tenant from the server connection config without a URL override'
   expect((await stream).status()).toBe(200);
   await expect(page).toHaveURL(new RegExp(`/project/${tenant}/jobs$`));
   await expect(page.getByLabel('Tenant ID')).toHaveValue(tenant);
-  await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Pending Inputs' }).click();
   await expect(page.getByText('No pending inputs')).toBeVisible();
 });

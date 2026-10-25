@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -287,7 +287,11 @@ interface JobStoryPageProps {
 export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const { jobId: routeJobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setURLSearchParams] = useSearchParams();
+  // Node/tab selections must retain the originating goal/list entry.
+  const setSearchParams: typeof setURLSearchParams = (next, options) =>
+    setURLSearchParams(next, { state: location.state, ...options });
   const { pendingInputs, refresh: refreshPendingInputs } = useInputActivity();
 
   const [story, setStory] = useState<JobStoryResponse | null>(null);
@@ -309,7 +313,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const [viewMode, setViewMode] = useState<'text' | 'hex'>('text');
 
   const [restartOpen, setRestartOpen] = useState(false);
-  const [restartChapterOrdinal, setRestartChapterOrdinal] = useState<number>();
+  const [restartSelection, setRestartSelection] = useState<string>();
   const [restartSubmitting, setRestartSubmitting] = useState(false);
   const [jobPatchLines, setJobPatchLines] = useState<PatchLine[]>([]);
   const [scopePatchLines, setScopePatchLines] = useState<ScopePatchLine[]>([]);
@@ -342,7 +346,10 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   );
 
   const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
+  const [restartGoalMode, setRestartGoalMode] = useState<'continue' | 'new'>('continue');
   const filterSearch = jobFilterSearch(searchParams);
+  const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith(`/project/${encodeURIComponent(projectId)}/`)
+    ? location.state.returnTo : `/project/${encodeURIComponent(projectId)}/jobs${filterSearch}`;
 
   const selectedRef = useMemo(() => {
     if (!selectedKey) return null;
@@ -541,10 +548,14 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   };
 
   const restartScopes = story?.restart_scopes || [];
-  const restartable = restartScopes.some(scope => scope.chapter_ordinal === restartChapterOrdinal);
+  const scopeKey = (scope: RestartScope) => JSON.stringify([scope.scope_id, scope.chapter_ordinal]);
+  const restartScope = restartScopes.find(scope => scopeKey(scope) === restartSelection);
+  const restartChapterOrdinal = restartScope?.chapter_ordinal;
+  const restartScopeID = restartScope && restartScopes.filter(scope => scope.scope_id === restartScope.scope_id).length === 1 ? restartScope.scope_id : undefined;
+  const restartable = !!restartScope;
 
   const resetRestartState = () => {
-    setRestartChapterOrdinal(undefined);
+    setRestartSelection(undefined);
     setApplyPatch(false);
     setJobPatchLines([]);
     setScopePatchLines([]);
@@ -552,8 +563,12 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
   const openRestart = () => {
     resetRestartState();
-    // c2j supplies the authoritative scope-entry chapter, including historical attempts.
-    setRestartChapterOrdinal(selectedNode?.restart_chapter_ordinal ?? undefined);
+    setRestartGoalMode(story?.status === 'completed' ? 'new' : 'continue');
+    // Compact chapters can contain multiple boundaries. Prefer the recorded scope ID.
+    const matches = restartScopes.filter(scope => selectedNode?.restart_scope_id
+      ? scope.scope_id === selectedNode.restart_scope_id
+      : scope.chapter_ordinal === selectedNode?.restart_chapter_ordinal);
+    setRestartSelection(matches.length === 1 ? scopeKey(matches[0]) : undefined);
     setRestartOpen(true);
   };
 
@@ -564,15 +579,19 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
     setRestartSubmitting(true);
     try {
+      const payload = { ...(restartScopeID ? { scope_id: restartScopeID } : { chapter_ordinal: restartChapterOrdinal }), goal: { mode: restartGoalMode }, ...(contextPatch ? { patch: contextPatch } : {}) };
+      const storageKey = `cortex:restart:${projectId}:${jobId}`;
+      const serialized = JSON.stringify(payload);
+      const stored = sessionStorage.getItem(storageKey);
+      const previous = stored ? JSON.parse(stored) : null;
+      const request = previous?.payload === serialized ? previous.request : { ...payload, request_id: newId() };
+      sessionStorage.setItem(storageKey, JSON.stringify({ payload: serialized, request }));
       const response = await fetch(
         `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chapter_ordinal: restartChapterOrdinal,
-            ...(contextPatch ? { patch: contextPatch } : {}),
-          }),
+          body: JSON.stringify(request),
         }
       );
 
@@ -582,6 +601,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       }
 
       const data = (await response.json()) as { job_id: string };
+      sessionStorage.removeItem(storageKey);
       message.success('Restarted job');
       setRestartOpen(false);
       resetRestartState();
@@ -667,7 +687,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
       <Space direction="vertical" style={{ width: '100%' }} size="large">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/project/${projectId}/jobs${filterSearch}`)}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(returnTo)}>
               Back to Jobs
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -1247,16 +1267,18 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
               aria-label="Restart point"
               placeholder="Choose a restart point"
               style={{ width: '100%' }}
-              value={restartChapterOrdinal}
-              onChange={setRestartChapterOrdinal}
+              value={restartSelection}
+              onChange={setRestartSelection}
               options={restartScopes.map(scope => ({
-                value: scope.chapter_ordinal,
+                value: scopeKey(scope),
                 label: `${scope.title || scope.path?.join(" / ") || "Restart point"} · Chapter ${scope.chapter_ordinal} · ${formatTimestamp(scope.started_at)}`,
               }))}
               showSearch
               optionFilterProp="label"
             />
 
+            <Select aria-label="Restart goal" value={restartGoalMode} onChange={setRestartGoalMode} style={{ width: '100%' }}
+              options={[{ value: 'continue', label: 'Continue this goal' }, { value: 'new', label: 'Start a new goal' }]} />
             <Card title="Context Patching" size="small">
               <Space direction="vertical" style={{ width: '100%' }} size="middle">
                 <Space style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -1273,7 +1295,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
                   <Text type="secondary">No context patch will be applied.</Text>
                 ) : (
                   <Space direction="vertical" style={{ width: '100%' }} size="large">
-                    <RestartContextPreview projectId={projectId} jobId={jobId} chapterOrdinal={restartable ? restartChapterOrdinal : undefined} />
+                    <RestartContextPreview projectId={projectId} jobId={jobId} scopeId={restartScopeID} chapterOrdinal={restartable && !restartScopeID ? restartChapterOrdinal : undefined} />
                     <Card
                       size="small"
                       title="Job Patch (global)"

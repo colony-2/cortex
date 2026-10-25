@@ -146,6 +146,14 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 		{Version: jobdb.ExecutionPatternVersion, Kind: "header", Versions: &jobdb.ExecutionVersions{ExecutionPatternVersion: jobdb.ExecutionPatternVersion, JobDBVersion: "test"}},
 		{Version: jobdb.ExecutionPatternVersion, Kind: "scope", ID: "scope-test", Descriptor: json.RawMessage(`{"restart":true}`)},
 	} {
+		// Compact history retains restartable scopes in a restart prefix.
+		if record.Kind == "scope" {
+			prefix, err := json.Marshal([]jobdb.ExecutionRecord{record})
+			if err != nil {
+				t.Fatal(err)
+			}
+			record = jobdb.ExecutionRecord{Version: jobdb.ExecutionPatternVersion, Kind: "restart", ID: "seed", Source: &jobdb.JobKey{TenantId: "42", JobId: "job-alpha-1"}, Descriptor: prefix}
+		}
 		raw, err := json.Marshal(record)
 		if err != nil {
 			t.Fatal(err)
@@ -203,7 +211,7 @@ func testTenantCellsAndRecipeJobs(t *testing.T, srv *Server) {
 	if artifactResponse.StatusCode != http.StatusOK || string(content) != "test result" {
 		t.Fatalf("artifact status=%d body=%s", artifactResponse.StatusCode, content)
 	}
-	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"scope_id": "scope-test", "patch": map[string]interface{}{"job": map[string]interface{}{"answer": "patched"}}})
+	newJob := postJSON[map[string]interface{}](t, ts.URL+"/api/projects/42/jobs/job-alpha-1/restart", map[string]interface{}{"request_id": "restart-test", "goal": map[string]interface{}{"mode": "new"}, "scope_id": "scope-test", "patch": map[string]interface{}{"job": map[string]interface{}{"answer": "patched"}}})
 	newID, ok := newJob["job_id"].(string)
 	if !ok || newID == "" || newID == "job-alpha-1" {
 		t.Fatalf("restart = %#v", newJob)

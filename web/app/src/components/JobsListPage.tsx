@@ -1,336 +1,209 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import {
-  Button,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
-import { PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Alert, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listCells, listJobs, submitJob } from '@colony2/shared/api';
-import type {
-  CortexCell,
-  RecipeJob,
-  RecipeJobStatus,
-  SubmitRecipeJobRequest,
-} from '@colony2/shared/types';
-import dayjs from 'dayjs';
-import relativeTime from 'dayjs/plugin/relativeTime';
+import type { CortexCell, RecipeJob } from '@colony2/shared/types';
 import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
 import JobListDetails, { jobTime } from './JobListDetails';
 import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
 import JobActionDialog, { type JobAction } from './JobActionDialog';
-
-dayjs.extend(relativeTime);
+import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
+import './JobsListPage.css';
 
 const { Text, Title } = Typography;
-
-const activeStatuses: RecipeJobStatus[] = [
-  'READY',
-  'PENDING_JOBS',
-  'AWAITING_FUTURE',
-  'ACTIVE',
-  'CRASH_CONCERN',
-];
-
-interface JobsListPageProps {
-  projectId: string;
+type Props = { projectId: string; goalId?: string };
+type JobGroup = { key: string; goalId?: string; jobs: RecipeJob[] };
+type Row = { key: string; group: JobGroup; job?: RecipeJob; header?: boolean; single?: boolean };
+export function abbreviatePrompt(prompt: string, words = 75) {
+  const parts = prompt.trim().split(/\s+/);
+  return parts.length > words ? `${parts.slice(0, words).join(' ')}…` : parts.join(' ');
+}
+export default function JobsListPage(props: Props) {
+  return <JobsList key={`${props.projectId}/${props.goalId || ''}`} {...props} />;
 }
 
-interface SubmitJobForm {
-  cell?: string;
-  recipe?: string;
-  job_id?: string;
-  inputs?: string;
-}
-
-export default function JobsListPage({ projectId }: JobsListPageProps) {
-  return <JobsList key={projectId} projectId={projectId} />;
-}
-
-function JobsList({ projectId }: JobsListPageProps) {
+function JobsList({ projectId, goalId }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const returnState = { returnTo: location.pathname + location.search };
   const [jobs, setJobs] = useState<RecipeJob[]>([]);
   const [cells, setCells] = useState<CortexCell[]>([]);
+  const [nextPage, setNextPage] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [submitOpen, setSubmitOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [operation, setOperation] = useState<{ action: JobAction; jobIds: string[] } | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const loadVersion = useRef(0);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => readJobFilters(searchParams), [searchParams]);
-  const filterSearch = jobFilterSearch(searchParams);
-  const setFilters = (patch: Partial<typeof filters>) => setSearchParams(previous => {
-    const next = new URLSearchParams(previous);
-    if (patch.status !== undefined) {
-      next.delete('status');
-      for (const status of patch.status) next.append('status', status);
-    }
-    if ('cell' in patch) {
-      next.delete('cell');
-      if (patch.cell) next.set('cell', patch.cell);
-    }
-    return next;
-  }, { replace: true });
-  const [form] = Form.useForm<SubmitJobForm>();
-
-  const load = async () => {
-    const version = ++loadVersion.current;
-    setLoading(true);
-    try {
-      const [cellData, jobData] = await Promise.all([
-        listCells(projectId),
-        listJobs(projectId, {
-          status: filters.status,
-          cell: filters.cell,
-          pageSize: 100,
-        }),
-      ]);
-      if (version !== loadVersion.current) return;
-      const nextJobs = jobData.jobs || [];
-      setCells(cellData);
-      setJobs(nextJobs);
-      setSelectedIds(previous => previous.filter(id => nextJobs.some(job => job.job_id === id)));
-    } catch (error) {
-      if (version !== loadVersion.current) return;
-      console.error('Failed to load jobs', error);
-      message.error(error instanceof Error ? error.message : 'Failed to load jobs');
-    } finally {
-      if (version === loadVersion.current) setLoading(false);
-    }
-  };
+  const [params, setParams] = useSearchParams();
+  const filters = readJobFilters(params);
+  const pageToken = params.get('pageToken') || undefined;
+  const statusesKey = JSON.stringify(filters.status);
+  const expanded = params.getAll('expanded');
+  const [form] = Form.useForm<{ prompt: string }>();
+  const changeQuery = (change: (query: URLSearchParams) => void, replace = false) => setParams(previous => {
+    const query = new URLSearchParams(previous); change(query); return query;
+  }, { replace });
 
   useEffect(() => {
-    setSelectedIds([]);
-    setOperation(null);
-    load();
+    const version = ++loadVersion.current;
+    setLoading(true); setError(undefined);
+    (async () => {
+      const [cellData, page] = await Promise.all([
+        listCells(projectId), listJobs(projectId, { goal: goalId, status: JSON.parse(statusesKey), cell: filters.cell, pageToken }),
+      ]);
+      if (version !== loadVersion.current) return;
+      setCells(cellData); setJobs(page.jobs); setNextPage(page.next_page_token);
+      setSelectedIds(previous => previous.filter(id => page.jobs.some(job => job.job_id === id)));
+    })().catch(reason => {
+      if (version === loadVersion.current) setError(reason instanceof Error ? reason.message : 'Could not load goals');
+    }).finally(() => { if (version === loadVersion.current) setLoading(false); });
     return () => { loadVersion.current++; };
-  }, [projectId, filters.status, filters.cell]);
+  }, [projectId, goalId, filters.cell, pageToken, statusesKey, refresh]);
 
-  const cellOptions = useMemo(
-    () =>
-      cells.map((cell) => ({
-        value: cell.name || cell.repository_source,
-        label: `${cell.name} (${cell.kind})`,
-      })),
-    [cells],
-  );
-
-  const submit = async () => {
-    const values = await form.validateFields();
-    let inputs: Record<string, unknown> | undefined;
-    const rawInputs = values.inputs?.trim();
-    if (rawInputs) {
-      try {
-        const parsed = JSON.parse(rawInputs);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          throw new Error('Inputs must be a JSON object');
-        }
-        inputs = parsed as Record<string, unknown>;
-      } catch (error) {
-        message.error(error instanceof Error ? error.message : 'Invalid JSON inputs');
-        return;
+  // Group only the matching jobs returned by the server. A goal link lists all
+  // its attempts; a page is not an authoritative goal count or goal state.
+  const groups = useMemo(() => {
+    const grouped = new Map<string, JobGroup>();
+    for (const job of jobs) {
+      const goals = goalId ? [goalId] : [...new Set([job.goal_id, ...(job.other_goal_ids || [])].filter((id): id is string => !!id))];
+      for (const id of goals.length ? goals : [undefined]) {
+        const key = id ? `goal:${id}` : `job:${job.job_id}`;
+        const group = grouped.get(key) || { key, goalId: id, jobs: [] };
+        group.jobs.push(job);
+        grouped.set(key, group);
       }
     }
-
-    const request: SubmitRecipeJobRequest = {
-      cell: values.cell,
-      recipe: values.recipe || undefined,
-      job_id: values.job_id || undefined,
-      inputs,
-    };
-
-    setSubmitting(true);
-    try {
-      const job = await submitJob(projectId, request);
-      message.success(`Submitted job ${job.job_id}`);
-      setSubmitOpen(false);
-      form.resetFields();
-      await load();
-    } catch (error) {
-      console.error('Failed to submit job', error);
-      message.error(error instanceof Error ? error.message : 'Failed to submit job');
-    } finally {
-      setSubmitting(false);
-    }
+    return [...grouped.values()];
+  }, [jobs, goalId]);
+  const rows: Row[] = groups.flatMap(group => {
+    const single = group.jobs.length === 1;
+    return [
+      ...(!single ? [{ key: group.key, group, header: true }] : []),
+      ...group.jobs.map(job => ({ key: JSON.stringify([group.key, job.job_id]), group, job, single })),
+    ];
+  });
+  const setStatuses = (statuses: string[]) => {
+    setSelectedIds([]);
+    changeQuery(query => {
+      query.delete('pageToken'); query.delete('status');
+      statuses.forEach(status => query.append('status', status));
+    });
   };
-
-  const columns: ColumnsType<RecipeJob> = [
-    {
-      title: 'Job',
-      dataIndex: 'job_id',
-      key: 'job_id',
-      width: 180,
-      render: (jobId: string) => (
-        <Link to={`/project/${projectId}/jobs/${encodeURIComponent(jobId)}/story${filterSearch}`}>
-          <Text code>{jobId}</Text>
-        </Link>
-      ),
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 190,
-      render: (_: RecipeJobStatus, job) => {
-        const status = jobStatus(job);
-        return <Tag color={status.color} style={{ whiteSpace: 'normal' }}>{status.label}</Tag>;
-      },
-    },
-    {
-      title: 'Details',
-      key: 'details',
-      width: 320,
-      render: (_, job) => <Space direction="vertical" size={0} style={{ width: '100%', overflowWrap: 'anywhere' }}>
-        {job.completion_detail && <Typography.Paragraph
-          type={job.completion_status?.startsWith('failed_') ? 'danger' : undefined}
-          ellipsis={{ rows: 2, expandable: true, symbol: 'Show more' }}
-          style={{ margin: 0, whiteSpace: 'pre-wrap' }}
-        >{job.completion_detail}</Typography.Paragraph>}
-        {job.status === 'PENDING_JOBS' && job.wait_for?.length ?
-          <Text type="secondary">Waiting for {job.wait_for.length} job{job.wait_for.length === 1 ? '' : 's'}</Text> : null}
-        {job.status === 'AWAITING_FUTURE' && jobTime(job.available_at) &&
-          <Text type="secondary">Available {jobTime(job.available_at)}</Text>}
-        {job.store === 'ACTIVE' && job.next_route?.taskType &&
-          <Text type="secondary">Task: {job.next_route.taskType}</Text>}
-        {!job.completion_detail && job.status !== 'PENDING_JOBS' && job.status !== 'AWAITING_FUTURE' &&
-          !(job.store === 'ACTIVE' && job.next_route?.taskType) && <Text type="secondary">—</Text>}
-      </Space>,
-    },
-    {
-      title: 'Recipe',
-      dataIndex: 'recipe',
-      key: 'recipe',
-      width: 140,
-      render: (recipe?: string) => recipe || <Text type="secondary">default</Text>,
-    },
-    {
-      title: 'Cell',
-      dataIndex: 'cell_name',
-      key: 'cell_name',
-      width: 120,
-      render: (cell?: string) => cell || <Text type="secondary">self</Text>,
-    },
-    {
-      title: 'Created',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 160,
-      render: (value: string) => (value ? dayjs(value).fromNow() : '-'),
-    },
+  const fullPrompt = (group: JobGroup) => group.jobs.find(job => job.prompt?.trim())?.prompt;
+  const promptLink = (group: JobGroup, prompt = fullPrompt(group)) => <Link className="goal-prompt"
+    to={group.goalId ? goalPath(projectId, group.goalId) : `${jobPath(projectId, group.jobs[0].job_id)}${jobFilterSearch(params)}`}
+    state={returnState}>
+    {prompt?.trim() ? abbreviatePrompt(prompt) : group.goalId || group.jobs[0].job_id}
+  </Link>;
+  const rowPrompt = (row: Row) => {
+    const { job, group } = row;
+    if (row.header) return <Space direction="vertical" size={2}>
+      <Space wrap>{promptLink(group)}<Text type="secondary">{group.jobs.length} attempts on this page</Text></Space>
+    </Space>;
+    if (!job) return null;
+    return <Space direction="vertical" size={2}>
+      {row.single ? promptLink(group, job.prompt) : <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={returnState} aria-label={`Open job ${job.job_id}`}>{job.prompt && job.prompt !== fullPrompt(group) ? abbreviatePrompt(job.prompt) : job.job_id}</Link>}
+      <JobWaitLinks job={job} projectId={projectId} />
+      {job.completion_detail && <Text type={job.completion_status?.startsWith('failed_') ? 'danger' : 'secondary'} className="job-completion">{job.completion_detail}</Text>}
+    </Space>;
+  };
+  const columns: ColumnsType<Row> = [
+    { title: 'Goal / attempt', key: 'prompt', render: (_, row) => rowPrompt(row), onCell: row => ({ colSpan: row.header ? 5 : 1 }) },
+    { title: 'Status', width: 160, render: (_, { job }) => {
+      if (!job) return null;
+      const status = jobStatus(job);
+      return <Space size={4}><Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={returnState} aria-label={`Job ${job.job_id}: ${status.label}`}><Tag color={status.color}>{status.label}</Tag></Link>
+      </Space>;
+    }, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
+    { title: 'Cell', width: 120, render: (_, { job }) => job?.cell_name || (job ? 'self' : null), onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
+    { title: 'Submitted', width: 185, render: (_, { job }) => job ? jobTime(job.submitted_at || job.created_at) || '—' : null, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
+    { title: 'Links', width: 180, render: (_, { job }) => job && <Space direction="vertical" size={2}>
+      {job.parent?.job_id && <Link to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)} title={job.parent.job_id}>Parent</Link>}
+      {job.repo && <RepositoryLink repo={job.repo} />}
+    </Space>, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
   ];
 
-  return (
-    <div style={{ padding: 24 }}>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
-          <Title level={3} style={{ margin: 0 }}>
-            Jobs
-          </Title>
-          <Space wrap>
-            <Select
-              mode="multiple"
-              aria-label="Status filter"
-              value={filters.status}
-              options={[
-                ...activeStatuses.map((status) => ({ value: status, label: schedulingStatuses[status].label })),
-                { value: 'EXPIRED', label: 'Expired' },
-                { value: 'CANCELLED', label: 'Cancelled' },
-                { value: 'COMPLETED', label: 'Finished (all outcomes)' },
-              ]}
-              style={{ minWidth: 320 }}
-              placeholder="All statuses"
-              maxTagCount="responsive"
-              onChange={(status) => setFilters({ status })}
-              allowClear
-            />
-            <Select
-              aria-label="Cell filter"
-              value={filters.cell}
-              options={cellOptions}
-              style={{ minWidth: 220 }}
-              placeholder="Cell"
-              onChange={(cell) => setFilters({ cell })}
-              allowClear
-              showSearch
-            />
-            <Button icon={<ReloadOutlined />} onClick={load}>
-              Refresh
-            </Button>
-            <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => setSubmitOpen(true)}>
-              Submit Job
-            </Button>
-          </Space>
-        </div>
+  const submit = async () => {
+    let values: { prompt: string };
+    try { values = await form.validateFields(); } catch { return; }
+    setSubmitting(true);
+    try {
+      const job = await submitJob(projectId, { cell: filters.cell, inputs: { prompt: values.prompt, type: 'build' } });
+      message.success('Goal created'); setSubmitOpen(false); form.resetFields();
+      navigate(goalPath(projectId, job.goal_id!));
+    } catch (reason) { message.error(reason instanceof Error ? reason.message : 'Could not create goal'); }
+    finally { setSubmitting(false); }
+  };
 
+  return <div style={{ padding: 24 }}>
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <div className="goal-toolbar">
+        <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal' : 'Goals'}</Title>
         <Space wrap>
-          <Text>{selectedIds.length} selected</Text>
-          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: [...selectedIds] })}>Cancel selected</Button>
-          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: [...selectedIds] })}>Delete selected</Button>
-          {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
+          {goalId && <Link to={`/project/${encodeURIComponent(projectId)}/goals`}>All goals</Link>}
+          <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear
+            options={Object.entries(schedulingStatuses).map(([value, status]) => ({ value, label: status.label }))} onChange={setStatuses} />
+          {!goalId && <Select aria-label="Cell filter" value={filters.cell} options={cells.map(cell => ({ value: cell.name || cell.repository_source, label: cell.name }))}
+            style={{ minWidth: 160 }} placeholder="All cells" allowClear showSearch onChange={cell => {
+              setSelectedIds([]); changeQuery(query => { query.delete('cell'); if (cell) query.set('cell', cell); query.delete('pageToken'); query.delete('expanded'); });
+            }} />}
+          <Button icon={<ReloadOutlined aria-hidden />} onClick={() => setRefresh(value => value + 1)}>Refresh</Button>
+          <Button type="primary" icon={<PlusOutlined aria-hidden />} onClick={() => setSubmitOpen(true)}>New goal</Button>
         </Space>
-
-        <Table
-          rowKey="job_id"
-          columns={columns}
-          dataSource={jobs}
-          loading={loading}
-          rowSelection={{
-            selectedRowKeys: selectedIds,
-            onChange: keys => setSelectedIds(keys.map(String)),
-            getCheckboxProps: job => ({ 'aria-label': `Select job ${job.job_id}`, disabled: loading }),
-          }}
-          scroll={{ x: 1200 }}
-          expandable={{
-            expandedRowRender: (job) => <JobListDetails job={job} projectId={projectId} />,
-            columnTitle: 'Info',
-            columnWidth: 64,
-          }}
-          pagination={{ pageSize: 25, showSizeChanger: true }}
-        />
+      </div>
+      {error && <Alert type="error" showIcon message={error} />}
+      <Space wrap>
+        <Text>{selectedIds.length} selected</Text>
+        <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
+        <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
+        {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
       </Space>
+      <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
+        rowClassName={row => row.header ? 'goal-group-header' : ''}
+        rowSelection={{
+          selectedRowKeys: rows.filter(row => row.job && selectedIds.includes(row.job.job_id)).map(row => row.key),
+          onSelect: (row, selected) => row.job && setSelectedIds(previous => selected
+            ? [...new Set([...previous, row.job!.job_id])] : previous.filter(id => id !== row.job!.job_id)),
+          onSelectAll: (selected, _, changed) => setSelectedIds(previous => {
+            const ids = new Set(changed.flatMap(row => row.job ? [row.job.job_id] : []));
+            return selected ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.has(id));
+          }),
+          getCheckboxProps: row => ({ disabled: loading || !row.job, 'aria-label': row.job ? `Select job ${row.job.job_id}` : 'Goal group' }),
+          renderCell: (_, row, __, node) => row.job ? node : null,
+        }}
+        expandable={{
+          expandedRowKeys: rows.filter(row => row.job && expanded.includes(row.job.job_id)).map(row => row.key),
+          onExpand: (open, row) => changeQuery(query => {
+            const ids = new Set(query.getAll('expanded')); if (open) ids.add(row.job!.job_id); else ids.delete(row.job!.job_id);
+            query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
+          }, true),
+          rowExpandable: row => !!row.job,
+          expandedRowRender: row => row.job ? <JobListDetails job={row.job} projectId={projectId} /> : null,
+          columnWidth: 40,
+        }} />
+      <Space>
+        {pageToken && <Button onClick={() => changeQuery(query => { query.delete('pageToken'); })}>First page</Button>}
+        {nextPage && <Button disabled={loading} onClick={() => changeQuery(query => { query.set('pageToken', nextPage); })}>Next jobs</Button>}
+      </Space>
+    </Space>
+    {operation && <JobActionDialog projectId={projectId} {...operation} onClose={() => setOperation(null)} onComplete={async succeeded => {
+      setSelectedIds(previous => previous.filter(id => !succeeded.includes(id))); setRefresh(value => value + 1);
+    }} />}
+    <Modal title="New goal" open={submitOpen} onCancel={() => setSubmitOpen(false)} onOk={submit} okText="Create goal" okButtonProps={{ loading: submitting }} destroyOnHidden>
+      <Text type="secondary">Cell: {filters.cell || cells.find(cell => cell.kind === 'self')?.name || 'self'}</Text>
+      <Form form={form} layout="vertical"><Form.Item label="Prompt" name="prompt" rules={[{ required: true, whitespace: true, message: 'Enter a prompt' }]}><Input.TextArea rows={6} /></Form.Item></Form>
+    </Modal>
+  </div>;
+}
 
-      {operation && <JobActionDialog projectId={projectId} {...operation}
-        onClose={() => setOperation(null)} onComplete={async succeeded => {
-          setSelectedIds(previous => previous.filter(id => !succeeded.includes(id)));
-          await load();
-        }} />}
-
-      <Modal
-        title="Submit Job"
-        open={submitOpen}
-        onCancel={() => setSubmitOpen(false)}
-        onOk={submit}
-        okButtonProps={{ loading: submitting }}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" initialValues={{ inputs: '{}' }}>
-          <Form.Item label="Cell" name="cell">
-            <Select
-              options={cellOptions}
-              placeholder="self"
-              allowClear
-              showSearch
-            />
-          </Form.Item>
-          <Form.Item label="Recipe" name="recipe">
-            <Input placeholder="default" />
-          </Form.Item>
-          <Form.Item label="Job ID" name="job_id">
-            <Input placeholder="auto-generated" />
-          </Form.Item>
-          <Form.Item label="Inputs" name="inputs">
-            <Input.TextArea rows={8} spellCheck={false} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </div>
-  );
+export function RepositoryLink({ repo }: { repo: string }) {
+  // Never turn arbitrary git selectors into executable browser URLs.
+  const url = repo.replace(/^git\+/, '');
+  const label = repo.replace(/\/$/, '').split('/').slice(-1)[0]?.replace(/\.git$/, '') || repo;
+  return /^https?:\/\//i.test(url) ? <a href={url} target="_blank" rel="noreferrer" title={repo}>{label}</a> : <Text title={repo}>{label}</Text>;
 }

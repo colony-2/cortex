@@ -1,6 +1,7 @@
 package cortex
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,12 +11,25 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/colony-2/c2j/pkg/jobref"
 	"github.com/colony-2/c2j/pkg/recipejob"
 	"github.com/colony-2/c2j/pkg/story"
 	coretask "github.com/colony-2/c2j/pkg/task"
 	"github.com/colony-2/jobdb/pkg/jobdb"
+	jobworkflow "github.com/colony-2/jobdb/pkg/workflow"
 	"github.com/gorilla/mux"
 )
+
+// Project the native submission handle without another read for goal identity.
+type nativeSubmitter struct{ jobworkflow.Engine }
+
+func (s nativeSubmitter) SubmitJobRef(ctx context.Context, job jobdb.SubmitJob) (jobref.Ref, error) {
+	handle, err := s.SubmitJob(ctx, job)
+	if err != nil {
+		return jobref.Ref{}, err
+	}
+	return jobref.FromHandle(handle)
+}
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -35,6 +49,7 @@ type submitJobRequest struct {
 }
 
 type submitJobResponse struct {
+	GoalID   string                   `json:"goal_id"`
 	TenantID string                   `json:"tenant_id"`
 	JobID    string                   `json:"job_id"`
 	Target   recipejob.ResolvedTarget `json:"target"`
@@ -42,6 +57,10 @@ type submitJobResponse struct {
 }
 
 type restartJobRequest struct {
+	RequestID string `json:"request_id"`
+	Goal      struct {
+		Mode string `json:"mode"`
+	} `json:"goal"`
 	ScopeID        string                 `json:"scope_id,omitempty"`
 	ChapterOrdinal *int64                 `json:"chapter_ordinal,omitempty"`
 	Patch          *coretask.ContextPatch `json:"patch,omitempty"`
@@ -113,6 +132,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		stores = []jobdb.JobStore{jobdb.JobStoreActive, jobdb.JobStoreArchived}
 	}
 	resp, err := recipejob.ListRecipeJobs(r.Context(), s.engine, recipejob.ListRecipeJobsRequest{
+		GoalIDs:          r.URL.Query()["goal"],
 		TenantID:         tenantID,
 		RepositorySource: repo,
 		Statuses:         statuses,
@@ -154,22 +174,23 @@ func (s *Server) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 		Target:   target,
 		Recipe:   req.Recipe,
 		Inputs:   req.Inputs,
-	}, s.engine)
+	}, nativeSubmitter{s.engine})
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	job, err := recipejob.GetRecipeJob(r.Context(), s.engine, recipejob.GetRecipeJobRequest{
 		TenantID: tenantID,
-		JobID:    key.JobId,
+		JobID:    key.JobID,
 	})
 	if err == nil {
 		writeJSON(w, http.StatusCreated, job)
 		return
 	}
 	writeJSON(w, http.StatusCreated, submitJobResponse{
+		GoalID:   key.GoalID,
 		TenantID: tenantID,
-		JobID:    key.JobId,
+		JobID:    key.JobID,
 		Target:   target,
 		Recipe:   req.Recipe,
 	})
@@ -213,7 +234,13 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("provide exactly one of chapter_ordinal or scope_id"))
 		return
 	}
+	if strings.TrimSpace(req.RequestID) == "" || (req.Goal.Mode != "" && req.Goal.Mode != "continue" && req.Goal.Mode != "new") {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("restart requires request_id and goal mode continue or new"))
+		return
+	}
 	resp, err := s.story.RestartRecipeJob(r.Context(), story.RestartRecipeJobRequest{
+		RequestID:      req.RequestID,
+		Goal:           req.Goal,
 		ProjectID:      s.tenantID(r),
 		JobID:          mux.Vars(r)["jobId"],
 		ScopeID:        req.ScopeID,
@@ -228,13 +255,23 @@ func (s *Server) handleRestartJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRestartContext(w http.ResponseWriter, r *http.Request) {
-	ordinal, err := strconv.ParseInt(r.URL.Query().Get("chapter_ordinal"), 10, 64)
-	if err != nil {
-		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("chapter_ordinal must be an integer"))
+	scope := r.URL.Query().Get("scope_id")
+	chapter := r.URL.Query().Get("chapter_ordinal")
+	if (strings.TrimSpace(scope) == "") == (chapter == "") {
+		writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("provide exactly one of chapter_ordinal or scope_id"))
 		return
 	}
+	var ordinal int64
+	if chapter != "" {
+		var err error
+		ordinal, err = strconv.ParseInt(chapter, 10, 64)
+		if err != nil || ordinal <= 0 {
+			writeHTTPError(w, http.StatusBadRequest, fmt.Errorf("chapter_ordinal must be a positive integer"))
+			return
+		}
+	}
 	resp, err := s.story.GetRestartContext(r.Context(), story.GetRestartContextRequest{
-		ProjectID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], ChapterOrdinal: ordinal,
+		ProjectID: s.tenantID(r), JobID: mux.Vars(r)["jobId"], ChapterOrdinal: ordinal, ScopeID: scope,
 	})
 	if err != nil {
 		writeError(w, err)
@@ -426,9 +463,9 @@ func writeError(w http.ResponseWriter, err error) {
 		writeHTTPError(w, http.StatusUnprocessableEntity, err)
 	case errors.Is(err, jobdb.ErrJobDeletionUnsupported):
 		writeHTTPError(w, http.StatusNotImplemented, err)
-	case errors.Is(err, recipejob.ErrJobNotFound), errors.Is(err, jobdb.ErrJobNotFound), story.IsNotFound(err):
+	case errors.Is(err, recipejob.ErrJobNotFound), errors.Is(err, jobdb.ErrJobNotFound), errors.Is(err, jobdb.ErrGoalNotFound), story.IsNotFound(err):
 		writeHTTPError(w, http.StatusNotFound, err)
-	case errors.Is(err, jobdb.ErrConflict), jobdb.IsConflict(err):
+	case errors.Is(err, jobdb.ErrConflict), errors.Is(err, jobdb.ErrGoalConflict), jobdb.IsConflict(err):
 		writeHTTPError(w, http.StatusConflict, err)
 	default:
 		writeHTTPError(w, http.StatusInternalServerError, err)

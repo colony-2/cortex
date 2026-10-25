@@ -125,7 +125,7 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             items={[
               {
                 key: 'jobs',
-                label: <Link to={`/project/${tenantId}/jobs`}>Jobs</Link>,
+                label: <Link to={`/project/${tenantId}/goals`}>Goals</Link>,
                 icon: <PlayCircleOutlined />,
               },
               {
@@ -156,6 +156,8 @@ function AppShell({ defaultTenantId }: { defaultTenantId: string }) {
             <Route path="/" element={<Navigate to={`/project/${tenantId}/jobs`} replace />} />
             <Route path="/jobs" element={<JobsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/jobs" element={<JobsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/goals" element={<JobsRoute fallbackProjectId={tenantId} />} />
+            <Route path="/project/:projectId/goals/:goalId" element={<JobsRoute fallbackProjectId={tenantId} />} />
             <Route path="/project/:projectId/jobs/:jobId/story" element={<StoryRoute fallbackProjectId={tenantId} />} />
             <Route path="/inputs" element={<PendingInputsListPage projectId={tenantId} />} />
             <Route path="/project/:projectId/inputs" element={<InputsRoute fallbackProjectId={tenantId} />} />
@@ -179,7 +181,8 @@ function useRouteProjectId(fallbackProjectId: string): string {
 }
 
 function JobsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {
-  return <JobsListPage projectId={useRouteProjectId(fallbackProjectId)} />;
+  const { goalId } = useParams<{ goalId: string }>();
+  return <JobsListPage projectId={useRouteProjectId(fallbackProjectId)} goalId={goalId} />;
 }
 
 function InputsRoute({ fallbackProjectId }: { fallbackProjectId: string }) {

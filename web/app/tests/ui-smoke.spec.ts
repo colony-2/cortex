@@ -97,7 +97,7 @@ test.describe('UI smoke (mocked API)', () => {
     await page.goto('/project/1/jobs');
 
     await expect(page).toHaveTitle(/cortex: tenant 1/);
-    await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Goals' })).toBeVisible();
     await expect(page.getByText('job-smoke-1')).toBeVisible();
     await expect(page.getByRole('table').getByText('Running', { exact: true })).toBeVisible();
 

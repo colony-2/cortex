@@ -38,6 +38,7 @@ interface TransitionEvaluation {
 export interface StoryNode {
   id?: string;
   invocation_id?: string;
+  restart_scope_id?: string;
   restart_chapter_ordinal?: number | null;
   restart_relationship?: 'exact' | 'containing' | 'body';
   restart_unavailable_reason?: string;

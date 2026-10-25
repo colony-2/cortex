@@ -47,6 +47,23 @@ function mount(search = '', response: unknown = story) {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
+  it('preserves the expanded goal return location after selecting a node and a detail tab', async () => {
+    const returnTo = '/project/tenant/goals/goal?expanded=job&detail=requirements';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
+    render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', state: { returnTo } }]}>
+      <Routes>
+        <Route path="/project/:projectId/jobs/:jobId/story" element={<><JobStoryPage projectId="tenant" /><Location /></>} />
+        <Route path="/project/:projectId/goals/:goalId" element={<><span>Returned to goal</span><Location /></>} />
+      </Routes>
+    </MemoryRouter>);
+    fireEvent.click(await screen.findByText('Development.Design.Task 3.2'));
+    expect(screen.getByTestId('location')).toHaveTextContent('nodeId=');
+    fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: /Back to Jobs/ }));
+    expect(await screen.findByText('Returned to goal')).toBeVisible();
+    expect(screen.getByTestId('location')).toHaveTextContent('?expanded=job&detail=requirements');
+  });
+
   it('keeps auto-refresh off after an in-flight poll or a manual refresh finishes', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const running = { ...story, status: 'running' };
@@ -209,8 +226,10 @@ describe('job story history', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/jobs/job/restart'),
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ chapter_ordinal: 4, patch: { job: { answer: 'patched' } } }) }),
+      expect.objectContaining({ method: 'POST', body: expect.stringContaining('"scope_id":"root"') }),
     ));
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/jobs/job/restart'))!;
+    expect(JSON.parse(call[1]!.body as string)).toEqual({ scope_id: 'root', goal: { mode: 'continue' }, request_id: expect.any(String), patch: { job: { answer: 'patched' } } });
     expect(screen.queryByRole('tab', { name: /^Attempt / })).not.toBeInTheDocument();
   });
 
@@ -248,8 +267,36 @@ describe('job story history', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/jobs/job/restart'),
-      expect.objectContaining({ body: JSON.stringify({ chapter_ordinal: 14 }) }),
+      expect.objectContaining({ body: expect.stringContaining('"chapter_ordinal":14') }),
     ));
+  });
+
+  it('selects an exact scope in a compact chapter and reuses a restart request after a lost response', async () => {
+    const fetch = mount('', { ...story,
+      root: { ...jobAttempt(1), restart_chapter_ordinal: 4, restart_scope_id: 'target/scope' },
+      restart_scopes: [
+        { chapter_ordinal: 4, scope_id: 'other', title: 'Other scope', started_at: '' },
+        { chapter_ordinal: 4, scope_id: 'target/scope', title: 'Selected scope', started_at: '' },
+      ],
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Restart job' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/Selected scope · Chapter 4/)).toBeVisible();
+    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ project_id: 'tenant', job_id: 'job', scope_id: 'target/scope', chapter_ordinal: 4, job: {}, visible: {}, redacted_paths: [] }) });
+    fireEvent.click(within(dialog).getByRole('switch'));
+    await within(dialog).findByRole('region', { name: 'Context before patching' });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('restart-context?scope_id=target%2Fscope'), expect.anything());
+    fetch.mockRejectedValueOnce(new TypeError('Connection lost'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Restart', exact: true })).toBeEnabled());
+    const first = fetch.mock.calls.find(([url]) => String(url).endsWith('/restart'))!;
+    expect(JSON.parse(first[1]!.body as string)).toMatchObject({ scope_id: 'target/scope', request_id: expect.any(String) });
+    expect(JSON.parse(first[1]!.body as string)).not.toHaveProperty('chapter_ordinal');
+    fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: 'resumed' }) });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restart', exact: true }));
+    await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'))).toHaveLength(2));
+    const requests = fetch.mock.calls.filter(([url]) => String(url).endsWith('/restart'));
+    expect(requests[1][1]!.body).toBe(requests[0][1]!.body);
   });
 
 });

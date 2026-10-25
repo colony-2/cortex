@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { RecipeJob } from '@colony2/shared/types';
 import JobsListPage from './JobsListPage';
 import JobStoryPage from './JobStoryPage';
@@ -88,10 +88,10 @@ it('shows a combined status and list-supplied details without fetching individua
   expect(await screen.findByText('Failed (system)')).toBeVisible();
   expect(screen.getByText(job.completion_detail!)).toBeVisible();
   expect(screen.queryByText('COMPLETED')).not.toBeInTheDocument();
-  const row = screen.getByRole('link', { name: 'failed-job' }).closest('tr')!;
+  const row = screen.getByRole('link', { name: 'Job failed-job: Failed (system)' }).closest('tr')!;
   fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
   expect(await screen.findByRole('link', { name: 'parent-job' })).toHaveAttribute('href', '/project/parent-tenant/jobs/parent-job/story');
-  expect(screen.getByRole('link', { name: 'dependency-job' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story');
+  expect(screen.getByRole('link', { name: 'dependency-job' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?expanded=failed-job');
   expect(screen.getByText('Task input ordinal')).toBeVisible();
   expect(screen.getByText('0')).toBeVisible();
   expect(screen.getByText('Finished')).toBeVisible();
@@ -99,7 +99,7 @@ it('shows a combined status and list-supplied details without fetching individua
   expect(screen.getByText(/saved payload/)).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(2);
   const jobsURL = fetch.mock.calls.map(([url]) => new URL(url, 'http://localhost')).find(url => url.pathname.endsWith('/jobs'))!;
-  expect(jobsURL.searchParams.getAll('status')).toEqual(['all']);
+  expect(jobsURL.pathname).toBe('/api/projects/tenant/jobs');
 });
 
 function Location() {
@@ -127,16 +127,94 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filte
       <Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} />
     </Routes>
   </MemoryRouter>);
-  const link = await screen.findByRole('link', { name: 'job', exact: true });
+  const link = await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
   expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story${query}`);
   fireEvent.click(link);
   await screen.findByText('Run Summary');
   fireEvent.click(screen.getByRole('button', { name: /Back to Jobs/ }));
-  await screen.findByRole('link', { name: 'job', exact: true });
+  await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
   expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
   await waitFor(() => expect(listReads).toHaveLength(2));
   for (const url of listReads) {
     expect(url.searchParams.getAll('status')).toEqual(query ? ['ACTIVE', 'READY'] : ['all']);
     expect(url.searchParams.get('cell')).toBe(query ? 'platform' : null);
   }
+});
+
+function Navigation() {
+  const navigate = useNavigate();
+  return <><button onClick={() => navigate(-1)}>Browser back</button><button onClick={() => navigate(1)}>Browser forward</button></>;
+}
+function GoalRoute() {
+  return <JobsListPage projectId="tenant" goalId={useParams().goalId} />;
+}
+
+it('groups attempts and restores expanded details through goal navigation and browser back/forward without detail queries', async () => {
+  const jobs: Partial<RecipeJob>[] = [
+    { job_id: 'first', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'READY', store: 'ACTIVE', cell_name: 'platform', execution: { status: 'published', source: 'job', published: true, demand: { cpu: 4 } } },
+    { job_id: 'second', goal_id: 'goal-a', prompt: 'Build a useful feature', status: 'COMPLETED', store: 'ARCHIVED', completion_status: 'failed_app' },
+    { job_id: 'single', goal_id: 'goal-b', status: 'READY', store: 'ACTIVE' },
+  ];
+  const fetch = vi.fn(async (input: string) => {
+    const url = new URL(input, 'http://localhost');
+    const path = url.pathname;
+    if (path.endsWith('/cells')) return { ok: true, json: async () => [] };
+    if (path.endsWith('/jobs')) return { ok: true, json: async () => ({ jobs: url.searchParams.get('goal') === 'goal-a' ? jobs.slice(0, 2) : jobs }) };
+    throw new Error(`Unexpected detail query: ${path}`);
+  });
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter initialEntries={['/project/tenant/goals']}><Navigation /><Location /><Routes>
+    <Route path="/project/tenant/goals" element={<JobsListPage projectId="tenant" />} />
+    <Route path="/project/tenant/goals/:goalId" element={<GoalRoute />} />
+  </Routes></MemoryRouter>);
+  const first = (await screen.findByRole('link', { name: 'Open job first' })).closest('tr')!;
+  expect(screen.getAllByRole('link', { name: 'Build a useful feature' })).toHaveLength(1);
+  expect(screen.getByRole('link', { name: 'goal-b' })).toBeVisible();
+  fireEvent.click(within(first).getByRole('button', { name: 'Expand row' }));
+  fireEvent.click(screen.getByText('Execution requirements'));
+  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const originalURL = screen.getByTestId('location').textContent;
+  fireEvent.click(screen.getByRole('link', { name: 'Build a useful feature' }));
+  await screen.findByRole('heading', { name: 'Goal', exact: true });
+  expect(screen.queryByText('Execution requirements')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+  expect(await screen.findByText('Execution requirements')).toBeVisible();
+  expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
+  expect(screen.getByTestId('location').textContent).toBe(originalURL);
+  fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
+  await screen.findByRole('heading', { name: 'Goal', exact: true });
+  expect(screen.queryByText('Execution requirements')).not.toBeInTheDocument();
+});
+
+it('uses waiting routes and dependency targets for input/review, job, and goal links', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url.includes('/cells') ? [] : { jobs: [
+    { job_id: 'review', goal_id: 'g1', status: 'READY', store: 'ACTIVE', next_route: { jobType: 'recipe', taskType: 'input:collect_user_input' } },
+    { job_id: 'waiting', goal_id: 'g2', status: 'PENDING_JOBS', store: 'ACTIVE', blocking_wait: { waitId: 'wait', state: 'PENDING', dependencies: [
+      { target: { goalId: 'target-goal' }, state: 'PENDING', condition: 'success' },
+      { target: { jobId: 'target-job' }, state: 'PENDING', condition: 'complete' },
+      { target: { jobId: 'done-job' }, state: 'SATISFIED', condition: 'complete' },
+    ] } },
+  ] } })));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  expect(await screen.findByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/tenant/inputs/review');
+  expect(screen.getByRole('link', { name: 'Goal target-goal' })).toHaveAttribute('href', '/project/tenant/goals/target-goal');
+  expect(screen.getByRole('link', { name: 'Job target-job' })).toHaveAttribute('href', '/project/tenant/jobs/target-job/story');
+  expect(screen.queryByRole('link', { name: 'Job done-job' })).not.toBeInTheDocument();
+});
+
+it('submits a prompt-only goal and opens the returned goal identity', async () => {
+  const fetch = vi.fn(async (_: string, init?: RequestInit) => ({ ok: true, json: async () => init?.method === 'POST'
+    ? { tenant_id: 'tenant', goal_id: 'created-goal', job_id: 'created-job' } : _.includes('/cells') ? [] : { jobs: [] } }));
+  vi.stubGlobal('fetch', fetch);
+  render(<MemoryRouter><Location /><JobsListPage projectId="tenant" /></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'New goal' }));
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).queryByLabelText('Recipe')).not.toBeInTheDocument();
+  expect(within(dialog).queryByLabelText('Job ID')).not.toBeInTheDocument();
+  fireEvent.change(within(dialog).getByLabelText('Prompt'), { target: { value: 'Build a small tool' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Create goal' }));
+  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/project/tenant/goals/created-goal'));
+  const call = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!;
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ inputs: { prompt: 'Build a small tool', type: 'build' } });
 });

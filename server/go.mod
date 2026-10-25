@@ -3,8 +3,8 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.89-0.20261021224224-9ffc54b1ccb2
-	github.com/colony-2/jobdb v0.0.46
+	github.com/colony-2/c2j v0.0.97-0.20261025211528-fb3a8a114763
+	github.com/colony-2/jobdb v0.0.55
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
 )
@@ -85,6 +85,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
+	gopkg.in/macaroon.v2 v2.1.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/gorm v1.31.1 // indirect
 	k8s.io/apimachinery v0.35.0 // indirect

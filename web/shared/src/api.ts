@@ -38,6 +38,7 @@ export async function listJobs(
     cell?: string;
     pageSize?: number;
     pageToken?: string;
+    goal?: string;
   } = {},
 ): Promise<ListRecipeJobsResponse> {
   const params = new URLSearchParams();
@@ -47,6 +48,7 @@ export async function listJobs(
     params.append('status', status);
   }
   if (options.cell) params.set('cell', options.cell);
+  if (options.goal) params.set('goal', options.goal);
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   if (options.pageToken) params.set('pageToken', options.pageToken);
   const query = params.toString();
@@ -65,14 +67,15 @@ export async function getJob(projectId: string, jobId: string): Promise<RecipeJo
   return response.json();
 }
 
-export async function getRestartContext(projectId: string, jobId: string, chapterOrdinal: number, signal?: AbortSignal): Promise<RestartContext> {
+export async function getRestartContext(projectId: string, jobId: string, boundary: number | string, signal?: AbortSignal): Promise<RestartContext> {
+  const selector = typeof boundary === 'string' ? `scope_id=${encodeURIComponent(boundary)}` : `chapter_ordinal=${boundary}`;
   const response = await fetch(
-    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart-context?chapter_ordinal=${chapterOrdinal}`,
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/restart-context?${selector}`,
     { signal },
   );
   await handleResponse(response, 'Inspect restart context');
   const context: RestartContext = await response.json();
-  if (context.project_id !== projectId || context.job_id !== jobId || context.chapter_ordinal !== chapterOrdinal) {
+  if (context.project_id !== projectId || context.job_id !== jobId || (typeof boundary === 'string' ? context.scope_id !== boundary : context.chapter_ordinal !== boundary)) {
     throw new Error('Restart context does not match the selected job and restart point.');
   }
   return context;

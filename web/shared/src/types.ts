@@ -26,6 +26,10 @@ export type RecipeJobStatus =
   | 'COMPLETED';
 
 export interface RecipeJob {
+  goal_id?: string;
+  other_goal_ids?: string[];
+  prompt?: string;
+  blocking_wait?: DependencyWait;
   tenant_id: string;
   job_id: string;
   status: RecipeJobStatus;
@@ -40,6 +44,7 @@ export interface RecipeJob {
   git_ref?: string;
   input_hash?: string;
   parent?: {
+    goal_id?: string;
     tenant_id?: string;
     job_id?: string;
     job_type?: string;
@@ -78,6 +83,19 @@ export interface RecipeJob {
   };
   wait_for?: string[];
   cancel_requested?: boolean;
+}
+
+export interface DependencyWait {
+  waitId: string;
+  state: string;
+  deadline?: string;
+  dependencies: {
+    target: { goalId?: string; jobId?: string };
+    condition: string;
+    state: string;
+    satisfiedByJobId?: string;
+    blockedReason?: string;
+  }[];
 }
 
 export interface ListRecipeJobsResponse {

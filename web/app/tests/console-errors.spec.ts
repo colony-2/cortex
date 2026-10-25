@@ -97,7 +97,7 @@ test.describe('Console cleanliness', () => {
     await page.goto('/project/1/jobs');
 
     await expect(page).toHaveTitle(/cortex: tenant 1/);
-    await expect(page.getByRole('heading', { name: 'Jobs' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Goals' })).toBeVisible();
     await expect(page.getByText('job-console-1')).toBeVisible();
 
     await page.getByRole('link', { name: 'Cells' }).click();

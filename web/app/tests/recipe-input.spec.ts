@@ -48,10 +48,6 @@ const test = base.extend<{
           env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: '0',
-            // Resolve the existing test cell to a real local checkout without network access.
-            GIT_CONFIG_COUNT: '1',
-            GIT_CONFIG_KEY_0: `url.${pathToFileURL(repo).href}.insteadOf`,
-            GIT_CONFIG_VALUE_0: 'https://github.com/cortex-test/platform.git',
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -89,21 +85,17 @@ const test = base.extend<{
       await page.goto(`/?tenantId=${tenant}`);
       await page.getByPlaceholder('Email address').fill('browser@example.com');
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
 
       // This second tab must update through SSE, without refresh or navigation.
       const observer = await context.newPage();
       await observer.goto(`/project/${tenant}/${review ? 'reviews' : 'inputs'}`);
       await expect(observer.getByText(review ? 'No pending reviews' : 'No pending inputs')).toBeVisible();
 
-      await page.getByRole('button', { name: 'Submit Job' }).click();
-      const dialog = page.getByRole('dialog');
-      await dialog.getByLabel('Job ID').fill(jobID);
-      await dialog.getByLabel('Recipe').fill(recipe);
-      const submitted = page.waitForResponse(r => r.url().endsWith(`/projects/${tenant}/jobs`) && r.request().method() === 'POST');
-      await dialog.getByRole('button', { name: 'OK', exact: true }).click();
-      expect((await submitted).status()).toBe(201);
-      await expect(dialog).not.toBeVisible();
+      const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
+        data: { job_id: jobID, recipe, repo: pathToFileURL(repo).href },
+      });
+      expect(submitted.status(), await submitted.text()).toBe(201);
       startWorker();
 
       // Check the backend separately so a broken persisted form reports its
@@ -128,6 +120,8 @@ const test = base.extend<{
       const otherTenant = await request.get(`/api/projects/other-${tenant}/user-inputs/pending`);
       expect(await otherTenant.json()).toEqual([]);
 
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
       await use({ tenant, jobID, observer, startWorker, stopWorker });
       expect(errors).toEqual([]);
     } catch (error) {
@@ -208,7 +202,7 @@ for (const multiField of [false, true]) {
       // Kill the worker while the request is pending: the answer must survive
       // in JobDB and be picked up by a fresh worker, not an in-process promise.
       await stopWorker();
-      await page.getByRole('link', { name: jobID, exact: true }).click();
+      await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
       await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
       const question = multiField ? 'Release note' : 'What should the recipe publish?';
       await expect(page.getByLabel(question)).toBeVisible();
@@ -239,23 +233,17 @@ for (const multiField of [false, true]) {
       });
       await expect(page.getByRole('cell', { name: 'COMPLETED', exact: true }).first()).toBeVisible();
       await page.goto(`/project/${tenant}/jobs`);
-      await expect(page.getByRole('heading', { name: 'Jobs', exact: true })).toBeVisible();
-      await expect(page.getByRole('link', { name: jobID, exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toBeVisible();
       await page.getByRole('combobox', { name: 'Status filter' }).click();
       await page.getByTitle('Ready', { exact: true }).click();
       await page.getByRole('combobox', { name: 'Status filter' }).press('Escape');
-      await expect(page.getByRole('link', { name: jobID, exact: true })).toHaveCount(0);
-      const allStatuses = page.waitForResponse(r => {
-        const url = new URL(r.url());
-        return url.pathname === `/api/projects/${tenant}/jobs` && url.searchParams.get('status') === 'all';
-      });
+      await expect(page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) })).toHaveCount(0);
       await page.locator('.ant-select').first().hover();
       await page.locator('.ant-select-clear').first().click();
-      const jobs = await (await allStatuses).json();
-      expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({
-        status: 'COMPLETED', completion_status: 'success',
-      });
-      const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: jobID, exact: true }) });
+      const jobs = await (await request.get(`/api/projects/${tenant}/jobs?status=all`)).json();
+      expect(jobs.jobs.find((job: { job_id: string }) => job.job_id === jobID)).toMatchObject({ status: 'COMPLETED', completion_status: 'success' });
+      const row = page.getByRole('row').filter({ has: page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }) });
       await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
       await row.getByRole('button', { name: 'Expand row' }).click();
       await expect(page.getByText('All job data', { exact: true })).toBeVisible();
@@ -263,7 +251,7 @@ for (const multiField of [false, true]) {
       if (!multiField) {
         await stopWorker();
         const storyResponse = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/story`));
-        await page.getByRole('link', { name: jobID, exact: true }).click();
+        await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
         const story = await (await storyResponse).json();
         expect(story.restart_scopes.length).toBeGreaterThan(0);
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
@@ -275,12 +263,14 @@ for (const multiField of [false, true]) {
         const task = taskNodes(story.root).filter(node => ['op', 'opStep'].includes(node.kind) && node.restart_chapter_ordinal != null).at(-1);
         expect(task).toBeTruthy();
         const expectedChapter = task.restart_chapter_ordinal;
+        const expectedScope = task.restart_scope_id;
+        expect(expectedScope).toBeTruthy();
         expect(story.restart_scopes.some((scope: { chapter_ordinal: number }) => scope.chapter_ordinal === expectedChapter)).toBe(true);
         await page.goto(`/project/${tenant}/jobs/${jobID}/story?nodeId=${encodeURIComponent(task.id)}`);
         await page.getByRole('button', { name: 'Restart job', exact: true }).click();
         await expect(restartDialog.getByRole('button', { name: 'Restart', exact: true })).toBeEnabled();
         await expect(restartDialog.getByText(`· Chapter ${expectedChapter} ·`, { exact: false })).toBeVisible();
-        const inspected = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`));
+        const inspected = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart-context?scope_id=${encodeURIComponent(expectedScope)}`));
         await restartDialog.getByRole('switch').click();
         const contextResponse = await inspected;
         expect(contextResponse.status(), await contextResponse.text()).toBe(200);
@@ -299,11 +289,12 @@ for (const multiField of [false, true]) {
         expect((await request.get(`/api/projects/other-${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=${expectedChapter}`)).status()).toBe(404);
         expect((await request.get(`/api/projects/${tenant}/jobs/${jobID}/restart-context?chapter_ordinal=0`)).status()).toBe(400);
         expect((await request.post(`/api/projects/${tenant}/jobs/${jobID}/restart`, { data: { chapter_ordinal: expectedChapter, scope_id: 'also-supplied' } })).status()).toBe(400);
+        await expect(restartDialog.getByTitle('Start a new goal', { exact: true })).toBeVisible();
         const restarted = page.waitForResponse(r => r.url().endsWith(`/jobs/${jobID}/restart`) && r.request().method() === 'POST');
         await restartDialog.getByRole('button', { name: 'Restart', exact: true }).click();
         const restartResponse = await restarted;
         expect(restartResponse.status(), await restartResponse.text()).toBe(201);
-        expect(restartResponse.request().postDataJSON()).toEqual({ chapter_ordinal: expectedChapter, patch: { job: { browser_note: 'patched' } } });
+        expect(restartResponse.request().postDataJSON()).toEqual({ scope_id: expectedScope, request_id: expect.any(String), goal: { mode: 'new' }, patch: { job: { browser_note: 'patched' } } });
         const newJobID = (await restartResponse.json()).job_id;
         expect(newJobID).not.toBe(jobID);
         await expect(page).toHaveURL(new RegExp(`/jobs/${newJobID}/story$`));
@@ -316,7 +307,7 @@ for (const multiField of [false, true]) {
 
 test('cancellation removes a pending prompt in open tabs and rejects late answers', async ({ page, request, recipeRun }) => {
   const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
-  await page.getByRole('link', { name: jobID, exact: true }).click();
+  await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
   await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
   await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
   await stopWorker();
@@ -344,7 +335,7 @@ test.describe('sequential prompts', () => {
     const { tenant, jobID, observer, stopWorker, startWorker } = recipeRun;
     const answer = `release-${randomUUID()}`;
     const reviewer = `reviewer-${randomUUID()}`;
-    await page.getByRole('link', { name: jobID, exact: true }).click();
+    await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
 
     for (const [question, value] of [
       ['What should the recipe publish?', answer],
@@ -375,7 +366,7 @@ test.describe('input timeout', () => {
   test.use({ recipeFixture: 'browser-input-timeout' });
   test('expires an unanswered input and clears open browser prompts', async ({ page, request, recipeRun }) => {
     const { tenant, jobID, observer } = recipeRun;
-    await page.getByRole('link', { name: jobID, exact: true }).click();
+    await page.getByRole('link', { name: new RegExp(`^Job ${jobID}:`) }).click();
     await page.getByRole('tab', { name: 'Pending Input', exact: true }).click();
     await expect(page.getByLabel('What should the recipe publish?')).toBeVisible();
 
