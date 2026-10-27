@@ -1,0 +1,6 @@
+base: go
+root:
+  repo: https://github.com/colony-2/c2-root.git
+  ref: main
+
+jobdb: http://192.168.1.195:9047/c2
