@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -32,6 +32,8 @@ import { API_BASE, inputActivityService, type UserInputDetails, type FormRespons
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
+import { getJob } from '@colony2/shared/api';
+import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
 import { buildStoryTree, storyAttempts, storyNodeName, type ArtifactKey, type StoryNode, type StoryKind, type StoryNodeRef } from '../utils/storyTree';
 import { adaptInputFormConfig } from '../utils/formAdapter';
@@ -348,8 +350,25 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
   const { keyToRef, keyToParent, keyFor, ancestorsByKey, projectionByKey, visibleKeyByKey, childrenByNode, renderNodes } = treeModel;
   const [restartGoalMode, setRestartGoalMode] = useState<'continue' | 'new'>('continue');
   const filterSearch = jobFilterSearch(searchParams);
-  const returnTo = typeof location.state?.returnTo === 'string' && location.state.returnTo.startsWith(`/project/${encodeURIComponent(projectId)}/`)
-    ? location.state.returnTo : `/project/${encodeURIComponent(projectId)}/jobs${filterSearch}`;
+  const goalsHome = `/project/${encodeURIComponent(projectId)}/goals`;
+  const suppliedReturn = location.state?.goalsReturnTo || location.state?.returnTo;
+  const returnTo = typeof suppliedReturn === 'string' && [goalsHome, `/project/${encodeURIComponent(projectId)}/jobs`].includes(suppliedReturn.split('?')[0])
+    ? suppliedReturn : `${goalsHome}${filterSearch}`;
+  const [loadedGoal, setLoadedGoal] = useState<{ jobId: string; projectId: string; goalId?: string }>();
+  const navigationGoal = typeof location.state?.goalId === 'string' ? location.state.goalId : undefined;
+  const currentGoal = navigationGoal || (loadedGoal?.jobId === jobId && loadedGoal.projectId === projectId ? loadedGoal.goalId : undefined);
+  const overviewPath = currentGoal ? goalPath(projectId, currentGoal) : undefined;
+  const savedOverview = location.state?.goalReturnTo;
+  const overviewLink = typeof savedOverview === 'string' && savedOverview.split('?')[0] === overviewPath ? savedOverview : overviewPath;
+  useEffect(() => {
+    if (!jobId || navigationGoal) return;
+    let cancelled = false;
+    getJob(projectId, jobId).then(job => {
+      if (!cancelled) setLoadedGoal({ projectId, jobId, goalId: job.goal_id });
+    }).catch(() => { /* The story remains available if metadata cannot be read. */ });
+    return () => { cancelled = true; };
+  }, [projectId, jobId, navigationGoal]);
+
 
   const selectedRef = useMemo(() => {
     if (!selectedKey) return null;
@@ -688,12 +707,12 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(returnTo)}>
-              Back to Jobs
+              Back to Goals
             </Button>
             <Title level={2} style={{ margin: 0 }}>
               Job Story
             </Title>
-            {story?.job_id ? <Text code>{story.job_id.slice(-12)}</Text> : null}
+            {overviewLink && <Link to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
           <Space>
             {story?.status === 'running' ? (
@@ -786,9 +805,6 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
 
         <Card title="Run Summary" size="small">
           <Descriptions column={2} bordered size="small">
-            <Descriptions.Item label="Job ID" span={2}>
-              {story?.job_id ? <Text code>{story.job_id}</Text> : '-'}
-            </Descriptions.Item>
             <Descriptions.Item label="Status">
               {story?.status ? (
                 <Tag color={statusTagColor(story.status)}>{story.status.toUpperCase()}</Tag>
@@ -816,6 +832,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
           {story?.recipe ? (
             <details style={{ marginTop: 12 }}>
               <summary>Recipe metadata</summary>
+            <div>Job ID: <Text code>{jobId}</Text></div>
               <div style={{ marginTop: 8 }}>
                 <ReactJson
                   src={story.recipe}

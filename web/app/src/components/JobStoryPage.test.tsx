@@ -7,6 +7,10 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
   useInputActivity: () => ({ pendingInputs: [], refresh: vi.fn() }),
 }));
+vi.mock('@colony2/shared/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@colony2/shared/api')>(),
+  getJob: vi.fn().mockResolvedValue({ goal_id: 'goal' }),
+}));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
 // Sanitized shape of the supplied history: IDs repeat across job attempts,
@@ -48,20 +52,21 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('job story history', () => {
   it('preserves the expanded goal return location after selecting a node and a detail tab', async () => {
-    const returnTo = '/project/tenant/goals/goal?expanded=job&detail=requirements';
+    const returnTo = '/project/tenant/goals?expanded=goal%3Agoal&detail=requirements';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => story }));
-    render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', state: { returnTo } }]}>
+    render(<MemoryRouter initialEntries={[{ pathname: '/project/tenant/jobs/job/story', state: { goalsReturnTo: returnTo, goalId: 'goal', goalReturnTo: '/project/tenant/goals/goal?inspect=job' } }]}>
       <Routes>
         <Route path="/project/:projectId/jobs/:jobId/story" element={<><JobStoryPage projectId="tenant" /><Location /></>} />
-        <Route path="/project/:projectId/goals/:goalId" element={<><span>Returned to goal</span><Location /></>} />
+        <Route path="/project/:projectId/goals" element={<><span>Returned to goal</span><Location /></>} />
       </Routes>
     </MemoryRouter>);
     fireEvent.click(await screen.findByText('Development.Design.Task 3.2'));
     expect(screen.getByTestId('location')).toHaveTextContent('nodeId=');
     fireEvent.click(screen.getByRole('tab', { name: 'Output', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: /Back to Jobs/ }));
+    expect(screen.getByRole('link', { name: 'Goal overview' })).toHaveAttribute('href', '/project/tenant/goals/goal?inspect=job');
+    fireEvent.click(screen.getByRole('button', { name: /Back to Goals/ }));
     expect(await screen.findByText('Returned to goal')).toBeVisible();
-    expect(screen.getByTestId('location')).toHaveTextContent('?expanded=job&detail=requirements');
+    expect(screen.getByTestId('location')).toHaveTextContent('?expanded=goal%3Agoal&detail=requirements');
   });
 
   it('keeps auto-refresh off after an in-flight poll or a manual refresh finishes', async () => {

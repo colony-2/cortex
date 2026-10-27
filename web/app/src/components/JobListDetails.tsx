@@ -13,7 +13,7 @@ export function jobTime(value?: string) {
   return dayjs(value).format('YYYY-MM-DD HH:mm:ss Z');
 }
 
-export default function JobListDetails({ job, projectId }: { job: RecipeJob; projectId: string }) {
+export default function JobListDetails({ job, projectId, showPrompt = true, navigationState }: { job: RecipeJob; projectId: string; showPrompt?: boolean; navigationState?: Record<string, unknown> }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const detailKey = (section: string) => JSON.stringify([job.job_id, section]);
@@ -25,22 +25,18 @@ export default function JobListDetails({ job, projectId }: { job: RecipeJob; pro
     if (values.has(key)) values.delete(key); else values.add(key);
     next.delete('detail'); values.forEach(value => next.append('detail', value));
     return next;
-  }, { replace: true });
+  }, { replace: true, state: location.state });
   const items: { key: string; label: string; children: ReactNode }[] = [];
   const add = (label: string, value: ReactNode) => {
     if (value !== undefined && value !== null && value !== '') {
       items.push({ key: label, label, children: value });
     }
   };
-  const jobLink = (id: string, tenant = projectId) => (
-    <Link key={id} state={{ returnTo: location.pathname + location.search }} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story${tenant === projectId ? jobFilterSearch(searchParams) : ''}`}>{id}</Link>
+  const jobLink = (id: string, tenant = projectId, label = 'View execution') => (
+    <Link key={id} state={{ goalsReturnTo: navigationState?.goalsReturnTo || location.pathname + location.search }} to={`/project/${encodeURIComponent(tenant)}/jobs/${encodeURIComponent(id)}/story${tenant === projectId ? jobFilterSearch(searchParams) : ''}`}>{label}</Link>
   );
-  add('Job ID', jobLink(job.job_id));
-  add('Goal', job.goal_id ? <Link to={goalPath(projectId, job.goal_id)}>{job.goal_id}</Link> : undefined);
-  add('Other goals', job.other_goal_ids?.length ? <Space wrap>{job.other_goal_ids.map(id => <Link key={id} to={goalPath(projectId, id)}>{id}</Link>)}</Space> : undefined);
   add('Recipe', job.recipe);
   add('Cell', job.cell_name);
-  add('Created', jobTime(job.created_at));
   add('Submitted', jobTime(job.submitted_at));
   add('Available from', jobTime(job.available_at));
   add('Finished', jobTime(job.archived_at));
@@ -48,22 +44,18 @@ export default function JobListDetails({ job, projectId }: { job: RecipeJob; pro
   add('Deadline', jobTime(job.expires_at));
   add('Repository', job.repo);
   add('Ref', job.git_ref);
-  add('Task route', job.next_route?.taskType || job.next_route?.jobType);
-  add('Waiting for jobs', job.wait_for?.length ? <Space wrap>{job.wait_for.map(id => jobLink(id))}</Space> : undefined);
-  add('Parent job', job.parent?.job_id ? jobLink(job.parent.job_id, job.parent.tenant_id || projectId) : undefined);
+  add('Waiting for jobs', job.wait_for?.length ? <Space wrap>{job.wait_for.map((id, index) => jobLink(id, projectId, `Dependency ${index + 1}`))}</Space> : undefined);
+  add('Parent job', job.parent?.job_id ? jobLink(job.parent.job_id, job.parent.tenant_id || projectId, 'View parent execution') : undefined);
   add('Parent step', job.parent?.op_step);
-  add('Task input ordinal', job.task_wait?.inputOrdinal);
-  add('Task output ordinal', job.task_wait?.outputOrdinal);
-  add('Resume job type', job.task_wait?.resumeJobType);
   add('Cancellation', job.cancel_requested ? 'Requested' : undefined);
   add('Wait state', job.blocking_wait?.state);
   add('Wait deadline', jobTime(job.blocking_wait?.deadline));
 
   return <Space direction="vertical" size="middle" style={{ width: '100%', overflowWrap: 'anywhere' }}>
-    {job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
+    {showPrompt && job.prompt && <div style={{ whiteSpace: 'pre-wrap' }}>{job.prompt}</div>}
     <JobWaitLinks job={job} projectId={projectId} />
     {job.blocking_wait?.dependencies.map((dependency, index) => <div key={index}>
-      {dependency.target.goalId ? <Link to={goalPath(projectId, dependency.target.goalId)}>Goal {dependency.target.goalId}</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
+      {dependency.target.goalId ? <Link to={goalPath(projectId, dependency.target.goalId)}>View goal</Link> : dependency.target.jobId ? jobLink(dependency.target.jobId) : null}
       {` · ${dependency.condition} · ${dependency.state}`}
       {dependency.blockedReason && ` · ${dependency.blockedReason}`}
       {dependency.satisfiedByJobId && <> · Result from {jobLink(dependency.satisfiedByJobId)}</>}
@@ -86,6 +78,19 @@ export default function JobListDetails({ job, projectId }: { job: RecipeJob; pro
         </pre>}
       </Space>
     </details>}
+    <details open={isOpen('technical')}>
+      <summary onClick={event => { event.preventDefault(); toggle('technical'); }}>Technical details</summary>
+      <Descriptions size="small" column={1} items={[
+        { key: 'id', label: 'Job ID', children: <Text code>{job.job_id}</Text> },
+        { key: 'route', label: 'Task route', children: job.next_route?.taskType || job.next_route?.jobType || '—' },
+        ...(job.task_wait ? [
+          { key: 'input', label: 'Task input ordinal', children: job.task_wait.inputOrdinal },
+          { key: 'output', label: 'Task output ordinal', children: job.task_wait.outputOrdinal },
+          { key: 'resume', label: 'Resume job type', children: job.task_wait.resumeJobType },
+        ] : []),
+      ]} />
+      {job.completion_detail && <div><Text strong>Full completion message</Text><pre style={{ whiteSpace: 'pre-wrap' }}>{job.completion_detail}</pre></div>}
+    </details>
     <details open={isOpen('data')}>
       <summary onClick={event => { event.preventDefault(); toggle('data'); }}>All job data</summary>
       <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{JSON.stringify(job, null, 2)}</pre>

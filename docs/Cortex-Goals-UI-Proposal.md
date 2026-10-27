@@ -29,8 +29,9 @@ independently addressable. Store filters in the URL and preserve them on return.
 | Reviews | Filter to one goal through a link from that goal; retain each review's own documents and response actions. |
 
 Use the goal ID as the stable identity. c2j v0.0.96 now exposes submission
-`prompt` metadata in job listings. Show up to 75 words in the compact row or
-group header, falling back to the goal ID when absent. Expanded job details
+`prompt` metadata in job listings. Show up to 75 characters in the compact row, using “Untitled goal” when absent.
+The plain-text prompt opens the newest active attempt (or newest attempt if all
+are finished); a separate link opens the goal overview. Expanded job details
 show the full prompt and other already-loaded listing fields.
 
 ## New goal: prompt-only submission

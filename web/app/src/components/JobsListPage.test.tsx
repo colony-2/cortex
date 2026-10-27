@@ -9,6 +9,10 @@ vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
   useInputActivity: () => ({ pendingInputs: [], refresh: vi.fn() }),
 }));
+vi.mock('@colony2/shared/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@colony2/shared/api')>(),
+  getJob: vi.fn().mockResolvedValue({ goal_id: 'goal' }),
+}));
 vi.mock('react-json-view', () => ({ default: ({ src }: { src: unknown }) => <pre>{JSON.stringify(src)}</pre> }));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -90,8 +94,9 @@ it('shows a combined status and list-supplied details without fetching individua
   expect(screen.queryByText('COMPLETED')).not.toBeInTheDocument();
   const row = screen.getByRole('link', { name: 'Job failed-job: Failed (system)' }).closest('tr')!;
   fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
-  expect(await screen.findByRole('link', { name: 'parent-job' })).toHaveAttribute('href', '/project/parent-tenant/jobs/parent-job/story');
-  expect(screen.getByRole('link', { name: 'dependency-job' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?expanded=failed-job');
+  expect(await screen.findByRole('link', { name: 'View parent execution' })).toHaveAttribute('href', '/project/parent-tenant/jobs/parent-job/story');
+  expect(screen.getByRole('link', { name: 'Dependency 1' })).toHaveAttribute('href', '/project/tenant/jobs/dependency-job/story?expanded=job%3Afailed-job');
+  fireEvent.click(screen.getByText('Technical details'));
   expect(screen.getByText('Task input ordinal')).toBeVisible();
   expect(screen.getByText('0')).toBeVisible();
   expect(screen.getByText('Finished')).toBeVisible();
@@ -131,7 +136,7 @@ it.each(['', '?status=ACTIVE&status=READY&cell=platform'])('preserves list filte
   expect(link).toHaveAttribute('href', `/project/tenant/jobs/job/story${query}`);
   fireEvent.click(link);
   await screen.findByText('Run Summary');
-  fireEvent.click(screen.getByRole('button', { name: /Back to Jobs/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Back to Goals/ }));
   await screen.findByRole('link', { name: 'Job job: Ready', exact: true });
   expect(screen.getByTestId('location')).toHaveTextContent(`/project/tenant/jobs${query}`);
   await waitFor(() => expect(listReads).toHaveLength(2));
@@ -167,24 +172,27 @@ it('groups attempts and restores expanded details through goal navigation and br
     <Route path="/project/tenant/goals" element={<JobsListPage projectId="tenant" />} />
     <Route path="/project/tenant/goals/:goalId" element={<GoalRoute />} />
   </Routes></MemoryRouter>);
-  const first = (await screen.findByRole('link', { name: 'Open job first' })).closest('tr')!;
+  const first = (await screen.findByRole('link', { name: 'Build a useful feature', exact: true })).closest('tr')!;
   expect(screen.getAllByRole('link', { name: 'Build a useful feature' })).toHaveLength(1);
-  expect(screen.getByRole('link', { name: 'goal-b' })).toBeVisible();
+  expect(screen.queryByText('goal-b')).not.toBeInTheDocument();
   fireEvent.click(within(first).getByRole('button', { name: 'Expand row' }));
   fireEvent.click(screen.getByText('Execution requirements'));
   expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
   expect(fetch).toHaveBeenCalledTimes(2);
   const originalURL = screen.getByTestId('location').textContent;
-  fireEvent.click(screen.getByRole('link', { name: 'Build a useful feature' }));
-  await screen.findByRole('heading', { name: 'Goal', exact: true });
-  expect(screen.queryByText('Execution requirements')).not.toBeInTheDocument();
+  fireEvent.click(within(first).getByRole('link', { name: 'Goal overview' }));
+  await screen.findByRole('heading', { name: 'Goal overview', exact: true });
+  expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Expand row' })).not.toBeInTheDocument();
+  expect(await screen.findByText('Execution requirements')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
   expect(await screen.findByText('Execution requirements')).toBeVisible();
   expect(within(screen.getByText('Execution requirements').closest('details')!).getByText(/"cpu": 4/)).toBeVisible();
   expect(screen.getByTestId('location').textContent).toBe(originalURL);
   fireEvent.click(screen.getByRole('button', { name: 'Browser forward' }));
-  await screen.findByRole('heading', { name: 'Goal', exact: true });
-  expect(screen.queryByText('Execution requirements')).not.toBeInTheDocument();
+  await screen.findByRole('heading', { name: 'Goal overview', exact: true });
+  expect(await screen.findByText('Execution requirements')).toBeVisible();
+
 });
 
 it('uses waiting routes and dependency targets for input/review, job, and goal links', async () => {
@@ -198,9 +206,9 @@ it('uses waiting routes and dependency targets for input/review, job, and goal l
   ] } })));
   render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
   expect(await screen.findByRole('link', { name: 'Open input/review' })).toHaveAttribute('href', '/project/tenant/inputs/review');
-  expect(screen.getByRole('link', { name: 'Goal target-goal' })).toHaveAttribute('href', '/project/tenant/goals/target-goal');
-  expect(screen.getByRole('link', { name: 'Job target-job' })).toHaveAttribute('href', '/project/tenant/jobs/target-job/story');
-  expect(screen.queryByRole('link', { name: 'Job done-job' })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Goal 1' })).toHaveAttribute('href', '/project/tenant/goals/target-goal');
+  expect(screen.getByRole('link', { name: 'Execution 2' })).toHaveAttribute('href', '/project/tenant/jobs/target-job/story');
+  expect(screen.queryByRole('link', { name: 'Execution 3' })).not.toBeInTheDocument();
 });
 
 it('submits a prompt-only goal and opens the returned goal identity', async () => {

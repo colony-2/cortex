@@ -28,6 +28,7 @@ const sampleJobs = {
     {
       tenant_id: '1',
       job_id: 'job-smoke-1',
+      prompt: 'Build the platform',
       status: 'ACTIVE',
       store: 'ACTIVE',
       job_type: 'recipe',
@@ -98,7 +99,7 @@ test.describe('UI smoke (mocked API)', () => {
 
     await expect(page).toHaveTitle(/cortex: tenant 1/);
     await expect(page.getByRole('heading', { name: 'Goals' })).toBeVisible();
-    await expect(page.getByText('job-smoke-1')).toBeVisible();
+    await expect(page.getByText('Build the platform')).toBeVisible();
     await expect(page.getByRole('table').getByText('Running', { exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: 'Cells' }).click();

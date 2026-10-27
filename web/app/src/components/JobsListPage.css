@@ -1,4 +1,9 @@
 .goal-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.goal-prompt { overflow-wrap: anywhere; }
-.goal-group-header > td { background: #f5f7fa !important; }
+a.goal-prompt, a.goal-prompt:hover, a.goal-prompt:visited { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+a.goal-prompt:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; }
+.goal-attempt-count { font-size: 12px; }
+.goal-overview-content { display: flex; flex-direction: column; gap: 16px; }
+.goal-full-prompt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; margin: 0 !important; }
+.goal-attempt-detail { background: #fff; }
+.goal-selected-attempt > td { background: #f5f7fa; }
 .job-completion { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

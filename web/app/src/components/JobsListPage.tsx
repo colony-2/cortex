@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typography, message } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listCells, listJobs, submitJob } from '@colony2/shared/api';
 import type { CortexCell, RecipeJob } from '@colony2/shared/types';
 import { jobStatus, schedulingStatuses } from '../utils/jobStatus';
-import JobListDetails, { jobTime } from './JobListDetails';
+import { jobTime } from './JobListDetails';
+import GoalJobOverview, { AttemptStatus } from './GoalJobOverview';
+import { abbreviatePrompt, latestActiveJob } from '../utils/goalPresentation';
 import { jobFilterSearch, readJobFilters } from '../utils/jobFilters';
 import JobActionDialog, { type JobAction } from './JobActionDialog';
 import JobWaitLinks, { goalPath, jobPath } from './JobWaitLinks';
@@ -15,11 +17,7 @@ import './JobsListPage.css';
 const { Text, Title } = Typography;
 type Props = { projectId: string; goalId?: string };
 type JobGroup = { key: string; goalId?: string; jobs: RecipeJob[] };
-type Row = { key: string; group: JobGroup; job?: RecipeJob; header?: boolean; single?: boolean };
-export function abbreviatePrompt(prompt: string, words = 75) {
-  const parts = prompt.trim().split(/\s+/);
-  return parts.length > words ? `${parts.slice(0, words).join(' ')}…` : parts.join(' ');
-}
+type Row = { key: string; group: JobGroup; job: RecipeJob };
 export default function JobsListPage(props: Props) {
   return <JobsList key={`${props.projectId}/${props.goalId || ''}`} {...props} />;
 }
@@ -27,7 +25,13 @@ export default function JobsListPage(props: Props) {
 function JobsList({ projectId, goalId }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnState = { returnTo: location.pathname + location.search };
+  const homePath = `/project/${encodeURIComponent(projectId)}/goals`;
+  const savedHome = location.state?.goalsReturnTo;
+  const goalsReturnTo = goalId
+    ? (typeof savedHome === 'string' && [homePath, `/project/${encodeURIComponent(projectId)}/jobs`].includes(savedHome.split('?')[0]) ? savedHome : homePath)
+    : location.pathname + location.search;
+  const navigationState = (id?: string) => ({ goalsReturnTo, goalId: id,
+    ...(goalId ? { goalReturnTo: location.pathname + location.search } : {}) });
   const [jobs, setJobs] = useState<RecipeJob[]>([]);
   const [cells, setCells] = useState<CortexCell[]>([]);
   const [nextPage, setNextPage] = useState<string>();
@@ -54,7 +58,7 @@ function JobsList({ projectId, goalId }: Props) {
     setLoading(true); setError(undefined);
     (async () => {
       const [cellData, page] = await Promise.all([
-        listCells(projectId), listJobs(projectId, { goal: goalId, status: JSON.parse(statusesKey), cell: filters.cell, pageToken }),
+        listCells(projectId), listJobs(projectId, { goal: goalId, status: goalId ? [] : JSON.parse(statusesKey), cell: goalId ? undefined : filters.cell, pageToken }),
       ]);
       if (version !== loadVersion.current) return;
       setCells(cellData); setJobs(page.jobs); setNextPage(page.next_page_token);
@@ -80,13 +84,7 @@ function JobsList({ projectId, goalId }: Props) {
     }
     return [...grouped.values()];
   }, [jobs, goalId]);
-  const rows: Row[] = groups.flatMap(group => {
-    const single = group.jobs.length === 1;
-    return [
-      ...(!single ? [{ key: group.key, group, header: true }] : []),
-      ...group.jobs.map(job => ({ key: JSON.stringify([group.key, job.job_id]), group, job, single })),
-    ];
-  });
+  const rows: Row[] = groups.map(group => ({ key: group.key, group, job: latestActiveJob(group.jobs) }));
   const setStatuses = (statuses: string[]) => {
     setSelectedIds([]);
     changeQuery(query => {
@@ -94,38 +92,26 @@ function JobsList({ projectId, goalId }: Props) {
       statuses.forEach(status => query.append('status', status));
     });
   };
-  const fullPrompt = (group: JobGroup) => group.jobs.find(job => job.prompt?.trim())?.prompt;
-  const promptLink = (group: JobGroup, prompt = fullPrompt(group)) => <Link className="goal-prompt"
-    to={group.goalId ? goalPath(projectId, group.goalId) : `${jobPath(projectId, group.jobs[0].job_id)}${jobFilterSearch(params)}`}
-    state={returnState}>
-    {prompt?.trim() ? abbreviatePrompt(prompt) : group.goalId || group.jobs[0].job_id}
-  </Link>;
-  const rowPrompt = (row: Row) => {
-    const { job, group } = row;
-    if (row.header) return <Space direction="vertical" size={2}>
-      <Space wrap>{promptLink(group)}<Text type="secondary">{group.jobs.length} attempts on this page</Text></Space>
-    </Space>;
-    if (!job) return null;
-    return <Space direction="vertical" size={2}>
-      {row.single ? promptLink(group, job.prompt) : <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={returnState} aria-label={`Open job ${job.job_id}`}>{job.prompt && job.prompt !== fullPrompt(group) ? abbreviatePrompt(job.prompt) : job.job_id}</Link>}
+  const fullPrompt = (group: JobGroup) => latestActiveJob(group.jobs).prompt || group.jobs.find(job => job.prompt?.trim())?.prompt;
+  const setSelection = (ids: string[], selected: boolean) => setSelectedIds(previous => selected
+    ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.includes(id)));
+  const columns: ColumnsType<Row> = [
+    { title: 'Goal', key: 'prompt', render: (_, { group, job }) => <Space direction="vertical" size={2}>
+      <Link className="goal-prompt" to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)}>
+        {abbreviatePrompt(fullPrompt(group) || 'Untitled goal')}
+      </Link>
+      {group.jobs.length > 1 && <Text type="secondary" className="goal-attempt-count">{group.jobs.length} attempts on this page</Text>}
       <JobWaitLinks job={job} projectId={projectId} />
       {job.completion_detail && <Text type={job.completion_status?.startsWith('failed_') ? 'danger' : 'secondary'} className="job-completion">{job.completion_detail}</Text>}
-    </Space>;
-  };
-  const columns: ColumnsType<Row> = [
-    { title: 'Goal / attempt', key: 'prompt', render: (_, row) => rowPrompt(row), onCell: row => ({ colSpan: row.header ? 5 : 1 }) },
-    { title: 'Status', width: 160, render: (_, { job }) => {
-      if (!job) return null;
-      const status = jobStatus(job);
-      return <Space size={4}><Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={returnState} aria-label={`Job ${job.job_id}: ${status.label}`}><Tag color={status.color}>{status.label}</Tag></Link>
-      </Space>;
-    }, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
-    { title: 'Cell', width: 120, render: (_, { job }) => job?.cell_name || (job ? 'self' : null), onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
-    { title: 'Submitted', width: 185, render: (_, { job }) => job ? jobTime(job.submitted_at || job.created_at) || '—' : null, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
-    { title: 'Links', width: 180, render: (_, { job }) => job && <Space direction="vertical" size={2}>
-      {job.parent?.job_id && <Link to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)} title={job.parent.job_id}>Parent</Link>}
+    </Space> },
+    { title: 'Status', width: 160, render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
+    { title: 'Cell', width: 120, render: (_, { job }) => job.cell_name || 'self' },
+    { title: 'Submitted', width: 185, render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
+    { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
+      {group.goalId && <Link to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}
+      {job.parent?.job_id && <Link to={jobPath(job.parent.tenant_id || projectId, job.parent.job_id)}>Parent</Link>}
       {job.repo && <RepositoryLink repo={job.repo} />}
-    </Space>, onCell: row => ({ colSpan: row.header ? 0 : 1 }) },
+    </Space> },
   ];
 
   const submit = async () => {
@@ -135,7 +121,7 @@ function JobsList({ projectId, goalId }: Props) {
     try {
       const job = await submitJob(projectId, { cell: filters.cell, inputs: { prompt: values.prompt, type: 'build' } });
       message.success('Goal created'); setSubmitOpen(false); form.resetFields();
-      navigate(goalPath(projectId, job.goal_id!));
+      navigate(goalPath(projectId, job.goal_id!), { state: { goalsReturnTo } });
     } catch (reason) { message.error(reason instanceof Error ? reason.message : 'Could not create goal'); }
     finally { setSubmitting(false); }
   };
@@ -143,11 +129,11 @@ function JobsList({ projectId, goalId }: Props) {
   return <div style={{ padding: 24 }}>
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
       <div className="goal-toolbar">
-        <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal' : 'Goals'}</Title>
+        <Title level={3} style={{ margin: 0 }}>{goalId ? 'Goal overview' : 'Goals'}</Title>
         <Space wrap>
-          {goalId && <Link to={`/project/${encodeURIComponent(projectId)}/goals`}>All goals</Link>}
-          <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear
-            options={Object.entries(schedulingStatuses).map(([value, status]) => ({ value, label: status.label }))} onChange={setStatuses} />
+          {goalId && <Link to={goalsReturnTo}>Back to Goals</Link>}
+          {!goalId && <Select mode="multiple" aria-label="Status filter" value={filters.status} style={{ minWidth: 240 }} placeholder="All statuses" maxTagCount="responsive" allowClear
+            options={Object.entries(schedulingStatuses).map(([value, status]) => ({ value, label: status.label }))} onChange={setStatuses} />}
           {!goalId && <Select aria-label="Cell filter" value={filters.cell} options={cells.map(cell => ({ value: cell.name || cell.repository_source, label: cell.name }))}
             style={{ minWidth: 160 }} placeholder="All cells" allowClear showSearch onChange={cell => {
               setSelectedIds([]); changeQuery(query => { query.delete('cell'); if (cell) query.set('cell', cell); query.delete('pageToken'); query.delete('expanded'); });
@@ -157,35 +143,38 @@ function JobsList({ projectId, goalId }: Props) {
         </Space>
       </div>
       {error && <Alert type="error" showIcon message={error} />}
-      <Space wrap>
-        <Text>{selectedIds.length} selected</Text>
-        <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
-        <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
-        {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
-      </Space>
-      <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
-        rowClassName={row => row.header ? 'goal-group-header' : ''}
-        rowSelection={{
-          selectedRowKeys: rows.filter(row => row.job && selectedIds.includes(row.job.job_id)).map(row => row.key),
-          onSelect: (row, selected) => row.job && setSelectedIds(previous => selected
-            ? [...new Set([...previous, row.job!.job_id])] : previous.filter(id => id !== row.job!.job_id)),
-          onSelectAll: (selected, _, changed) => setSelectedIds(previous => {
-            const ids = new Set(changed.flatMap(row => row.job ? [row.job.job_id] : []));
-            return selected ? [...new Set([...previous, ...ids])] : previous.filter(id => !ids.has(id));
-          }),
-          getCheckboxProps: row => ({ disabled: loading || !row.job, 'aria-label': row.job ? `Select job ${row.job.job_id}` : 'Goal group' }),
-          renderCell: (_, row, __, node) => row.job ? node : null,
-        }}
-        expandable={{
-          expandedRowKeys: rows.filter(row => row.job && expanded.includes(row.job.job_id)).map(row => row.key),
-          onExpand: (open, row) => changeQuery(query => {
-            const ids = new Set(query.getAll('expanded')); if (open) ids.add(row.job!.job_id); else ids.delete(row.job!.job_id);
-            query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
-          }, true),
-          rowExpandable: row => !!row.job,
-          expandedRowRender: row => row.job ? <JobListDetails job={row.job} projectId={projectId} /> : null,
-          columnWidth: 40,
-        }} />
+      {goalId ? <Spin spinning={loading}>
+        <section aria-label="Goal overview">
+          <GoalJobOverview jobs={jobs} projectId={projectId} navigationState={navigationState(goalId)} />
+        </section>
+      </Spin> : <>
+        <Space wrap>
+          <Text>{selectedIds.length} selected</Text>
+          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'cancel', jobIds: selectedIds })}>Cancel selected</Button>
+          <Button danger disabled={loading || !selectedIds.length} onClick={() => setOperation({ action: 'delete', jobIds: selectedIds })}>Delete selected</Button>
+          {!!selectedIds.length && <Button onClick={() => setSelectedIds([])}>Clear selection</Button>}
+        </Space>
+        <Table<Row> rowKey="key" columns={columns} dataSource={rows} loading={loading} pagination={false} size="small" scroll={{ x: 1000 }}
+          rowSelection={{
+            selectedRowKeys: rows.filter(row => row.group.jobs.every(job => selectedIds.includes(job.job_id))).map(row => row.key),
+            onSelect: (row, selected) => setSelection(row.group.jobs.map(job => job.job_id), selected),
+            onSelectAll: (selected, _, changed) => setSelection(changed.flatMap(row => row.group.jobs.map(job => job.job_id)), selected),
+            getCheckboxProps: row => ({ disabled: loading,
+              indeterminate: row.group.jobs.some(job => selectedIds.includes(job.job_id)) && !row.group.jobs.every(job => selectedIds.includes(job.job_id)),
+              'aria-label': row.group.jobs.length === 1 ? `Select job ${row.job.job_id}` : `Select attempts for ${abbreviatePrompt(fullPrompt(row.group) || 'Untitled goal')}` }),
+          }}
+          expandable={{
+            expandedRowKeys: rows.filter(row => expanded.includes(row.key) || row.group.jobs.some(job => expanded.includes(job.job_id))).map(row => row.key),
+            onExpand: (open, row) => changeQuery(query => {
+              const ids = new Set(query.getAll('expanded')); row.group.jobs.forEach(job => ids.delete(job.job_id));
+              if (open) ids.add(row.key); else ids.delete(row.key);
+              query.delete('expanded'); ids.forEach(id => query.append('expanded', id));
+            }, true),
+            expandedRowRender: row => <GoalJobOverview jobs={row.group.jobs} projectId={projectId} navigationState={navigationState(row.group.goalId)}
+              selectedIds={selectedIds} onSelect={setSelection} />,
+            columnWidth: 40,
+          }} />
+      </>}
       <Space>
         {pageToken && <Button onClick={() => changeQuery(query => { query.delete('pageToken'); })}>First page</Button>}
         {nextPage && <Button disabled={loading} onClick={() => changeQuery(query => { query.set('pageToken', nextPage); })}>Next jobs</Button>}
