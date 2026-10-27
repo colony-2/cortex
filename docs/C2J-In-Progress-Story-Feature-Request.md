@@ -1,8 +1,27 @@
 # c2j: include running task leaves and input in job stories
 
-## Update: 2026-10-27
+## Verified fix: 2026-10-27
 
-Cortex now pins c2j `v0.0.106` (main commit `cd329e8381df`) and JobDB
+Cortex now pins c2j `v0.0.107-0.20261027200902-6ecd59dcfa7f` with JobDB
+`v0.0.59-0.20261027194840-510d817719ac`. The start-event projection gap is
+fixed. The same public-recorder probe now returns:
+
+```json
+{"status":"running","input":{"prompt":"visible before completion"},"output":null,"task_ordinal":1}
+```
+
+The complete c2j story suite passes, including new integration tests for local
+and externally dispatched running tasks, retries, multi-step operations, and
+unfinished source resolution against SQLite and remote JobDB. The task tests
+verify input before completion, absent output/artifacts, separation of previous
+attempt output, stable identity through completion, and unchanged stored history.
+No Cortex-specific reconstruction is required.
+
+The original request and earlier findings below are retained for context.
+
+## Earlier check: c2j v0.0.106, 2026-10-27
+
+Cortex previously checked c2j `v0.0.106` (main commit `cd329e8381df`) and JobDB
 `v0.0.59-0.20261027194840-510d817719ac`. JobDB's unfinished-task inspection
 tests and c2j's existing story suite pass, but c2j's start-event projection
 gap remains in this revision.

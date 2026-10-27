@@ -7,7 +7,9 @@ Cortex now pins JobDB `v0.0.59-0.20261027194840-510d817719ac`. Its
 external, and retrying tasks across toy, SQLite, and remote backends. The new
 start events and replay misses expose unfinished invocation identity, state,
 and input. The original missing-observation issue below is addressed at JobDB's
-interface; c2j still needs to project the input onto the visible story leaf.
+interface. c2j subsequently fixed projection onto the visible story leaf in
+`6ecd59dcfa7f`; its story integration tests pass with this JobDB version. See
+[the c2j verification update](C2J-In-Progress-Story-Feature-Request.md).
 
 One contract difference remains: the implementation may reconstruct input by
 running its builder during replay when no input snapshot was persisted. Tests
