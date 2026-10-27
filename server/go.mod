@@ -3,8 +3,8 @@ module github.com/colony-2/colony2/server
 go 1.26
 
 require (
-	github.com/colony-2/c2j v0.0.100
-	github.com/colony-2/jobdb v0.0.56
+	github.com/colony-2/c2j v0.0.106
+	github.com/colony-2/jobdb v0.0.59-0.20261027194840-510d817719ac
 	github.com/gorilla/mux v1.8.1
 	github.com/spf13/cobra v1.10.2
 )
@@ -79,6 +79,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
+	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
