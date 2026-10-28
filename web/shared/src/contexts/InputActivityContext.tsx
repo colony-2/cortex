@@ -21,7 +21,10 @@ export interface InputActivityProviderProps {
 
 export function InputActivityProvider({ children }: InputActivityProviderProps) {
   const [currentProjectId, setCurrentProjectIdState] = useState<string | null>(null);
-  const [pendingInputs, setPendingInputs] = useState<PendingInput[]>([]);
+  const [snapshot, setSnapshot] = useState<{ projectId: string | null; inputs: PendingInput[] }>({ projectId: null, inputs: [] });
+  // Never expose an old tenant's snapshot during the render before effect cleanup.
+  const pendingInputs = snapshot.projectId === currentProjectId ? snapshot.inputs : [];
+  const setPendingInputs = (inputs: PendingInput[], projectId: string | null = null) => setSnapshot({ projectId, inputs });
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
@@ -36,7 +39,7 @@ export function InputActivityProvider({ children }: InputActivityProviderProps) 
     const version = ++loadVersion.current;
     try {
       const inputs = await inputActivityService.getPendingInputs(projectId, force);
-      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs(inputs);
+      if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs(inputs, projectId);
     } catch (error) {
       console.error('Failed to load pending inputs:', error);
       if (projectRef.current === projectId && version === loadVersion.current) setPendingInputs([]);

@@ -1,3 +1,4 @@
+import { cellLabel } from '../utils/cellPresentation';
 import { Button, Card, Empty, Space, Table, Tag, Typography } from 'antd';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { RecipeJob } from '@colony2/shared/types';
@@ -40,7 +41,7 @@ export default function GoalJobOverview({ jobs, projectId, navigationState, show
       columns={[
         { title: 'Submitted', render: (_, job) => <Link to={storyLink(job)} state={navigationState}>{jobTime(job.submitted_at || job.created_at) || 'Open execution'}</Link> },
         { title: 'Status', render: (_, job) => <Link to={storyLink(job)} state={navigationState}><AttemptStatus job={job} /></Link> },
-        { title: 'Cell', render: (_, job) => job.cell_name || 'self' },
+        { title: 'Cell', render: (_, job) => cellLabel(job.cell_name) },
         { title: 'Progress', render: (_, job) => <><JobWaitLinks job={job} projectId={projectId} />{job.completion_detail && <Typography.Text className="job-completion" type={job.completion_status?.startsWith('failed_') ? 'danger' : 'secondary'}>{job.completion_detail}</Typography.Text>}</> },
         { title: '', render: (_, job) => <Button size="small" type="text" aria-pressed={job.job_id === selected.job_id} onClick={() => choose(job)}>Details</Button> },
       ]} /></section>}

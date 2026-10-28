@@ -1,6 +1,9 @@
 id: browser-input
 version: "1.0"
-input_schema: {}
+input_schema:
+  prompt:
+    type: string
+    default_value: ""
 sequence:
   - id: draft
     op: command_execution

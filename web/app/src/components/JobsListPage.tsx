@@ -1,3 +1,4 @@
+import { cellLabel } from '../utils/cellPresentation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Form, Input, Modal, Select, Space, Spin, Table, Typography, message } from 'antd';
@@ -105,7 +106,7 @@ function JobsList({ projectId, goalId }: Props) {
       {job.completion_detail && <Text type={job.completion_status?.startsWith('failed_') ? 'danger' : 'secondary'} className="job-completion">{job.completion_detail}</Text>}
     </Space> },
     { title: 'Status', width: 160, render: (_, { job, group }) => <Link to={`${jobPath(projectId, job.job_id)}${jobFilterSearch(params)}`} state={navigationState(group.goalId)} aria-label={`Job ${job.job_id}: ${jobStatus(job).label}`}><AttemptStatus job={job} /></Link> },
-    { title: 'Cell', width: 120, render: (_, { job }) => job.cell_name || 'self' },
+    { title: 'Cell', width: 120, render: (_, { job }) => cellLabel(job.cell_name) },
     { title: 'Submitted', width: 185, render: (_, { job }) => jobTime(job.submitted_at || job.created_at) || '—' },
     { title: 'Links', width: 180, render: (_, { job, group }) => <Space direction="vertical" size={2}>
       {group.goalId && <Link to={goalPath(projectId, group.goalId)} state={{ goalsReturnTo }}>Goal overview</Link>}

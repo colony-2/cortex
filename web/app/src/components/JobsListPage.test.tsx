@@ -226,3 +226,16 @@ it('submits a prompt-only goal and opens the returned goal identity', async () =
   const call = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!;
   expect(JSON.parse(call[1]!.body as string)).toEqual({ inputs: { prompt: 'Build a small tool', type: 'build' } });
 });
+
+it.each([undefined, '', ' \n ', 'self', 'platform'])('uses explicit cell identity or Unknown cell in list and attempts (%j)', async cell_name => {
+  const jobs = ['first', 'second'].map(job_id => ({ job_id, goal_id: 'goal', prompt: 'Goal prompt', cell_name,
+    status: 'READY', store: 'ACTIVE', repo: 'https://example.test/not-a-cell', parent: { cell_name: 'parent-cell' } }));
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => ({ ok: true, json: async () => input.includes('/cells') ? [{ name: 'configured-cell', kind: 'self' }] : { jobs } })));
+  render(<MemoryRouter><JobsListPage projectId="tenant" /></MemoryRouter>);
+  const row = (await screen.findByRole('link', { name: 'Goal prompt', exact: true })).closest('tr')!;
+  const label = cell_name?.trim() ? cell_name : 'Unknown cell';
+  expect(within(row).getByText(label, { exact: true })).toBeVisible();
+  fireEvent.click(within(row).getByRole('button', { name: 'Expand row' }));
+  const attempts = await screen.findByRole('region', { name: 'Attempts' });
+  expect(within(attempts).getAllByText(label, { exact: true })).toHaveLength(2);
+});

@@ -1,3 +1,4 @@
+import { http, HttpResponse } from 'msw';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
@@ -13,7 +14,7 @@ import {
 } from '../test/mocks/inputApiHandlers';
 import { mockEventSource, waitForSSEConnection } from '../test/mocks/mockSSE';
 
-const server = setupServer(...inputApiHandlers);
+const server = setupServer(...inputApiHandlers, http.get('http://localhost:8080/api/projects/:projectId/jobs/:jobId', () => HttpResponse.json({ cell_name: 'platform', prompt: 'Build a useful release' })));
 
 describe('PendingInputsListPage', () => {
   const projectId = 'test-project-123';

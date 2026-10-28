@@ -94,3 +94,22 @@ test('filters through the jobs API before pagination and restores filters throug
   expect(queries.at(-1)?.getAll('status')).toEqual(['all']);
   expect(goalReads).toEqual([]);
 });
+
+for (const cellName of [undefined, '', '  \n ', 'self', 'platform']) {
+  test(`shows explicit or unknown cell in Goals and attempts: ${JSON.stringify(cellName)}`, async ({ page, context, baseURL }) => {
+    await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+    let detailReads = 0;
+    page.on('request', request => { if (/\/jobs\/[^/?]+$/.test(new URL(request.url()).pathname)) detailReads++; });
+    await page.route('**/api/projects/cell-label/jobs?*', route => route.fulfill({ json: { jobs: ['first', 'second'].map(job_id => ({
+      tenant_id: 'cell-label', job_id, goal_id: 'goal', prompt: 'Cell identity goal', cell_name: cellName,
+      status: 'READY', store: 'ACTIVE', recipe: 'build', job_type: 'recipe', created_at: '2026-10-25T10:00:00Z',
+    })) } }));
+    await page.goto('/project/cell-label/goals');
+    const label = cellName?.trim() ? cellName : 'Unknown cell';
+    const row = page.getByRole('link', { name: 'Cell identity goal', exact: true }).locator('xpath=ancestor::tr');
+    await expect(row.getByText(label, { exact: true })).toBeVisible();
+    await row.getByRole('link', { name: 'Goal overview' }).click();
+    await expect(page.getByRole('region', { name: 'Attempts' }).getByText(label, { exact: true })).toHaveCount(2);
+    expect(detailReads).toBe(0);
+  });
+}

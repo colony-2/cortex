@@ -152,3 +152,21 @@ body {
 .attempt-tabs.ant-tabs-right > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
   padding-right: 12px;
 }
+
+/* Reviews stay usable in the content pane beside the navigation at small widths. */
+@media (max-width: 600px) {
+  .review-page { padding: 12px !important; }
+  .review-page .ant-space-item { min-width: 0; max-width: 100%; }
+  .review-page .ant-card-body { padding: 12px; }
+  .review-page .ant-card-head { padding-inline: 12px; }
+  .review-page .ant-card-head-wrapper { flex-wrap: wrap; gap: 4px; }
+  .review-page .ant-card-head-title { white-space: normal; }
+  .review-page .ant-card-extra { margin-inline-start: 0; }
+  .review-page .ant-btn { max-width: 100%; height: auto; white-space: normal; }
+  .review-page .ant-btn > span { min-width: 0; overflow-wrap: anywhere; }
+  .review-page .review-document-toolbar .ant-select { min-width: 0 !important; width: 100%; }
+  .review-page .ant-radio-group { display: flex; flex-wrap: wrap; }
+  .review-page .ant-radio-button-wrapper { padding-inline: 8px; }
+  .review-page .review-markdown, .review-page .review-markdown-source { padding: 8px; }
+  .review-page .ant-descriptions table { table-layout: fixed; }
+}

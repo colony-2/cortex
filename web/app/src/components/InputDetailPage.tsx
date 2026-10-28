@@ -1,3 +1,4 @@
+import ReviewJobContext from './ReviewJobContext';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Card, Button, Space, Typography, message, Spin, Alert } from 'antd';
@@ -85,7 +86,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
 
   if (!details || !jobId) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
             {reviews ? 'Back to Reviews' : 'Back to Inputs'}
@@ -102,9 +103,9 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
   const reviewPrompt = reviewActionField(form)?.label;
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className={reviews ? 'review-page' : undefined} style={{ padding: 24 }}>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={handleCancel}>
             {reviews ? 'Back to Reviews' : 'Back to Inputs'}
           </Button>
@@ -112,7 +113,7 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
             disabled={submitting} onBusyChange={setCancelling} onCancelled={handleCancel} />}
         </Space>
 
-        <Card>
+        <Card style={{ overflowWrap: 'anywhere' }}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <div>
               <Title level={4} style={{ margin: 0 }}>
@@ -122,17 +123,18 @@ export default function InputDetailPage({ projectId, reviews = false }: InputDet
             </div>
 
             <div>
-              <Text type="secondary">Status: </Text>
+              <Text type="secondary">{reviews ? 'Input status: ' : 'Status: '}</Text>
               <Text strong>{details.status}</Text>
             </div>
 
             <div>
-              <Text type="secondary">Started: </Text>
+              <Text type="secondary">{reviews ? 'Input started: ' : 'Started: '}</Text>
               <Text>{new Date(details.startTime).toLocaleString()}</Text>
             </div>
           </Space>
         </Card>
 
+        {reviews && <ReviewJobContext key={`${projectId}/${jobId}`} projectId={projectId} jobId={jobId} />}
         {reviewPrompt && <Card title="Review context">
           <section aria-label="Review context" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{reviewPrompt}</section>
         </Card>}
