@@ -1,5 +1,24 @@
 pattern: 'github.com/colony-2/${{ cell }}'
 
+# Tools for Cortex builds and tests. Keep Nix tools on a common pinned revision.
+# The worker base supplies Nix, git, uv/Python, and bootstrap pnpm/Node.
+packages:
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#bash
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#gnumake
+  # Go 1.26.7 matches .go-version; keep this pin in sync to avoid toolchain downloads.
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#go_1_26
+  # Use Node directly: nodejs_24 requires a local npm/Corepack wrapper build.
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#nodejs-slim_24
+  # Browser, codecs, fonts, and shared libraries come from the Nix closures.
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#chromium
+  - nix:github:NixOS/nixpkgs/2ad48bb4ab952d317de4a966aa0af5822c5d3d34#ffmpeg
+  # Match package.json and pnpm-lock.yaml, respectively.
+  - pnpm:pnpm@10.0.0
+  - pnpm:playwright@1.61.1
+
+# CLI tools do not install workspace dependencies: run pnpm install --frozen-lockfile.
+# Playwright uses Chromium and FFmpeg from PATH; no browser download or apt setup.
+
 self:
   repo: https://github.com/colony-2/cortex.git
 

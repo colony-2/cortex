@@ -162,8 +162,21 @@ pnpm --filter @colony2/app test:e2e --project=production recipe-input.spec.ts
 node --test npm/cortex/test/*.test.cjs
 ```
 
-Playwright installs Chromium if missing. On a fresh Linux host, first run
-`pnpm --filter @colony2/app exec playwright install-deps chromium`.
+The c2 execution tools in [`.c2/config.yaml`](.c2/config.yaml) declare Go, Bash,
+Make, Node.js, pnpm, Playwright, Chromium, and FFmpeg. Nix supplies Chromium's
+runtime libraries and fonts. The browser tests use Chromium and FFmpeg from
+`PATH`, without downloading browsers or installing system packages.
+
+Outside c2, either provide Chromium and FFmpeg on `PATH`, or install Playwright's
+browser before running the tests:
+
+```sh
+PLAYWRIGHT_BROWSERS_PATH="${CORTEX_PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}" \
+  pnpm --filter @colony2/app exec playwright install --with-deps --only-shell chromium
+```
+
+The Nix Chromium package targets Linux workers; macOS developers can use the
+Playwright installation command above.
 The suite manages its own servers on ports 15173 and 18081–18083. It covers
 submission, stories, tenants, cells, and input events. The production tests use
 HTTP JobDB backed by temporary SQLite storage.

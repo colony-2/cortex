@@ -1,4 +1,36 @@
 import { defineConfig, devices } from '@playwright/test';
+import { accessSync, constants } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+function executableOnPath(name: string): string | undefined {
+  return (process.env.PATH ?? '').split(path.delimiter)
+    .map(directory => path.resolve(directory, name))
+    .find(candidate => {
+      try {
+        accessSync(candidate, constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+}
+
+const chromium = executableOnPath('chromium');
+if (chromium) {
+  const ffmpeg = executableOnPath('ffmpeg');
+  if (!ffmpeg) throw new Error('Chromium on PATH requires FFmpeg on PATH for Playwright video recording.');
+
+  // Playwright 1.61.1 has no public FFmpeg path option. Point its registry at
+  // the declared executable without downloading or modifying the browser cache.
+  // Recheck this adapter when updating Playwright in pnpm-lock.yaml.
+  const require = createRequire(import.meta.url);
+  const playwrightRequire = createRequire(require.resolve('playwright/package.json'));
+  const { registry: { registry } } = playwrightRequire('playwright-core/lib/coreBundle');
+  const videoEncoder = registry.findExecutable('ffmpeg');
+  videoEncoder.executablePath = () => ffmpeg;
+  videoEncoder.executablePathOrDie = () => ffmpeg;
+}
 
 const webURL = 'http://127.0.0.1:15173';
 const apiURL = 'http://127.0.0.1:18081';
@@ -18,6 +50,7 @@ export default defineConfig({
     baseURL: webURL,
     trace: 'on-first-retry',
     headless: true,
+    launchOptions: chromium ? { executablePath: chromium } : {},
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15000, // 15s default timeout for actions like click, fill, etc.
