@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import JobStoryPage from './JobStoryPage';
+import DownloadChaptersButton from './DownloadChaptersButton';
 
 vi.mock('@colony2/shared', async (importOriginal) => ({
   ...await importOriginal<typeof import('@colony2/shared')>(),
@@ -304,4 +305,112 @@ describe('job story history', () => {
     expect(requests[1][1]!.body).toBe(requests[0][1]!.body);
   });
 
+});
+
+// Test the page action directly for lifecycle races, alongside its page integration.
+
+function downloadBrowser() {
+  const create = vi.fn().mockReturnValue('blob:chapters');
+  const revoke = vi.fn();
+  const BrowserURL = globalThis.URL;
+  vi.stubGlobal('URL', class extends BrowserURL {
+    static createObjectURL = create;
+    static revokeObjectURL = revoke;
+  });
+  const clicked: HTMLAnchorElement[] = [];
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicked.push(this); });
+  return { create, revoke, clicked, restore: () => click.mockRestore() };
+}
+
+describe('chapter download action', () => {
+  it('is disabled without a job and exposes a labelled keyboard button with a download icon', () => {
+    render(<DownloadChaptersButton projectId="tenant" jobId="" />);
+    const button = screen.getByRole('button', { name: 'Download chapters' });
+    expect(button).toBeDisabled();
+    expect(button.querySelector('[aria-label="download"]')).not.toBeNull();
+  });
+
+  it('prevents duplicates, downloads a safe filename, cleans up, and allows another download', async () => {
+    const browser = downloadBrowser();
+    try {
+      let resolve!: (response: unknown) => void;
+      const fetch = vi.fn().mockImplementation(() => new Promise(done => { resolve = done; }));
+      vi.stubGlobal('fetch', fetch);
+      render(<DownloadChaptersButton projectId="tenant" jobId={'../雪\\bad\n'} />);
+      const button = screen.getByRole('button', { name: 'Download chapters' });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(button).toHaveClass('ant-btn-loading');
+      const blob = new Blob(['opaque export']);
+      await act(async () => { resolve({ ok: true, blob: async () => blob }); });
+      expect(browser.create).toHaveBeenCalledWith(blob);
+      expect(browser.clicked).toHaveLength(1);
+      expect(browser.clicked[0].download).toBe('job-雪_bad-chapters.json');
+      expect(document.body.contains(browser.clicked[0])).toBe(false);
+      await waitFor(() => expect(browser.revoke).toHaveBeenCalledWith('blob:chapters'));
+      expect(button).not.toHaveClass('ant-btn-loading');
+      fireEvent.click(button);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally { browser.restore(); }
+  });
+
+  it('preserves the story and retries after failure regardless of historical tree selection', async () => {
+    const browser = downloadBrowser();
+    try {
+      let downloads = 0;
+      const fetch = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith('/chapters/download')) {
+          downloads++;
+          if (downloads === 1) return { ok: false, status: 500, statusText: 'Error', text: async () => 'reader failed' };
+          return { ok: true, blob: async () => new Blob(['{}']) };
+        }
+        return { ok: true, json: async () => ({ ...story, status: 'running' }) };
+      });
+      vi.stubGlobal('fetch', fetch);
+      render(<MemoryRouter initialEntries={['/project/tenant/jobs/job/story']}>
+        <Routes><Route path="/project/:projectId/jobs/:jobId/story" element={<JobStoryPage projectId="tenant" />} /></Routes>
+      </MemoryRouter>);
+      await screen.findByText('Development.Design.Task 3.2');
+      fireEvent.click(screen.getByRole('switch', { name: 'Auto-refresh' }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Job attempt 1' }));
+      fireEvent.click(await screen.findByText('Development.Design.Task 1.2'));
+      fireEvent.click(screen.getByRole('button', { name: 'Download chapters' }));
+      expect(await screen.findByText('Could not download chapters')).toBeVisible();
+      expect(screen.getAllByText('Development.Design.Task 1.2')[0]).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+      expect(screen.queryByText('Failed to load job story')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Download chapters' }));
+      await waitFor(() => expect(browser.clicked).toHaveLength(1));
+      await waitFor(() => expect(browser.revoke).toHaveBeenCalled());
+      expect(screen.queryByText('Could not download chapters')).not.toBeInTheDocument();
+      const urls = fetch.mock.calls.map(call => call[0] as string).filter(url => url.includes('/chapters/download'));
+      expect(urls.map(url => new URL(url).pathname)).toEqual(['/api/projects/tenant/jobs/job/chapters/download', '/api/projects/tenant/jobs/job/chapters/download']);
+    } finally { browser.restore(); }
+  });
+
+  it.each(['unmount', 'job', 'tenant'])('aborts on %s and suppresses stale successes and errors', async (change) => {
+    const browser = downloadBrowser();
+    try {
+      for (const failure of [false, true]) {
+        let settle!: (response: unknown) => void;
+        let reject!: (reason: Error) => void;
+        const fetch = vi.fn().mockImplementation(() => new Promise((resolve, fail) => { settle = resolve; reject = fail; }));
+        vi.stubGlobal('fetch', fetch);
+        const view = render(<DownloadChaptersButton key="tenant/job" projectId="tenant" jobId="job" />);
+        fireEvent.click(screen.getByRole('button', { name: 'Download chapters' }));
+        const signal = fetch.mock.calls[0][1].signal as AbortSignal;
+        if (change === 'unmount') view.unmount();
+        else view.rerender(<DownloadChaptersButton key={change === 'job' ? 'tenant/new' : 'new/job'} projectId={change === 'tenant' ? 'new' : 'tenant'} jobId={change === 'job' ? 'new' : 'job'} />);
+        expect(signal.aborted).toBe(true);
+        await act(async () => {
+          if (failure) reject(new Error('stale failure'));
+          else settle({ ok: true, blob: async () => new Blob(['stale']) });
+        });
+        expect(browser.create).not.toHaveBeenCalled();
+        expect(screen.queryByText('Could not download chapters')).not.toBeInTheDocument();
+        view.unmount();
+      }
+    } finally { browser.restore(); }
+  });
 });

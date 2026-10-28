@@ -106,3 +106,13 @@ export async function submitJob(projectId: string, input: SubmitRecipeJobRequest
   await handleResponse(response, 'Submit job');
   return response.json();
 }
+
+/** Keep export bytes opaque: JSON parsing here can round persisted 64-bit integers. */
+export async function getJobChaptersDownload(projectId: string, jobId: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/chapters/download`,
+    { signal },
+  );
+  await handleResponse(response, 'Download chapters');
+  return response.blob();
+}

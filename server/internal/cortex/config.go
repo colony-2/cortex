@@ -30,6 +30,7 @@ type Server struct {
 	cfg         Config
 	engine      jobworkflow.Engine
 	jobDeletion jobdb.JobDeletionRuntime
+	chapters    chapterReader
 	router      http.Handler
 	story       storyService
 	inputs      inputRuntime

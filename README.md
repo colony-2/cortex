@@ -9,6 +9,14 @@ Cortex connects to a remote [JobDB](https://github.com/colony-2/jobdb) server.
 Run c2j workers separately against the same JobDB. Projects in the UI are JobDB
 tenants; cells are the current Git repository and its c2j-configured dependents.
 
+## Chapter downloads
+
+On a job's story page, **Download chapters** saves a JSON inspection export of
+all persisted chapters for that job, including retained attempts and artifact
+descriptors. Running jobs export the records currently available. Child jobs
+and artifact file contents are excluded; individual artifacts can still be
+downloaded from the story. This export is not an import or restore format.
+
 ## Document reviews
 
 The **Reviews** navigation item lists pending input forms marked `kind: review`.

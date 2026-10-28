@@ -32,6 +32,7 @@ import { API_BASE, inputActivityService, type UserInputDetails, type FormRespons
 import InputFormRenderer from './InputFormRenderer';
 import AttemptTabs from './AttemptTabs';
 import CancelJobButton from './CancelJobButton';
+import DownloadChaptersButton from './DownloadChaptersButton';
 import { getJob } from '@colony2/shared/api';
 import { goalPath } from './JobWaitLinks';
 import { jobFilterSearch } from '../utils/jobFilters';
@@ -715,6 +716,7 @@ export default function JobStoryPage({ projectId }: JobStoryPageProps) {
             {overviewLink && <Link to={overviewLink} state={{ goalsReturnTo: returnTo }}>Goal overview</Link>}
           </Space>
           <Space>
+            <DownloadChaptersButton key={JSON.stringify([projectId, jobId])} projectId={projectId} jobId={jobId} />
             {story?.status === 'running' ? (
               <Space>
                 <Text type="secondary">Auto-refresh</Text>

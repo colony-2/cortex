@@ -158,3 +158,83 @@ test('opens the tenant from the server connection config without a URL override'
   await page.getByRole('link', { name: 'Pending Inputs' }).click();
   await expect(page.getByText('No pending inputs')).toBeVisible();
 });
+
+// Real downloads in both projects; production additionally crosses HTTP JobDB and SQLite.
+test('downloads persisted job chapters as JSON without changing the story route', async ({ page, request, context, baseURL }, testInfo) => {
+  const { readFile } = await import('node:fs/promises');
+  const tenant = `chapters-${randomUUID()}`;
+  const jobId = 'chapter-export';
+  const route = `/project/${tenant}/jobs/${jobId}/story`;
+  const submitted = await request.post(`/api/projects/${tenant}/jobs`, {
+    data: { job_id: jobId, recipe: 'smoke', inputs: { message: '雪' } },
+  });
+  expect(submitted.status(), await submitted.text()).toBe(201);
+  let expectedCount = 1;
+  const output = { result: '雪', binary: 'application JSON remains opaque' };
+  const artifactContent = Buffer.from('artifact body excluded from chapter export');
+  if (testInfo.project.name === 'production') {
+    const backend = `http://127.0.0.1:18082/v1/tenants/${tenant}/jobs/${jobId}`;
+    const leaseResponse = await request.post(`${backend}/lease`, {
+      data: { workerId: 'chapter-download-browser-test', routes: [{ jobType: 'recipe' }], leaseDuration: '1m' },
+    });
+    expect(leaseResponse.ok(), await leaseResponse.text()).toBeTruthy();
+    const { lease } = await leaseResponse.json();
+    expect(lease).toBeTruthy();
+    const leasePath = `${backend}/leases/${lease.leaseId}`;
+    const headers = { 'X-JobDB-Lease-Token': lease.leaseToken };
+    for (const [index, record] of [
+      { version: 1, kind: 'header', versions: { execution_pattern_version: 1, jobdb_version: 'test' } },
+      { version: 1, kind: 'restart', id: 'retained-attempt', descriptor: [{ version: 1, kind: 'scope', id: 'past-scope' }] },
+    ].entries()) {
+      const response = await request.post(`${leasePath}/add_chapter`, {
+        headers,
+        data: { chapter: { ordinal: index + 1, taskType: '__execution__', createdAt: new Date().toISOString(), body: { kind: 'execution', record }, artifacts: [] } },
+      });
+      expect(response.status(), await response.text()).toBe(204);
+    }
+    const complete = await request.post(`${leasePath}/complete`, {
+      headers,
+      data: {
+        status: 'success',
+        chapter: {
+          ordinal: 3, taskType: 'recipe', createdAt: new Date().toISOString(), metadata: { fields: { attempt: { kind: 'int', intValue: 2 }, title: { kind: 'string', stringValue: '雪' } } },
+          body: { kind: 'jobAttemptOutcome', outcome: { kind: 'success', output } }, artifacts: [],
+        },
+        artifactUploads: [{ name: 'result.txt', size: artifactContent.length, contentBase64: artifactContent.toString('base64') }],
+      },
+    });
+    expect(complete.status(), await complete.text()).toBe(204);
+    expectedCount = 4;
+  }
+  await context.addCookies([{ name: 'colony2:user:email', value: 'browser@example.com', url: baseURL! }]);
+  await page.goto(route);
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download chapters', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe(`job-${jobId}-chapters.json`);
+  expect(await download.failure()).toBeNull();
+  const file = await download.path();
+  expect(file).toBeTruthy();
+  const text = await readFile(file!, 'utf8');
+  const exported = JSON.parse(text);
+  expect(text).toContain('\n  "format_version": 1,');
+  expect(exported).toMatchObject({ format_version: 1, project_id: tenant, job_id: jobId });
+  expect(exported.chapters.map((chapter: { ordinal: number }) => chapter.ordinal)).toEqual(Array.from({ length: expectedCount }, (_, index) => index));
+  expect(exported.chapters[0].body.kind).toBe('job_start');
+  expect(exported.chapters[0].body.input.encoding).toBe('base64');
+  const input = JSON.parse(Buffer.from(exported.chapters[0].body.input.data, 'base64').toString('utf8'));
+  expect(JSON.stringify(input)).toContain('"message":"雪"');
+  if (expectedCount === 4) {
+    expect(exported.chapters[2].body.record.descriptor[0].id).toBe('past-scope');
+    expect(exported.chapters[3].body.kind).toBe('job_attempt_outcome');
+    expect(exported.chapters[3].body.outcome.kind).toBe('application_output');
+    expect(exported.chapters[3].body.outcome.output.encoding).toBe('base64');
+    expect(JSON.parse(Buffer.from(exported.chapters[3].body.outcome.output.data, 'base64').toString('utf8'))).toEqual(output);
+    // JobDB retains supplied metadata inside its typed chapter metadata envelope.
+    expect(exported.chapters[3].metadata.metadata).toMatchObject({ kind: 'map', value: { attempt: { kind: 'int', value: 2 }, title: { kind: 'string', value: '雪' } } });
+    expect(exported.chapters[3].artifacts).toEqual([{ name: 'result.txt', size: artifactContent.length, digest: expect.any(String) }]);
+    expect(text).not.toContain(artifactContent.toString());
+  }
+  await expect(page).toHaveURL(new RegExp(`${route}$`));
+  await expect(page.getByRole('button', { name: 'Download chapters', exact: true })).toBeEnabled();
+});
